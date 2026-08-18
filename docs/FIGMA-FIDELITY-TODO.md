@@ -251,10 +251,17 @@ Expect to move things when the designer draws it.
       schema has carried the column since `001` with no policy, trigger or check behind it.
       The form bounds what can be *typed*, which is not the same thing.
 
-### Club detail and Create club — built 2026-08-05
+### Create club, and the original club detail — built 2026-08-05
 
 `/clubs/detail` is four sub-pages behind the header's dropdown — Timeline, Rides, Members,
 About — built from the **private club** frames, which are the ones marked Done.
+
+**The four-way switcher this section describes is gone — 2026-08-18, see §Club detail
+below.** Read that section before treating anything here as the current shape of the screen;
+this one is kept as the record of the original build and the two bullets it resolved. Renamed
+from "Club detail and Create club" so the two sections' headings do not share a leading
+"Club detail" — `crossrefs.mjs`'s two-word match would otherwise call every "§Club detail"
+citation ambiguous between them.
 
 - [x] ~~**Which club design to build**~~ — **settled by the epic covers, and it is a product
       statement, not a styling one.** `View private club` is **Done**. Both public-club epics
@@ -275,17 +282,18 @@ About — built from the **private club** frames, which are the ones marked Done
       than approximated: a plausible-looking audit log that is missing half its events is
       worse than none.
 
-- [ ] **Upcoming rides render as list cards, not the drawn chip.** The design uses
-      `Collection / Ride` — a 200×56 horizontal-scroll chip with a date block. `List / Ride`
-      is already measured and shows the same three facts, so it is reused. A second card
-      component for one strip is the trade; registered so it is a choice rather than a
-      mistake.
+- [x] ~~**Upcoming rides render as list cards, not the drawn chip.**~~ **Resolved
+      2026-08-18**, by the club detail merge: `RideChip` now builds `Collection / Ride`
+      (`2059:5732`) for real, and the club page's Upcoming rides strip scrolls it
+      horizontally rather than stacking `RideCard`. See §Club detail below.
 
-- [ ] **The header's `Options` control is omitted, not stubbed.** Same reasoning as
-      `RideHeader`: the flow never draws the sheet's contents, and club overflow is presumably
-      edit / delete / leave. Leave lives on the About page instead, as one labelled control.
-      **Edit club has no v2 design either** — its frame is OLD-stylesheet and shares the
-      `Create club` epic, which is To do.
+- [x] ~~**The header's `Options` control is omitted, not stubbed.**~~ **Built 2026-08-18**,
+      by the club detail merge — `ClubOptionsMenu`. Leave no longer lives on the About page;
+      that page is deleted and Leave moves into this menu, member/admin-only. **Edit club
+      still has no v2 design** — its frame is OLD-stylesheet and shares the `Create club`
+      epic, which is To do — but the *header control* that opens it is now built and drawn
+      from the approved merged mock rather than the OLD-stylesheet frame. See §Club detail
+      below for the one row of that mock left deliberately unbuilt (`Delete club`).
 
 - [ ] **No remove-member control**, though the v1 Create club frame draws one. `001` grants a
       rider DELETE on their own `club_members` row only, so the button would always fail. It
@@ -304,6 +312,113 @@ About — built from the **private club** frames, which are the ones marked Done
 - [ ] **`clubs.name` and `description` have no CHECK constraint.** `001` declares both as bare
       `text`; the 60/500 limits live only in `lib/validation/clubs.ts`, which is why no client
       may write the table directly. Same gap `bio`, `bike_model` and `location` carry.
+
+### Club detail — merged 2026-08-18
+
+`/clubs/detail`, `/clubs/detail/members` and `/clubs/detail/rides`, from `Private club -
+Timeline` (`2043:10604`), `- Rides` (`2059:6390`), `- Members` (`2059:6545`), `- About`
+(`2059:6700`) and `- Sub Pages` (`2059:5931`). This is the club counterpart of the ride
+detail's own merge — read §Ride detail's identical entry above for the pattern; this one
+states only what differs.
+
+**The sub-page switcher is gone.** The frames' four-way split (Timeline / Rides / Members /
+About, behind `ClubDetailPageMenu`'s bottom sheet) is one screen now: Members and Upcoming
+rides are sections with their own `See all`, the header drops to 96px, and
+`/clubs/detail/about` is deleted outright — its type line, created-at and description move
+onto the merged screen, and its one action (leaving) moves into the header's new dots menu.
+Approved by the product owner as `AI / Club detail merged / 2026-08-17` — `4176:12575`
+(member view), `4181:6897` (owner Options open), `4181:6930` (member Options open) and
+`4181:13068` (members expanded in place); **that page, not the five frames above, is the
+current specification for this screen.** Consequences worth stating separately, because each
+is a drawn value this repo no longer builds:
+
+- [ ] **The dedicated About sub-page is gone**, its type/created-at row and description
+      absorbed into the merged screen as a muted line and an `ExpandableText`, no `bg-surface`
+      card around either — the ride plan's blurb has no card either, and this screen now
+      matches it rather than keeping the About page's boxed treatment.
+- [ ] **`Collection / Ride` (`2059:5732`) is finally built**, closing the fidelity gap the
+      original Club detail entry logged in 2026-08-05 ("Upcoming rides render as list cards,
+      not the drawn chip"). `RideChip` is the 200×56 dark chip; see its own docstring for the
+      token choices. **Its time is a single instant** — `14:00`, not the drawn `14:00 -
+      18:00` — the same `rides` has-no-end-time gap already logged against the ride detail's
+      own date row; not repeated in full here.
+- [ ] **The header's `Options` control is built, and one row the mock draws is not.** Both
+      Options frames (`4181:6897` owner, `4181:6930` member) draw three rows under a
+      hairline: `Edit club` (owner) or nothing (member) above the line, then `Delete club`
+      below it for the owner. `ClubOptionsMenu` builds `Edit club` and `Leave club` and
+      **deliberately omits `Delete club`** — `ClubDetailHeader`'s own docstring and
+      `openspec/changes/add-ride-club-edit-delete/design.md` §D4 (PD-101) already put
+      deletion at the foot of the edit screen behind a second tap, in `DeleteClubControl`,
+      and siting the same destructive control in two places is how it gets tapped by
+      accident. The product owner settles which frame is right; until then
+      `DeleteClubControl` stays the one place it lives.
+- [ ] **Join is not in the menu either**, though neither approved frame draws a non-member's
+      Options sheet to compare against. `ClubMembershipButton` stays inline on the page
+      instead, visible only to a non-member — a constructive action stays visible, only the
+      destructive one (Leave) is tucked away.
+- [ ] **`ClubMemberRail`'s avatar stack draws no admin distinction.** The members page marks
+      `role = 'admin'` with a trailing label and no ring; the rail's collapsed state shows
+      only the host ring, on the owner, matching what `RideCrewRail` draws for the ride
+      organizer. Opening the rail shows the same labels the members page does.
+- [ ] **`See all` adds four more `text-accent`-on-cream instances to the count already logged
+      against the ride detail.** That entry measured `#3D996B` on `--color-background`
+      `#F2ECE6` at **3.00:1** against a 4.5:1 bar, and put it at three instances on that
+      screen (`Directions`, `See all`, the crew rail's error fallback). **Count this screen's
+      in two places, not one** — the first pass of this entry said two and missed the third,
+      because two of them come through `SectionHeader`'s `action` prop and the third is the
+      rail's own `See all` inside its expanded panel, where a grep of the page file cannot
+      see either kind. **Raised to four 2026-08-18**, when the reorder below gave `Postcards`
+      its own `See all` too:
+
+      ```bash
+      grep -c "label: 'See all'" 'src/app/(app)/clubs/detail/page.tsx'   # 3, via SectionHeader
+      grep -c "text-accent" src/components/clubs/ClubMemberRail.tsx      # 1, the panel's own
+      ```
+
+      Not a new failure mode — the same pairing, four times on one screen now; raised on the
+      same PD-176 designer question rather than logged again as new.
+
+- [ ] **A SECOND failing pairing arrived with the same commit and is a different one:
+      `text-muted` on `bg-track`.** `#666666` on `#E5DACF` measures **4.17:1** against a 4.5:1
+      bar, and both new instances are 12px — so neither is WCAG large text and neither passes.
+      They are `ClubCreateRideRow`'s second line and the carousel's `Add` label; the same
+      pairing already ships unlogged on `RideJournalEmpty`'s `Add`, and this entry's own
+      unselected-RSVP-button line logs it at the same ratio. Recorded because the commit that
+      added them re-counted the *accent* pairing carefully and said nothing about this one,
+      which left this file asserting a complete contrast sweep it had not done.
+
+      **A same-line grep finds one of the two, not both**, which is the trap worth recording:
+      the carousel's `Add` label is a bare `text-xs font-semibold` span that **inherits**
+      `text-muted` from the `Link` wrapping it, so the pairing is spread across two lines and
+      only the row's own second line matches. List the token and read the sizes off the hits:
+
+      ```bash
+      grep -n "text-muted\|text-xs" src/components/clubs/ClubCreateRideRow.tsx \
+        src/components/clubs/ClubPostcardCarousel.tsx
+      ```
+
+      `text-foreground` on `bg-track` is fine at **12.65:1** and is what the row's title uses;
+      the failure is confined to the muted supporting lines. Same PD-176 designer question.
+
+- [ ] **The section order and the Postcards section itself deviate further from the approved
+      mock, 2026-08-18 (`club-details-dropdown-removal`, PD-262).** The product owner settled a
+      new top-to-bottom order in conversation rather than in a redrawn frame: Upcoming rides,
+      Postcards, Members, the `Private club · Started …` line, then the description — Upcoming
+      rides moved to lead the screen (with a `Plan a ride` create affordance, `ClubCreateRideRow`,
+      when the club has none and the viewer can create one), and Members and Postcards swapped
+      from what an earlier revision of this same conversation had settled. **Postcards is a
+      horizontally-scrolling strip of square tiles** (`ClubPostcardCarousel`), not the stacked
+      `PostcardCard` list `AI / Club detail merged / 2026-08-17` draws and this section drew
+      until today — modelled on the ride detail's `RideJournal`, whose own tiles are still
+      unbuilt (PD-257), so this is the first *real* tile carousel in the app rather than a copy
+      of an existing one. The trade is deliberate and product-owner-approved: a tile shows only
+      the photo, not the byline, caption, likes or comment count `PostcardCard` drew in place —
+      a rider taps through to the postcard's own thread for those. No frame draws this shape at
+      all, so there is nothing in `design/` to diff it against; the geometry (112px tiles, 8px
+      gap) is read off `RideJournalEmpty`'s own tokens rather than measured from Figma.
+
+Blocked on schema, same as the ride detail: `formatRideTime` on `RideChip` renders one
+instant because `rides` has no end-time column — see that entry rather than repeating it.
 
 ### Clubs list — built from the measurements 2026-08-05
 

@@ -287,6 +287,27 @@ export function formatRideTime(date: string) {
   })
 }
 
+/**
+ * The two-line date block on `RideChip`'s `Collection / Ride` (`2059:5732`)
+ * chip — day number over month abbreviation, `APP_TIME_ZONE` like every other
+ * `formatRide*` helper. An object rather than a string, unlike its siblings:
+ * the frame draws these as two separate text nodes stacked on top of each
+ * other (`Poppins/16/Semibold` over `Poppins/12/Semibold`), not one string a
+ * component would have to split back apart.
+ */
+export function formatRideChipDate(date: string): { day: string; month: string } {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: APP_TIME_ZONE,
+  }).formatToParts(new Date(date))
+
+  const find = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? ''
+
+  return { day: find('day'), month: find('month').toUpperCase() }
+}
+
 /*
  * `formatDate` and `formatDateTime` used to sit here. They are **deleted**, not
  * moved, and the deletion is the fix for a defect this change created.

@@ -517,6 +517,14 @@ export type ClubListItem = {
  * authorization signal: 001's policies decide every write, and a screen that
  * treated this as permission would be re-deciding in the weaker of the two
  * places.
+ *
+ * **There is deliberately no `owner` profile embed.** The About sub-page's
+ * "Club owner" row was its only reader and that page is gone; the owner is
+ * named by `ClubMemberRail`'s roster and by `/clubs/detail/members`, both from
+ * `club_members.role`, with the host ring and an `Owner` label. Re-adding the
+ * embed costs a signed-avatar round trip on every club-detail load — including
+ * from the two sub-pages — for something nothing renders. `owner_id` stays,
+ * because `viewer_role` is not the only thing that needs to know who owns it.
  */
 export type ClubDetail = {
   id: string
@@ -529,14 +537,13 @@ export type ClubDetail = {
   cover_image_path: string | null
   avatar_url: string | null
   cover_image_url: string | null
-  owner: PublicProfile | null
   members_count: number
   viewer_role: 'owner' | 'admin' | 'member' | null
 }
 
 /**
  * One club, as `/clubs/detail/edit` renders it — PD-101. Narrower than
- * `ClubDetail`: no `owner` embed, no `members_count`, no `viewer_role` — this
+ * `ClubDetail`: no `members_count`, no `viewer_role` — this
  * screen needs the editable columns and nothing a member list or a byline
  * would want.
  */
