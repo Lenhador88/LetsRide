@@ -294,18 +294,36 @@ describe('postcards reads never re-ship ride_id (PD-165)', () => {
  * `author:profiles!author_id(…)`, `likes_count:postcard_likes(count)` — whose
  * columns belong to other tables and other grants, so an entry carrying a `(`
  * is skipped rather than checked against this list.
+ *
+ * **The grant is read from the LAST migration that issued it, not from `062`,
+ * and that is what keeps this test honest as the list grows.** Each of these
+ * files issues an ABSOLUTE `revoke select` + `grant select (…)`, so only the
+ * final one describes the database — `064` adds five capture columns on top of
+ * `062`'s seven. Pinning `062` by name would have made this test fail the first
+ * time a screen legitimately selected `taken_at`, reporting "not in the grant
+ * list" about a column that is very much granted. That is the shape of failure
+ * this file exists to avoid, arriving from the other direction: a wrong answer
+ * that looks measured.
  */
-describe('POSTCARD_SELECT names only columns 062 grants', () => {
-  const migration = readFileSync(
-    path.join(SRC, '..', 'supabase', 'migrations', '062_ride_id_reads_through_an_accessor.sql'),
-    'utf8'
-  )
+describe('POSTCARD_SELECT names only columns the migrations grant', () => {
+  /** Every `grant select (...) on public.postcards`, newest file last. */
+  const grantingMigrations = readdirSync(path.join(SRC, '..', 'supabase', 'migrations'))
+    .filter((name) => name.endsWith('.sql'))
+    .sort()
+    .map((name) => ({
+      name,
+      sql: readFileSync(path.join(SRC, '..', 'supabase', 'migrations', name), 'utf8'),
+    }))
+    .filter(({ sql }) =>
+      /grant\s+select\s*\([^)]*\)\s*\n?\s*on\s+public\.postcards\s+to\s+authenticated/i.test(sql)
+    )
 
   const granted = (() => {
-    const match = migration.match(
+    const last = grantingMigrations.at(-1)
+    if (!last) throw new Error('no `grant select (...) on public.postcards` found in any migration')
+    const match = last.sql.match(
       /grant\s+select\s*\(([^)]*)\)\s*\n?\s*on\s+public\.postcards\s+to\s+authenticated/i
-    )
-    if (!match) throw new Error('no `grant select (...) on public.postcards` found in 062')
+    )!
     return match[1]
       .split(',')
       .map((c) => c.replace(/--.*$/gm, '').trim())
@@ -352,14 +370,38 @@ describe('POSTCARD_SELECT names only columns 062 grants', () => {
     expect(selected.length).toBeGreaterThan(4)
   })
 
-  it('selects only columns 062 actually grants', () => {
+  it('reads the newest granting migration, not the first — an absolute re-grant supersedes', () => {
+    // More than one file issues this statement, and the one that counts is the
+    // last. If this ever drops to one, a re-grant has been deleted rather than
+    // superseded and `granted` is describing a database nobody has.
+    expect(grantingMigrations.length).toBeGreaterThan(1)
+    expect(grantingMigrations.at(-1)!.name >= '062').toBe(true)
+  })
+
+  it('selects only columns the grant actually names', () => {
     for (const column of selected) {
-      expect(granted, `${column} is not in 062's grant list`).toContain(column)
+      expect(granted, `${column} is not in the postcards SELECT grant`).toContain(column)
     }
   })
 
   it('never grants the column the accessor exists to hold', () => {
+    // `062` took `ride_id` out, and `064` re-issues the whole list. An absolute
+    // re-grant is exactly how a shipped decision gets silently reverted — by
+    // someone rebuilding the list from PROD, where `062` is not yet promoted and
+    // `ride_id` is therefore still on it.
     expect(granted).not.toContain('ride_id')
+  })
+
+  it('grants the capture columns 064 added, so a Journal can order on them', () => {
+    expect(granted).toEqual(
+      expect.arrayContaining([
+        'taken_at',
+        'taken_at_offset_minutes',
+        'taken_latitude',
+        'taken_longitude',
+        'taken_location_precision',
+      ])
+    )
   })
 })
 
