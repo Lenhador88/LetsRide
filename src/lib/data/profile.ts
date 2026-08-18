@@ -170,8 +170,10 @@ export const ACCOUNT_DELETION_RIDES_LIMIT = 200
  * `count: 'exact', head: true` form this replaced put no rows on the wire at
  * any volume; reading actual rows to dedupe by person needs a bound the old
  * form did not, because — per `RIDE_CREW_LIMIT`'s own comment in
- * `lib/data/rides.ts` — `ride_members` is "unbounded by construction":
- * `max_riders` has never been enforced. Both other `ride_members` reads in
+ * `lib/data/rides.ts` — `ride_members` was "unbounded by construction":
+ * `max_riders` was enforced by nothing until `063`, and a cap enforced from
+ * now on bounds no ride that already exists, every one of which carries
+ * `max_riders` NULL. Both other `ride_members` reads in
  * that file are bounded (`RIDE_FILTER_SCAN_LIMIT` and `RIDE_CREW_LIMIT`);
  * this is the one in `lib/data/` that was not, until now. Set well
  * above `ACCOUNT_DELETION_RIDES_LIMIT` × a realistic crew size rather than

@@ -510,7 +510,7 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 62 files. DEV is at `062`, PROD at `059` — DEV AHEAD, 2026-08-17.** DEV-ahead is
+**Applied state: 63 files. DEV is at `063`, PROD at `059` — DEV AHEAD, 2026-08-18.** DEV-ahead is
 the ordinary state of a migration between its merge and its promotion, not drift. **Do not read
 the count of unpromoted files off this sentence either** — it named exactly one while two were
 waiting, which is the same defect as a stale number in a smaller place, and the promotion is the
@@ -560,7 +560,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1646** assertions — re-derive rather than trust it:
+Suite **1671** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.

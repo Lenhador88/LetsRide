@@ -53,15 +53,21 @@ export const RIDE_FILTER_SCAN_LIMIT = 500
  * How much of a crew `/rides/detail/crew` will read, and **not** because a
  * motorcycle ride has 200 riders.
  *
- * Nothing caps `ride_members`. `max_riders` has existed since 001 and has never
- * been enforced by the action, a policy or a trigger, so roster size is
- * unbounded *by construction* rather than merely large in theory. Unbounded,
- * the crew read selects every row plus a joined profile each and renders one
- * list item per row with no virtualisation, on a 390px screen.
+ * `063` caps `ride_members` at `max_riders`, and **that does not make this
+ * bound redundant** — which is the trap worth stating, because the cap looks
+ * like it retires the limit. `max_riders` is NULLABLE and NULL means no cap,
+ * which is what most rides carry — 4 of DEV's 6 and 1 of PROD's 2 on
+ * 2026-08-18 — and what every organizer who leaves the box empty still creates.
+ * So an uncapped ride's
+ * roster is exactly as unbounded as it was; what changed is that a *capped*
+ * one is now bounded at 1000 — `018`'s ceiling of 999, plus the one row the
+ * organizer exemption may add — which is still five times this.
+ * Unbounded, the crew read selects every row plus a joined profile each and
+ * renders one list item per row with no virtualisation, on a 390px screen.
  *
  * Beyond this the list truncates rather than misleads — the same saturating
- * trade `RIDE_FILTER_SCAN_LIMIT` makes above, and the honest one until either
- * pagination gets a design or the schema starts enforcing capacity.
+ * trade `RIDE_FILTER_SCAN_LIMIT` makes above, and the honest one until
+ * pagination gets a design.
  */
 export const RIDE_CREW_LIMIT = 200
 
@@ -274,7 +280,8 @@ export async function getRides(
  *
  * **The crew is not read here at all.** An earlier version embedded every
  * `ride_members` row to derive a headline count, which was unbounded on a table
- * nothing constrains — `max_riders` has never been enforced — and produced a
+ * nothing constrained — and still is for the uncapped rides `063` leaves
+ * untouched, per `RIDE_CREW_LIMIT` above — and produced a
  * number labelled "going" that also counted `maybe`, contradicting the crew
  * page one tap away. Both problems were the same mistake: deriving a summary
  * from a full roster read that this screen does not otherwise need. The crew
