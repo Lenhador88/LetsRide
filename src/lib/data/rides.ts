@@ -60,7 +60,8 @@ export const RIDE_FILTER_SCAN_LIMIT = 500
  * 2026-08-18 — and what every organizer who leaves the box empty still creates.
  * So an uncapped ride's
  * roster is exactly as unbounded as it was; what changed is that a *capped*
- * one is now bounded at 999 by `018`'s range, which is still five times this.
+ * one is now bounded at 1000 — `018`'s ceiling of 999, plus the one row the
+ * organizer exemption may add — which is still five times this.
  * Unbounded, the crew read selects every row plus a joined profile each and
  * renders one list item per row with no virtualisation, on a 390px screen.
  *

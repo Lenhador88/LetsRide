@@ -131,6 +131,20 @@ select r.max_riders into cap from public.rides r where r.id = new.ride_id for no
 - **Rejected: `serializable` isolation.** Not ours to choose — PostgREST decides the isolation
   level for the rider's transaction.
 
+**Body order, as shipped, differs from the one first written here, and the reason is measured.**
+This section originally put the locking read first and the early returns after it. `063` reads
+`max_riders` and `organizer_id` **unlocked** first, returns for an uncapped ride and for both
+exempt riders, and only then takes the lock and counts. That is deliberate: most rides carry no cap
+— 4 of DEV's 6 and 1 of PROD's 2 on 2026-08-18 — so locking first would serialise the app's most
+common write, and contend with `updateRide` on the same row, for a rule that applies to a minority
+of rides. Uncapped rides now take no lock at all.
+
+The window this opens is benign **and already legal**: an organizer setting a cap concurrently with
+a join gets an over-subscribed ride by one, which is exactly the state decision 2 permits and
+lowering a cap produces on purpose. The post-lock re-read is authoritative, and the race the issue
+names is still closed — measured, two concurrent joiners for the last seat of a cap-2 ride leave a
+crew of 2, against 3 with no lock.
+
 ### D6 — The trigger runs before row security, and the one bit that leaks
 
 Measured, on a table with a `with check (false)` policy and a raising `BEFORE INSERT` trigger,

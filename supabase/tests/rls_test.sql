@@ -14586,6 +14586,17 @@ insert into ride_members (ride_id, user_id, status) values
 insert into blocks (blocker_id, blocked_id) values
   ('00000000-0000-0000-0000-000000063004', '00000000-0000-0000-0000-000000063002');
 
+-- A private club and its ride, for 063.7b. 6305 is NOT a member, so `rides`'
+-- SELECT policy hides this ride from them entirely — which is the whole point,
+-- and also the reason that assertion cannot look the id up through a subquery.
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000000630c1', 'Capacity Private MC', false,
+   '00000000-0000-0000-0000-000000063001');
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, max_riders, organizer_id) values
+  ('00000000-0000-0000-0000-00000063f009', 'Members Only Run', 'The Ferry',
+   now() + interval '7 days', false, '00000000-0000-0000-0000-0000000630c1', null,
+   '00000000-0000-0000-0000-000000063001');
+
 -- ---------------------------------------------------------------------------
 -- 063.1  The mechanism itself. `security definer` is REQUIRED (063.6 is why),
 --        and a definer function that the client can CALL is a different thing
@@ -14803,23 +14814,30 @@ select assert_rejected($$
      and user_id = '00000000-0000-0000-0000-000000063005'$$,
   '23514', '063: a seat cannot be MOVED into a full ride — the trigger fires on UPDATE, not on INSERT alone');
 
--- And the neighbouring question a reader of the policy list WILL ask, answered
--- here so it is not re-derived wrongly: the UPDATE policy's `with check` is a
--- bare `auth.uid() = user_id` while the INSERT policy's carries an EXISTS
--- against `rides`, which reads like a hole — move the row instead of inserting
--- it and the ride-visibility test is skipped. It is not a hole. Postgres also
--- applies the SELECT policy to the NEW row of an UPDATE, so a row cannot be
--- updated into invisibility, and the refusal below is 42501 from RLS rather
--- than 23514 from the capacity trigger. Measured, not reasoned.
+-- 063.7b  And the neighbouring question a reader of the policy list WILL ask,
+--         answered here so it is not re-derived wrongly: the UPDATE policy's
+--         `with check` is a bare `auth.uid() = user_id` while the INSERT
+--         policy's carries an EXISTS against `rides`, which reads like a hole —
+--         move the row instead of inserting it and the ride-visibility test is
+--         skipped. It is not a hole. Postgres also applies the SELECT policy to
+--         the NEW row of an UPDATE, so a row cannot be updated into
+--         invisibility.
+--
+-- **The target id is a LITERAL, and that is the whole assertion.** Written as a
+-- subquery selecting "a private ride this rider is not in", it runs under the
+-- rider's own RLS — which hides exactly those rides — so it evaluates to NULL,
+-- the statement becomes `set ride_id = null`, and the 42501 comes from the
+-- roster policy's EXISTS failing on a NULL. That version passes while measuring
+-- nothing about visibility. Caught in review; do not reintroduce it.
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000063f009'),
+  0, '063: the rider cannot see the private club''s ride at all — without this the next line proves nothing');
+
 select assert_rejected($$
-  update ride_members set ride_id = (select id from rides r
-     where r.is_public = false and r.club_id is not null
-       and not exists (select 1 from club_members cm
-                        where cm.club_id = r.club_id
-                          and cm.user_id = '00000000-0000-0000-0000-000000063005') limit 1)
+  update ride_members set ride_id = '00000000-0000-0000-0000-00000063f009'
    where ride_id = '00000000-0000-0000-0000-00000063f002'
      and user_id = '00000000-0000-0000-0000-000000063005'$$,
-  '42501', '063: ... and cannot be moved onto a ride the rider cannot SEE either — RLS refuses that one, not the trigger');
+  '42501', '063: ... and cannot move their seat onto it — RLS refuses that one, not the capacity trigger, and that ride is UNCAPPED so only visibility can be doing the work');
 
 -- ---------------------------------------------------------------------------
 -- 063.8  Leaving frees the seat, with no further machinery: `No` deletes the
