@@ -1,4 +1,5 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
+import { distanceKm, isNearby } from '@/lib/location/distance'
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrapCount, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
@@ -14,6 +15,15 @@ import type {
 } from '@/types'
 
 type ClubOption = Pick<Club, 'id' | 'name'>
+
+/**
+ * Where the rider is, for the Explore sort. Structurally `RiderLocation` minus
+ * its `source`, and typed here rather than imported so that `lib/data/` does
+ * not depend on `lib/location/rider-location.ts` — that module reads
+ * `navigator` and throws by design during the SSR pass, and nothing in this
+ * directory may drag it into a module graph the prerender walks.
+ */
+export type RiderPosition = { lat: number; lon: number }
 
 /** How many faces the design's overlapping avatar row shows before it becomes `+N`. */
 export const CLUB_AVATAR_LIMIT = 5
@@ -53,6 +63,7 @@ export const CLUB_MEMBERSHIP_LIMIT = 100
  */
 const CLUB_LIST_SELECT = `
   id, name, is_public, avatar_path, cover_image_path,
+  location_name, location_place_id, latitude, longitude,
   members_count:club_members(count),
   riders:club_members(user_id, profile:profiles(${PUBLIC_PROFILE_COLUMNS}))
 `
@@ -63,6 +74,10 @@ export type ClubListRow = {
   is_public: boolean
   avatar_path: string | null
   cover_image_path: string | null
+  location_name: string | null
+  location_place_id: string | null
+  latitude: number | null
+  longitude: number | null
   members_count: { count: number }[] | null
   riders: { user_id: string; profile: PublicProfile | null }[] | null
 }
@@ -82,6 +97,10 @@ export function toClubListItem(row: ClubListRow, unread?: number): ClubListItem 
     is_public: row.is_public,
     avatar_path: row.avatar_path,
     cover_image_path: row.cover_image_path,
+    location_name: row.location_name,
+    location_place_id: row.location_place_id,
+    latitude: row.latitude,
+    longitude: row.longitude,
     // Filled by signClubImages, which runs once per page rather than per row.
     avatar_url: null,
     cover_image_url: null,
@@ -228,7 +247,7 @@ export async function getYourClubs(): Promise<ClubListItem[]> {
  * joined — the same class of silent truncation as the ride filter tiles that
  * went missing past the page boundary.
  */
-export async function getExploreClubs(): Promise<ClubListItem[]> {
+export async function getExploreClubs(near?: RiderPosition | null): Promise<ClubListItem[]> {
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
@@ -281,10 +300,60 @@ export async function getExploreClubs(): Promise<ClubListItem[]> {
   // and 015 refuses a watermark for a club you have not joined anyway.
   const items = rows
     .filter((row) => !joined.has(row.id))
-    .map((row) => toClubListItem(row))
-    .sort(byName)
+    .map((row) => withDistance(toClubListItem(row), near))
+    .sort(near ? byDistanceThenName : byName)
   await Promise.all([signRiderAvatars(items, supabase), signClubImages(items, supabase)])
   return items
+}
+
+/**
+ * Attaches how far this club is from the rider, when both ends of the question
+ * have an answer.
+ *
+ * Three different "no" collapse to the same `undefined` and that is deliberate:
+ * the rider has no resolvable position, the club has no location, or the caller
+ * did not ask. A screen can only usefully do one thing with any of them — not
+ * draw a distance — and `ClubListItem.distance_km` says so in its own doc.
+ */
+function withDistance(item: ClubListItem, near?: RiderPosition | null): ClubListItem {
+  if (!near || item.latitude === null || item.longitude === null) return item
+  const km = distanceKm(near, { lat: item.latitude, lon: item.longitude })
+  return km === null ? item : { ...item, distance_km: km }
+}
+
+/**
+ * Near clubs first, nearest first; everything else after, by name.
+ *
+ * **A club with no location keeps its place in the list rather than dropping
+ * out of it** — PD-259's own rule: *"a club with no location is not a hidden
+ * club."* Every club that predates `066` has none, so a comparator that treated
+ * missing as far away would be right, and one that treated it as zero would
+ * float every one of them above the rider's actual neighbours.
+ *
+ * Exported for the unit tests, like `toClubListItem` and for the same reason:
+ * it is the whole ordering rule and there is no other way to cover it without a
+ * database.
+ *
+ * Beyond `NEARBY_RADIUS_KM` the distance stops being the sort key at all, and
+ * that is the half worth stating: a club 340 km away and a club with no
+ * location are equally "not near you", so ordering the first above the second
+ * would claim a relevance the number does not carry at that range. Both fall
+ * through to name.
+ */
+export function byDistanceThenName(a: ClubListItem, b: ClubListItem): number {
+  const aNear = isNearby(a.distance_km)
+  const bNear = isNearby(b.distance_km)
+  if (aNear !== bNear) return aNear ? -1 : 1
+  if (aNear && bNear) {
+    // Name breaks a tie rather than `Array.prototype.sort`'s stability, which
+    // would leave two clubs in the same town in whatever order the query
+    // returned them — a list that reorders itself between loads for no reason
+    // the rider can see. Same distance is the common case, not the edge one:
+    // every club picked from the same place row has an identical coordinate.
+    const byDistance = (a.distance_km ?? 0) - (b.distance_km ?? 0)
+    if (byDistance !== 0) return byDistance
+  }
+  return byName(a, b)
 }
 
 /**
@@ -310,6 +379,7 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
     .from('clubs')
     .select(
       `id, name, description, is_public, owner_id, created_at, avatar_path, cover_image_path,
+       location_name, location_place_id, latitude, longitude,
        members_count:club_members(count)`
     )
     .eq('id', id)
@@ -326,6 +396,10 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
     created_at: string
     avatar_path: string | null
     cover_image_path: string | null
+    location_name: string | null
+    location_place_id: string | null
+    latitude: number | null
+    longitude: number | null
     members_count: { count: number }[] | null
   }
 
@@ -354,6 +428,10 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
     cover_image_url: null,
     members_count: row.members_count?.[0]?.count ?? 0,
     viewer_role: (membership?.role as ClubDetail['viewer_role']) ?? null,
+    location_name: row.location_name,
+    location_place_id: row.location_place_id,
+    latitude: row.latitude,
+    longitude: row.longitude,
   }
 
   const paths = [club.avatar_path, club.cover_image_path].filter((p): p is string => !!p)
@@ -390,7 +468,10 @@ export async function getClubForEdit(id: string): Promise<ClubForEdit | null> {
 
   const { data } = await supabase
     .from('clubs')
-    .select('id, name, description, is_public, avatar_path, cover_image_path, owner_id')
+    .select(
+      'id, name, description, is_public, avatar_path, cover_image_path, owner_id, ' +
+        'location_name, location_place_id, latitude, longitude'
+    )
     .eq('id', id)
     .maybeSingle()
 
@@ -404,6 +485,10 @@ export async function getClubForEdit(id: string): Promise<ClubForEdit | null> {
     avatar_path: string | null
     cover_image_path: string | null
     owner_id: string
+    location_name: string | null
+    location_place_id: string | null
+    latitude: number | null
+    longitude: number | null
   }
 
   const club: ClubForEdit = {

@@ -137,10 +137,47 @@ export const queryKeys = {
    * invalidated together in the original, so they share the `clubs` prefix
    * deliberately rather than by accident.
    */
+  /**
+   * Where the rider is — `resolveRiderLocation()`, PD-259.
+   *
+   * **Not under `profile`**, even though one of its two sources is
+   * `profiles.location`: the other is the device, and a key filed under
+   * `profile` would be swept away by `updateProfile`'s `profile.all()`
+   * invalidation for an edit that cannot change a GPS fix.
+   *
+   * The function memoises its own answer with a TTL, so this entry is not the
+   * cache — it is what makes a screen RE-RENDER when the answer lands. Both
+   * club screens read it, and reading it under one key is what keeps them
+   * asking `getExploreClubs` for the same list.
+   */
+  riderLocation: (): QueryKey => ['rider-location'],
+
   clubs: {
     all: (): QueryKey => ['clubs'],
     yours: (): QueryKey => ['clubs', 'yours'],
-    explore: (): QueryKey => ['clubs', 'explore'],
+    /**
+     * PD-259 gave this read a bias, so the key has to carry one — a list sorted
+     * for a rider in Utrecht is not the list for the same rider in Maastricht,
+     * and a bare `['clubs','explore']` would serve the first from cache to the
+     * second with no way to tell.
+     *
+     * **`/clubs` and `/clubs/explore` must keep hitting the SAME entry**, which
+     * is what makes the strip's count agree with the list one tap away
+     * (PD-258's second trap). They do, because both resolve the position
+     * through `resolveRiderLocation`, which memoises one answer per page load
+     * and rounds it to two decimal places before anything sees it — so both
+     * screens build the same segment from the same numbers rather than from two
+     * independent GPS reads that would differ in the sixth digit.
+     *
+     * `null` — no resolvable position — is its own segment rather than an
+     * omitted one, so the unbiased list cannot silently share an entry with a
+     * biased one.
+     */
+    explore: (near?: { lat: number; lon: number } | null): QueryKey => [
+      'clubs',
+      'explore',
+      near ? `${near.lat},${near.lon}` : 'unlocated',
+    ],
     /** The club-picker options on the create-ride and create-postcard forms. */
     mine: (): QueryKey => ['clubs', 'mine'],
     detail: (clubId: string): QueryKey => ['clubs', 'detail', clubId],

@@ -3,11 +3,14 @@
 import { Header } from '@/components/layout/Header'
 import { ClubCard } from '@/components/clubs/ClubCard'
 import { ExploreClubsStrip } from '@/components/clubs/ExploreClubsStrip'
+import { localityOf } from '@/lib/countries'
 import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getExploreClubs, getYourClubs } from '@/lib/data/clubs'
 import { getMyLocationText } from '@/lib/data/profile'
+import { isNearby } from '@/lib/location/distance'
+import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { useQuery, type UseQueryResult } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import type { ClubListItem } from '@/types'
@@ -56,7 +59,16 @@ import type { ClubListItem } from '@/types'
  */
 export default function ClubsPage() {
   const yours = useQuery(queryKeys.clubs.yours(), getYourClubs)
-  const explore = useQuery(queryKeys.clubs.explore(), getExploreClubs)
+  // Where the rider is, for the Explore sort (PD-259). Its own query so the
+  // screen re-renders when it lands; `resolveRiderLocation` memoises the answer
+  // with a TTL, so `/clubs/explore` asking again costs nothing and — crucially
+  // — gets the same numbers, which is what keeps both screens on one cache
+  // entry. It never prompts: a rider who has not already granted location gets
+  // the profile city, or nothing.
+  const near = useQuery(queryKeys.riderLocation(), resolveRiderLocation)
+  const explore = useQuery(queryKeys.clubs.explore(near.data), () =>
+    getExploreClubs(near.data)
+  )
   // The rider's own city, for the strip's `near …`. Its own read rather than
   // `getCurrentProfile`, which would sign an avatar and a cover to render one
   // word. Ungated like the count: no city simply drops the clause.
@@ -76,7 +88,7 @@ export default function ClubsPage() {
           `Create ride`. */}
       <div className="pb-navbar-action-extra">
         {hasNoClubs ? (
-          <NoClubsYet explore={explore} />
+          <NoClubsYet explore={explore} city={city.data} />
         ) : (
           <>
             {/* Outside the gate below, and ungated on `explore` — the strip
@@ -91,7 +103,11 @@ export default function ClubsPage() {
                 used to supply 24px for the sub-row, and the strip sat against
                 the hairline until the product owner spotted it. */}
             <div className="px-4 pt-4 pb-4">
-              <ExploreClubsStrip count={explore.data?.length} city={city.data} />
+              <ExploreClubsStrip
+                count={explore.data?.length}
+                nearCount={explore.data?.filter((club) => isNearby(club.distance_km)).length}
+                city={city.data}
+              />
             </div>
 
             {yours.error ? (
@@ -130,14 +146,31 @@ export default function ClubsPage() {
  * column, so proximity is a claim nothing behind this screen can make. `PD-259`
  * is what makes it sayable.
  */
-function NoClubsYet({ explore }: { explore: UseQueryResult<ClubListItem[]> }) {
+function NoClubsYet({
+  explore,
+  city,
+}: {
+  explore: UseQueryResult<ClubListItem[]>
+  city?: string | null
+}) {
   if (explore.error) return <ErrorState onRetry={explore.refetch} />
   if (!explore.data) return <SkeletonList />
+
+  // The heading claims proximity only when the list can back it: at least one
+  // club is actually within `NEARBY_RADIUS_KM` AND the rider's town is known.
+  // PD-258 shipped `Clubs to explore` because nothing behind the screen could
+  // say `near`; `066` is what makes it sayable, and this is the one condition
+  // under which it is true rather than decorative.
+  const locality = localityOf(city)
+  const heading =
+    locality && explore.data.some((club) => isNearby(club.distance_km))
+      ? `Clubs near ${locality}`
+      : 'Clubs to explore'
 
   return (
     <div className="flex flex-col gap-4 px-4 pt-4 motion-safe:animate-fade-in">
       <div className="flex flex-col gap-0.5 px-2">
-        <h2 className="text-xl font-semibold text-foreground">Clubs to explore</h2>
+        <h2 className="text-xl font-semibold text-foreground">{heading}</h2>
         <p className="text-sm font-medium text-muted">You have not joined a club yet.</p>
       </div>
 

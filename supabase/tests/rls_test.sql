@@ -10028,15 +10028,15 @@ select assert_eq(
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'clubs'
       and grantee = 'authenticated' and privilege_type = 'INSERT'),
-  'avatar_path,cover_image_path,description,id,is_public,name,owner_id',
-  '045: exactly seven columns of clubs hold INSERT, and created_at is not among them');
+  'avatar_path,cover_image_path,description,id,is_public,latitude,location_name,location_place_id,longitude,name,owner_id',
+  '045/066: exactly eleven columns of clubs hold INSERT — the four 066 added ARE among them, and created_at still is not');
 select assert_eq(
   (select string_agg(column_name, ',' order by column_name)
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'clubs'
       and grantee = 'authenticated' and privilege_type = 'UPDATE'),
-  'avatar_path,cover_image_path,description,is_public,name',
-  '045: exactly five columns of clubs hold UPDATE — created_at, id and owner_id are not among them');
+  'avatar_path,cover_image_path,description,is_public,latitude,location_name,location_place_id,longitude,name',
+  '045/066: exactly nine columns of clubs hold UPDATE — the four 066 added ARE among them, and created_at, id and owner_id still are not');
 
 -- What must survive on both tables, or the fix broke the product.
 select assert_eq(
@@ -15254,6 +15254,196 @@ select assert_eq(
   '064: no postcards policy mentions a capture column — the audience of a photo''s location is the audience of the photo, and adding an arm for it would be inventing a second one');
 
 rollback to savepoint capture_metadata_064;
+
+
+-- ===========================================================================
+-- 066 — a club carries its own location (PD-259)
+-- ===========================================================================
+-- Four columns on `clubs`, filled from a picked `public.places` row. There is
+-- **no new policy**, deliberately: the columns live on `clubs`, so `001`'s
+-- SELECT policy already governs them exactly as it governs `name`. A policy
+-- here could only widen what is already right.
+--
+-- So what is asserted instead is the two things 066 DOES change — the grants
+-- and the CHECKs — plus the negative that no policy moved.
+-- ---------------------------------------------------------------------------
+savepoint club_location_066;
+
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 066.1  The four columns are writable by a rider, on both verbs. Without
+--        this, 045's allowlist silently refuses them and Create club drops the
+--        location with no error the rider can see.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_and(has_column_privilege('authenticated', 'public.clubs', c, 'INSERT'))
+     from unnest(array['location_name', 'location_place_id', 'latitude', 'longitude']) c),
+  true, '066: authenticated may INSERT all four location columns — set at create');
+select assert_eq(
+  (select bool_and(has_column_privilege('authenticated', 'public.clubs', c, 'UPDATE'))
+     from unnest(array['location_name', 'location_place_id', 'latitude', 'longitude']) c),
+  true, '066: ... and UPDATE all four, because a club that moves must be editable');
+select assert_eq(
+  (select bool_and(has_column_privilege('authenticated', 'public.clubs', c, 'SELECT'))
+     from unnest(array['location_name', 'location_place_id', 'latitude', 'longitude']) c),
+  true, '066: ... and SELECT all four — the club renders where it is, and Explore sorts on the coordinates');
+
+-- The table-level grants must STILL be absent. A `grant insert on public.clubs`
+-- written to add four columns would hand over `created_at` and `is_default`
+-- with them, and every per-column assertion above would still pass.
+select assert_eq(has_table_privilege('authenticated', 'public.clubs', 'insert'),
+  false, '066: the TABLE-level INSERT grant is still absent — 066 added columns to 045''s allowlist, it did not replace the allowlist with a table grant');
+select assert_eq(has_table_privilege('authenticated', 'public.clubs', 'update'),
+  false, '066: ... and so is the TABLE-level UPDATE grant');
+select assert_eq(has_column_privilege('authenticated', 'public.clubs', 'created_at', 'INSERT'),
+  false, '066: created_at is STILL not insertable — 045 closed the Explore-pinning vector and an additive grant cannot reopen it');
+select assert_eq(has_column_privilege('authenticated', 'public.clubs', 'is_default', 'UPDATE'),
+  false, '066: ... and is_default is STILL not updatable, which 058 revoked — this is what an ADDITIVE grant buys over 044/046''s absolute re-stated list');
+
+-- ---------------------------------------------------------------------------
+-- 066.2  The coupling refuses every half-written location. This is the rule
+--        that cannot live in Zod: a rider drives the browser, and a name with
+--        no coordinates renders on a card while being invisible to the
+--        distance filter.
+--
+--        23514 by name rather than "any error" — assert_rejected's own reason.
+--
+--        **As the club's OWNER (…000a), not the file's default identity.** The
+--        first version of this block ran as …000c and every assertion failed —
+--        043's UPDATE policy filtered the row to zero, so the statement
+--        succeeded having touched nothing and no CHECK ever fired. A constraint
+--        can only be tested by a caller the policy lets through, which is the
+--        same trap `assert_allowed`'s own comment describes for UPDATE.
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+set role authenticated;
+
+select assert_rejected(
+  $$update clubs set location_name = 'Utrecht'
+     where id = '00000000-0000-0000-0000-0000000000c2'$$,
+  '23514', '066: a name with no coordinates is refused — half a location is not a location');
+select assert_rejected(
+  $$update clubs set latitude = 52.09
+     where id = '00000000-0000-0000-0000-0000000000c2'$$,
+  '23514', '066: ... and coordinates with no name are refused too, which is the half that would filter correctly and render blank');
+select assert_rejected(
+  $$update clubs set location_name = 'Utrecht', location_place_id = 'x',
+                     latitude = 52.09, longitude = null
+     where id = '00000000-0000-0000-0000-0000000000c2'$$,
+  '23514', '066: ... and three of four is still half a location');
+
+-- Range, on both axes and both signs. A latitude of 91 is not a place.
+select assert_rejected(
+  $$update clubs set location_name = 'Nowhere', location_place_id = 'x',
+                     latitude = 91, longitude = 5.12
+     where id = '00000000-0000-0000-0000-0000000000c2'$$,
+  '23514', '066: a latitude past the pole is refused');
+select assert_rejected(
+  $$update clubs set location_name = 'Nowhere', location_place_id = 'x',
+                     latitude = 52.09, longitude = -181
+     where id = '00000000-0000-0000-0000-0000000000c2'$$,
+  '23514', '066: ... and a longitude past the antimeridian');
+
+-- The two length bounds, which `001` gave `name` and `description` and which
+-- 018 had to add to `profiles` for exactly this reason.
+select assert_rejected(
+  $$update clubs set location_name = repeat('x', 201), location_place_id = 'x',
+                     latitude = 52.09, longitude = 5.12
+     where id = '00000000-0000-0000-0000-0000000000c2'$$,
+  '23514', '066: a 201-character location name is refused — the bound is in the database, not only in the Zod schema');
+select assert_rejected(
+  $$update clubs set location_name = 'Utrecht', location_place_id = repeat('x', 101),
+                     latitude = 52.09, longitude = 5.12
+     where id = '00000000-0000-0000-0000-0000000000c2'$$,
+  '23514', '066: ... and a 101-character GERS id, which is the field a client controls most directly');
+
+-- ---------------------------------------------------------------------------
+-- 066.3  A COMPLETE location is accepted, and clearing it back to NULL is too.
+--        Both are run and counted rather than passed to assert_allowed, which
+--        cannot prove an UPDATE did anything (see its own comment).
+-- ---------------------------------------------------------------------------
+savepoint club_location_066_write;
+
+update clubs
+   set location_name = 'Utrecht', location_place_id = 'gers-fixture',
+       latitude = 52.09, longitude = 5.12
+ where id = '00000000-0000-0000-0000-0000000000c2';
+select assert_eq(
+  (select count(*)::int from clubs
+    where id = '00000000-0000-0000-0000-0000000000c2' and latitude = 52.09),
+  1, '066: an owner can set a complete location on their own club');
+
+update clubs
+   set location_name = null, location_place_id = null,
+       latitude = null, longitude = null
+ where id = '00000000-0000-0000-0000-0000000000c2';
+select assert_eq(
+  (select count(*)::int from clubs
+    where id = '00000000-0000-0000-0000-0000000000c2' and location_name is null),
+  1, '066: ... and can clear it again — all four NULL is the other legal state, which is what "optional" means');
+
+rollback to savepoint club_location_066_write;
+
+-- ---------------------------------------------------------------------------
+-- 066.4  A NON-owner cannot set a location on somebody else's club. 043's
+--        UPDATE policy is what refuses it, unchanged — asserted because 066
+--        widened the grant, and a grant is checked BEFORE a policy: a reader of
+--        066 alone cannot tell that the policy still stands behind it.
+-- ---------------------------------------------------------------------------
+reset role;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+set role authenticated;
+
+savepoint club_location_066_other;
+update clubs
+   set location_name = 'Rotterdam', location_place_id = 'gers-other',
+       latitude = 51.92, longitude = 4.48
+ where id = '00000000-0000-0000-0000-0000000000c1';
+select assert_eq(
+  (select count(*)::int from clubs
+    where id = '00000000-0000-0000-0000-0000000000c1' and location_name is not null),
+  0, '066: a member who does not own the club cannot give it a location — 043''s UPDATE policy filters the row to zero, and the new grant does not reach past it');
+rollback to savepoint club_location_066_other;
+
+-- ---------------------------------------------------------------------------
+-- 066.5  NO POLICY MOVED. 066 is a columns-grants-and-constraints change; if a
+--        clubs policy now mentions one of the four, it has done something it
+--        does not describe. Counted rather than hashed, for the reason 064.10
+--        gives.
+-- ---------------------------------------------------------------------------
+reset role;
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'clubs'),
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'clubs'
+      and (coalesce(qual, '') || coalesce(with_check, ''))
+          not like '%locat%'
+      and (coalesce(qual, '') || coalesce(with_check, ''))
+          not like '%latitude%'
+      and (coalesce(qual, '') || coalesce(with_check, ''))
+          not like '%longitude%'),
+  '066: no clubs policy mentions a location column — the audience of where a club is IS the audience of the club, and adding an arm for it would be inventing a second one');
+
+-- And there is still no foreign key to `places`, which is the one thing about
+-- these columns most likely to be "fixed" by a later reader who has not read
+-- 066's header. A reload of `places` deletes every row first.
+select assert_eq(
+  (select count(*)::int from information_schema.table_constraints tc
+     join information_schema.constraint_column_usage ccu
+       on ccu.constraint_name = tc.constraint_name
+   where tc.table_schema = 'public' and tc.table_name = 'clubs'
+     and tc.constraint_type = 'FOREIGN KEY' and ccu.table_name = 'places'),
+  0, '066: clubs holds NO foreign key to places — the index is reloaded wholesale, so a FK would either block every reload or silently wipe every club''s location on one');
+
+rollback to savepoint club_location_066;
+
+-- Back to the identity every later block assumes. Nothing follows this today,
+-- which is exactly why it is set: the next block appended here would otherwise
+-- inherit …000b and read as a policy defect.
+reset role;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 
 rollback;
 

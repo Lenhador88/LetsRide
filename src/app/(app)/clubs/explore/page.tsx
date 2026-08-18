@@ -5,6 +5,7 @@ import { ClubCard } from '@/components/clubs/ClubCard'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getExploreClubs } from '@/lib/data/clubs'
+import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 
@@ -35,7 +36,14 @@ import { queryKeys } from '@/lib/query/keys'
  * read under this same key.
  */
 export default function ExploreClubsPage() {
-  const clubs = useQuery(queryKeys.clubs.explore(), getExploreClubs)
+  // Same two reads as `/clubs`, in the same order and under the same keys —
+  // which is what makes arriving here from the strip a cache hit rather than a
+  // second fetch, and what keeps the strip's count equal to this list's length
+  // (PD-258's second trap).
+  const near = useQuery(queryKeys.riderLocation(), resolveRiderLocation)
+  const clubs = useQuery(queryKeys.clubs.explore(near.data), () =>
+    getExploreClubs(near.data)
+  )
 
   return (
     <>

@@ -6,6 +6,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
+import { PlaceSearchField, type PlaceValue } from '@/components/ui/PlaceSearchField'
 import { Textarea } from '@/components/ui/Textarea'
 import { createClub } from '@/lib/actions/clubs'
 import { useActionRedirect } from '@/lib/actions/navigate'
@@ -13,7 +14,13 @@ import { emptyActionState } from '@/lib/actions/state'
 import { retaining, seedRetained, wasChecked } from '@/lib/actions/retain'
 
 import { uploadClubAvatarImage, uploadClubCoverImage } from '@/lib/media'
-import { CLUB_DESCRIPTION_MAX, CLUB_NAME_MAX, clubSchema } from '@/lib/validation/clubs'
+import {
+  CLUB_DESCRIPTION_MAX,
+  CLUB_LOCATION_FIELD_NAMES,
+  CLUB_NAME_MAX,
+  clubSchema,
+  readClubLocation,
+} from '@/lib/validation/clubs'
 
 // `name` is controlled already (the header mirrors it as you type), so only the
 // two React would otherwise erase are named here.
@@ -71,6 +78,7 @@ export function CreateClubForm() {
       is_public: data.get('is_public') === 'on',
       avatar_path: (data.get('avatar_path') as string) || null,
       cover_image_path: (data.get('cover_image_path') as string) || null,
+      location: readClubLocation(data),
     })
     const field = parsed.success ? undefined : parsed.error.issues[0]?.path[0]
     if (typeof field === 'string') {
@@ -86,6 +94,11 @@ export function CreateClubForm() {
   const [uploading, setUploading] = useState<'avatar' | 'cover' | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [name, setName] = useState('')
+  // Controlled like `name` rather than retained through `seedRetained`: the
+  // value is an object across four fields, and `retaining` restores strings.
+  // The action returns an error without navigating, so this survives a failed
+  // submit for the same reason the header's name mirror does.
+  const [location, setLocation] = useState<PlaceValue | null>(null)
 
   const avatarInput = useRef<HTMLInputElement>(null)
   const coverInput = useRef<HTMLInputElement>(null)
@@ -203,6 +216,26 @@ export function CreateClubForm() {
           maxLength={CLUB_DESCRIPTION_MAX}
           defaultValue={state.retained.description}
         />
+
+        {/* Optional, and the copy says so — Create club is the app's shortest
+            creation flow and a required field would be a new wall in front of
+            it. A club with no location still appears on Explore; it just
+            cannot be sorted by distance. */}
+        <div className="flex flex-col gap-1">
+          <PlaceSearchField
+            label="Where the club is based (optional)"
+            sheetTitle="Set club location"
+            placeholder="Search for a town or place"
+            value={location}
+            onChange={setLocation}
+            names={CLUB_LOCATION_FIELD_NAMES}
+            disabled={busy}
+          />
+          <p className="pl-1 text-xs font-medium text-muted">
+            Riders looking for a club near them will find yours. This is the club&rsquo;s own
+            location, not yours.
+          </p>
+        </div>
 
         {/* Public by default, matching 001's column default and the product
             owner's call. The design's "until then we only have private clubs"
