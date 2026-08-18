@@ -722,31 +722,25 @@ That is why they are numbered and cross-referenced by number.
    merged · PD-207 parked, needs you`. This line is read on a phone hours later with nothing else
    open, so it is the worst of the three places to claim a story shipped when it did not: bullet 4
    has its carve-out for exactly that reason and this bullet needs the same one.
-6. **Poke the dispatcher, last.** Your slot is now free, and this is what starts the next batch
-   in seconds instead of at the top of the next hour:
+6. **Report to nobody. Your session ends here.** Product owner, 2026-08-18: *"when the
+   development ends, I dont want those new sessions to report back to the routine. It will just
+   pick up new stories on the next hourly run."* So there is **no `fire_trigger`, no poke, and no
+   message to any other session** — not on a merge, not on a park into `Needs help`, not on a
+   failure. The board carries the outcome, and the next hourly firing reads the board.
 
-   ```
-   mcp__Claude_Code_Remote__fire_trigger
-     trigger_id=trig_01WJkMVXGzUVGDcC1njNmaan
-     text="<issue id> merged to development. Slot free."
-   ```
+   **This is the whole of your reporting duty and it is deliberately smaller than it looks.** The
+   issue comments (bullet 4), the push notification (bullet 5) and the merged PR are the record.
+   A queue that also messages itself has two records of the same fact, and the second one is the
+   one that goes stale.
 
-   **Send it even when you parked into `Needs help`, and say so in the text.** The dispatcher will
-   refuse to dispatch while anything sits in `Needs help` — that is deliberate — but it can only
-   run its stall alarm on a firing that actually happens, and a story that stopped is precisely
-   the one worth waking it for.
+   **What it costs, said once so nobody re-derives it as a defect: a freed slot waits for the top
+   of the hour.** Finish at 10:05 and the next story starts at 11:00, not at 10:06. That is the
+   owner's call, and it buys a queue with exactly one clock — nothing to double-fire, nothing to
+   wake a dispatcher that is already running, and an off switch that genuinely stops everything
+   rather than stopping only the heartbeat.
 
-   **Failing to poke is not a failure of the run.** The hourly Routine is the heartbeat behind
-   this exactly because a child can die before reaching it. If `fire_trigger` errors, note it in
-   the Linear comment and stop — do not retry in a loop, and do not fall back to editing the
-   trigger.
-
-   **Poke unconditionally; do not check first whether the queue is switched on.** A poke against a
-   disabled Routine is accepted rather than refused (measured — `queue-dispatch.md` STEP 1 has the
-   probe), so the check is real work and it belongs there, not here: the dispatcher reads its own
-   switch on every firing and exits without dispatching. Adding a second check here would be the
-   two-mechanisms-for-one-grant mistake `CLAUDE.md` names, and it would guard only this path while
-   leaving the heartbeat and any hand-typed `fire_trigger` open.
+   **You therefore need no Claude Code Remote tools at all.** If a future step needs one, that is
+   a design change rather than a convenience — say so rather than reaching for `fire_trigger`.
 
 **Bullet 3 failing means the PR is already merged**, so §If you get stuck's usual claim — that
 parking into `Needs help` leaves a branch and an open PR for the next firing to trip over — does
@@ -823,12 +817,13 @@ call:
   out and why. The queue still parks — `Needs help` is the lock — but it parks with two stories
   merged instead of two stories stranded.
 
-  **Move the stalled issue to `Needs help` BEFORE STEP 5 bullet 4, not after the run.** A
-  dispatcher woken by bullet 6's poke reads the board as it stands: park afterwards and it sees
-  nothing in `Needs help`, so the queue-wide lock does not hold and it dispatches into every free
-  slot — burying the story that needs the owner under the merged PRs, which is the exact harm the
-  lock exists to prevent. STEP 5 bullet 6 already assumes this order when it says to poke *"even
-  when you parked into `Needs help`, and say so in the text"*.
+  **Move the stalled issue to `Needs help` BEFORE STEP 5 bullet 4, not after the run.** The next
+  firing reads the board as it stands, and it can arrive minutes after your last write: park
+  afterwards and it sees nothing in `Needs help`, so the queue-wide lock does not hold and it
+  dispatches into every free slot — burying the story that needs the owner under the merged PRs,
+  which is the exact harm the lock exists to prevent. **The park is the only signal you send**;
+  since bullet 6 no longer pokes anything, a late one is not late by seconds, it is simply missing
+  when the hour turns.
 
   **Bullet 4 rather than bullet 6, because bullet 4 is the earlier hazard.** It moves *every* issue
   in the group to `Deployed to DEV` with a comment claiming a merge — so a park deferred past it
@@ -872,9 +867,9 @@ in.** It also parks the whole queue until the owner clears it, which is the inte
 needing the owner does not get buried under the next batch of merged PRs.
 
 **Leave the branch and any PR open, and say so in the comment.** Nothing else will pick this up:
-your session ends here, and the next dispatch will not touch a story it can see is parked. **Still
-send the STEP 5 poke**, with text saying you stopped — the dispatcher cannot run its stall alarm
-on a firing that never happens.
+your session ends here, and the next dispatch will not touch a story it can see is parked. **Send
+nothing to the queue** — STEP 5 bullet 6 applies to a park exactly as it applies to a merge, and
+the `Needs help` status plus your comment is what the next hourly firing reads.
 
 ---
 
@@ -917,10 +912,11 @@ job that could reach Linear at all.
 
 **A session spawned by another *session* inherits them.** Probed 2026-08-16 from a
 `create_session` child with the repo attached: `permission_mode: auto` inherited without
-complaint, and Linear, Supabase and the GitHub tools all reachable. **Re-probed 2026-08-18 and
-itemised, the Claude Code Remote tools this file's STEP 5 poke depends on answered too** —
-[`queue-dispatch.md`](queue-dispatch.md) §Why this shape carries that probe and the two gaps it
-does not close. STEP 5's error branch is now the belt rather than the design. That probe is what made the dispatcher possible, and it retires four costs at once:
+complaint, and Linear, Supabase and the GitHub tools all reachable — re-probed and itemised
+2026-08-18, which [`queue-dispatch.md`](queue-dispatch.md) §Why this shape carries along with the
+two gaps it does not close. **Nothing in this file depends on the Claude Code Remote half of it
+any more**, since bullet 6 stopped poking. That probe is what made the dispatcher possible, and it
+retires four costs at once:
 
 | Cost of the reused session | How it is gone |
 |---|---|
