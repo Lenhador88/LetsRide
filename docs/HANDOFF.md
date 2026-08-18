@@ -800,7 +800,12 @@ riders are exempt from the count entirely** — anyone who already holds a `ride
 the ride's organizer. The first is why a `BEFORE INSERT` trigger can sit under an upsert at all
 (`setRideAttendance` upserts, and a `BEFORE INSERT` trigger fires even when the upsert resolves to
 an `UPDATE`); the second is why the app can show an organizer on their own ride. **The organizer
-exemption is also the only way a crew can exceed `max_riders`, and it is bounded at one row.**
+exemption is the only way a WRITE TO `ride_members` can push a crew past `max_riders`, and it
+adds at most one row.** Note the scope of that sentence: **lowering a cap exceeds it by an
+unbounded amount**, which is the headline decision two lines up, so `crew <= max_riders + 1` is
+**not** an invariant and a count, a "seats left" figure or an assertion built on it breaks on a ride
+whose cap was lowered from 20 to 2 with 6 riders aboard — the exact state the join gate exists to
+permit.
 
 **There is no deploy-order constraint**, unlike `021`/`025`. The trigger is additive and the code
 change is a message: applied before the deploy, a refused rider gets `setRideAttendance`'s generic
@@ -1456,7 +1461,8 @@ someone will open anyway.
   they are logged here instead. Lines 250, 664 and 731 each say `max_riders` is unenforced or
   that "nothing caps `ride_members`"; 664 is the tracking item itself and can be ticked, and
   731's reasoning for `RIDE_CREW_LIMIT = 200` still holds but for a narrower reason — an
-  *uncapped* ride is still unbounded, and a capped one is bounded at 999 by `018`. Fix them in
+  *uncapped* ride is still unbounded, and a capped one is bounded at 1000 (`018`'s 999 plus the
+  organizer exemption's row). Fix them in
   the next branch that opens that file.
 - **Both RSVP pills fail WCAG AA**, and two more pairings besides — the Maybe pill at 2.54:1,
   `Accent Brand/100` with white at 3.52:1, the ride-host label at 4.10:1, the unselected RSVP
