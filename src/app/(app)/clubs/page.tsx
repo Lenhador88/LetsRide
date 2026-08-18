@@ -7,6 +7,7 @@ import { NotificationsHeaderControl } from '@/components/notifications/Notificat
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getExploreClubs, getYourClubs } from '@/lib/data/clubs'
+import { getMyLocationText } from '@/lib/data/profile'
 import { useQuery, type UseQueryResult } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import type { ClubListItem } from '@/types'
@@ -56,6 +57,10 @@ import type { ClubListItem } from '@/types'
 export default function ClubsPage() {
   const yours = useQuery(queryKeys.clubs.yours(), getYourClubs)
   const explore = useQuery(queryKeys.clubs.explore(), getExploreClubs)
+  // The rider's own city, for the strip's `near …`. Its own read rather than
+  // `getCurrentProfile`, which would sign an avatar and a cover to render one
+  // word. Ungated like the count: no city simply drops the clause.
+  const city = useQuery(queryKeys.profile.location(), getMyLocationText)
 
   // `[]` is a decided answer and the one branch that owns the whole screen;
   // `undefined` is "not yet", and gets the strip like every other state.
@@ -81,8 +86,12 @@ export default function ClubsPage() {
                 Its own padded wrapper rather than a shared one, because
                 `SkeletonList` and `ErrorState` are both built at the list's
                 `px-4` and would lay out 16px narrower nested inside it. */}
-            <div className="px-4 pb-4">
-              <ExploreClubsStrip count={explore.data?.length} />
+            {/* `pt-4` is the design's own 16px between the header and the
+                first element — it came off with `.pt-header-sub-extra`, which
+                used to supply 24px for the sub-row, and the strip sat against
+                the hairline until the product owner spotted it. */}
+            <div className="px-4 pt-4 pb-4">
+              <ExploreClubsStrip count={explore.data?.length} city={city.data} />
             </div>
 
             {yours.error ? (
@@ -126,7 +135,7 @@ function NoClubsYet({ explore }: { explore: UseQueryResult<ClubListItem[]> }) {
   if (!explore.data) return <SkeletonList />
 
   return (
-    <div className="flex flex-col gap-4 px-4 motion-safe:animate-fade-in">
+    <div className="flex flex-col gap-4 px-4 pt-4 motion-safe:animate-fade-in">
       <div className="flex flex-col gap-0.5 px-2">
         <h2 className="text-xl font-semibold text-foreground">Clubs to explore</h2>
         <p className="text-sm font-medium text-muted">You have not joined a club yet.</p>
