@@ -619,6 +619,37 @@ export type Postcard = {
   comments_count?: number
 }
 
+/**
+ * How exactly a postcard's stored coordinate describes where the photo was
+ * taken — the composer's `Region` and `Precise` buttons, and nothing else.
+ *
+ * There is deliberately no `'hide'` member. Hide is the ABSENCE of a
+ * coordinate, not a third kind of one: nothing is uploaded, so there is nothing
+ * for a value to describe. `064`'s CHECK says the same thing in SQL, and the
+ * column is NULL for a hidden location **and** for a photo that never carried
+ * one — indistinguishable on purpose, because a marker saying "this rider chose
+ * to hide it" would itself be the disclosure the choice exists to avoid.
+ */
+export type PhotoLocationPrecision = 'region' | 'precise'
+
+/**
+ * What the composer sends about where and when a photo was taken.
+ *
+ * Read off the original file's EXIF immediately before `compressImage` destroys
+ * it, then **reduced on the device** according to the rider's choice — so this
+ * is what actually travels, not what the photo knew. `064` couples the fields:
+ * the instant and its offset arrive together or not at all, and the coordinate
+ * pair and its precision marker likewise.
+ */
+export type PostcardCaptureInput = {
+  takenAt: string | null
+  /** Minutes east of UTC — Amsterdam in summer is 120. */
+  takenAtOffsetMinutes: number | null
+  takenLatitude: number | null
+  takenLongitude: number | null
+  takenLocationPrecision: PhotoLocationPrecision | null
+}
+
 export type PostcardComment = {
   id: string
   postcard_id: string
