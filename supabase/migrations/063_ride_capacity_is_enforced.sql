@@ -24,8 +24,9 @@
 --     away the one action an organizer who has realised 20 is too many actually
 --     wants, and silently deleting somebody's RSVP is worse than either.
 --   * Nothing here is retroactive. No backfill, no eviction, no repair pass.
---   * `max_riders IS NULL` is "no cap", which is what every ride in both
---     projects carries today.
+--   * `max_riders IS NULL` is "no cap", which is what MOST rides carry — 4 of
+--     DEV's 6 and 1 of PROD's 2, measured 2026-08-18. Not all of them: three
+--     rides across the two projects already carry a cap, and none is over it.
 --
 -- **The cap counts every `ride_members` row, `going` and `maybe` alike.**
 -- "On this ride" already means exactly "holds a `ride_members` row of either
