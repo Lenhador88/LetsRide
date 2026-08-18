@@ -284,7 +284,7 @@ describe('parseExifCapture — a corrupt OffsetTimeOriginal', () => {
    * clock is still almost certainly right, so dropping the capture time would be
    * the wrong repair.
    */
-  it.each(['+25:00', '+99:59', '-99:59', '-13:00', '+15:00'])(
+  it.each(['+25:00', '+99:59', '-99:59', '-12:01', '+14:01', '+05:99', '+00:99'])(
     'falls back to the device zone for %s rather than sending a value the schema will refuse',
     (offset) => {
       const result = inZone('Europe/Helsinki', () =>
@@ -295,6 +295,9 @@ describe('parseExifCapture — a corrupt OffsetTimeOriginal', () => {
     }
   )
 
+  // The edges themselves, against the rejections one MINUTE outside them above.
+  // An hour outside would leave the bound free to drift by 59 minutes with every
+  // assertion in this file still green.
   it.each(['-12:00', '+14:00'])('still accepts %s — the real world reaches both ends', (offset) => {
     const result = parseExifCapture(
       buildJpeg({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: offset })
@@ -304,18 +307,35 @@ describe('parseExifCapture — a corrupt OffsetTimeOriginal', () => {
   })
 
   it('never emits an offset the database CHECK would refuse, on any offset string', () => {
-    // The property, rather than the five examples above: whatever comes out is
-    // inside `064`'s bound. This is the assertion that survives someone widening
-    // the accepted range for a reason.
-    for (const hours of ['00', '05', '12', '13', '14', '15', '23', '99']) {
-      for (const sign of ['+', '-']) {
-        const { takenAtOffsetMinutes } = parseExifCapture(
-          buildJpeg({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: `${sign}${hours}:30` })
-        )
-        expect(takenAtOffsetMinutes).not.toBeNull()
-        expect(Math.abs(takenAtOffsetMinutes!)).toBeLessThanOrEqual(1440)
+    // The property, rather than the examples above: whatever comes out is inside
+    // `064`'s bound. This is the assertion that survives someone widening the
+    // accepted range for a reason.
+    //
+    // **Run in a real zone, not the suite's `TZ=UTC`.** Every case that falls
+    // back would otherwise assert `Math.abs(0) <= 1440` and carry no
+    // information — a fallback that started returning a wrong non-zero value
+    // would pass. Under Helsinki the fallback is 180, so every case is live.
+    inZone('Europe/Helsinki', () => {
+      for (const hours of ['00', '05', '12', '13', '14', '15', '23', '99']) {
+        for (const minutes of ['00', '30', '59', '99']) {
+          for (const sign of ['+', '-']) {
+            const { takenAtOffsetMinutes } = parseExifCapture(
+              buildJpeg({
+                dateTimeOriginal: AUGUST_NOON,
+                offsetTimeOriginal: `${sign}${hours}:${minutes}`,
+              })
+            )
+            expect(takenAtOffsetMinutes).not.toBeNull()
+            expect(Math.abs(takenAtOffsetMinutes!)).toBeLessThanOrEqual(1440)
+            // Stronger than the CHECK, and it is the half that catches a
+            // corrupt minutes field: every offset this parser emits is one a
+            // real place uses.
+            expect(takenAtOffsetMinutes!).toBeGreaterThanOrEqual(-720)
+            expect(takenAtOffsetMinutes!).toBeLessThanOrEqual(840)
+          }
+        }
       }
-    }
+    })
   })
 })
 

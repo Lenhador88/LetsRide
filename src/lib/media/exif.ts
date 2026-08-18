@@ -439,6 +439,16 @@ function parseOffsetMinutes(text: string): number | null {
   const match = OFFSET_TIME_RE.exec(text)
   if (!match) return null
   const [, sign, hours, minutes] = match
+
+  // **The minutes field needs its own bound, and a range check on the total does
+  // not supply one.** `+05:99` sums to 399, which is comfortably inside the real
+  // world's -720..840 — so without this line a corrupt minutes field is accepted,
+  // the stored offset is one no place on Earth uses, and the resolved instant is
+  // 39 minutes from the camera's. That is the same shape as the defect this
+  // whole function exists to close: a well-formed string reaching a value
+  // nothing real produces.
+  if (Number(minutes) > 59) return null
+
   const total = Number(hours) * 60 + Number(minutes)
   const signed = sign === '-' ? -total : total
   if (signed < MIN_REAL_OFFSET_MINUTES || signed > MAX_REAL_OFFSET_MINUTES) return null

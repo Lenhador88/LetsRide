@@ -15101,8 +15101,7 @@ select assert_rejected($$
 
 -- The bound is PERMISSIVE on purpose — ±1440 rather than the real world's
 -- -720..840 — because the client is what narrows it, and a CHECK tight to the
--- real world would refuse a rider over a camera setting they cannot see. These
--- two prove the outer edge is still a wall rather than an absence.
+-- real world would refuse a rider over a camera setting they cannot see.
 insert into postcards (id, author_id, image_path, taken_at, taken_at_offset_minutes)
   values ('00000000-0000-0000-0000-00000064f020',
           '00000000-0000-0000-0000-000000064001',
@@ -15111,6 +15110,28 @@ insert into postcards (id, author_id, image_path, taken_at, taken_at_offset_minu
 select assert_eq(
   (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000064f020'),
   1, '064: UTC+14, the furthest offset any place on Earth uses, lands');
+
+-- **The wall itself, at ±1440 exactly.** The two refusals above are at ±5999,
+-- which is four times outside it — so on their own a migration relaxing this
+-- CHECK to ±2000 would leave every assertion in this block green. A pair
+-- straddling the boundary is what makes the number pinned rather than merely
+-- exceeded.
+insert into postcards (id, author_id, image_path, taken_at, taken_at_offset_minutes)
+  values ('00000000-0000-0000-0000-00000064f021',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640c1.jpg',
+          now() - interval '1 hour', 1440);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000064f021'),
+  1, '064: exactly 1440 is inside the CHECK — no client emits it, and the bound is where the file says it is');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_at, taken_at_offset_minutes)
+  values ('00000000-0000-0000-0000-00000064f022',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640c2.jpg',
+          now() - interval '1 hour', 1441)$$,
+  '23514', '064: ... and 1441 is not — one minute outside, so relaxing the bound cannot pass unnoticed');
 
 -- ---------------------------------------------------------------------------
 -- 064.8  The coordinate TRIPLE arrives whole or not at all. Three nullable
