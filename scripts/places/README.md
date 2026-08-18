@@ -23,15 +23,29 @@ per-request bill.
 **It does not cover map tiles.** Overture is data, not rendered imagery — PD-104
 still needs a tile provider.
 
-## Attribution is an OPEN question — do not render a result until it is settled
+## Attribution — settled, and it is not ODbL
 
-**This section previously said the opposite, and it was wrong.** It asserted that
-Overture is "ODbL where OSM-derived" and that any screen showing a result must
-credit "© OpenStreetMap contributors". That was inferred from the theme's general
-description rather than measured, and the measurement contradicts it.
+**Two earlier versions of this section were wrong in opposite directions.** The first
+asserted an ODbL "© OpenStreetMap contributors" credit; the second, correctly, said
+that was unmeasured and left the question open. Both are superseded by `PD-191`,
+settled 2026-08-18 against
+[Overture's attribution page](https://docs.overturemaps.org/attribution/) — which is
+egress-blocked from a session by `curl` and `WebFetch`, and reachable through
+`WebSearch`.
 
-A census of the `sources` column across 28 of the 84 NL row groups in release
-`2026-07-22.0` — **527,725 rows** — attributes them as:
+**Overture publishes the Places theme under CDLA Permissive 2.0 and Apache 2.0.** It
+contains no OpenStreetMap data and carries **none of ODbL's share-alike obligations**.
+CDLA Permissive 2.0 asks a distributor to make the licence *text* available; §3 treats
+what an application renders from the data as "Results" and exempts those from the
+requirement entirely. The Apache half covers the Foursquare-sourced rows.
+
+The credit is therefore paid **once**, on `/legal/attributions`
+(`src/app/legal/attributions/page.tsx`), and **no screen rendering a place result owes
+anything further** — no per-result credit, no per-source line under a search sheet.
+
+The census that killed the ODbL assumption stands, and is why crediting OpenStreetMap
+here would be actively wrong. Across 28 of the 84 NL row groups in release
+`2026-07-22.0` — **527,725 rows**:
 
 | Source | Rows |
 |---|---|
@@ -45,22 +59,14 @@ A census of the `sources` column across 28 of the 84 NL row groups in release
 | Krick | 12 |
 | **OpenStreetMap** | **0** |
 
-So crediting OpenStreetMap would credit a contributor that supplied nothing, while
-the sources that did supply the rows go unnamed.
+`sources` is still not extracted, and under this licence it does not need to be — the
+credit names the contributors as a set rather than per row. Add it to `COLUMNS` only if
+a future source arrives with a per-row obligation.
 
-**What is still unknown is the part that matters.** The census says which sources
-are *present*; it does not say what their terms *require*. Foursquare, Microsoft,
-PinMeTo and Krick are commercial datasets, and that is exactly where a
-redistribution or attribution obligation would live. Their terms could not be read
-from any container — `overturemaps.org`, `docs.overturemaps.org`,
-`opendatacommons.org` and `cdla.dev` all return `000` through the egress proxy,
-while the S3 bucket and GitHub return `200`, so this is host-specific policy and
-not a broken client.
-
-**Owner action: read Overture's terms and settle the credit string before the
-search sheet ships.** `sources` is not currently extracted, so provenance cannot be
-recovered from `public.places` — add it to `COLUMNS` if per-row attribution turns
-out to be required.
+**Map tiles are a different vendor and a different obligation.** Geoapify requires an
+unconditional OpenStreetMap credit (`PD-104`) — a separate line on the same page, never
+folded into the Overture one. `openspec/changes/add-ride-map-tiles/tasks.md` 0.2 says
+the same in the other direction.
 
 ## Extracting
 

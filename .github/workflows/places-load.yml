@@ -12,9 +12,10 @@ name: Load places index
 # Deliberately `workflow_dispatch` only, with no `schedule:`. Overture releases
 # monthly and the index goes stale on its own, but a scheduled run would need to
 # discover the latest release itself (the extractor pins one), and an unattended
-# PROD load is wrong while PD-150 is open and the attribution credit is unsettled.
-# Add the schedule when both are closed; the detector that makes a schedule safe
-# is already here.
+# PROD load is wrong while PD-150 is open. Attribution was the second reason and
+# is settled (PD-191, 2026-08-18 — CDLA Permissive 2.0 + Apache 2.0, credited on
+# /legal/attributions). Add the schedule when PD-150 closes; the detector that
+# makes a schedule safe is already here.
 #
 # ---------------------------------------------------------------------------
 # §The owner action — one secret per database, pasted once
@@ -150,12 +151,12 @@ jobs:
             secret=PLACES_PROD_DATABASE_URL
             url=$PROD_URL
             if [ "$CONFIRM" != "load-prod" ]; then
-              echo "::error::Loading PROD needs confirm=load-prod. Two things to have settled first, neither of which this workflow can check:"
-              echo "::error::  1. PD-150 — a 49-character term costs ~5.9 s of database CPU. That is 0 ms today only because the table is empty; this load is what arms it."
-              echo "::error::  2. Attribution — the credit string is unsettled (README §Attribution). Loading rows is safe; rendering one is not."
+              echo "::error::Loading PROD needs confirm=load-prod. One thing to have settled first, which this workflow cannot check:"
+              echo "::error::  PD-150 — a 49-character term costs ~5.9 s of database CPU. That is 0 ms today only because the table is empty; this load is what arms it."
+              echo "::error::(Attribution was the second gate here and is settled — PD-191, credited on /legal/attributions.)"
               exit 1
             fi
-            echo "PROD load confirmed. PD-150 and attribution are asserted by the person who typed the confirmation, not by this job."
+            echo "PROD load confirmed. PD-150 is asserted by the person who typed the confirmation, not by this job."
           else
             secret=PLACES_DEV_DATABASE_URL
             url=$DEV_URL

@@ -80,6 +80,11 @@ export default function PrivacyPage() {
           How to delete your account
         </Link>
       </p>
+      <p className="text-muted">
+        <Link href="/legal/attributions" className="underline">
+          Attributions
+        </Link>
+      </p>
     </>
   )
 }

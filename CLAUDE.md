@@ -478,11 +478,20 @@ for each, and several are counter-intuitive (a club outlives its owner; `postcar
 tag rather than a second audience; `ride_messages`' audience is an intersection and neither half
 alone is it).
 
-**One blocker out of that file belongs here, because the session it stops is one that would never
-open it: `places` attribution is an OPEN question.** A census of 527,725 rows names Overture,
-meta, Foursquare, Microsoft, AllThePlaces, PinMeTo, DAC and Krick, and **zero** OpenStreetMap — so
-the ODbL credit this repo first assumed is wrong, and the commercial sources' terms are unread
-(their hosts are egress-blocked). **Settle it before any screen renders a place result.**
+**One line out of that file belongs here, because the session that needs it is one that would
+never open it: `places` is Overture's Places theme, and it is NOT ODbL.** Overture publishes
+Places under **CDLA Permissive 2.0 and Apache 2.0** — no share-alike, and §3 exempts what an app
+renders ("Results") from carrying the licence text at all. The reflex to reach for
+"© OpenStreetMap contributors" is the trap: a census of the extract found **zero** OSM-sourced
+rows (`scripts/places/README.md`), so that credit would name a contributor which supplied nothing.
+**The credit is paid once, on `/legal/attributions`, and a screen rendering a place result owes
+nothing further** — settled 2026-08-18 (`PD-191`), from
+<https://docs.overturemaps.org/attribution/>, which is egress-blocked from a session and reachable
+through `WebSearch`.
+
+**Map tiles are a different vendor and a different obligation.** Geoapify requires an
+unconditional OpenStreetMap credit (`PD-104`), and that line goes **beside** the Overture one on
+that page rather than merged into it.
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
 
