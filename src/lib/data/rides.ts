@@ -400,6 +400,7 @@ export async function getRideForEdit(id: string): Promise<RideForEdit | null> {
     .select(`
       id, title, description, route_description, meeting_point, departure_at,
       max_riders, is_public, club_id, organizer_id,
+      start_place_id, latitude, longitude,
       club:clubs(id, name)
     `)
     .eq('id', id)

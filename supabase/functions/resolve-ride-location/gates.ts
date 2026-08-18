@@ -425,3 +425,42 @@ export function resolveCoordinate(response: GeocodeResponse | null | undefined):
     confidence: best.confidence,
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* The picked-ride branch                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What a ride carries before anything is geocoded — PD-114 §D6.
+ *
+ * A rider who picked a place from the search sheet has already given us an
+ * exact coordinate, so geocoding their free text can only produce a worse
+ * answer and would be paid for. `067` records the pick as a `start_place_id`
+ * beside the coordinate and NO `geocode_confidence`, which is what makes
+ * "the rider chose this" and "a geocoder guessed it" different rows rather than
+ * a convention.
+ *
+ * **All three or none, and the check is deliberately not just the place id.**
+ * `rides_location_coupling`'s picked arm requires the trio, so a place id
+ * without coordinates cannot be stored — but this function runs against rows a
+ * future migration might reshape, and a `null` latitude reaching `buildTileUrl`
+ * renders a tile of the Gulf of Guinea rather than failing. Reading all three is
+ * one comparison and removes that class of outcome entirely.
+ *
+ * Lives here rather than in `index.ts` for §6.2's reason: a decision that moves
+ * into the handler leaves `ride-geocode-gates.test.ts` behind, and this is the
+ * branch that decides whether a rider is billed.
+ */
+export type PickedRide = { latitude: number; longitude: number }
+
+export function resolvePickedCoordinate(ride: {
+  start_place_id?: string | null
+  latitude?: number | null
+  longitude?: number | null
+}): PickedRide | null {
+  const placeId = ride.start_place_id?.trim()
+  if (!placeId) return null
+  if (typeof ride.latitude !== 'number' || typeof ride.longitude !== 'number') return null
+  if (!Number.isFinite(ride.latitude) || !Number.isFinite(ride.longitude)) return null
+  return { latitude: ride.latitude, longitude: ride.longitude }
+}

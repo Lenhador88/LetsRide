@@ -9993,15 +9993,17 @@ select assert_eq(
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'rides'
       and grantee = 'authenticated' and privilege_type = 'INSERT'),
-  'club_id,departure_at,description,id,is_public,max_riders,meeting_point,organizer_id,route_description,title',
-  '045: exactly ten columns of rides hold INSERT, and created_at is not among them');
+  'club_id,departure_at,description,id,is_public,latitude,longitude,max_riders,meeting_point,organizer_id,route_description,start_place_id,title',
+  '045/067: exactly thirteen columns of rides hold INSERT, and created_at is not among them — 067 added the three a pick is made of, and deliberately NOT geocode_confidence');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'geocode_confidence', 'INSERT'),
+  false, '067: geocode_confidence is the one location column with no INSERT grant — no client produces a vendor score, so a rider cannot author the geocoded arm at create time at all');
 select assert_eq(
   (select string_agg(column_name, ',' order by column_name)
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'rides'
       and grantee = 'authenticated' and privilege_type = 'UPDATE'),
-  'club_id,departure_at,description,geocode_confidence,is_public,latitude,longitude,map_card_path,map_detail_path,max_riders,meeting_point,route_description,title',
-  '045/051: exactly thirteen columns of rides hold UPDATE — created_at, id and organizer_id are still not among them, and the five 051 added ARE, deliberately');
+  'club_id,departure_at,description,geocode_confidence,is_public,latitude,longitude,map_card_path,map_detail_path,max_riders,meeting_point,route_description,start_place_id,title',
+  '045/051/067: exactly fourteen columns of rides hold UPDATE — created_at, id and organizer_id are still not among them, the five 051 added ARE, and 067 added start_place_id so a rider can re-pick or clear');
 
 -- ---- clubs -------------------------------------------------------------
 select assert_eq(has_table_privilege('authenticated', 'public.clubs', 'insert'),
@@ -15137,7 +15139,9 @@ select assert_rejected($$
 -- 064.8  The coordinate TRIPLE arrives whole or not at all. Three nullable
 --        columns admit eight states, five of which are nonsense; without this
 --        every reader invents its own guess about a half-populated row. Same
---        shape as rides_geocode_coupling (051), one table over.
+--        shape as rides_location_coupling, one table over — 051 called it
+--        rides_geocode_coupling and 067 replaced it under the new name when a
+--        picked coordinate stopped carrying a confidence.
 -- ---------------------------------------------------------------------------
 select assert_rejected($$
   insert into postcards (id, author_id, image_path, taken_latitude)
@@ -15438,6 +15442,565 @@ select assert_eq(
   0, '066: clubs holds NO foreign key to places — the index is reloaded wholesale, so a FK would either block every reload or silently wipe every club''s location on one');
 
 rollback to savepoint club_location_066;
+
+
+-- ===========================================================================
+-- 067 — a ride's start location can be PICKED, and a pick outranks a geocode
+--       (PD-114)
+-- ===========================================================================
+-- One column on `rides`, a replaced coupling CHECK, a length CHECK, a rewritten
+-- `clear_ride_map_tiles`, and a new `protect_picked_ride_location` trigger.
+--
+-- ** There is NO new policy, deliberately, and that is what 067.6 asserts. **
+-- The columns live on `rides`, so 001/017/022 already decide who reads them:
+-- RLS is row-level, a reader who gets the row gets every column they hold a
+-- grant for, and there is no NARROWER policy available here — only a wider one.
+--
+-- ** The two BEFORE triggers change what "refused" means on an UPDATE, and this
+-- block is written around that rather than against it. ** Measured on DEV
+-- 2026-08-18 after applying: on INSERT no trigger runs, so the CHECK refuses
+-- every mixed combination with 23514. On UPDATE the triggers run FIRST and
+-- NORMALISE the row — `clear_ride_map_tiles` NULLs a confidence sent beside a
+-- new pick, `protect_picked_ride_location` restores a coordinate somebody tried
+-- to move — so the statement is ACCEPTED and the stored row is still legal. An
+-- assertion demanding 23514 from those UPDATEs would be asserting against the
+-- design's own "never raise on a rider's write" rule. Both mechanisms are
+-- asserted: the CHECK where it is reachable, the normalisation where it is not.
+-- ---------------------------------------------------------------------------
+savepoint ride_start_location_067;
+
+reset role;
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 067.1  The grants. A pick is supplied at ride CREATION, and 045 converted
+--        `rides` to per-column grants, so before 067 `latitude` carried no
+--        INSERT grant at all and a create-with-a-pick raised 42501 ABOVE RLS
+--        with the policy set looking perfectly correct.
+--
+--        SCOPED TO THE GRANTEE, per 015's footer: a table-wide count reads 2
+--        against a correct database because postgres and service_role hold
+--        everything by Supabase default.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_and(has_column_privilege('authenticated', 'public.rides', c, 'INSERT'))
+     from unnest(array['start_place_id', 'latitude', 'longitude']) c),
+  true, '067: authenticated may INSERT start_place_id, latitude and longitude — a pick is set at create, not only at edit');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'start_place_id', 'UPDATE'),
+  true, '067: ... and may UPDATE start_place_id, because a rider can re-pick or clear it');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'geocode_confidence', 'INSERT'),
+  false, '067: ... and holds NO INSERT grant on geocode_confidence — no client ever produces a vendor score, and one that could would be writing the geocoded arm by hand');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'map_card_path', 'INSERT'),
+  false, '067: ... nor on a tile path, which is 051''s rule and an additive grant cannot reopen it');
+
+-- The UPDATE grant on geocode_confidence STAYS, and this assertion is the
+-- tripwire for the hardening that must not land early. resolve-ride-location
+-- writes as the CALLER (anon key plus the rider's own Authorization header),
+-- not as service_role — delete-account is the only place a service-role key
+-- exists — so revoking this ahead of a redeployed function raises 42501 on
+-- every geocode, fail-open, and every ride silently stops getting a tile.
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'geocode_confidence', 'UPDATE'),
+  true, '067: authenticated STILL holds update (geocode_confidence) — 051 granted it and the geocoder writes as the caller, so revoking it before that function is redeployed takes every tile down silently (tasks.md §8)');
+
+-- The table-level grants must still be absent, or the per-column assertions
+-- above would pass while `id` and `organizer_id` had been handed over with them.
+select assert_eq(has_table_privilege('authenticated', 'public.rides', 'insert'),
+  false, '067: the TABLE-level INSERT grant is still absent — 067 added columns to 045''s allowlist, it did not replace the allowlist');
+select assert_eq(has_column_privilege('authenticated', 'public.rides', 'created_at', 'INSERT'),
+  false, '067: created_at is STILL not insertable, which 045 closed');
+
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'rides' and grantee = 'anon'),
+  0, '067: anon holds NO column grant on rides, of any kind, for any operation — decision #1');
+
+-- ---------------------------------------------------------------------------
+-- 067.2  The coupling, arm by arm, on INSERT — where the CHECK is the only
+--        thing standing, because both of 067's triggers are BEFORE UPDATE.
+--
+--        Run as the OWNER for the confidence-bearing rows: `authenticated`
+--        holds no INSERT grant on geocode_confidence, so as a rider those
+--        statements are refused 42501 by the grant BEFORE the CHECK is ever
+--        consulted — which is a different rule passing under the same label.
+--        Both refusals are asserted, each against the rule that actually fires.
+-- ---------------------------------------------------------------------------
+select assert_rejected($$
+  insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id, start_place_id)
+  values ('00000000-0000-0000-0000-000000067001', 'Half a pick', 'The Pier', now() + interval '9 days',
+          true, '00000000-0000-0000-0000-00000000000a', 'gers-1')$$,
+  '23514', '067: a place id with NO coordinate is refused — a pick that names a place but not a point is not a location');
+
+select assert_rejected($$
+  insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id, latitude, longitude)
+  values ('00000000-0000-0000-0000-000000067002', 'Unattributed', 'The Pier', now() + interval '9 days',
+          true, '00000000-0000-0000-0000-00000000000a', 52.0, 4.0)$$,
+  '23514', '067: a coordinate claiming NEITHER writer is refused — every stored coordinate has to say who produced it, or a reader has to guess how much to trust it');
+
+select assert_rejected($$
+  insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                     start_place_id, latitude, longitude, geocode_confidence)
+  values ('00000000-0000-0000-0000-000000067003', 'Both at once', 'The Pier', now() + interval '9 days',
+          true, '00000000-0000-0000-0000-00000000000a', 'gers-1', 52.0, 4.0, 0.9)$$,
+  '23514', '067: a row claiming BOTH writers is refused — the two arms are mutually exclusive, which is what makes presence of start_place_id readable as provenance');
+
+select assert_rejected($$
+  insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                     start_place_id, latitude, longitude)
+  values ('00000000-0000-0000-0000-000000067004', 'Past the pole', 'The Pier', now() + interval '9 days',
+          true, '00000000-0000-0000-0000-00000000000a', 'gers-1', 95.0, 4.0)$$,
+  '23514', '067: a PICKED latitude past the pole is refused — the range bounds apply to the picked arm too, not only to the geocoded one 051 wrote them for');
+
+select assert_rejected($$
+  insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                     start_place_id, latitude, longitude)
+  values ('00000000-0000-0000-0000-000000067005', 'Past the antimeridian', 'The Pier', now() + interval '9 days',
+          true, '00000000-0000-0000-0000-00000000000a', 'gers-1', 52.0, -181.0)$$,
+  '23514', '067: ... and a picked longitude past the antimeridian');
+
+select assert_rejected($$
+  insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                     start_place_id, latitude, longitude)
+  values ('00000000-0000-0000-0000-000000067006', 'A novel', 'The Pier', now() + interval '9 days',
+          true, '00000000-0000-0000-0000-00000000000a', repeat('x', 101), 52.0, 4.0)$$,
+  '23514', '067: a 101-character GERS id is refused — the id is the field a client controls most directly and nothing stops a rider posting a novel into it');
+
+select assert_rejected($$
+  insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                     latitude, longitude, geocode_confidence)
+  values ('00000000-0000-0000-0000-000000067007', 'Below the floor', 'The Pier', now() + interval '9 days',
+          true, '00000000-0000-0000-0000-00000000000a', 52.0, 4.0, 0.69)$$,
+  '23514', '067: a geocoded confidence below the 0.70 floor is refused on INSERT too — 051''s bound survived the constraint being replaced');
+
+select assert_rejected($$
+  insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                     latitude, longitude, geocode_confidence)
+  values ('00000000-0000-0000-0000-000000067008', 'Above the ceiling', 'The Pier', now() + interval '9 days',
+          true, '00000000-0000-0000-0000-00000000000a', 52.0, 4.0, 1.5)$$,
+  '23514', '067: ... and one above 1.0, which is what makes a mis-scaled vendor value fail closed rather than store nonsense');
+
+-- All three LEGAL states are accepted. Counted rather than passed to
+-- assert_allowed for the INSERTs, so the row is proved to exist rather than
+-- proved not to have errored.
+savepoint coupling_arms_067;
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id)
+values ('00000000-0000-0000-0000-000000067010', 'Nothing known', 'The layby past the second roundabout',
+        now() + interval '9 days', true, '00000000-0000-0000-0000-00000000000a');
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                   start_place_id, latitude, longitude)
+values ('00000000-0000-0000-0000-000000067011', 'Picked', 'Shell Pernis Werk, Rotterdam',
+        now() + interval '9 days', true, '00000000-0000-0000-0000-00000000000a', 'gers-1', 51.885, 4.372);
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                   latitude, longitude, geocode_confidence)
+values ('00000000-0000-0000-0000-000000067012', 'Geocoded', 'Dam Square, Amsterdam',
+        now() + interval '9 days', true, '00000000-0000-0000-0000-00000000000a', 52.373, 4.893, 0.70);
+select assert_eq(
+  (select count(*)::int from rides where id in ('00000000-0000-0000-0000-000000067010',
+     '00000000-0000-0000-0000-000000067011', '00000000-0000-0000-0000-000000067012')),
+  3, '067: all three legal states land — nothing known, picked, geocoded');
+-- The cast, restated at the point it can be lost. `0.70::real >= 0.70` is FALSE
+-- on Postgres: `real` cannot represent 0.70 and the bare literal is `numeric`,
+-- so the column is widened and a confidence at EXACTLY the stated floor would
+-- violate its own constraint. The row above carries exactly 0.70, so retyping
+-- the constraint without the cast turns this green assertion red.
+select assert_eq((select geocode_confidence from rides where id = '00000000-0000-0000-0000-000000067012'),
+  0.70::real, '067: a geocoded confidence of EXACTLY the floor is accepted — the replaced constraint kept 051''s ::real casts');
+select assert_eq((select geocode_confidence is null from rides where id = '00000000-0000-0000-0000-000000067011'),
+  true, '067: a PICKED coordinate carries no confidence, and that is correct rather than missing — confidence is the vendor''s evidence for a guess, and choosing a row from an index is not a guess');
+rollback to savepoint coupling_arms_067;
+
+-- The rider's own view of the same rule: `authenticated` cannot even NAME
+-- geocode_confidence on an INSERT, so the mixed row is refused one layer above
+-- the CHECK. 42501 rather than 23514, and the distinction matters — a test that
+-- accepted "any error" would pass with the CHECK deleted.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_rejected($$
+  insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                     latitude, longitude, geocode_confidence)
+  values ('00000000-0000-0000-0000-000000067013', 'Rider-written geocode', 'The Pier',
+          now() + interval '9 days', true, '00000000-0000-0000-0000-00000000000a', 52.0, 4.0, 0.9)$$,
+  '42501', '067: a RIDER cannot write geocode_confidence at create at all — the missing INSERT grant refuses it above RLS, before the CHECK is consulted');
+
+-- ---------------------------------------------------------------------------
+-- 067.3  On UPDATE the triggers run FIRST and NORMALISE, so a mixed statement
+--        is ACCEPTED and the STORED ROW is still legal. This is the design's
+--        "clear or restore, never raise" rule, and it is asserted rather than
+--        assumed because the obvious test — demanding 23514 from these same
+--        statements — fails against a correct database.
+--
+--        The invariant that actually matters is about the STORED ROW, and it
+--        holds by two independent mechanisms: the CHECK on INSERT, the triggers
+--        on UPDATE.
+-- ---------------------------------------------------------------------------
+reset role;
+savepoint normalisation_067;
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id)
+values ('00000000-0000-0000-0000-000000067020', 'Normalise me', 'The Pier',
+        now() + interval '9 days', true, '00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+-- An unpicked ride, one statement carrying BOTH markers. clear_ride_map_tiles
+-- fires on the start_place_id change and NULLs the confidence.
+update rides set start_place_id = 'gers-1', latitude = 52.0, longitude = 4.0, geocode_confidence = 0.9
+ where id = '00000000-0000-0000-0000-000000067020';
+select assert_eq(
+  (select (start_place_id = 'gers-1' and latitude = 52.0 and geocode_confidence is null)
+     from rides where id = '00000000-0000-0000-0000-000000067020'),
+  true, '067: an UPDATE claiming BOTH writers is not refused, it is NORMALISED — the trigger drops the confidence beside a new pick, so the stored row still claims exactly one writer');
+
+-- The same ride is now PICKED. A statement carrying an out-of-range coordinate
+-- and a below-floor confidence is accepted, because protect_picked_ride_location
+-- restores the picked point before the CHECK ever sees the row.
+update rides set latitude = 95.0, longitude = 4.0, geocode_confidence = 0.69
+ where id = '00000000-0000-0000-0000-000000067020';
+select assert_eq(
+  (select (latitude = 52.0 and longitude = 4.0 and geocode_confidence is null)
+     from rides where id = '00000000-0000-0000-0000-000000067020'),
+  true, '067: ... and a nonsense coordinate aimed at a PICKED ride is restored rather than refused, so a rider''s save is never aborted over a value the geocoder supplied');
+
+-- With NEITHER trigger firing — an unpicked ride, no text change, no place-id
+-- change — the CHECK is reachable on UPDATE and refuses, which is what stops
+-- "the triggers normalise" being read as "the constraint is decorative".
+update rides set start_place_id = null, latitude = null, longitude = null
+ where id = '00000000-0000-0000-0000-000000067020';
+select assert_rejected($$
+  update rides set latitude = 95.0, longitude = 4.0, geocode_confidence = 0.9
+   where id = '00000000-0000-0000-0000-000000067020'$$,
+  '23514', '067: on an UNPICKED ride, where neither trigger fires, the CHECK is reached and refuses an out-of-range coordinate');
+select assert_rejected($$
+  update rides set latitude = 52.0, longitude = 4.0
+   where id = '00000000-0000-0000-0000-000000067020'$$,
+  '23514', '067: ... and refuses a coordinate claiming neither writer');
+reset role;
+rollback to savepoint normalisation_067;
+
+-- ---------------------------------------------------------------------------
+-- 067.4  THE SAME-STATEMENT CASE. This is the whole reason 051's trigger had to
+--        be rewritten, and a test that writes the text and the pick in TWO
+--        statements passes while proving nothing — it is the single statement
+--        the edit form actually issues.
+--
+--        Measured on DEV before 067: one UPDATE setting meeting_point,
+--        latitude, longitude and geocode_confidence together stored the new
+--        text and THREE NULLS.
+-- ---------------------------------------------------------------------------
+savepoint same_statement_067;
+reset role;
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id)
+values ('00000000-0000-0000-0000-000000067030', 'Edit me', 'The Pier',
+        now() + interval '9 days', true, '00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+update rides set meeting_point = 'Shell Pernis Werk, Rotterdam',
+                 start_place_id = 'gers-shell', latitude = 51.885, longitude = 4.372
+ where id = '00000000-0000-0000-0000-000000067030';
+select assert_eq(
+  (select (meeting_point = 'Shell Pernis Werk, Rotterdam' and start_place_id = 'gers-shell'
+           and latitude = 51.885 and longitude = 4.372 and geocode_confidence is null)
+     from rides where id = '00000000-0000-0000-0000-000000067030'),
+  true, '067: new text and a NEW pick in ONE statement keeps the pick — 051''s BEFORE trigger discarded it, which made the picked edit path impossible');
+
+-- The tiles go even on the arm that keeps the coordinate: they were rendered
+-- for the PREVIOUS point.
+reset role;
+update rides set map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000beef.jpg'
+ where id = '00000000-0000-0000-0000-000000067030';
+set role authenticated;
+update rides set meeting_point = 'Shell Pernis Werk, Rotterdam (by the pumps)',
+                 start_place_id = 'gers-other', latitude = 51.0, longitude = 4.0
+ where id = '00000000-0000-0000-0000-000000067030';
+select assert_eq(
+  (select (start_place_id = 'gers-other' and map_card_path is null)
+     from rides where id = '00000000-0000-0000-0000-000000067030'),
+  true, '067: ... and both tile paths go with it, because they are a picture of the point the rider just replaced');
+
+-- Text ALONE clears everything. The client sending nothing for the location
+-- columns is indistinguishable from it sending the stored values, so the proxy
+-- has to fail in the clearing direction — and this is that direction.
+update rides set meeting_point = 'Somewhere else entirely'
+ where id = '00000000-0000-0000-0000-000000067030';
+select assert_eq(
+  (select (start_place_id is null and latitude is null and longitude is null
+           and geocode_confidence is null and map_card_path is null and map_detail_path is null)
+     from rides where id = '00000000-0000-0000-0000-000000067030'),
+  true, '067: changing the text with no new pick clears the whole location — the pin is no longer known to describe what the text says');
+
+-- A hand-rolled client REPEATING the row's stored place id beside new text is
+-- cleared too, and must be: `NEW` carries the old value for an omitted column,
+-- so an omission and a repetition are the same input to a BEFORE trigger.
+update rides set meeting_point = 'Repeat Corner', start_place_id = 'gers-repeat',
+                 latitude = 50.0, longitude = 3.0
+ where id = '00000000-0000-0000-0000-000000067030';
+update rides set meeting_point = 'Repeat Corner Two', start_place_id = 'gers-repeat',
+                 latitude = 50.0, longitude = 3.0
+ where id = '00000000-0000-0000-0000-000000067030';
+select assert_eq(
+  (select (start_place_id is null and latitude is null)
+     from rides where id = '00000000-0000-0000-0000-000000067030'),
+  true, '067: a client repeating the STORED place id beside new text clears anyway — an omission and a repetition are the same input to a BEFORE trigger, and the proxy fails in the clearing direction');
+
+-- Re-picking the SAME place after it was cleared is kept, because OLD is now
+-- NULL and NEW is the id, so they are distinct.
+update rides set meeting_point = 'Repeat Corner', start_place_id = 'gers-repeat',
+                 latitude = 50.0, longitude = 3.0
+ where id = '00000000-0000-0000-0000-000000067030';
+select assert_eq(
+  (select (start_place_id = 'gers-repeat' and latitude = 50.0)
+     from rides where id = '00000000-0000-0000-0000-000000067030'),
+  true, '067: re-picking the SAME place after clearing it is kept — OLD is NULL and NEW is the id, so IS DISTINCT FROM says yes');
+
+-- The organizer may always REMOVE their own pin, text untouched.
+update rides set start_place_id = null, latitude = null, longitude = null
+ where id = '00000000-0000-0000-0000-000000067030';
+select assert_eq(
+  (select (meeting_point = 'Repeat Corner' and start_place_id is null and latitude is null)
+     from rides where id = '00000000-0000-0000-0000-000000067030'),
+  true, '067: an organizer can clear the pick without touching the text — precedence protects a pick from being MOVED, never from being removed by its owner');
+reset role;
+rollback to savepoint same_statement_067;
+
+-- ---------------------------------------------------------------------------
+-- 067.5  PRECEDENCE. A geocode-shaped UPDATE against a picked ride must leave
+--        the picked coordinate, must leave the confidence NULL, must clear both
+--        tile paths, and MUST NOT RAISE — the write it guards is the geocoder
+--        enriching a ride the rider is already saving, and a raise there aborts
+--        a write the rider asked for over a value they did not supply.
+--
+--        Asserted as the STORED OUTCOME of a statement issued as the caller,
+--        never as the behaviour of the Edge Function that would normally issue
+--        it — the function is not reachable from this suite and 031 is the
+--        standing lesson about asserting a function instead of the rule.
+-- ---------------------------------------------------------------------------
+savepoint precedence_067;
+reset role;
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                   start_place_id, latitude, longitude)
+values ('00000000-0000-0000-0000-000000067040', 'Picked ride', 'Shell Pernis Werk, Rotterdam',
+        now() + interval '9 days', true, '00000000-0000-0000-0000-00000000000a', 'gers-shell', 51.885, 4.372);
+update rides set map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000067ca.jpg',
+                 map_detail_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000067de.jpg'
+ where id = '00000000-0000-0000-0000-000000067040';
+-- A tile rendered FOR THE STORED PICK is accepted, which is what lets the
+-- redeployed Edge Function render a picked ride without a further exception.
+select assert_eq(
+  (select (map_card_path is not null and latitude = 51.885)
+     from rides where id = '00000000-0000-0000-0000-000000067040'),
+  true, '067: a tile written for the STORED coordinate is accepted — the UPDATE leaves latitude and longitude equal, so the precedence trigger never fires');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+update rides set latitude = 52.37, longitude = 4.89, geocode_confidence = 0.95
+ where id = '00000000-0000-0000-0000-000000067040';
+select assert_eq(
+  (select (latitude = 51.885 and longitude = 4.372) from rides where id = '00000000-0000-0000-0000-000000067040'),
+  true, '067: a geocode-shaped UPDATE does NOT move a picked coordinate — an exact point would otherwise be replaced by a vendor''s approximation of the same words, silently, with both states looking identical from a screen');
+select assert_eq(
+  (select geocode_confidence is null from rides where id = '00000000-0000-0000-0000-000000067040'),
+  true, '067: ... and the confidence it tried to write is forced back to NULL, so the row cannot claim a vendor produced a value the vendor did not');
+select assert_eq(
+  (select (map_card_path is null and map_detail_path is null)
+     from rides where id = '00000000-0000-0000-0000-000000067040'),
+  true, '067: ... and both tile paths are cleared, because a tile rendered for the coordinate just rejected is a picture of the wrong place and 051''s one-directional CHECK would happily keep it');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-000000067040'),
+  1, '067: ... and the statement did NOT raise — the ride is still there, which is the half a rejected-write test cannot show');
+reset role;
+rollback to savepoint precedence_067;
+
+-- ---------------------------------------------------------------------------
+-- 067.6  REACH, one assertion per role. 067 adds NO policy, so what is asserted
+--        is that the existing ones already govern the new column — and, in the
+--        one direction that could go wrong, that a widened GRANT did not reach
+--        past a policy that still refuses.
+-- ---------------------------------------------------------------------------
+savepoint reach_067;
+reset role;
+-- d1 sits in the PRIVATE club c1, organised by 000a. 000b is a member of c1 and
+-- is promoted to admin here, so "a club admin cannot move someone else's pick"
+-- is tested against a real admin rather than against a plain member.
+update club_members set role = 'admin'
+ where club_id = '00000000-0000-0000-0000-0000000000c1'
+   and user_id = '00000000-0000-0000-0000-00000000000b';
+update rides set meeting_point = 'The Depot', start_place_id = 'gers-depot',
+                 latitude = 51.5, longitude = 4.5
+ where id = '00000000-0000-0000-0000-0000000000d1';
+-- A public ride organised by the BLOCKER, so the block can be asserted with the
+-- two riders exchanged: d4 already covers the direction organised by the
+-- blocked rider, and the `blocks` row is directional while the effect is not.
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                   start_place_id, latitude, longitude)
+values ('00000000-0000-0000-0000-000000067050', 'Blocker Run', 'The Yard',
+        now() + interval '9 days', true, '00000000-0000-0000-0000-00000000001a', 'gers-yard', 51.1, 4.1);
+update rides set start_place_id = 'gers-wall', latitude = 51.2, longitude = 4.2
+ where id = '00000000-0000-0000-0000-0000000000d4';
+-- A crew row for the outsider on the private club's ride. Crew membership is
+-- NOT an arm of the rides SELECT policy and this change does not add one.
+insert into ride_members (ride_id, user_id, status)
+values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-00000000000c', 'going')
+on conflict do nothing;
+
+set role authenticated;
+
+-- ORGANIZER: may set, change and clear the pick on their own ride.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+savepoint organizer_writes_067;
+update rides set start_place_id = 'gers-new', latitude = 51.9, longitude = 4.9
+ where id = '00000000-0000-0000-0000-0000000000d1';
+select assert_eq(
+  (select count(*)::int from rides
+    where id = '00000000-0000-0000-0000-0000000000d1' and start_place_id = 'gers-new'),
+  1, '067: the ORGANIZER can move the pick on their own ride');
+rollback to savepoint organizer_writes_067;
+
+-- CLUB ADMIN: may not. rides UPDATE is organizer-scoped and 067 adds no arm to
+-- it, so the statement touches zero rows SILENTLY — asserted by counting,
+-- because a filtered UPDATE raises nothing.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+savepoint admin_writes_067;
+update rides set start_place_id = 'gers-admin', latitude = 1.0, longitude = 1.0
+ where id = '00000000-0000-0000-0000-0000000000d1';
+select assert_eq(
+  (select count(*)::int from rides
+    where id = '00000000-0000-0000-0000-0000000000d1' and start_place_id = 'gers-admin'),
+  0, '067: a club ADMIN cannot move a pick on a ride they do not organise — a location an admin can move is a ride whose crew arrives somewhere the organizer never chose');
+rollback to savepoint admin_writes_067;
+
+-- CLUB MEMBER: reads the coordinate exactly as they read the ride.
+select assert_eq(
+  (select start_place_id from rides where id = '00000000-0000-0000-0000-0000000000d1'),
+  'gers-depot', '067: a member of the private club READS the ride''s pick, because the columns live on the row and 022''s SELECT policy already admits them');
+
+-- NON-MEMBER of the private club: zero rows, coordinate included. The crew row
+-- inserted above is deliberately theirs, so this also proves crew membership
+-- alone confers nothing.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq(
+  (select count(*)::int from rides
+    where id = '00000000-0000-0000-0000-0000000000d1' and start_place_id is not null),
+  0, '067: a NON-MEMBER of the private club reads zero rows for that ride — the coordinate is out of reach because the ROW is, not because anything filters a column');
+-- The crew row is counted as the OWNER, deliberately. Read as 000c it is zero
+-- — `ride_members`'s own SELECT policy is scoped to rides the caller can read,
+-- so an outsider cannot see even their own crew row on a ride they cannot
+-- reach. Counting it as the rider would therefore have proved the fixture
+-- missing rather than the policy correct, which is the trap: the assertion
+-- would have gone green the day somebody deleted the fixture.
+reset role;
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000000000d1'
+      and user_id = '00000000-0000-0000-0000-00000000000c'),
+  1, '067: ... and the crew row they hold on that ride really exists, so the zero above is the rides SELECT policy refusing them and not a missing fixture — crew membership is NOT an arm of that policy and 067 did not add one');
+set role authenticated;
+
+-- BLOCKED, both directions. The `blocks` row is directional; the effect is not.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001a', false);
+select assert_eq(
+  (select count(*)::int from rides
+    where id = '00000000-0000-0000-0000-0000000000d4' and start_place_id is not null),
+  0, '067: a blocker reads no coordinate on a ride organised by the rider they blocked');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000001b', false);
+select assert_eq(
+  (select count(*)::int from rides
+    where id = '00000000-0000-0000-0000-000000067050' and start_place_id is not null),
+  0, '067: ... and the blocked rider reads none on a ride organised by the blocker — symmetric in effect, and enforced on the ROW rather than in a screen');
+
+-- ANON reaches nothing at all.
+reset role;
+set role anon;
+-- Refused at the GRANT, not filtered to zero rows: 007 revoked anon's table
+-- grant on `rides` outright, so the read raises 42501 before any policy is
+-- consulted. Asserted as a denial rather than as a count, because a count
+-- written here would error rather than return 0 and the assertion would fail
+-- for the right reason with the wrong message.
+select assert_denied($$select count(*) from rides where start_place_id is not null$$,
+  '067: a signed-out visitor cannot read a ride''s pick at all — decision #1, and 067 adds no grant and no policy that reaches anon');
+select assert_denied($$
+  update rides set start_place_id = 'gers-anon' where id = '00000000-0000-0000-0000-0000000000d1'$$,
+  '067: ... and writes none either');
+reset role;
+rollback to savepoint reach_067;
+
+-- ---------------------------------------------------------------------------
+-- 067.7  THE BULK UPDATE. The clearing trigger's WHEN now has two arms, and an
+--        unscoped version would wipe every location in a club the moment it
+--        turned private — a bulk data loss with a plausible-looking cause,
+--        discovered weeks later. propagate_club_privacy_to_rides touches
+--        neither meeting_point nor start_place_id, so neither arm is true.
+-- ---------------------------------------------------------------------------
+savepoint bulk_update_067;
+reset role;
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id,
+                   start_place_id, latitude, longitude)
+values ('00000000-0000-0000-0000-000000067060', 'Club Run', 'The Garage', now() + interval '9 days',
+        true, '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000a',
+        'gers-garage', 52.6, 4.4);
+update rides set map_card_path = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000067bc.jpg'
+ where id = '00000000-0000-0000-0000-000000067060';
+update clubs set is_public = false where id = '00000000-0000-0000-0000-0000000000c2';
+select assert_eq(
+  (select is_public from rides where id = '00000000-0000-0000-0000-000000067060'),
+  false, '067: (the club going private did reach the ride, so the next assertion is about the trigger and not about a no-op)');
+select assert_eq(
+  (select (start_place_id = 'gers-garage' and latitude = 52.6 and map_card_path is not null)
+     from rides where id = '00000000-0000-0000-0000-000000067060'),
+  true, '067: a club turning private does NOT clear its rides'' picks or tiles — the audience narrowed, and neither the meeting point nor the place id changed in that statement');
+rollback to savepoint bulk_update_067;
+
+-- ---------------------------------------------------------------------------
+-- 067.8  NO POLICY MOVED, and no foreign key appeared. 067 is a
+--        column-grants-constraints-and-triggers change; if a rides policy now
+--        mentions the new column it has done something it does not describe.
+--        Counted rather than hashed, for the reason 064.10 gives.
+-- ---------------------------------------------------------------------------
+reset role;
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'rides'),
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'rides'
+      and (coalesce(qual, '') || coalesce(with_check, '')) not like '%start_place%'
+      and (coalesce(qual, '') || coalesce(with_check, '')) not like '%latitude%'
+      and (coalesce(qual, '') || coalesce(with_check, '')) not like '%longitude%'),
+  '067: no rides policy mentions the start location — the audience of where a ride starts IS the audience of the ride, and adding an arm for it would be inventing a second predicate over the same row');
+
+select assert_eq(
+  (select count(*)::int from information_schema.table_constraints tc
+     join information_schema.constraint_column_usage ccu
+       on ccu.constraint_name = tc.constraint_name
+   where tc.table_schema = 'public' and tc.table_name = 'rides'
+     and tc.constraint_type = 'FOREIGN KEY' and ccu.table_name = 'places'),
+  0, '067: rides holds NO foreign key to places — the index is reloaded wholesale, so a FK would either block every reload or silently wipe every ride''s pick on one. start_place_id is provenance, and a dangling id is a normal state');
+
+-- The old constraint is gone BY NAME, which anything grepping for it must be
+-- updated for — this assertion is what makes that visible rather than silent.
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.rides'::regclass and conname = 'rides_geocode_coupling'),
+  0, '067: rides_geocode_coupling no longer exists — 067 replaced it with rides_location_coupling, because a picked coordinate carries no confidence and the old constraint required one');
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.rides'::regclass and conname = 'rides_location_coupling'),
+  1, '067: ... and rides_location_coupling is what stands in its place');
+
+-- Both new/rewritten functions are SECURITY INVOKER with the pinned empty
+-- search_path. 022 shipped exactly this clause missing between the repo and the
+-- database, so it is asserted rather than read off the file.
+select assert_eq(
+  (select bool_or(prosecdef) from pg_proc
+    where proname in ('clear_ride_map_tiles', 'protect_picked_ride_location')),
+  false, '067: neither trigger function is SECURITY DEFINER — they run as the rider, touch only NEW, and adding a definer here would be a privilege nobody needs');
+select assert_eq(
+  (select bool_and(proconfig[1] = 'search_path=""') from pg_proc
+    where proname in ('clear_ride_map_tiles', 'protect_picked_ride_location')),
+  true, '067: ... and both carry the pinned empty search_path every function in this repo does');
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where c.relname = 'rides' and not t.tgisinternal),
+  5, '067: rides carries five non-internal triggers — 051 took it from three to four and 067 adds the precedence one');
+
+rollback to savepoint ride_start_location_067;
 
 -- Back to the identity every later block assumes. Nothing follows this today,
 -- which is exactly why it is set: the next block appended here would otherwise
