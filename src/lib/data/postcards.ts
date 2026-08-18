@@ -38,38 +38,35 @@ type PostcardRow = Omit<Postcard, 'likes_count' | 'comments_count' | 'is_liked' 
  */
 export const FEED_PAGE_SIZE = 30
 
-// Explicit, not `*` — 041 added `postcards.ride_id`. No screen reads it, so
-// this app's own reads should not carry a column nothing renders: no
-// component, cache entry or future refactor can surface it by accident.
+// Explicit, not `*` — and after `062` that is a requirement rather than a
+// preference: `authenticated` holds no table-level SELECT on `postcards` at
+// all, only a seven-column grant, so a `*` here is `42501` for every rider.
 //
-// **This is payload hygiene, not a security boundary, and that distinction is
-// worth stating rather than implying.** `041` never revoked SELECT on
-// `ride_id` — it stayed table-level, which is the default this file's own
-// grants block only narrows for UPDATE — so `authenticated` still holds it:
-// `has_column_privilege('public.postcards', 'ride_id', 'SELECT')` is true.
-// The app ships the publishable key and talks to PostgREST directly, so
-// `GET /rest/v1/postcards?select=id,ride_id` still returns the column on
-// every row the SELECT policy already allows, this list notwithstanding.
-// `columns.ts`'s header states the general rule: "a column-level revoke
-// against a table-level grant is a documented no-op" — `021`/`025` are this
-// repo's worked example of the shape that actually closes a channel like
-// this one. Nothing here does that.
+// **`ride_id` is absent because the client cannot read it.** `041` shipped the
+// column with SELECT left table-level, which made the raw uuid readable off
+// every row the SELECT policy allows — comparable across postcards by a viewer
+// who can resolve neither the ride nor its crew. PD-165 took it out of this
+// list, and that was payload hygiene rather than a boundary: the app ships the
+// publishable key and talks to PostgREST directly, so
+// `GET /rest/v1/postcards?select=id,ride_id` returned it regardless of what
+// this list said. `062` is what closed it, in the shape `columns.ts`'s header
+// describes and `021`/`025` established — revoke the table-level grant,
+// re-grant the columns that stay.
 //
-// **That grant change is a real fork, and it belongs to the owner, not this
-// file.** `041`'s `rls_test.sql:8560` asserts
-// `has_column_privilege(...,'ride_id','SELECT') = true` on purpose: the
-// planned Journal query (`tasks.md` 4.2) needs `.eq('ride_id', rideId)`, and
-// Postgres needs SELECT on a column to filter on it. Revoking the grant would
-// close the correlation channel this list no longer feeds AND break the
-// Journal's own query, in the same stroke — left undecided here rather than
-// resolved by drift.
+// **The Journal reads the tag through `public.ride_journal_postcard_ids`**, not
+// off the column. That accessor exists because Postgres checks SELECT on a
+// column to FILTER on it as well as to return it, so `.eq('ride_id', rideId)`
+// wanted the identical grant the exposure did — PD-166 is the record of that
+// fork and of the owner choosing the accessor. It returns ids; the rows are
+// then read through this select list, under the caller's own RLS.
 //
-// Add a field only when something below actually reads it. A column silently
-// missing from a hand-written list like this one is not caught by tsc,
-// ESLint or the build — the `as unknown as PostcardRow[]` casts a few lines
-// down remove the compile-time check that would otherwise catch it.
-// `columns.test.ts` pins the one thing that IS enforced: this file's select
-// literals never name `ride_id` again.
+// Add a field only when something below actually reads it, **and only when
+// `062`'s grant list names it**. A column silently missing from a hand-written
+// list like this one is not caught by tsc, ESLint or the build — the
+// `as unknown as PostcardRow[]` casts a few lines down remove the compile-time
+// check that would otherwise catch it. `columns.test.ts` pins both halves: this
+// file's select literals never name `ride_id`, and this list never names a
+// column `062` does not grant.
 const POSTCARD_SELECT = `
   id, author_id, club_id, image_path, caption, created_at, updated_at,
   author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}),

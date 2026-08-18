@@ -66,10 +66,19 @@ either can be open while the other is shut. Run whichever one works.
 ```bash
 npm run figma:check     # cheap — tells you whether a pull is even needed
 npm run figma:pull      # the expensive call; extracts automatically
-npm run figma:icons     # only if icons changed or are missing
+npm run figma:icons     # always — see below; "only if icons changed" is unanswerable
 npm run test:unit       # the extractor is covered
 git add design && git commit -m "design: refresh the Figma snapshot"
 ```
+
+**`figma:icons` is not conditional, and "did icons change?" is the question you cannot answer
+without running it.** `extract.mjs` keys icons by name and the last node walked wins, so a frame
+somebody else authored can silently displace a real icon component — measured 2026-08-17, when a
+pull dropped `Chevron Down` entirely and re-pointed `Chevron Right` at a grey instance, neither of
+them touched by the session that ran the pull. Check `git diff design/icons/index.json` first,
+because it is free and catches the half that produces a byte-identical `generated.tsx`; then run
+`figma:icons` and require `54/54` with no `Missing:` line. `docs/HANDOFF.md` §A `figma:pull` today
+loses Chevron Down has the detail and the open issue.
 
 If `figma:pull` returns 429 it now prints the exact wait and the clearing time. **Come back
 then** — not sooner, and there is no point polling in between. The committed snapshot stays
