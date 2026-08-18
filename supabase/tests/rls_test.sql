@@ -14594,16 +14594,26 @@ insert into blocks (blocker_id, blocked_id) values
 -- ---------------------------------------------------------------------------
 select assert_eq(
   (select p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'enforce_ride_capacity'),
+    where n.nspname = 'private' and p.proname = 'enforce_ride_capacity'),
   true, '063: the capacity function is security definer — an invoker-rights count is short by the caller''s blocks');
 
+-- In `private`, so PostgREST cannot route to it at all — the schema is the
+-- barrier and the revoke below is the second lock on the same door. A row here
+-- for `public` would mean the revoke is the only one.
 select assert_eq(
-  has_function_privilege('authenticated', 'public.enforce_ride_capacity()', 'execute'),
-  false, '063: ... and authenticated cannot call it — a trigger function has no business on the PostgREST surface');
+  (select array_agg(n.nspname order by n.nspname)::text[] from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+    where p.proname = 'enforce_ride_capacity'),
+  array['private'],
+  '063: ... and lives in private, off the PostgREST surface, like notify_ride_joined on this same table');
 
 select assert_eq(
-  has_function_privilege('anon', 'public.enforce_ride_capacity()', 'execute'),
-  false, '063: ... nor can anon');
+  has_function_privilege('authenticated', 'private.enforce_ride_capacity()', 'execute'),
+  false, '063: ... with no EXECUTE for authenticated — asserted on the ROLE rather than by calling it (031''s lesson)');
+
+select assert_eq(
+  has_function_privilege('anon', 'private.enforce_ride_capacity()', 'execute'),
+  false, '063: ... nor for anon');
 
 -- Both verbs, because 048 grants UPDATE on `ride_id` and an INSERT-only trigger
 -- is one `update ride_members set ride_id = ...` away from being bypassed —
@@ -14643,6 +14653,29 @@ select assert_rejected($$
   values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063003', 'maybe')$$,
   '23514', '063: ... and cannot slip in as a `maybe` either — the cap is on the crew, not on one status');
 
+-- **The message is contract, so the SQLSTATE alone is not enough.**
+-- `setRideAttendance` matches `error.message.includes('this ride is full')`
+-- alongside the code, because `018`'s four text CHECKs on `rides` and `023`'s
+-- gate all raise 23514 — so a reworded raise would silently downgrade a full
+-- ride to "the ride may no longer be available". `assert_rejected` reads the
+-- SQLSTATE only, hence the block.
+do $cap$
+declare msg text;
+begin
+  begin
+    insert into ride_members (ride_id, user_id, status)
+      values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063003', 'going');
+    raise exception 'FAIL  063: a full ride accepted a rider';
+  exception when check_violation then
+    get stacked diagnostics msg = message_text;
+    if msg <> 'this ride is full' then
+      raise exception 'FAIL  063: the refusal message is the client contract — expected "this ride is full", got "%"', msg;
+    end if;
+    raise notice 'ok    063: the refusal message is exactly `this ride is full`, which is what setRideAttendance matches on';
+  end;
+end
+$cap$;
+
 -- ---------------------------------------------------------------------------
 -- 063.3  An UNCAPPED ride is untouched. NULL is "no cap", which is what every
 --        ride in both projects carries today — so this is the assertion that
@@ -14663,7 +14696,8 @@ rollback to savepoint cap_uncapped;
 --        INSERT trigger fires on an upsert even when it resolves to an UPDATE
 --        (measured, Postgres 16). Counting the caller's own row would freeze
 --        every existing member's RSVP on a full ride — a worse bug than the one
---        063 fixes. The count excludes `new.user_id` for exactly this.
+--        063 fixes. An EXISTS exemption is what answers it; 063.5 carries the
+--        over-subscribed case, which is where the narrower fix breaks.
 -- ---------------------------------------------------------------------------
 select set_config('test.uid', '00000000-0000-0000-0000-000000063002', false);
 
@@ -14676,7 +14710,7 @@ select assert_eq(
   (select status from ride_members
     where ride_id = '00000000-0000-0000-0000-00000063f001'
       and user_id = '00000000-0000-0000-0000-000000063002'),
-  'going', '063: a member of a FULL ride can still switch maybe -> going — the upsert''s BEFORE INSERT must not count their own row');
+  'going', '063: a member of a FULL ride can still switch maybe -> going — the upsert''s BEFORE INSERT fires even though it resolves to an UPDATE');
 rollback to savepoint cap_reRsvp;
 
 -- The plain UPDATE form of the same change, which takes the trigger's early
@@ -14711,6 +14745,26 @@ select assert_rejected($$
   insert into ride_members (ride_id, user_id, status)
   values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063003', 'going')$$,
   '23514', '063: ... and no further rider may join while the crew is over it');
+
+-- **The case the first cut of `063` got wrong, and the reason this assertion is
+-- an UPSERT.** Excluding only the writer's own row from the count is enough on
+-- a ride exactly AT its cap and not enough on one OVER it: 2 rows against a cap
+-- of 1 leaves 1 other, which still meets the cap, so an existing member's RSVP
+-- was refused — a lowered cap froze the crew it had promised not to evict. The
+-- bare `update ride_members set status` form passes against that bug, because
+-- it takes the trigger's early return, so an assertion in that shape would have
+-- been vacuous. This is the statement `setRideAttendance` actually issues.
+select set_config('test.uid', '00000000-0000-0000-0000-000000063002', false);
+insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063002', 'going')
+  on conflict (ride_id, user_id) do update
+    set ride_id = excluded.ride_id, user_id = excluded.user_id, status = excluded.status;
+select assert_eq(
+  (select status from ride_members
+    where ride_id = '00000000-0000-0000-0000-00000063f001'
+      and user_id = '00000000-0000-0000-0000-000000063002'),
+  'going', '063: a member of an OVER-SUBSCRIBED ride can still change their RSVP — a lowered cap must not freeze the crew it did not evict');
+
 reset role;
 rollback to savepoint cap_lowered;
 
@@ -14807,6 +14861,32 @@ select assert_rejected($$
   insert into ride_members (ride_id, user_id, status)
   values ('00000000-0000-0000-0000-00000063f003', '00000000-0000-0000-0000-000000063003', 'going')$$,
   '23514', '063: ... and nobody else may join it');
+
+-- ---------------------------------------------------------------------------
+-- 063.10 THE ORGANIZER IS EXEMPT, and the reason is not generosity. `getRide`
+--        and `toRideListItem` both render a host holding no `ride_members` row
+--        as `going`, so the row records a fact rather than claiming a seat —
+--        and `createRide`'s two inserts have no transaction and its rollback
+--        runs in the browser, so a closed tab leaves exactly this state.
+--        Without the exemption the app shows an organizer on a ride the
+--        database will not let them onto, permanently.
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000063001', false);
+delete from ride_members
+  where ride_id = '00000000-0000-0000-0000-00000063f003'
+    and user_id = '00000000-0000-0000-0000-000000063001';
+reset role;
+insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-00000063f003', '00000000-0000-0000-0000-000000063005', 'going');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000063001', false);
+insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-00000063f003', '00000000-0000-0000-0000-000000063001', 'going');
+select assert_eq(
+  (select count(*)::int from ride_members where ride_id = '00000000-0000-0000-0000-00000063f003'),
+  2, '063: an organizer restores their own crew row on a ride already at its cap — their row is a record, not a seat, and it is the one thing that may exceed the cap');
 
 reset role;
 rollback to savepoint ride_capacity_063;

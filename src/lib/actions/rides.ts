@@ -272,9 +272,10 @@ export async function createRide(
  *
  * **The rule is a join gate, not an invariant** — an organizer may lower the
  * cap below the current crew and nobody is evicted — so this action never has
- * to reconcile anything. And a rider already on a full ride is not refused:
- * `063` excludes the row's own subject from the count, because the upsert below
- * fires a BEFORE INSERT trigger even when it resolves to an UPDATE.
+ * to reconcile anything. And a rider already on a full, or over-subscribed,
+ * ride is not refused: `063` exempts anyone who already holds a row, because
+ * the upsert below fires a BEFORE INSERT trigger even when it resolves to an
+ * UPDATE. So the only call this can ever lose is a genuine new join.
  *
  * **The design draws no capacity affordance at all** — no "Ride is full" state,
  * no seats-remaining count, no disabled pill — so a rider learns a ride is full
@@ -310,7 +311,14 @@ export async function setRideAttendance(
   // rather than instead of it, because 018's four text CHECKs on `rides` raise
   // 23514 too.
   if (error?.code === '23514' && error.message.includes('this ride is full')) {
-    return { error: 'This ride is full — every seat is taken. Ask the organizer if they can make room.' }
+    // Invalidated on this refusal and on no other. Every other error here is
+    // "we could not tell" — a network failure, or RLS deciding the ride is not
+    // visible — and re-reading proves nothing. A capacity refusal is different:
+    // it is positive evidence that the crew this client is holding is stale,
+    // and since no screen draws capacity the client had every reason to think
+    // there was room.
+    invalidateRide()
+    return { error: 'This ride is full.' }
   }
 
   // A refusal is usually RLS deciding the ride is not visible, which from the
