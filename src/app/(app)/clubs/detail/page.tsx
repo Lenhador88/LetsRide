@@ -3,11 +3,12 @@
 import { Suspense } from 'react'
 import { notFound, useSearchParams } from 'next/navigation'
 import { Globe2Icon, Lock2Icon } from '@/components/icons/generated'
+import { ClubCreateRideRow } from '@/components/clubs/ClubCreateRideRow'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
 import { ClubMemberRail } from '@/components/clubs/ClubMemberRail'
+import { ClubPostcardCarousel } from '@/components/clubs/ClubPostcardCarousel'
 import { MarkClubSeen } from '@/components/clubs/MarkClubSeen'
-import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { RideChip } from '@/components/rides/RideChip'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { ExpandableText } from '@/components/ui/ExpandableText'
@@ -175,23 +176,71 @@ function ClubScreen() {
       {club.data.viewer_role && <MarkClubSeen clubId={club.data.id} />}
 
       <div className="flex flex-col gap-4 pt-4 motion-safe:animate-fade-in">
-        <p className="flex items-center gap-1.5 px-4 text-sm font-medium text-muted">
-          <TypeIcon className="h-5 w-5 shrink-0" aria-hidden="true" />
-          {club.data.is_public ? 'Public club' : 'Private club'} · Started{' '}
-          {formatRideDateLong(club.data.created_at)}
-        </p>
+        {/* Rendered whether or not there are rides, which the Timeline version
+            of this section was not. Hiding it cost nothing while
+            `ClubDetailPageMenu` reached `/clubs/detail/rides` from every club;
+            now this `See all` is the route's only entrance when there is
+            anything for it to open — hiding the section outright on an empty
+            list is exactly PD-125's defect, a screen nobody can reach. The
+            ride detail makes the same call for its Journal.
 
-        {club.data.description ? (
-          <ExpandableText className="px-4">{club.data.description}</ExpandableText>
-        ) : (
-          <p className="px-4 text-sm font-medium text-muted">
-            This club has not written a description, yet!
-          </p>
-        )}
+            `See all` is dropped when there are no rides: with none, the Rides
+            sub-page has nothing on it, so the link would be an entrance to
+            nothing. A member sees a create affordance where the chip strip
+            would sit instead — gated on `isMember` (`club.data.viewer_role`),
+            the same membership `017`'s `rides` INSERT policy actually
+            requires (`club_id is null or private.is_club_member(club_id)`).
+            A non-member still gets the plain "No rides are planned, yet!"
+            line: a control that always fails RLS is worse than no control. */}
+        <section className="flex flex-col gap-2">
+          <SectionHeader
+            title="Upcoming rides"
+            action={
+              upcoming.length > 0 ? { label: 'See all', href: routes.clubRides(id) } : undefined
+            }
+            className="px-4 py-0"
+          />
+          {upcoming.length === 0 ? (
+            isMember ? (
+              <ClubCreateRideRow />
+            ) : (
+              <p className="px-4 text-sm font-medium text-muted">No rides are planned, yet!</p>
+            )
+          ) : (
+            <div className="flex gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {upcoming.map((ride) => (
+                <RideChip key={ride.id} ride={ride} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Tiles, not the stacked `PostcardCard` list this section used to
+            draw — see `ClubPostcardCarousel` for the trade. `See all` always
+            draws, unlike the rides section above: `getClubFeed` and
+            `/postcards?club=<id>` are the same select (this file's own note
+            above `postcards`' `useQuery`), so an empty carousel and an empty
+            destination are the same fact, not two things that can disagree. */}
+        <section className="flex flex-col gap-2">
+          <SectionHeader
+            title="Postcards"
+            action={{ label: 'See all', href: `/postcards?club=${encodeURIComponent(id)}` }}
+            className="px-4 py-0"
+          />
+          {postcards.data.length === 0 ? (
+            <p className="py-8 text-center text-sm font-medium text-muted">
+              Nothing has been posted here, yet!
+            </p>
+          ) : (
+            <ClubPostcardCarousel postcards={postcards.data} />
+          )}
+        </section>
 
         {/* Join only — a constructive action stays visible on the page, where
             the destructive one (Leave) is tucked into the header's dots menu.
-            An owner is always a member and never sees this either way. */}
+            An owner is always a member and never sees this either way. Kept
+            directly above Members, its original neighbour before the
+            reorder — the pairing reads as "join, then see who's already in". */}
         {!isMember && (
           <div className="px-4">
             <ClubMembershipButton clubId={id} />
@@ -211,42 +260,26 @@ function ClubScreen() {
           <ClubMemberRail clubId={id} />
         </section>
 
-        {/* Rendered whether or not there are rides, which the Timeline version
-            of this section was not. Hiding it cost nothing while
-            `ClubDetailPageMenu` reached `/clubs/detail/rides` from every club;
-            now this `See all` is the route's only entrance, so hiding the
-            section on an empty list is exactly PD-125's defect — a screen
-            nobody can reach, with its own empty state ("No rides are planned,
-            yet!") as dead code behind it. The ride detail makes the same call
-            for its Journal. */}
-        <section className="flex flex-col gap-2">
-          <SectionHeader
-            title="Upcoming rides"
-            action={{ label: 'See all', href: routes.clubRides(id) }}
-            className="px-4 py-0"
-          />
-          {upcoming.length === 0 ? (
-            <p className="px-4 text-sm font-medium text-muted">No rides are planned, yet!</p>
-          ) : (
-            <div className="flex gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {upcoming.map((ride) => (
-                <RideChip key={ride.id} ride={ride} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {postcards.data.length === 0 ? (
-          <p className="py-8 text-center text-sm font-medium text-muted">
-            Nothing has been posted here, yet!
+        {/* Grouped with a 4px internal gap, not the section-sized 16px the
+            surrounding `gap-4` gives every other pair here — these two read
+            as one block (type/created-at, then the prose it introduces), and
+            the wider gap made them look like two unrelated sections. Product
+            owner, 2026-08-18. */}
+        <div className="flex flex-col gap-1">
+          <p className="flex items-center gap-1.5 px-4 text-sm font-medium text-muted">
+            <TypeIcon className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {club.data.is_public ? 'Public club' : 'Private club'} · Started{' '}
+            {formatRideDateLong(club.data.created_at)}
           </p>
-        ) : (
-          <div className="flex flex-col gap-4 px-4">
-            {postcards.data.map((postcard) => (
-              <PostcardCard key={postcard.id} postcard={postcard} />
-            ))}
-          </div>
-        )}
+
+          {club.data.description ? (
+            <ExpandableText className="px-4">{club.data.description}</ExpandableText>
+          ) : (
+            <p className="px-4 text-sm font-medium text-muted">
+              This club has not written a description, yet!
+            </p>
+          )}
+        </div>
       </div>
     </>
   )

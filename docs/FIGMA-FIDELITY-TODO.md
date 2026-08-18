@@ -360,22 +360,40 @@ is a drawn value this repo no longer builds:
       `role = 'admin'` with a trailing label and no ring; the rail's collapsed state shows
       only the host ring, on the owner, matching what `RideCrewRail` draws for the ride
       organizer. Opening the rail shows the same labels the members page does.
-- [ ] **`See all` adds three more `text-accent`-on-cream instances to the count already logged
+- [ ] **`See all` adds four more `text-accent`-on-cream instances to the count already logged
       against the ride detail.** That entry measured `#3D996B` on `--color-background`
       `#F2ECE6` at **3.00:1** against a 4.5:1 bar, and put it at three instances on that
       screen (`Directions`, `See all`, the crew rail's error fallback). **Count this screen's
       in two places, not one** — the first pass of this entry said two and missed the third,
       because two of them come through `SectionHeader`'s `action` prop and the third is the
       rail's own `See all` inside its expanded panel, where a grep of the page file cannot
-      see either kind:
+      see either kind. **Raised to four 2026-08-18**, when the reorder below gave `Postcards`
+      its own `See all` too:
 
       ```bash
-      grep -c "label: 'See all'" 'src/app/(app)/clubs/detail/page.tsx'   # 2, via SectionHeader
+      grep -c "label: 'See all'" 'src/app/(app)/clubs/detail/page.tsx'   # 3, via SectionHeader
       grep -c "text-accent" src/components/clubs/ClubMemberRail.tsx      # 1, the panel's own
       ```
 
-      Not a new failure mode — the same pairing, three more times on one screen; raised on the
+      Not a new failure mode — the same pairing, four times on one screen now; raised on the
       same PD-176 designer question rather than logged again as new.
+
+- [ ] **The section order and the Postcards section itself deviate further from the approved
+      mock, 2026-08-18 (`club-details-dropdown-removal`, PD-262).** The product owner settled a
+      new top-to-bottom order in conversation rather than in a redrawn frame: Upcoming rides,
+      Postcards, Members, the `Private club · Started …` line, then the description — Upcoming
+      rides moved to lead the screen (with a `Plan a ride` create affordance, `ClubCreateRideRow`,
+      when the club has none and the viewer can create one), and Members and Postcards swapped
+      from what an earlier revision of this same conversation had settled. **Postcards is a
+      horizontally-scrolling strip of square tiles** (`ClubPostcardCarousel`), not the stacked
+      `PostcardCard` list `AI / Club detail merged / 2026-08-17` draws and this section drew
+      until today — modelled on the ride detail's `RideJournal`, whose own tiles are still
+      unbuilt (PD-257), so this is the first *real* tile carousel in the app rather than a copy
+      of an existing one. The trade is deliberate and product-owner-approved: a tile shows only
+      the photo, not the byline, caption, likes or comment count `PostcardCard` drew in place —
+      a rider taps through to the postcard's own thread for those. No frame draws this shape at
+      all, so there is nothing in `design/` to diff it against; the geometry (112px tiles, 8px
+      gap) is read off `RideJournalEmpty`'s own tokens rather than measured from Figma.
 
 Blocked on schema, same as the ride detail: `formatRideTime` on `RideChip` renders one
 instant because `rides` has no end-time column — see that entry rather than repeating it.
