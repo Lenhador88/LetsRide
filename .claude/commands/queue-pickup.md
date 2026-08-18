@@ -1186,10 +1186,11 @@ Do because the calls that trip them are CCR calls made by a session that is not 
   fallback. Its three connectors were hand-attached and cannot be recreated from a session, so
   deleting it destroys the only recoverable path; `update_trigger enabled: true` restores it
   whole. **`…WJkMV` is the cheap hourly one and `…Gzy8e` is the irreplaceable one** — keep the two
-  straight in both directions. **A missing `enabled` key is not a disable**: measured 2026-08-18,
-  none of the account's 27 rows carried one, the hourly Routine included while it was firing. It
-  appears once explicitly set, so present-and-true is authoritative and absent is unknown.
-  `queue-dispatch.md` §Why this shape has the measurement and what was removed because of it.
+  straight in both directions. **A missing `enabled` key is not a disable**: measured 2026-08-18 at
+  20:05Z, none of the account's 27 rows carried one, including the hourly Routine, which had fired
+  at 17:09Z. The key appears once explicitly set, but it reports the flag and **not** whether the
+  Routine is firing — the one row that has ever carried it was hours past its due fire.
+  `next_run_at` is that answer. `queue-dispatch.md` §Why this shape has both measurements.
 - **Never archive the session the dispatcher Routine is bound to.** Archiving it stops the queue
   silently, with no error anywhere, and `update_trigger` has no `persistent_session_id`
   parameter — so recovery means a new trigger bound to a new session.

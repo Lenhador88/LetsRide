@@ -584,22 +584,47 @@ whole of the change, and each has a number behind it rather than a preference.
   gate could only ever read "off": a silent exit on every firing, which is exactly the failure it
   was written to prevent.
 
-  **The key does appear once it is explicitly set.** An `update_trigger enabled: true` at 20:40
-  came back carrying `"enabled": true`, and the row has carried it since. So the reading is:
-  **present and `true` = on; absent = unknown**, because never-set and off look identical. A gate
-  whose common case is "unknown, so proceed" is not a gate, which is why this one is deleted rather
-  than repaired.
+  **The key does appear once it is explicitly set, and it persists.** An
+  `update_trigger enabled: true` at 20:40Z came back carrying `"enabled": true`, and a *separate*
+  `list_triggers` at 20:52Z still showed it — which is what distinguishes a stored field from an
+  API echoing the parameter just written.
+
+  **What that licenses is narrow, and the trap is reading it as "the queue is running".** The one
+  row that has ever shown `enabled: true` was, at that moment, **two and a half hours past its due
+  fire** — the same call revealed the stall below. So: **present-and-`true` is authoritative about
+  the flag and says nothing about whether the Routine is firing.** Absent means unknown; never-set
+  and off have never been told apart, because **no row known to be off has ever been read back**.
+  The repo's one disabled Routine (`trig_01Gzy8eCiaXUUa1knvJnNpwy`) does not appear in
+  `list_triggers` at all, which is equally consistent with *a disabled trigger is omitted from the
+  listing* — a reading nothing here excludes, and one that would also mean the standing worry that
+  it has been deleted is a misread disable.
 
   ```
-  list_triggers limit=100 include_completed=true    # `enabled` present? then it is authoritative
+  list_triggers limit=100 include_completed=true    # enabled:true = the flag is on, nothing more
   ```
+
+  **The gate stays deleted for two reasons, and "the common case is unknown" is no longer one of
+  them** — since 20:40Z this Routine's common case is present-and-true. What survives: **nobody has
+  ever observed a disable's read-back**, so the gate cannot be shown to fire on the only condition
+  it exists for without the owner deliberately disabling something; and **pausing already stops the
+  queue**, because the cron is the only thing that fires it, which makes the gate redundant either
+  way.
 
   **`next_run_at` is the field that answers the real question**, and it is the one to check when
   the queue seems quiet: in the future = armed, in the past = it has stopped firing. Measured the
   same evening — `next_run_at` sat at 18:05Z with the clock at 20:40Z and no fire since 17:09Z, the
-  second time this Routine has been found silently stalled. Re-arming it is
-  `update_trigger enabled: true`, which moved it to 21:05Z. **Pausing still stops the queue**,
-  because the cron is the only thing that fires it.
+  second time this Routine has been found silently stopped.
+
+  **Re-arm `trig_01WJkMVXGzUVGDcC1njNmaan` — name the id, do not write "the trigger"** — with
+  `update_trigger enabled: true`. That exact command is also the documented restore for the
+  irreplaceable fallback `…Gzy8e`, so an unqualified "re-arm it" is one slip away from running two
+  dispatch Routines against one board.
+
+  **One observation, not a mechanism:** that call moved `next_run_at` to 21:05Z. Whether the
+  `enabled` parameter did it, or any `update_trigger` write recomputes the next fire, is untested.
+  What it does show is that **the schedule was not lost** — 21:05Z is the next `:05` boundary after
+  20:40Z, so the stored cron was retained and recomputed, and `cron_expression` did not need
+  re-sending.
 
 **What did not change: one dispatcher, not a chain.** The caps need one place that can see every
 story in flight at once. A chain — each child spawning the next — is simpler and cannot enforce any

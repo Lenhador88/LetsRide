@@ -2111,21 +2111,33 @@ it. Only the owner can rebuild it, by hand, in the Routines UI.
 **A missing `enabled` key is not a disable, and reading it as one is what made this file say the
 queue was switched off.** Measured 2026-08-18 at 20:05Z: **not one of those 27 rows carried an
 `enabled` key**, including `trig_01WJkMVXGzUVGDcC1njNmaan`, which had fired at 17:09Z. The key
-*does* appear once explicitly set — an `update_trigger enabled: true` at 20:40Z came back carrying
-it — so **present-and-true is authoritative, absent is unknown**, and the documented rule *a
-disabled row simply lacks the key* says "disabled" about a Routine that is firing. The two steps
-that gated on it were deleted the same day (`queue-dispatch.md` §Why this shape).
+*does* appear once explicitly set and it persists — an `update_trigger enabled: true` at 20:40Z
+came back with it and a separate `list_triggers` at 20:52Z still showed it — so the old rule *a
+disabled row simply lacks the key* says "disabled" about a Routine that is running.
+
+**But `enabled: true` is not "the queue is running", and the same call proved it**: that row was
+**two and a half hours past its due fire** when it showed the flag. Present-and-true is
+authoritative about the flag; absent is unknown, since no row known to be off has ever been read
+back. The two steps that gated on it were deleted the same day (`queue-dispatch.md` §Why this
+shape).
 
 **`next_run_at` is the check that works, and it caught a real stall the same evening**: it sat at
 18:05Z with the clock at 20:40Z and no fire since 17:09Z — the second time this Routine has been
-found silently stopped, with nothing on the board or in the repo showing it. `update_trigger
-enabled: true` re-armed it to 21:05Z. **Check it whenever the queue seems quiet**; nothing alarms
-on a Routine that has stopped firing, because every alarm in the design runs inside a firing.
+found silently stopped, with nothing on the board or in the repo showing it. **Check it whenever
+the queue seems quiet**; nothing alarms on a Routine that has stopped firing, because every alarm
+in the design runs inside a firing.
+
+**Re-arm by id** — `update_trigger trigger_id=trig_01WJkMVXGzUVGDcC1njNmaan enabled: true`, which
+moved it to 21:05Z. That is one observation rather than a mechanism: whether the `enabled`
+parameter re-anchors the schedule or any write does is untested. It does show the cron survived —
+21:05Z is the next `:05` after the call — so `cron_expression` need not be re-sent. **Say the id
+out loud**: the identical command is the documented restore for the irreplaceable fallback
+`…Gzy8e`, and running it on the wrong one puts two dispatch Routines on one board.
 
 ```
 # via the CCR MCP: list_triggers -> trig_01WJkMVXGzUVGDcC1njNmaan
 #   its prompt must name queue-dispatch.md, not queue-pickup.md
-#   next_run_at in the FUTURE = armed; in the past = it has stopped. Re-arm with enabled: true.
+#   next_run_at in the FUTURE = armed; in the past = it has stopped firing.
 ```
 
 **A procedure change needs no trigger edit, and STEP -1 is why that stays true.** The prompt says
@@ -2143,10 +2155,12 @@ asked by a fresh dispatcher instead; the one already asked still needs the owner
 **Two facts measured 2026-08-16 that the trigger list will not tell you, and both need re-reading
 rather than trusting:**
 
-- **`…WJkMV` was found paused**, `last_fired_at` 2026-08-14T09:36Z with `next_run_at` two days in
-  the past. Nothing on the board or in the repo showed it; the queue simply stopped. **Check
-  `next_run_at` is in the future** — the presence of the row is not the check, and neither is
-  `enabled`, which no row carries.
+- **`…WJkMV` was found stopped**, `last_fired_at` 2026-08-14T09:36Z with `next_run_at` two days in
+  the past. Nothing on the board or in the repo showed it; the queue simply stopped — and it
+  happened again on 2026-08-18, which is why the paragraphs above exist. **Check `next_run_at` is
+  in the future** — the presence of the row is not the check, and neither is `enabled`, which
+  reports a flag rather than whether anything is firing. *"Stopped" rather than "paused": a past
+  `next_run_at` is not evidence anyone paused it deliberately.*
 - **`trig_01Gzy8eCiaXUUa1knvJnNpwy` did not appear in `list_triggers` at all** (7 rows at
   `limit=100` then, 27 on 2026-08-18 with `include_completed=true`). If it is genuinely gone, the
   documented fallback is gone with it and only the owner can rebuild it, by hand, in the Routines
@@ -2154,8 +2168,9 @@ rather than trusting:**
 
 ```bash
 # via the CCR MCP: list_triggers  limit=100
-#   -> trig_01WJkMVXGzUVGDcC1njNmaan  next_run_at in the FUTURE = live; in the past = paused
-#   -> trig_01Gzy8eCiaXUUa1knvJnNpwy  present at all?  (the irreplaceable fallback)
+#   -> trig_01WJkMVXGzUVGDcC1njNmaan  next_run_at in the FUTURE = armed; in the past = it stopped
+#   -> trig_01Gzy8eCiaXUUa1knvJnNpwy  present at all?  (the irreplaceable fallback — and note a
+#      disabled trigger may simply be omitted from the listing, which is not excluded)
 ```
 
 **The one thing that design cannot prove in advance:** the connector test ran minutes after the
