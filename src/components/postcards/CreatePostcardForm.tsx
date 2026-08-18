@@ -178,7 +178,15 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
 
   const ready = upload.status === 'done'
   const capture = upload.status === 'done' ? upload.capture : null
-  const hasLocation = capture?.latitude !== null && capture?.longitude !== null
+  // `capture !== null` first, and not `capture?.latitude !== null`: optional
+  // chaining yields `undefined` when there is no capture, and `undefined !== null`
+  // is TRUE — so the short version reads "has a location" for a photo that has
+  // not been picked yet. Unreachable today because the only consumer sits behind
+  // `ready`, and tsc cannot see it because `undefined` is a legal comparand. Move
+  // the block out of that gate and a photo with no EXIF would draw the three
+  // buttons instead of saying it has no location.
+  const hasLocation =
+    capture !== null && capture.latitude !== null && capture.longitude !== null
   // What actually travels — the rider's choice applied to what the photo knew.
   // Computed here rather than at submit so the hidden inputs below can never
   // hold a value the control does not currently say.

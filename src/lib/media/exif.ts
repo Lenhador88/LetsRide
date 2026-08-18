@@ -164,6 +164,13 @@ function findExifTiffHeader(view: DataView): number | null {
       at += 1
       marker = view.getUint8(at + 1)
     }
+    // Re-check after the skip. The loop guard above was taken before `at` moved,
+    // so a run of padding at the very end of the buffer would otherwise reach
+    // the `getUint16` below with fewer than four bytes left and throw. The outer
+    // try/catch would turn that into the right answer anyway — this is here so
+    // the header's claim that every read is bounds-checked stays literally true,
+    // and so removing the wrapper cannot turn a clean miss into a thrown upload.
+    if (at + 4 > view.byteLength) return null
 
     // SOS — image data starts here and there are no more headers to find.
     if (marker === 0xda || marker === 0xd9) return null
@@ -400,13 +407,42 @@ type WallClockParts = {
   second: number
 }
 
-/** `+HH:MM` / `-HH:MM` to minutes east of UTC. */
+/**
+ * The widest offset any real zone has ever used: UTC-12:00 to UTC+14:00.
+ *
+ * `OffsetTimeOriginal` is two digits of hours, so the *syntax* reaches ±5999
+ * minutes — a camera with a corrupt clock setting can write `+99:59` and be
+ * perfectly well-formed.
+ */
+const MIN_REAL_OFFSET_MINUTES = -12 * 60
+const MAX_REAL_OFFSET_MINUTES = 14 * 60
+
+/**
+ * `+HH:MM` / `-HH:MM` to minutes east of UTC, or `null` for anything that is
+ * not an offset a place on Earth has.
+ *
+ * **An out-of-range value is treated exactly like an unparseable one — it falls
+ * back to the device offset rather than being sent.** That equivalence is the
+ * fix rather than a nicety: without it `'nonsense'` fell back and `'+99:59'` did
+ * not, so the second sailed through to `createPostcard`, was refused by the
+ * ±1440 Zod bound mirroring `064`'s CHECK, and the rider met *"Too big: expected
+ * number to be <=1440"* against a form with no field to correct. Re-picking the
+ * same photo re-read the same bytes and failed identically — the photo could not
+ * be posted at all, and each attempt orphaned a Storage object, because the
+ * parse failure returns ahead of `createPostcard`'s cleanup.
+ *
+ * The wall clock is still almost certainly right when the offset is garbage, so
+ * dropping the capture time entirely would be the wrong repair; the device's own
+ * offset is the same fallback this function's absence already triggers.
+ */
 function parseOffsetMinutes(text: string): number | null {
   const match = OFFSET_TIME_RE.exec(text)
   if (!match) return null
   const [, sign, hours, minutes] = match
   const total = Number(hours) * 60 + Number(minutes)
-  return sign === '-' ? -total : total
+  const signed = sign === '-' ? -total : total
+  if (signed < MIN_REAL_OFFSET_MINUTES || signed > MAX_REAL_OFFSET_MINUTES) return null
+  return signed
 }
 
 function resolveWithOffset(parts: WallClockParts, offsetMinutes: number) {

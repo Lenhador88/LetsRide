@@ -267,6 +267,58 @@ describe('parseExifCapture — capture time', () => {
   })
 })
 
+describe('parseExifCapture — a corrupt OffsetTimeOriginal', () => {
+  /**
+   * The defect this block exists for, found in review. `OffsetTimeOriginal` is
+   * two digits of hours, so `+99:59` is **well-formed** and reaches ±5999
+   * minutes. It used to be sent as-is: `createPostcard`'s Zod bound (mirroring
+   * `064`'s CHECK at ±1440) then refused the post with "Too big: expected number
+   * to be <=1440" — against a form with no field that produced it and no field
+   * that could fix it. Re-picking the same photo re-read the same bytes and
+   * failed identically, so the photo could not be posted at all, and every
+   * attempt orphaned a Storage object because the parse failure returns ahead of
+   * `createPostcard`'s cleanup.
+   *
+   * A garbage offset now behaves exactly like an unparseable one — fall back to
+   * the device. Asserting the FALLBACK rather than a null is the point: the wall
+   * clock is still almost certainly right, so dropping the capture time would be
+   * the wrong repair.
+   */
+  it.each(['+25:00', '+99:59', '-99:59', '-13:00', '+15:00'])(
+    'falls back to the device zone for %s rather than sending a value the schema will refuse',
+    (offset) => {
+      const result = inZone('Europe/Helsinki', () =>
+        parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: offset }))
+      )
+      expect(result.takenAt).toBe('2026-08-10T09:15:30.000Z')
+      expect(result.takenAtOffsetMinutes).toBe(180)
+    }
+  )
+
+  it.each(['-12:00', '+14:00'])('still accepts %s — the real world reaches both ends', (offset) => {
+    const result = parseExifCapture(
+      buildJpeg({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: offset })
+    )
+    const expected = offset === '-12:00' ? -720 : 840
+    expect(result.takenAtOffsetMinutes).toBe(expected)
+  })
+
+  it('never emits an offset the database CHECK would refuse, on any offset string', () => {
+    // The property, rather than the five examples above: whatever comes out is
+    // inside `064`'s bound. This is the assertion that survives someone widening
+    // the accepted range for a reason.
+    for (const hours of ['00', '05', '12', '13', '14', '15', '23', '99']) {
+      for (const sign of ['+', '-']) {
+        const { takenAtOffsetMinutes } = parseExifCapture(
+          buildJpeg({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: `${sign}${hours}:30` })
+        )
+        expect(takenAtOffsetMinutes).not.toBeNull()
+        expect(Math.abs(takenAtOffsetMinutes!)).toBeLessThanOrEqual(1440)
+      }
+    }
+  })
+})
+
 describe('parseExifCapture — the clamp', () => {
   it('drops a capture time in the future rather than letting the CHECK refuse the post', () => {
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
@@ -401,6 +453,15 @@ describe('parseExifCapture — files it must not choke on', () => {
     const full = new Uint8Array(buildJpeg({ dateTimeOriginal: AUGUST_NOON, gps: AMSTERDAM }))
     const truncated = full.slice(0, 24).buffer
     expect(parseExifCapture(truncated)).toEqual(NOTHING)
+  })
+
+  it('survives a run of 0xFF padding at the very end of the buffer', () => {
+    // The bounds check after the padding skip. Without it this reaches a
+    // getUint16 with fewer than four bytes left; the outer try/catch would still
+    // return NOTHING, so the assertion is that it does — and the check is what
+    // makes that true by design rather than by rescue.
+    const padded = new Uint8Array([0xff, 0xd8, 0xff, 0xff, 0xff, 0xff]).buffer
+    expect(parseExifCapture(padded)).toEqual(NOTHING)
   })
 
   it('returns nothing when the TIFF magic is wrong', () => {

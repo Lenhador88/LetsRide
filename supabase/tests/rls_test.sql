@@ -15083,6 +15083,35 @@ select assert_rejected($$
           120)$$,
   '23514', '064: ... and an offset with no capture time is refused too — the coupling runs both ways');
 
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_at, taken_at_offset_minutes)
+  values ('00000000-0000-0000-0000-00000064f018',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640b8.jpg',
+          now() - interval '1 hour', 5999)$$,
+  '23514', '064: an offset no place on Earth uses is refused — OffsetTimeOriginal is two digits of hours, so a camera with a corrupt clock setting writes a WELL-FORMED +99:59 and reaches 5999');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_at, taken_at_offset_minutes)
+  values ('00000000-0000-0000-0000-00000064f019',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640b9.jpg',
+          now() - interval '1 hour', -5999)$$,
+  '23514', '064: ... and the same in the other direction');
+
+-- The bound is PERMISSIVE on purpose — ±1440 rather than the real world's
+-- -720..840 — because the client is what narrows it, and a CHECK tight to the
+-- real world would refuse a rider over a camera setting they cannot see. These
+-- two prove the outer edge is still a wall rather than an absence.
+insert into postcards (id, author_id, image_path, taken_at, taken_at_offset_minutes)
+  values ('00000000-0000-0000-0000-00000064f020',
+          '00000000-0000-0000-0000-000000064001',
+          'postcards/00000000-0000-0000-0000-000000064001/00000000-0000-0000-0000-0000000640c0.jpg',
+          now() - interval '1 hour', 840);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000064f020'),
+  1, '064: UTC+14, the furthest offset any place on Earth uses, lands');
+
 -- ---------------------------------------------------------------------------
 -- 064.8  The coordinate TRIPLE arrives whole or not at all. Three nullable
 --        columns admit eight states, five of which are nonsense; without this
