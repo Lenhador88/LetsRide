@@ -189,11 +189,12 @@ What has to be known outside those files:
   fallback. `create_trigger` refuses the `connectors` parameter for this organization, so its
   three hand-attached connectors (Supabase, Linear, Vercel) cannot be recreated from a session;
   `update_trigger enabled: true` restores it whole. **`…WJkMV` is cheap and `…Gzy8e` is
-  irreplaceable** — keep the two straight in both directions. **A Routine's enabled state cannot
-  be read at all** — measured 2026-08-18, no row `list_triggers` returns carries an `enabled` key,
-  live or paused, so the old rule *read a disable back by checking the field is gone* returns
-  "disabled" against a Routine that is firing. Read `next_run_at` instead: in the future = live,
-  in the past = paused.
+  irreplaceable** — keep the two straight in both directions. **Do not read a missing `enabled` key as a
+  disable** — measured 2026-08-18, none of the account's 27 rows carried one, this Routine
+  included while it was firing, so the old rule *read a disable back by checking the field is gone*
+  says "disabled" about a live Routine. The key appears once explicitly set, so present-and-true is
+  authoritative and absent is unknown. Read `next_run_at` for the question that matters: in the
+  future = armed, in the past = it has stopped firing.
 - **Connectors attach to a session, not to a trigger**, which is why the *relay* is a reused
   session and why no amount of procedure can make it otherwise. Switching that Routine to
   `create_new_session_on_fire` loses five things at once, none of which a session can restore: the
@@ -238,9 +239,11 @@ What has to be known outside those files:
   PR and one `reviewer` pass, capped at three issues, and each issue is still claimed, commented
   and moved on its own. `queue-dispatch.md` STEP 4 has the partitioning and the ceiling.
 - **Disabling the Routine stops the queue, because the cron is the only thing that fires it.**
-  **Nothing in the queue reads that field any more, and nothing can**: measured 2026-08-18, not one
-  of the 27 rows `list_triggers` returns carries an `enabled` key — including this Routine, which
-  had fired an hour earlier — so a gate on it could only ever read "off". The two steps that
+  **Nothing in the queue reads that field any more**: measured 2026-08-18, not one of the 27 rows
+  `list_triggers` returned carried an `enabled` key — including this Routine, which had fired an
+  hour earlier — so on and off were indistinguishable and a gate on it could only ever read "off".
+  The key *does* appear once explicitly set (an `update_trigger enabled: true` that evening came
+  back with it), so **present-and-true is authoritative and absent is unknown**. The two steps that
   checked it are gone; `queue-dispatch.md` §Why this shape has the measurement. What remains
   unguarded is a hand-typed `fire_trigger`, which is *accepted* against a disabled trigger rather
   than refused (measured 2026-08-17). **It does not stop a child already building**: those are

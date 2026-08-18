@@ -576,18 +576,30 @@ whole of the change, and each has a number behind it rather than a preference.
 - **The dispatch record is gone**, replaced by the slot label. It cost one `list_comments` per
   in-flight issue on every firing plus one `save_comment` per issue on every dispatch, to carry a
   session id that only the session list could interpret.
-- **The switch gate is gone, because the field it read does not exist.** STEP 1 used to refuse to
-  dispatch unless `trig_01WJkMVXGzUVGDcC1njNmaan` read `enabled: true`, on the documented rule that
-  *a disabled row simply lacks the key*. Measured across all **27** triggers on this account:
-  **not one carries an `enabled` key**, including this Routine, which fired at 17:09 that day and
-  had a `next_run_at` in the future. So the field is absent in both directions and the gate could
-  only ever read "off" — a silent exit on every firing, which is exactly the failure it was written
-  to prevent. **Pausing the Routine still stops the queue**, because the cron is the only thing
-  that fires it; what is no longer claimed is that a hand-typed `fire_trigger` can be refused.
+- **The switch gate is gone, because absence of the field it read means nothing.** STEP 1 used to
+  refuse to dispatch unless `trig_01WJkMVXGzUVGDcC1njNmaan` read `enabled: true`, on the documented
+  rule that *a disabled row simply lacks the key*. Measured across all **27** triggers on this
+  account at 20:05 that day: **not one carried an `enabled` key** — including this Routine, which
+  had fired at 17:09. So a row that is on and a row that is off were indistinguishable, and the
+  gate could only ever read "off": a silent exit on every firing, which is exactly the failure it
+  was written to prevent.
+
+  **The key does appear once it is explicitly set.** An `update_trigger enabled: true` at 20:40
+  came back carrying `"enabled": true`, and the row has carried it since. So the reading is:
+  **present and `true` = on; absent = unknown**, because never-set and off look identical. A gate
+  whose common case is "unknown, so proceed" is not a gate, which is why this one is deleted rather
+  than repaired.
 
   ```
-  list_triggers limit=100 include_completed=true    # then look for `enabled` on any row
+  list_triggers limit=100 include_completed=true    # `enabled` present? then it is authoritative
   ```
+
+  **`next_run_at` is the field that answers the real question**, and it is the one to check when
+  the queue seems quiet: in the future = armed, in the past = it has stopped firing. Measured the
+  same evening — `next_run_at` sat at 18:05Z with the clock at 20:40Z and no fire since 17:09Z, the
+  second time this Routine has been found silently stalled. Re-arming it is
+  `update_trigger enabled: true`, which moved it to 21:05Z. **Pausing still stops the queue**,
+  because the cron is the only thing that fires it.
 
 **What did not change: one dispatcher, not a chain.** The caps need one place that can see every
 story in flight at once. A chain — each child spawning the next — is simpler and cannot enforce any

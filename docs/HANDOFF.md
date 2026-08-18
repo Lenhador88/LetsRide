@@ -2108,17 +2108,24 @@ only the owner or that session can reword it.
 2026-08-18 at `limit=100 include_completed=true`, where the account returns **27** rows and none is
 it. Only the owner can rebuild it, by hand, in the Routines UI.
 
-**`enabled` is not a readable field, and reading it as one is what made this file say the queue was
-switched off.** Measured 2026-08-18: **not one of those 27 rows carries an `enabled` key**,
-including `trig_01WJkMVXGzUVGDcC1njNmaan`, which had fired at 17:09Z and carried `next_run_at`
-18:05Z. So the documented rule — *a disabled row simply lacks the key* — cannot distinguish a live
-Routine from a stopped one in either direction. **`next_run_at` is the check that works**, and the
-two steps that gated on `enabled` were deleted the same day (`queue-dispatch.md` §Why this shape).
+**A missing `enabled` key is not a disable, and reading it as one is what made this file say the
+queue was switched off.** Measured 2026-08-18 at 20:05Z: **not one of those 27 rows carried an
+`enabled` key**, including `trig_01WJkMVXGzUVGDcC1njNmaan`, which had fired at 17:09Z. The key
+*does* appear once explicitly set — an `update_trigger enabled: true` at 20:40Z came back carrying
+it — so **present-and-true is authoritative, absent is unknown**, and the documented rule *a
+disabled row simply lacks the key* says "disabled" about a Routine that is firing. The two steps
+that gated on it were deleted the same day (`queue-dispatch.md` §Why this shape).
+
+**`next_run_at` is the check that works, and it caught a real stall the same evening**: it sat at
+18:05Z with the clock at 20:40Z and no fire since 17:09Z — the second time this Routine has been
+found silently stopped, with nothing on the board or in the repo showing it. `update_trigger
+enabled: true` re-armed it to 21:05Z. **Check it whenever the queue seems quiet**; nothing alarms
+on a Routine that has stopped firing, because every alarm in the design runs inside a firing.
 
 ```
 # via the CCR MCP: list_triggers -> trig_01WJkMVXGzUVGDcC1njNmaan
 #   its prompt must name queue-dispatch.md, not queue-pickup.md
-#   next_run_at in the FUTURE = live; in the past = paused. `enabled` is never present.
+#   next_run_at in the FUTURE = armed; in the past = it has stopped. Re-arm with enabled: true.
 ```
 
 **A procedure change needs no trigger edit, and STEP -1 is why that stays true.** The prompt says
