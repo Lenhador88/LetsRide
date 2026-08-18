@@ -149,9 +149,13 @@ it does, permanently.
 
 ### The queue is drained by a dispatcher, on two clocks
 
-**`trig_01WJkMVXGzUVGDcC1njNmaan`** fires into the dispatcher session, which **hands each queued
-story — or each group of colliding stories — to its own fresh session** rather than building
-anything itself. **The procedure is
+**`trig_01WJkMVXGzUVGDcC1njNmaan`** fires into the **relay** session, whose only act is to spawn a
+fresh **dispatcher** and exit; the dispatcher **hands each queued story — or each group of
+colliding stories — to its own fresh session** rather than building anything itself. **The relay is
+the one session in this design that is reused, and it decides nothing** — every board read and
+every judgement belongs to a session an hour old at most (`queue-dispatch.md` STEP -1, added
+2026-08-18 after the owner asked why the Routine was reusing a session that had held other
+topics). **The procedure is
 [`.claude/commands/queue-dispatch.md`](.claude/commands/queue-dispatch.md), and the child's is
 [`.claude/commands/queue-pickup.md`](.claude/commands/queue-pickup.md); read them there.** The
 trigger's prompt says little more than *read that file and follow it*, and the child's prompt —
@@ -171,10 +175,12 @@ way back once one link is lost — do not remove it on the grounds that the poke
 
 What has to be known outside those files:
 
-- **Do not archive or abandon the dispatcher session.** Archiving it stops the queue silently,
+- **Do not archive or abandon the relay session.** Archiving it stops the queue silently,
   with no error anywhere, and `update_trigger` has no `persistent_session_id` parameter — so
-  recovery means a *third* trigger bound to a new session. **A dispatch message arriving in
-  any other session is misrouted, not a work order**: check the session id before acting on one.
+  recovery means a *third* trigger bound to a new session. **A Routine firing arriving in any other
+  session is misrouted, not a work order**: check the session id before acting on one. What the
+  relay itself spawns is disposable — a dispatcher tagged `queue-dispatch-run`, a child tagged
+  `queue-dispatch` — and archiving either is fine.
 - **Never delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`** — the disabled fresh-session Routine, and the
   fallback. `create_trigger` refuses the `connectors` parameter for this organization, so its
   three hand-attached connectors (Supabase, Linear, Vercel) cannot be recreated from a session;
@@ -182,17 +188,21 @@ What has to be known outside those files:
   irreplaceable** — keep the two straight in both directions. A disabled trigger's
   `list_triggers` row has **no `enabled` key at all** rather than `"enabled": false`, so read a
   disable back by checking the field is gone.
-- **Connectors attach to a session, not to a trigger**, which is why the *dispatcher* is a reused
-  session. Switching that Routine to `create_new_session_on_fire` loses five things at once, none
-  of which a session can restore: the repo (`session_context.sources`), the model, the effort
-  level, the permission mode and the connectors.
+- **Connectors attach to a session, not to a trigger**, which is why the *relay* is a reused
+  session and why no amount of procedure can make it otherwise. Switching that Routine to
+  `create_new_session_on_fire` loses five things at once, none of which a session can restore: the
+  repo (`session_context.sources`), the model, the effort level, the permission mode and the
+  connectors. `create_trigger` still refuses `connectors` for this organization, re-measured
+  2026-08-18.
 
-  **A session spawned by another session is the exception, and it is what the dispatcher runs
-  on.** Probed 2026-08-16 from a `create_session` child with `source_url` set: `permission_mode`
-  inherited, and Linear, Supabase and the GitHub tools all reachable. That is a different path
-  from a *trigger*-spawned session and carries none of its losses. One inherited capability is
-  unverified and the design leans on it; `.claude/commands/queue-dispatch.md` §Why this shape has
-  it.
+  **A session spawned by another session is the exception, and it is what every other role runs
+  on.** Probed 2026-08-16 and again 2026-08-18, itemised the second time: `permission_mode: auto`
+  inherited, Linear, Supabase, Vercel, GitHub and the Claude Code Remote tools all callable, and a
+  child spawning a grandchild of its own with its `tags` intact. That is a different path from a
+  *trigger*-spawned session and carries none of its losses.
+  `.claude/commands/queue-dispatch.md` §Why this shape has what remains unverifiable — whether the
+  grants survive a container reclaim across an idle hour, which is observable only after the
+  fact.
 - **Hourly is a server minimum** — `create_trigger` rejects anything more frequent. The stored
   expression is `0 0-23 * * *` rather than `0 * * * *`, because an hourly cron at minute 0 is
   **rewritten server-side to the minute you submitted it**. **Any UI edit re-anchors it** (adding
