@@ -304,24 +304,21 @@ removal landing without its code repair is an outage.
   preflight; the function's own CORS note says to test both. The preflight was checked separately
   and answers `204` with `access-control-allow-methods: POST, OPTIONS` and `authorization,
   content-type` among the allowed headers — necessary, not sufficient. `6.3`'s live walk through
-  the actual sheet is still owed.
+  the actual sheet is still owed. **It is no longer blocked**: the product owner had the flag
+  removed on 2026-08-19 (*"I don't see a reason for the flag in dev"*), so `src/lib/flags.ts` is
+  deleted and the row renders unconditionally — walking it on DEV is the next thing 6.3 needs, and
+  the flag was the reason it could not be done. **A gate nobody can open blocks its own test**:
+  turning it on took setting a Vercel variable AND redeploying that target, both owner actions.
 
-  **The eighth case ran on 2026-08-19 and it is the success arm**: the correct password answers
-  `{"deleted": true}` with the account gone. All three arms of the re-authentication proof are now
-  exercised end to end against the deployed DEV build, which is what removed the last reason for
-  the flag.
-
-  **`NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` no longer exists.** The product owner removed it on
-  2026-08-19 — *"I don't see a reason for the flag in dev"* — and the row now renders
-  unconditionally. The gate had become self-defeating: it existed to keep an unenforced flow away
-  from riders, that reason was measured gone, and while it stood **nothing could turn it on**
-  (setting a Vercel variable and redeploying a target are both owner actions), so it also blocked
-  `6.3` from ever running. A gate nobody can open is a gate that blocks its own test.
+  **An eighth case ran on 2026-08-19 and it is the success arm**: the correct password answers
+  `{"deleted": true}` with the account gone. None of the seven had covered it, so all three arms of
+  the re-authentication proof are only now exercised end to end against the deployed DEV build —
+  which is what removed the last reason for the flag.
 
   **What that trades, recorded once rather than argued again:** the browser path reaches riders
-  before anyone has walked it. The three curl arms cover the function, the preflight is checked,
-  and `6.3` is now *reachable* — but until it runs, the sheet itself is unexercised in a real
-  browser, in front of an irreversible action.
+  before anyone has walked it. The curl arms cover the function and the preflight is checked, but
+  until `6.3` runs, the sheet itself is unexercised in a real browser, in front of an irreversible
+  action.
 
 ## 3. The flow
 

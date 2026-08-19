@@ -93,6 +93,24 @@ rediscovering this.
 otherwise get answered differently in every epic. Edit freely, but edit here rather than
 deciding again inside a PR.
 
+**Feature flags need a reason, and "it felt safer" is not one.** Standing instruction, product
+owner 2026-08-19: *"only use toggles if it seems really necessary, or if I ask for them."* Said
+after `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` was removed — a flag that had a real justification
+when it went up (the deployed Edge Function enforced no password yet, so the UI would have
+fronted a gate that checked nothing) and became dead weight the moment that was fixed.
+
+**The test is whether something concrete is wrong *right now* that the flag makes safe**, and it
+comes with the condition that retires it. "We might want to turn this off" is not that. Where a
+flag is genuinely warranted, say in the same comment what has to become true for it to be
+deleted — otherwise it outlives its reason silently, which is the failure this rule exists to
+stop.
+
+**Two costs are easy to miss.** A flag defaulting off makes the thing behind it **untestable**:
+nothing can reach it, so the walk cannot walk it and the browser path stays unexercised — which
+is what happened to `add-account-deletion` task 6.3. And a build-time `NEXT_PUBLIC_*` flag
+doubles as an undeclared DEV/PROD separator, because the two are separate Vercel env scopes; when
+it goes, the next promotion ships the feature to riders with nothing left saying so.
+
 **Dependencies are added deliberately.** **Nine** runtime dependencies today, and that is a
 feature — `lucide-react` and `@supabase/ssr` both came out with the code that needed them rather
 than lingering unused. Count rather than trust that number:

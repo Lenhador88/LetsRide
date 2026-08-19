@@ -40,30 +40,31 @@ import { useSignOut } from '@/lib/actions/navigate'
  * riders' postcards, and `supabase/functions/delete-account/` owns the
  * auth-row delete.
  *
- * **This row was gated behind a build-time flag until 2026-08-19, and the
- * flag is gone because the thing it was protecting against is.** When the gate
- * went up the deployed Edge Function enforced no password at all (reviewer
- * finding #1, 2026-08-16): committing the function ahead of the client inside
- * one branch does not make a redeploy fail-closed, since both merge together,
- * the client half auto-deploys and the function half deploys by hand later if
- * at all. Without the flag that merge would have put a live "Delete account"
- * affordance on `/profile` whose password was checked by nothing.
+ * **`Delete account` renders unconditionally, and the flag that used to hide
+ * it is gone (2026-08-19).** `accountDeletionEnabled()` and `src/lib/flags.ts`
+ * were deleted with this change; nothing replaces them. The gate went up on
+ * 2026-08-16 for one reason — the deployed Edge Function enforced no password
+ * at the time, so the sheet's field gated nothing and merging the flow would
+ * have put an irreversible affordance in front of a function checking nothing.
+ * That reason is spent: the owner redeployed 2026-08-17 and the build was
+ * verified by CONTENT on 2026-08-19 — seven cases including a real non-empty
+ * wrong password answering `reauth_required`, plus an **eighth** run the same
+ * day that none of the seven covered: the CORRECT password answers
+ * `{"deleted": true}` and the account is gone, so all three arms of the proof
+ * are exercised end to end (`openspec/changes/add-account-deletion/tasks.md`
+ * §2.6). A flag whose
+ * premise is false is not a safety margin, it is a switch nobody can reason
+ * about — and this one had a second cost: it made the browser path
+ * untestable, because no rider or walk could reach the sheet to exercise
+ * `functions.invoke` and its preflight (task 6.3). Removing it is what lets
+ * that run.
  *
- * **The function enforces it now, measured against the deployed build rather
- * than inferred.** 2026-08-19, all three arms end to end on DEV: no password
- * and a real non-empty wrong password both answer `reauth_required`, and the
- * correct password answers `{"deleted": true}` and the account is gone.
- * `openspec/changes/add-account-deletion/tasks.md` §2.6 carries the table.
- *
- * **What is still NOT exercised is the browser half, and removing the flag is
- * what makes exercising it possible.** Every one of those probes ran through
- * `curl`, which needs no CORS preflight, and the sheet below has never run in
- * a real browser because the row never rendered anywhere. The preflight itself
- * answers 204 with the right allow-headers — necessary, not sufficient. Task
- * 6.3 is that walk, and it was unreachable while the flag existed: a gate
- * nothing can turn on is a gate that also blocks its own testing, which is why
- * the product owner called it (2026-08-19) and why it is recorded here rather
- * than argued again.
+ * **What still gates the destructive call is the function, which is where a
+ * gate belongs.** It refuses on a missing or wrong password before anything is
+ * transferred, swept or deleted, under `verify_jwt`, taking its subject from
+ * the JWT and never from the body. A client-side flag never protected that
+ * endpoint anyway — it is live and any signed-in rider's own access token
+ * already reaches it.
  *
  * Sign out goes through `lib/actions/auth.ts`, not a bare
  * `supabase.auth.signOut()` as the v1 button did — and that stays true now that
@@ -77,6 +78,7 @@ export function ProfileMenu() {
   const [open, setOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const { signOut, pending } = useSignOut()
+
   return (
     <>
       <button

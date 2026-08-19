@@ -399,7 +399,7 @@ the words *"stopped being **Owner**"*, so the obvious command counts its own obi
 | | Blocker | Why it blocks |
 |---|---|---|
 | 1 | **The shell itself** | **Started 2026-08-07; the `webDir` gate cleared 2026-08-10 (PD-142).** `capacitor.config.ts`, the secure store and a building `out/` are in; `ios/` and `android/` are not, and cannot be generated here. What is left needs a Mac |
-| 2 | **Account deletion — built, deployed, exercised, and LIVE: the flag came out on 2026-08-19 and the row now renders for every rider. What is left is the browser walk (6.3)** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, groups 3/4/7 and 6.1 landed 2026-08-16 (`PD-102`): `ProfileMenu`'s Delete account row, the `DeleteAccountSheet` confirmation (a second bottom sheet over `/profile`, not a route — the Figma tree says so, `tasks.md` 3.3 used to assume otherwise), `deleteAccount` in `lib/actions/auth.ts`, one shared `not-found.tsx` for the four "content is unavailable" screens, and the route guard's `gone` state destroying local session data the moment a device discovers its own account is gone (`client-session-storage`'s ADDED requirement). **The re-authentication proof (D6/Q7) is deployed as of 2026-08-17T14:32Z** — the owner redeployed by hand to PROD v9 / DEV v5, `ezbr_sha256` `9793933d…` on both, newer than the directory's last **behavioural** commit (`list_edge_functions`, against `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/delete-account/` — and read what that range *contains*, because a comment-only commit lands in it too and reads as stale). That closes the redeploy window three tasks shared (2.2, 2.3a, `add-ride-map-tiles` 8.3), **none of whose boxes reflect it yet** — see PD-249, which also covers `resolve-ride-location` being deployed while four places including the public privacy page say it is not. **The behaviour is now verified too, not just the digest — 2026-08-19, seven cases against DEV, all passing** (`openspec/changes/add-account-deletion/tasks.md` §2.6 carries the table). Both free probes ran: a request with **no** `password` and separately a **wrong non-empty** one both answer `reauth_required` — the second being the one that matters, since an empty password never reaches `signInWithPassword` and so never exercises `classifyAuthError`. Replaying a real token against a deleted account answers `unauthorized`, which was reasoned from GoTrue's docs until this run. DEV's and PROD's digests are equal, which is no currency check but does make the two builds byte-identical, so the run describes PROD's function; PROD's own `SERVICE_ROLE_KEY` is separately proven by PD-86. **Nothing stands between a rider and this flow any more.** `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` and `src/lib/flags.ts` were removed on 2026-08-19 at the product owner's direction — *"I don't see a reason for the flag in dev"* — and `ProfileMenu`'s Delete account row and `DeleteAccountSheet` render unconditionally. An **eighth** case ran that day and is the one 2.6's seven had not covered: the **correct** password answers `{"deleted": true}` and the account is gone, so all three arms of the proof are exercised end to end. **The flag had also become self-defeating**, which is the durable half of why it went: turning it on took setting a Vercel variable *and* redeploying that target, both owner actions, so `6.3` — the one task that required it on — could never run while it stood. A gate nobody can open blocks its own test. Count what is still open rather than enumerating it — `grep -c '^- \[ \]' openspec/changes/add-account-deletion/tasks.md` — because **`1.6b` is still a live, undecided defect** (a club's last member leaving can destroy third-party postcards — PO decision, not built) and **Q4 is still open** (legal, blocking before launch not before build); `2.4` (idempotency under concurrency) and `6.3` (the live walk) are also open — and `6.3` is now the sharp one, because it is **reachable for the first time and not yet done**: every probe of this flow has been `curl`, which needs no CORS preflight, so the sheet itself has never run in a real browser while an irreversible control is live on DEV. `2.6` itself is closed |
+| 2 | **Account deletion — built, deployed, exercised against that build 2026-08-19, and UNGATED the same day. The row is live on `/profile`** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, groups 3/4/7 and 6.1 landed 2026-08-16 (`PD-102`): `ProfileMenu`'s Delete account row, the `DeleteAccountSheet` confirmation (a second bottom sheet over `/profile`, not a route — the Figma tree says so, `tasks.md` 3.3 used to assume otherwise), `deleteAccount` in `lib/actions/auth.ts`, one shared `not-found.tsx` for the four "content is unavailable" screens, and the route guard's `gone` state destroying local session data the moment a device discovers its own account is gone (`client-session-storage`'s ADDED requirement). **The re-authentication proof (D6/Q7) is deployed as of 2026-08-17T14:32Z** — the owner redeployed by hand to PROD v9 / DEV v5, `ezbr_sha256` `9793933d…` on both, newer than the directory's last **behavioural** commit (`list_edge_functions`, against `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/delete-account/` — and read what that range *contains*, because a comment-only commit lands in it too and reads as stale). That closes the redeploy window three tasks shared (2.2, 2.3a, `add-ride-map-tiles` 8.3), **none of whose boxes reflect it yet** — see PD-249, which also covers `resolve-ride-location` being deployed while four places including the public privacy page say it is not. **The behaviour is now verified too, not just the digest — 2026-08-19, seven cases against DEV, all passing** (`openspec/changes/add-account-deletion/tasks.md` §2.6 carries the table). Both free probes ran: a request with **no** `password` and separately a **wrong non-empty** one both answer `reauth_required` — the second being the one that matters, since an empty password never reaches `signInWithPassword` and so never exercises `classifyAuthError`. Replaying a real token against a deleted account answers `unauthorized`, which was reasoned from GoTrue's docs until this run. DEV's and PROD's digests are equal, which is no currency check but does make the two builds byte-identical, so the run describes PROD's function; PROD's own `SERVICE_ROLE_KEY` is separately proven by PD-86. **Nothing now stands between a rider and this flow.** `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` and `src/lib/flags.ts` were deleted on 2026-08-19 at the product owner's instruction, once the redeploy they were waiting for had been verified by content — so the row renders on every build, and the promotion to `main` is what puts it in front of real riders. No session can redeploy — there is no `supabase` CLI here, and the MCP server's `deploy_edge_function` is one of the four Supabase operations on `.claude/settings.json`'s `deny` list. Count what is still open rather than enumerating it — `grep -c '^- \[ \]' openspec/changes/add-account-deletion/tasks.md` — because **`1.6b` is still a live, undecided defect** (a club's last member leaving can destroy third-party postcards — PO decision, not built) and **Q4 is still open** (legal, blocking before launch not before build); `2.4` (idempotency under concurrency) and `6.3` (the live walk) are also open — `6.3` doubly so, because every one of 2.6's seven cases is `curl`, which needs no preflight, so the browser path is the untested half — **and the flag removal is what unblocked it**, so walking the sheet on DEV is now the thing owed before the promotion to `main`. `2.6` itself is closed |
 | 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
@@ -1566,18 +1566,19 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   alone kept a redeploy fail-closed, and reviewer finding #1 (2026-08-16) is that it does not** —
   both commits merge together, the client half auto-deploys to DEV on merge, and the function half
   deploys by hand, later, if at all, so merging this alone would have put a live "Delete account"
-  row on `/profile` whose password is checked by nothing. **What made it fail-closed was
-  `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED`** (`src/lib/flags.ts`), and **both were removed on
-  2026-08-19** once the function's enforcement was measured: the row now renders unconditionally
-  on both projects. `ProfileMenu`'s
+  row on `/profile` whose password is checked by nothing. **What made it fail-closed at the time:
+  `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED`** (`src/lib/flags.ts`) — the row did not render, on
+  either project, until that project's own env var read exactly `'true'`. **Both the flag and
+  `src/lib/flags.ts` were deleted on 2026-08-19 and the row now renders unconditionally**, once
+  the redeploy it was waiting for had been verified by content; see below. `ProfileMenu`'s
   Delete account row opens a sheet (`DeleteAccountSheet`, not a route — `2303:9370` turned out to
   be a second `ContextMenu`-shaped overlay over `/profile`, not its own screen), the action
   distinguishes the function's `reauth_required`, its `unauthorized` and its new
   `verification_unavailable` (a GoTrue call that could not complete, never read as "already
   deleted" — reviewer finding #2), and a deleted account's session is now destroyed on any device
   that discovers it, not just the one that ran the deletion (`client-session-storage`'s `gone`
-  GuardState). **Store blocker 2** — App Store 5.1.1(v) — is now "flow built,
-  enforced and live"; what remains is `6.3`, the browser walk.
+  GuardState). **Store blocker 2** — App Store 5.1.1(v) — went from "flow not built" to "flow
+  built, off by default" to, on 2026-08-19, a live row a rider can actually reach.
 
   **`2.6` closed 2026-08-19 — the live exercise ran against the redeployed build, seven cases, all
   passing**, and `3.4`'s open wrong-password arm closed with it. Three disposable accounts through
@@ -1590,20 +1591,27 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   equality supports, currency never being it. The table is in
   `openspec/changes/add-account-deletion/tasks.md` §2.6.
 
-  **An eighth case ran on 2026-08-19 and closed the last arm**: the CORRECT password answers
-  `{"deleted": true}` and the account is gone, which none of the seven had exercised. That is what
-  removed the reason for the flag, and the product owner removed it the same day.
+  **The flag is GONE, product owner 2026-08-19: *"Just get rid of the toggle and show the delete
+  account option"*.** `src/lib/flags.ts` and its test are deleted, `ProfileMenu` renders the row
+  unconditionally, and `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` is out of `.env.local.example`. It
+  was the right call rather than a shortcut: a flag whose premise is false is not a safety margin,
+  and this one had a second cost — it made `6.3` unrunnable, because nothing could reach the sheet
+  to exercise `functions.invoke` and its preflight. **What gates the destructive call is the
+  function**, which refuses a missing or wrong password before anything is transferred, swept or
+  deleted; a client-side flag never protected that endpoint, which is live under `verify_jwt` and
+  reachable by any signed-in rider's own token with or without a UI.
 
-  What is still open: **`6.3`, the live browser walk, and it is now the sharp one** — every probe
-  of this flow has been `curl`, which needs no CORS preflight, so the sheet itself has never run in
-  a real browser while an irreversible control is live on DEV. The preflight alone answers `204`
-  with the right allow-headers: necessary, not sufficient. It was unreachable while the flag stood
-  (turning that on took a Vercel variable *and* a target redeploy, both owner actions), which is
-  the durable argument for why the gate had to go rather than merely could. Also open: `2.4`
-  (idempotency under concurrent deletions — unverified, no new work), and two decisions that are the
-  owner's/legal's rather than a session's — `1.6b` (a club's last member leaving can still destroy
-  third-party postcards) and Q4 (retain a de-identified consent record — blocks launch, not the
-  build). **A second `delete-account` call with the same token still returns `unauthorized` as
+  **The consequence to hold, because it is the one the flag was also doing silently: `main` now
+  ships this to real riders on the next promotion, and the browser path has still never run.**
+  Every `2.6` case is `curl`, which needs no preflight. Merging to `development` puts it on DEV,
+  which is exactly where `6.3` should run — walk the sheet there before promoting. The failure
+  mode if the browser path is broken is an error on screen, not a wrong deletion, so this is a
+  sequencing note rather than a reason to hold the merge.
+
+  Also open: `2.4` (idempotency under concurrent deletions — unverified, no new work), `6.3` (the
+  live walk, now unblocked), and two decisions that are the owner's/legal's rather than a
+  session's — `1.6b` (a club's last member leaving can still destroy third-party postcards) and Q4
+  (retain a de-identified consent record — blocks launch, not the build). **A second `delete-account` call with the same token still returns `unauthorized` as
   success**, and that is unchanged, still correct, and now measured rather than inferred.
 
 - **The signed-URL fallback (`client-cache-invalidation`'s task 7 delta) covers `Avatar` and
