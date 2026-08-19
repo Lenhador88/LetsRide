@@ -182,21 +182,25 @@ predict, so it is worth a line. None of it is drift.
   which is `036`–`040`'s class. Unlike those, this file HAS a `$$` body, so the reduction
   deliberately preserved every comment inside `$fn$` and stripped only the header prose.
 
-  **This whole bullet is history on DEV as of `070`, and still live on PROD.** `search_places()`
-  is dropped there, so the reconciliation below **raises `42883 undefined_function` on DEV** —
-  which is the one project where nothing is wrong. Cast-free, so it answers 0 rather than erroring:
+  **This bullet has no live subject as of 2026-08-19.** `070` dropped `search_places()` from both
+  projects, so the reconciliation query returns zero rows on each — and with a `::regprocedure`
+  cast it raises `42883` instead. Keep the bullet as the worked example of a ledger that cannot
+  reproduce its own object; do not run the query. What it recorded, for the record: DEV and PROD
+  both held `md5(prosrc)` `1fc795cf…` over a 6,744-character body, equal to the repo file's `$fn$`
+  block, with comment digest `3d03b385…`.
 
-  ```sql
-  select md5(prosrc), md5(obj_description(oid, 'pg_proc')) from pg_proc
-   where proname = 'search_places' and pronamespace = 'public'::regnamespace;
-  -- PROD (until 070 promotes): 1fc795cfb8fc6e631c4bab6e056ed89e · 3d03b3859a949834c7f3f387ffb935d2
-  -- DEV: zero rows — the function is gone, and so is the table it read
-  -- The PROD digests equal the repo file's $fn$ block (6,744 chars) and its comment string,
-  -- which is what "both projects and the file agree" meant while both projects had it.
-  ```
-
-  Once `070` applies to PROD this bullet has no live subject at all: keep it as the worked example
-  of a ledger that cannot reproduce its own object, and stop running the query.
+- **`069` is the inverse of every entry above: DEV is the reduced one and PROD is byte-exact.**
+  Applied to PROD 2026-08-19 through a reduction that deliberately preserved the comments inside
+  `$$`, then proved by diffing the resulting OBJECTS against DEV, which already had the file —
+  eight digests over `pg_get_functiondef`, `pg_get_triggerdef`, `pg_policies`,
+  `information_schema.columns`, `pg_indexes`, the grants, the two widened CHECKs and the function
+  comments. **Seven matched and one did not**, which is the whole value of comparing objects rather
+  than text: `public.sweep_place_search_attempts`'s body is **946 characters on PROD and 248 on
+  DEV**. PROD equals the file (`md5(prosrc)` `6a8dfaac…`, byte-identical to its `$$` block); DEV's
+  apply stripped the in-body comment explaining why `query_canceled` is caught by name. Comment
+  only, so no behavioural difference — but it means **DEV cannot reproduce its own `069` object**,
+  exactly as `050` cannot, and a future reconciliation should take `069` from the file rather than
+  from DEV's ledger.
 
   **`049` needs no entry of its own beyond DEV's reduced form**, already noted in
   `docs/HANDOFF.md` §Migrations: same reduction, same class, and its body was verified by the same
