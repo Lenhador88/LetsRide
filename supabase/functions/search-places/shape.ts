@@ -322,12 +322,25 @@ export const ID_NAMESPACE = 'geoapify:'
  * every pick would raise `23514` on a value the rider can neither see nor
  * shorten. `069` widens both to 512.
  *
- * **512 is a bound, not the observed 126, and must not be trimmed toward it.**
- * The sample decodes to a 34-byte binary prefix (68 hex characters) followed by
- * the place name as hex-encoded UTF-8 — its tail is `Monument du Général Kléber`,
- * 29 bytes, and 68 + 2 × 29 = 126. So length is `68 + 2 × name bytes` and grows
- * with the name: a long Dutch name reaches ~175 before this prefix. That is a
- * formula read off one documented sample, not a maximum the vendor states.
+ * **512 is a bound, and the reason it must not be trimmed is now MEASURED
+ * rather than reasoned.** Two samples, two different prefixes:
+ *
+ *   | Sample | Total | Prefix | Name | Source |
+ *   |---|---|---|---|---|
+ *   | `Monument du Général Kléber` | 126 | 68 hex (34 bytes) | 29 bytes | vendor docs |
+ *   | `Amsterdam-Purmerend` ×5 | 112 | **74 hex (37 bytes)** | 19 bytes | live response, 2026-08-19 |
+ *
+ * An earlier revision of this block read the first sample as
+ * `68 + 2 × name bytes` and treated 68 as a constant. **It is not** — the live
+ * response predicts 106 under that formula and is 112. So the prefix varies
+ * with something the id does not disclose, and the length is not predictable
+ * from the name at all. That makes 512 *more* clearly right, not less: there is
+ * no formula to size a tighter bound from.
+ *
+ * What both samples agree on is the only thing that has to be true here: **both
+ * exceed the 100-character CHECK** that `066` and `067` put on the two columns,
+ * so `069` widening them is load-bearing rather than precautionary. With this
+ * file's `geoapify:` prefix the live id stores as 121 characters.
  */
 export const MAX_PLACE_ID_CHARS = 512
 

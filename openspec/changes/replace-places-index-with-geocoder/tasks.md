@@ -18,27 +18,72 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
       BAG is imported into OpenStreetMap, and this vendor's geocoder is OSM- plus
       OpenAddresses-derived, so the street should resolve. **"Should" is what the retired index was
       chosen on** — keep this task open until a real call returns a real payload.
-- [ ] 0.2 Record the length and character set of the returned `place_id`, and the longest one across
-      the two responses. This sets the CHECK in 3.2 (`design.md` §D6; default 512 if it cannot be
-      obtained).
+- [x] 0.2 Record the length and character set of the returned `place_id`, and the longest one across
+      the two responses. This sets the CHECK in 3.2 (`design.md` §D6).
 
-      **Partly answered from the vendor's own Places documentation, 2026-08-19 — enough to establish
-      the break, not enough to close the task.** The documented sample `place_id` is **126 lowercase
-      hex characters**, already past the 100-character CHECK that `066` and `067` put on
-      `clubs.location_place_id` and `rides.start_place_id`. So the break is established rather than
-      hypothetical: on the current schema **every pick would raise `23514` on both tables**.
+      **MEASURED against a live response, 2026-08-19** — `geocode/search?text=Amsterdam`, five
+      features, every `place_id` **112 lowercase hex characters**. Past the 100-character CHECK that
+      `066` and `067` put on `clubs.location_place_id` and `rides.start_place_id`, so on today's
+      schema every pick raises `23514` on both tables. `069` widening them to 512 is load-bearing
+      rather than precautionary. With the `geoapify:` namespace prefix the live id stores as **121**
+      characters.
 
-      **It is variable-length, and the tail is the place NAME.** Decoding that sample splits it into
-      a 34-byte binary prefix (68 hex characters) and the name as hex-encoded UTF-8 — the tail
-      decodes in full to `Monument du Général Kléber`, 29 bytes, and 68 + 2 × 29 = 126. Length is
-      therefore `68 + 2 × name bytes`, so a long Dutch name
-      (`Gemeentelijk Monument Sint-Janskerk, 's-Hertogenbosch`) reaches ~175 before the `geoapify:`
-      namespace prefix §D6 adds. **The 512 default is the right bound and must not be trimmed toward
-      the observed 126** — that is one sample of a formula, not a maximum the vendor states.
+      **The formula recorded here on the documentation pass was WRONG, and how it was wrong is the
+      reusable part.** That pass read the vendor's 126-character sample as a 34-byte binary prefix
+      (68 hex) plus the place name as hex-encoded UTF-8, and took 68 for a constant. The live
+      response carries a **74-hex prefix** for a 19-byte name: the formula predicts 106 and the real
+      answer is 112. So the prefix varies with something the id does not disclose, and length is
+      **not** predictable from the name.
 
-      **This stays `[ ]` on purpose.** The task asks for the length across the two responses from
-      0.1, and 0.1 has not run; a documented sample is evidence, not the exercise. A later session
-      reading `[x]` would take a formula for a measurement.
+      That strengthens the 512 bound rather than weakening it — there is no formula to size a
+      tighter one from. It is also exactly the shape CLAUDE.md warns about: a value derived from one
+      documented sample, labelled documentation-derived, and wrong the first time a real response
+      arrived. The label is what made it cheap to correct.
+
+- [x] 0.3 Record the `formatted` / `address_line1` / `address_line2` fields for both, so 1.3's mapping
+      to `label`/`meta` is written against a real payload rather than a documented one.
+
+      **Confirmed against the live response, 2026-08-19.** Every field `shape.ts`'s
+      `AutocompleteFeature` names is present and where it expects it: `properties.place_id`, `lat`,
+      `lon`, `name`, `formatted`, `address_line1`, `address_line2`. `toPlaceResult` is correct as
+      written and needs no change. Sample: `name` = `Amsterdam-Purmerend`, `address_line1` =
+      `Amsterdam-Purmerend`, `address_line2` = `Jaagweg, 1441 JD Purmerend, Netherlands`.
+
+      **Three things the payload carries that this design did not know about**, none blocking and
+      the second worth its own follow-up:
+
+      1. **`datasource.attribution` / `.license` / `.url` are per result** — `© OpenStreetMap
+         contributors`, `Open Database License`, pointing at openstreetmap.org/copyright. The vendor
+         states the obligation in-band rather than only in its terms, which feeds Q1/Q2 and confirms
+         the OSM credit already on `/legal/attributions` is the right one.
+      2. **`timezone.name` is in every feature** (`Europe/Brussels` here). CLAUDE.md records the
+         ride-time model as an interim — *"the correct model is wall-clock at the meeting point,
+         which needs a zone column on `rides`"* — and this supplies that zone free, on a call already
+         being made. Out of scope here; it removes the blocker from whatever picks that up.
+      3. **`address_line2` always ends in the country**, where the retired `search_places()` built
+         meta as `street, locality` with none. Every Meta line gains `, Netherlands`. Not worth
+         stripping — §D8 keeps foreign results deliberately findable and the country is what
+         distinguishes them — but it is a visible change to the result row.
+
+      **A quality warning, and it is the one to carry into 0.6:** `text=Amsterdam` returned five
+      `Amsterdam-Purmerend` bus stops in Purmerend and Ilpendam, every one `confidence: 1`, and **not
+      the city of Amsterdam**. That is the unfiltered `geocode/search` endpoint, which is precisely
+      why `buildLocalityUrl` sets `type=city` — so the locality mode is already right. The search
+      mode applies no such filter by design, so this is direct evidence that the vendor's own
+      ordering can bury the obvious answer under near-duplicate amenities.
+
+- [ ] 0.4 Confirm autocomplete costs 1 credit and record the per-call credit cost of the static map
+      endpoint, so §D4's arithmetic is measured rather than derived.
+- [ ] 0.5 Read the plan terms for **storing** results indefinitely and for showing results **in a
+      list** (Q1, Q2). Record the answer with its source; mark INFERRED if it stays unread. Start from
+      what PD-114's comments already establish — ODbL/OSM-derived storage rights that do not lapse,
+      and a required Geoapify credit alongside OpenStreetMap's on the free plan — rather than
+      re-running the provider research, which has now been done twice.
+- [ ] 0.6 **Branded POI coverage, against the retired index rather than in the abstract** (Q2b). Run
+      `Shell Pernis Werk`, `Jumbo Maastricht` and two of the owner's own habitual meeting points
+      through Autocomplete, and the same terms through `search_places()` on DEV. Record both result
+      sets. PD-114's research rates this vendor's POI layer *"patchy — only if it's present in the
+      OpenStreetMap database"*; this is the task that turns that into a number before a rider finds it.
 
 ## 1. PR 1 — the Edge Function, and nothing else
 
