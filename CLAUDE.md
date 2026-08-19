@@ -549,11 +549,12 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 70 files. DEV is at `069`, PROD at `068` — DEV-ahead since 2026-08-19, which is
-the ordinary state rather than drift.** `070` (PD-273) is the new file: written, not applied
-anywhere — it drops `public.places`, and per its own header it may only apply to a project once the
-`search-places`-backed client is deployed and live there, which gates it behind an owner deploy the
-same way `069` was gated behind one. Level is the *exception* rather
+**Applied state: 70 files. DEV is at `070`, PROD at `068` — DEV-ahead by two since 2026-08-19,
+which is the ordinary state rather than drift.** `069` and `070` (both PD-273) are what the gap
+holds. `070` drops `public.places`, `search_places()` and `locality_centroid()`, and per its own
+header it may only apply to a project once the `search-places`-backed client is *live* there —
+DEV met that on the merge of #279, PROD does not until the promotion, so PROD still carries the
+337 MB index and both retired functions and that is correct rather than drift. Level is the *exception* rather
 than the steady state: DEV-ahead is the ordinary state of a migration between its merge and its
 promotion, and it is not drift. **Do not read the count of unpromoted files off this sentence** —
 it named exactly one while two were waiting, which is the same defect as a stale number in a

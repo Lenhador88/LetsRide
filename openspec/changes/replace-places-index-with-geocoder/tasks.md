@@ -1,3 +1,29 @@
+# Tasks — replace the places index with a geocoder
+
+## Where this change stands, 2026-08-19
+
+**Everything through §8 has landed on DEV and in the repo; PROD is the whole remainder.** The
+boxes below were not ticked as the three PRs merged, so re-derive rather than reading them —
+they under-report. What is measured rather than assumed:
+
+```bash
+grep -rn "search_places\|locality_centroid" src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'   # 0
+ls scripts/places .github/workflows/places-load.yml 2>&1                               # gone
+grep -cE "'0(37|39|40|49|50):" supabase/tests/rls_test.sql                              # 0 — retired sections
+grep -c "069:" supabase/tests/rls_test.sql                                              # 30 — replacement asserted
+```
+
+```
+mcp__Supabase__execute_sql fpmrimzxadewsaiwpsel   -- DEV: places 0, retired fns 0, 14 MB
+mcp__Supabase__execute_sql zwprydcyryvudhurbnye   -- PROD: places 1, retired fns 2, 350 MB
+```
+
+**PROD still carries the index and both functions, and that is correct rather than drift.** `070`
+may only apply where the geocoder client is *live*; `main` is behind `development`, so PROD's app
+still calls `search_places()`. The remaining work is §7.5 and §8.6's second half, in that order:
+promote, apply `069` **before** the merge is served, apply `070` after. §9's live exercises are
+unrun on either project.
+
 ## 0. Measure the vendor before anything is written
 
 **No task here can issue a live vendor call** — `*.geoapify.com` is egress-blocked from every build
