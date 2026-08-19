@@ -182,14 +182,21 @@ predict, so it is worth a line. None of it is drift.
   which is `036`–`040`'s class. Unlike those, this file HAS a `$$` body, so the reduction
   deliberately preserved every comment inside `$fn$` and stripped only the header prose.
 
-  Both projects, and the file, now agree on the thing that matters:
+  **This whole bullet is history on DEV as of `070`, and still live on PROD.** `search_places()`
+  is dropped there, so the reconciliation below **raises `42883 undefined_function` on DEV** —
+  which is the one project where nothing is wrong. Cast-free, so it answers 0 rather than erroring:
 
   ```sql
   select md5(prosrc), md5(obj_description(oid, 'pg_proc')) from pg_proc
-   where oid = 'public.search_places(text,double precision,double precision)'::regprocedure;
-  -- DEV and PROD both: 1fc795cfb8fc6e631c4bab6e056ed89e · 3d03b3859a949834c7f3f387ffb935d2
-  -- and both equal the repo file's $fn$ block (6,744 chars) and its comment string
+   where proname = 'search_places' and pronamespace = 'public'::regnamespace;
+  -- PROD (until 070 promotes): 1fc795cfb8fc6e631c4bab6e056ed89e · 3d03b3859a949834c7f3f387ffb935d2
+  -- DEV: zero rows — the function is gone, and so is the table it read
+  -- The PROD digests equal the repo file's $fn$ block (6,744 chars) and its comment string,
+  -- which is what "both projects and the file agree" meant while both projects had it.
   ```
+
+  Once `070` applies to PROD this bullet has no live subject at all: keep it as the worked example
+  of a ledger that cannot reproduce its own object, and stop running the query.
 
   **`049` needs no entry of its own beyond DEV's reduced form**, already noted in
   `docs/HANDOFF.md` §Migrations: same reduction, same class, and its body was verified by the same

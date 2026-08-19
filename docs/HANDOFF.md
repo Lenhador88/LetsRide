@@ -808,14 +808,15 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — the repo holds 69, DEV is at `069` and PROD at `068`
+## Migrations — the repo holds 70, DEV is at `070` and PROD at `068`
 
-**`list_migrations` prints 71 on DEV, and that is not drift.** `063` was applied there in three
+**`list_migrations` prints 72 on DEV against 70 files, and that is not drift.** `063` was applied there in three
 increments — `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private` — while
-PROD holds it as the one consolidated file. Repo 69 files, PROD 68 rows, DEV 71 rows, one chain.
-The 69th file is `069` (PD-273), applied to DEV only: it is additive and must land on each project
-**before** the code that writes a new-format `place_id`, so PROD's apply belongs with that
-promotion rather than ahead of it.
+PROD holds it as the one consolidated file. Repo 70 files, PROD 68 rows, DEV 72 rows, one chain.
+The two DEV-only files are `069` and `070` (both PD-273). `069` is additive and must land on each
+project **before** the code that writes a new-format `place_id`; `070` is destructive and must land
+**after** the geocoder client is live there. Both therefore belong with the promotion rather than
+ahead of it, in filename order — `069` before the `main` merge is served, `070` after.
 `npm run db:drift` compares migration *names*, so it reads those two extra rows as a difference;
 the objects are identical, which is the comparison that decides.
 
@@ -1324,8 +1325,10 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   scoping correctly), a meeting_point change cleared them, and nothing raised.
 #   050 IS on PROD: #179 loaded places into production behind it rather than after
 #   it, which is the right order — PROD carries 736,538 places rows, so the
-#   candidate cap is guarding a loaded table there, not an empty one.
-ls supabase/migrations/ | wc -l          # 70 — 070 (PD-273) added since, written but not applied
+#   candidate cap is guarding a loaded table there, not an empty one. That is
+#   still true of PROD and no longer of DEV: 070 dropped the table there, which
+#   makes 049/050 dead code on DEV and live code on PROD until the promotion.
+ls supabase/migrations/ | wc -l          # 70 — 069 and 070 (PD-273) are DEV-only, PROD is at 068
 ```
 
 **`055` is PD-129's and is now on both projects.** It replaces one function body —
@@ -1399,9 +1402,19 @@ Read it before concluding either database has drifted.
 
 ## `places` — RETIRED, `070` (PD-273)
 
-Was the self-hosted Overture Maps index loaded on both projects (736,538 rows, ~337 MB) for the
+**Gone on DEV, still there on PROD — check before you reason about it:**
+
+```
+mcp__Supabase__execute_sql <ref>
+  select count(*) from pg_class where relname = 'places' and relkind = 'r';
+  -- DEV fpmrimzxadewsaiwpsel: 0   ·   PROD zwprydcyryvudhurbnye: 1
+```
+
+Was the self-hosted Overture Maps index loaded on both projects (736,538 rows, 336.9 MB) for the
 ride/club place typeahead. Dropped by `070` — `public.places`, `search_places()` and
-`locality_centroid()` — once the typeahead moved to a geocoder reached through the `search-places`
+`locality_centroid()` — on DEV 2026-08-19, and on PROD only once the promotion is serving there,
+per `070`'s own precondition. Retired
+once the typeahead moved to a geocoder reached through the `search-places`
 Edge Function proxy, because the index structurally could not find a residential street (Overture's
 Places theme is businesses and amenities, never addresses). The full load history, the attribution
 research and the workflow that loaded it are `git log -p -- docs/HANDOFF.md` and
@@ -1423,24 +1436,27 @@ posting?* — resolved both, and the answer differs per path rather than per scr
 
 **A picked place: knowable at post time.** The client holds the coordinate at submit, so the zone
 goes in the same INSERT as `departure_at` and `wallClockToUtc` resolves against it. No async
-correction. And every pickable place is Dutch today, so the existing fallback is already right:
+correction.
 
-```sql
-select country, count(*) from public.places group by country;   -- NL 736538, one row
-```
-
-**So "a picked ride never learns a zone" is true in principle and unreachable in practice** — it is
-work for the day the index grows, not now, and dropping it removes the one part of this story no
-session could measure (`*.geoapify.com` is egress-blocked, so a zone lookup could not be tested).
-**Do not hardcode Amsterdam for picked rides**; derive it, or the day the index grows is a silent
-wrong answer rather than a new feature.
+**This half was scoped against a Dutch-only index and PD-273 inverted it.** The reasoning recorded
+here until 2026-08-19 was that every pickable place is Dutch — measured with
+`select country, count(*) from public.places`, one row, NL 736,538 — so a picked ride could not
+reach a foreign zone and the `APP_TIME_ZONE` fallback was already right in practice. `070` dropped
+that index and the typeahead now reads a **global** geocoder through `search-places`, so **a rider
+can pick a foreign meeting point today**, on DEV now and on PROD at the promotion. The query above
+no longer runs on DEV, and re-deriving the same conclusion from PROD's surviving copy would read
+the retired index rather than the live search. **"A picked ride never learns a zone" is a real
+wrong answer now, not a theoretical one** — which raises this half of PD-193 rather than settling
+it. **Do not hardcode Amsterdam for picked rides**; derive it from the coordinate the client
+already holds.
 
 **A typed address: NOT knowable at post time, structurally.** The zone comes from the geocode, the
 geocode needs the Geoapify key, that key exists only in the function's secret store, and
 `requestRideMapRender` is fire-and-forget by requirement — `specs/ride-map-tiles` refuses a vendor
-call between Save and the redirect. So it lands after the insert, and **typing is the only way to
-enter a foreign address today**, the index having no foreign places. Which makes the typed path the
-whole of this story: `resolve-ride-location` must write `timezone` **and** shift `departure_at` in
+call between Save and the redirect. So it lands after the insert. **It is no longer the only way to
+enter a foreign address** — that was true of the Dutch-only index and is not true of the geocoder,
+per the paragraph above — so this is one of two paths this story now owes an answer, not the whole
+of it: `resolve-ride-location` must write `timezone` **and** shift `departure_at` in
 the same statement, or the organizer sees 08:00 for a ride they typed as 09:00, asynchronously,
 minutes after Save. The correction fires only when the resolved zone differs from `APP_TIME_ZONE`,
 so a Dutch ride is untouched.

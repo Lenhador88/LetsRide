@@ -152,8 +152,8 @@ describe('rounding a device GPS fix to ~1 km before it enters the app (PD-151)',
   /**
    * The honest substitute for "the search bias still selects the same rows
    * for a representative point," which PD-151 asked for and this suite
-   * refuses to write against `public.places`: that table holds 0 rows on
-   * BOTH projects until the Overture load runs (CLAUDE.md's `places` entry),
+   * refuses to write against `public.places` — a table that no longer exists
+   * on DEV at all (`070`) and is being dropped on PROD with the promotion,
    * so a same-rows assertion today compares an empty result to an empty
    * result and passes without testing anything.
    *

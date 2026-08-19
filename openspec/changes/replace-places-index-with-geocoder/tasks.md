@@ -1,3 +1,56 @@
+# Tasks — replace the places index with a geocoder
+
+## Where this change stands, 2026-08-19
+
+**§3 through §8 have landed on DEV and in the repo. §0, §2 and PROD are the remainder** — and the
+boxes below were not ticked as the three PRs merged, so re-derive rather than reading them. What is
+measured:
+
+```bash
+ls scripts/places .github/workflows/places-load.yml     # both gone
+grep -cE "'0(37|39|40|49|50):" supabase/tests/rls_test.sql   # 0 — retired sections
+grep -c "069:" supabase/tests/rls_test.sql                   # 30 — replacement asserted
+```
+
+```
+mcp__Supabase__execute_sql fpmrimzxadewsaiwpsel   -- DEV: places 0, retired fns 0, 14 MB
+mcp__Supabase__execute_sql zwprydcyryvudhurbnye   -- PROD: places 1, retired fns 2, 350 MB
+```
+
+**The obvious fourth command reads 1, not 0, and the survivor is not a defect.**
+`grep -rn "search_places\|locality_centroid" src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'` returns
+`src/lib/location/__tests__/rider-location.test.ts:325` — the retired name inside an `it(...)`
+title, a string rather than a comment, so the comment filter cannot see it. CLAUDE.md's comment
+trap one layer up. No call site survives.
+
+**What is NOT done, and none of it is closed by the promotion:**
+
+- **§0.4 and §0.5 are open vendor questions and survive PROD.** The credit cost of an autocomplete
+  call and of the static map, and the plan terms for storing results indefinitely and rendering
+  them on a non-Geoapify map. `shape.ts`'s ceiling block says its three vendor inputs are
+  *"all three DOCUMENTATION-DERIVED and none measured"* — 0.4 is what would make them measured.
+  Both need egress no session has.
+- **§2.2 is not satisfied, and it is `070`'s own precondition 1 on PROD.** `search-places` is
+  deployed v1 on both projects at 15:51Z/15:52Z and the deployed source is `71053cd` (#273) —
+  **#274, #275 and #276 are all undeployed**, `classifyLedgerError` among them. So the deployed
+  build answers a `23514` gate refusal with **502 `unavailable`**, telling the rider search is
+  broken rather than that a limit was reached. **A redeploy is owed on both projects** and it is
+  an owner action; verify by content, not by a moved digest.
+
+  **What the deployed v1 does NOT do is fail** — verified against the deployed source rather than
+  reasoned: its only database access is the ledger insert, no `.rpc(`, no `.from('places')`, and
+  every behavioural constant matches HEAD. So `070`'s precondition 1 is met and dropping `places`
+  is safe; the misclassification is the whole defect.
+
+  **But v1 fails CLOSED on that ledger insert, and the insert precedes the vendor call.** So on a
+  project where `place_search_attempts` does not exist yet, every search returns 502 — dead, not
+  degraded. That is what makes `069`-before-the-build a hard ordering constraint on PROD rather
+  than a preference, and the window is rider-visible.
+- **PROD:** promote, apply `069` **before** the promotion build is serving traffic, apply `070`
+  only **after** it is. `070`'s header is explicit that merged is not deployed, and DEV is the
+  worked example of getting that backwards — its `070` landed 102 seconds after the merge commit.
+- **§9's live exercises are unrun on either project.**
+
 ## 0. Measure the vendor before anything is written
 
 **No task here can issue a live vendor call** — `*.geoapify.com` is egress-blocked from every build
