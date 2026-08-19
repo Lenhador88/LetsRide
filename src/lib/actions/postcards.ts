@@ -127,18 +127,51 @@ export async function createPostcard(
     imagePath: formData.get('imagePath'),
     caption: formData.get('caption'),
     clubId: formData.get('clubId'),
+    takenAt: formData.get('takenAt'),
+    takenAtOffsetMinutes: formData.get('takenAtOffsetMinutes'),
+    takenLatitude: formData.get('takenLatitude'),
+    takenLongitude: formData.get('takenLongitude'),
+    takenLocationPrecision: formData.get('takenLocationPrecision'),
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
-  const { imagePath, caption, clubId } = parsed.data
+  const {
+    imagePath,
+    caption,
+    clubId,
+    takenAt,
+    takenAtOffsetMinutes,
+    takenLatitude,
+    takenLongitude,
+    takenLocationPrecision,
+  } = parsed.data
 
   // `.select('id').single()` with the row discarded: the id was only ever used
   // to build `` revalidatePath(`/postcards/${id}`) ``, which a cache key does
   // not need. `single()` stays because it is what turns a zero-row insert into
   // an error rather than a silent success.
+  // **The five capture columns are written here and nowhere else, ever.** `064`
+  // grants INSERT on them and no UPDATE at all, so this statement is the only
+  // moment in a postcard's life at which its capture time or its location can be
+  // set — which is what makes the composer's Hide / Region / Precise choice
+  // final rather than a default somebody can revise later.
+  //
+  // What arrives here has ALREADY been reduced on the device by
+  // `resolvePhotoLocation`. A precise coordinate the rider chose to hide never
+  // reaches this function, so there is nothing to be careful with.
   const { error } = await supabase
     .from('postcards')
-    .insert({ author_id: user.id, image_path: imagePath, caption, club_id: clubId })
+    .insert({
+      author_id: user.id,
+      image_path: imagePath,
+      caption,
+      club_id: clubId,
+      taken_at: takenAt,
+      taken_at_offset_minutes: takenAtOffsetMinutes,
+      taken_latitude: takenLatitude,
+      taken_longitude: takenLongitude,
+      taken_location_precision: takenLocationPrecision,
+    })
     .select('id')
     .single()
 

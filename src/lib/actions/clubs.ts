@@ -3,8 +3,30 @@ import { invalidate } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
-import { clubSchema } from '@/lib/validation/clubs'
+import {
+  clubSchema,
+  readClubLocation,
+  type ClubLocationInput,
+} from '@/lib/validation/clubs'
 import type { ActionState } from '@/lib/actions/state'
+
+/**
+ * One nullable object in the schema, four columns in the table (`066`).
+ *
+ * **Always all four keys, including on the `null` branch**, which is what makes
+ * "the rider cleared it" a real edit rather than a no-op: an update that simply
+ * omitted them would leave the old location standing while the form said
+ * otherwise. `clubs_location_coupling` refuses any other combination, so this
+ * is the only shape either write can take.
+ */
+function locationColumns(location: ClubLocationInput) {
+  return {
+    location_name: location?.location_name ?? null,
+    location_place_id: location?.location_place_id ?? null,
+    latitude: location?.latitude ?? null,
+    longitude: location?.longitude ?? null,
+  }
+}
 
 /**
  * Nothing but async functions may be exported from a `'use server'` module — a
@@ -114,6 +136,7 @@ export async function createClub(
     is_public: formData.get('is_public') === 'on',
     avatar_path: (formData.get('avatar_path') as string) || null,
     cover_image_path: (formData.get('cover_image_path') as string) || null,
+    location: readClubLocation(formData),
   })
 
   if (!parsed.success) {
@@ -124,9 +147,14 @@ export async function createClub(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to create a club.' }
 
+  // `location` is destructured OUT rather than spread: it is one object in the
+  // schema and four columns in the table, so `{ ...parsed.data }` would post a
+  // `location` key PostgREST answers with PGRST204 ("column not found").
+  const { location, ...columns } = parsed.data
+
   const { data: club, error } = await supabase
     .from('clubs')
-    .insert({ ...parsed.data, owner_id: user.id })
+    .insert({ ...columns, ...locationColumns(location), owner_id: user.id })
     .select('id')
     .single()
 
@@ -186,6 +214,20 @@ export async function markClubSeen(clubId: string): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
+  // `last_seen_at` is sent and then DISCARDED. 068 hangs a BEFORE INSERT OR
+  // UPDATE trigger on `feed_reads` that overwrites it with the server's `now()`,
+  // for 061 §3's reason rather than for tamper-resistance: the value is compared
+  // against `postcards.created_at` and `rides.created_at`, which 044 and 045
+  // make server-generated, and a comparison with one clock on each side is
+  // wrong in a way nothing logs — a phone running ten minutes fast marks read
+  // everything posted in the next ten minutes.
+  //
+  // It is still sent because the column must be in the request body: PostgREST
+  // builds `on conflict … do update set` over the columns the body carries, so
+  // dropping it leaves a SET list of the two key columns and the advance on
+  // every visit after the first depends on PostgREST still emitting a DO UPDATE
+  // at all. Nothing in this repo can gate that, and a watermark that silently
+  // stops advancing looks exactly like a badge that will not clear.
   await supabase
     .from('feed_reads')
     .upsert(
@@ -221,6 +263,10 @@ export async function markFeedSeen(): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
+  // Same as `markClubSeen`: the timestamp is sent and discarded, 068's trigger
+  // imposes the server's, and the column stays in the body so PostgREST keeps
+  // it in the `on conflict … do update set` list. The reasoning is written out
+  // once, above — do not "tidy" this line away in isolation.
   await supabase
     .from('feed_reads')
     .upsert(
@@ -349,6 +395,7 @@ export async function updateClub(
     is_public: formData.get('is_public') === 'on',
     avatar_path: (formData.get('avatar_path') as string) || null,
     cover_image_path: (formData.get('cover_image_path') as string) || null,
+    location: readClubLocation(formData),
   })
 
   if (!parsed.success) {
@@ -373,6 +420,7 @@ export async function updateClub(
       is_public: parsed.data.is_public,
       avatar_path: parsed.data.avatar_path,
       cover_image_path: parsed.data.cover_image_path,
+      ...locationColumns(parsed.data.location),
     })
     .eq('id', clubId)
     .select('id')

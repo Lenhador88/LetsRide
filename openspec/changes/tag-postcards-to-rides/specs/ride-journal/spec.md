@@ -22,7 +22,7 @@ as covered:
 | **The Journal is read under the caller's own RLS, with no privileged path** | **nothing in the suite** — see below |
 | The Journal screen's states | `npm run walk` and `reviewer`; **not the suite** |
 | Ordering, pagination, counts | suite covers the index only; order and cursor are `reviewer`'s |
-| No learning a ride you cannot see | suite covers the error shape; the embed rule is `reviewer`'s |
+| No learning a ride you cannot see | suite covers the error shape **and, since `062`, the embed's refusal**; what is left for `reviewer` is only the choice the amended requirement names |
 | The deferred notification's recipient set | **nothing** — it constrains a change not yet written |
 | Retention | suite, via the cascade assertions — no separate set |
 | Surfaces not built | `reviewer` |
@@ -152,8 +152,23 @@ predicate on the write side.
 
 ### Requirement: A postcard's ride tag SHALL be set once and SHALL NOT be editable by anybody, including its author
 
-`authenticated` SHALL hold SELECT and INSERT on `postcards.ride_id` and SHALL hold **no UPDATE** on
-it. The enforcement SHALL be the withheld column grant, not a policy predicate.
+`authenticated` SHALL hold INSERT on `postcards.ride_id` and SHALL hold **no UPDATE** on it. The
+enforcement SHALL be the withheld column grant, not a policy predicate.
+
+**`authenticated` SHALL hold no SELECT on `postcards.ride_id` either — amended by PD-166, decided
+2026-08-17 and shipped as `062`.** This requirement originally read *"SHALL hold SELECT and
+INSERT"*, and the SELECT half was load-bearing for the Journal: Postgres checks the column privilege
+to FILTER on a column as well as to return it, so `.eq('ride_id', …)` needed it. That made the grant
+simultaneously the Journal's mechanism and a correlation channel — a raw uuid comparable across
+postcards by a viewer who can resolve neither the ride nor its crew. The amendment gives the
+privilege to `public.ride_journal_postcard_ids(ride uuid)` instead, so the Journal keeps its filter
+and no client holds the column. Requirement *"The Journal SHALL be a filter, never a second
+audience"* below carries the read shape.
+
+**A tag write SHALL NOT ask for the column back in its returning clause.** The INSERT grant is
+untouched, so a postcard is still tagged once at creation; but an insert requesting the full
+representation reads every column and is refused `42501`. A returning clause SHALL name granted
+columns only.
 
 **The UPDATE policy SHALL NOT gain a conjunct naming `ride_id`, in either `using` or `with check`.**
 A column privilege gates the SET list; an RLS `WITH CHECK` is evaluated over the whole new row. They
@@ -259,28 +274,46 @@ later.
 
 ### Requirement: The Journal SHALL be read under the caller's own row security and SHALL NOT be read through any privileged path
 
-The Journal SHALL be a plain filtered select on `postcards` — `ride_id = <ride>` — issued by
-`src/lib/data/`. It SHALL NOT be a `security definer` RPC, an Edge Function, a service-role read, or
+The postcards a Journal renders SHALL be read from `postcards` by `src/lib/data/`, under the
+caller's own row security. The rows SHALL NOT come out of an Edge Function, a service-role read, or
 a view that runs as its owner.
 
-Inside a `security definer` function the `postcards` SELECT policy does not run, so such an RPC
-returns **every** postcard tagged to the ride to **every** caller — every club postcard to
-non-members, blocked riders' postcards to the rider who blocked them, hidden postcards to the rider
-who hid them, in one function. `015`'s `club_unread_counts()` is `security invoker` for exactly this
-reason and is the shape to copy.
+Inside a `security definer` function the `postcards` SELECT policy does not run, so a function that
+**returned rows** would hand **every** postcard tagged to the ride to **every** caller — every club
+postcard to non-members, blocked riders' postcards to the rider who blocked them, hidden postcards
+to the rider who hid them, in one function. `015`'s `club_unread_counts()` is `security invoker` for
+exactly this reason.
 
-#### Scenario: The read is invoker-rights
-- **WHEN** the Journal read is implemented
-- **THEN** any function it goes through SHALL be `security invoker`
-- **AND** a `security definer` implementation SHALL be treated as a defect even when its body filters
-  correctly, because the filter is then application code enforcing a visibility rule
+**Amended by PD-166 (`062`): the FILTER is a `security definer` function and the ROWS are not.**
+This requirement originally forbade any `security definer` path outright and specified the read as a
+plain `.eq('ride_id', …)`. Both halves rested on `authenticated` holding SELECT on `ride_id`, which
+`062` revokes — Postgres checks the column privilege to filter as well as to return, so a plain
+`.eq` is now `42501` for every rider. The shape that replaces it keeps everything the paragraph
+above is protecting:
 
-#### Scenario: Filtering by ride does not restate the audience
+- `public.ride_journal_postcard_ids(ride uuid)` returns **ids only**. It is `security definer`
+  because it is the only thing holding the column.
+- The caller reads those postcards through the ordinary `POSTCARD_SELECT` path, under its own RLS.
+  So the policy still decides every row that renders, and a too-permissive accessor cannot widen
+  what a rider sees — it could only name an id the subsequent read then drops.
+- The accessor's own filter therefore governs the **correlation** — which postcards belong to this
+  ride — which is the exposure PD-166 was filed about, and it is fenced twice: it reuses
+  `private.can_read_ride` (`060`, whose restatement of `rides` SELECT the suite pins textually), and
+  its restatement of `postcards` SELECT is pinned as whole text under the accessor's own name.
+
+#### Scenario: The rows are read under the caller's own row security
+- **WHEN** the Journal renders postcards
+- **THEN** they SHALL be selected from `postcards` by the caller, so the SELECT policy runs
+- **AND** no function SHALL return postcard rows, captions or image paths from a `security definer`
+  body, which is the defect the paragraph above describes
+
+#### Scenario: The filter names the ride and nothing else
 - **WHEN** the query narrows to one ride
-- **THEN** it SHALL do so with `.eq('ride_id', …)` and nothing else, in the same way the feed narrows
-  by `author_id` or `club_id`
-- **AND** it SHALL NOT re-filter by club, membership or block in application code, because the policy
-  has already run and a second filter is a second copy of the rule
+- **THEN** it SHALL do so by the ids `public.ride_journal_postcard_ids(<ride>)` returns, and nothing
+  else — the equivalent of the feed narrowing by `author_id` or `club_id`
+- **AND** it SHALL NOT re-filter by club, membership or block in application code, because both the
+  accessor and the row read have already applied the audience rule and a third copy is a third place
+  to drift
 
 #### Scenario: Two riders see two different Journals for one ride, correctly
 - **WHEN** two riders both on a ride's crew open its Journal, and one is a member of a club whose
@@ -464,9 +497,32 @@ The ride's title, meeting point, departure time and club SHALL reach a client on
 RLS-filtered embed on the postcard read. A raw `ride_id` SHALL NOT be resolved by a second lookup, and
 a NULL embed SHALL render nothing rather than a placeholder naming the ride.
 
-`POSTCARD_SELECT` is `*`, so the raw `ride_id` UUID starts arriving on every postcard read the moment
-`041` applies. That is accepted: a v4 UUID a viewer cannot resolve tells them only that *some* ride is
-attached, which is not a fact about anyone. What is not accepted is a client turning it into a name.
+**`062` makes the embed itself impossible, and that is an OPEN product question for PD-257 rather
+than a rule this change can settle.** A PostgREST embed is a join whose predicate references
+`postcards.ride_id`, and Postgres privilege-checks a column reference in a predicate exactly as it
+does one in a target list — the premise the whole grant change rests on. So after `062` a postcard
+cannot surface its ride **at all**: no chip, no name, no fallback, on any row including the reader's
+own. Two ways forward, and neither is chosen here:
+
+- **The chip stays absent.** What `062` recorded, on the ground that no frame in the design draws one
+  — which is why the consequence did not block that change. Costs nothing and closes the question.
+- **A second accessor, postcard → ride.** Then its visibility rule SHALL be stated the way the
+  Journal's is, before it is written: it hands back the correlation PD-166 closed, one postcard at a
+  time, so "which ride is this tagged to" needs the same `can_read_ride` answer the Journal's does,
+  and a NULL result SHALL be indistinguishable from a ride the viewer cannot see.
+
+Everything else in this requirement survives, and the first sentence's *intent* survives with it: a
+rider still SHALL NOT learn a ride they cannot see from a postcard they can. `062` enforces that more
+strictly than the embed did, by removing the read rather than filtering it.
+
+`POSTCARD_SELECT` was `*` when this was written, so the raw `ride_id` UUID started arriving on every
+postcard read the moment `041` applied — accepted here on the grounds that a UUID a viewer cannot
+resolve tells them only that *some* ride is attached. **That reasoning was wrong in one respect and
+PD-165 and PD-166 are the corrections**: the uuid is *comparable*, so two postcards carrying the same
+one say "these were the same ride" to a viewer who can resolve neither it nor its crew. PD-165 took
+the column out of `POSTCARD_SELECT`; `062` revoked the grant, which is what actually closed it,
+because the browser can query PostgREST directly whatever this app's own select lists say. What was
+never accepted, and still is not, is a client turning a tag into a name.
 
 #### Scenario: The ride chip is absent, not empty
 - **WHEN** a postcard is rendered to a viewer who cannot see its ride
@@ -579,14 +635,31 @@ Retagging, a journal count on `rides`, the postcard's photo location and flag, r
 the `postcard_on_ride` notification SHALL NOT be rendered as disabled or non-functional controls.
 
 A control that renders and does nothing is a worse artifact than an absent one — the reasoning that
-removed the Inbox tab rather than shipping it disabled, and that `RidePageMenu` already applied to the
-Journal row itself while the column did not exist.
+removed the Inbox tab rather than shipping it disabled.
 
-#### Scenario: The Journal row appears only when it works
-- **WHEN** `RidePageMenu` is updated
-- **THEN** the Journal row SHALL be added in the same change that makes the sub-page render
-- **AND** the doc comment recording *why it was omitted* SHALL be removed rather than left describing
-  a state that has ended
+**The Journal row is no longer the worked example, and the reversal is deliberate rather than drift.**
+This requirement was written when `RidePageMenu` omitted a Journal row because the column did not
+exist. PD-254 deleted that switcher and, with the product owner's approval, put a `Journal` **section**
+on the ride plan carrying an explicit empty state — *Nothing yet · Prep shots count* — on the opposite
+reasoning: a section nobody has seen is a feature nobody knows exists, and empty is the state every
+ride starts in. The two are not in conflict. An **empty state that says it is empty** is not a control
+that renders and does nothing; the rule still forbids the disabled row, and still forbids an affordance
+whose write the database would refuse.
+
+#### Scenario: The Journal section says what it is waiting for
+- **WHEN** the ride plan renders for a crew member and the ride has no tagged postcards
+- **THEN** the section SHALL draw its empty state rather than being hidden
+- **AND** it SHALL NOT promise content it cannot show
+- **AND** the doc comment recording *why it has no content* SHALL be removed in the same change that
+  gives it content, rather than left describing a state that has ended
+
+#### Scenario: The Add affordance and the write half ship together
+- **WHEN** the `Add` tile on that section is offered
+- **THEN** the composer it opens SHALL carry the ride, so a photo added from a ride's Journal appears
+  in it
+- **AND** until it does, the gap SHALL be recorded where a reader finds it rather than left to be
+  discovered — PD-254 shipped the tile ahead of the write half on the owner's own sequencing, and
+  logged it in `docs/FIGMA-FIDELITY-TODO.md` §Ride detail and in `RideJournal.tsx`
 
 #### Scenario: No edit-tag affordance
 - **WHEN** a postcard already carrying a ride is rendered, to its author or anyone else

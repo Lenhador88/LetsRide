@@ -15,6 +15,7 @@ import {
   buildPostcardImagePath,
 } from './constants'
 import { compressImage } from './compress'
+import { readExifCapture, type ExifCapture } from './exif'
 import { validateImageFile } from './validate'
 
 export type UploadProgress = { loaded: number; total: number }
@@ -85,9 +86,23 @@ export async function uploadObject(
 }
 
 /**
- * The postcard-specific wrapper: validate, compress (which strips EXIF as a
- * side effect — see compress.ts), pick a path under this rider's own folder,
- * and upload.
+ * The postcard-specific wrapper: validate, **read the EXIF**, compress (which
+ * strips that EXIF as a side effect — see compress.ts), pick a path under this
+ * rider's own folder, and upload.
+ *
+ * **The EXIF read is first, and the ordering is a requirement rather than a
+ * detail of this function.** `compressImage` destroys the metadata block, so
+ * after it there is nothing left to read — for ever, for that photo. It lives
+ * here, in the one function that owns both steps, precisely so a caller cannot
+ * get the order wrong: moving the read after the compression produces a feature
+ * that silently always returns nulls, with no error, no failing build, and a
+ * composer that truthfully reports the photo has no location.
+ *
+ * What comes back is what the photo KNEW, not what will be uploaded. The rider's
+ * Hide / Region / Precise choice is applied to it afterwards, in the composer,
+ * by `resolvePhotoLocation` — because the choice is made after they can see the
+ * photo, and because reducing it here would mean the precise value had already
+ * been decided about before anyone was asked.
  *
  * Compression and upload are two separate awaits on purpose, and the
  * returned path is deterministic (built once, before the upload starts) so a
@@ -102,7 +117,7 @@ export async function uploadObject(
 export async function uploadPostcardImage(
   file: File,
   options: UploadObjectOptions = {}
-): Promise<{ path: string }> {
+): Promise<{ path: string; capture: ExifCapture }> {
   const validation = validateImageFile(file)
   if (!validation.ok) throw new Error(validation.error)
 
@@ -110,11 +125,14 @@ export async function uploadPostcardImage(
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Sign in to upload.')
 
+  // BEFORE compressImage. See the note above; this line cannot move.
+  const capture = await readExifCapture(file)
+
   const { blob } = await compressImage(file)
   const path = buildPostcardImagePath(session.user.id)
 
   await uploadObject(path, blob, options)
-  return { path }
+  return { path, capture }
 }
 
 /**

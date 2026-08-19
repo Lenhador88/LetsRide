@@ -4,6 +4,7 @@ import { useActionState, useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
+import { PlaceSearchField, type PlaceValue } from '@/components/ui/PlaceSearchField'
 import { Textarea } from '@/components/ui/Textarea'
 import { DeleteRideControl } from '@/components/rides/DeleteRideControl'
 import { updateRide } from '@/lib/actions/rides'
@@ -13,6 +14,7 @@ import { useRestoreChecked, useRestoreSelection } from '@/lib/actions/retain'
 import { APP_TIME_ZONE, formatRideDepartureInput } from '@/lib/utils'
 import {
   RIDE_DESCRIPTION_MAX,
+  RIDE_LOCATION_FIELD_NAMES,
   RIDE_MEETING_POINT_MAX,
   RIDE_ROUTE_MAX,
   RIDE_TITLE_MAX,
@@ -61,6 +63,19 @@ export function EditRideForm({
   const [title, setTitle] = useState(ride.title)
   const [description, setDescription] = useState(ride.description ?? '')
   const [meetingPoint, setMeetingPoint] = useState(ride.meeting_point)
+  // Seeded from the stored pick, so an edit that never touches the location
+  // saves it back unchanged. Without this an unrelated edit — a new title —
+  // would post three empty fields and clear a coordinate the rider chose.
+  const [startPlace, setStartPlace] = useState<PlaceValue | null>(
+    ride.start_place_id !== null && ride.latitude !== null && ride.longitude !== null
+      ? {
+          name: ride.meeting_point,
+          placeId: ride.start_place_id,
+          lat: ride.latitude,
+          lon: ride.longitude,
+        }
+      : null
+  )
   const [routeDescription, setRouteDescription] = useState(ride.route_description ?? '')
   const [departureAt, setDepartureAt] = useState(formatRideDepartureInput(ride.departure_at))
   const [maxRiders, setMaxRiders] = useState(
@@ -97,6 +112,13 @@ export function EditRideForm({
       max_riders: rawMax ? Number(rawMax) : null,
       is_public: isPublic,
       club_id: clubId || null,
+      location: startPlace
+        ? {
+            start_place_id: startPlace.placeId,
+            latitude: startPlace.lat,
+            longitude: startPlace.lon,
+          }
+        : null,
     })
     const field = parsed.success ? undefined : parsed.error.issues[0]?.path[0]
     if (typeof field === 'string') {
@@ -145,13 +167,17 @@ export function EditRideForm({
           onChange={(event) => setDescription(event.target.value)}
         />
 
-        <Input
-          name="meeting_point"
+        {/* Same field as Create, same rule: typing throws the pin away. */}
+        <PlaceSearchField
           label="Starting location"
-          required
-          maxLength={RIDE_MEETING_POINT_MAX}
-          value={meetingPoint}
-          onChange={(event) => setMeetingPoint(event.target.value)}
+          sheetTitle="Set start location"
+          placeholder="Search location"
+          value={startPlace}
+          onChange={setStartPlace}
+          names={RIDE_LOCATION_FIELD_NAMES}
+          maxNameLength={RIDE_MEETING_POINT_MAX}
+          freeText={{ text: meetingPoint, onTextChange: setMeetingPoint, required: true }}
+          disabled={pending}
         />
 
         <div className="flex flex-col gap-1.5">

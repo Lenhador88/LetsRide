@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Use to review a branch, PR, or set of changes before merge. Always run this after `data` or `feature` completes work — the value comes from reviewing code it did not write. Reports findings; does not fix them. Which passes run is decided by what the diff touches — a code or SQL diff gets the RLS and data-exposure audit, a docs diff gets the documentation-claims audit, and the scope pass runs on anything from a queue pickup.
-tools: Read, Glob, Grep, Bash, ReportFindings, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__list_migrations, mcp__Supabase__get_advisors, mcp__Linear__get_issue, mcp__Linear__list_issues, mcp__github__pull_request_read, mcp__github__get_file_contents, mcp__github__actions_list, mcp__github__get_job_logs
+tools: Read, Glob, Grep, Bash, ReportFindings, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__list_migrations, mcp__Supabase__list_edge_functions, mcp__Supabase__get_advisors, mcp__Linear__get_issue, mcp__Linear__list_issues, mcp__Linear__list_comments, mcp__github__pull_request_read, mcp__github__get_file_contents, mcp__github__actions_list, mcp__github__get_job_logs
 model: opus
 ---
 
@@ -33,6 +33,19 @@ to the doc-claims pass and fails the same silent way. `get_issue` and `list_issu
 `tools:` line for that; probe them the same two ways, and if they are absent say which ids went
 unresolved. Measured 2026-08-09: a review asked to check six ids reached none of them, and the
 diff it passed asserted a status for every one.
+
+**Read the COMMENTS, not only the body — the body is routinely the stale half.** `list_comments`
+is on the line for that, granted 2026-08-18 by the product owner: *"Its important to get the
+context of comments."* This repo corrects a stale issue by **commenting** on it rather than
+rewriting it, deliberately, so the superseded reasoning survives beside what replaced it. That
+convention makes `get_issue` alone actively misleading rather than merely incomplete — PD-114's
+body still recommends **Mapbox** as the geocoding vendor, and its top comment records that the
+decision was settled as **Geoapify** nine days earlier and is already deployed and rendering.
+
+So a finding of the shape *"the diff contradicts its issue"* is not reportable until you have read
+that issue's comments. Check the direction before you write it up: the diff following a comment
+that overtook the body is **correct**, and filing it as a contradiction sends the author to
+re-litigate a decision their own board already made.
 
 **Probe rather than expect — and weight your own probe over `PD-184`.** The block above sends you
 to read a `PD-` id the diff names, so you will reach that issue, and its body asserts as measured
@@ -336,6 +349,29 @@ Ask, specifically:
   `execute_sql` with `select version, name from supabase_migrations.schema_migrations
   order by version` gives the same answer, and that table also reveals the *apply order*,
   which on this project deliberately differs from the file order.
+- **`supabase/functions/` touched, or a claim about a deployed function?** `tsconfig.json`
+  excludes that directory, so what `tsc` reads there is only what an included file imports —
+  `npx tsc --noEmit --listFiles | grep "/supabase/functions/"` is the list, one file today
+  (`resolve-ride-location/gates.ts`, pulled in by its unit test). **Anchor that pattern with the
+  slashes**: unanchored it also matches `@supabase/functions-js` and
+  `src/lib/supabase/functions.ts` and reads 5. Every Deno entrypoint is read by nothing, which is
+  what `CLAUDE.md` means by the least-guarded code in the repo.
+
+  No file read answers the question that matters — **is the deployed build this file** — and
+  neither does the digest. `list_edge_functions` returns `updated_at`; compare it against
+  `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/<name>/`, and a
+  file newer than the deploy means the deployed build is **stale**. Run the two commands rather
+  than trusting any file's account of the answer — `delete-account`'s standing is
+  `docs/HANDOFF.md` §Store readiness row 2, and that row covers no other function.
+
+  `status`, `verify_jwt` and `ezbr_sha256` are the second question — do the **two projects** run
+  the same thing. Two projects can be equal and both stale, so equality is never currency.
+  **A moved sha is necessary and not sufficient either**; that row requires verifying a redeploy
+  by *content*. This is the one check that needs **both** refs rather than §First's
+  one-ref-by-PR-type rule, because the comparison is the point. Probing the endpoint (a `401`
+  from `POST /functions/v1/<name>`) shows only that *something* is deployed behind a JWT check.
+  **No session can deploy one**, so a diff here leaves both projects behind until the owner
+  redeploys — a PR body implying the change is live is a finding.
 - **CI touched?** Check the description in `CLAUDE.md` against `.github/workflows/ci.yml`.
 - **Files or directories added, moved or removed?** Check the repo-layout tree in
   `CLAUDE.md`. It is a hand-maintained copy of `ls` and drifts within days.
@@ -446,10 +482,28 @@ names a component, a query or a cache key, so none can fire on a diff that touch
 story it picked, and **the argument that this is safe is you.** Nothing else looks at whether
 the diff matches the issue: CI checks that it compiles, not that it was asked for.
 
+**A diff carrying SEVERAL issues may be a dispatched group, and that is not scope creep.** The
+dispatcher hands colliding stories — shared paths, two migrations, one shared primitive — to a
+single session on purpose, because building them apart is what produces duplicate migration
+numbers and divergent implementations of one component
+(`.claude/commands/queue-dispatch.md` STEP 4). So a multi-story branch is legitimate **when the
+caller names the issues and the collision that grouped them**, and STEP 4c requires it to. Judge
+each story against its own issue and its own commit range, exactly as you would a solo pickup.
+
+**What is still a finding:** a story in the diff that the caller did not name, a group whose
+stated collision is not visible in the code (three stories that touch nothing in common were not
+grouped, they were chosen), and a group so large that you cannot honestly cover it in one read —
+say that plainly rather than reviewing part of it and reporting a clean pass. **The ceiling is
+three issues, at most one of them `size: L`, and at most two issues when there is an `L`** — each
+half is a finding on its own, and the `L` bound is the one a count-only reading misses.
+
 **You usually run before the PR exists, so you cannot read a PR body — the caller has to hand
-you the material.** STEP 4c requires the prompt that invokes you to carry the issue being
-built, each fold-in with its one-line relatedness justification and its five ratings, and the
-commit range that is the story itself as opposed to the fold-ins. **If a prompt mentions
+you the material.** STEP 4c requires the prompt that invokes you to carry every issue being
+built **with its `size`, stated by the session that built it**, each fold-in with its one-line
+relatedness justification and its five ratings, and the commit range that is each story itself as
+opposed to the fold-ins. **`size` is on that list so the `L` bound above has an input** — nothing
+on the board carries it, so a prompt that omits it leaves you no way to recover it, and a missing
+`size` on a multi-story group is itself the finding. **If a prompt mentions
 fold-ins but does not supply those, say so as a finding and review what you can** — an
 unverifiable scope claim is exactly the thing this pass exists to surface, and guessing the
 boundary from the diff alone would launder it.

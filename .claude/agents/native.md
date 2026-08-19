@@ -81,21 +81,28 @@ without confirming it still says what the file claims.
 
 1. **Account deletion.** App Store guideline 5.1.1(v) rejects any app offering account creation
    without in-app deletion; Play has its own web-accessible requirement. A proposal already
-   exists at `openspec/changes/add-account-deletion/` — read it rather than starting over. It
-   needs an Edge Function (deletion needs elevated rights, so it cannot be a client write) and
-   a public `/legal/account-deletion` page.
+   exists at `openspec/changes/add-account-deletion/` — read it rather than starting over.
+   **Both things it said this needs are built**: `supabase/functions/delete-account/` is deployed
+   and `ACTIVE` on both projects, and `/legal/account-deletion` is live. The flow shipped with
+   PD-102 on 2026-08-16. **What is left is not only a live exercise**: `1.6b` is an open, undecided
+   build defect — a club's last remaining member *deleting their account* can destroy postcards
+   that are not theirs, and the default is a product decision nobody has made — and `2.4` is open
+   too (idempotency, already-deleted returning success, no partial state before the auth delete).
+   List them rather than trust this line, because the unticked set mixes build work with owner
+   actions and live exercises:
+   `grep -n '^- \[ \]' openspec/changes/add-account-deletion/tasks.md`. Then read
+   `docs/HANDOFF.md` §Store readiness row 2 before scoping anything here.
 2. ~~**Dead navigation.**~~ **Resolved 2026-08-07** — the Inbox tab was removed rather than
    built (PD-100), so the bar draws four tabs and every one has a route. Kept here because the
    *rule* outlives the instance: a reviewer taps every tab, and a tab that goes nowhere is a
    guideline 4.2 "minimum functionality" problem. Do not restore it from the design — Figma
    still draws five.
-3. **No edit or delete UI for rides or clubs.** A rider can create a ride and never cancel or
-   correct it. The `update`/`delete` policies exist live for all four — nothing calls them, so
-   it is an empty action layer rather than an unwired UI (no `deleteRide`, `updateRide`,
-   `deleteClub`, `updateClub`). **Narrower than "anywhere"**, which this line said until
-   2026-08-07: postcards, comments and profile all have working delete/update UI.
-   `docs/HANDOFF.md` §Store readiness row 4 corrected the same wording on 2026-08-07 and this
-   copy was missed.
+3. ~~**No edit or delete UI for rides or clubs.**~~ **Shipped — `PD-101`, in production since
+   2026-08-10.** All four actions exist (`updateRide`/`deleteRide` in `src/lib/actions/rides.ts`,
+   `updateClub`/`deleteClub` in `clubs.ts`), both edit routes exist, and each delete confirmation
+   enumerates its blast radius; club delete goes through `delete_owned_club` (`043`). Count them
+   rather than trust this line — `grep -c "export async function \(update\|delete\)\(Ride\|Club\)"
+   src/lib/actions/rides.ts src/lib/actions/clubs.ts`.
 4. **Permission strings.** Every iOS `NS*UsageDescription` must say *why* in the rider's terms,
    not the developer's. Background location is the one that gets scrutinised: it needs
    `UIBackgroundModes`, an Android foreground service, and a written justification at review.
@@ -111,11 +118,16 @@ without confirming it still says what the file claims.
 so did the decision; nobody had checked, because it is a dashboard setting with no file behind
 it. Do not escalate that blocker, it does not exist.
 
-**What does exist, and is worse:** `letsride`'s Site URL is `http://localhost:3000` and neither
-the production origin nor the preview alias is on the redirect allowlist, so **every link the
-app emails — signup confirmation and password recovery alike — lands a rider's phone on a dead
-local address.** That will fail a store review the first time a reviewer creates an account.
-`docs/ENVIRONMENTS.md` §Owner setup items 8 and 9.
+**The emailed-link outage this brief called worse is FIXED** — repaired 2026-08-07 and
+re-measured 2026-08-11: PROD's Site URL is `https://app.letsride.social` and its
+`http://localhost:3000/**` allowlist entry is gone. Do not escalate it either. **The rule it
+leaves behind is the one that matters for a bundle**: the native runtime origin is
+`https://localhost`, which is on no allowlist, and GoTrue *discards* an unlisted `redirect_to`
+rather than refusing it — so a confirmation email lands the rider on the app root with the error
+in a fragment nothing reads. That is why `next.config.ts` fails a `CAPACITOR_BUILD=1` build with
+`NEXT_PUBLIC_CANONICAL_ORIGIN` unset. Re-measure rather than trust this paragraph — both are
+dashboard settings with no file behind them, which is exactly how the sentence above went stale:
+`docs/ENVIRONMENTS.md` §The redirect allowlist carries the credential-free probe.
 
 **Supabase is on the free tier**, which auto-pauses after ~7 days idle
 and serves nothing when it does. All of these are **product-owner actions** and all are launch

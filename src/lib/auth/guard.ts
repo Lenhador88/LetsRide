@@ -82,6 +82,21 @@ export type GuardState =
    * state rather than being folded into "not onboarded" — see `resolveDestination`.
    */
   | { kind: 'unavailable' }
+  /**
+   * A session naming an account that no longer exists — the onboarding
+   * accessor answered with ZERO ROWS rather than an error (PD-102,
+   * `client-session-storage`'s ADDED "a session whose account no longer
+   * exists SHALL be destroyed"). Deliberately a fourth state rather than
+   * folded into `unavailable`, even though `resolveDestination` sends both to
+   * the same place: `unavailable` can be a transient read failure — a deploy
+   * mismatch, a dropped connection — and must never trigger destroying the
+   * rider's local session; `gone` can only mean the row is truly absent,
+   * which is the one case `guard-cache.ts`'s `read()` is allowed to react to
+   * that way. Collapsing the two would either destroy a signed-in rider's
+   * session on an ordinary network hiccup, or leave a deleted account's
+   * session sitting on a device forever — see `onboardingStateFrom`.
+   */
+  | { kind: 'gone' }
   | ({ kind: 'rider' } & OnboardingState)
 
 export function isPublicPath(pathname: string): boolean {
@@ -132,14 +147,16 @@ export function resolveDestination(pathname: string, state: GuardState): string 
   // route would otherwise bounce into a wizard that cannot help. Fail closed and
   // visibly rather than into it.
   //
-  // `unavailable` also covers the accessor returning ZERO ROWS for a caller with
-  // no `profiles` row. Read as "not onboarded" that would send the rider to the
-  // consent prompt, where `accept_terms()` has no row to update, returns NULL,
-  // and fails every submit — a trap with no exit. Unreachable today because
-  // `handle_new_user` guarantees the row, but `023` and the account-deletion
-  // proposal both name deleting a `profiles` row without its `auth.users` row as
-  // the thing that makes it reachable.
-  if (state.kind === 'unavailable') {
+  // `gone` is the accessor returning ZERO ROWS for a caller with no `profiles`
+  // row — split out from this branch as its own `GuardState` (PD-102), but
+  // routed to the exact same destination: read as "not onboarded" either way
+  // would send the rider to the consent prompt, where `accept_terms()` has no
+  // row to update, returns NULL, and fails every submit — a trap with no exit.
+  // `023` and the account-deletion proposal both name deleting a `profiles`
+  // row without its `auth.users` row as the thing that makes this reachable —
+  // account deletion is now the routine way, not the deploy-mismatch case
+  // `unavailable` was written for.
+  if (state.kind === 'unavailable' || state.kind === 'gone') {
     // The auth entry paths must fall through rather than redirect. They are
     // public but still reach this branch (a signed-in rider is normally bounced
     // off them), so sending /auth/login to /auth/login is an infinite loop — and
@@ -221,15 +238,22 @@ export function needsOnboardingState(pathname: string): boolean {
  * un-onboarded, the rider goes to the consent prompt, where `accept_terms()` has
  * no row to update, returns NULL, and fails every submit — a trap with no exit.
  *
- * Unreachable today, because `handle_new_user` guarantees the row. `023` and the
- * account-deletion proposal both name deleting a `profiles` row without its
- * `auth.users` row as the thing that makes it reachable, which is why this is a
- * tested branch rather than a comment.
+ * **Zero rows and an error are no longer the same `GuardState` (PD-102).**
+ * `.maybeSingle()` answers `{ data: null, error: null }` for zero rows and
+ * `{ data: null, error: <PostgrestError> }` for a read that genuinely failed —
+ * a missing function, a dropped connection. The first can only mean the
+ * account is gone; the second says nothing about whether it still exists.
+ * `resolveDestination` sends both to the same place, but `guard-cache.ts`'s
+ * `read()` must not react to them the same way — destroying a signed-in
+ * rider's local session on an ordinary network hiccup would be `unavailable`'s
+ * failure mode turned into a much worse one. Splitting them here is what
+ * makes that distinction a tested branch rather than a `read()`-local guess.
  */
 export function onboardingStateFrom(result: {
   data: OnboardingState | null
   error: unknown
 }): GuardState {
-  if (result.error || !result.data) return { kind: 'unavailable' }
+  if (result.error) return { kind: 'unavailable' }
+  if (!result.data) return { kind: 'gone' }
   return { kind: 'rider', ...result.data }
 }

@@ -157,16 +157,33 @@ describe('the service-role key never reaches the app', () => {
 
   it('takes no user id from the request, which is what makes it safe to expose', () => {
     // Design D1: a service-role endpoint that accepts an id is
-    // account-deletion-as-a-service for whoever finds the URL. The absence of a
-    // body read is the control, so it is asserted rather than trusted.
+    // account-deletion-as-a-service for whoever finds the URL.
+    //
+    // **PD-102 (2026-08-16) made the strict "no body read at all" version of
+    // this control false, on purpose** — `req.json()` now reads the D6
+    // re-authentication proof, so the assertion moved from "the body is never
+    // read" to the actual invariant D1 states: the body never supplies an
+    // IDENTIFIER. `uid` is pinned to `subject.id`, which comes from the
+    // verified JWT four lines above and nowhere else, and the body is read
+    // only into a `password` field that is never used to select an account.
     const source = readFileSync(
       path.join(repoRoot, 'supabase/functions/delete-account/index.ts'),
       'utf8',
     )
     const code = stripCommentLines(source)
-    expect(code).not.toMatch(/req\.json\(\)/)
+
     expect(code).not.toMatch(/req\.text\(\)/)
     expect(code).not.toMatch(/searchParams/)
+
+    // No id-shaped field is ever read off the parsed body — the one thing
+    // read out of it is `password`.
+    expect(code).not.toMatch(/body\.(id|uid|sub|subject|user_id|userId|email)\b/)
+
+    // `uid` is assigned exactly once, from the verified subject, and never
+    // reassigned from anything the request supplied.
+    const uidAssignments = code.match(/\buid\s*=/g) ?? []
+    expect(uidAssignments).toHaveLength(1)
+    expect(code).toMatch(/const uid = subject\.id/)
   })
 
   /**

@@ -10,6 +10,7 @@ import {
   SEPARATION_THRESHOLD_METRES,
   TILE_SPECS,
   type GeocodeFeature,
+  resolvePickedCoordinate,
 } from '../../supabase/functions/resolve-ride-location/gates'
 
 /**
@@ -331,5 +332,61 @@ describe('the empty and malformed cases', () => {
       resolved: false,
       reason: 'no_candidates',
     })
+  })
+})
+
+/**
+ * The picked-ride branch — PD-114 §D6, task 6.3.
+ *
+ * This is the decision that says whether a rider is BILLED for a geocode, which
+ * is why it lives in `gates.ts` where this file can reach it rather than inside
+ * the handler (§6.2).
+ */
+describe('resolvePickedCoordinate', () => {
+  it('takes a picked ride at its word — no geocode, no gates', () => {
+    expect(
+      resolvePickedCoordinate({ start_place_id: 'gers-1', latitude: 51.885, longitude: 4.372 })
+    ).toEqual({ latitude: 51.885, longitude: 4.372 })
+  })
+
+  it('is null for a ride that was only geocoded, so that path keeps its gates', () => {
+    // A geocoded ride carries coordinates AND a confidence, and no place id.
+    // Reading it as picked would skip the granularity gate on a guess.
+    expect(resolvePickedCoordinate({ start_place_id: null, latitude: 52.37, longitude: 4.89 })).toBe(
+      null
+    )
+  })
+
+  it('is null for a ride with no location at all', () => {
+    expect(resolvePickedCoordinate({})).toBe(null)
+    expect(
+      resolvePickedCoordinate({ start_place_id: null, latitude: null, longitude: null })
+    ).toBe(null)
+  })
+
+  it('refuses a place id whose coordinates are missing, rather than rendering nowhere', () => {
+    // `067`'s coupling CHECK makes this unstorable today. The check is here
+    // anyway because a null latitude reaching `buildTileUrl` does not fail — it
+    // renders a tile of the Gulf of Guinea, which is a wrong map rather than no
+    // map, and no later migration can make that outcome safe.
+    expect(resolvePickedCoordinate({ start_place_id: 'gers-1' })).toBe(null)
+    expect(
+      resolvePickedCoordinate({ start_place_id: 'gers-1', latitude: 51.885, longitude: null })
+    ).toBe(null)
+  })
+
+  it('treats a blank place id as no pick', () => {
+    expect(
+      resolvePickedCoordinate({ start_place_id: '   ', latitude: 51.885, longitude: 4.372 })
+    ).toBe(null)
+  })
+
+  it('accepts 0/0 as a real coordinate, because the emptiness test is on the place id', () => {
+    // Null Island is a legal point. The pick is decided by the place id, never
+    // by a falsy coordinate — which is the same trap `readRideLocation` avoids
+    // by testing the STRING rather than the parsed number.
+    expect(resolvePickedCoordinate({ start_place_id: 'gers-0', latitude: 0, longitude: 0 })).toEqual(
+      { latitude: 0, longitude: 0 }
+    )
   })
 })

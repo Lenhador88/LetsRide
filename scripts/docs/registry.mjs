@@ -182,6 +182,24 @@ export const claims = [
     about: '§Technology Decisions: "Nine runtime dependencies today"',
   },
 
+  // ---- Component test count ----------------------------------------------
+  {
+    id: 'component-tests-count-claude',
+    file: 'CLAUDE.md',
+    // The sentence is not inert prose — it tells the next session the suite is
+    // still `environment: 'node'`, so the reader most likely to be misled by a
+    // stale count is exactly the one adding a component test that *does* need
+    // jsdom. That is why this is gated rather than left as a hand-copy: three
+    // hand-typed counts in this repo have already been wrong.
+    pattern: /\*\*(\w+)\*\* component test(?:s)? exists? — `PostcardAction`/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    // `git ls-files` rather than a filesystem walk: an untracked scratch test
+    // must not raise this the way it does the unit-test totals next door.
+    cmd: `git ls-files 'src/**/*.test.tsx' | wc -l`,
+    about: '§Technology Decisions, Tests table: "One component test exists"',
+  },
+
   // ---- Migration file count ----------------------------------------------
   {
     id: 'migrations-count-claude',
@@ -214,7 +232,7 @@ export const claims = [
     // the promotion turned it red on cue, and it is pinned back to LEVEL. The
     // pin is on the RELATIONSHIP in both directions; do not relax it to the
     // count just because the two projects agree today.
-    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — LEVEL/,
+    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — DEV AHEAD/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
@@ -328,6 +346,33 @@ export const claims = [
     kind: 'shell',
     cmd: `grep -c "href:" src/components/layout/Navbar.tsx`,
     about: 'docs/reference/product-scope.md: the trap — unscoped grep -c "href:" on Navbar.tsx',
+  },
+
+  // ---- Icon count (prose vs the generator's committed source) --------------
+  //
+  // The one piece of the 2026-08-16 generated-artifact alarms that IS a doc
+  // claim, and it belongs here rather than in the tests that landed with it.
+  // Those two —
+  // `scripts/figma/__tests__/generated-artifacts.test.mjs` and
+  // `src/__tests__/openspec-artifacts.test.ts` — compare an ARTIFACT against
+  // its GENERATOR, which is not this registry's shape (no prose anchor, no
+  // single integer). This sentence is prose stating a number with one
+  // unambiguous ground truth, which is exactly this registry's shape.
+  //
+  // Measured against `design/icons/`, not against
+  // `src/components/icons/generated.tsx`: the SVG export is the SOURCE, the
+  // module is downstream of it, and the byte-identical rebuild in
+  // generated-artifacts.test.mjs already ties the two together. Pointing this
+  // claim at the module instead would check the doc against something the doc
+  // does not describe — it says "exported", and what is exported is the SVGs.
+  {
+    id: 'icons-exported-design-system',
+    file: 'docs/reference/design-system.md',
+    pattern: /\*\*Icons: (\d+) exported\*\*, under `Element \/ Icon \/ \*`/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    cmd: `ls design/icons/*.svg | wc -l`,
+    about: 'docs/reference/design-system.md §Icons: "Icons: 53 exported" vs design/icons/',
   },
 
   // ---- RLS assertion count (needs Postgres — see check.mjs's gate) -------

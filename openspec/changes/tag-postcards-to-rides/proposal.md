@@ -8,10 +8,12 @@
 
 **`postcards` has no `ride_id`, and one missing column blocks two designed things.**
 
-- **The ride detail's Journal sub-page.** `Ride - Journal (Postcards/Timeline)` (`2226:4865`) is
-  drawn and the epic is **In progress**. Ride plan, Crew and Chat ship; `RidePageMenu`'s own doc
-  comment records Journal as *omitted rather than offered as a dead row* because the column does
-  not exist.
+- **The ride detail's Journal.** `Ride - Journal (Postcards/Timeline)` (`2226:4865`) is drawn and
+  the epic is **In progress**. This bullet said the Journal was *omitted rather than offered as a
+  dead row*, citing `RidePageMenu`'s doc comment — **both are superseded as of 2026-08-17 (PD-254)**:
+  that switcher is deleted, and the ride plan now renders a `Journal` **section** with an explicit
+  empty state, crew only. So the surface exists and is empty rather than absent, and what this change
+  supplies is its content. `RideJournal.tsx` carries the current comment.
 - **"New postcard on a ride you're going to."** `add-notifications` (PD-118) listed it as out of
   scope with one reason and one pointer: *"`postcards` has no `ride_id` — verified 2026-08-07, the
   column does not exist. Linear PD-123."*
@@ -132,12 +134,18 @@ the viewer cannot see stays visible if `club_id` says so.
 
 ### The Journal read
 
-`getRideJournal(rideId)` — a plain `.eq('ride_id', rideId)` under the caller's own RLS, ordered
-`created_at desc`. **Not** a `security definer` RPC, an Edge Function or a service-role read: inside
-a definer function the postcards SELECT policy does not run at all, and `CLAUDE.md` records that
-`current_user` there is the owner, so `023`'s participation gate would not fire either.
-`015`'s `club_unread_counts()` is `security invoker` for precisely this reason and is the shape to
-copy.
+`getRideJournal(rideId)` — the ids from `public.ride_journal_postcard_ids(ride)`, then those rows
+read with `POSTCARD_SELECT` under the caller's own RLS, ordered `created_at desc`.
+
+**Amended by PD-166 (`062`).** This read was specified as a plain `.eq('ride_id', rideId)` and
+explicitly **not** a `security definer` RPC — because inside a definer function the postcards SELECT
+policy does not run at all, so one returning rows hands every tagged postcard to every caller.
+That objection stands and the rows still come from an ordinary RLS-governed select. What changed is
+that `062` revoked the client's SELECT on `ride_id` to close the correlation channel, and Postgres
+checks that privilege to *filter* as well as to return — so the filter had to move into a function
+that holds the column. It returns **ids only**, which is what keeps the original objection satisfied:
+a wrong answer there can name an id, never render a row. `015`'s `club_unread_counts()` remains
+`security invoker` and remains the shape for anything returning content.
 
 Consequence, stated rather than discovered: **two riders open the same ride's Journal and correctly
 see different lists.** A club-scoped postcard is in the Journal only for that club's members; a
@@ -272,21 +280,41 @@ written from. That direction fails closed and is the safer of the two, so it is 
 solve; it is a surprise to remove. Anyone adding a column here later and finding it read-only has
 found this decision, not a bug, and `041`'s header says so in as many words.
 
-**Advisors.** Expect the count and identity **unchanged at eight**. Nothing here is
-`security definer`; `private.is_ride_crew` already exists and already carries `authenticated`'s
-EXECUTE. A new WARN means a function landed in `public` or a revoke did not.
+**Advisors.** Expect the count and identity **unchanged at eight** *for `041`*, which is what this
+paragraph was written about: nothing in that file is `security definer`, and `private.is_ride_crew`
+already exists and already carries `authenticated`'s EXECUTE. **`062` does add one**, deliberately —
+`public.ride_journal_postcard_ids` is `security definer` and raises the **eighth** of the
+`authenticated_security_definer_function_executable` family, taking the total from nine to ten.
+(The **eight** above is a total measured on 2026-08-09, not a count of that family — see the
+pre-flight table.) So the sentence a
+later reader needs is the one this paragraph already ends with, minus its number: a new WARN means a
+function landed in `public` or a revoke did not, and it is expected only when a file in this change
+directory put one there.
 
 **Code.** New: `src/app/(app)/rides/detail/journal/page.tsx`, `getRideJournal` in
-`src/lib/data/postcards.ts`, a `journal` key in `keys.ts`. Changed: `RidePageMenu` gains the
-Journal row it has been omitting (and its doc comment loses the reason it was absent);
-`CreatePostcardForm` gains a ride select mirroring its club select; `createPostcard` and
-`postcardRideIdSchema` carry the id; `Postcard` in `src/types/index.ts` gains the field.
+`src/lib/data/postcards.ts`, a `journal` key in `keys.ts`. Changed: `RideJournal.tsx`'s empty state
+gains the populated one beside it, and its doc comment loses the reason it had no content (this said
+`RidePageMenu` gains a Journal row — that component was deleted by PD-254, and the section on the ride
+plan is what replaced the sheet it lived in); `CreatePostcardForm` gains a ride select mirroring its
+club select; `createPostcard` and `postcardRideIdSchema` carry the id. `Postcard` in
+`src/types/index.ts` gains **neither** a `ride_id` field **nor the embedded ride** — after `062` no
+client read can populate either, and the embed is the half that surprises. See `tasks.md` 4.3, which
+is marked BLOCKED and carries the product question.
 
-**`POSTCARD_SELECT` is `*`, so `ride_id` starts arriving on every postcard read the moment the
-migration applies** — before any type declares it and on screens that will never render it. That is
-harmless (a UUID) and it is stated so it is a decision: the ride's *name* comes only from an
-RLS-filtered embed, and a viewer who cannot see the ride gets a NULL embed and renders nothing.
-No second lookup on the raw id, ever.
+**`POSTCARD_SELECT` was `*`, so `ride_id` started arriving on every postcard read the moment the
+migration applied** — before any type declared it and on screens that will never render it. This
+called that harmless, "a UUID". **It was not**: the value is comparable, so it grouped postcards for
+a viewer who could resolve neither the ride nor its crew. PD-165 removed it from the select list and
+`062` revoked the grant, which is the half that binds a client talking to PostgREST directly.
+**And the embed goes with it, which this paragraph originally leant on.** A PostgREST embed is a
+join whose predicate names `postcards.ride_id`, and Postgres privilege-checks a column reference in a
+predicate exactly as in a target list — measured, and asserted in `rls_test.sql` §062.4 with a
+control. So there is no RLS-filtered embed and no NULL embed to render nothing; a postcard cannot
+surface its ride at all. Whether that stays the answer, or a second postcard → ride accessor is
+written, is PD-257's to propose and the owner's to decide — `tasks.md` 4.3 and the `ride-journal`
+spec's *"A rider SHALL NOT learn a ride they cannot see"* requirement both carry the two options.
+What survives untouched is the rule this paragraph exists for: **no second lookup on a raw id** —
+there is now no raw id to look up.
 
 **No new runtime dependency.** Nine before, nine after — re-derive with
 `node -p "Object.keys(require('./package.json').dependencies).length"`.

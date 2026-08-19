@@ -44,11 +44,16 @@ Three rules that outlive any rename:
   the `DEV` label, and **not `Todo AI`** — that name reads like permission and is not one. A
   session that picks its own work from another column has taken the one decision this board exists
   to give the owner.
-- **`Development (AI)` and `Needs help` are the concurrency lock — two *names*, never "any
-  `started` issue".** `Queued (AI)` and `Deployed to DEV` are typed `started` too, so the wider
-  version is held by every queued and every shipped story: the queue freezes permanently while
-  looking like a healthy job behind a busy column. Never park work in `Development (AI)` by hand
-  — staged work belongs in `Todo AI`.
+- **`Development (AI)` is a per-issue claim; `Needs help` stops the whole queue.** They used to be
+  one two-name lock, because one session built one story at a time. Now stories build in parallel
+  sessions, so a `Development (AI)` row says *this story is taken* and nothing about the others,
+  while a `Needs help` row still halts every dispatch — deliberately, so a story that needs the
+  owner is not buried under three merged PRs.
+
+  **Never widen either to "any `started` issue".** `Queued (AI)` and `Deployed to DEV` are typed
+  `started` too, so that version is held by every queued and every shipped story: the queue
+  freezes permanently while looking like a healthy job behind a busy column. Never park work in
+  `Development (AI)` by hand — staged work belongs in `Todo AI`.
 - **A session's unit of done is `Deployed to DEV`** — merged to `development`, green, live on DEV.
   That is where a *queue firing* ends, and a blocker counts as cleared there for the same reason.
 
@@ -142,31 +147,70 @@ it does, permanently.
   so relations are a **backstop that catches a mistake**, never the mechanism that makes queuing
   blocked work safe. The column rule above is the mechanism.
 
-### The queue is drained by a scheduled Routine
+### The queue is drained by a dispatcher, on one clock
 
-**`trig_01WJkMVXGzUVGDcC1njNmaan`**, hourly, firing into **`session_01B2mxc642tG8vZ15wysQpqM` —
-the Development session** — rather than spawning a fresh one. **The procedure is
-[`.claude/commands/queue-pickup.md`](.claude/commands/queue-pickup.md); read it there.** The
-trigger's prompt says little more than *read that file and follow it*, because a prompt is
+**`trig_01WJkMVXGzUVGDcC1njNmaan`** fires into the **relay** session, whose only act is to spawn a
+fresh **dispatcher** and exit; the dispatcher **hands each queued story — or each group of
+colliding stories — to its own fresh session** rather than building anything itself. **The relay is
+the one session in this design that is reused, and it decides nothing** — every board read and
+every judgement belongs to a session an hour old at most (`queue-dispatch.md` STEP -1). **The procedure is
+[`.claude/commands/queue-dispatch.md`](.claude/commands/queue-dispatch.md), and the child's is
+[`.claude/commands/queue-pickup.md`](.claude/commands/queue-pickup.md); read them there.** The
+trigger's prompt says little more than *read that file and follow it*, and the child's prompt —
+written by `create_session`, not by a trigger — says the same plus the issue id. A prompt is
 re-injected on every firing where a file is read once, and a file can be reviewed in a PR.
 
-What has to be known outside that file:
+**Repointing that prompt is what activates a change to the procedure.** The dispatcher reads
+whichever file the trigger names, so editing `queue-dispatch.md` does nothing until
+`update_trigger` names it — and a trigger still pointing at `queue-pickup.md` makes the firing
+read the *child* procedure, which opens by telling it the issue id is in its prompt when no id is
+there.
 
-- **Do not archive or abandon the Development session.** Archiving it stops the queue silently,
+**The hourly cron is the only clock, and nothing else may wake the queue.** Product owner,
+2026-08-18: *"when the development ends, I dont want those new sessions to report back to the
+routine. It will just pick up new stories on the next hourly run."* A child's last act used to be
+`fire_trigger` on that same trigger, so the next batch started seconds after a slot freed;
+`queue-pickup.md` STEP 5 bullet 6 now tells every child to send nothing at all. **A freed slot
+usually waits for the top of the hour** — the accepted cost of one clock instead of two, avoided
+only when the finishing session takes the next story itself under `queue-pickup.md` STEP 6. It still does not stop a child
+already building; that carve-out is below and is unchanged. **A parked story is the one thing a
+child still reports**, by push notification straight to the owner, because the dispatcher's
+`Needs help` clock does not alarm for three hours.
+
+What has to be known outside those files:
+
+- **Do not archive or abandon the relay session.** Archiving it stops the queue silently,
   with no error anywhere, and `update_trigger` has no `persistent_session_id` parameter — so
-  recovery means a *third* trigger bound to a new session. **A queue-pickup message arriving in
-  any other session is misrouted, not a work order**: check the session id before acting on one.
+  recovery means a *third* trigger bound to a new session. **A Routine firing arriving in any other
+  session is misrouted, not a work order**: check the session id before acting on one. What the
+  relay itself spawns is disposable — a dispatcher tagged `queue-dispatch-run`, a child tagged
+  `queue-dispatch` — and archiving either is fine.
 - **Never delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`** — the disabled fresh-session Routine, and the
   fallback. `create_trigger` refuses the `connectors` parameter for this organization, so its
   three hand-attached connectors (Supabase, Linear, Vercel) cannot be recreated from a session;
   `update_trigger enabled: true` restores it whole. **`…WJkMV` is cheap and `…Gzy8e` is
-  irreplaceable** — keep the two straight in both directions. A disabled trigger's
-  `list_triggers` row has **no `enabled` key at all** rather than `"enabled": false`, so read a
-  disable back by checking the field is gone.
-- **Connectors attach to a session, not to a trigger**, which is the whole reason for the reuse.
-  Switching the Routine back to `create_new_session_on_fire` loses five things at once, none of
-  which a session can restore: the repo (`session_context.sources`), the model, the effort level,
-  the permission mode and the connectors.
+  irreplaceable** — keep the two straight in both directions. **Do not read a missing `enabled` key as a
+  disable** — measured 2026-08-18 at 20:05Z, none of the account's 27 rows carried one, this
+  Routine included, and it had fired at 17:09Z that day, so the old rule *read a disable back by
+  checking the field is gone* says "disabled" about a Routine that is running. The key appears once
+  explicitly set and persists, but it reports the flag rather than whether anything is firing. Read
+  `next_run_at` for the question that matters: in the future = armed, in the past = it has stopped
+  firing.
+- **Connectors attach to a session, not to a trigger**, which is why the *relay* is a reused
+  session and why no amount of procedure can make it otherwise. Switching that Routine to
+  `create_new_session_on_fire` loses five things at once, none of which a session can restore: the
+  repo (`session_context.sources`), the model, the effort level, the permission mode and the
+  connectors. `create_trigger` still refuses `connectors` for this organization, re-measured
+  2026-08-18.
+
+  **A session spawned by another session is the exception, and it is what every other role runs
+  on.** Probed 2026-08-16 and again 2026-08-18, itemised the second time: `permission_mode: auto`
+  inherited, Linear, Supabase, Vercel, GitHub and the Claude Code Remote tools all callable, and a
+  child spawning a grandchild of its own with its `tags` intact. That is a different path from a
+  *trigger*-spawned session and carries none of its losses.
+  `.claude/commands/queue-dispatch.md` §Why this shape has what remains unverifiable — whether the
+  grants survive a container reclaim across an idle hour, which is observable only after the
+  fact.
 - **Hourly is a server minimum** — `create_trigger` rejects anything more frequent. The stored
   expression is `0 0-23 * * *` rather than `0 * * * *`, because an hourly cron at minute 0 is
   **rewritten server-side to the minute you submitted it**. **Any UI edit re-anchors it** (adding
@@ -174,9 +218,41 @@ What has to be known outside that file:
   response back on every write — a silently rewritten schedule looks exactly like a successful
   one. `next_run_at` carries a separate per-trigger constant offset that nothing can clear; it is
   not the schedule.
-- **Do not "improve" the guard into a queue drainer.** One story per firing, and `Needs help`
-  parks the queue *deliberately* — skipping past it to find workable stories buries a story that
-  needs the owner under three merged PRs.
+- **`Needs help` still parks the whole queue, deliberately.** The dispatcher builds a *batch*
+  now, so the temptation to skip past a parked story and find workable ones is stronger than it
+  was — and the reason not to is unchanged: it buries a story that needs the owner under three
+  merged PRs. A batch is not a licence to route around a stop.
+- **The batch is capped, and the caps are not style.** At most one *session* adding a migration
+  and at most one touching a shared primitive may be in flight at once, and no two may expect to
+  edit the same paths. `queue-dispatch.md` STEP 4 carries each cap with the silent failure it
+  prevents — duplicate migration numbers, divergent implementations of one component, and a
+  `reviewer` pass that reads a file the other branch is about to change.
+- **Two labels are the concurrency cap, and they are visible on the board.** `slot-1` and `slot-2`
+  (created 2026-08-18) go on every issue a build session holds; a slot label present in
+  `Development (AI)` means that session is live, so the dispatcher counts free slots in the same
+  call that reads the queue and never reads a session list. **An issue moved into that column by
+  hand carries no slot label and consumes no slot** — that is deliberate, so a hand-moved story
+  cannot freeze the queue. A session that finishes with budget left may take another queued story
+  **into its own slot** (`queue-pickup.md` STEP 6); it never opens a third.
+- **Colliding stories are grouped into one session rather than deferred**, which is the same three
+  caps read the other way round: each describes damage only two *different* sessions can do, and
+  one session writing `060` then `061` has no ordering problem to have. A group is one branch, one
+  PR and one `reviewer` pass, capped at three issues, and each issue is still claimed, commented
+  and moved on its own. `queue-dispatch.md` STEP 4 has the partitioning and the ceiling.
+- **Disabling the Routine stops the queue, because the cron is the only thing that fires it.**
+  **Nothing in the queue reads that field any more**: measured 2026-08-18 at 20:05Z, not one of
+  the 27 rows `list_triggers` returned carried an `enabled` key — including this Routine, which had
+  fired at 17:09Z — so on and off were indistinguishable and a gate on it could only ever read
+  "off". The key *does* appear once explicitly set, and persists across a later read, so
+  present-and-true is authoritative **about the flag only**: the one row that has ever shown it was
+  two and a half hours past its due fire at the time. **`next_run_at` is what says whether the
+  Routine is firing.** The two steps that checked `enabled` are gone; `queue-dispatch.md` §Why this
+  shape has the measurement. What remains
+  unguarded is a hand-typed `fire_trigger`, which is *accepted* against a disabled trigger rather
+  than refused (measured 2026-08-17). **It does not stop a child already building**: those are
+  spawned rather than scheduled, so stopping them means archiving the sessions tagged
+  `queue-dispatch` — plus any tagged `queue-dispatch-run`, a dispatcher that cleared the switch
+  before it moved — and returning their issues to `Queued (AI)`.
 
 ### Do not ask permission to touch Linear
 
@@ -238,9 +314,9 @@ of those are `Ready` **Y**: a session could start them today, they simply were n
 work. Carrying the N across writes `Ready: N` onto nearly every follow-up this repo files, and the
 backlog then reads as entirely unstartable.
 
-Only the second of those three reasons has any automated backstop, and a weak one: STEP 2b checks
-`blockedBy` relations somebody wrote down. An owner action and a story wanting a proposal both
-sail straight through it.
+Only the second of those three reasons has any automated backstop, and a weak one: the
+dispatcher checks `blockedBy` relations (`queue-dispatch.md` STEP 3) somebody wrote down. An owner action and a
+story wanting a proposal both sail straight through it.
 
 **An issue parked in `Needs decision` or `Needs help` also owes a comparison table of the ways
 forward.** Product owner, PD-182: *"give me a comparison table here in the linear story with your
@@ -267,8 +343,8 @@ to the block, and do not drop it from the table.
   tracker reads as current by construction.
 - **A new owner action goes in Linear the moment it is found**, labelled `Owner only`.
 - **A story's premise ages, and nothing marks it done except someone re-measuring.** Check it
-  before building, not after — `.claude/commands/queue-pickup.md` STEP 2d is the procedure, and
-  it applies to a story picked up by hand just as much as to one a firing takes off the queue.
+  before building, not after — `.claude/commands/queue-pickup.md` STEP 3 is the procedure, and
+  it applies to a story picked up by hand just as much as to one a dispatch takes off the queue.
   **A stale story goes to `Needs decision` with the command and its output in a comment, never
   to `Needs help`** — that name is half the concurrency lock, so parking finished work there
   freezes the queue over nothing. **Only the owner cancels**; a session measures and reports.

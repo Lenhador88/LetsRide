@@ -4,6 +4,7 @@ import {
   PUBLIC_PATHS,
   isPublicPath,
   needsOnboardingState,
+  onboardingStateFrom,
   resolveDestination,
   type GuardState,
 } from '@/lib/auth/guard'
@@ -23,6 +24,7 @@ import {
 const anonymous: GuardState = { kind: 'anonymous' }
 const sessionOnly: GuardState = { kind: 'session' }
 const unavailable: GuardState = { kind: 'unavailable' }
+const gone: GuardState = { kind: 'gone' }
 
 function rider(overrides: Partial<Omit<Extract<GuardState, { kind: 'rider' }>, 'kind'>> = {}): GuardState {
   return {
@@ -95,6 +97,55 @@ describe('a signed-in rider whose onboarding state did not answer', () => {
     // sending /auth/login to /auth/login locks every signed-in rider out with no
     // way to sign out — on exactly the deploy mismatch this is meant to survive.
     expect(resolveDestination(path, unavailable)).toBeNull()
+  })
+})
+
+describe('a session naming an account that no longer exists (PD-102)', () => {
+  it('resolves to the exact same destination as an unread stamp', () => {
+    // `unavailable` and `gone` must never be confused about WHEN to destroy
+    // local state (that split lives in guard-cache.ts), but resolveDestination
+    // is not where that distinction matters — both are "cannot proceed",
+    // and both must land the rider on the same signed-out entry point.
+    expect(resolveDestination('/postcards', gone)).toBe(
+      resolveDestination('/postcards', unavailable)
+    )
+    expect(resolveDestination('/postcards', gone)).toBe('/auth/login?error=profile_unavailable')
+  })
+
+  it.each(AUTH_ENTRY_PATHS)('does not redirect %s to itself either', (path) => {
+    expect(resolveDestination(path, gone)).toBeNull()
+  })
+
+  it('is never reached with an un-onboarded rider’s treatment', () => {
+    // The failure this state exists to prevent: reading zero rows as
+    // "not onboarded" would send a deleted account into the consent prompt,
+    // where accept_terms() has no row to update.
+    expect(resolveDestination('/postcards', gone)).not.toBe('/onboarding/terms')
+    expect(resolveDestination('/postcards', gone)).not.toBe('/onboarding/username')
+  })
+})
+
+describe('onboardingStateFrom distinguishes zero rows from a failed read (PD-102)', () => {
+  it('maps zero rows — data null, error null — to gone, not unavailable', () => {
+    // .maybeSingle()'s own shape for "no such row": this is what the accessor
+    // answers for a caller with no profiles row, and it must never be folded
+    // into the same state as a read that genuinely failed to run.
+    expect(onboardingStateFrom({ data: null, error: null })).toEqual({ kind: 'gone' })
+  })
+
+  it('maps any error to unavailable, never to gone', () => {
+    expect(onboardingStateFrom({ data: null, error: { code: 'PGRST202' } })).toEqual({
+      kind: 'unavailable',
+    })
+  })
+
+  it('maps a real row to rider, unaffected by the split', () => {
+    const row = {
+      terms_accepted_at: '2026-08-05T00:00:00Z',
+      onboarding_completed_at: '2026-08-05T00:00:00Z',
+      has_username: true,
+    }
+    expect(onboardingStateFrom({ data: row, error: null })).toEqual({ kind: 'rider', ...row })
   })
 })
 

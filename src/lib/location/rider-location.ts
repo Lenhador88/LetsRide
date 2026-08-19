@@ -18,10 +18,31 @@ import { getMyLocationText } from '@/lib/data/profile'
  *
  * Two sources today, in priority order. **Two more are coming with PD-114
  * step 3** — the ride being edited's own meeting point, and the rider's
- * last-used one — and both are blocked on schema (`rides` has no lat/lng
- * column yet, verified). Adding either is meant to be a new entry appended to
- * `SOURCES` below, not a rewrite of `resolveRiderLocation` or the functions
- * around it — say so here rather than leaving the next reader to infer it.
+ * last-used one. **Neither is blocked on schema any more**: this said `rides`
+ * had no lat/lng column "verified", and `051` added `latitude`, `longitude`
+ * and `geocode_confidence`, filled by `resolve-ride-location`, which is ACTIVE
+ * on both projects (measured 2026-08-19). **Expect NULL on any ride created
+ * before that deploy** — a source reading a coordinate off a ride has to treat
+ * a null as "no signal" rather than as an error, exactly as the profile source
+ * treats a city that does not resolve.
+ *
+ * **A PICKED ride is the one case guaranteed NOT to be null, and the opposite is
+ * the easy thing to write** — `PD-267` gates the *tiles* for a picked ride, not
+ * its coordinate, so "no map yet" reads as "no coordinate yet" and inverts which
+ * rides this source can use. `rides_location_coupling`'s picked arm settles it,
+ * and it is a CHECK rather than a convention:
+ *
+ * ```
+ * (start_place_id IS NOT NULL AND latitude IS NOT NULL AND longitude IS NOT NULL
+ *  AND geocode_confidence IS NULL AND …)
+ * ```
+ *
+ * So a picked ride carries an exact rider-chosen coordinate the moment it is
+ * saved, and those are the BEST rides for this source rather than the ones to
+ * skip. Adding either is meant to be a new entry
+ * appended to `SOURCES` below, not a rewrite of `resolveRiderLocation` or the
+ * functions around it — say so here rather than leaving the next reader to
+ * infer it.
  *
  * ## Never prompts
  *

@@ -112,7 +112,7 @@ describe('the restore does not step past the route guard', () => {
       has_username: true,
     }
     expect(resolveDestination('/rides/detail', onboarded)).toBeNull()
-    expect(resolveDestination('/clubs/detail/about', onboarded)).toBeNull()
+    expect(resolveDestination('/clubs/detail/members', onboarded)).toBeNull()
   })
 })
 

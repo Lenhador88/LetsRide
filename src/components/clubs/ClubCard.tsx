@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
 import { Globe2Icon, Lock2Icon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
@@ -42,6 +45,16 @@ import type { ClubListItem } from '@/types'
 export function ClubCard({ club, joined }: { club: ClubListItem; joined: boolean }) {
   const overflow = club.members_count - club.riders.length
   const TypeIcon = club.is_public ? Globe2Icon : Lock2Icon
+  // task 7.4 — see `Avatar`'s own comment for the shape of this, including
+  // why this is keyed on the URL itself rather than a plain boolean: a
+  // revalidated card can arrive with a fresh, valid `cover_image_url`, and a
+  // flag that never reset would keep hiding it. An ownership transfer (D2)
+  // nulls `cover_image_path` and deletes the object in the same step, so a
+  // cached card can hold a signed URL that answers 404 for the rest of its
+  // hour; this is the one raw `<img>` on this card — `Avatar` below already
+  // covers the rider and club avatars.
+  const [brokenCover, setBrokenCover] = useState<string | null>(null)
+  const showCover = !!club.cover_image_url && club.cover_image_url !== brokenCover
 
   return (
     <div className="relative flex gap-3 rounded-lg bg-surface p-1 pr-4 transition-colors focus-within:bg-background active:bg-background">
@@ -56,8 +69,13 @@ export function ClubCard({ club, joined }: { club: ClubListItem; joined: boolean
             container, because it looks finished in the diff. `List / Ride`
             keeps its location pin only because nothing covers it. */}
         <div className="absolute inset-y-0 left-0 w-20 overflow-hidden rounded bg-border">
-          {club.cover_image_url && (
-            <img src={club.cover_image_url} alt="" className="h-full w-full object-cover" />
+          {showCover && (
+            <img
+              src={club.cover_image_url!}
+              alt=""
+              onError={() => setBrokenCover(club.cover_image_url)}
+              className="h-full w-full object-cover"
+            />
           )}
         </div>
         {/* `bg-surface`, because the design's Avatar frame is filled White/100.
@@ -78,7 +96,19 @@ export function ClubCard({ club, joined }: { club: ClubListItem; joined: boolean
 
         <p className="flex items-center gap-1 text-sm font-medium text-muted">
           <TypeIcon className="h-6 w-6 shrink-0" />
-          {club.is_public ? 'Public club' : 'Private club'}
+          <span className="min-w-0 truncate">
+            {club.is_public ? 'Public club' : 'Private club'}
+            {/* Appended to the row the design already draws rather than given a
+                line of its own: the card is a measured 112px and a fourth row
+                does not fit. Truncated, because a place name is up to 200
+                characters and this row is ~200px wide.
+
+                No distance figure beside it, deliberately. A club's location is
+                a town rather than a doorstep, so "34 km" is a precision the
+                data does not carry — `ExploreClubsList`'s `Near <name>` heading
+                is how proximity is expressed. */}
+            {club.location_name ? ` · ${club.location_name}` : ''}
+          </span>
         </p>
 
         <div className="flex items-center gap-1">

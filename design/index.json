@@ -1130,6 +1130,102 @@
       "file": "frames/ipad-3.json"
     },
     {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4123:6918",
+      "type": "VECTOR",
+      "file": "frames/union.json"
+    },
+    {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4123:6929",
+      "type": "VECTOR",
+      "file": "frames/union-2.json"
+    },
+    {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4124:6918",
+      "type": "VECTOR",
+      "file": "frames/union-3.json"
+    },
+    {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4124:6929",
+      "type": "VECTOR",
+      "file": "frames/union-4.json"
+    },
+    {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4125:6921",
+      "type": "VECTOR",
+      "file": "frames/union-5.json"
+    },
+    {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4125:6932",
+      "type": "VECTOR",
+      "file": "frames/union-6.json"
+    },
+    {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4125:6947",
+      "type": "VECTOR",
+      "file": "frames/union-7.json"
+    },
+    {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4126:6921",
+      "type": "VECTOR",
+      "file": "frames/union-8.json"
+    },
+    {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4126:6934",
+      "type": "VECTOR",
+      "file": "frames/union-9.json"
+    },
+    {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4126:12312",
+      "type": "VECTOR",
+      "file": "frames/union-10.json"
+    },
+    {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4127:6921",
+      "type": "VECTOR",
+      "file": "frames/union-11.json"
+    },
+    {
+      "name": "Union",
+      "section": null,
+      "page": "Components",
+      "id": "4127:6933",
+      "type": "VECTOR",
+      "file": "frames/union-12.json"
+    },
+    {
       "name": "Logo2",
       "section": null,
       "page": "Archive",
@@ -3558,6 +3654,14 @@
       "id": "2370:8655",
       "type": "COMPONENT",
       "file": "components/element-icon-pin.json"
+    },
+    {
+      "name": "Element / Icon / Wave",
+      "section": null,
+      "page": "Components",
+      "id": "4127:6925",
+      "type": "COMPONENT",
+      "file": "components/element-icon-wave.json"
     }
   ]
 }

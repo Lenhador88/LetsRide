@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
+import { PlaceSearchField, type PlaceValue } from '@/components/ui/PlaceSearchField'
 import { Textarea } from '@/components/ui/Textarea'
 import { createRide } from '@/lib/actions/rides'
 import { useActionRedirect } from '@/lib/actions/navigate'
@@ -12,9 +13,11 @@ import { retaining, seedRetained, useRestoreSelection, wasChecked } from '@/lib/
 import { APP_TIME_ZONE, defaultRideDepartureInput } from '@/lib/utils'
 import {
   RIDE_DESCRIPTION_MAX,
+  RIDE_LOCATION_FIELD_NAMES,
   RIDE_MEETING_POINT_MAX,
   RIDE_ROUTE_MAX,
   RIDE_TITLE_MAX,
+  readRideLocation,
   rideSchema,
 } from '@/lib/validation/rides'
 
@@ -37,8 +40,9 @@ const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') 
  * - **An end time.** The frame draws a second date and time; `rides` has
  *   `departure_at` and nothing else. The ride detail draws only a start too.
  * - **Distance in km** and **"Includes offroad"**, neither of which exists.
- * - **"Public seats"** as a number distinct from `max_riders` — and `max_riders`
- *   itself has never been enforced by anything since `001`.
+ * - **"Public seats"** as a number distinct from `max_riders`. `max_riders`
+ *   itself is real and, since `063`, enforced — what has no column is a
+ *   *second* number beside it.
  * - **A cover photo** ("Add photo"). `rides` has no image column; the list's
  *   80-wide strip is empty for the same reason.
  * - **Rider invitations** with an Admin role, the same unbuilt feature the
@@ -79,6 +83,15 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
   // the reset touches the DOM, not React, and no password manager fills a club
   // picker.
   const [clubId, setClubId] = useState('')
+  // The meeting point is controlled now that it shares a field with the place
+  // picker, so it survives a refused submit the way `CreateClubForm`'s name and
+  // location do — component state, not `retaining`. `retaining` restores a
+  // string into an uncontrolled `defaultValue`, which a controlled input
+  // ignores, so `RIDE_FIELDS` keeping `meeting_point` is belt to this braces
+  // rather than the mechanism. The action returns its error without
+  // navigating, so nothing here unmounts.
+  const [meetingPoint, setMeetingPoint] = useState('')
+  const [startPlace, setStartPlace] = useState<PlaceValue | null>(null)
   const clubRef = useRef<HTMLSelectElement>(null)
   useRestoreSelection(clubRef, clubId, state)
   useActionRedirect(state)
@@ -133,6 +146,7 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
       max_riders: rawMax ? Number(rawMax) : null,
       is_public: data.get('is_public') === 'on',
       club_id: rawClub || null,
+      location: readRideLocation(data),
     })
     const field = parsed.success ? undefined : parsed.error.issues[0]?.path[0]
     if (typeof field === 'string') {
@@ -167,12 +181,20 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
         defaultValue={state.retained.description}
       />
 
-      <Input
-        name="meeting_point"
+      {/* Free text with search on top, never search instead of free text —
+          "the layby past the second roundabout" is a real meeting point and a
+          picker that refuses it is worse than the bare field it replaced.
+          Picking is the fast path; typing throws the pin away. */}
+      <PlaceSearchField
         label="Starting location"
-        required
-        maxLength={RIDE_MEETING_POINT_MAX}
-        defaultValue={state.retained.meeting_point}
+        sheetTitle="Set start location"
+        placeholder="Search location"
+        value={startPlace}
+        onChange={setStartPlace}
+        names={RIDE_LOCATION_FIELD_NAMES}
+        maxNameLength={RIDE_MEETING_POINT_MAX}
+        freeText={{ text: meetingPoint, onTextChange: setMeetingPoint, required: true }}
+        disabled={pending}
       />
 
       <div className="flex flex-col gap-1.5">

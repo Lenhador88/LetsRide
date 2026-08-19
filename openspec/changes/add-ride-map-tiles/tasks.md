@@ -56,8 +56,11 @@
   That is what discharges obligation 1 in practice — **so do not suppress it.** Suppressing it does
   not remove the obligation, it moves it onto us, and obligation 1 has no plan-level escape.
 
-  This repo still carries **one** unresolved attribution question (`places` / Overture); it is a
-  separate vendor and neither answer covers the other.
+  The `places` / Overture attribution question was settled separately by PD-191 on 2026-08-18
+  (CDLA Permissive 2.0 + Apache 2.0, credited on `/legal/attributions`). It is a different vendor
+  and neither answer covers the other: Overture's theme carries no OSM data and no ODbL clause,
+  while Geoapify's obligation 1 above is an unconditional OSM credit. Both lines belong on that
+  page, never merged.
 - [x] 0.2b **Raised by the primary terms; DECIDED by the product owner 2026-08-11: "let's just
   store the images for now… we will check that better when we start having users on the app."**
 
@@ -438,15 +441,21 @@
 **At the end of group 3 everything is merged and live, every tile is NULL, and both screens render
 exactly what they render today.** That is the intended intermediate state.
 
-## 4. The Edge Function — written, not deployed
+## 4. The Edge Function — deployed, and partly exercised
 
-**Written 2026-08-12 and NEVER EXERCISED AGAINST THE VENDOR.** `*.geoapify.com` is egress-blocked
-from the build container — `WebFetch` returns `EGRESS_BLOCKED`, and so does `curl` through the
-agent proxy — so not one request in this function has been issued. Every vendor-facing constant
-says in `gates.ts` whether it was measured or assumed; the assumed ones are the static-map
-parameter names (`style`, `scaleFactor`), the map style, and the `result_type` vocabulary. Task 8.4
-is where they stop being assumptions. **Do not read a green `npm run test:unit` as the vendor
-agreeing.**
+**Written 2026-08-12, deployed 2026-08-16 (8.3), first exercised against the vendor 2026-08-17.**
+`*.geoapify.com` is still egress-blocked from the build container — `WebFetch` returns
+`EGRESS_BLOCKED`, and so does `curl` through the agent proxy — so nothing here can be tested from a
+session; what can be read is what the deployed function did. DEV's `ride_map_render_attempts` holds
+**2 rows** (2026-08-17 18:27 and 18:30 UTC); PROD's is still empty.
+
+**One of the three assumed vendor constants is now measured and two are not.** `scaleFactor` is
+real and behaves as §4.6 wanted — 80×148 at `scaleFactor=2` returned 160×296, and 358×160 returned
+716×320 (`PD-236`, measured on DEV 2026-08-16). The map `style` value and the `result_type`
+vocabulary are **still assumptions**, and `gates.ts` still says so per constant. **Do not read a
+green `npm run test:unit` as the vendor agreeing**, and do not read this heading as meaning 8.4 is
+finished — 8.4b's legibility question is open (`PD-236`) and picked rides do not resolve at all
+until `PD-267` redeploys.
 
 **It is two files, where `delete-account/` is one, and the split is deliberate.** `index.ts` is the
 Deno wiring; `gates.ts` holds every *decision* — the three gates, both URL builders, the path shape,
@@ -615,8 +624,9 @@ the test suite**, silently, and that is the thing to watch for in review.
   `requestRideMapRender(supabase, rideId)` — `void`-ed, `.catch()`-ed and awaited by nothing. In
   `createRide` it fires **after** the crew insert, not before: a failed crew insert rolls the ride
   back, and a render already in flight would spend a ledger row against a ride that no longer
-  exists. Today every call is a 404, because the function is not deployed (8.3) — and that has to
-  look exactly like the vendor being down, which is to say like nothing at all.
+  exists. A failed call has to look exactly like the vendor being down, which is to say like
+  nothing at all — see the `.catch()`'s own comment for why there is deliberately nothing that
+  distinguishes a transport failure from a 200 carrying `rendered: false`.
 - [x] 5.1a **Delete the existing tile objects BEFORE issuing the UPDATE that changes
   `meeting_point`.** The stale-tile trigger NULLs the path columns in that same statement, so
   afterwards nothing knows their names. Same ordering as the ride-delete path — objects first, then
@@ -779,7 +789,10 @@ property of the tile's data, so it takes one legible home rather than riding on 
 
 ## 8. Deploy — the ordering, and the one owner action
 
-- [ ] 8.1 **The migration first, on BOTH projects, on its own.** Purely additive; nothing reads the
+- [x] 8.1 **The migration first, on BOTH projects, on its own.** **Done** — `list_migrations`
+  against `zwprydcyryvudhurbnye` records `051_ride_map_tiles`, `052` and `053`; `PD-201` is the
+  record of that apply and DEV has been ahead of it since. Re-derive rather than trust this line.
+  The original text, and why the promotion depended on it: Purely additive; nothing reads the
   columns yet. **"Nothing reads them" stopped being true when §2 shipped**, and that turns this from
   housekeeping into the gate on the promotion: `RIDE_SELECT` now names `map_card_path`, PROD sits at
   `050` without it, and a `development → main` promotion breaks the rides **list** and every ride
@@ -792,34 +805,45 @@ property of the tile's data, so it takes one legible home rather than riding on 
   correctly. `CLAUDE.md` §Supabase Rules carries it, under *Applying a migration too large to pass
   as a string*. A hand transcription of production DDL is the failure that paragraph exists to
   prevent.
-- [ ] 8.2 Groups 2–5 merge to `development` and deploy. Tiles are NULL everywhere and both screens
+- [x] 8.2 Groups 2–5 merge to `development` and deploy. Tiles are NULL everywhere and both screens
   render the fallback. **This state is correct and shippable indefinitely.** §2–3 are merged and are
   exactly this state.
-- [ ] 8.3 **OWNER ACTION — deploy the Edge Function. §6's attribution must be settled and rendered
-  BEFORE this step, not merely before §6 is ticked** — this is the moment a tile first exists, so it
-  is the moment an uncredited tile first reaches a rider.
+- [x] 8.3 **OWNER ACTION — deploy the Edge Function, and redeploy `delete-account` in the SAME
+  window.** Both done, and both verified by content rather than by digest (PD-249, 2026-08-19):
 
-  **AND redeploy `delete-account` in the SAME window — deploying this one alone opens a privacy
-  hole.** `ride-maps/` is written for the first time by this function, and `delete-account`'s
-  `PREFIXES` sweep is the only thing that ever removes it. The prefix is now in that list in the
-  repo, but **the deployed build predates it** and no session can redeploy either function, so until
-  the owner does both an account deletion leaves two rendered images of the rider's meeting point —
-  frequently their home address — in the bucket, with no row naming them and no credential left in
-  the system that can reach the folder. 7.1 files the wider account-deletion coordination; this line
-  is the deploy-order half of it, because nothing else in §8 blocked on it. **Verify after both:
-  `list_edge_functions` shows a new `ezbr_sha256` for `delete-account` on both projects.**
+  | | PROD `zwprydcyryvudhurbnye` | DEV `fpmrimzxadewsaiwpsel` |
+  | -- | -- | -- |
+  | `resolve-ride-location` | v1, `ACTIVE`, `verify_jwt` true, `d5932de9…` | v1, `ACTIVE`, `verify_jwt` true, `d5932de9…` |
+  | `delete-account` | v9, `ACTIVE`, `verify_jwt` true, `9793933d…` | v5, `ACTIVE`, `verify_jwt` true, `9793933d…` |
 
-  **A changed sha stopped being sufficient on 2026-08-14**, and this is the file least likely to
-  notice: `add-account-deletion` 3.4 now demands the *same* redeploy for a third reason (the
-  re-authentication arm Q7 decided), on top of 2.3a's. One redeploy changes the sha once and
-  satisfies all three checks, so a session here can tick this having shipped somebody else's
-  change and not the `ride-maps` sweep. Verify the **content** — `ride-maps` present in the
-  deployed `PREFIXES` — not just that the digest moved.
+  **The content check is the one that matters and it is the one a sha cannot make.** Three tasks
+  wanted the same `delete-account` redeploy — this line's `ride-maps` sweep, `add-account-deletion`
+  2.3a and its 3.4 — so one moved digest satisfies any of them by accident. Read the deployed
+  source instead, which `get_edge_function` returns in full:
 
-  There is no `supabase` CLI in this container
-  and the Supabase MCP has no deploy tool, so no session can do it. Same blocker as PD-86. Label
-  `Owner only` in Linear and set the Geoapify key in the function's secret store — never in `src/`,
-  `.env.local.example`, Vercel or any `NEXT_PUBLIC_*`.
+  ```
+  mcp__Supabase__get_edge_function  project_id=<ref>  function_slug=delete-account
+  # PREFIXES contains 'ride-maps'  ..... the sweep this task blocked on
+  # signInWithPassword / reauth_required  ..... 3.4's re-authentication arm
+  ```
+
+  Both are present in the deployed build on both projects. **The ordering hazard this task existed
+  to prevent therefore never opened**: the renderer and the sweep went out in the same window, so no
+  account deletion has ever run a five-prefix sweep against a bucket containing `ride-maps/` tiles.
+
+  §6's attribution precondition was satisfied before the deploy — 6.1 renders `Powered by Geoapify`
+  on the panel and `/legal/attributions` carries the unconditional OpenStreetMap credit. **6.2 is
+  the half that is still open, and it is a legibility question rather than an unrendered credit**:
+  the burned-in credit is present on the 80×148 strip and is clipped there. `PD-236` owns it and is
+  blocked on `PD-234`, an owner question to the vendor. That is why this box ticks while 6.2 does
+  not.
+
+  The Geoapify key is in the function's secret store — never in `src/`, `.env.local.example`,
+  Vercel or any `NEXT_PUBLIC_*`.
+
+  **Deploying stays an owner action** (no `supabase` CLI in the build container, and the MCP
+  server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list), so any later edit
+  under `supabase/functions/` is drift from the moment it merges. `PD-267` is the next one.
 - [ ] 8.4 After deployment, exercise one real ride create and one real address edit on DEV and
   confirm: tiles appear, an edit clears then replaces them, and a non-organizer's call is refused.
 - [ ] 8.4a **The first real call is also the ONLY chance to check three assumed vendor parameters,
@@ -850,12 +874,19 @@ property of the tile's data, so it takes one legible home rather than riding on 
   it against a rendered 358×160 and against the 80×148 card strip, where `RideCard` has no chip but
   the crop is tighter. This became visible only when the address and the full-panel scrim came off;
   while they were there, anything the chip covered was already under a 70% scrim.
-- [ ] 8.4c **Correct `/legal/privacy` in the SAME window as 8.3, not after it.** The page currently
-  ends *"Today no ride has coordinates and nothing is sent anywhere"* — true right up to the moment
-  the function deploys and false immediately after, on a **public, live** page describing where a
-  frequently-home address goes. It is not in §7 or §8's original list, which is why it is written
-  here: nothing else in this plan would have caught it, and the gap between deploying and noticing
-  is the whole exposure.
+- [x] 8.4c **Correct `/legal/privacy` in the SAME window as 8.3, not after it.** **Missed at the
+  time and closed two days late by `PD-249`** — which is the outcome this task was written to
+  prevent, so the miss is worth more than the tick. The deploy landed 2026-08-16; the page went on
+  saying ride geocoding was *"Planned, and not running yet"* and *"Nothing below is happening
+  today"* until 2026-08-19, and by then DEV's `ride_map_render_attempts` held **2 rows**
+  (2026-08-17 18:27 and 18:30 UTC) — two meeting points already sent to the vendor while a public
+  page said none had been. PROD's ledger was still 0.
+
+  The bullet now sits in *Who processes your data today* and the "Planned" heading is gone, since
+  nothing else was under it. **The durable fix is the phrasing, not the move**: every bullet on that
+  page describes what the app does when a rider acts, never what has or has not happened yet, so no
+  claim on it can be flipped by an owner action nobody in a session can take. The comment in
+  `src/app/legal/privacy/page.tsx` carries that rule.
 - [ ] 8.5 **There is no destructive step in this change.** The additive-first / deploy /
   destructive-last rule is satisfied trivially because the table-level grant is left in place —
   stated explicitly so nobody goes looking for the revoke that `025`'s precedent might suggest.

@@ -3,25 +3,45 @@
  * map tiles, and stores them against the ride.
  *
  * ===========================================================================
- * NOT DEPLOYED, AND NEVER EXERCISED AGAINST THE VENDOR.
+ * DEPLOYED, AND THE DEPLOYED BUILD IS BEHIND THIS FILE. Read the state.
  * ===========================================================================
- * Task 4 of `openspec/changes/add-ride-map-tiles/tasks.md` is titled "written,
- * not deployed", and this file is exactly that. Two separate gaps, and they are
- * not the same gap:
+ * Measured 2026-08-19 — `ACTIVE` on both projects, `verify_jwt` true, v1,
+ * `ezbr_sha256` `d5932de9…` on each. Re-take it rather than trusting the line;
+ * the deploy moves without this file moving, and so does this file without the
+ * deploy moving:
  *
- *   1. **No deploy path exists in a session.** There is no `supabase` CLI in the
- *      build container and the Supabase MCP server exposes no deploy tool, so
- *      task 8.3 is an OWNER ACTION. Same blocker as `delete-account` and PD-86.
- *   2. **`*.geoapify.com` is egress-blocked from the build container.** Not one
- *      request in this file has ever been issued. `WebFetch` returns
- *      `EGRESS_BLOCKED` and so does a bare `curl` through the agent proxy. Every
- *      vendor-facing constant in `gates.ts` therefore says whether it was
- *      measured or assumed, and the three assumed ones are named in that file's
- *      header. **Do not read "the tests pass" as "the vendor agrees."**
+ *   mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
+ *   mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
  *
- * Task 8.4 is where both close: one real ride create and one real address edit
- * on DEV, confirming tiles appear, that an edit clears then replaces them, and
- * that a non-organizer's call is refused.
+ *   TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- \
+ *     supabase/functions/resolve-ride-location/
+ *   # newer than the deploy's updated_at means the deployed build is stale
+ *
+ * **It IS stale right now, behaviourally rather than in comments.** PD-114's
+ * picked-ride branch is merged in this file and deployed nowhere: a ride
+ * carrying `start_place_id` should skip the geocode and render from the stored
+ * coordinate, and the deployed build geocodes unconditionally instead. `PD-267`
+ * is the owner action that closes it, and it must land together with removing
+ * the `if (!location)` guard in `src/lib/actions/rides.ts` — deploying one half
+ * alone leaves picked rides with no map at all, silently. Deploying is an OWNER
+ * action: no `supabase` CLI in the build container, and `deploy_edge_function`
+ * is on `.claude/settings.json`'s deny list. Same blocker as `delete-account`
+ * and PD-86.
+ *
+ * **`*.geoapify.com` is still egress-blocked from the build container**, so no
+ * session can issue a request from here — `WebFetch` returns `EGRESS_BLOCKED`
+ * and so does a bare `curl` through the agent proxy. What has changed is that
+ * the DEPLOYED function has now called the vendor: DEV's
+ * `ride_map_render_attempts` holds 2 rows (2026-08-17), PROD's holds none. One
+ * of `gates.ts`'s three assumed constants is measured off that traffic —
+ * `scaleFactor` is real (`PD-236`) — and the map `style` value and the
+ * `result_type` vocabulary are still assumptions. **Do not read "the tests
+ * pass" as "the vendor agrees."**
+ *
+ * Task 8.4 is still open on the parts a ledger row cannot answer: that an edit
+ * clears then replaces the tiles, that a non-organizer's call is refused, and
+ * whether the burned-in credit is legible at 80×148 (`PD-236`, blocked on
+ * `PD-234`).
  *
  * ---------------------------------------------------------------------------
  * NOTHING TYPE-CHECKS THIS FILE — task 4.10
@@ -143,6 +163,7 @@ import {
   buildRideMapPath,
   buildTileUrl,
   resolveCoordinate,
+  resolvePickedCoordinate,
   TILE_SPECS,
 } from './gates.ts'
 
@@ -271,7 +292,9 @@ Deno.serve(async (req: Request) => {
     //    not exist does — so the refusal below discloses neither.
     const { data: ride, error: rideError } = await caller
       .from('rides')
-      .select('id, organizer_id, club_id, meeting_point, map_card_path, map_detail_path')
+      .select(
+        'id, organizer_id, club_id, meeting_point, map_card_path, map_detail_path, start_place_id, latitude, longitude',
+      )
       .eq('id', rideId)
       .maybeSingle()
 
@@ -309,14 +332,36 @@ Deno.serve(async (req: Request) => {
 
     if (ledgerError) return noTile('render_ceiling')
 
-    // 6. BILLABLE from here. Geocode, then the three gates in gates.ts.
-    const geocoded = await fetchJson(buildGeocodeUrl(meetingPoint, GEOAPIFY_API_KEY))
-    if (!geocoded) return noTile('geocode_unavailable')
+    // 6. BILLABLE from here — unless the rider already told us where.
+    //
+    //    ** A picked ride skips the geocode AND its three gates ** (PD-114 §D6).
+    //    The gates exist to decide whether a *guess* is good enough to draw; a
+    //    coordinate the rider chose from the search sheet has nothing to
+    //    decide, and running the granularity gate over it would refuse points
+    //    that are exactly right. It also skips a vendor call we would pay for
+    //    to be told something we already know.
+    //
+    //    Correctness does not rest on this branch — `067`'s
+    //    `protect_picked_ride_location` restores a picked coordinate whatever
+    //    this function writes. What the branch buys is that a picked ride gets
+    //    a MAP, and that no geocode is billed for it.
+    const picked = resolvePickedCoordinate(ride)
 
-    const verdict = resolveCoordinate(geocoded as Parameters<typeof resolveCoordinate>[0])
-    if (!verdict.resolved) return noTile(verdict.reason)
+    let coordinate: { latitude: number; longitude: number }
+    let confidence: number | null = null
 
-    const coordinate = { latitude: verdict.latitude, longitude: verdict.longitude }
+    if (picked) {
+      coordinate = picked
+    } else {
+      const geocoded = await fetchJson(buildGeocodeUrl(meetingPoint, GEOAPIFY_API_KEY))
+      if (!geocoded) return noTile('geocode_unavailable')
+
+      const verdict = resolveCoordinate(geocoded as Parameters<typeof resolveCoordinate>[0])
+      if (!verdict.resolved) return noTile(verdict.reason)
+
+      coordinate = { latitude: verdict.latitude, longitude: verdict.longitude }
+      confidence = verdict.confidence
+    }
 
     // 7. Two renders at two zooms — see gates.ts TILE_SPECS for why this is not
     //    one render cropped twice. The names are generated HERE and held, because
@@ -396,15 +441,48 @@ Deno.serve(async (req: Request) => {
       ? { map_card_path: storedCardPath!, map_detail_path: storedDetailPath! }
       : {}
 
-    const { data: written, error: writeError } = await caller
+    //    ** A picked ride's write carries the TILE PATHS AND NOTHING ELSE. **
+    //    Its coordinate is already stored and is the rider's own; re-sending it
+    //    would be a no-op at best, and sending a `geocode_confidence` beside it
+    //    would violate `067`'s coupling CHECK — a pick has no vendor score by
+    //    construction.
+    const locationColumns = picked
+      ? {}
+      : { latitude: coordinate.latitude, longitude: coordinate.longitude, geocode_confidence: confidence }
+
+    // ** The geocoded write is guarded on the pick still being absent, and that
+    //    guard is the fix for a race rather than a tidy-up ** (PD-114 §D6).
+    //
+    //    A pick can arrive between step 2's read and here: the organizer creates
+    //    a ride with free text, this function starts legitimately, and they edit
+    //    and pick a place before step 8 lands. Without the guard the UPDATE
+    //    SUCCEEDS — `clear_ride_map_tiles` does not fire (this statement touches
+    //    neither `meeting_point` nor `start_place_id`), `protect_picked_ride_location`
+    //    does and NULLs the path columns — so `writeError` is null, `written` is a
+    //    row, the compensating delete below never runs, and two JPEGs of the
+    //    WRONG place are orphaned with nothing naming them.
+    //
+    //    With it, the statement matches zero rows, which is the refused-write
+    //    path this function already handles: the uploads are deleted and
+    //    `column_write_refused` is returned. Nothing new to handle — the branch
+    //    simply becomes reachable for a case that used to slip past it.
+    // ** Never issue an empty payload. ** A picked ride whose render or upload
+    //    failed has nothing to write — its coordinate is already stored and is
+    //    the rider's own — and PostgREST's handling of an empty PATCH body is
+    //    not something this repo pins. Before the picked branch existed the
+    //    coordinate columns were always present, so this state was unreachable.
+    const payload = { ...locationColumns, ...tileColumns }
+    if (Object.keys(payload).length === 0) return noTile('nothing_to_write')
+
+    const write = caller
       .from('rides')
-      .update({
-        latitude: verdict.latitude,
-        longitude: verdict.longitude,
-        geocode_confidence: verdict.confidence,
-        ...tileColumns,
-      })
+      .update(payload)
       .eq('id', rideId)
+
+    const { data: written, error: writeError } = await (picked
+      ? write
+      : write.is('start_place_id', null)
+    )
       .select('id')
       .maybeSingle()
 

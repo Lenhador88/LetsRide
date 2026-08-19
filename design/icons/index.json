@@ -1,6 +1,6 @@
 {
   "prefix": "Element / Icon / ",
-  "count": 53,
+  "count": 54,
   "icons": [
     {
       "id": "1883:21318",
@@ -261,6 +261,11 @@
       "id": "2303:9358",
       "name": "Trash",
       "slug": "trash"
+    },
+    {
+      "id": "4127:6925",
+      "name": "Wave",
+      "slug": "wave"
     },
     {
       "id": "1883:16376",

@@ -56,6 +56,32 @@ export type OnboardingState = {
 }
 
 /**
+ * The account-deletion confirmation's blast-radius counts (PD-102,
+ * `account-deletion`'s "confirmation names the collateral" requirement) —
+ * read under the rider's OWN RLS, same shape and same caveat as
+ * `ClubDeletionImpact`: a floor, not a total, because a club or ride
+ * belonging to a rider who has blocked this one is invisible to this read
+ * and is affected regardless. Informational only — see that requirement's
+ * "cannot be trusted as authorisation" scenario; the deletion proceeds
+ * against the database's state at execution time, not against this snapshot.
+ */
+export type AccountDeletionImpact = {
+  /** Owned clubs with at least one other member — these transfer rather than
+   * being deleted (design D2), which is why a sole-member club is not
+   * counted here: it goes with the rider, not "to someone else". */
+  clubsChangingHands: number
+  /** Upcoming rides this rider organises — each is cancelled outright.
+   * Capped at `ACCOUNT_DELETION_RIDES_LIMIT`, so this is also a floor past
+   * that many. */
+  ridesToCancel: number
+  /** Distinct riders on those rides' crews, the organizer excluded — who
+   * finds a ride gone. A person crewing two of the affected rides counts
+   * once, not twice (reviewer finding #3, 2026-08-16), and the read is
+   * capped at `ACCOUNT_DELETION_RIDERS_LIMIT`. */
+  ridersAffected: number
+}
+
+/**
  * Another rider as they appear to you. Every embedded profile on the types below
  * is this rather than `Profile`, so that reading a field the query does not
  * fetch — `terms_accepted_at` on a club member, say — is a compile error rather
@@ -280,6 +306,20 @@ export type RideForEdit = {
   is_public: boolean
   club_id: string | null
   /**
+   * The place the organizer picked for the start, and its coordinate — `067`,
+   * PD-114. All three move together (`rides_location_coupling`'s picked arm),
+   * so a non-null `start_place_id` guarantees a non-null pair and vice versa.
+   *
+   * **NULL is the normal state and does NOT mean "no coordinate".** A ride
+   * whose free text the geocoder resolved carries `latitude`/`longitude` with
+   * a `geocode_confidence` and no place id — the edit form seeds a pick only
+   * from the picked arm, because re-posting a *guessed* coordinate as a pick
+   * would relabel it as the rider's own choice.
+   */
+  start_place_id: string | null
+  latitude: number | null
+  longitude: number | null
+  /**
    * `null` means either "no club" (`club_id` is null) or "a club this viewer
    * cannot currently see" — the ex-member-of-a-private-club case
    * `ride-lifecycle` names. Distinguish using `club_id`, which is never
@@ -445,6 +485,20 @@ export type Club = {
   created_at: string
   members_count?: number
   is_member?: boolean
+  /**
+   * Where the club is based — `066`, PD-259. All four columns move together
+   * (`clubs_location_coupling`), so a non-null `location_name` guarantees a
+   * non-null coordinate pair and vice versa. **NULL is the normal state**: the
+   * field is optional at create, and every club made before `066` has none.
+   *
+   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
+   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * nothing in the database will say so.
+   */
+  location_name: string | null
+  location_place_id: string | null
+  latitude: number | null
+  longitude: number | null
 }
 
 /**
@@ -480,6 +534,30 @@ export type ClubListItem = {
    * `Join club` link in the same slot.
    */
   unread?: number
+  /**
+   * Where the club is based — `066`, PD-259. All four columns move together
+   * (`clubs_location_coupling`), so a non-null `location_name` guarantees a
+   * non-null coordinate pair and vice versa. **NULL is the normal state**: the
+   * field is optional at create, and every club made before `066` has none.
+   *
+   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
+   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * nothing in the database will say so.
+   */
+  location_name: string | null
+  location_place_id: string | null
+  latitude: number | null
+  longitude: number | null
+  /**
+   * Great-circle kilometres from the rider's own position to this club — `066`,
+   * PD-259. **Computed at read time, never stored**, and absent in three
+   * distinct cases the caller must not conflate: the rider has no resolvable
+   * position, the club has no location, or the read did not ask for one.
+   *
+   * `undefined` therefore means "no answer", never "far away" — a list sorted
+   * as though it meant zero would float every unlocated club to the top.
+   */
+  distance_km?: number
 }
 
 /**
@@ -491,6 +569,14 @@ export type ClubListItem = {
  * authorization signal: 001's policies decide every write, and a screen that
  * treated this as permission would be re-deciding in the weaker of the two
  * places.
+ *
+ * **There is deliberately no `owner` profile embed.** The About sub-page's
+ * "Club owner" row was its only reader and that page is gone; the owner is
+ * named by `ClubMemberRail`'s roster and by `/clubs/detail/members`, both from
+ * `club_members.role`, with the host ring and an `Owner` label. Re-adding the
+ * embed costs a signed-avatar round trip on every club-detail load — including
+ * from the two sub-pages — for something nothing renders. `owner_id` stays,
+ * because `viewer_role` is not the only thing that needs to know who owns it.
  */
 export type ClubDetail = {
   id: string
@@ -503,14 +589,27 @@ export type ClubDetail = {
   cover_image_path: string | null
   avatar_url: string | null
   cover_image_url: string | null
-  owner: PublicProfile | null
   members_count: number
   viewer_role: 'owner' | 'admin' | 'member' | null
+  /**
+   * Where the club is based — `066`, PD-259. All four columns move together
+   * (`clubs_location_coupling`), so a non-null `location_name` guarantees a
+   * non-null coordinate pair and vice versa. **NULL is the normal state**: the
+   * field is optional at create, and every club made before `066` has none.
+   *
+   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
+   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * nothing in the database will say so.
+   */
+  location_name: string | null
+  location_place_id: string | null
+  latitude: number | null
+  longitude: number | null
 }
 
 /**
  * One club, as `/clubs/detail/edit` renders it — PD-101. Narrower than
- * `ClubDetail`: no `owner` embed, no `members_count`, no `viewer_role` — this
+ * `ClubDetail`: no `members_count`, no `viewer_role` — this
  * screen needs the editable columns and nothing a member list or a byline
  * would want.
  */
@@ -526,6 +625,20 @@ export type ClubForEdit = {
   owner_id: string
   /** Computed the same way `RideForEdit.is_organizer` is — see that type. */
   is_owner: boolean
+  /**
+   * Where the club is based — `066`, PD-259. All four columns move together
+   * (`clubs_location_coupling`), so a non-null `location_name` guarantees a
+   * non-null coordinate pair and vice versa. **NULL is the normal state**: the
+   * field is optional at create, and every club made before `066` has none.
+   *
+   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
+   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * nothing in the database will say so.
+   */
+  location_name: string | null
+  location_place_id: string | null
+  latitude: number | null
+  longitude: number | null
 }
 
 /**
@@ -591,6 +704,37 @@ export type Postcard = {
   // Counted under RLS per viewer, never stored. A comment from a rider you
   // blocked must not be counted for you — see 011 §1.
   comments_count?: number
+}
+
+/**
+ * How exactly a postcard's stored coordinate describes where the photo was
+ * taken — the composer's `Region` and `Precise` buttons, and nothing else.
+ *
+ * There is deliberately no `'hide'` member. Hide is the ABSENCE of a
+ * coordinate, not a third kind of one: nothing is uploaded, so there is nothing
+ * for a value to describe. `064`'s CHECK says the same thing in SQL, and the
+ * column is NULL for a hidden location **and** for a photo that never carried
+ * one — indistinguishable on purpose, because a marker saying "this rider chose
+ * to hide it" would itself be the disclosure the choice exists to avoid.
+ */
+export type PhotoLocationPrecision = 'region' | 'precise'
+
+/**
+ * What the composer sends about where and when a photo was taken.
+ *
+ * Read off the original file's EXIF immediately before `compressImage` destroys
+ * it, then **reduced on the device** according to the rider's choice — so this
+ * is what actually travels, not what the photo knew. `064` couples the fields:
+ * the instant and its offset arrive together or not at all, and the coordinate
+ * pair and its precision marker likewise.
+ */
+export type PostcardCaptureInput = {
+  takenAt: string | null
+  /** Minutes east of UTC — Amsterdam in summer is 120. */
+  takenAtOffsetMinutes: number | null
+  takenLatitude: number | null
+  takenLongitude: number | null
+  takenLocationPrecision: PhotoLocationPrecision | null
 }
 
 export type PostcardComment = {
@@ -759,20 +903,22 @@ export type NotificationCursor = { createdAt: string; id: string }
  * against the 2026-07-22.0 release rather than assumed — `brand` is null on
  * 92% of rows and `street` on ~5%.
  *
- * **Attribution is an OPEN question, not a settled one.** An earlier version of
- * this comment said any screen must credit "© OpenStreetMap contributors".
- * That was wrong: measured across 527,725 sampled rows, *zero* cite
- * OpenStreetMap — the sources present are Overture, meta, Foursquare,
- * Microsoft, AllThePlaces, PinMeTo, DAC and Krick. What those eight require has
- * not been read from Overture's own attribution terms, which the build
- * container cannot reach. Settle it before a result renders; see `037`'s
- * header.
+ * **Attribution is SETTLED (PD-191, 2026-08-18) and it is NOT ODbL**, so a
+ * screen may render a result. Overture publishes the Places theme under CDLA
+ * Permissive 2.0 and Apache 2.0; the credit is paid once, on
+ * `/legal/attributions`, and nothing is owed per result. The reflex to credit
+ * "© OpenStreetMap contributors" is the trap this comment used to fall into:
+ * measured across 527,725 sampled rows — roughly 72% of the extract — *zero*
+ * cite OpenStreetMap. See `scripts/places/README.md` §Attribution for the
+ * reasoning and the one thing still inferred rather than measured.
  *
  * Most screens want `PlaceSearchResult` instead. **Nothing reads this RAW
  * shape** — `src/lib/data/places.ts` exists, but it reads through
  * `search_places()`/`locality_centroid()`, which return `PlaceSearchResult`/
- * `LocalityCentroid`, never a row of this type directly. The table itself is
- * empty until the operator load in `037` §6.
+ * `LocalityCentroid`, never a row of this type directly. The table is loaded on
+ * both projects (`PD-195`) — `docs/reference/schema.md`'s `places` row carries
+ * the count, and `docs/HANDOFF.md` §`places` carries the command that
+ * re-derives it.
  */
 export type Place = {
   /** The Overture GERS id. A string, not a uuid — GERS ids are opaque. */
@@ -912,8 +1058,10 @@ export type PlaceSearchResult = {
  * all**, which is the case the caller has to handle first.
  *
  * It exists for one job: when the rider declines GPS, `profiles.location` — the
- * free-text city from onboarding — is the *only* position signal the app holds
- * (`rides` has no coordinates and nothing stores a rider position). This turns
+ * free-text city from onboarding — is the position signal to fall back on. It
+ * is no longer the *only* one: `051` gave `rides` `latitude`/`longitude`, so a
+ * ride the rider is looking at can supply a coordinate too (`PD-114` step 3).
+ * Nothing stores a rider's own position. This turns
  * that string into a `near_lat`/`near_lon` pair for `search_places()`, which is
  * the difference between a 2,957 ms nationwide search and a 152 ms local one.
  *
@@ -926,13 +1074,26 @@ export type PlaceSearchResult = {
  *
  * Four things the caller has to know:
  *
- *  - **Zero rows is the "no location" answer, and it is the common one.** It is
- *    returned for an unknown city, for a null or empty `q`, and — today — for
- *    *every* input, because `places` is empty on DEV and does not exist on PROD
- *    until the operator load runs. All of these mean the same thing at the call
- *    site: call `search_places()` without coordinates. Do **not** try to tell
- *    them apart; an unloaded index is indistinguishable from an unknown city by
+ *  - **Zero rows is the "no location" answer.** It is returned for an unknown
+ *    city, for a null or empty `q`, and for every input against an index that
+ *    has not been loaded. All of these mean the same thing at the call site:
+ *    call `search_places()` without coordinates. Do **not** try to tell them
+ *    apart; an unloaded index is indistinguishable from an unknown city by
  *    design, not by oversight.
+ *
+ *    **It is not the common answer, and `040` — the migration this block sends
+ *    you to — states in its own header that it is.** That file says `places`
+ *    "holds 0 rows on DEV and does not exist on PROD at all", and that `rides`
+ *    "has no coordinate columns … That is the whole inventory". Both were true
+ *    when it was written and neither is now; migrations are append-only, so
+ *    those lines stay wrong for ever and reading the source is what re-derives
+ *    the mistake. Count instead:
+ *
+ *    ```sql
+ *    select (select count(*) from public.places) as rows,
+ *           (select count(*) from public.locality_centroid('Utrecht')) as resolves;
+ *    -- 736,538 / 1 on both projects, 2026-08-17
+ *    ```
  *  - **Matching is EXACT** — `lower(btrim(locality))` on both sides, so case and
  *    surrounding whitespace are forgiven and nothing else is. `Utrech`,
  *    `trecht` and `Utrechtt` all return zero rows. This is deliberate and the

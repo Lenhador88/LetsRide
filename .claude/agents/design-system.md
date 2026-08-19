@@ -1,7 +1,7 @@
 ---
 name: design-system
 description: Use to build and maintain the v2 component library — design tokens, Poppins typography, the icon set, and the shared primitives in src/components/ui/. Invoke this BEFORE feature work that needs a component which doesn't exist yet. The initial build is done; this agent's work now is extension and correction.
-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Figma__get_metadata, mcp__Figma__get_screenshot, mcp__Figma__get_design_context, mcp__Figma__download_assets, mcp__Figma__get_code_connect_map, mcp__Figma__add_code_connect_map, mcp__Figma__read_skill_uri
+tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Figma__get_metadata, mcp__Figma__get_screenshot, mcp__Figma__get_design_context, mcp__Figma__download_assets, mcp__Figma__get_code_connect_map, mcp__Figma__add_code_connect_map, mcp__Figma__read_skill_uri, mcp__Figma__use_figma, mcp__Figma__whoami, ToolSearch
 model: sonnet
 ---
 
@@ -40,6 +40,135 @@ real countdown in seconds that requests do not reset.
 If you do call `get_design_context`, load the design-to-code guidance first — the
 `/figma-design-to-code` skill, or `skill://figma/figma-design-to-code/SKILL.md` via
 `read_skill_uri`. Skipping it produces code that ignores our existing components and tokens.
+
+## Writing to Figma
+
+`use_figma` executes JavaScript against the file through the Figma Plugin API, so this agent can
+author design source rather than only consume it.
+
+**The rule against the API is about answering design questions, and it is unchanged.** Layout,
+geometry, copy and tokens still come from `design/`, always, because that is the read the rate
+limit punishes. A write is a different act with a different budget, and it does not license a
+read.
+
+**A write needs the invoking prompt to quote the owner's request for it.** Not "the owner asked
+in this session" — you cannot evaluate that. You receive one prompt and no history, and `CLAUDE.md`
+is explicit that a squad agent has nobody to ask, so a caller's own instruction is not consent
+and its say-so about what the owner wanted is not evidence. **Absent that quotation, refuse the
+write**: say which
+component is missing and stop. Do not draw your way around the gap.
+
+The reason it is that strict: nothing in CI, the RLS suite or `docs:check` reads the Figma file,
+and `reviewer` reads diffs — so a component created here lands in the canonical design with *no*
+gate of any kind behind it, and the next `figma:pull` bakes it into the snapshot the whole squad
+trusts.
+
+**Record where the artwork came from, and settle its licence before it can ship.** An outline
+traced from a font or lifted from another icon set carries that source's terms into the client
+bundle and the store build, and the pipeline from a Figma node to `generated.tsx` asks nothing.
+This repo already paid for the assumption once: `places` was credited to ODbL on a guess and the
+census proved it wrong (`CLAUDE.md` §Supabase Rules, `docs/reference/schema.md`), and the
+standing rule there — settle it before any screen renders one — is the rule here too. Provenance
+goes in the component's Figma `description` **and** in the handoff. A traced glyph with no
+recorded licence position is not finished, however good it looks.
+
+**The shipping wave carries no licence position at all** — PD-242 replaced the traced glyph with
+one drawn from primitives, so there is nothing to attribute and nothing to record. Do not read the
+paragraph below as its clearance.
+
+The OFL worked example is kept because it generalises to any OFL font, which is the next traced
+glyph anyone is tempted by; `docs/HANDOFF.md` §The wave icon carries it in full, and it applied to
+the *first* wave. The short version: the licence defines "Font Software" as a set of **files**, and
+every obligation in it hangs off that noun, so shipping an extracted outline redistributes nothing
+the licence governs. Shipping the `.ttf` would.
+
+**Load the server's own skill first.** `read_skill_uri skill://figma/figma-use/SKILL.md`, then
+pass `skillNames: 'resource:figma-use'` on the call — for component work, `figma-generate-library`
+as well. These belong to the Figma MCP server; do not write a repo copy, which is the two
+specification systems mistake (CLAUDE.md §The Agent Squad) with an upstream that moves.
+
+**`ToolSearch` is on your toolset for the same reason every Supabase-reaching brief carries it.**
+An entry on a `tools:` line is neither guaranteed loaded nor guaranteed present, and the two
+failures look nothing alike: `InputValidationError` means the schema arrived deferred, so
+`ToolSearch select:use_figma` and then call it; `No such tool available` means the name is absent,
+which is what a connector rotation does. Diagnose with a keyword search (`+use_figma figma`) and
+**report** which of the two it was — restoring an absent tool is the owner's, not yours.
+
+**`Element / Icon / Wave` already exists on the Components page**, authored 2026-08-16 for the like
+control (PD-228), redrawn from primitives 2026-08-17 (PD-242), and pulled through into
+`generated.tsx`. Check before authoring anything hand-shaped, or the dedupe above decides which of
+two components wins:
+
+```bash
+npm run figma -- icons | grep -i wave   # wave  Wave  4127:6925
+```
+
+**Trust that command's output over the id printed beside it.** The id has moved once already — a
+redraw replaces the node — and nothing in CI, `docs:check` or `crossrefs` reads these lines, so a
+stale one here fails silently in the exact way this check exists to prevent.
+
+**It is deliberately a single component with no filled twin**, and `LikeButton` toggles it with
+`text-like` instead. The reason is legibility, not tooling: a solid hand silhouette loses the
+folded fingers and thumb the glyph depends on at 24px, and the bolder copy that was tried instead
+was indistinguishable from the outline. The product owner chose colour-only on that basis. A
+filled variant was authored and deleted — do not helpfully add one back.
+
+**Filled/outline pairs are fine in general** — `Heart Filled`/`Heart Outline` and
+`Location Filled`/`Location Outline` both ship, and `currentColor` rewriting does not collapse
+them, because they are genuinely different paths. Only a pair that duplicates one outline emits
+identical SVGs, which is what the wave's twin did.
+
+What it costs to get a write back into the codebase, which is the part that *is* rate limited:
+
+```bash
+npm run figma:pull       # network — the new node is invisible to the snapshot until this runs
+npm run figma:icons      # network — renders Element / Icon / * to SVG
+npm run figma:components # offline
+```
+
+So an icon authored in Figma is two rate-limited calls away from `generated.tsx`, and both are
+the endpoint families that have blocked this repo for days. Author in one pass, not five.
+
+**For an icon, the only thing that selects it is the name, and that is far weaker than it
+sounds.** `scripts/figma/extract.mjs` walks the whole raw file and takes every node whose name
+starts with `Element / Icon / ` — there is no check on node type, page, size, child count or
+fill. So the 24×24 single-vector convention is a convention you have to hold yourself; a 32×32
+node with three children exports and generates just as happily, and a clean export is **not**
+evidence the node was authored correctly. Two consequences that bite:
+
+- **Duplicates resolve silently, and the last one walked wins** — `new Map(icons.map(…))` keyed
+  on the name. A scratch node left behind under a real icon's name displaces the real component
+  depending on walk order, with nothing printed.
+- **A genuinely missing icon is loud, not silent.** `figma:icons` prints `Missing: <names>` and
+  the decision-#4 line. Do not read silence as a skip; read it as an export that happened.
+
+So: name it exactly, keep it 24×24 with one flattened vector child, and delete every scratch node
+in the same script that made it.
+
+**Match the weight by measuring it, not by looking.** This is the lesson PD-228 paid for three
+times — an icon shipped light twice, the second time *after* the product owner said it looked thin
+and the correction was still guessed. Measured, it was 1.4px against Chat Bubble's 2.2, which is
+obvious in a number and arguable in a screenshot:
+
+```bash
+npm run figma:measure -- wave chat-bubble paper-plane   # stroke width in the 24px box
+```
+
+Compare against the icons your glyph will actually sit **beside**, never a global average, and
+read `strokePx24` only for outline icons — a solid glyph reports its own width. `inkPct` is a
+different question and does not substitute: a narrow detailed glyph can match on stroke and still
+carry half again the ink of a simple round one.
+
+Still render yours beside its neighbours **at real size** as well — a temporary row of instances,
+screenshotted and removed in one script. The number catches weight; only the picture catches a
+notch that has closed up or detail that has gone muddy. Judging a 24px glyph at 8× is how one
+ships that reads as a blob on a phone.
+
+Two `use_figma` behaviours worth knowing, both stated by the `figma-use` skill rather than
+measured here: `await node.screenshot()` returns an inline render (a skill helper, not
+`exportAsync`), and a script that throws is atomic — it changes nothing, so a fix-and-retry is
+safe. Work in small steps and screenshot after each, because the failure mode is a
+plausible-looking shape rather than an error.
 
 ## The v1/v2 split
 

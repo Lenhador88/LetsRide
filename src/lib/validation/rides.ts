@@ -31,6 +31,80 @@ export const RIDE_ROUTE_MAX = 1000
 const optionalText = (max: number, message: string) =>
   z.string().trim().max(max, message).transform((value) => value || null).nullable()
 
+/** `067`'s `rides_start_place_id_length`, restated for the message. */
+export const RIDE_START_PLACE_ID_MAX = 100
+
+/**
+ * The place a rider picked for the ride's start, or none — `067`, PD-114.
+ *
+ * **Only three fields, where a club's location has four.** A club's location
+ * *is* a place, so its name comes from the picker. A ride's start is free text
+ * the rider may have typed — `meeting_point` above owns that string and is
+ * `NOT NULL` — so what a pick adds is the coordinate and its provenance, never
+ * the text. That asymmetry is the whole difference between the two forms.
+ *
+ * Nullable object rather than three nullable fields, for `clubLocationSchema`'s
+ * reason: the illegal state (a place id with no coordinate) is unrepresentable
+ * here instead of being a `.refine` that has to remember every combination.
+ *
+ * The bounds are `067`'s `rides_location_coupling`, restated for the message.
+ * A rider drives the browser, so this is what they read and `067` is the rule.
+ */
+export const rideLocationSchema = z
+  .object({
+    start_place_id: z
+      .string()
+      .trim()
+      .min(1, 'Pick a place from the list.')
+      .max(RIDE_START_PLACE_ID_MAX, 'That place could not be attached.'),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  })
+  .nullable()
+
+export type RideLocationInput = z.infer<typeof rideLocationSchema>
+
+/**
+ * What the picker's inputs are called on a ride form.
+ *
+ * `name` is `meeting_point` — the field the rider can type in — so a pick
+ * writes through to the same input a typed answer uses, and `readRideLocation`
+ * deliberately does **not** read it: the text is `rideSchema`'s, under its own
+ * bound, whether or not a place was ever picked.
+ */
+export const RIDE_LOCATION_FIELD_NAMES = {
+  name: 'meeting_point',
+  placeId: 'start_place_id',
+  lat: 'latitude',
+  lon: 'longitude',
+} as const
+
+/**
+ * The pick, read back off `FormData` as one nullable object.
+ *
+ * **Anything short of all three present and numeric is `null`** — not a partial
+ * object and not an error. The picker writes all three together and clears all
+ * three together, so a half-filled set can only be a form the rider never
+ * completed, and `067`'s coupling CHECK means a partial write could not land.
+ *
+ * `Number('')` is `0`, a real coordinate in the Gulf of Guinea, so emptiness is
+ * tested on the STRING and never on the parsed number. That is why this is a
+ * function rather than a `z.coerce.number()` per field.
+ */
+export function readRideLocation(formData: FormData): RideLocationInput {
+  const placeId = (formData.get('start_place_id') as string | null)?.trim() ?? ''
+  const lat = (formData.get('latitude') as string | null)?.trim() ?? ''
+  const lon = (formData.get('longitude') as string | null)?.trim() ?? ''
+
+  if (!placeId || !lat || !lon) return null
+
+  const latitude = Number(lat)
+  const longitude = Number(lon)
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
+
+  return { start_place_id: placeId, latitude, longitude }
+}
+
 export const rideSchema = z.object({
   title: z
     .string()
@@ -66,9 +140,15 @@ export const rideSchema = z.object({
     .min(1, 'Pick a departure date and time.')
     .refine((value) => !Number.isNaN(Date.parse(value)), 'That is not a valid date and time.'),
   /**
-   * `max_riders` has never been enforced — not by the action, not by a policy,
-   * not by a trigger, since `001`. This bounds what can be *typed*, which is not
-   * the same thing, and the column stays a promise the database does not keep.
+   * These bounds mirror `018`'s `rides_max_riders_range`, and since `063` the
+   * number they bound is one the database keeps: `enforce_ride_capacity` counts
+   * `ride_members` against it. So this is the ordinary split — the schema owns
+   * the message, `018` owns what can be stored, and `063` owns what the cap
+   * means.
+   *
+   * `.positive()` rather than `.min(1)` is load-bearing for the walk, which
+   * submits `max_riders = 0` in two phases precisely because it is refused here
+   * *and* by `018` and so cannot write a ride at either layer.
    */
   max_riders: z
     .number()
@@ -79,6 +159,13 @@ export const rideSchema = z.object({
   is_public: z.boolean(),
   /** NULL is a ride with no club, exactly as `postcards.club_id` NULL is the app-wide feed. */
   club_id: z.string().uuid('Pick a club from the list.').nullable(),
+  /**
+   * The picked place, or none. A ride whose start was typed rather than picked
+   * carries `null` here and is completely valid — picking is the fast path,
+   * never a gate, because "the layby past the second roundabout" is a real
+   * meeting point.
+   */
+  location: rideLocationSchema,
 })
 
 export type RideInput = z.infer<typeof rideSchema>

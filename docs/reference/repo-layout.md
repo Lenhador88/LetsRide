@@ -11,7 +11,7 @@ src/
 │   │   ├── error.tsx       # The app's only error boundary
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/detail (one card + its comment thread)
 │   │   ├── rides/          # /rides, /rides/new, /rides/detail (Ride plan), /rides/detail/crew, /rides/detail/chat, /rides/detail/edit (PD-101)
-│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/detail (Timeline) + /rides, /members, /about, /edit (PD-101)
+│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/detail (merged 2026-08-18) + /rides, /members, /edit (PD-101)
 │   │   ├── notifications/  # /notifications — PD-118. Becomes /inbox/notifications when the tab returns
 │   │   └── profile/        # /profile (your own), /profile/detail (another rider's — view-rider-profile)
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
@@ -21,12 +21,12 @@ src/
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)
 │   └── globals.css         # Tailwind import + CSS vars + the safe-area / fixed-bar spacing utilities
 ├── components/
-│   ├── ui/                 # AppBackground, Avatar, Banner, Button, ButtonGroup, Card, Checkbox, ContextMenu, ErrorState, ExpandableText, FilterTile, Input, ListUser, NotificationDot, NotificationRow, OfflineState, Pagination, SectionHeader, Skeleton, Textarea
+│   ├── ui/                 # AppBackground, Avatar, Banner, Button, ButtonGroup, Card, Checkbox, ContextMenu, ErrorState, ExpandableText, FilterTile, Input, ListUser, NotificationDot, NotificationRow, OfflineState, Pagination, PlaceSearchField, SectionHeader, Skeleton, Textarea
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout) — plus username-verdict.ts, pure + tested, the postcards/deck.ts shape rather than a fifth component
-│   ├── rides/              # CreateRideForm, EditRideForm, DeleteRideControl, RideCard, RideFilterBar, RideHeader, RidePageMenu, RideAttendanceBar, RideMap, RideChatThread, RideChatComposer
-│   ├── clubs/              # ClubCard, ClubDetailHeader, ClubDetailPageMenu, ClubMembershipButton, ClubPageMenu, CreateClubForm, EditClubForm, DeleteClubControl, JoinClubButton, MarkClubSeen
+│   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, MarkRideChatSeen, RideAttendanceBar, RideCard, RideChatButton, RideChatComposer, RideChatRow, RideChatThread, RideChip, RideCrewRail, RideFilterBar, RideHeader, RideJournal, RideMap
+│   ├── clubs/              # ClubCard, ClubCreateRideRow, ClubDetailHeader, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPostcardCarousel, CreateClubForm, DeleteClubControl, EditClubForm, ExploreClubsStrip, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem
 │   └── profile/            # CountryFlags, EditProfileForm, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu
@@ -46,6 +46,7 @@ src/
 │   ├── routes.ts           # every href that names a resource id — /rides/detail?id= and its nine siblings (PD-142)
 │   ├── back-navigation.ts  # where a back control goes on a screen with several entry points — /notifications carries its origin in ?from= (PD-209)
 │   ├── realtime/           # useRideMessageStream — the app's only Supabase Realtime subscription
+│   ├── location/           # rider-location.ts (where the rider is — device, then profile city; never prompts), distance.ts (haversine + NEARBY_RADIUS_KM, PD-259)
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRideMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
 └── types/

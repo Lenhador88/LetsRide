@@ -269,7 +269,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (38 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests |
+| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (45 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests. **Two** component tests exist — `PostcardAction` (asserting the class list rather than any measured size) and `PlaceSearchField` (asserting which inputs each of its two modes writes, which is the contract its callers' actions read back off `FormData`). Both render through `renderToStaticMarkup`; the environment is still `node`, and jsdom is the answer only when something needs a layout or an event |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Refuses a sign-in and checks the email survives it, signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. It then refuses a create and an edit and checks every field and choice of each survives. With `WALK_FIXTURES=1` it **creates** the ride and club the detail routes need, through the app's own forms; a shrunken `N/N` is a skip, not a pass. Writes are refused unless the session's own project is on the allowlist |
 | End-to-end | Playwright | Still deferred as a full suite. **The walk is not the gap being filled**: it asks one question per route — did this render — and asserts behaviour only in its six named phases, each covering a defect no other gate here can see (PD-196's cleared email, PD-199's cleared create form and its silently-rewritten edit form, PD-111's navigation cost, the guard's redirects, what sign-out leaves behind). Adding a phase means adding a reason, not broadening a remit |
 
@@ -345,7 +345,7 @@ the exported function must be named `proxy`, and do not add a `middleware.ts`.
 Routing decisions live in **three** places, split so the decision can be tested:
 
 - **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
-  `null` means stay; a string is where to go. 38 cases in `__tests__/guard.test.ts`.
+  `null` means stay; a string is where to go. 45 cases in `__tests__/guard.test.ts`.
 - **`src/lib/auth/guard-cache.ts`** — what the decision reads: the session and the onboarding
   stamps, **held for the page load rather than fetched per route**, with `onAuthStateChange` as
   the single writer for the session half. This is where the reads live now, and the reason it
@@ -397,14 +397,16 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**There is exactly one Edge Function, and it is the only place a service-role key exists.**
-`supabase/functions/delete-account/` — added 2026-08-06, the first in the repo. Removing an
-`auth.users` row needs the Auth admin API, which needs the service-role key; that is decision
-#8's **first** reading ("more server compute, same database") and not its third. The function
-owns one operation, not the database.
+**There are two Edge Functions, and `delete-account` is the only place a service-role key
+exists.** Count rather than trust that — `list_edge_functions` against either ref, against
+`ls supabase/functions/`. Removing an `auth.users` row needs the Auth admin API, which needs the
+service-role key; that is decision #8's **first** reading ("more server compute, same database")
+and not its third. `resolve-ride-location` geocodes a ride's meeting point and renders its tiles
+— an outside call and a third-party key, and no service-role key. Each owns one operation, not
+the database.
 
-Four rules, and they are the whole reason this does not contradict §What Not To Do's "don't
-introduce a service-role key into the app" — **the function is not the app**:
+Four rules on `delete-account`, and they are the whole reason this does not contradict §What Not
+To Do's "don't introduce a service-role key into the app" — **the function is not the app**:
 
 - **The key lives only in the function's secret store.** Not in `src/`, `.env.local.example`,
   Vercel, a fixture or any `NEXT_PUBLIC_*`. `src/__tests__/no-service-role-key.test.ts` is the
@@ -419,17 +421,30 @@ introduce a service-role key into the app" — **the function is not the app**:
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**It is deployed to both projects and `ACTIVE`, as of 2026-08-11** — and it stays an **owner
-action**, which is why it is still drift waiting to happen. There is no `supabase` CLI in the
-build container and the Supabase MCP server has no deploy tool, so nothing in a session can
-redeploy it after an edit to `supabase/functions/delete-account/index.ts`, and CI has no path that
-would notice. Check the deploy rather than trusting this line, and check that both projects run
-the *same* build:
+**Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, each one's `ezbr_sha256`
+equal across the two projects, and both current against their files** — measured 2026-08-17,
+after the owner redeployed `delete-account` (`9793933d…`, PROD v9 / DEV v5). **Cross-project
+equality is not what establishes that second half**: it says the two projects agree, never that
+either matches the repo, so currency is the `updated_at`-against-commit-date check below.
+Deploying is an **owner action** — there is no
+`supabase` CLI in the build container, and the
+MCP server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list, which
+§Working Principles says to treat as blocked under any connector name — so an edit under
+`supabase/functions/` is drift from the moment it merges, and CI has no path that would notice.
+Compare the deploy against the file rather than trusting this line, then check that both
+projects run the same build:
+
+```bash
+# the currency check — a file newer than the deploy means the deployed build is stale
+TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/<name>/
+```
 
 ```
 mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
 mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
-# status ACTIVE, verify_jwt true, and ezbr_sha256 equal across the two
+# updated_at vs the commit date above; then status ACTIVE, verify_jwt true,
+# and ezbr_sha256 equal across the two. A moved sha is necessary, not sufficient —
+# verify a redeploy by content, per docs/HANDOFF.md's Store readiness row 2.
 ```
 
 **There is one doorway now, and almost nothing should reach past it:**
@@ -457,17 +472,34 @@ mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
 **Schema:** **the per-table contract is [`docs/reference/schema.md`](docs/reference/schema.md)** —
 `profiles`, `rides`, `ride_members`, `clubs`, `club_members`, `postcards`, `postcard_likes`,
 `postcard_comments`, `postcard_hides`, `postcard_reports`, `blocks`, `profile_countries`,
-`feed_reads`, `places`, `ride_messages`, `clubs` (media), and the dropped `friendships`. Read it before touching
+`feed_reads`, `ride_reads`, `places`, `ride_messages`, `clubs` (media), and the dropped `friendships`. Read it before touching
 any of them: it carries the per-column grants, the cascade behaviour and the audience predicate
 for each, and several are counter-intuitive (a club outlives its owner; `postcards.ride_id` is a
 tag rather than a second audience; `ride_messages`' audience is an intersection and neither half
 alone is it).
 
-**One blocker out of that file belongs here, because the session it stops is one that would never
-open it: `places` attribution is an OPEN question.** A census of 527,725 rows names Overture,
-meta, Foursquare, Microsoft, AllThePlaces, PinMeTo, DAC and Krick, and **zero** OpenStreetMap — so
-the ODbL credit this repo first assumed is wrong, and the commercial sources' terms are unread
-(their hosts are egress-blocked). **Settle it before any screen renders a place result.**
+**One line out of that file belongs here, because the session that needs it is one that would
+never open it: `places` is Overture's Places theme, and it is NOT ODbL.** Overture publishes
+Places under **CDLA Permissive 2.0 and Apache 2.0** — no share-alike, and §3 exempts what an app
+renders ("Results") from carrying the licence text at all. The reflex to reach for
+"© OpenStreetMap contributors" is the trap: a census of 527,725 rows — roughly 72% of the extract
+— found **zero** OSM-sourced rows (`scripts/places/README.md`), so that credit would name a
+contributor which supplied nothing.
+**The credit is paid once, on `/legal/attributions`, and a screen rendering a place result owes
+nothing further** — decided by the product owner 2026-08-18 (`PD-191`), on
+<https://docs.overturemaps.org/attribution/>, which is egress-blocked from a session and reachable
+through `WebSearch`.
+
+**One part of that is INFERRED rather than measured, and it is the part a session would otherwise
+inherit as settled:** the per-source table on that page says some sources carry "special terms",
+and `WebSearch` returned the page's summary but not the table. `/legal/attributions` names all
+eight contributors and both licences, which is broader than any per-source credit line, so what is
+unread could only be an obligation *other* than credit. `scripts/places/README.md` §Attribution
+carries the reasoning, including the storage half.
+
+**Map tiles are a different vendor and a different obligation.** Geoapify requires an
+unconditional OpenStreetMap credit (`PD-104`), and that line goes **beside** the Overture one on
+that page rather than merged into it.
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
 
@@ -497,9 +529,12 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 59 files. DEV is at `059`, PROD at `059` — LEVEL as of 2026-08-16.** Do not
-read that number here — it has been wrong in both directions. Run `list_migrations` against
-`ls supabase/migrations/` instead.
+**Applied state: 68 files. DEV is at `068`, PROD at `059` — DEV AHEAD, 2026-08-19.** DEV-ahead is
+the ordinary state of a migration between its merge and its promotion, not drift. **Do not read
+the count of unpromoted files off this sentence either** — it named exactly one while two were
+waiting, which is the same defect as a stale number in a smaller place, and the promotion is the
+one job that reads it. Run `list_migrations` against `ls supabase/migrations/` and promote
+everything the gap contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md` §Migrations.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
@@ -544,7 +579,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1505** assertions — re-derive rather than trust it:
+Suite **1795** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -583,13 +618,13 @@ rider with a NULL stamp no way out of the wizard. Inside a `security definer` fu
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: nine, and only one is outstanding.** Re-derive rather than trust the number
-— `get_advisors(security)` — but the *shape* is durable, because eight of the nine are things
+**Security advisors: ten, and only one is outstanding.** Re-derive rather than trust the number
+— `get_advisors(security)` — but the *shape* is durable, because nine of the ten are things
 this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 7 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_owned_club` (`043`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns. Narrowness is the defence |
+| 8 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders. Narrowness is the defence |
 | 1 | `rls_enabled_no_policy` on `password_reset_grants` (INFO) | Correct by design: `026` revokes everything on it from `anon` and `authenticated`, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
@@ -664,7 +699,7 @@ at runtime).
 any screen, and read `design/TOKENS.md` in preference to either — that one is generated, the
 tables are transcribed.
 
-Three rules that must hold without opening it:
+Four rules that must hold without opening it:
 
 - **Read the design from `design/`, never the Figma API.** `npm run figma -- tree "<screen>"` is
   offline and cannot be rate limited; the API's limit is per-endpoint, inherited across sessions,
@@ -673,6 +708,24 @@ Three rules that must hold without opening it:
   hand-edited. The generator rewrites every literal fill to `currentColor`.
 - **Primary buttons are near-black (`Grey/100` `#1A1A1A`), not green.** Green is an accent used
   sparingly. This is the single most-repeated mistake against these designs.
+- **Writing to Figma is possible, and it takes an explicit ask.** `use_figma` runs against the
+  file through the Plugin API and is on `design-system`'s toolset. The rule above is untouched: a
+  write is not a licence to *read* over the API, and design questions still come from the
+  snapshot. What makes the ask non-negotiable is that **nothing anywhere gates it** — check that
+  rather than trust it, because the day someone adds a `reviewer` pass or a registry claim the
+  justification quietly stops being true:
+
+  ```bash
+  grep -ril figma .github/workflows/ scripts/docs/registry.mjs .claude/agents/reviewer.md   # 0
+  ```
+
+  So a component created in a session lands in the canonical design unreviewed, and the next
+  `figma:pull` bakes it into the snapshot the whole squad trusts — and from there into
+  `generated.tsx`, the client bundle and the store build, with nothing in between asking where the
+  artwork came from. **Traced or borrowed artwork therefore needs its licence settled before it
+  ships, not before it merges**; `places` is the precedent for what an assumed one costs.
+  `.claude/agents/design-system.md` §Writing to Figma carries the conventions, the provenance rule
+  and the two rate-limited calls it takes to reach `generated.tsx`.
 
 ## Development Workflow
 
@@ -772,8 +825,10 @@ outright, so a UUID-prefixed name it finds is very likely refused too (untested 
 rotation). **The fix is therefore the *report***, an agent naming the passes that did not run;
 restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
 §Reaching Supabase block (`reviewer`'s leads its file as §First), and a new one needing the
-database gets both; `design-system` is out, its connector being Figma and its answers coming from
-the committed `design/` snapshot with the API forbidden.
+database gets both; `design-system` is out, its connector being Figma and its *answers* coming
+from the committed `design/` snapshot with reads over the API forbidden — which is a rule about
+where design questions get answered, not a claim that the connector is read-only. It also holds
+`use_figma`, under §Design System's fourth rule above.
 `src/__tests__/agent-briefs.test.ts` enforces it — `grep -L ToolSearch` cannot, since every such
 block names the tool in prose and reads clean with the entry stripped.
 
@@ -803,7 +858,9 @@ guard, the two `.claude/` cases below, and contrast on any new colour pairing.
 those two are carved out of `ci.yml`'s denylist so `src/__tests__/agent-briefs.test.ts` runs on
 them. **`.claude/settings.json` runs the job too** — its own carve-out, because `docs:check`'s
 `hard_deny` claim measures that file — but the job checks one *number* in it, never the
-permission semantics. **`.claude/hooks/*.sh` and the rest of `.claude/` still run zero jobs.**
+permission semantics. **`.claude/skills/` runs it too** — the generated-artifact alarm byte-compares
+those files against the openspec CLI's own templates. **`.claude/hooks/*.sh` and the rest of
+`.claude/` still run zero jobs.**
 So a diff touching the permission or execution surface is a **security** review with, at best, a
 cardinality check behind it.
 
@@ -890,10 +947,14 @@ a build.
 
 **Default: one build in flight, in the background, and the thread stays free.** Spawn the agent,
 reply at once, and keep answering questions about other stories while it runs. What this buys is
-**availability, not throughput** — and the Routine is not the fallback a session assumes it is,
-because gate (7) of `.claude/commands/queue-pickup.md` stops a firing when any of the owner's
-sessions was touched in the last 15 minutes. **So while the owner is at the keyboard the queue is
-suppressed, not merely slow**, and this mode is the only thing picking work up at all.
+**availability, not throughput**.
+
+**The queue runs alongside this mode now, which it did not until 2026-08-18.** The dispatcher used
+to hold every dispatch while any of the owner's own sessions was `RUNNING`; the owner dropped that
+gate — *"we can indeed drop the gate whether I am here or not"* — so an hourly firing may hand a
+story to a build session while this conversation is live. **The collision that gate guarded against
+is between two builds, not between a build and a conversation**, and `queue-dispatch.md` §The board
+is the lock now holds it with two Linear labels and a declared territory per session.
 
 **Backgrounding it and then waiting on it is the same as not backgrounding it.** Product owner,
 2026-08-11: *"shouldn't all of that be running on the background?"* — said to a session that had
@@ -1129,6 +1190,23 @@ say what actually landed; a notification they did not need is annoying in a way 
 `.claude/hooks/session-wrapup-check.sh` is a backstop rather than the trigger — it can only fire
 once the branch is committed, pushed and ahead of `development`.
 
+**Open with what they must do, and keep the whole reply to a few lines.** Product owner,
+2026-08-17: *"I see a lot of text, but its too much text for me know quickly what happened / what
+do you need from me."* Said after a session that was already following every rule below — so this
+one governs them, and it is the one to check a draft against.
+
+The **first line** is the ask, or "nothing needed". Everything after it is optional context the
+owner is free to not read, which means it must be safe to skip. Ten lines is a normal reply;
+longer needs a reason that is not "there was a lot to say".
+
+**Points / Proposals / Question is a ceiling, not a template.** It earns its length only at a real
+decision point. A status, an answer, a wrap-up with nothing to decide gets a few lines and no
+headings — and the five-rating block belongs only where an option is genuinely being offered.
+
+**Do not re-ask an open question in full.** Name it in a clause — *"PD-166 still open"* — and stop.
+Repeating the framing every turn is how one unanswered decision doubles the length of every reply
+after it.
+
 **Say less. Every reply, not just the ones during a build.** Progress feedback is a line or
 two — what landed, what is next, what broke. Not a recap of the reasoning, not a restatement of
 the plan, not a summary of a file that was just read. The owner is watching the work happen;
@@ -1171,9 +1249,10 @@ Three things are still owed and none of them is a status update:
 - **Anything the owner just asked.** Answer it immediately and fully. §Delegating while the
   owner is at the keyboard is explicit — *"spawn the agent, reply at once, and keep answering
   questions about other stories while it runs"* — and that mode buys **availability**, which
-  is the whole return on backgrounding. It is also the only thing picking work up while they
-  are at the keyboard, since queue-pickup's gate (7) suppresses the Routine. Silence here
-  cancels the mode rather than serving it.
+  is the whole return on backgrounding. Silence here cancels the mode rather than serving it.
+  (Until 2026-08-18 this mode was also the *only* thing picking work up while the owner was at
+  the keyboard, because the dispatcher held every dispatch while one of their sessions was
+  running. That gate is gone: the queue now runs alongside this mode.)
 - **A question only they can answer, and a blocked capability.** Both are decisions, not
   status.
 - **A one-line answer to a hook that returned `decision: block`.** That is a prompt, unlike a
@@ -1445,6 +1524,19 @@ looks finished. Before ending a session, merge it or say plainly that it is open
 is not hypothetical: a handoff rewrite sat in an unmerged PR while `main` told the next session
 a shipped epic was half-finished.
 
+**Driving a PR to green is bounded: three attempts, then hand it back.** An attempt is one push
+that intends to fix a red or absent check. After the third is read back and still not green, say
+what is failing and stop — do not open a fourth, do not re-run a job hoping for a different answer,
+and **do not arm a repeating check-in to come back to it later**.
+
+Measured 2026-08-18: one session watching a single PR re-armed an hourly `send_later` eighteen
+times across twenty hours — **84.5M cache-read tokens, 343k output, nothing built after the first
+hour**, and its Linear issue holding a queue slot the whole time. A session that cannot get CI green
+in three tries has found something the owner needs to see, and every wake after that spends real
+money to say so more slowly. This bounds the harness's own PR-watch instructions, which otherwise
+re-arm indefinitely; a session can read its own spend to check itself — `get_session` with
+`session_id` omitted returns `external_metadata.usage`.
+
 **"Counts" has two thresholds, and which of them is yours depends on what you were asked to do.**
 **A session's unit of done is a merged PR on `development`**, which is where a queue firing ends
 (`Deployed to DEV`). Reaching riders is the promotion to `main`, and `Done (in production)` is the
@@ -1486,7 +1578,7 @@ rather than checking it against this list, which is not exhaustive:
   obituaries, so the obvious command returns a wrong number that looks measured.
 - **`^`-anchored `git grep -L`** (same paragraph) — unanchored, a doc comment mentioning
   `'use client'` counts as the directive, so real server-rendered pages drop out of the list.
-- **The team-scoped lock** (`.claude/commands/queue-pickup.md` STEP 1) — a team-scoped
+- **The team-scoped lock** (`.claude/commands/queue-dispatch.md` STEP 1) — a team-scoped
   `list_issues` is the natural query and is held permanently by years-old issues outside this
   project.
 
@@ -1523,11 +1615,11 @@ from a visibility rule nobody wrote down. Rules live in `openspec/config.yaml`.
 
 ## The roadmap lives in Linear
 
-**Full detail — the anti-duplication contract, the status traps, sequencing, the queue Routine and
-its two triggers — is [`docs/reference/linear.md`](docs/reference/linear.md). Read it before the
-first Linear call of a session, and before ANY call that touches the queue Routine, its triggers
-or the Development session** — those are CCR calls rather than Linear ones, so "before a Linear
-call" would never have fired for them. What must be true without reading it:
+**Full detail — the anti-duplication contract, the status traps, sequencing, the queue dispatcher
+and its two triggers — is [`docs/reference/linear.md`](docs/reference/linear.md). Read it before
+the first Linear call of a session, and before ANY call that touches the dispatcher Routine, its
+triggers or the relay session it fires into** — those are CCR calls rather than Linear ones, so
+"before a Linear call" would never have fired for them. What must be true without reading it:
 
 - Workspace **`lets-ride`**, team **Pedro & Dave (`PD`)**. **Pass the project id —
   `88f3f224-ecf0-46f0-a032-c86b7a12f81c`** — never the name: it holds a curly apostrophe, the
@@ -1536,9 +1628,17 @@ call" would never have fired for them. What must be true without reading it:
   response.**
 - **Do not ask permission to touch Linear.** Standing grant, 2026-08-07 — read, create, update,
   label, move between statuses, and close. Deleting anything a human authored is the exception.
-- **`Queued (AI)` is the only start signal**, and `Development (AI)` + `Needs help` is a
-  *two-name* concurrency lock. Both traps are spelled out in the reference; the wider reading of
-  either freezes the queue while looking healthy.
+- **`Queued (AI)` is the only start signal**, and the owner keeps it hand-fed on purpose
+  (2026-08-18: *"it allows me to prioritise and focus work on the features I want to deliver"*), so
+  a full `Todo AI` column is not a starved queue to route around. `Development (AI)` claims **one
+  issue** — stories build in parallel sessions, so it says nothing about the others — while
+  `Needs help` still stops every dispatch. Both traps are spelled out in the reference; reading
+  either as "any `started` issue" freezes the queue while looking healthy.
+- **The two `slot-*` labels are the concurrency cap, and the board is the whole lock.** `slot-1`
+  and `slot-2` go on every issue a build session holds, so free slots are counted in the same call
+  that reads the queue — no session list, no dispatch records, no scout agents. An issue moved into
+  `Development (AI)` by hand carries no slot label and holds no slot, which is what keeps a manual
+  move from freezing the queue.
 - **Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave`. A
   `save_issue` naming a status that no longer exists comes back looking successful with the field
   silently dropped.
@@ -1624,17 +1724,19 @@ chain to a scratch database and asserts what each role can reach.
     *every* changed file is under `docs/`, `design/`, `openspec/`, `.claude/` or a root `*.md`.
     That is a **denylist**, like the route guard's public paths — a new top-level directory runs
     CI by default, so forgetting to list something costs one green run rather than a missed
-    break. **Four carve-outs run the job anyway**, each for its own tripwire — count them in the
+    break. **Five carve-outs run the job anyway**, each for its own tripwire — count them in the
     `changes` job rather than trusting this list, which has already been a carve-out behind:
     `.claude/agents/` + `.claude/commands/` (`src/__tests__/agent-briefs.test.ts`, because a
     brief is executable process that no other job reads), `docs/` + root `*.md`
     (`scripts/docs/__tests__/registry.test.mjs`, because `docs:check`'s anchors depend on exact
     wording), `openspec/` (`crossrefs.test.mjs`, because a third of the repo's section pointers
-    live there), and `.claude/settings.json` (the `hard_deny` claim measures that file, and a
-    permissions diff touches nothing else). **So a PR touching only `design/`, `.claude/hooks/`
-    or the rest of `.claude/` runs zero jobs.**
+    live there), `.claude/settings.json` (the `hard_deny` claim measures that file, and a
+    permissions diff touches nothing else), and `design/` + `.claude/skills/` (the
+    generated-artifact alarms rebuild `generated.tsx` and `TOKENS.md` from inputs living entirely
+    inside those two trees, so the diff that breaks them is exactly a diff confined to them).
+    **So a PR touching only `.claude/hooks/` or the rest of `.claude/` runs zero jobs.**
   - **The cheap doc-claims step is not the whole sweep.** It runs the claims whose ground truth
-    is a grep, a `jq` or a contrast ratio — 22 of 34. The ones needing Postgres, a second full
+    is a grep, a `jq` or a contrast ratio — 24 of 36. The ones needing Postgres, a second full
     build or a **test runner** stay out, so `npm run docs:check` locally is still the complete
     answer. That last exclusion was learned rather than designed: the two claims that spawn
     `vitest` on one file passed locally — including under `CI=true GITHUB_ACTIONS=true` — and
@@ -1672,6 +1774,15 @@ cheapest to get green. The one case that needs no PR is a session that changed n
   and a wrap-up PR left open is that failure mode with extra steps, because every other signal
   (clean tree, green CI, pushed branch) already looks finished. If it genuinely cannot merge,
   say so plainly as the **last thing in the session**, with the reason.
+- **Every implemented story ends on DEV.** Standing instruction, product owner 2026-08-18:
+  *"after every story implementation, we should deploy to DEV."* Merging to `development` **is**
+  that deploy — Vercel builds the Preview against `letsride-dev` on the merge — so the story is
+  not finished at "green and approved", it is finished when it is running on DEV and the Linear
+  issue says `Deployed to DEV`. **Do not wait to be told to merge.** A design question, a review
+  finding or a blocked capability is a reason to hold; the absence of an explicit "merge it" is
+  not, and neither is the work being someone else's to admire.
+  `docs/reference/linear.md` §The statuses carries the status half and the promotion rule
+  beyond it — DEV is the session's threshold, `main` is the rider's.
 - **A follow-up PR is fine when a fact only becomes true after the merge.** Applying a migration
   that must land after its code deploys is the standard case: the "applied" line cannot be
   written truthfully in the PR that deploys the code.
@@ -1704,6 +1815,12 @@ cheapest to get green. The one case that needs no PR is a session that changed n
   this organization, so no session can recreate it; `update_trigger enabled: true` restores it
   whole. `…WJkMV` is the cheap hourly one, `…Gzy8e` is the irreplaceable one — keep them straight
   in both directions. Detail in [`docs/reference/linear.md`](docs/reference/linear.md).
-- **Don't archive or abandon the Development session** (`session_01B2mxc642tG8vZ15wysQpqM`).
-  Archiving it stops the queue silently with no error anywhere, and `update_trigger` has no
-  `persistent_session_id` parameter, so recovery needs a third trigger bound to a new session.
+- **Don't archive or abandon the relay session** — the one
+  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to, currently
+  `session_01B2mxc642tG8vZ15wysQpqM`. Archiving it stops the queue silently with no error
+  anywhere, and `update_trigger` has no `persistent_session_id` parameter, so recovery needs a
+  third trigger bound to a new session. **It is the only session in the queue that is reused, and
+  since 2026-08-18 it decides nothing**: a firing spawns a fresh dispatcher and exits, so
+  everything it spawns is disposable and archiving one is fine — a dispatcher carries
+  `queue-dispatch-run` and a child carries `queue-dispatch`, which is how the three are told
+  apart. `.claude/commands/queue-dispatch.md` STEP -1 is the procedure.
