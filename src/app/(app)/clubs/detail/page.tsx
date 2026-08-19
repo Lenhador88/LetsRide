@@ -167,7 +167,7 @@ function ClubScreen() {
     )
 
   // The strip is the design's "Upcoming rides" section and stays exactly that:
-  // `getRides` now also answers with the club's previous rides, which the club
+  // `getRides` now also answers with the club's past rides, which the club
   // Rides sub-page draws under its own header and this carousel does not.
   const upcoming = rides.data.upcoming.slice(0, CLUB_TIMELINE_RIDES)
   const isMember = !!club.data.viewer_role
@@ -201,7 +201,7 @@ function ClubScreen() {
             action={
               // Gated on what the sub-page has, not on what this strip draws.
               // A club whose rides are all behind it has an empty strip and a
-              // Rides sub-page full of previous rides, and dropping the link
+              // Rides sub-page full of past rides, and dropping the link
               // there is PD-125's defect exactly: a screen nobody can reach.
               rides.data.upcoming.length > 0 || rides.data.past.length > 0
                 ? { label: 'See all', href: routes.clubRides(id) }

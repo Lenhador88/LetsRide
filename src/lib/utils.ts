@@ -387,7 +387,7 @@ export function rideZoneDayKey(date: string): string {
  * This is where a ride stops being upcoming and becomes a previous ride, and it
  * is deliberately **not** `now`. A ride that left at 15:00 is still today's
  * ride at 23:00: dropping it out of the list the moment it departs takes it off
- * the screen of every rider still on it, and filing it under "Previous rides"
+ * the screen of every rider still on it, and filing it under "Past rides"
  * the same evening reads as a day that is already over. It moves at midnight,
  * once, for everyone.
  *

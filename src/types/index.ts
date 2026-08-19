@@ -219,7 +219,7 @@ export type RideListItem = {
    * (`rideDayStartUtc`). A ride that departed at 15:00 is still upcoming at
    * 23:00, so `RideCard` keeps drawing "Going" on it for the rest of its day
    * and flips to the design's past variant ("Went") at the same moment the ride
-   * moves under the "Previous rides" header. The two have to be computed from
+   * moves under the "Past rides" header. The two have to be computed from
    * one cutoff or a card reads "Went" while sitting above that header.
    *
    * It is exactly `false` for every ride in `RideList.past` and `true` for

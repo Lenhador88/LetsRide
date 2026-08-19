@@ -33,7 +33,7 @@ export const RIDES_PAGE_SIZE = 30
  * deliberately smaller than a page of upcoming ones.
  *
  * The two windows are not symmetrical. Upcoming rides are a plan and there are
- * only ever as many as riders have scheduled; previous rides accumulate for
+ * only ever as many as riders have scheduled; past rides accumulate for
  * ever, so an unbounded read grows without limit on a screen whose purpose is
  * still "what am I riding next". Twenty is roughly a season of Sundays — enough
  * to answer "where did we go last month" from the list itself, and short enough
@@ -244,7 +244,7 @@ type RidesQuery = ReturnType<typeof ridesQuery>
  *
  * The two windows sort in opposite directions, and both sort *away from today*:
  * upcoming is soonest-first because the next ride is the one being looked for,
- * previous is newest-first because the last ride is. Sorting previous rides
+ * past is newest-first because the last ride is. Sorting past rides
  * ascending would put the oldest ride the list is allowed to carry at the top
  * and truncate the recent ones, which is the wrong end of the history.
  *
@@ -266,12 +266,12 @@ function inWindow(query: RidesQuery, window: RideWindow, limit: number) {
  * `limit`-length lists contains the true first `limit` of the whole — which is
  * what makes merging in JS honest rather than a sample.
  *
- * **This replaced an id list, and the reason is the previous-rides window.** The
+ * **This replaced an id list, and the reason is the past-rides window.** The
  * old shape read the viewer's joined ride ids and put them in an `id.in.(...)`
  * predicate, which is bounded only by how many rides they have joined: at ~37
  * bytes a UUID a few hundred crosses the usual 8 KB request-line limit and the
  * filter starts answering 414. Upcoming rides kept that small by accident —
- * there are only so many rides ahead of you — and previous rides have no such
+ * there are only so many rides ahead of you — and past rides have no such
  * ceiling, they are every ride the rider has ever been on. Two joins instead of
  * one predicate removes the hazard from both windows rather than working around
  * it in one.

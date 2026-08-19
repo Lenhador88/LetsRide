@@ -1,6 +1,6 @@
 -- 071: `rides` gets an index on `departure_at`.
 --
--- The rides list grew a second window on 2026-08-19 — "Previous rides", every
+-- The rides list grew a second window on 2026-08-19 — "Past rides", every
 -- ride behind the start of today — and that window is what makes this table's
 -- only ordering column worth an index. Before it, `rides` was scanned and
 -- sorted on `departure_at` with no index at all (the five that existed are the
@@ -9,7 +9,7 @@
 -- itself: rides scheduled *ahead* are as many as riders have planned, and no
 -- more.
 --
--- The previous-rides window has no such ceiling. It is every ride ever created,
+-- The past-rides window has no such ceiling. It is every ride ever created,
 -- and it grows monotonically for the life of the app. The failure it produces
 -- is not a slow page on day one — it is a seq scan whose range widens every
 -- week, which is the kind that is invisible until it is not.
@@ -45,4 +45,4 @@ create index if not exists rides_departure_at_idx
   on public.rides using btree (departure_at);
 
 comment on index public.rides_departure_at_idx is
-  'Orders both windows of the rides list (071). Ascending serves the descending previous-rides scan too — a btree reads backwards. Added when the list stopped being upcoming-only and its second window became unbounded by anything.';
+  'Orders both windows of the rides list (071). Ascending serves the descending past-rides scan too — a btree reads backwards. Added when the list stopped being upcoming-only and its second window became unbounded by anything.';

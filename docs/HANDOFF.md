@@ -683,9 +683,9 @@ It creates a ride and a club **through `/rides/new` and `/clubs/new`** rather th
 which exercises the two create forms end to end — nothing else in this repo submits them. It
 fills **only what is missing**, so it is idempotent and needs no cleanup pass; a second run
 creates nothing and still walks the same routes. The ride is dated a year out on purpose, and
-the reason changed shape when `/rides` grew its Previous rides section rather than going away:
+the reason changed shape when `/rides` grew its Past rides section rather than going away:
 a departed fixture used to vanish from the list, so the next run created another that nothing
-listed and nothing removed. It is now filed under Previous rides instead — no longer a leak, but
+listed and nothing removed. It is now filed under Past rides instead — no longer a leak, but
 `discoverDetailPaths` takes the first `?id=` link in DOM order, so on a DEV where every ride has
 departed the walk would check the ride detail screen's *past* variants believing it held an
 upcoming ride. A year out keeps the fixture at the top of the upcoming section, which every

@@ -23,16 +23,15 @@ import type { RideListItem } from '@/types'
  * card here belongs to the club already named in the header, and the design's
  * card is 128 tall rather than 156 when the chip is absent.
  *
- * Previous rides sit under their own header, which is what
- * `Private club - Rides` draws — two `Section / Header` instances, "Upcoming
- * rides" over "Past rides". The wording here is the product owner's
- * ("Previous rides", 2026-08-19), matching `/rides`; a club's history and the
- * rider's own reading differently would be the same string decided twice.
+ * Past rides sit under their own header, which is what `Private club - Rides`
+ * draws — two `Section / Header` instances, "Upcoming rides" over "Past rides".
+ * `/rides` borrows the same string rather than wording a club's history and a
+ * rider's own differently, which would be the same string decided twice.
  *
  * The upcoming section keeps the design's header off. On `/rides` the list has
  * a filter bar over it and on the club page a `See all`, but here the header
  * already names the club and the tab, so a second "Upcoming rides" line
- * restates it. The Previous rides header earns its place by separating two
+ * restates it. The Past rides header earns its place by separating two
  * lists; a header over the first one would only label what is already the
  * screen.
  *
@@ -113,7 +112,7 @@ function ClubRidesScreen() {
                   <>
                     {/* `px-0`: this screen's own wrapper already carries the
                         `px-4` the header would otherwise double. */}
-                    <SectionHeader title="Previous rides" className="px-0 pb-2 pt-4" />
+                    <SectionHeader title="Past rides" className="px-0 pb-2 pt-4" />
                     <RideList rides={rides.data.past} />
                   </>
                 )}
