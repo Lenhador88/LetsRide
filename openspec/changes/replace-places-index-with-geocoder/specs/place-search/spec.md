@@ -153,9 +153,9 @@ not a round number.
 - **AND** the vendor's paid-tier numbers SHALL be recorded as **unknown** rather than estimated, until
   someone reads them
 
-### Requirement: The lookup surface SHALL tell its six states apart
+### Requirement: The lookup surface SHALL tell its seven states apart
 
-Zero rows on this surface has five distinct causes and a sixth state that is not zero rows at all.
+Zero rows on this surface has six distinct causes and a seventh state that is not zero rows at all.
 A rider's next action differs for every one, so the surface SHALL NOT collapse them.
 
 | State | What the rider is told | What they should do |
@@ -164,8 +164,17 @@ A rider's next action differs for every one, so the surface SHALL NOT collapse t
 | Searching | That it is searching | Wait |
 | No matches | That nothing matched **that search** | Try fewer words, or type it themselves |
 | Unavailable | That search could not be reached | Retry, or type it themselves |
-| Rider ceiling | That they have searched a lot just now | Wait, or type it themselves |
+| Rider hourly ceiling | That they have searched a lot **just now** | Try again shortly, or type it themselves |
+| Rider daily ceiling | That they have searched a lot **today** | Type it themselves; searching resumes tomorrow |
 | Offline | That the device has no connection | Reconnect, or type it themselves |
+
+**The two rider ceilings SHALL NOT share a message**, and this is the requirement above applied to
+itself rather than a separate rule. `PER_RIDER_HOURLY` and `PER_RIDER_DAILY` are both enforced in
+the same INSERT policy, and "wait" means an hour under one and until tomorrow under the other — a
+24× difference in what the rider should do next. A single "you have searched a lot" message tells a
+rider who could retry in ten minutes to give up, and tells a rider who is done for the day to keep
+poking a surface that will refuse them all evening. The refusal SHALL therefore carry which ceiling
+was hit; a reason code is enough, and no number, quota or vendor name reaches the rider.
 
 "Not yet searched" and "searched and found nothing" SHALL remain distinguishable, as they are today:
 a null result set is *not yet*, an empty one is *nothing matched*. Conflating them shows

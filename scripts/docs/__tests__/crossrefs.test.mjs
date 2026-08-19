@@ -230,7 +230,14 @@ describe('the cross-references in the real repo', () => {
     // three-attempt CI bound that landed in that section. Same collision as
     // every other entry here — `§Working With the Product Owner` starts with the
     // same word — so it adds no new KIND, which is what `firstWords` above pins.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(11)
+    //
+    // **11 -> 12 on 2026-08-19 (replace-places-index-with-geocoder).** The new
+    // one is that change's `tasks.md` citing `CLAUDE.md §Working Principles` for
+    // the rule that an inferred value must never pass silently as a measured
+    // one — which is the rule the task is applying, so the citation is the point
+    // of the sentence rather than decoration. Same `Working` collision again, so
+    // `firstWords` still admits no new kind.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(12)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been

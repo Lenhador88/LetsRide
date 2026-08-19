@@ -18,36 +18,27 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
       BAG is imported into OpenStreetMap, and this vendor's geocoder is OSM- plus
       OpenAddresses-derived, so the street should resolve. **"Should" is what the retired index was
       chosen on** — keep this task open until a real call returns a real payload.
-- [x] 0.2 Record the length and character set of the returned `place_id`, and the longest one across
+- [ ] 0.2 Record the length and character set of the returned `place_id`, and the longest one across
       the two responses. This sets the CHECK in 3.2 (`design.md` §D6; default 512 if it cannot be
       obtained).
 
-      **Answered from the vendor's own Places documentation, 2026-08-19 — and it confirms the break.**
-      The documented sample `place_id` is **126 lowercase hex characters**, already past the
-      100-character CHECK that `066` and `067` put on `clubs.location_place_id` and
-      `rides.start_place_id`. So this is a measured break rather than the hypothetical §D6 treats it
-      as: on the current schema **every pick would raise `23514` on both tables**.
+      **Partly answered from the vendor's own Places documentation, 2026-08-19 — enough to establish
+      the break, not enough to close the task.** The documented sample `place_id` is **126 lowercase
+      hex characters**, already past the 100-character CHECK that `066` and `067` put on
+      `clubs.location_place_id` and `rides.start_place_id`. So the break is established rather than
+      hypothetical: on the current schema **every pick would raise `23514` on both tables**.
 
-      **It is variable-length, and the tail is the place NAME.** Decoding that sample splits it into a
-      52-byte binary prefix (104 hex characters) and a hex-encoded UTF-8 name — the sample's tail
-      decodes to `…ral Kléber`. Length is therefore `104 + 2 × len(name in UTF-8 bytes)`, so a long
-      Dutch name (`Gemeentelijk Monument Sint-Janskerk, 's-Hertogenbosch`) reaches ~210 before the
-      `geoapify:` namespace prefix §D6 adds. **The 512 default is the right bound and must not be
-      trimmed toward the observed 126** — the observation is one sample of a formula, not a maximum.
-- [ ] 0.3 Record the `formatted` / `address_line1` / `address_line2` fields for both, so 1.3's mapping
-      to `label`/`meta` is written against a real payload rather than a documented one.
-- [ ] 0.4 Confirm autocomplete costs 1 credit and record the per-call credit cost of the static map
-      endpoint, so §D4's arithmetic is measured rather than derived.
-- [ ] 0.5 Read the plan terms for **storing** results indefinitely and for showing results **in a
-      list** (Q1, Q2). Record the answer with its source; mark INFERRED if it stays unread. Start from
-      what PD-114's comments already establish — ODbL/OSM-derived storage rights that do not lapse,
-      and a required Geoapify credit alongside OpenStreetMap's on the free plan — rather than
-      re-running the provider research, which has now been done twice.
-- [ ] 0.6 **Branded POI coverage, against the retired index rather than in the abstract** (Q2b). Run
-      `Shell Pernis Werk`, `Jumbo Maastricht` and two of the owner's own habitual meeting points
-      through Autocomplete, and the same terms through `search_places()` on DEV. Record both result
-      sets. PD-114's research rates this vendor's POI layer *"patchy — only if it's present in the
-      OpenStreetMap database"*; this is the task that turns that into a number before a rider finds it.
+      **It is variable-length, and the tail is the place NAME.** Decoding that sample splits it into
+      a 34-byte binary prefix (68 hex characters) and the name as hex-encoded UTF-8 — the tail
+      decodes in full to `Monument du Général Kléber`, 29 bytes, and 68 + 2 × 29 = 126. Length is
+      therefore `68 + 2 × name bytes`, so a long Dutch name
+      (`Gemeentelijk Monument Sint-Janskerk, 's-Hertogenbosch`) reaches ~175 before the `geoapify:`
+      namespace prefix §D6 adds. **The 512 default is the right bound and must not be trimmed toward
+      the observed 126** — that is one sample of a formula, not a maximum the vendor states.
+
+      **This stays `[ ]` on purpose.** The task asks for the length across the two responses from
+      0.1, and 0.1 has not run; a documented sample is evidence, not the exercise. A later session
+      reading `[x]` would take a formula for a measurement.
 
 ## 1. PR 1 — the Edge Function, and nothing else
 
@@ -153,9 +144,16 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
 - [ ] 5.4 `/legal/attributions`: broaden the existing Geoapify/OSM line to cover search as well as
       tiles, rather than adding a second block that can drift. Remove the Overture section **in PR 3**,
       with the data — not here.
-- [ ] 5.5 `/legal/privacy`: state that place searches are sent to a named third party. The page and
-      `scripts/places/README.md` both currently claim no keystroke leaves our infrastructure, and both
-      become false on merge. **This is the one rider-facing factual claim this change falsifies.**
+- [ ] 5.5 `/legal/privacy`: **broaden the page, do NOT rewrite it as though it were false.**
+      `acae465` (#268, PD-249) already corrected it on 2026-08-19 — it names Geoapify as a processor
+      and says *"your device never contacts Geoapify"*, which stays **true** under this change,
+      because the proxy is precisely what keeps the device off the vendor. What changes is the scope
+      of what that processor receives: **search terms as they are typed**, not only the meeting point
+      a rider saved. Say that, and say the term is not retained on our side.
+
+      The genuinely stale claim is in `scripts/places/README.md` §Why this is not a geocoding API
+      (*"no keystroke leaves our infrastructure"*), and it goes with the directory in 8.1 rather than
+      needing an edit here.
 - [ ] 5.6 Update `src/types/index.ts`'s `PlaceSearchResult` doc block: it documents the Postgres
       ranking contract, the per-token AND and the proximity bias's sharp edge, none of which survives.
 

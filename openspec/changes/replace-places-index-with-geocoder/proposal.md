@@ -83,11 +83,19 @@ Two facts that make the switch pay for itself beyond search quality, both measur
   which is already true of them. **One row exists**: DEV ride `987a85c6…` carries
   `90f7f9bc-9562-4af1-9c7d-8f0a2f8b85bd` ("De Hoorn, Alphen aan den Rijn"). PROD carries **zero**
   ids on 2 rides and 1 club, so no PROD backfill exists to run.
-- **The two length bounds are raised, and this is the one that breaks everything if it is wrong.**
+- **The two length bounds are raised, and the break is established rather than suspected.**
   `clubs_location_place_id_length`/`CLUB_LOCATION_PLACE_ID_MAX` are 100 and
-  `rides_start_place_id_length` matches. A Geoapify `place_id` is materially longer than an Overture
-  GERS uuid. **Unmeasurable from here** — `*.geoapify.com` is egress-blocked from the build container
-  — so the length is a task with a measurement in front of it, not a number invented in this file.
+  `rides_start_place_id_length` matches. The vendor's own documented sample `place_id` is **126
+  lowercase hex characters**, so on the current schema **every pick would raise `23514` on both
+  tables**, on a value the rider can neither see nor shorten.
+
+  **What is established is that 100 is too small; what is NOT established is the maximum.** The id
+  decodes to a 34-byte binary prefix (68 hex characters) followed by the place name as hex-encoded
+  UTF-8 — the sample's tail is `Monument du Général Kléber`, 29 bytes — so its length is
+  `68 + 2 × name bytes` and grows with the name. A long Dutch name reaches ~175 before the
+  `geoapify:` namespace prefix. That is a formula read off one documented sample, not a bound the
+  vendor states, which is why `069` sets **512** and why the number must not be trimmed toward the
+  observed 126. Task 0.1 replaces the sample with a real response.
 - **Attribution moves.** The Overture credit comes off `/legal/attributions` with the table, and the
   Geoapify/OpenStreetMap credit — which is unconditional (`PD-104`) — now covers **search results in
   a list** as well as tiles. A list carries no burned-in credit, so the sheet's footer pays it
@@ -115,7 +123,7 @@ Two facts that make the switch pay for itself beyond search quality, both measur
 ### New Capabilities
 
 - `place-search`: how a rider finds a place — who may search and who must not, what the surface
-  shows in each of its six states, what stops one rider draining a shared quota, what the vendor is
+  shows in each of its seven states, what stops one rider draining a shared quota, what the vendor is
   and is not told, what a stored place id means after the index is gone, and what a club or a ride
   can still be created without.
 
@@ -128,8 +136,23 @@ Two facts that make the switch pay for itself beyond search quality, both measur
   from cache when it has already been answered, with a stated lifetime, and SHALL be destroyed at
   sign-out.
 - `client-render-shell`: one added requirement — a surface backed by a third party SHALL tell
-  *no matches*, *unavailable*, *you have searched too much*, *the app has searched too much* and
-  *offline* apart, because a rider's next action differs for every one of them.
+  *no matches*, *unavailable*, *you have searched too much just now*, *you have searched too much
+  today*, *the app has searched too much* and *offline* apart, because a rider's next action differs
+  for every one of them.
+- `ride-start-location`: **four modified requirements and one removed.** This is the capability the
+  change contradicts head-on, and omitting it would have been the most consequential gap in this
+  proposal. Its standing text requires that *"the search SHALL be answered by our own index, and no
+  keystroke SHALL reach a third party"* — the exact rule being reversed — and that change is shipped
+  but unarchived, so archiving it would write that requirement into the standing specs as law on the
+  same day the repo stops obeying it. Also modified: who may search and on what basis, the
+  right-to-keep and its attribution, and the surface-state enumeration, which now defers to
+  `place-search` rather than carrying a second, divergent list. Removed: the requirement naming the
+  self-hosted index as the typeahead's source, since `070` drops it.
+
+  **Nothing automated would have caught this.** `openspec validate --strict` checks a change's
+  internal structure and `scripts/docs/crossrefs.mjs` resolves section pointers of the
+  "filename, then a section name" form — neither reads capability names, so a missing delta against
+  a contradicted capability is invisible to CI and visible only to a reader.
 
 ## Impact
 

@@ -2,12 +2,22 @@
 
 See `proposal.md` §Why for the motivation. What shapes the design rather than the decision:
 
-- **The vendor is unreachable from here.** `*.geoapify.com` is egress-blocked from the build
-  container — `WebFetch` returns `EGRESS_BLOCKED` and so does `curl` through the agent proxy — and
-  this session has no `WebSearch` tool either. So **not one request in this design has been issued**,
-  exactly as `resolve-ride-location/gates.ts`'s header says of the code it already ships. Every value
-  below is marked measured or assumed, per CLAUDE.md's rule that an inferred value must never pass
-  silently as a known one.
+- **The vendor is unreachable from here, and that is separate from what can be read about it.**
+  `*.geoapify.com` is egress-blocked from the build container — `WebFetch` returns `EGRESS_BLOCKED`
+  and so does `curl` through the agent proxy — so **not one request in this design has been issued**,
+  exactly as `resolve-ride-location/gates.ts`'s header says of the code it already ships.
+
+  **`WebSearch` is a different capability and it IS available to the main thread**, which is how the
+  vendor's published quota, rate limit, credit cost and `place_id` format reached this file. An
+  earlier draft of this bullet said the session had no `WebSearch` and used that to hand the licence
+  questions to the owner; that was true of the subagent that drafted it and false of the thread that
+  owns it, and the two statements disagreeing across files is exactly the defect this bullet exists
+  to prevent. Q1 and Q2 in §Open Questions are re-scoped accordingly: they are blocked on reading a
+  specific per-source table, not on having a search tool.
+
+  Every value below is marked **measured**, **documentation-derived** or **assumed**, per CLAUDE.md's
+  rule that an inferred value must never pass silently as a known one. Published documentation is the
+  middle one: better than a guess, not a substitute for a response.
 - **Deploying an Edge Function is an owner action.** No `supabase` CLI in the container and
   `deploy_edge_function` on the `deny` list. There is already a queue: PD-267 carries an undeployed
   `resolve-ride-location` (its `067` picked-start arm) plus the `src/lib/actions/rides.ts` guard that
@@ -91,7 +101,16 @@ public.place_search_attempts (id uuid pk, user_id uuid not null references profi
                               attempted_at timestamptz not null default now())
 ```
 
-- RLS on. **INSERT** policy: `user_id = auth.uid()` **AND** `private.place_searches_in_window(auth.uid()) < PER_RIDER` **AND** `private.place_searches_today() < APP_DAILY`.
+- RLS on. **INSERT** policy, all four conjuncts — `user_id = auth.uid()` **AND**
+  `private.place_searches_in_window(auth.uid(), '1 hour') < PER_RIDER_HOURLY` **AND**
+  `private.place_searches_in_window(auth.uid(), '24 hours') < PER_RIDER_DAILY` **AND**
+  `private.place_searches_today() < APP_DAILY_SEARCH`.
+
+  **Both per-rider ceilings are enforced here, and an earlier draft of this section carried only
+  one.** §D4 derives `PER_RIDER_HOURLY` as the burst arm — 60 credits spent in a minute is the
+  pattern a script makes, not a rider — and a constant with an arithmetic justification and no
+  enforcement point is decoration. The window is a parameter of the one helper rather than two
+  helpers, so the two ceilings cannot drift apart in implementation.
 - **SELECT** policy: own rows only. No UPDATE grant, no DELETE grant, for any client role.
 - Column grants: `insert (id, user_id)` only — `attempted_at` is server-owned, so a back-dated row is
   refused by the grant and not merely by a policy.
@@ -113,8 +132,20 @@ an external rate limiter (a tenth runtime dependency and a second place the ceil
 
 ### D4 — Two ceilings, with the arithmetic written down, and a reserve for the map
 
-**Measured inputs:** free plan is 3,000 credits/day and 5 requests/second; autocomplete costs 1
-credit, the same as a geocode. **Paid tier: unknown.**
+**Vendor inputs — DOCUMENTATION-DERIVED, not measured, and the distinction is load-bearing because
+every ceiling below is sized against them.** All three come from the vendor's own published pages,
+read via `WebSearch` on 2026-08-19: the free plan is 3,000 credits/day
+(<https://www.geoapify.com/pricing/>), the free-plan rate limit is 5 requests/second (same page),
+and an Autocomplete request costs 1 credit — the same as a Geocoding or Reverse Geocoding request
+(<https://apidocs.geoapify.com/docs/geocoding/pricing/>). **Paid tier: unknown, and left unknown
+rather than invented.**
+
+A published figure is evidence; it is not an exercise of the API, and it can be stale or
+plan-specific in ways only a real response header shows. Task 0.4 is what converts these into
+measured values, and until it is ticked no number in this section may be described as measured. That
+is CLAUDE.md's standing rule that an inferred value must never pass silently as a known one.
+PD-114's own 2026-08-08 provider table says the same of its whole contents: *"Every figure in
+that table is search-derived."*
 
 **Derived, and stated as arithmetic rather than as a round number:**
 
@@ -154,7 +185,7 @@ rather than an omission.
 *Alternative rejected:* drop the profile source and let Explore fall back to unordered. It is a
 silent regression of PD-259's shipped feature, for a saving of one credit per rider per session.
 
-### D6 — The stored id gains a namespace, and its length bound is measured before it is set
+### D6 — The stored id gains a namespace, and its length bound is known to break the current CHECK
 
 The column is loose `text` with no FK, deliberately (`066` and `067` both say so). Removing the index
 removes the last thing that could ever resolve it, which changes nothing about how it is read — it is
@@ -263,7 +294,7 @@ that is a real gap and it is somebody's follow-up, not a widening of this change
   it before `069` is written; 512 is the fallback default.
 - **The premise itself is unexercised.** Nobody has confirmed the vendor returns
   "Willem Claijstraat Berkhout". It is a geocoder and it should — but "should" is what the last index
-  was chosen on. → One live autocomplete call, task 1.1, before any code is written.
+  was chosen on. → One live autocomplete call, task 0.1, before any code is written.
 - **The quota is small and shared.** 3,000 credits/day is roughly 350–700 completed searches
   app-wide, before the map's reserve. → The reserve and the two ceilings are the mitigation; the
   trigger for the paid plan is the application ceiling being reached on an ordinary day, and there is
@@ -289,7 +320,21 @@ that is a real gap and it is somebody's follow-up, not a widening of this change
    the deployed source carries the metering write and both modes. `ezbr_sha256` moving proves a deploy
    happened, never which build — PD-249's lesson.
 4. PR 2 — `069` applied to DEV, the client switched, docs and copy. Merge to `development` (deploys
-   DEV), verify, then promote to `main` and apply `069` to PROD in the promotion's own order.
+   DEV), verify, then **apply `069` to PROD BEFORE promoting to `main`**, and only then promote.
+
+   **This inverts `docs/ENVIRONMENTS.md` §Migrations' numbered order on purpose, and the inversion
+   is the correctness argument rather than a shortcut.** That list puts the promotion merge at step
+   4 and the PROD apply at step 5, which suits a migration whose code must ship first. `069` is the
+   other kind: it widens the `place_id` CHECK from 100 to 512, and PR 2 also ships the client that
+   writes `geoapify:<place_id>` at 126 characters and up. Merging to `main` IS the PROD code deploy
+   — Vercel auto-deploys from it — so following that order literally leaves a window in which
+   **every pick on PROD raises `23514` on both `rides` and `clubs`**, on a value the rider can
+   neither see nor shorten. ENVIRONMENTS.md's own table one paragraph above that list says so for
+   this migration's type: *additive — apply, then deploy the code*. This change's own
+   `specs/database-enforced-integrity/spec.md` states it as a requirement — the constraint is
+   widened in a migration that lands **before** the code that writes one.
+
+   The DEV half already had this order; only the PROD half inverted it.
 5. PR 3 — `070` applied to DEV once PR 2 is live there; deletions; assertion sections removed. Promote,
    apply `070` to PROD.
 6. Rollback: before step 5, reverting the client to `search_places()` restores the previous behaviour
