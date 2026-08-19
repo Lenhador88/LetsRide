@@ -227,11 +227,14 @@ written as a recommendation awaiting Q7, and the deviation from the `Done` frame
 The reason it was recommended is the reason it was taken: the failure it prevents is
 unrecoverable and the failure it causes is a rider mildly annoyed.
 
-**The proof is verified in the Edge Function, and that ordering is the whole point.** The
-deployed build reads no request body at all, so a client that sends a password proof to *it*
-is deleted with **no gate** — fail-open, behind a password field implying otherwise. Ship the
-stricter function first: it refuses a client that sends no proof, and nothing calls it today,
-so deploying it early breaks nothing. Every redeploy is an owner action (`PD-86`).
+**The proof is verified in the Edge Function, and that ordering is the whole point.** When this
+decision was written the deployed build read no request body at all, so a client sending a
+password proof to *it* was deleted with **no gate** — fail-open, behind a password field
+implying otherwise. Hence: ship the stricter function first, since it refuses a client that
+sends no proof and nothing called it, so deploying it early broke nothing. Every redeploy is an
+owner action (`PD-86`). **Both projects now run the stricter build and it is measured, not
+inferred** — 2026-08-19, `tasks.md` §2.6: a missing password and a real non-empty wrong one both
+answer `reauth_required`.
 
 `/auth/reset-password`'s recovery grant (`migrate-to-client-rendered-shell` D3) is the wrong
 mechanism to copy: that one exists because the rider does *not* know their password. Here they
@@ -242,8 +245,14 @@ do, and being unable to produce it is itself the signal.
 Deletion is one HTTP call over a mobile connection, so the interesting states are the ones where
 it does not cleanly return.
 
-- **Already deleted** → success. The JWT resolves to a `sub` with no `auth.users` row; there is
-  nothing to do and reporting failure would strand a rider on a screen with no exit.
+- **Already deleted** → success *to the rider*, via `unauthorized` rather than a 200, and the
+  mechanism written here was wrong. This said the JWT resolves to a `sub` with no `auth.users`
+  row leaving nothing to do; measured 2026-08-19 (`tasks.md` §2.6, case 2), replaying a real
+  token after a deletion is refused at `getUser` and answers `{"error":"unauthorized"}` 401 —
+  it never reaches the delete. The outcome the rider sees is unchanged, because the client maps
+  `unauthorized` to success: reporting failure would strand them on a screen with no exit. What
+  matters is that `unauthorized` and `reauth_required` share a status and must never be folded
+  together — the second means the account is still there.
 - **Storage delete fails** → the whole call fails, nothing is deleted, the rider sees an error
   and a retry. The rows are what make the objects findable.
 - **Row cascade fails** → the same, except the objects are already gone. This is the one

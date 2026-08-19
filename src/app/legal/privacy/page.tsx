@@ -55,13 +55,18 @@ export default function PrivacyPage() {
             will catch. Do not reintroduce one. */}
         <li>
           <span className="font-medium">Geoapify</span> — turns a ride&rsquo;s meeting point into
-          map coordinates and renders the small map shown on a ride. Saving a ride sends the
-          meeting point you typed to Geoapify, and editing it sends the new one.{' '}
+          map coordinates and renders the small map shown on a ride, and answers the place search
+          you use to set a ride&rsquo;s meeting point or a club&rsquo;s location. Saving a ride
+          sends the meeting point you typed to Geoapify, and editing it sends the new one; typing
+          into a place search sends the text as you type it, the same way.{' '}
           <span className="font-medium">
-            A meeting point is often a home address, so treat it as one.
+            A meeting point — and often a search term — is a home address, so treat both as one.
           </span>{' '}
-          The coordinates and the map image are stored by us; your device never contacts Geoapify,
-          and the map you see is served from our own storage.
+          The coordinates and the map image are stored by us; a search term is not — we keep only
+          that a search happened and when, never what was typed. Your device never contacts
+          Geoapify directly either way: every request is made from our own infrastructure, so the
+          map you see is served from our own storage and a search never discloses your identity,
+          session or IP address to Geoapify.
         </li>
       </ul>
       <p className="text-muted">

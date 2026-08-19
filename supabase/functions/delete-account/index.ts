@@ -53,12 +53,18 @@
  * together; the client half auto-deploys on merge, the function half deploys
  * by hand, later, if at all — commit order inside a branch says nothing about
  * *deploy* order, which is the thing that would actually matter and which no
- * session can control. **What makes this fail-closed is
- * `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED`** (`src/lib/flags.ts`): the "Delete
- * account" row does not render, on either project, until that project's own
- * env var is set to `'true'` — which the owner does only after confirming
- * THAT project's redeploy enforces the proof. Unset, unrelated or misspelled
- * all read as off.
+ * session can control. What made it fail-closed instead was a client flag,
+ * `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` — the "Delete account" row did not
+ * render until that project's env var read `'true'`.
+ *
+ * **That flag and `src/lib/flags.ts` were deleted on 2026-08-19**, once this
+ * build was verified by content (below), on the product owner's instruction.
+ * The row now renders unconditionally, so **this file is the only gate on the
+ * destructive path, which is where the gate always actually was**: a client
+ * flag never protected this endpoint. It is live under `verify_jwt`, so any
+ * signed-in rider's own access token reaches it with or without a UI — which
+ * is why the ordering lesson above still stands even though the mechanism
+ * enforcing it is gone.
  * **Verify the redeploy by CONTENT, not by sha alone** — 2.3a and 3.4 both
  * name the same reason: three tasks now want the same redeploy, so a changed
  * `ezbr_sha256` no longer proves any one of them shipped. A request with no
@@ -66,7 +72,10 @@
  * not prove the wrong-password path works** — an empty password never
  * reaches `signInWithPassword`, so it only exercises the guard above that
  * call, not `classifyAuthError`'s classification of a real, non-empty wrong
- * password. Verifying that needs its own probe (reviewer, 2026-08-17).
+ * password. Verifying that needed its own probe (reviewer, 2026-08-17), and
+ * the probe ran on 2026-08-19: a real non-empty wrong password also comes
+ * back `reauth_required`, never `verification_unavailable`. Seven cases in
+ * `add-account-deletion`'s task 2.6.
  *
  * **And "nothing calls it" is not the same as "nobody can", which makes the
  * ordering stronger than it first reads.** The endpoint is live with
@@ -190,11 +199,14 @@
  * opposite. The `getUser` call below runs first, and GoTrue is documented to
  * reject a token whose `sub` has no user row — so a retry against an account
  * that is already gone never reaches the `deleteUser` already-gone branch.
- * **This specific shape is inferred, not measured**: the 2026-08-14 probe
- * above never replayed a real, well-formed token against a deleted account —
- * only a missing header, a garbage `apikey`, and a garbage bearer — and an
- * earlier revision of the status-set comment below cited it as one of the
- * measured cases when it was not (reviewer, 2026-08-17). The client contract
+ * **This shape was inferred until 2026-08-19 and is now measured**: the
+ * 2026-08-14 probe never replayed a real, well-formed token against a deleted
+ * account — only a missing header, a garbage `apikey`, and a garbage bearer.
+ * The replay ran on
+ * DEV against this deployed build (v5, `ezbr_sha256` 9793933d…): a disposable
+ * account deleted, then the same still-unexpired access token sent again,
+ * answering `{"error":"unauthorized"}` 401 — `add-account-deletion`'s task 2.6
+ * carries the table. The client contract
  * is therefore: **the `unauthorized` code on this endpoint means the session
  * is dead, which for the deletion screen is indistinguishable from success
  * and must be treated as such.** The already-gone branch in step 3 still
@@ -256,9 +268,13 @@ const GETUSER_REJECTED_STATUSES = new Set([401, 403])
 
 /**
  * `signInWithPassword`: a wrong password comes back 400, not 401/403
- * (`{"code":400,"error_code":"invalid_credentials"}`, reported against DEV;
- * not independently reproduced in this session — no HTTP-capable tool or
- * publishable key was available to re-run it). Kept in its own set rather
+ * (`{"code":400,"error_code":"invalid_credentials"}`, reported against DEV).
+ * **The classification is now measured end to end against this deployed
+ * build, 2026-08-19**: a valid token plus a real non-empty wrong password
+ * answers `reauth_required` 401 — which is what this set buys, since 400 is
+ * absent from `GETUSER_REJECTED_STATUSES` and the same password would
+ * otherwise classify as `'unavailable'` and tell a rider to retry on a typo.
+ * `add-account-deletion`'s task 2.6 carries the table. Kept in its own set rather
  * than added to `GETUSER_REJECTED_STATUSES`, because widening that set to
  * include 400 would reopen the `AuthSessionMissingError` regression at
  * `getUser` (also a synthetic 400 — see `classifyAuthError`) and would also

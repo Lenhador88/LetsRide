@@ -1,0 +1,112 @@
+-- 070: The self-hosted places index is retired. PD-273, PR 3 of 3.
+--
+-- Drops `public.places`, `public.search_places()` and `public.locality_centroid()`
+-- — the table `037` loaded, `039` widened, `049`/`050` bounded, and `065`
+-- corrected the attribution of, and the two functions built on it. `069`
+-- (applied first, in its own PR) already carries the replacement's ledger, its
+-- ceilings and the widened `place_id` bounds; the client already reads
+-- `search-places` instead of these functions. This file removes what nothing
+-- calls any more.
+--
+-- ---------------------------------------------------------------------------
+-- WHY THIS IS ITS OWN, LAST, MIGRATION — `design.md` §D7, §Migration Plan
+-- ---------------------------------------------------------------------------
+-- Destructive and irreversible in a session: reloading the index is a 99 MB
+-- extract through `scripts/places/`, which this change also deletes. The order
+-- is additive first, deploy, destructive last — `021`/`025`'s rule, restated by
+-- `place-search`'s own "SHALL NOT be dropped before the code that stops calling
+-- it is deployed" requirement. Applying this migration is gated on BOTH of:
+--
+--   1. `search-places` deployed to the target project (owner action, verified
+--      by content per PD-249's lesson, not by a moved digest).
+--   2. The client reading it — `src/lib/data/places.ts` rewritten in this same
+--      PR, but the CODE must be LIVE on that project before this file runs
+--      there. "Merged" is not "deployed": Vercel builds on merge, and this
+--      migration must not apply until that build is serving traffic.
+--
+-- **This file is WRITTEN in the branch that ships the client switch and
+-- deliberately NOT applied by that PR.** The main thread applies it once the
+-- precondition above is confirmed, to DEV first and to PROD only after PR 2 has
+-- promoted. See `docs/HANDOFF.md` for the applied state at any given moment —
+-- this comment describes the file's intent, not a claim that it has run.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT THIS DOES NOT BREAK
+-- ---------------------------------------------------------------------------
+-- `rides.start_place_id` and `clubs.location_place_id` are loose `text` with NO
+-- foreign key to `places` — `066` and `067` both say so, deliberately, because
+-- the index was reloaded wholesale and a FK would have blocked every reload or
+-- silently wiped rows on one. Confirmed rather than assumed:
+--
+--   select count(*) from pg_constraint
+--    where confrelid = 'public.places'::regclass;
+--   -- 0 on both projects, before this file runs
+--
+-- So dropping `places` changes what those two columns MEAN to a reader (they
+-- were always provenance, never resolvable to a live row, and the index going
+-- away removes the last thing that could ever have resolved them) but changes
+-- NOTHING about how they are read, written or displayed: the stored id, name
+-- and coordinate are exactly what a rider chose and stay exactly right.
+--
+-- **What is actually stored, measured 2026-08-19** (`design.md` §Context): PROD
+-- 2 rides / 1 club, ZERO place ids on either. DEV 7 rides / 7 clubs, ONE ride
+-- carries an Overture id (`987a85c6…` → `90f7f9bc-9562-4af1-9c7d-8f0a2f8b85bd`,
+-- "De Hoorn, Alphen aan den Rijn"). That row is expected to render unchanged
+-- after this applies — `place-search`'s "An Overture id outlives the index that
+-- issued it" scenario — because nothing here touches `rides` or `clubs` at all.
+--
+-- Nothing else in the schema references any of the three dropped objects:
+--
+--   select count(*) from information_schema.view_column_usage
+--    where table_name = 'places';
+--   select count(*) from pg_depend d join pg_proc p on p.oid = d.refobjid
+--    where p.proname in ('search_places', 'locality_centroid');
+--   -- 0 and 0, before this file runs
+--
+-- ---------------------------------------------------------------------------
+-- Reclaimed space
+-- ---------------------------------------------------------------------------
+-- `places` is 337 MB of PROD's ~350 MB database (338 of ~352 on DEV) — 96% of
+-- everything this app stores, against a free-tier ceiling of 500 MB. Confirm
+-- after applying rather than trusting this line:
+--
+--   select pg_size_pretty(pg_database_size(current_database()));
+
+drop function if exists public.search_places(text, double precision, double precision);
+drop function if exists public.locality_centroid(text);
+drop table if exists public.places;
+
+-- ---------------------------------------------------------------------------
+-- Verification — run against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+--
+-- 1. All three are gone.
+--
+--   select count(*) from pg_class where relname = 'places' and relkind = 'r';
+--   select count(*) from pg_proc
+--    where proname in ('search_places', 'locality_centroid');
+--   -- 0, 0
+--
+-- 2. Nothing that should have survived did not. The two place_id columns and
+--    their `069`-widened CHECKs are untouched — this migration names neither
+--    `rides` nor `clubs`:
+--
+--   select conname, pg_get_constraintdef(oid) from pg_constraint
+--    where conname in ('clubs_location_place_id_length', 'rides_start_place_id_length');
+--
+-- 3. The DEV ride carrying the Overture id still renders — name, coordinate,
+--    tile — and still reads as PICKED (place-search's own scenario; this is a
+--    live-exercise check, not a query):
+--
+--   select id, start_place_id, latitude, longitude, geocode_confidence
+--     from public.rides where start_place_id is not null;
+--   -- 987a85c6…, 90f7f9bc-9562-4af1-9c7d-8f0a2f8b85bd, 52.1389771, 4.6475534, null
+--
+-- 4. Reclaimed space, against the ~337/338 MB recorded above:
+--
+--   select pg_size_pretty(pg_database_size(current_database()));
+--
+-- 5. `get_advisors(security)` still reads the documented ten (nine deliberate,
+--    one outstanding) — dropping two SECURITY INVOKER functions and a table
+--    with no security-definer helper of its own removes no advisor and adds
+--    none.

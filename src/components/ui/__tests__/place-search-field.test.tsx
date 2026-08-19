@@ -181,12 +181,15 @@ describe('PlaceSearchField form shape', () => {
 })
 
 describe('PlaceDataCredit', () => {
-  it('links to the one page that pays the Overture credit', () => {
-    // CDLA Permissive 2.0 §3 exempts rendered results, so this is the whole
-    // obligation — one link, not a per-result or per-source line. PD-259
-    // shipped the picker without it; PD-114 is what put it there.
+  it('links to the page that pays the Geoapify/OpenStreetMap credit — PD-273', () => {
+    // The proxy's OpenStreetMap credit is unconditional and a list of
+    // results carries no burned-in credit of its own, so this line is the
+    // whole obligation — one link, not a per-result or per-source line.
+    // Overture is gone with the index it credited (070).
     const html = renderToStaticMarkup(<PlaceDataCredit />)
     expect(html).toContain('href="/legal/attributions"')
-    expect(html).toContain('Overture Maps')
+    expect(html).toContain('Geoapify')
+    expect(html).toContain('OpenStreetMap')
+    expect(html).not.toContain('Overture')
   })
 })

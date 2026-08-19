@@ -3,37 +3,35 @@
 import Link from 'next/link'
 
 /**
- * The credits owed for the data behind the app. Two vendors, two obligations,
- * deliberately two paragraphs — merging them is how the wrong credit gets
- * attached to the wrong dataset.
+ * The credits owed for the data behind the app.
  *
- * **`places` is Overture's Places theme, and it is NOT ODbL.** This repo
- * assumed an OpenStreetMap credit; a census of the extract found zero
- * OSM-sourced rows (`scripts/places/README.md` §Attribution), and Overture
- * publishes the Places theme under CDLA Permissive 2.0 and Apache 2.0 — no
- * share-alike, and CDLA §3 exempts what an app renders ("Results") from
- * carrying the licence text. So the Overture line below is the cheap version of
- * the obligation, paid in full and in one place, so no future screen has to ask
- * the question again.
+ * **The Overture section is GONE, in the same change that dropped the data
+ * (`070`, PD-273).** `public.places` — Overture's Places theme, CDLA
+ * Permissive 2.0 + Apache 2.0 — is retired; a credit naming Overture's
+ * contributors after their data is gone would name contributors who supplied
+ * nothing to what a rider is now looking at. `place-search`'s own requirement
+ * is explicit that this section leaves with the table, in the same change.
  *
- * **The map tiles are Geoapify, whose OpenStreetMap credit IS unconditional**
- * (PD-104) — and it is already discharged in the tile itself, which the Static
- * Maps API burns in bottom-right and `RideMap` must never crop or cover. The
- * line below states it in text as well, because a rider reading this page
- * should not have to infer it from a 148 px image.
+ * **One broadened section rather than a second block, per the same
+ * requirement.** The map tiles were already Geoapify-from-OpenStreetMap
+ * (PD-104), with an unconditional OpenStreetMap credit; place search now
+ * answers through the same vendor (`search-places`, PD-273) and every result
+ * carries the same `datasource.attribution: "© OpenStreetMap contributors"`
+ * (measured live, `tasks.md` task 0.3). So the existing tile paragraph is
+ * widened to say "search results and maps" rather than growing a duplicate
+ * paragraph that could drift from it.
  *
  * **Geoapify is named but not linked, and that is the tripwire rather than an
  * oversight.** `src/__tests__/no-geoapify-key.test.ts` refuses the vendor
  * hostname anywhere in `src/` outside one exempt file, so that nothing in the
- * client bundle can grow a direct call to it — the tiles come from our own
- * storage, rendered by an Edge Function. A credit needs the vendor's name, not
- * its host; the link a rider actually needs is OpenStreetMap's.
+ * client bundle can grow a direct call to it — both the tiles and the search
+ * proxy reach the vendor from our own infrastructure, never from a rider's
+ * device. A credit needs the vendor's name, not its host; the link a rider
+ * actually needs is OpenStreetMap's.
  *
  * **This page is reachable from Terms and Privacy, which a rider passes through
- * at signup — and from nowhere inside the app.** That is enough while nothing
- * renders a place result. The first screen that does (PD-259's club location,
- * PD-114's ride address picker) must link here from its search sheet, which is
- * where a rider meets the data.
+ * at signup — and from the search sheet itself (`PlaceDataCredit`), which is
+ * where a rider actually meets the data.**
  */
 export default function AttributionsPage() {
   return (
@@ -45,52 +43,10 @@ export default function AttributionsPage() {
         the terms we take it under.
       </p>
 
-      <h2 className="font-semibold">Places and addresses</h2>
+      <h2 className="font-semibold">Place search and maps</h2>
       <p className="text-muted">
         The places you search for when setting a ride&rsquo;s meeting point or a club&rsquo;s
-        location come from the{' '}
-        <a
-          href="https://overturemaps.org"
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-        >
-          Overture Maps Foundation
-        </a>
-        , used under the{' '}
-        <a
-          href="https://cdla.dev/permissive-2-0/"
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-        >
-          Community Data License Agreement &ndash; Permissive 2.0
-        </a>{' '}
-        and the{' '}
-        <a
-          href="https://www.apache.org/licenses/LICENSE-2.0"
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-        >
-          Apache License 2.0
-        </a>
-        . Overture&rsquo;s places data is contributed by Meta, Foursquare, Microsoft,
-        AllThePlaces, PinMeTo, DAC and Krick.
-      </p>
-      <p className="text-muted">
-        We hold our own copy of that data, so what you type into a place search stays with us
-        and never reaches Overture or any of its contributors. The meeting point you go on to
-        save is a separate matter, and our{' '}
-        <Link href="/legal/privacy" className="underline">
-          Privacy Statement
-        </Link>{' '}
-        says where that goes.
-      </p>
-
-      <h2 className="font-semibold">Maps</h2>
-      <p className="text-muted">
-        The small map on a ride is rendered by Geoapify from{' '}
+        location, and the small map rendered on a ride, both come from Geoapify, built on{' '}
         <a
           href="https://www.openstreetmap.org/copyright"
           target="_blank"
@@ -99,8 +55,16 @@ export default function AttributionsPage() {
         >
           OpenStreetMap
         </a>{' '}
-        data, &copy; OpenStreetMap contributors. That credit also appears in the corner of
+        data, &copy; OpenStreetMap contributors. The map credit also appears in the corner of
         every map image itself.
+      </p>
+      <p className="text-muted">
+        A place search is sent from our own infrastructure, never from your device, so the
+        vendor never sees your identity or your IP address — only the text you typed. Our{' '}
+        <Link href="/legal/privacy" className="underline">
+          Privacy Statement
+        </Link>{' '}
+        says more about what is and is not kept.
       </p>
 
       <p className="text-muted">

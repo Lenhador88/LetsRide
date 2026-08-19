@@ -232,7 +232,12 @@ export const claims = [
     // the promotion turned it red on cue, and it is pinned back to LEVEL. The
     // pin is on the RELATIONSHIP in both directions; do not relax it to the
     // count just because the two projects agree today.
-    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — DEV AHEAD/,
+    //
+    // 2026-08-19: `069` (PD-273) applied to DEV alone and this went red on cue,
+    // for the reason the paragraph above predicts. Prose and pattern edited
+    // together, as it says — pinned back to DEV AHEAD, and naming BOTH refs so
+    // the direction cannot be inferred from the count alone.
+    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — DEV-ahead/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
@@ -246,6 +251,48 @@ export const claims = [
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
     about: 'DEV/PROD agreement section, the verification one-liner',
+  },
+
+  // ---- the place-search ceilings live in TWO files (069 / shape.ts) --------
+  // The INSERT policy in `069` is the enforcement; `shape.ts`'s constants carry
+  // the arithmetic that chose the numbers. Nothing else spans them: the
+  // constants are read by no code that decides anything (the unit tests compare
+  // them only to EACH OTHER), and `supabase/functions/` is excluded from
+  // `tsconfig.json` and unread by every other claim here.
+  //
+  // So without these three entries, tuning a ceiling in `shape.ts` — which the
+  // design explicitly invites, "owner-tunable" — leaves every test green while
+  // the database keeps refusing at the old number, and nothing names a value
+  // anyone can find. Each entry reads the constant out of `shape.ts` and
+  // measures the literal out of the policy in `069`.
+  ...['PER_RIDER_HOURLY', 'PER_RIDER_DAILY', 'APP_DAILY_SEARCH'].map((name, i) => ({
+    id: `place-search-ceiling-${name.toLowerCase().replace(/_/g, '-')}`,
+    file: 'supabase/functions/search-places/shape.ts',
+    pattern: new RegExp(`export const ${name} = (\\d+)`),
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    // The policy lists its conjuncts in this order — hourly, daily, app-wide —
+    // which is the order of this array. Reading the Nth `< number` out of the
+    // WITH CHECK is what makes the two files comparable at all.
+    cmd: `sed -n '/Riders record their own place searches/,/);/p' supabase/migrations/069_place_search_metering.sql | grep -oE '< [0-9]+' | sed -n '${i + 1}p' | grep -oE '[0-9]+'`,
+    about: `the ${name} ceiling: shape.ts's constant against 069's INSERT policy`,
+  })),
+
+  // The THIRD copy of the hourly ceiling. `src/lib/data/places.ts` compares
+  // against it to say WHICH of the rider's two ceilings refused them, and it
+  // cannot import either of the other two: `shape.ts` names the vendor's
+  // hostname, which `no-geoapify-key.test.ts` rule 2 forbids in anything that
+  // ships, and a migration is not importable at all. So the copy is forced,
+  // and this is what stops it drifting into telling a rider to "try again
+  // shortly" when they are actually done for the day.
+  {
+    id: 'place-search-ceiling-hourly-client',
+    file: 'src/lib/data/places.ts',
+    pattern: /const PER_RIDER_HOURLY = (\d+)/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    cmd: `sed -n '/Riders record their own place searches/,/);/p' supabase/migrations/069_place_search_metering.sql | grep -oE '< [0-9]+' | sed -n '1p' | grep -oE '[0-9]+'`,
+    about: "the hourly ceiling: places.ts's client copy against 069's INSERT policy",
   },
 
   // ---- lucide-react retirement (comment trap, both directions) -----------

@@ -93,6 +93,24 @@ rediscovering this.
 otherwise get answered differently in every epic. Edit freely, but edit here rather than
 deciding again inside a PR.
 
+**Feature flags need a reason, and "it felt safer" is not one.** Standing instruction, product
+owner 2026-08-19: *"only use toggles if it seems really necessary, or if I ask for them."* Said
+after `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` was removed — a flag that had a real justification
+when it went up (the deployed Edge Function enforced no password yet, so the UI would have
+fronted a gate that checked nothing) and became dead weight the moment that was fixed.
+
+**The test is whether something concrete is wrong *right now* that the flag makes safe**, and it
+comes with the condition that retires it. "We might want to turn this off" is not that. Where a
+flag is genuinely warranted, say in the same comment what has to become true for it to be
+deleted — otherwise it outlives its reason silently, which is the failure this rule exists to
+stop.
+
+**Two costs are easy to miss.** A flag defaulting off makes the thing behind it **untestable**:
+nothing can reach it, so the walk cannot walk it and the browser path stays unexercised — which
+is what happened to `add-account-deletion` task 6.3. And a build-time `NEXT_PUBLIC_*` flag
+doubles as an undeclared DEV/PROD separator, because the two are separate Vercel env scopes; when
+it goes, the next promotion ships the feature to riders with nothing left saying so.
+
 **Dependencies are added deliberately.** **Nine** runtime dependencies today, and that is a
 feature — `lucide-react` and `@supabase/ssr` both came out with the code that needed them rather
 than lingering unused. Count rather than trust that number:
@@ -131,11 +149,12 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **ten** tables on both DEV and
-   PROD — `postcards`,
+   gets inherited as covered.** `enforce_participation_gate` is on **eleven** tables on DEV and
+   **ten** on PROD — `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
-   `postcard_reports`, `ride_messages`, plus `ride_map_render_attempts`, which `051` added and
-   which was DEV-only until PD-201 levelled the projects — and **not** on `profiles` UPDATE, `profile_countries`,
+   `postcard_reports`, `ride_messages`, `ride_map_render_attempts`, plus `place_search_attempts`,
+   which `069` added and which is DEV-only until PD-273 promotes, exactly as `051`'s was until
+   PD-201 levelled the projects — and **not** on `profiles` UPDATE, `profile_countries`,
    `blocks`, `postcard_hides`, `feed_reads` or any `storage.objects` policy, which check the path
    prefix only. So an account created by calling GoTrue's `/auth/v1/signup` directly, never
    calling `accept_terms()`, **can still set a username, write a bio and upload an avatar with
@@ -397,9 +416,20 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**There are two Edge Functions, and `delete-account` is the only place a service-role key
-exists.** Count rather than trust that — `list_edge_functions` against either ref, against
-`ls supabase/functions/`. Removing an `auth.users` row needs the Auth admin API, which needs the
+**There are three Edge Functions in the repo and all three are deployed to both projects, and
+`delete-account` is the only place a service-role key exists.** `search-places` (PD-273, the place
+typeahead proxy) was the odd one out and stopped being so on 2026-08-19 — the owner deployed it to
+DEV at 15:51Z and PROD at 15:52Z, v1 on both, `ezbr_sha256` `1f375a67…` equal. **A gap between the
+two commands is the ordinary state rather than a defect**, because deploying is an owner action and
+merging is not, so run both rather than trusting either and read a gap as "in the repo, not yet
+deployed":
+
+```bash
+ls supabase/functions/ | wc -l                    # what the repo has
+```
+```
+mcp__Supabase__list_edge_functions <ref>          # what each project runs
+``` Removing an `auth.users` row needs the Auth admin API, which needs the
 service-role key; that is decision #8's **first** reading ("more server compute, same database")
 and not its third. `resolve-ride-location` geocodes a ride's meeting point and renders its tiles
 — an outside call and a third-party key, and no service-role key. Each owns one operation, not
@@ -421,11 +451,27 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, each one's `ezbr_sha256`
-equal across the two projects, and both current against their files** — measured 2026-08-17,
-after the owner redeployed `delete-account` (`9793933d…`, PROD v9 / DEV v5). **Cross-project
-equality is not what establishes that second half**: it says the two projects agree, never that
-either matches the repo, so currency is the `updated_at`-against-commit-date check below.
+**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and each one's
+`ezbr_sha256` is equal across the two projects — and NOT ONE of the three is current against its
+file**, measured 2026-08-19:
+`delete-account` deployed 2026-08-17 against a file that moved 2026-08-19 (comments only, so the
+behaviour is current — and that date moves with every header edit, which is why it is read off
+the command rather than trusted here); `resolve-ride-location` deployed 2026-08-16 against a file that moved
+2026-08-19 with `067` — real code, so a **picked** ride start renders no map tile on either
+project; and `search-places` deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) with
+**#274, #275 and #276 all undeployed** — real code, including `classifyLedgerError`, so the
+deployed build reports a `23514` participation-gate refusal to the rider as **502
+`unavailable`**: search is broken, not "you hit a limit". `isPolicyRefusal` matches `42501`
+only, and the gate raises `23514`, so it falls to the outage branch. **`git log -1` on the
+directory tells you the file is newer than the deploy and never by how many commits** — list the
+directory's history against the deploy timestamp, or a three-commit gap reads as one.
+PD-267 is the first redeploy,
+and it has a second half: the guard in `src/lib/actions/rides.ts` must come out in the same PR.
+**The newest function going stale within two hours of its first deploy is the point** — a
+deployed function is drift the moment anyone edits its file, and this section has already read
+"both" while three were deployed. **Cross-project equality is not what establishes currency**: it says
+the two projects agree, never that either matches the repo, so currency is the
+`updated_at`-against-commit-date check below.
 Deploying is an **owner action** — there is no
 `supabase` CLI in the build container, and the
 MCP server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list, which
@@ -472,34 +518,19 @@ mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
 **Schema:** **the per-table contract is [`docs/reference/schema.md`](docs/reference/schema.md)** —
 `profiles`, `rides`, `ride_members`, `clubs`, `club_members`, `postcards`, `postcard_likes`,
 `postcard_comments`, `postcard_hides`, `postcard_reports`, `blocks`, `profile_countries`,
-`feed_reads`, `ride_reads`, `places`, `ride_messages`, `clubs` (media), and the dropped `friendships`. Read it before touching
-any of them: it carries the per-column grants, the cascade behaviour and the audience predicate
-for each, and several are counter-intuitive (a club outlives its owner; `postcards.ride_id` is a
-tag rather than a second audience; `ride_messages`' audience is an intersection and neither half
-alone is it).
+`feed_reads`, `ride_reads`, `place_search_attempts`, `ride_messages`, `clubs` (media), and the
+dropped `friendships` and `places`. Read it before touching any of them: it carries the per-column
+grants, the cascade behaviour and the audience predicate for each, and several are counter-intuitive
+(a club outlives its owner; `postcards.ride_id` is a tag rather than a second audience;
+`ride_messages`' audience is an intersection and neither half alone is it).
 
-**One line out of that file belongs here, because the session that needs it is one that would
-never open it: `places` is Overture's Places theme, and it is NOT ODbL.** Overture publishes
-Places under **CDLA Permissive 2.0 and Apache 2.0** — no share-alike, and §3 exempts what an app
-renders ("Results") from carrying the licence text at all. The reflex to reach for
-"© OpenStreetMap contributors" is the trap: a census of 527,725 rows — roughly 72% of the extract
-— found **zero** OSM-sourced rows (`scripts/places/README.md`), so that credit would name a
-contributor which supplied nothing.
-**The credit is paid once, on `/legal/attributions`, and a screen rendering a place result owes
-nothing further** — decided by the product owner 2026-08-18 (`PD-191`), on
-<https://docs.overturemaps.org/attribution/>, which is egress-blocked from a session and reachable
-through `WebSearch`.
-
-**One part of that is INFERRED rather than measured, and it is the part a session would otherwise
-inherit as settled:** the per-source table on that page says some sources carry "special terms",
-and `WebSearch` returned the page's summary but not the table. `/legal/attributions` names all
-eight contributors and both licences, which is broader than any per-source credit line, so what is
-unread could only be an obligation *other* than credit. `scripts/places/README.md` §Attribution
-carries the reasoning, including the storage half.
-
-**Map tiles are a different vendor and a different obligation.** Geoapify requires an
-unconditional OpenStreetMap credit (`PD-104`), and that line goes **beside** the Overture one on
-that page rather than merged into it.
+**`places` — the self-hosted Overture Maps index the place typeahead used to search — is RETIRED
+(`070`, PD-273).** The typeahead is now a geocoder reached through the `search-places` Edge
+Function proxy, and `docs/reference/schema.md`'s `places` row carries the retirement rather than a
+live table description. The Overture attribution paragraph that used to live here left with the
+data: `/legal/attributions` credits Geoapify and OpenStreetMap now, an unconditional credit
+(`PD-104`) that already covered map tiles and now covers search results too — no second licence
+question to carry in this file.
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
 
@@ -529,12 +560,22 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 68 files. DEV is at `068`, PROD at `059` — DEV AHEAD, 2026-08-19.** DEV-ahead is
-the ordinary state of a migration between its merge and its promotion, not drift. **Do not read
-the count of unpromoted files off this sentence either** — it named exactly one while two were
-waiting, which is the same defect as a stale number in a smaller place, and the promotion is the
-one job that reads it. Run `list_migrations` against `ls supabase/migrations/` and promote
-everything the gap contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md` §Migrations.
+**Applied state: 70 files. DEV is at `070`, PROD at `068` — DEV-ahead by two since 2026-08-19,
+which is the ordinary state rather than drift.** `069` and `070` (both PD-273) are what the gap
+holds. `070` drops `public.places`, `search_places()` and `locality_centroid()`, and per its own
+header it may only apply to a project once the `search-places`-backed client is **serving
+traffic** there. **"Merged" is not that**, and DEV is the worked example of getting it wrong:
+`070` was applied 102 seconds after #279's commit, which no Vercel build of this app finishes
+in, so it almost certainly dropped `search_places()` out from under a Preview still serving the
+bundle that called it. Nothing red — the typeahead simply returned its unavailable state until
+the build landed. PROD does not reach the gate until the promotion build is live, so PROD still
+carries the 337 MB index and both retired functions and that is correct rather than drift. Level is the *exception* rather
+than the steady state: DEV-ahead is the ordinary state of a migration between its merge and its
+promotion, and it is not drift. **Do not read the count of unpromoted files off this sentence** —
+it named exactly one while two were waiting, which is the same defect as a stale number in a
+smaller place, and the promotion is the one job that reads it. Run `list_migrations` against
+`ls supabase/migrations/` and promote everything the gap contains, in filename order, per step 5 of
+`docs/ENVIRONMENTS.md` §Migrations.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
@@ -579,7 +620,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1795** assertions — re-derive rather than trust it:
+Suite **1617** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -587,7 +628,9 @@ what `038` did to one of `036`'s assertions.
 **`031` exists because `029` shipped a function nothing could call, and that is the reusable
 lesson.** `029` put its worker in `private` and revoked EXECUTE from the client roles, assuming
 the deletion Edge Function would reach it as `service_role`. It could not: `service_role` holds
-no USAGE on `private`, and **PostgREST routes only to `public`**, so supabase-js's
+no EXECUTE on anything in `private` — every helper there carries a `revoke ... from public` and
+grants only to the client roles that need it — and above all **PostgREST routes only to `public`**,
+so supabase-js's
 `.schema('private')` is refused before it reaches Postgres. Nothing caught it, because **the RLS
 suite runs as the table owner, for whom neither barrier exists.** The assertion that would have
 caught it names a *role* — `has_function_privilege('service_role', …)` — rather than calling the

@@ -164,11 +164,12 @@ grant select, insert, update, delete on storage.objects to anon, authenticated;
 --
 -- The grants match a real project, measured on letsride-dev 2026-08-08:
 -- nspacl `{postgres=UC/postgres, anon=U/postgres, authenticated=U/postgres,
--- service_role=U/postgres, dashboard_user=UC/postgres}`. `authenticated` needs
--- USAGE because search_places is SECURITY INVOKER and calls
--- extensions.similarity as the caller — grant it here and a missing grant in
--- production would still be caught by the role assertions in rls_test.sql,
--- withhold it and the suite fails for a reason production does not have.
+-- service_role=U/postgres, dashboard_user=UC/postgres}`. Reproduced here rather
+-- than trimmed even though `070` (PD-273) retires the one function that needed
+-- `authenticated`'s USAGE — the retired `search_places` was SECURITY INVOKER and
+-- called `extensions.similarity` as the caller — because a missing grant in
+-- production should still be caught by a role assertion in rls_test.sql rather
+-- than by this harness silently diverging from what a real project carries.
 create schema if not exists extensions;
 grant usage on schema extensions to anon, authenticated, service_role;
 

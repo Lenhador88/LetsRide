@@ -64,11 +64,11 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 1907/1907 across 63 files
+npm run test:unit                     # 1939/1939 across 63 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 34 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
-PGPASSWORD=postgres npm test          # 1795 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 1617 assertions, 0 failures
 ```
 
 **And the second build shape, which nothing above covers** — PD-142 left the repo with two, and
@@ -94,17 +94,22 @@ npm run release:check                 # only before a store submission — see �
 - **`development` is the repo's default branch.** So a session clones `development` and reads
   `CLAUDE.md` and `.claude/` from it — an instruction merged there is now actually in force.
   `docs/ENVIRONMENTS.md` §The last piece has the reasoning and the ordered checklist.
-- **`main` is at `f2c75f2`** — promoted via #207 as a merge commit, back-merged by fast-forward,
-  so both branches sit on that sha. That promotion carried **15** commits — `p1..p2`, the same
-  rule the counts beside the earlier promotions use; the incl-merge number is 16: a username
-  keeping the case the rider typed (PD-226), the postcard swipe committing on lift (PD-221), the
-  app-wide content fade (PD-216), both lists reserving their filter bar's height (PD-217,
-  PD-218), the rides filter bar gating on its own read (PD-210), a refused signup keeping its
-  consent box (PD-214), and a back button on notifications (PD-209). The three before it were
-  #191 (27 commits), #163 and #154.
+- **`main` is at `53409e3`** — promoted via #269 as a merge commit, back-merged by fast-forward,
+  so both branches sit on that sha. That promotion carried **44** commits — `p1..p2`, the same
+  rule the counts beside the earlier promotions use; the incl-merge number is 45. The headline
+  items: a ride's start location and a club's home town both PICKED from `places` (PD-114,
+  PD-259), `max_riders` finally capping a crew (PD-174), the ride chat unread watermark (PD-120),
+  a photo's capture time and place (PD-255), `postcards.ride_id` reading through an accessor
+  (PD-166), the ride and club details each merged into one screen (PD-254, PD-262), and the
+  account-deletion flow behind its flag (PD-102). The four before it were #225, #222, #214 and
+  #211 — **not** #207, which is the fifth and is the one carrying 15 commits. Take the ids from
+  `git log --oneline --merges -6 origin/main` and the counts from the PR: this is a shallow clone,
+  so `git rev-list --count <sha>^1..<sha>^2` under-reports on the older ranges.
 
-  **`056` was applied to PROD BEFORE this promotion merged**, because it is additive and its code
-  shipped in it. That is the ordering rule, not a preference — §Migrations has what the reversed
+  **Eight of the nine migrations were applied to PROD BEFORE this promotion merged** — `060`,
+  `061`, `062`, `064`, `065`, `066`, `067`, `068` — because they are additive or order-neutral and
+  their code shipped in it. `063` is a tightening (it refuses a join over a cap) and went **after**
+  the deploy. That is the ordering rule, not a preference — §Migrations has what the reversed
   order costs a rider, and it is not a rollback.
 
   **Re-derive both numbers rather than editing the tail of this list** — a previous revision
@@ -394,7 +399,7 @@ the words *"stopped being **Owner**"*, so the obvious command counts its own obi
 | | Blocker | Why it blocks |
 |---|---|---|
 | 1 | **The shell itself** | **Started 2026-08-07; the `webDir` gate cleared 2026-08-10 (PD-142).** `capacitor.config.ts`, the secure store and a building `out/` are in; `ios/` and `android/` are not, and cannot be generated here. What is left needs a Mac |
-| 2 | **Account deletion — the flow is built, and the function carrying the re-auth proof is deployed as of 2026-08-17. Not yet exercised against that build** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, groups 3/4/7 and 6.1 landed 2026-08-16 (`PD-102`): `ProfileMenu`'s Delete account row, the `DeleteAccountSheet` confirmation (a second bottom sheet over `/profile`, not a route — the Figma tree says so, `tasks.md` 3.3 used to assume otherwise), `deleteAccount` in `lib/actions/auth.ts`, one shared `not-found.tsx` for the four "content is unavailable" screens, and the route guard's `gone` state destroying local session data the moment a device discovers its own account is gone (`client-session-storage`'s ADDED requirement). **The re-authentication proof (D6/Q7) is deployed as of 2026-08-17T14:32Z** — the owner redeployed by hand to PROD v9 / DEV v5, `ezbr_sha256` `9793933d…` on both, newer than the directory's last **behavioural** commit (`list_edge_functions`, against `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/delete-account/` — and read what that range *contains*, because a comment-only commit lands in it too and reads as stale). That closes the redeploy window three tasks shared (2.2, 2.3a, `add-ride-map-tiles` 8.3), **none of whose boxes reflect it yet** — see PD-249, which also covers `resolve-ride-location` being deployed while four places including the public privacy page say it is not. **What is verified is the digest, not the behaviour**: task 2.6 is owed again against this build, and until it is run, "a password is now checked" is an inference from a matching digest. It owes **two** probes and both are free — a request with **no** `password` refused `reauth_required`, and separately a **wrong non-empty** password, because an empty one never reaches `signInWithPassword` and so never exercises `classifyAuthError` at all. No session can redeploy — there is no `supabase` CLI here, and the MCP server's `deploy_edge_function` is one of the four Supabase operations on `.claude/settings.json`'s `deny` list. Count what is still open rather than enumerating it — `grep -c '^- \[ \]' openspec/changes/add-account-deletion/tasks.md` — because **`1.6b` is still a live, undecided defect** (a club's last member leaving can destroy third-party postcards — PO decision, not built) and **Q4 is still open** (legal, blocking before launch not before build); `2.4` (idempotency under concurrency), `2.6` (the live exercise, owed again against the redeployed build) and `6.3` (the live walk) are also open |
+| 2 | **Account deletion — built, deployed, exercised against that build 2026-08-19, and UNGATED the same day. The row is live on `/profile`** | App Store 5.1.1(v) — hard rejection for any app with account creation. `029`–`032` applied, `/legal/account-deletion` live, groups 3/4/7 and 6.1 landed 2026-08-16 (`PD-102`): `ProfileMenu`'s Delete account row, the `DeleteAccountSheet` confirmation (a second bottom sheet over `/profile`, not a route — the Figma tree says so, `tasks.md` 3.3 used to assume otherwise), `deleteAccount` in `lib/actions/auth.ts`, one shared `not-found.tsx` for the four "content is unavailable" screens, and the route guard's `gone` state destroying local session data the moment a device discovers its own account is gone (`client-session-storage`'s ADDED requirement). **The re-authentication proof (D6/Q7) is deployed as of 2026-08-17T14:32Z** — the owner redeployed by hand to PROD v9 / DEV v5, `ezbr_sha256` `9793933d…` on both, newer than the directory's last **behavioural** commit (`list_edge_functions`, against `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/delete-account/` — and read what that range *contains*, because a comment-only commit lands in it too and reads as stale). That closes the redeploy window three tasks shared (2.2, 2.3a, `add-ride-map-tiles` 8.3), **none of whose boxes reflect it yet** — see PD-249, which also covers `resolve-ride-location` being deployed while four places including the public privacy page say it is not. **The behaviour is now verified too, not just the digest — 2026-08-19, seven cases against DEV, all passing** (`openspec/changes/add-account-deletion/tasks.md` §2.6 carries the table). Both free probes ran: a request with **no** `password` and separately a **wrong non-empty** one both answer `reauth_required` — the second being the one that matters, since an empty password never reaches `signInWithPassword` and so never exercises `classifyAuthError`. Replaying a real token against a deleted account answers `unauthorized`, which was reasoned from GoTrue's docs until this run. DEV's and PROD's digests are equal, which is no currency check but does make the two builds byte-identical, so the run describes PROD's function; PROD's own `SERVICE_ROLE_KEY` is separately proven by PD-86. **Nothing now stands between a rider and this flow.** `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` and `src/lib/flags.ts` were deleted on 2026-08-19 at the product owner's instruction, once the redeploy they were waiting for had been verified by content — so the row renders on every build, and the promotion to `main` is what puts it in front of real riders. No session can redeploy — there is no `supabase` CLI here, and the MCP server's `deploy_edge_function` is one of the four Supabase operations on `.claude/settings.json`'s `deny` list. Count what is still open rather than enumerating it — `grep -c '^- \[ \]' openspec/changes/add-account-deletion/tasks.md` — because **`1.6b` is still a live, undecided defect** (a club's last member leaving can destroy third-party postcards — PO decision, not built) and **Q4 is still open** (legal, blocking before launch not before build); `2.4` (idempotency under concurrency) and `6.3` (the live walk) are also open — `6.3` doubly so, because every one of 2.6's seven cases is `curl`, which needs no preflight, so the browser path is the untested half — **and the flag removal is what unblocked it**, so walking the sheet on DEV is now the thing owed before the promotion to `main`. `2.6` itself is closed |
 | 3 | ~~**Inbox is a disabled stub**~~ — **resolved 2026-08-07** | The tab is **gone**, not fixed: the owner chose to drop it rather than build the epic before submission (PD-100). `Navbar.tsx` draws four tabs and the `UNBUILT` machinery is deleted — `sed -n '/const navItems/,/] as const/p' src/components/layout/Navbar.tsx \| grep -c "href:"` is 4. The Inbox *domain* is still unbuilt; it stopped being a **store** blocker when nothing pointed at it |
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
@@ -434,10 +439,11 @@ working around them.** Four carry detail worth having at hand:
    rather than any count written down.
 
    **Only the destructive leg is the one not to repeat**, because it creates and irreversibly
-   deletes a real PROD account. The check that is still *owed* — a request with no `password`
-   refused `reauth_required` — creates nothing and deletes nothing: it is refused above
-   `signInWithPassword`. Most of task 2.6 runs on DEV, where an account is free. Do not defer the
-   free leg along with the expensive one.
+   deletes a real PROD account. Everything else ran on DEV on 2026-08-19, where an account is
+   free — including the two probes this passage used to schedule, a request with no `password`
+   and one with a wrong non-empty password, both refused `reauth_required`. The durable half is
+   the split rather than the errand: a probe that creates and deletes nothing is not deferred
+   alongside one that costs a real account.
 
    The redeploy carrying PD-102's re-authentication proof closed **2026-08-17T14:32Z** — `delete-account`
    at **PROD v9 / DEV v5**, both `ezbr_sha256` `9793933d…`, both newer than the directory's last
@@ -489,8 +495,8 @@ the postcard thread still carry inferred composition; the design has frames for 
 | What | How |
 |---|---|
 | RLS suite | **`PGPASSWORD=postgres npm test`** — without it `psql` prompts and fails, which looks like a broken suite rather than a missing credential. If it says *connection refused*: `pg_ctlcluster 16 main start`. If it then says *password authentication failed*: `alter user postgres with password 'postgres'`. Neither message reads as its own cause. Local is **Postgres 16**, CI is 17 |
-| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1795**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly); `049` by +23 new and 0 relabelled — it adds a section rather than changing an existing mechanism, which is why nothing had to move; `051`, `052` and `053` together by **+85 new and −2 relabelled**, reconciled by label set against `origin/development` in a scratch worktree rather than by arithmetic (`045`'s `exactly eight columns of rides hold UPDATE`, now `045/051:` and thirteen, because `051` adds the five tile columns and they ARE updatable by design; and `nine gate triggers, one per gated table`, now `ten`, because `051` hangs `enforce_participation_gate` on the ledger — that second one also makes CLAUDE.md's nine-table list environment-dependent until `051` reaches PROD); `054` by **+64 new and −1 relabelled**, and that relabel is an **expected-value flip** rather than a rename — `036: an ownerless owner cannot see their own private club's ride TODAY` pinned the defect as current behaviour, and `054` fixes it, so the line is now `036/054:` and expects 1 where it expected 0. **A session diffing label sets against `development` will find the old label simply gone**; reinstating it re-asserts the defect and turns a correct database red. `036` §7.12c's *behaviour* is unchanged and still right — the club-ride fan-out reads `club_members` directly because a caller-relative helper cannot compute a recipient set — but its stated justification is void, and the withheld notification became a gap (N10) — closed by `060`, which unions the owner in and filters the union by readability, so `036` §7.12c's expected value is inverted a SECOND time and now reads 1; `055` by **+44 new and −1 relabelled**, and that one is a plain rename — `036: … and nobody else on the crew` still reads 1, but only because that fixture's sole other crew member IS the organizer, so it is now `036/055:` with the reason stated; `056` by **+29 new and −1 relabelled**, and that relabel is an **expected-value flip** like `054`'s rather than a rename — `an uppercase username is rejected` asserted the rule `056` removes, so it is now `a username with a non-ASCII letter is rejected — 056 widened the charset to A-Z, not to Unicode`, checked on **both** `C.UTF-8` and `en_US.UTF-8` because a collation-dependent `[A-Za-z]` range would pass locally and fail hosted. One assertion got strictly stronger with no label change: `lower(username) rejects a case-variant of an existing username` used to drop `profiles_username_format` inside a savepoint to reach the index at all, so it was true of a database this repo never ran; capitals now reach the index for real and the scaffolding is gone; `057` by **+1 new and −3 relabelled**, and all three relabels are the same kind — a *boundary that moved* rather than a rule that changed, so each keeps its meaning at a new number and a session diffing label sets will find three lines gone that must not be reinstated (`a username longer than 20 characters is rejected` → `057: … longer than 25 …`; `056: twenty-one characters is still too long, capitals or not` → `056/057: twenty-six …`; and the `pg_get_constraintdef` pin, whose expected string carries the bound verbatim). The one genuinely new line is the POSITIVE at exactly 25, written for real and read back rather than asserted `allowed`, because the rejection at 26 passes on its own against a database where `057` never applied; `058` and `059` together by **+47 new and 0 relabelled** (35 and 12), and that zero is read off the diff rather than off a label-set reconciliation — its change to `rls_test.sql` is `332	0` in `git diff origin/development...HEAD --numstat`, so no existing label can have moved. Two of the 35 are mutation-tested rather than merely green, which is what makes the rest of the section worth its length: making `058`'s exception block re-raise takes the suite down at the raising trigger, and deleting `notify_club_joined`'s early return produces `FAIL 058: joining the welcome club notifies NOBODY — expected 0, got 1`. `059`'s two are mutation-tested the same way — dropping its ride-fan-out early return reads `expected 0, got 2`, and dropping its `is_default` delete guard reads `expected the statement to be rejected, but it succeeded`; PD-102's task 6.1 by **+1 new and 0 relabelled**, a `do $$ ... $$` block deriving every FK into `profiles` from `pg_constraint` rather than the nine-table hand list beside it, which closes a real gap: `034`'s `ride_messages.author_id` and `036`'s `notifications.user_id`/`actor_id` had joined the profiles cascade without ever being added to that list; the reviewer pass on `PD-102` by **+1 new and 0 relabelled** — the row-count sweep alone was vacuous against a future non-cascading FK (reviewer finding #3), so a separate `confdeltype <> 'c'` assertion was added beside it; mutation-tested by hand against the built scratch database, not merely read as green — flipping `postcard_likes_user_id_fkey` to `ON DELETE SET NULL` inside a rolled-back transaction turned it `FAIL 6.1 MUTATION TEST: ... expected 0, got 1`, and a follow-up check (author_id on `postcard_comments`, made nullable for the test) confirmed the row-count sweep reads a false-clean 0 on that same mutation while the row survives with a NULL — which is exactly the gap the new assertion closes and the sweep alone cannot; PD-211's `060` by **+56 new and −11 relabelled**, reconciled by label set against `origin/development` rather than by arithmetic, and **six of the eleven are expected-value flips rather than renames** — the two `055: KNOWN GAP` lines and `036: ride_created_in_club does NOT reach an ownerless owner` are the defects `060` fixes, `055: FOUR rows and no fifth` and its two `flipping going<->maybe`/`leaving and rejoining` siblings drop to three, and `055: ... and UNBLOCKING returns it` is the one line whose *behaviour* `060` changes rather than repairs: the row is no longer written, so there is no backlog to reveal, which is what every other `036` fan-out already did with a block. **Reinstating any of the six re-asserts a defect and turns a correct database red.** The remaining five are renames carrying a `060:` prefix and a restated reason. Two of the 56 are mutation-tested rather than merely green: deleting the `can_read_ride` conjunct from `notify_ride_joined` reads `FAIL 060: THREE rows and no fourth ... — expected 3, got 4` (the suite stops at the first failure, so 055.3's total fires before 055.6's write count, which is the second line the same mutation breaks), and dropping the owner arm from `notify_ride_created_in_club`'s union reads `FAIL 060: ride_created_in_club DOES reach an ownerless owner — expected 1, got 0`; PD-120's `061` by **+58 new and −3 relabelled**, and the three are read off the diff rather than off a label-set reconciliation — `git diff origin/development -- supabase/tests/rls_test.sql | grep '^-' | grep -oE "'[^']*'\\);$"` returns exactly three lines, which is the cheap reconciliation whenever a change only ever *adds* to this file. Two are **expected-value flips**: `029: sixteen FKs reference public.profiles` and its `ON DELETE CASCADE` sibling are now `029/061:` and seventeen, because `ride_reads.user_id` joins the profiles cascade — **reinstating either at 16 turns a correct database red**. The third is a plain rename with the expected value unchanged at 0: `and none of the five deliberate omissions acquired one` is now `six`, because `ride_reads` takes no `enforce_participation_gate` trigger, following `023`'s reason for `feed_reads`. Four of the 58 are mutation-tested rather than merely green, one per mechanism the section exists to pin: dropping `ride_has_unread`'s third coalesce arm reads `FAIL 061: ... and another rider's message still lights their dot — the rides.created_at arm — expected t, got f`; dropping its `author_id <> auth.uid()` reads `expected f, got t` on the own-message line; narrowing the timestamp trigger to `before insert` reads `expected t, got f` on the UPDATE arm; and dropping the visibility `EXISTS` from the INSERT `WITH CHECK` reads `expected an RLS denial, but the statement succeeded` on the blocked-organizer case — which is the one that would have shipped `034`'s leak again in a new table; PD-166's `062` by **+36 new and −1 relabelled**, and that relabel is an **expected-value flip** rather than a rename — `041: ... and may SELECT it, or the Journal query could not filter on it` asserted the grant `062` revokes, so it is now `062:` and expects false. It is kept in place rather than deleted because it is the record of why the grant existed; **reinstating it at true re-opens the channel and turns a correct database red.** Six more lines changed MECHANISM without changing their label, which a label-set diff cannot see and a `-U0` diff can: every read of `postcards.ride_id` in the `041` section had to move off `authenticated`, four to the table owner (they verify a fixture rather than a permission) and two — `041.13`'s and `041.14`'s Journal-query counts — to `public.ride_journal_postcard_ids`, which IS the Journal query now. Every rider in those cases can see the ride they are asked about, asserted in the same block, so the accessor's ride conjunct moves none of the expected values; PD-174's `063` by **+25 new and 0 relabelled**, read off the diff rather than off a label set — `git diff origin/development --numstat -- supabase/tests/rls_test.sql` is additions-only, so no existing label can have moved. Five of the 25 are mutation-tested rather than merely green, and two of those four are the assertions that caught real defects in the first cut of `063`: reverting the seat-holder exemption to the narrower "exclude the writer's own row" count turns the suite red on `a member of an OVER-SUBSCRIBED ride can still change their RSVP`, and removing the organizer exemption turns it red on `an organizer restores their own crew row`. The other two pin the mechanism — dropping the `for no key update` leaves a crew of 3 on a cap of 2 under two concurrent joins, and counting the writer's own row breaks the upsert case at exactly the cap; PD-114's `067` by **+54 new and −2 relabelled**, and both relabels are the deliberate whole-list grant pins firing on the migration that moved them, which is what they exist for: `045: exactly ten columns of rides hold INSERT…` is now `045/067:` and **thirteen**, and `045/051: exactly thirteen columns … UPDATE` is now `045/051/067:` and **fourteen**. Neither is an expected-value flip — the intent is unchanged and only the list grew — but a session diffing label sets against `development` finds both simply gone, and reinstating either at the old count turns a correct database red. **`064`, `065` and `066` are missing from this narrative and that is drift rather than a claim that they moved nothing** — it ended at `063` and was not extended by the three changes between, so re-derive from the diff rather than reading the gap as zero; PD-253's `068` by **+21 net (20 labels plus one harness line) and −0 lost, with 1 rename**, and the arithmetic reconciles exactly, which is the label-set check rather than a substitute for it. The rename is in the existing `015` block: `advancing the watermark clears the badge` → `nothing newer than the watermark clears the badge`, because `068` stamps `now()` for the table **owner** too, so a watermark can no longer be written into the past and the fixture had to move the postcard instead. The same block also switches its reader from `000a` to `000b` — `000a` authored the postcard under test and `068` now excludes an author's own row, so read as `000a` the assertion would answer zero for the wrong reason and pass while testing nothing |
-| Unit tests | `npm run test:unit` — **1907 across 63 files on a clean tree**. **One new file under `src`/`scripts` is worth +2 here, not +3**, and counting the suites that walk `src/` is what gets that wrong — measure it: `echo "export const probe = 1" > src/lib/__probe.ts; npx vitest list --run \| grep -c " > "; rm src/lib/__probe.ts`. **Two** of them run `it.each` over the walked list — `no-service-role-key.test.ts` and `no-geoapify-key.test.ts`. `use-server-exports.test.ts` walks `src/` as well but emits **two fixed cases** whatever it finds ("is empty", "still checks any that come back"), so it does not move with the file count; its two `it.each` calls iterate literal fixtures. **There is deliberately no per-story breakdown of how the total got here** — two successive revisions of this row carried one and both were wrong, the second while claiming to be exact, and the branches it decomposed are squash-merged and gone, so it cannot be re-measured at all. `git log` is where a total's history lives. **Do not read a rise as "tests were added"**: the two scanners above move whenever a *source* file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
+| Assertion count | `PGPASSWORD=postgres npm test 2>&1 \| grep -c "NOTICE:  ok"` — **1617**, measured on local Postgres 16 (CI runs 17). **Compare label sets rather than counts** when reconciling two runs: a count cannot tell a rename from a loss. `038` moved this by +36 new and −1 relabelled; `041` by +86 new and −1 relabelled (`authenticated can update postcards (caption edits)`, which `041` turns false at table level and true per column); `042` by +5 new and −1 relabelled (`038: ... and authenticated DOES hold the table-level DELETE grant`, whose expected value `042` flips to false); `043` by +62 new and 0 relabelled; PD-101's ex-member-organizer case (1.4b, labelled `017:` because it constrains that file's UPDATE policy) by +13 new and 0 relabelled; `044` by +17 new and −3 relabelled (`041`'s `created_at` and `updated_at` UPDATE-grant lines, which `041` labelled as pinning a known defect and `044` flips to false, plus its seven-column `string_agg` which is now five); `045` by +39 new and −2 relabelled (`043`'s two ownership `assert_denied` labels, which had to move because `assert_denied` recognises 42501 and nothing else — a missing column grant and a failed `with check` are indistinguishable to it, so both lines would have kept passing while naming the layer that no longer does the work); `046` by +12 new and −5 relabelled (`041`'s `id` and `author_id` UPDATE-grant lines and the `postcards` UPDATE `string_agg`, the `postcards` hand-off `assert_denied` for the same layer-swap reason as `045`, and the `rides` UPDATE policy pin, which moved from `LIKE '%auth.uid() = organizer_id%'` to exact text because the substring survives the precise relaxation the assertion exists to catch); `047` and `048` together by +33 new and −1 relabelled (`045`'s `club_members` table-level UPDATE-grant line, which exists to prove the "cannot promote" case measures RLS rather than a missing grant — `048` makes that grant column-level, so the table-level answer goes false and the label would have kept naming a mechanism that no longer runs; repointed to `has_column_privilege(… 'role', 'UPDATE')`, which preserves the intent exactly); `049` by +23 new and 0 relabelled — it adds a section rather than changing an existing mechanism, which is why nothing had to move; `051`, `052` and `053` together by **+85 new and −2 relabelled**, reconciled by label set against `origin/development` in a scratch worktree rather than by arithmetic (`045`'s `exactly eight columns of rides hold UPDATE`, now `045/051:` and thirteen, because `051` adds the five tile columns and they ARE updatable by design; and `nine gate triggers, one per gated table`, now `ten`, because `051` hangs `enforce_participation_gate` on the ledger — that second one also makes CLAUDE.md's nine-table list environment-dependent until `051` reaches PROD); `054` by **+64 new and −1 relabelled**, and that relabel is an **expected-value flip** rather than a rename — `036: an ownerless owner cannot see their own private club's ride TODAY` pinned the defect as current behaviour, and `054` fixes it, so the line is now `036/054:` and expects 1 where it expected 0. **A session diffing label sets against `development` will find the old label simply gone**; reinstating it re-asserts the defect and turns a correct database red. `036` §7.12c's *behaviour* is unchanged and still right — the club-ride fan-out reads `club_members` directly because a caller-relative helper cannot compute a recipient set — but its stated justification is void, and the withheld notification became a gap (N10) — closed by `060`, which unions the owner in and filters the union by readability, so `036` §7.12c's expected value is inverted a SECOND time and now reads 1; `055` by **+44 new and −1 relabelled**, and that one is a plain rename — `036: … and nobody else on the crew` still reads 1, but only because that fixture's sole other crew member IS the organizer, so it is now `036/055:` with the reason stated; `056` by **+29 new and −1 relabelled**, and that relabel is an **expected-value flip** like `054`'s rather than a rename — `an uppercase username is rejected` asserted the rule `056` removes, so it is now `a username with a non-ASCII letter is rejected — 056 widened the charset to A-Z, not to Unicode`, checked on **both** `C.UTF-8` and `en_US.UTF-8` because a collation-dependent `[A-Za-z]` range would pass locally and fail hosted. One assertion got strictly stronger with no label change: `lower(username) rejects a case-variant of an existing username` used to drop `profiles_username_format` inside a savepoint to reach the index at all, so it was true of a database this repo never ran; capitals now reach the index for real and the scaffolding is gone; `057` by **+1 new and −3 relabelled**, and all three relabels are the same kind — a *boundary that moved* rather than a rule that changed, so each keeps its meaning at a new number and a session diffing label sets will find three lines gone that must not be reinstated (`a username longer than 20 characters is rejected` → `057: … longer than 25 …`; `056: twenty-one characters is still too long, capitals or not` → `056/057: twenty-six …`; and the `pg_get_constraintdef` pin, whose expected string carries the bound verbatim). The one genuinely new line is the POSITIVE at exactly 25, written for real and read back rather than asserted `allowed`, because the rejection at 26 passes on its own against a database where `057` never applied; `058` and `059` together by **+47 new and 0 relabelled** (35 and 12), and that zero is read off the diff rather than off a label-set reconciliation — its change to `rls_test.sql` is `332	0` in `git diff origin/development...HEAD --numstat`, so no existing label can have moved. Two of the 35 are mutation-tested rather than merely green, which is what makes the rest of the section worth its length: making `058`'s exception block re-raise takes the suite down at the raising trigger, and deleting `notify_club_joined`'s early return produces `FAIL 058: joining the welcome club notifies NOBODY — expected 0, got 1`. `059`'s two are mutation-tested the same way — dropping its ride-fan-out early return reads `expected 0, got 2`, and dropping its `is_default` delete guard reads `expected the statement to be rejected, but it succeeded`; PD-102's task 6.1 by **+1 new and 0 relabelled**, a `do $$ ... $$` block deriving every FK into `profiles` from `pg_constraint` rather than the nine-table hand list beside it, which closes a real gap: `034`'s `ride_messages.author_id` and `036`'s `notifications.user_id`/`actor_id` had joined the profiles cascade without ever being added to that list; the reviewer pass on `PD-102` by **+1 new and 0 relabelled** — the row-count sweep alone was vacuous against a future non-cascading FK (reviewer finding #3), so a separate `confdeltype <> 'c'` assertion was added beside it; mutation-tested by hand against the built scratch database, not merely read as green — flipping `postcard_likes_user_id_fkey` to `ON DELETE SET NULL` inside a rolled-back transaction turned it `FAIL 6.1 MUTATION TEST: ... expected 0, got 1`, and a follow-up check (author_id on `postcard_comments`, made nullable for the test) confirmed the row-count sweep reads a false-clean 0 on that same mutation while the row survives with a NULL — which is exactly the gap the new assertion closes and the sweep alone cannot; PD-211's `060` by **+56 new and −11 relabelled**, reconciled by label set against `origin/development` rather than by arithmetic, and **six of the eleven are expected-value flips rather than renames** — the two `055: KNOWN GAP` lines and `036: ride_created_in_club does NOT reach an ownerless owner` are the defects `060` fixes, `055: FOUR rows and no fifth` and its two `flipping going<->maybe`/`leaving and rejoining` siblings drop to three, and `055: ... and UNBLOCKING returns it` is the one line whose *behaviour* `060` changes rather than repairs: the row is no longer written, so there is no backlog to reveal, which is what every other `036` fan-out already did with a block. **Reinstating any of the six re-asserts a defect and turns a correct database red.** The remaining five are renames carrying a `060:` prefix and a restated reason. Two of the 56 are mutation-tested rather than merely green: deleting the `can_read_ride` conjunct from `notify_ride_joined` reads `FAIL 060: THREE rows and no fourth ... — expected 3, got 4` (the suite stops at the first failure, so 055.3's total fires before 055.6's write count, which is the second line the same mutation breaks), and dropping the owner arm from `notify_ride_created_in_club`'s union reads `FAIL 060: ride_created_in_club DOES reach an ownerless owner — expected 1, got 0`; PD-120's `061` by **+58 new and −3 relabelled**, and the three are read off the diff rather than off a label-set reconciliation — `git diff origin/development -- supabase/tests/rls_test.sql | grep '^-' | grep -oE "'[^']*'\\);$"` returns exactly three lines, which is the cheap reconciliation whenever a change only ever *adds* to this file. Two are **expected-value flips**: `029: sixteen FKs reference public.profiles` and its `ON DELETE CASCADE` sibling are now `029/061:` and seventeen, because `ride_reads.user_id` joins the profiles cascade — **reinstating either at 16 turns a correct database red**. The third is a plain rename with the expected value unchanged at 0: `and none of the five deliberate omissions acquired one` is now `six`, because `ride_reads` takes no `enforce_participation_gate` trigger, following `023`'s reason for `feed_reads`. Four of the 58 are mutation-tested rather than merely green, one per mechanism the section exists to pin: dropping `ride_has_unread`'s third coalesce arm reads `FAIL 061: ... and another rider's message still lights their dot — the rides.created_at arm — expected t, got f`; dropping its `author_id <> auth.uid()` reads `expected f, got t` on the own-message line; narrowing the timestamp trigger to `before insert` reads `expected t, got f` on the UPDATE arm; and dropping the visibility `EXISTS` from the INSERT `WITH CHECK` reads `expected an RLS denial, but the statement succeeded` on the blocked-organizer case — which is the one that would have shipped `034`'s leak again in a new table; PD-166's `062` by **+36 new and −1 relabelled**, and that relabel is an **expected-value flip** rather than a rename — `041: ... and may SELECT it, or the Journal query could not filter on it` asserted the grant `062` revokes, so it is now `062:` and expects false. It is kept in place rather than deleted because it is the record of why the grant existed; **reinstating it at true re-opens the channel and turns a correct database red.** Six more lines changed MECHANISM without changing their label, which a label-set diff cannot see and a `-U0` diff can: every read of `postcards.ride_id` in the `041` section had to move off `authenticated`, four to the table owner (they verify a fixture rather than a permission) and two — `041.13`'s and `041.14`'s Journal-query counts — to `public.ride_journal_postcard_ids`, which IS the Journal query now. Every rider in those cases can see the ride they are asked about, asserted in the same block, so the accessor's ride conjunct moves none of the expected values; PD-174's `063` by **+25 new and 0 relabelled**, read off the diff rather than off a label set — `git diff origin/development --numstat -- supabase/tests/rls_test.sql` is additions-only, so no existing label can have moved. Five of the 25 are mutation-tested rather than merely green, and two of those four are the assertions that caught real defects in the first cut of `063`: reverting the seat-holder exemption to the narrower "exclude the writer's own row" count turns the suite red on `a member of an OVER-SUBSCRIBED ride can still change their RSVP`, and removing the organizer exemption turns it red on `an organizer restores their own crew row`. The other two pin the mechanism — dropping the `for no key update` leaves a crew of 3 on a cap of 2 under two concurrent joins, and counting the writer's own row breaks the upsert case at exactly the cap; PD-114's `067` by **+54 new and −2 relabelled**, and both relabels are the deliberate whole-list grant pins firing on the migration that moved them, which is what they exist for: `045: exactly ten columns of rides hold INSERT…` is now `045/067:` and **thirteen**, and `045/051: exactly thirteen columns … UPDATE` is now `045/051/067:` and **fourteen**. Neither is an expected-value flip — the intent is unchanged and only the list grew — but a session diffing label sets against `development` finds both simply gone, and reinstating either at the old count turns a correct database red. **`064`, `065` and `066` are missing from this narrative and that is drift rather than a claim that they moved nothing** — it ended at `063` and was not extended by the three changes between, so re-derive from the diff rather than reading the gap as zero; PD-253's `068` by **+21 net (20 labels plus one harness line) and −0 lost, with 1 rename**, and the arithmetic reconciles exactly, which is the label-set check rather than a substitute for it. The rename is in the existing `015` block: `advancing the watermark clears the badge` → `nothing newer than the watermark clears the badge`, because `068` stamps `now()` for the table **owner** too, so a watermark can no longer be written into the past and the fixture had to move the postcard instead. The same block also switches its reader from `000a` to `000b` — `000a` authored the postcard under test and `068` now excludes an author's own row, so read as `000a` the assertion would answer zero for the wrong reason and pass while testing nothing; PD-273's `069` by **+23 net and −0 lost, with 6 relabelled**, reconciled by label set against `origin/development`. Twenty-two are the new `069:` ledger block and the twenty-third is a POSITIVE at the widened `place_id` bound, written because a one-sided rejection test passes unchanged against a database where `069` never applied — `057`'s lesson applied to a boundary that moved the other way. **All six relabels are boundary moves or count changes rather than expected-value flips**, so each keeps its meaning at a new number and reinstating any of them turns a correct database red: the two gate-trigger counts 10 → 11 (`069:`), the two `101-character GERS id` rejections → 513, renamed to *provider id* (`066/069:`, `067/069:`), and the two profiles-FK counts 17 → 18 (`029/061/069:`), because `place_search_attempts.user_id` joins the profiles cascade. Three of the twenty-two are worth more than a green tick: **the ceiling firing at the 21st attempt is the assertion `051` could not make at all** — its subquery form raised `42P17` before reaching it, which is why `052` exists; the backdate case asserts the value is REPLACED rather than the statement refused, which is what a table-level grant plus a trigger buys and a column grant would not; and the fixture tops up to the ceiling by **measuring** what is already there rather than counting the inserts above it, because `assert_allowed` rolls its statement back inside a savepoint and a hand-written total is one row out — it was, on the first pass, and the ceiling test then passed for the wrong reason; PD-273's `070` by **−201 lost and 0 new, with 0 relabelled** — removing the `037`, `039`, `040`, `049` and `050` sections (places, its search and its locality resolver, all dropped by `070`) is a pure deletion, confirmed against the pre-removal file: `git diff` reads `1740	0` — 1740 lines removed, zero added, so no remaining label moved or changed meaning. **None of the 201 removed labels should ever be reinstated**: the objects they named (`places`, `search_places()`, `locality_centroid()`) no longer exist once `070` applies, so a correct database cannot pass them. The two FK-absence assertions in the `066`/`067` sections stay but were **repointed**, which is a mechanism change a label-set diff cannot see: they asked `information_schema` for a foreign key whose target table was `places`, and once `070` drops it that count is 0 by construction — passing for ever while testing nothing, and blind to the columns growing a FK to something else entirely. Both now key on the COLUMN (`pg_constraint` joined to `pg_attribute`, `location_place_id` / `start_place_id`), which asks the question that outlives the provider, and both carry a `/070` prefix saying so. |
+| Unit tests | `npm run test:unit` — **1939 across 63 files on a clean tree**. **One new file under `src`/`scripts` is worth +2 here, not +3**, and counting the suites that walk `src/` is what gets that wrong — measure it: `echo "export const probe = 1" > src/lib/__probe.ts; npx vitest list --run \| grep -c " > "; rm src/lib/__probe.ts`. **Two** of them run `it.each` over the walked list — `no-service-role-key.test.ts` and `no-geoapify-key.test.ts`. `use-server-exports.test.ts` walks `src/` as well but emits **two fixed cases** whatever it finds ("is empty", "still checks any that come back"), so it does not move with the file count; its two `it.each` calls iterate literal fixtures. **There is deliberately no per-story breakdown of how the total got here** — two successive revisions of this row carried one and both were wrong, the second while claiming to be exact, and the branches it decomposed are squash-merged and gone, so it cannot be re-measured at all. `git log` is where a total's history lives. **Do not read a rise as "tests were added"**: the two scanners above move whenever a *source* file is added, not only a test. `registry.test.mjs` does the same over every `docs:check` claim, so adding one entry to `scripts/docs/registry.mjs` also raises this by one. It also moves for an **untracked scratch script**, so a leftover `scripts/.tmp-probe.mjs` reads one higher and looks like a gained test. Delete scratch files before quoting this, or the number measures your working tree rather than the suite |
 | **Walking the app** | See below. It is the only gate that renders anything |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL` plus the key from the Supabase MCP `get_publishable_keys`. Gitignored — `git check-ignore -v .env.local` to be sure |
 | OpenSpec CLI | `npm run openspec` — `@fission-ai/openspec`. The bare `openspec` npm name is a 0.0.0 stub |
@@ -802,9 +808,63 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — the repo and DEV hold 68, PROD holds 59
+## Migrations — the repo holds 70, DEV is at `070` and PROD at `068`
 
-**`068` is PD-253's and is on DEV ONLY, applied 2026-08-19.** Two live defects on `feed_reads`,
+**`list_migrations` prints 72 on DEV against 70 files, and that is not drift.** `063` was applied there in three
+increments — `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private` — while
+PROD holds it as the one consolidated file. Repo 70 files, PROD 68 rows, DEV 72 rows, one chain.
+The two DEV-only files are `069` and `070` (both PD-273). `069` is additive and must land on each
+project **before** the code that writes a new-format `place_id`; `070` is destructive and must land
+**after** the geocoder client is live there. Both therefore belong with the promotion rather than
+ahead of it, in filename order — `069` before the `main` merge is served, `070` after.
+`npm run db:drift` compares migration *names*, so it reads those two extra rows as a difference;
+the objects are identical, which is the comparison that decides.
+
+**`060`–`068` reached PROD on 2026-08-19 around #269, and how they were applied is worth
+carrying.** Each file was reduced to its executing statements — every `--` comment outside a
+string or a `$$` body stripped, every comment *inside* a `$$` body preserved, so `prosrc` is
+untouched — and applied through `apply_migration` in filename order. That is `CLAUDE.md`
+§Supabase Rules' technique for a file too large to retype, used here for a different reason: nine
+files at 195 KB is a lot of hand-copied production DDL, and a reduction plus a proof is safer than
+nine verbatim transcriptions.
+
+**The proof is the objects, never the recorded text**, exactly as that section prescribes. After
+the eight pre-merge files, eight digests over PROD matched DEV, and after `063` the function and
+trigger digests matched too:
+
+```sql
+-- run on both refs and compare; see git log for the full query
+md5(string_agg(pg_get_functiondef(oid), …))   -- public + private
+md5(string_agg(pg_get_triggerdef(oid), …))    -- public
+-- plus pg_policies, information_schema.columns, pg_indexes, pg_constraint,
+-- and role_table_grants / role_column_grants for anon + authenticated
+```
+
+**What that establishes is AGREEMENT BETWEEN THE PROJECTS, not fidelity to the repo — and the
+obvious reading of it is the wrong one.** DEV is not a verbatim reference: it took six of these
+eight reduced as well, and `065` and `066` were applied to both projects from **byte-identical**
+recorded text, so for those two the comparison is circular by construction. Measure it rather than
+assume DEV is clean — a normally-applied file records within a couple of hundred bytes of its
+size, so a reduced one stands out by ratio:
+
+```sql
+select version, name, length(array_to_string(statements,'')) as recorded
+  from supabase_migrations.schema_migrations where version >= '20260817103815' order by version;
+-- against `ls -l supabase/migrations/`. 067 and 068 record at 99.6% — that is the control.
+```
+
+**Fidelity to the repo has a different anchor, and it is the one to cite:** `supabase/tests/run.sh`
+applies the chain **verbatim** to a scratch database on every PR touching `supabase/**`, and the
+`061` and `063` sections below diff their objects against exactly that. Cross-project equality is
+what says PROD now matches what DEV has been serving.
+
+**One digest did NOT match, and it is pre-existing rather than this promotion's.** The
+`obj_description` of three functions differs between the projects — `enforce_ride_club_audience`,
+`my_onboarding_state` and `propagate_club_privacy_to_rides`, all three from `022`/`021`, none
+touched by `060`–`068`. Comments only: no privilege, no body, no behaviour. It is the kind of drift
+`028`/`033` exist to repair, and nothing measures it today.
+
+**`068` is PD-253's and is on BOTH projects — DEV 2026-08-19, PROD 2026-08-19 (#269).** Two live defects on `feed_reads`,
 neither introduced by it — `061` found both while building `ride_reads` and deliberately refused to
 inherit them.
 
@@ -834,7 +894,7 @@ postcard arm, and creating a ride in a club fans out (`055`/`060`), so an organi
 badging their own club is plausibly wanted rather than obviously wrong. Assertion `068.3` pins the
 decision, so changing the behaviour means changing a test that says why.
 
-**`067` is PD-114's and is on DEV ONLY, applied 2026-08-18.** It lets a ride's start be **picked**
+**`067` is PD-114's and is on BOTH projects — DEV 2026-08-18, PROD 2026-08-19 (#269).** It lets a ride's start be **picked**
 rather than only geocoded: one column (`start_place_id`), `rides_geocode_coupling` replaced by a
 three-armed `rides_location_coupling`, a length CHECK, two `BEFORE UPDATE` triggers and two
 **additive** grants. No policy, no index, no FK to `places`.
@@ -859,16 +919,18 @@ no new coordinates keeps the row's old coordinates under the new id. Constraint-
 and undecidable from `OLD`/`NEW` — the app always sends the three together. Recorded in the
 migration header.
 
-**`066` is PD-259's and is on DEV ONLY, applied 2026-08-18.** It gives `clubs` its own location —
+**`066` is PD-259's and is on BOTH projects — DEV 2026-08-18, PROD 2026-08-19 (#269).** It gives `clubs` its own location —
 `location_name`, `location_place_id`, `latitude`, `longitude` — from a picked `public.places` row,
 with three CHECKs, two **additive** grants and **no policy, no trigger, no index and no backfill**.
 
 Three things a reader will otherwise reach the wrong conclusion about:
 
-- **There is no foreign key to `places`, and that is the decision rather than an omission.** The
-  index is reloaded wholesale (`scripts/places/load.sql` is one transaction holding a `delete`),
-  so a FK would either block every reload for ever or silently wipe every club's location on one.
-  `location_place_id` is provenance and can dangle; nothing in the database will say so.
+- **There is no foreign key behind `location_place_id`, and that is the decision rather than an
+  omission — now load-bearing rather than merely convenient.** `066` wrote it against
+  `public.places`, which was reloaded wholesale, so a FK would have blocked every reload for ever
+  or silently wiped every club's location on one. **`070` dropped that table**, so the column now
+  holds a third party's opaque id (`geoapify:...`) with nothing on our side to point at. It is
+  provenance and can dangle; nothing in the database will say so.
 - **The grants are additive `grant insert (…)` / `grant update (…)`, NOT a re-stated list.** `045`
   made both verbs column-level on `clubs` and `058` revoked `is_default`; an absolute re-grant
   written from a document rather than from the database is `044`/`046`'s trap, and it fails
@@ -883,7 +945,7 @@ fetches** — tens of rows, no second round trip, no index. `066` §4 names the 
 into SQL: a club count that outgrows `CLUBS_PAGE_SIZE`, at which point the question changes from
 "sort these fifty" to "find the nearest fifty of five thousand".
 
-**`064` is PD-255's and is on DEV ONLY, applied 2026-08-18.** It adds five nullable columns to
+**`064` is PD-255's and is on BOTH projects — DEV 2026-08-18, PROD 2026-08-19 (#269).** It adds five nullable columns to
 `postcards` — `taken_at`, `taken_at_offset_minutes`, `taken_latitude`, `taken_longitude`,
 `taken_location_precision` — with four CHECKs and two absolute grant statements, and **no policy,
 no trigger, no index and no backfill**. The specification is
@@ -933,7 +995,7 @@ string is now **permanent rather than pending an answer** — which is the half 
 misread, since the old wording invited a future session to treat the ban as expiring the day the
 question closed.
 
-**`063` is PD-174's and is on DEV ONLY, applied 2026-08-18.** It hangs
+**`063` is PD-174's and is on BOTH projects — DEV 2026-08-18, PROD 2026-08-19 (#269).** It hangs
 `private.enforce_ride_capacity()` on `ride_members` as a `BEFORE INSERT OR UPDATE` trigger, so
 `rides.max_riders` finally counts against a crew — it had been enforced by nothing since `001`,
 with `018` bounding the value and saying in its own header that it bounded nothing else. Read the
@@ -954,8 +1016,8 @@ permit.
 **There is no deploy-order constraint**, unlike `021`/`025`. The trigger is additive and the code
 change is a message: applied before the deploy, a refused rider gets `setRideAttendance`'s generic
 "the ride may no longer be available" instead of "this ride is full"; deployed before the apply,
-the new branch is unreachable. Neither breaks anything, so PROD takes it at the next promotion in
-either order.
+the new branch is unreachable. Neither breaks anything, so either order was safe — PROD took
+it after #269 deployed, which is the order a tightening gets by default.
 
 **Verified by object diff** — `md5(prosrc)` for the function is `0015cff04030bad9d016c3d794d323ba`
 (5322 chars) on DEV **and** on the scratch database `run.sh` builds from the file verbatim, with
@@ -988,7 +1050,7 @@ project is over its cap** — measured before and after: DEV has 2 capped rides 
 PROD 1 of 2.
 
 
-**`062` is PD-166's and is on DEV ONLY, applied 2026-08-17.** It revokes table-level SELECT on
+**`062` is PD-166's and is on BOTH projects — DEV 2026-08-17, PROD 2026-08-19 (#269).** It revokes table-level SELECT on
 `public.postcards` from `authenticated` and re-grants seven columns — `ride_id` is not among them —
 adds `public.ride_journal_postcard_ids(ride uuid)`, the `security definer` accessor the ride Journal
 filters through, and **restates the `ride_id` column comment**, because `041` had put the grant
@@ -1033,11 +1095,11 @@ restatement — it is `private.can_read_ride`, already pinned by `060.1`.
 postcard is no longer possible client-side, even on a rider's own postcard. Nothing in the design
 draws one; a screen that wants one needs its own accessor.
 
-**`061` is PD-120's and is on DEV ONLY, applied 2026-08-17.** It adds `public.ride_reads` — the
+**`061` is PD-120's and is on BOTH projects — DEV 2026-08-17, PROD 2026-08-19 (#269).** It adds `public.ride_reads` — the
 per-ride chat read watermark behind the header dot — with three policies, a `BEFORE INSERT OR
 UPDATE` timestamp trigger, and `public.ride_has_unread(uuid)`. Purely **additive**: nothing dropped,
 no existing policy altered, no grant revoked, no row touched, so apply-then-deploy is its order and
-there is no split to sequence. PROD takes it at the next promotion.
+there is no split to sequence.
 
 **It was verified by object diff rather than by reading the apply back**, which is the check
 `CLAUDE.md` §Supabase Rules prescribes for a reduced apply: `md5(string_agg(...))` over
@@ -1052,9 +1114,8 @@ assertion in the suite scoped to its grantee. Advisors re-read afterwards: **nin
 `feed_reads`, so that count stays at ten. The count that does move is the FKs into `profiles`,
 16 → 17, and the suite asserts it.
 
-**`060` is PD-211's and is on DEV ONLY, applied 2026-08-17.** PROD takes it at the next
-promotion, which is step 5 of `docs/ENVIRONMENTS.md` §Migrations rather than an oversight —
-it is **additive** (three new functions, three replaced bodies, no DDL on any table, no policy, no
+**`060` is PD-211's and is on BOTH projects — DEV 2026-08-17, PROD 2026-08-19 (#269).** It is
+**additive** (three new functions, three replaced bodies, no DDL on any table, no policy, no
 trigger and no grant to a client role), so apply-then-deploy is its order and either sequence is
 safe here because no application code calls any of it.
 
@@ -1264,8 +1325,10 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   scoping correctly), a meeting_point change cleared them, and nothing raised.
 #   050 IS on PROD: #179 loaded places into production behind it rather than after
 #   it, which is the right order — PROD carries 736,538 places rows, so the
-#   candidate cap is guarding a loaded table there, not an empty one.
-ls supabase/migrations/ | wc -l          # 68
+#   candidate cap is guarding a loaded table there, not an empty one. That is
+#   still true of PROD and no longer of DEV: 070 dropped the table there, which
+#   makes 049/050 dead code on DEV and live code on PROD until the promotion.
+ls supabase/migrations/ | wc -l          # 70 — 069 and 070 (PD-273) are DEV-only, PROD is at 068
 ```
 
 **`055` is PD-129's and is now on both projects.** It replaces one function body —
@@ -1337,132 +1400,75 @@ the `041 → 044 → 046` ordering chain and the link in it that fails silently,
 `042`–`048`, and the hand reconciliation for every recorded statement that disagrees with its file.
 Read it before concluding either database has drifted.
 
-## `places` — LOADED on both projects, 736,538 rows each
+## `places` — RETIRED, `070` (PD-273)
 
-**PROD was loaded 2026-08-11 (run 4 of Load places index), DEV earlier the same day (`PD-195`).**
-Both hold the same 736,538 rows from the same extract. An empty index is indistinguishable from a
-working search that finds nothing, so check rather than assume:
+**Gone on DEV, still there on PROD — check before you reason about it:**
 
-```bash
-# via the Supabase MCP: execute_sql -> select count(*) from public.places;
-#   DEV (fpmrimzxadewsaiwpsel): 736538 · PROD (zwprydcyryvudhurbnye): 736538
-#   PROD: 337 MB table (162 heap + 174 indexes), 350 MB database, 0 invalid indexes
+```
+mcp__Supabase__execute_sql <ref>
+  select count(*) from pg_class where relname = 'places' and relkind = 'r';
+  -- DEV fpmrimzxadewsaiwpsel: 0   ·   PROD zwprydcyryvudhurbnye: 1
 ```
 
-**`050` was applied to PROD BEFORE the load, and the order is the load's only real precondition.**
-`050` is the candidate cap; the load is what arms the cost it bounds. Measured on PROD after the
-load — `straat`, one token, 28.7% of the rows: **95.9 ms** national and **227 ms** near Amsterdam,
-against the 11,458 ms and 4,011 ms the same terms cost without `050`. The unbounded numbers are
-past the 8 s statement timeout `authenticated` runs under, so loading first would have meant a
-rider getting an error having burned the timeout's worth of a free tier's CPU. Both PROD figures
-sit slightly under DEV's 117 ms / 311 ms.
+Was the self-hosted Overture Maps index loaded on both projects (736,538 rows, 336.9 MB) for the
+ride/club place typeahead. Dropped by `070` — `public.places`, `search_places()` and
+`locality_centroid()` — on DEV 2026-08-19, and on PROD only once the promotion is serving there,
+per `070`'s own precondition. Retired
+once the typeahead moved to a geocoder reached through the `search-places`
+Edge Function proxy, because the index structurally could not find a residential street (Overture's
+Places theme is businesses and amenities, never addresses). The full load history, the attribution
+research and the workflow that loaded it are `git log -p -- docs/HANDOFF.md` and
+`git show f6e62ce -- scripts/places/README.md` rather than a live section here — `scripts/places/`
+and `.github/workflows/places-load.yml` are deleted with the table.
 
-**Every number above is WARM, and cold is an order of magnitude worse.** Re-measured on PROD:
-the first near-Amsterdam call after an idle period was **1,996 ms** and the first national
-`EXPLAIN ANALYZE` **322 ms**, settling to 80–86 ms and 209–212 ms once the cache was hot. Still
-comfortably inside the 8 s timeout — `050` does its job either way — but on a free tier holding a
-337 MB table, cold reads are the routine case rather than the exception, and PD-114's ~250 ms
-debounce budget is not met cold. Quote the warm figures only beside this sentence.
-
-**Attribution is SETTLED (2026-08-18, `PD-191`) and no longer gates a screen.** Overture
-publishes the Places theme under **CDLA Permissive 2.0 and Apache 2.0** — no ODbL, no share-alike,
-and CDLA §3 exempts what an app renders ("Results") from carrying the licence text. The credit is
-paid once on `/legal/attributions`; `scripts/places/README.md` §Attribution carries the reasoning
-and the census that killed the OpenStreetMap assumption. Nothing renders a place result yet —
-`grep -rn "searchPlaces" src/ --include=*.tsx` is 0, and `getLocalityCentroid` is reachable only
-from `src/lib/location/rider-location.ts` — but that is now a statement about what is built rather
-than a constraint on what may be.
-
-**The STORAGE half rests on REASONING, not on a document anyone read, and it is labelled that way
-on purpose.** It was flagged separately on 2026-08-11: Foursquare, Microsoft, Meta, PinMeTo, DAC
-and Krick commonly attach terms to *storage and derived works* rather than only to display, and
-the licence-identity answer above says nothing about their upstream terms. The argument for
-treating it as covered is that **we do not take the rows from those sources; we take them from
-Overture, under the licence Overture grants**, and CDLA Permissive 2.0 grants use, modification
-and redistribution of the Data outright — so reconciling each contributor's upstream terms is the
-Foundation's business rather than a redistributor's.
-
-**Do not read that as verified.** A permissive *data* licence grants rights and disclaims
-warranties; it is not a warranty that the licensor cleared its own inputs, and no file in this
-repo vendors the licence text to check the clause against. The **Apache 2.0** half is thinner
-still — §4(a)–(d) has its own licence-copy and NOTICE obligations and no "Results" concept, and
-`/legal/attributions` naming both licences with links is what discharges it in practice rather
-than a clause anyone quoted.
-
-**The one thing a session cannot read is the per-source table** at
-<https://docs.overturemaps.org/attribution/>, whose prose says some sources carry "special terms" —
-and that table is the primary evidence on precisely this question. `curl` and `WebFetch` are
-egress-blocked on that host; `WebSearch` reached the summary but not the table.
-`/legal/attributions` names all eight contributors and both licences, which is broader than any
-per-source line would be, so what is unread could only be an obligation *other* than credit.
-**If this ever needs to be certain rather than reasonable** — a rider volume worth a lawyer, or a
-store review asking — the action is to read that table, not to re-derive the argument above.
-
-**Both secrets are set and both have now been used.** `.github/workflows/places-load.yml`
-(Actions → Load places index) runs the extractor and `scripts/places/load.sql` on a runner, which
-has the Postgres egress no session does. `PLACES_DEV_DATABASE_URL` / `PLACES_PROD_DATABASE_URL`
-are the Supabase **session pooler** strings, because GitHub runners have no IPv6 and the direct
-host needs the IPv4 add-on. A PROD run additionally needs `confirm=load-prod` typed by hand.
-Whole run: **2m35s**, of which the extract is 16 s. The local run measured 54 s — see
-`scripts/places/README.md` §What it costs. The "~15 minutes" that used to sit in
-`places-load.yml`'s pre-flight comment was never measured anywhere, and has been replaced rather
-than annotated.
-
-**Scope those secrets to the `places-dev` / `places-prod` environments rather than to the
-repository, and put a deployment branch policy on `places-prod`.** The job declares
-`environment: places-<target>` so there is somewhere for the rule to attach. This is not
-housekeeping: the string is a `postgres`-role credential, which owns every table and therefore
-bypasses RLS more completely than the service-role key that `CLAUDE.md` keeps in
-`autoMode.hard_deny`. A plain repo secret is readable by a workflow on **any** branch, and
-`workflow_dispatch` runs the definition from the ref it is dispatched against — so every guard in
-that file lives inside the job, after injection, where a pushed branch can delete it. With no
-protection rule configured, the real bound is who has push access.
-
-**Refreshes are blocked on `PD-87`, and that now binds on BOTH databases rather than one.**
-Measured on the real extract: a first load is 337 MB and lands a project at ~350 MB against the
-free tier's 500 MB database cap, so it fits — PROD came out at exactly 350 MB, DEV at 351 MB. A
-refresh measures **465 MB** before the reindex peak or WAL: the heap doubles once (`delete` leaves
-the dead tuples in place and `vacuum` makes the space reusable without returning it) and index
-bloat needs a rebuild that briefly holds two copies of all four indexes. So on each project **the
-first load is the only one that fits**, and `load.sql` skips the reindex on a first load precisely
-so that one does. Overture releases monthly, so the index starts going stale immediately and
-cannot be refreshed on either project until Pro. `scripts/places/README.md` §Loading has the full
-table.
-
-**`039`'s index swap was free only because the table was empty**; on both projects, dropping a
-`places` index is a deliberate act again.
+`rides.start_place_id` / `clubs.location_place_id` never carried a foreign key to `places`
+(`pg_constraint.confrelid` = 0 on both projects, always) and are unaffected: a stored id is
+provenance, and one issued by this retired index — one DEV ride carries an Overture GERS uuid —
+stays valid provenance for ever, never rewritten or backfilled.
 
 ## Known issues, roughly by cost to fix
 
-**Ride times are still `APP_TIME_ZONE`, and the obvious fix has two holes — PD-193, parked in
-`Needs decision` 2026-08-19.** `CLAUDE.md` §Technology Decisions calls the pinned zone a
-documented interim whose answer is "a zone column on `rides`". That column was picked up and
-deliberately **not** built, because the scope as written produces a wrong result twice:
+**Ride times are still `APP_TIME_ZONE`. The fix is decided and unbuilt — PD-193, `Todo AI`
+2026-08-19.** `CLAUDE.md` §Technology Decisions calls the pinned zone a documented interim whose
+answer is "a zone column on `rides`". The column was picked up, deliberately **not** built, and the
+scope as written was wrong twice; the product owner's question — *should the zone not be known while
+posting?* — resolved both, and the answer differs per path rather than per screen.
 
-1. **It changes the read and not the write.** On create the zone is unknown —
-   `resolve-ride-location` runs *after* the insert — so `wallClockToUtc` still resolves the typed
-   string in `APP_TIME_ZONE` and a Lisbon ride is stored as 09:00 Amsterdam. The moment the
-   function writes `timezone`, the screen starts drawing **08:00** for a ride the organizer typed
-   as 09:00: a new defect, arriving asynchronously, worse than today's error because today's is at
-   least uniform. Preserving the typed wall-clock means the statement that writes the zone must
-   also shift `departure_at`, which the issue does not mention.
-2. **A picked ride never geocodes, so it never learns a zone.** `resolvePickedCoordinate`
-   short-circuits before the vendor call by design, and `places` cannot supply one:
+**A picked place: knowable at post time.** The client holds the coordinate at submit, so the zone
+goes in the same INSERT as `departure_at` and `wallClockToUtc` resolves against it. No async
+correction.
 
-   ```sql
-   select column_name from information_schema.columns
-    where table_schema='public' and table_name='places';
-   -- no timezone column; Overture's Places theme carries none
-   ```
+**This half was scoped against a Dutch-only index and PD-273 inverted it.** The reasoning recorded
+here until 2026-08-19 was that every pickable place is Dutch — measured with
+`select country, count(*) from public.places`, one row, NL 736,538 — so a picked ride could not
+reach a foreign zone and the `APP_TIME_ZONE` fallback was already right in practice. `070` dropped
+that index and the typeahead now reads a **global** geocoder through `search-places`, so **a rider
+can pick a foreign meeting point today**, on DEV now and on PROD at the promotion. The query above
+no longer runs on DEV, and re-deriving the same conclusion from PROD's surviving copy would read
+the retired index rather than the live search. **"A picked ride never learns a zone" is a real
+wrong answer now, not a theoretical one** — which raises this half of PD-193 rather than settling
+it. **Do not hardcode Amsterdam for picked rides**; derive it from the coordinate the client
+already holds.
 
-   So the rides with the **best** coordinates would keep the Amsterdam fallback for ever — the
-   same inversion the entry below names for tiles.
+**A typed address: NOT knowable at post time, structurally.** The zone comes from the geocode, the
+geocode needs the Geoapify key, that key exists only in the function's secret store, and
+`requestRideMapRender` is fire-and-forget by requirement — `specs/ride-map-tiles` refuses a vendor
+call between Save and the redirect. So it lands after the insert. **It is no longer the only way to
+enter a foreign address** — that was true of the Dutch-only index and is not true of the geocoder,
+per the paragraph above — so this is one of two paths this story now owes an answer, not the whole
+of it: `resolve-ride-location` must write `timezone` **and** shift `departure_at` in
+the same statement, or the organizer sees 08:00 for a ride they typed as 09:00, asynchronously,
+minutes after Save. The correction fires only when the resolved zone differs from `APP_TIME_ZONE`,
+so a Dutch ride is untouched.
 
-Two things to carry into whatever is built: `rides` UPDATE grants are an **absolute** column list
+Four things to carry into the build. `rides` UPDATE grants are an **absolute** column list
 (`044`/`046`), so a `timezone` column needs its own `grant update (timezone)` or the function's
-write is refused into the existing `column_write_refused` path; and a CHECK cannot validate an IANA
-name, because `pg_timezone_names` is a view and is not immutable — a trigger can. The findings and
-a scored comparison of four options are on PD-193.
+write is refused into the existing `column_write_refused` path. A CHECK cannot validate an IANA
+name — `pg_timezone_names` is a view and is not immutable — but a trigger can. `departure_at` is
+read by the `036`/`055`/`060` notification fan-out, so shifting it is not only a display concern.
+And it should ride **PD-267**'s redeploy rather than asking for a second one. The scored comparison
+of four options, and the multi-country note (a `timezone` column on `places` filled by the loader
+offline, rather than a client-side coordinate→IANA library), are on PD-193.
 
 **A picked ride gets no map until `resolve-ride-location` is redeployed, and the guard that makes
 that safe must be REMOVED at the same moment — PD-114.** Recorded here rather than only in
@@ -1576,29 +1582,53 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   alone kept a redeploy fail-closed, and reviewer finding #1 (2026-08-16) is that it does not** —
   both commits merge together, the client half auto-deploys to DEV on merge, and the function half
   deploys by hand, later, if at all, so merging this alone would have put a live "Delete account"
-  row on `/profile` whose password is checked by nothing. **What actually makes it fail-closed:
-  `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED`** (`src/lib/flags.ts`) — the row does not render, on
-  either project, until that project's own env var reads exactly `'true'`, which the owner sets
-  only after confirming THAT project's redeploy enforces the proof by content. `ProfileMenu`'s
+  row on `/profile` whose password is checked by nothing. **What made it fail-closed at the time:
+  `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED`** (`src/lib/flags.ts`) — the row did not render, on
+  either project, until that project's own env var read exactly `'true'`. **Both the flag and
+  `src/lib/flags.ts` were deleted on 2026-08-19 and the row now renders unconditionally**, once
+  the redeploy it was waiting for had been verified by content; see below. `ProfileMenu`'s
   Delete account row opens a sheet (`DeleteAccountSheet`, not a route — `2303:9370` turned out to
   be a second `ContextMenu`-shaped overlay over `/profile`, not its own screen), the action
   distinguishes the function's `reauth_required`, its `unauthorized` and its new
   `verification_unavailable` (a GoTrue call that could not complete, never read as "already
   deleted" — reviewer finding #2), and a deleted account's session is now destroyed on any device
   that discovers it, not just the one that ran the deletion (`client-session-storage`'s `gone`
-  GuardState). **Store blocker 2** — App Store 5.1.1(v) — moves from "flow not built" to "flow
-  built, off by default until the owner redeploys and flips the flag".
+  GuardState). **Store blocker 2** — App Store 5.1.1(v) — went from "flow not built" to "flow
+  built, off by default" to, on 2026-08-19, a live row a rider can actually reach.
 
-  What is still open: **the flag itself, on both projects** — nothing in Vercel sets
-  `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` yet, so the row is invisible everywhere until the owner
-  redeploys the function and turns it on; `2.4` (idempotency under concurrent deletions —
-  unverified, no new work this session), `2.6` (the live exercise, owed again against the
-  redeployed build — five cases plus a sixth for the reauth arm, a seventh for
-  `verification_unavailable`), `6.3` (the live walk), and two decisions that are the owner's/legal's
-  rather than a session's — `1.6b` (a club's last member leaving can still destroy third-party
-  postcards) and Q4 (retain a de-identified consent record — blocks launch, not the build). **A
-  second `delete-account` call with the same token still returns `unauthorized` as success**, and
-  that is unchanged and still correct.
+  **`2.6` closed 2026-08-19 — the live exercise ran against the redeployed build, seven cases, all
+  passing**, and `3.4`'s open wrong-password arm closed with it. Three disposable accounts through
+  `/auth/v1/signup` on DEV, all three deleted by the probe itself, `select count(*) from auth.users
+  where email like 'probe-pd102-%'` back to 0. Two things stopped being inferred: replaying a real
+  token against a deleted account answers `unauthorized` (previously reasoned from GoTrue's docs),
+  and a real non-empty wrong password answers `reauth_required` rather than the
+  `verification_unavailable` a mis-set status allowlist would produce. DEV's and PROD's
+  `ezbr_sha256` are equal, so the run describes PROD's build too — which is the one claim sha
+  equality supports, currency never being it. The table is in
+  `openspec/changes/add-account-deletion/tasks.md` §2.6.
+
+  **The flag is GONE, product owner 2026-08-19: *"Just get rid of the toggle and show the delete
+  account option"*.** `src/lib/flags.ts` and its test are deleted, `ProfileMenu` renders the row
+  unconditionally, and `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` is out of `.env.local.example`. It
+  was the right call rather than a shortcut: a flag whose premise is false is not a safety margin,
+  and this one had a second cost — it made `6.3` unrunnable, because nothing could reach the sheet
+  to exercise `functions.invoke` and its preflight. **What gates the destructive call is the
+  function**, which refuses a missing or wrong password before anything is transferred, swept or
+  deleted; a client-side flag never protected that endpoint, which is live under `verify_jwt` and
+  reachable by any signed-in rider's own token with or without a UI.
+
+  **The consequence to hold, because it is the one the flag was also doing silently: `main` now
+  ships this to real riders on the next promotion, and the browser path has still never run.**
+  Every `2.6` case is `curl`, which needs no preflight. Merging to `development` puts it on DEV,
+  which is exactly where `6.3` should run — walk the sheet there before promoting. The failure
+  mode if the browser path is broken is an error on screen, not a wrong deletion, so this is a
+  sequencing note rather than a reason to hold the merge.
+
+  Also open: `2.4` (idempotency under concurrent deletions — unverified, no new work), `6.3` (the
+  live walk, now unblocked), and two decisions that are the owner's/legal's rather than a
+  session's — `1.6b` (a club's last member leaving can still destroy third-party postcards) and Q4
+  (retain a de-identified consent record — blocks launch, not the build). **A second `delete-account` call with the same token still returns `unauthorized` as
+  success**, and that is unchanged, still correct, and now measured rather than inferred.
 
 - **The signed-URL fallback (`client-cache-invalidation`'s task 7 delta) covers `Avatar` and
   `ClubCard`'s cover, not every raw `<img>` that can point at a deleted object.**
