@@ -337,9 +337,10 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
       of what that processor receives: **search terms as they are typed**, not only the meeting point
       a rider saved. Say that, and say the term is not retained on our side.
 
-      The genuinely stale claim is in `scripts/places/README.md` §Why this is not a geocoding API
-      (*"no keystroke leaves our infrastructure"*), and it goes with the directory in 8.1 rather than
-      needing an edit here.
+      The genuinely stale claim was under "Why this is not a geocoding API" in the now-deleted
+      `scripts/places/README.md` (*"no keystroke leaves our infrastructure"* — read it with
+      `git show f6e62ce -- scripts/places/README.md`), and it went with the directory in 8.4 rather
+      than needing an edit here.
 - [ ] 5.6 Update `src/types/index.ts`'s `PlaceSearchResult` doc block: it documents the Postgres
       ranking contract, the per-token AND and the proximity bias's sharp edge, none of which survives.
 
@@ -385,13 +386,18 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
       `CLAUDE.md` §Supabase Rules and `docs/reference/schema.md`. The credit is wrong the moment the
       data is gone: it names contributors who supplied nothing to what a rider is looking at.
 - [ ] 8.6 Apply `070` to DEV, run the suite, check the advisors; then promote and apply to PROD.
-- [ ] 8.7 **Repoint this change's own `§` references before 8.4 deletes their target.** `proposal.md`
-      and `design.md` both cite `scripts/places/README.md` §Why this is not a geocoding API.
-      `scripts/docs/crossrefs.mjs` resolves every file-qualified `§` in every tracked `.md`, and
-      `crossrefs.test.mjs` asserts **zero** unresolvable paths outside `openspec/specs/` — so deleting
-      that README turns the unit suite red on this change's own artifacts. Rewrite the two citations
-      to name the commit instead of the file (`git show <sha> -- scripts/places/README.md`), in the
-      same commit as the deletion.
+- [x] 8.7 **Repoint this change's own `§` references before 8.4 deletes their target.** `proposal.md`
+      and `tasks.md` itself (this section, 5.5's note) both cited the deleted README under its "Why
+      this is not a geocoding API" heading. `scripts/docs/crossrefs.mjs` resolves every file-qualified
+      `§` in every tracked `.md`, and `crossrefs.test.mjs` asserts **zero** unresolvable paths outside
+      `openspec/specs/` — so deleting that README turned the unit suite red on this change's own
+      artifacts, caught by `npm run test:unit` rather than by inspection. Rewritten to name the commit
+      instead of the file: `git show f6e62ce -- scripts/places/README.md`.
+
+      **A third citation existed and was not one of the "two" this task named** — `docs/reference/
+      schema.md`'s `places` row also cited the README under §Attribution. Found the same way: the test
+      failure lists every unresolved citation by file and line, so trust that list over a task written
+      before the count was known. Fixed alongside the schema.md rewrite (task 6.1/8.5).
 
 ## 9. What only a live exercise can close
 

@@ -168,17 +168,21 @@ export function EditRideForm({
         />
 
         {/* Same field as Create, same rule: typing throws the pin away. */}
-        <PlaceSearchField
-          label="Starting location"
-          sheetTitle="Set start location"
-          placeholder="Search location"
-          value={startPlace}
-          onChange={setStartPlace}
-          names={RIDE_LOCATION_FIELD_NAMES}
-          maxNameLength={RIDE_MEETING_POINT_MAX}
-          freeText={{ text: meetingPoint, onTextChange: setMeetingPoint, required: true }}
-          disabled={pending}
-        />
+        <div className="flex flex-col gap-1.5">
+          <PlaceSearchField
+            label="Starting location"
+            sheetTitle="Set start location"
+            value={startPlace}
+            onChange={setStartPlace}
+            names={RIDE_LOCATION_FIELD_NAMES}
+            maxNameLength={RIDE_MEETING_POINT_MAX}
+            freeText={{ text: meetingPoint, onTextChange: setMeetingPoint, required: true }}
+            disabled={pending}
+          />
+          <p className="px-1 text-xs text-muted">
+            Typing a meeting point is fine — search just adds a map and a pin.
+          </p>
+        </div>
 
         <div className="flex flex-col gap-1.5">
           <Input

@@ -507,34 +507,19 @@ mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
 **Schema:** **the per-table contract is [`docs/reference/schema.md`](docs/reference/schema.md)** —
 `profiles`, `rides`, `ride_members`, `clubs`, `club_members`, `postcards`, `postcard_likes`,
 `postcard_comments`, `postcard_hides`, `postcard_reports`, `blocks`, `profile_countries`,
-`feed_reads`, `ride_reads`, `places`, `ride_messages`, `clubs` (media), and the dropped `friendships`. Read it before touching
-any of them: it carries the per-column grants, the cascade behaviour and the audience predicate
-for each, and several are counter-intuitive (a club outlives its owner; `postcards.ride_id` is a
-tag rather than a second audience; `ride_messages`' audience is an intersection and neither half
-alone is it).
+`feed_reads`, `ride_reads`, `place_search_attempts`, `ride_messages`, `clubs` (media), and the
+dropped `friendships` and `places`. Read it before touching any of them: it carries the per-column
+grants, the cascade behaviour and the audience predicate for each, and several are counter-intuitive
+(a club outlives its owner; `postcards.ride_id` is a tag rather than a second audience;
+`ride_messages`' audience is an intersection and neither half alone is it).
 
-**One line out of that file belongs here, because the session that needs it is one that would
-never open it: `places` is Overture's Places theme, and it is NOT ODbL.** Overture publishes
-Places under **CDLA Permissive 2.0 and Apache 2.0** — no share-alike, and §3 exempts what an app
-renders ("Results") from carrying the licence text at all. The reflex to reach for
-"© OpenStreetMap contributors" is the trap: a census of 527,725 rows — roughly 72% of the extract
-— found **zero** OSM-sourced rows (`scripts/places/README.md`), so that credit would name a
-contributor which supplied nothing.
-**The credit is paid once, on `/legal/attributions`, and a screen rendering a place result owes
-nothing further** — decided by the product owner 2026-08-18 (`PD-191`), on
-<https://docs.overturemaps.org/attribution/>, which is egress-blocked from a session and reachable
-through `WebSearch`.
-
-**One part of that is INFERRED rather than measured, and it is the part a session would otherwise
-inherit as settled:** the per-source table on that page says some sources carry "special terms",
-and `WebSearch` returned the page's summary but not the table. `/legal/attributions` names all
-eight contributors and both licences, which is broader than any per-source credit line, so what is
-unread could only be an obligation *other* than credit. `scripts/places/README.md` §Attribution
-carries the reasoning, including the storage half.
-
-**Map tiles are a different vendor and a different obligation.** Geoapify requires an
-unconditional OpenStreetMap credit (`PD-104`), and that line goes **beside** the Overture one on
-that page rather than merged into it.
+**`places` — the self-hosted Overture Maps index the place typeahead used to search — is RETIRED
+(`070`, PD-273).** The typeahead is now a geocoder reached through the `search-places` Edge
+Function proxy, and `docs/reference/schema.md`'s `places` row carries the retirement rather than a
+live table description. The Overture attribution paragraph that used to live here left with the
+data: `/legal/attributions` credits Geoapify and OpenStreetMap now, an unconditional credit
+(`PD-104`) that already covered map tiles and now covers search results too — no second licence
+question to carry in this file.
 
 **Migrations:** Add new SQL files to `supabase/migrations/` with incrementing prefix (e.g., `002_add_column.sql`). Never edit existing migrations — always add new ones.
 
@@ -564,13 +549,17 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 69 files. DEV is at `069`, PROD at `068` — DEV-ahead since 2026-08-19, which is
-the ordinary state rather than drift.** Level is the *exception* rather than the steady state: DEV-ahead is the ordinary
-state of a migration between its merge and its promotion, and it is not drift. **Do not read the
-count of unpromoted files off this sentence** — it named exactly one while two were waiting, which
-is the same defect as a stale number in a smaller place, and the promotion is the one job that
-reads it. Run `list_migrations` against `ls supabase/migrations/` and promote everything the gap
-contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md` §Migrations.
+**Applied state: 70 files. DEV is at `069`, PROD at `068` — DEV-ahead since 2026-08-19, which is
+the ordinary state rather than drift.** `070` (PD-273) is the new file: written, not applied
+anywhere — it drops `public.places`, and per its own header it may only apply to a project once the
+`search-places`-backed client is deployed and live there, which gates it behind an owner deploy the
+same way `069` was gated behind one. Level is the *exception* rather
+than the steady state: DEV-ahead is the ordinary state of a migration between its merge and its
+promotion, and it is not drift. **Do not read the count of unpromoted files off this sentence** —
+it named exactly one while two were waiting, which is the same defect as a stale number in a
+smaller place, and the promotion is the one job that reads it. Run `list_migrations` against
+`ls supabase/migrations/` and promote everything the gap contains, in filename order, per step 5 of
+`docs/ENVIRONMENTS.md` §Migrations.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
@@ -615,7 +604,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1818** assertions — re-derive rather than trust it:
+Suite **1617** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.

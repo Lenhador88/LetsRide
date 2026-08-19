@@ -47,9 +47,12 @@ import { useSignOut } from '@/lib/actions/navigate'
  * at the time, so the sheet's field gated nothing and merging the flow would
  * have put an irreversible affordance in front of a function checking nothing.
  * That reason is spent: the owner redeployed 2026-08-17 and the build was
- * verified by CONTENT on 2026-08-19, seven cases, including a real non-empty
- * wrong password answering `reauth_required`
- * (`openspec/changes/add-account-deletion/tasks.md` §2.6). A flag whose
+ * verified by CONTENT on 2026-08-19 — seven cases including a real non-empty
+ * wrong password answering `reauth_required`, plus an **eighth** run the same
+ * day that none of the seven covered: the CORRECT password answers
+ * `{"deleted": true}` and the account is gone, so all three arms of the proof
+ * are exercised end to end (`openspec/changes/add-account-deletion/tasks.md`
+ * §2.6). A flag whose
  * premise is false is not a safety margin, it is a switch nobody can reason
  * about — and this one had a second cost: it made the browser path
  * untestable, because no rider or walk could reach the sheet to exercise
@@ -97,7 +100,10 @@ export function ProfileMenu() {
           </span>
         </ContextMenuItem>
 
-        {/* Its own list group, matching the frame's separation from Sign out. */}
+        {/* Its own list group, matching the frame's separation from Sign out.
+            Drawn unconditionally since the flag came out. This file's "either
+            work or not be drawn" rule is unchanged and is now satisfied by the
+            function enforcing the password rather than by hiding the row. */}
         <div className="mt-2 border-t border-border pt-2">
           <ContextMenuItem
             variant="warning"

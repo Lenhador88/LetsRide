@@ -31,8 +31,14 @@ export const RIDE_ROUTE_MAX = 1000
 const optionalText = (max: number, message: string) =>
   z.string().trim().max(max, message).transform((value) => value || null).nullable()
 
-/** `067`'s `rides_start_place_id_length`, restated for the message. */
-export const RIDE_START_PLACE_ID_MAX = 100
+/**
+ * `067`'s `rides_start_place_id_length`, restated for the message —
+ * `CLUB_LOCATION_PLACE_ID_MAX`'s own doc block in `lib/validation/clubs.ts`
+ * carries the reasoning: 100 was sized for an Overture GERS uuid, and `069`
+ * (PD-273) raises both columns' bounds to 512 for the geocoder switch, whose
+ * ids are variable-length and materially longer.
+ */
+export const RIDE_START_PLACE_ID_MAX = 512
 
 /**
  * The place a rider picked for the ride's start, or none — `067`, PD-114.

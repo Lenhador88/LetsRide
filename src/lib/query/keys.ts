@@ -393,18 +393,31 @@ export const queryKeys = {
   },
 
   /**
-   * `search_places()` (`037`/`039`), read through `searchPlaces` in
-   * `lib/data/places.ts`. No `revalidatePath` predecessor, like
-   * `notifications` — `places` is reference data with no writer in this app
-   * at all, so this key was designed against the cache contract from the
-   * start rather than translated from a route claim.
+   * `search-places` (PD-273), the metered Edge Function proxy, read through
+   * `searchPlaces` in `lib/data/places.ts`. Was `search_places()` (`037`/
+   * `039`) until the geocoder switch; the key shape did not change, only what
+   * answers it. No `revalidatePath` predecessor, like `notifications` —
+   * `places` is reference data with no writer in this app at all, so this key
+   * was designed against the cache contract from the start rather than
+   * translated from a route claim.
    *
    * `near` is folded into the key rather than dropped, because a biased and
    * an unbiased search for the same term are different *questions* with
    * different answers — `Jumbo` from a rider in Utrecht and `Jumbo` with no
-   * location can legitimately return different top hits (`PlaceSearchResult`'s
-   * doc block), and caching them under one key would show whichever answered
-   * first to both.
+   * location can legitimately return different top hits, and caching them
+   * under one key would show whichever answered first to both.
+   *
+   * **Its first caller, and a stated lifetime — `client-cache-invalidation`'s
+   * own requirement.** This key existed with no reader before PD-273;
+   * `PlaceSearchField`'s sheet now reads and writes it directly through
+   * `getSnapshot`/`setQueryData` rather than through `useQuery`, because the
+   * fetch itself is debounced and abortable in a way `useQuery`'s effect-driven
+   * fetch is not — see that component's own comment. The lifetime is
+   * `PLACE_SEARCH_CACHE_MS` in `lib/data/places.ts` (five minutes), stated
+   * there beside the constant rather than only here, because a place does not
+   * move but a rider's typing does. A failed or refused search is never
+   * written to this key — only a genuine result set — so a retry after a
+   * ceiling or an outage is never served a cached failure.
    */
   places: {
     search: (term: string, near: { lat: number; lon: number } | null): QueryKey => [
