@@ -3,7 +3,6 @@ import { canonicalOrigin } from '@/lib/origin'
 import { clearQueryCache } from '@/lib/query'
 import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { clearRiderLocation } from '@/lib/location/rider-location'
-import { resetPlaceSearchCeilingHeuristic } from '@/lib/data/places'
 import { clearSessionStore } from '@/lib/supabase/session-store'
 import { edgeFunctionErrorCode } from '@/lib/supabase/functions'
 import { RECOVERY_EXPIRED_MESSAGE, consumePasswordResetGrant } from '@/lib/auth/recovery'
@@ -252,12 +251,6 @@ export async function updatePassword(
  * coordinates survive this function's client-side navigation (there is no
  * page reload) into whoever signs in next on the same device.
  *
- * **`resetPlaceSearchCeilingHeuristic()` is the fifth**, added with the
- * geocoder switch (PD-273, `src/lib/data/places.ts`). It holds no term and no
- * address — only how many searches THIS tab has recently completed — but a
- * heuristic built from rider A's typing must not shape the ceiling message
- * rider B reads on the same device.
- *
  * **The rider ends up signed out even when the revocation fails**, which is the
  * offline case 4.5 names. `signOut()` defaults to `scope: 'global'` — a network
  * call to revoke every session — and on a dead network that rejects. Falling
@@ -276,7 +269,6 @@ export async function signOut(): Promise<ActionState> {
   clearQueryCache()
   clearGuardCache()
   clearRiderLocation()
-  resetPlaceSearchCeilingHeuristic()
   await clearSessionStore()
   return { error: null, redirectTo: '/auth/login' }
 }

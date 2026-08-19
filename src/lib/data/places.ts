@@ -64,20 +64,27 @@ export const PLACE_SEARCH_CACHE_MS = 5 * 60_000
  * Thrown by `searchPlaces` for one of the rider's own ceilings — `069`'s
  * hourly and daily conjuncts on `place_search_attempts`' INSERT policy.
  *
- * **`scope` is INFERRED client-side, not told by the server, and that is a
- * deliberate proxy limitation rather than an oversight here.** The proxy's
- * `429 {error: 'ceiling'}` cannot distinguish which of the three conjuncts in
- * `069`'s policy refused — Postgres does not report which arm of a multi-arm
- * `WITH CHECK` failed, and `design.md` §D9 is explicit that the function "does
- * not get to know which bound, and must not guess." So this class's `scope` is
- * this MODULE's best guess, built from how many searches this browser tab has
- * itself completed in the last hour versus the last day — see
- * `recordAttempt`/`inferCeilingScope` below. It can be wrong (a rider who
- * exhausted their ceiling on a different tab or device shows as `'daily'` here
- * with no local evidence either way), and the safe default is `'daily'`
- * precisely because telling a rider who is done for the day to "try again
- * shortly" is the worse of the two wrong answers — `place-search`'s spec names
- * that exact failure mode.
+ * **`scope` is READ FROM THE LEDGER, not guessed.** The proxy's
+ * `429 {error: 'ceiling'}` genuinely cannot say which of `069`'s three
+ * conjuncts refused — Postgres does not report which arm of a multi-arm
+ * `WITH CHECK` failed, and §D9 is explicit that the function "does not get to
+ * know which bound, and must not guess". **But the ledger knows, and the rider
+ * can read it**: `069` grants `authenticated` SELECT on their own
+ * `place_search_attempts` rows, so counting them in the last hour answers the
+ * question as a fact. See `readCeilingScope` below.
+ *
+ * An earlier revision inferred this from a module-level count of what THIS
+ * browser tab had done. That is wrong more often than it looks: module state
+ * dies on every page load, so a rider who hit the ceiling, reloaded and
+ * searched again read as `'daily'` regardless — and so did anyone using a
+ * second tab or a second device. The spec forbids collapsing these two states
+ * precisely because the rider's next action differs by 24×, and a guess that
+ * is wrong on the commonest path re-collapses them while looking like it
+ * did not.
+ *
+ * `'daily'` remains the fallback when the count itself cannot be read, because
+ * telling a rider who is done for the day to "try again shortly" is the worse
+ * of the two wrong answers.
  *
  * `'forbidden'` (the participation gate — an un-onboarded or anonymous
  * account, unreachable through the guarded UI) throws this too, per the
@@ -126,60 +133,52 @@ export class PlaceSearchOfflineError extends Error {
 }
 
 /**
- * How many of THIS browser tab's own place searches completed in the last
- * hour and in the last 24 hours — the local evidence `PlaceSearchCeilingError`
- * infers `scope` from. Holds timestamps only, exactly like the ledger it is
- * shadowing (`069`'s own table carries a rider id and a timestamp and nothing
- * else); nothing here is a search term.
+ * `069`'s hourly ceiling, restated here because the client has to compare
+ * against it and cannot import the copy that already exists.
  *
- * Module-level rather than in the query cache: this is a heuristic counter,
- * not cached data a screen renders, and it must survive a client-side
- * navigation the same way `rider-location.ts`'s memo does.
+ * **There are three copies of this number and that is enforced rather than
+ * hoped.** `supabase/functions/search-places/shape.ts` carries it with the
+ * arithmetic that chose it, `069`'s INSERT policy is the enforcement, and this
+ * is the client's. `shape.ts` cannot be imported here — it names the vendor's
+ * hostname, and `src/__tests__/no-geoapify-key.test.ts` rule 2 forbids that
+ * string in anything that ships — so the copy is unavoidable and
+ * `scripts/docs/registry.mjs` pins all three against each other instead.
  */
-let recentAttempts: number[] = []
-
-const CEILING_SCOPE_WINDOW_MS = {
-  hourly: 60 * 60_000,
-  daily: 24 * 60 * 60_000,
-} as const
-
-/** Called after every request that the ledger actually accepted — a result
- *  set, an empty one, or an `'unavailable'` vendor outage all mean the INSERT
- *  succeeded, because `069`'s ledger row is written BEFORE the vendor is
- *  called. A `'ceiling'` or `'forbidden'` refusal must NOT call this: no row
- *  was written, so it must not inflate the very count `inferCeilingScope`
- *  reads. */
-function recordAttempt(): void {
-  const now = Date.now()
-  recentAttempts.push(now)
-  const floor = now - CEILING_SCOPE_WINDOW_MS.daily
-  recentAttempts = recentAttempts.filter((t) => t > floor)
-}
+const PER_RIDER_HOURLY = 20
 
 /**
- * See `PlaceSearchCeilingError`'s own doc block for why this is a guess.
- * Mirrors `069`'s two per-rider ceilings — `PER_RIDER_HOURLY = 20`,
- * `PER_RIDER_DAILY = 60`, `search-places/shape.ts` — as the thresholds this
- * tab's own local count is compared against. Defaults to `'daily'` when
- * neither threshold is locally evidenced, which is the safer of the two wrong
- * answers per this class's own doc block.
+ * Which of the rider's two ceilings refused them, read from the ledger rather
+ * than guessed.
+ *
+ * `069` grants `authenticated` SELECT on their own `place_search_attempts`
+ * rows and nobody else's, so this is one indexed count over
+ * `(user_id, attempted_at)` — the index `069` creates for the ceilings
+ * themselves. It runs only on a refusal, which is the rare path, so it costs
+ * nothing on every other search.
+ *
+ * **It reads the hourly window only.** If the rider is at or past the hourly
+ * ceiling, that is what refused them; if they are not, the daily one did, or
+ * the application-wide one did and `searchPlaces` has already routed that to
+ * `PlaceSearchUnavailableError` before reaching here. A second count would
+ * add a round trip to distinguish nothing.
+ *
+ * Falls back to `'daily'` on any failure — including RLS returning nothing,
+ * which is what a caller with no session would see. Never throws: this runs
+ * while already handling an error, and a failure here must not replace the
+ * rider's real message with a worse one.
  */
-function inferCeilingScope(): 'hourly' | 'daily' {
-  const now = Date.now()
-  const hourly = recentAttempts.filter((t) => t > now - CEILING_SCOPE_WINDOW_MS.hourly).length
-  // 'daily' is the fallback whether the local daily count also clears 60 or
-  // there simply is no local evidence — both read the same to a rider who
-  // was refused with nothing in this tab's own history.
-  return hourly >= 20 ? 'hourly' : 'daily'
-}
-
-/** Sign-out's own sweep, matching `clearRiderLocation` in
- *  `src/lib/location/rider-location.ts` — a heuristic built from rider A's
- *  searches must not shape the ceiling message rider B sees on the same
- *  device. Holds no term and no address, so this is tidiness rather than a
- *  privacy fix in its own right. */
-export function resetPlaceSearchCeilingHeuristic(): void {
-  recentAttempts = []
+async function readCeilingScope(): Promise<'hourly' | 'daily'> {
+  try {
+    const supabase = await resolveSupabase()
+    const { count, error } = await supabase
+      .from('place_search_attempts')
+      .select('id', { count: 'exact', head: true })
+      .gte('attempted_at', new Date(Date.now() - 60 * 60_000).toISOString())
+    if (error || count === null) return 'daily'
+    return count >= PER_RIDER_HOURLY ? 'hourly' : 'daily'
+  } catch {
+    return 'daily'
+  }
 }
 
 /**
@@ -239,18 +238,10 @@ export async function searchPlaces(
     }
     const code = await edgeFunctionErrorCode(response.error)
     if (code === 'ceiling' || code === 'forbidden') {
-      throw new PlaceSearchCeilingError(inferCeilingScope())
+      throw new PlaceSearchCeilingError(await readCeilingScope())
     }
-    // 'unavailable' (a vendor or ledger outage) still wrote a ledger row —
-    // `069`'s insert happens BEFORE the vendor is called — so it counts
-    // toward the local heuristic exactly like a success. Only 'unauthorized'
-    // (no session at all, unreachable through the guarded UI) and a network
-    // failure that never reached the function did not.
-    if (code === 'unavailable') recordAttempt()
     throw new PlaceSearchUnavailableError()
   }
-
-  recordAttempt()
 
   const results = (response.data as { results?: unknown } | null)?.results
   return Array.isArray(results) ? (results as PlaceSearchResult[]) : []
@@ -277,10 +268,10 @@ export async function searchPlaces(
  * version was: a malformed pair degrades to `null` rather than reaching a
  * caller as `NaN`.
  *
- * Metered under the SAME ledger as `searchPlaces` (`design.md` §D5), so a
- * successful call here also calls `recordAttempt()` — the hourly/daily local
- * counts `PlaceSearchCeilingError.scope` infers from must include locality
- * lookups or they under-count a rider who has been using both.
+ * Metered under the SAME ledger as `searchPlaces` (`design.md` §D5) — it
+ * spends the rider's allowance like any other lookup. Nothing here has to
+ * account for that: `readCeilingScope` counts the ledger itself, so a locality
+ * lookup is already in the number by virtue of having written a row.
  */
 export async function getLocalityCentroid(q: string): Promise<LocalityCentroid | null> {
   const trimmed = q.trim()
@@ -294,16 +285,9 @@ export async function getLocalityCentroid(q: string): Promise<LocalityCentroid |
   })
 
   if (response.error) {
-    const code = await edgeFunctionErrorCode(response.error)
-    // Unlike searchPlaces this never throws, but the ledger's own accounting
-    // still needs every accepted attempt — a 'ceiling'/'forbidden' refusal
-    // wrote no row, so only count anything else as an attempt.
-    if (code !== 'ceiling' && code !== 'forbidden') recordAttempt()
     console.warn('[places] search-places (locality) failed — searching with no location bias', response.error)
     return null
   }
-
-  recordAttempt()
 
   const centroid = (response.data as { centroid?: { lat?: unknown; lon?: unknown } | null } | null)?.centroid
   if (!centroid) return null

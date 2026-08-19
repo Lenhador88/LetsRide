@@ -278,6 +278,23 @@ export const claims = [
     about: `the ${name} ceiling: shape.ts's constant against 069's INSERT policy`,
   })),
 
+  // The THIRD copy of the hourly ceiling. `src/lib/data/places.ts` compares
+  // against it to say WHICH of the rider's two ceilings refused them, and it
+  // cannot import either of the other two: `shape.ts` names the vendor's
+  // hostname, which `no-geoapify-key.test.ts` rule 2 forbids in anything that
+  // ships, and a migration is not importable at all. So the copy is forced,
+  // and this is what stops it drifting into telling a rider to "try again
+  // shortly" when they are actually done for the day.
+  {
+    id: 'place-search-ceiling-hourly-client',
+    file: 'src/lib/data/places.ts',
+    pattern: /const PER_RIDER_HOURLY = (\d+)/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    cmd: `sed -n '/Riders record their own place searches/,/);/p' supabase/migrations/069_place_search_metering.sql | grep -oE '< [0-9]+' | sed -n '1p' | grep -oE '[0-9]+'`,
+    about: "the hourly ceiling: places.ts's client copy against 069's INSERT policy",
+  },
+
   // ---- lucide-react retirement (comment trap, both directions) -----------
   {
     id: 'lucide-importers-filtered',

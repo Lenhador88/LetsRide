@@ -20,9 +20,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  */
 
 const invoke = vi.fn()
+/** The ledger read `readCeilingScope` makes on a refusal. Returns a `count`,
+ *  because `069` grants the rider SELECT on their own rows and that count is
+ *  what says which of their two ceilings bound — read rather than guessed. */
+const ledgerCount = vi.fn()
 
 vi.mock('@/lib/supabase/resolve', () => ({
-  resolveSupabase: async () => ({ functions: { invoke } }),
+  resolveSupabase: async () => ({
+    functions: { invoke },
+    from: () => ({
+      select: () => ({ gte: ledgerCount }),
+    }),
+  }),
 }))
 
 const {
@@ -33,7 +42,6 @@ const {
   PlaceSearchUnavailableError,
   searchPlaces,
   getLocalityCentroid,
-  resetPlaceSearchCeilingHeuristic,
 } = await import('@/lib/data/places')
 
 /** A `FunctionsHttpError` whose `.context` is a real `Response`-shaped object
@@ -48,7 +56,8 @@ function httpError(status: number, body: unknown): FunctionsHttpError {
 
 beforeEach(() => {
   invoke.mockReset()
-  resetPlaceSearchCeilingHeuristic()
+  ledgerCount.mockReset()
+  ledgerCount.mockResolvedValue({ count: 0, error: null })
   invoke.mockResolvedValue({ data: { results: [] }, error: null })
 })
 
@@ -149,20 +158,34 @@ describe('the seven-state contract — searchPlaces throws a named error per sta
     expect(daily).toBeInstanceOf(PlaceSearchCeilingError)
     expect(daily.scope).toBe('daily')
 
-    // Local evidence of a burst (20 accepted attempts in the last hour) ->
-    // 'hourly'. Each accepted attempt is a successful (or ledger-accepted)
-    // response, which is what a real search actually looks like before a
-    // ceiling bites.
-    resetPlaceSearchCeilingHeuristic()
-    invoke.mockResolvedValue({ data: { results: [] }, error: null })
-    for (let i = 0; i < 20; i++) await searchPlaces('Stationsweg', null)
-
-    invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+    // At or past the hourly ceiling in the ledger -> 'hourly'. This is READ,
+    // not inferred from anything this tab happens to remember: an earlier
+    // revision counted local attempts and so answered 'daily' for any rider
+    // who had reloaded the page, which is the commonest path of all.
+    ledgerCount.mockResolvedValue({ count: 20, error: null })
     const hourly = await searchPlaces('Stationsweg', null).catch((e) => e)
     expect(hourly).toBeInstanceOf(PlaceSearchCeilingError)
     expect(hourly.scope).toBe('hourly')
 
     expect(daily.message).not.toBe(hourly.message)
+  })
+
+  it('falls back to the safer message when the ledger cannot be read', async () => {
+    // Telling a rider who is done for the day to "try again shortly" is the
+    // worse of the two wrong answers, so an unreadable count reads as 'daily'.
+    invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+    ledgerCount.mockResolvedValue({ count: null, error: { message: 'nope' } })
+
+    const outcome = await searchPlaces('Stationsweg', null).catch((e) => e)
+    expect(outcome.scope).toBe('daily')
+  })
+
+  it('never lets a failed ledger read replace the rider\'s real message', async () => {
+    invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+    ledgerCount.mockRejectedValue(new Error('network down'))
+
+    const outcome = await searchPlaces('Stationsweg', null).catch((e) => e)
+    expect(outcome).toBeInstanceOf(PlaceSearchCeilingError)
   })
 
   it('a 403 (the participation gate) reads the same as a ceiling, never disclosing which gate refused', async () => {
@@ -284,18 +307,5 @@ describe('getLocalityCentroid', () => {
 
     invoke.mockResolvedValue({ data: { centroid: { lat: NaN, lon: 5.12 } }, error: null })
     await expect(getLocalityCentroid('Nowhereville')).resolves.toBeNull()
-  })
-})
-
-describe('resetPlaceSearchCeilingHeuristic — the sign-out sweep', () => {
-  it('clears the local evidence, so a fresh ceiling reads as the safe default again', async () => {
-    invoke.mockResolvedValue({ data: { results: [] }, error: null })
-    for (let i = 0; i < 20; i++) await searchPlaces('Stationsweg', null)
-
-    resetPlaceSearchCeilingHeuristic()
-
-    invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
-    const outcome = await searchPlaces('Stationsweg', null).catch((e) => e)
-    expect(outcome.scope).toBe('daily')
   })
 })
