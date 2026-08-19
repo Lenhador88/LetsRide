@@ -16286,7 +16286,6 @@ select assert_eq(
   has_column_privilege('authenticated', 'public.feed_reads', 'last_seen_at', 'update'),
   true, '068: ... and KEEPS the UPDATE grant on last_seen_at, which 068 §1 requires — the column must stay nameable so the upsert body carries it into the ON CONFLICT SET list');
 
-set role authenticated;
 rollback to savepoint feed_watermark_068;
 
 reset role;
