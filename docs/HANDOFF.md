@@ -1652,16 +1652,29 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   GuardState). **Store blocker 2** — App Store 5.1.1(v) — moves from "flow not built" to "flow
   built, off by default until the owner redeploys and flips the flag".
 
+  **`2.6` closed 2026-08-19 — the live exercise ran against the redeployed build, seven cases, all
+  passing**, and `3.4`'s open wrong-password arm closed with it. Three disposable accounts through
+  `/auth/v1/signup` on DEV, all three deleted by the probe itself, `select count(*) from auth.users
+  where email like 'probe-pd102-%'` back to 0. Two things stopped being inferred: replaying a real
+  token against a deleted account answers `unauthorized` (previously reasoned from GoTrue's docs),
+  and a real non-empty wrong password answers `reauth_required` rather than the
+  `verification_unavailable` a mis-set status allowlist would produce. DEV's and PROD's
+  `ezbr_sha256` are equal, so the run describes PROD's build too — which is the one claim sha
+  equality supports, currency never being it. The table is in
+  `openspec/changes/add-account-deletion/tasks.md` §2.6.
+
   What is still open: **the flag itself, on both projects** — nothing in Vercel sets
-  `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` yet, so the row is invisible everywhere until the owner
-  redeploys the function and turns it on; `2.4` (idempotency under concurrent deletions —
-  unverified, no new work this session), `2.6` (the live exercise, owed again against the
-  redeployed build — five cases plus a sixth for the reauth arm, a seventh for
-  `verification_unavailable`), `6.3` (the live walk), and two decisions that are the owner's/legal's
-  rather than a session's — `1.6b` (a club's last member leaving can still destroy third-party
-  postcards) and Q4 (retain a de-identified consent record — blocks launch, not the build). **A
-  second `delete-account` call with the same token still returns `unauthorized` as success**, and
-  that is unchanged and still correct.
+  `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED`, so the row is invisible everywhere until the owner sets
+  it on a target's env scope **and redeploys that target** (it is inlined at build time, so the
+  variable alone changes nothing). The reason to keep it off is gone; turning it on is not a
+  session's to do. Also open: `2.4` (idempotency under concurrent deletions — unverified, no new
+  work), `6.3` (the live walk, which cannot run until the flag is on somewhere — every 2.6 case was
+  `curl`, so the browser path with its preflight is the untested half; the preflight itself answers
+  `204` with the right allow-headers, necessary and not sufficient), and two decisions that are the
+  owner's/legal's rather than a session's — `1.6b` (a club's last member leaving can still destroy
+  third-party postcards) and Q4 (retain a de-identified consent record — blocks launch, not the
+  build). **A second `delete-account` call with the same token still returns `unauthorized` as
+  success**, and that is unchanged, still correct, and now measured rather than inferred.
 
 - **The signed-URL fallback (`client-cache-invalidation`'s task 7 delta) covers `Avatar` and
   `ClubCard`'s cover, not every raw `<img>` that can point at a deleted object.**
