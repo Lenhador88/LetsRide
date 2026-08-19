@@ -102,7 +102,9 @@ npm run release:check                 # only before a store submission — see �
   a photo's capture time and place (PD-255), `postcards.ride_id` reading through an accessor
   (PD-166), the ride and club details each merged into one screen (PD-254, PD-262), and the
   account-deletion flow behind its flag (PD-102). The four before it were #225, #222, #214 and
-  #207 (15 commits).
+  #211 — **not** #207, which is the fifth and is the one carrying 15 commits. Take the ids from
+  `git log --oneline --merges -6 origin/main` and the counts from the PR: this is a shallow clone,
+  so `git rev-list --count <sha>^1..<sha>^2` under-reports on the older ranges.
 
   **Eight of the nine migrations were applied to PROD BEFORE this promotion merged** — `060`,
   `061`, `062`, `064`, `065`, `066`, `067`, `068` — because they are additive or order-neutral and
@@ -807,6 +809,12 @@ reads 2 members until someone new signs up.
 
 ## Migrations — the repo, DEV and PROD all hold 68
 
+**`list_migrations` prints 70 on DEV, and that is not drift.** `063` was applied there in three
+increments — `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private` — while
+PROD holds it as the one consolidated file. Repo 68 files, PROD 68 rows, DEV 70 rows, one chain.
+`npm run db:drift` compares migration *names*, so it reads those two extra rows as a difference;
+the objects are identical, which is the comparison that decides.
+
 **`060`–`068` reached PROD on 2026-08-19 around #269, and how they were applied is worth
 carrying.** Each file was reduced to its executing statements — every `--` comment outside a
 string or a `$$` body stripped, every comment *inside* a `$$` body preserved, so `prosrc` is
@@ -816,8 +824,8 @@ files at 195 KB is a lot of hand-copied production DDL, and a reduction plus a p
 nine verbatim transcriptions.
 
 **The proof is the objects, never the recorded text**, exactly as that section prescribes. After
-the eight pre-merge files, eight digests over PROD matched DEV — which holds the same files
-applied in full — and after `063` the function and trigger digests matched too:
+the eight pre-merge files, eight digests over PROD matched DEV, and after `063` the function and
+trigger digests matched too:
 
 ```sql
 -- run on both refs and compare; see git log for the full query
@@ -826,6 +834,24 @@ md5(string_agg(pg_get_triggerdef(oid), …))    -- public
 -- plus pg_policies, information_schema.columns, pg_indexes, pg_constraint,
 -- and role_table_grants / role_column_grants for anon + authenticated
 ```
+
+**What that establishes is AGREEMENT BETWEEN THE PROJECTS, not fidelity to the repo — and the
+obvious reading of it is the wrong one.** DEV is not a verbatim reference: it took six of these
+eight reduced as well, and `065` and `066` were applied to both projects from **byte-identical**
+recorded text, so for those two the comparison is circular by construction. Measure it rather than
+assume DEV is clean — a normally-applied file records within a couple of hundred bytes of its
+size, so a reduced one stands out by ratio:
+
+```sql
+select version, name, length(array_to_string(statements,'')) as recorded
+  from supabase_migrations.schema_migrations where version >= '20260817103815' order by version;
+-- against `ls -l supabase/migrations/`. 067 and 068 record at 99.6% — that is the control.
+```
+
+**Fidelity to the repo has a different anchor, and it is the one to cite:** `supabase/tests/run.sh`
+applies the chain **verbatim** to a scratch database on every PR touching `supabase/**`, and the
+`061` and `063` sections below diff their objects against exactly that. Cross-project equality is
+what says PROD now matches what DEV has been serving.
 
 **One digest did NOT match, and it is pre-existing rather than this promotion's.** The
 `obj_description` of three functions differs between the projects — `enforce_ride_club_audience`,
@@ -983,8 +1009,8 @@ permit.
 **There is no deploy-order constraint**, unlike `021`/`025`. The trigger is additive and the code
 change is a message: applied before the deploy, a refused rider gets `setRideAttendance`'s generic
 "the ride may no longer be available" instead of "this ride is full"; deployed before the apply,
-the new branch is unreachable. Neither breaks anything, so PROD takes it at the next promotion in
-either order.
+the new branch is unreachable. Neither breaks anything, so either order was safe — PROD took
+it after #269 deployed, which is the order a tightening gets by default.
 
 **Verified by object diff** — `md5(prosrc)` for the function is `0015cff04030bad9d016c3d794d323ba`
 (5322 chars) on DEV **and** on the scratch database `run.sh` builds from the file verbatim, with
@@ -1066,7 +1092,7 @@ draws one; a screen that wants one needs its own accessor.
 per-ride chat read watermark behind the header dot — with three policies, a `BEFORE INSERT OR
 UPDATE` timestamp trigger, and `public.ride_has_unread(uuid)`. Purely **additive**: nothing dropped,
 no existing policy altered, no grant revoked, no row touched, so apply-then-deploy is its order and
-there is no split to sequence. PROD takes it at the next promotion.
+there is no split to sequence.
 
 **It was verified by object diff rather than by reading the apply back**, which is the check
 `CLAUDE.md` §Supabase Rules prescribes for a reduced apply: `md5(string_agg(...))` over

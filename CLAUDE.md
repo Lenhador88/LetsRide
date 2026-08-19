@@ -421,11 +421,15 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, each one's `ezbr_sha256`
-equal across the two projects, and both current against their files** — measured 2026-08-17,
-after the owner redeployed `delete-account` (`9793933d…`, PROD v9 / DEV v5). **Cross-project
-equality is not what establishes that second half**: it says the two projects agree, never that
-either matches the repo, so currency is the `updated_at`-against-commit-date check below.
+**Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, and each one's `ezbr_sha256`
+is equal across the two projects — and NEITHER is current against its file**, measured 2026-08-19:
+`delete-account` deployed 2026-08-17 against a file that moved 2026-08-18 (comments only, so the
+behaviour is current), and `resolve-ride-location` deployed 2026-08-16 against a file that moved
+2026-08-19 with `067` — real code, so a **picked** ride start renders no map tile on either
+project. PD-267 is the redeploy, and it has a second half: the guard in `src/lib/actions/rides.ts`
+must come out in the same PR. **Cross-project equality is not what establishes currency**: it says
+the two projects agree, never that either matches the repo, so currency is the
+`updated_at`-against-commit-date check below.
 Deploying is an **owner action** — there is no
 `supabase` CLI in the build container, and the
 MCP server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list, which
