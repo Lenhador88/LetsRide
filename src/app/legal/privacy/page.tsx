@@ -45,25 +45,14 @@ export default function PrivacyPage() {
           <span className="font-medium">Vercel</span> — serves the app itself. It receives the
           usual request data a web host sees, including your IP address.
         </li>
-      </ul>
-
-      <h2 className="text-base font-semibold pt-4">Planned, and not running yet</h2>
-      <p className="text-muted">
-        Nothing below is happening today. It is listed in advance because it will involve sending
-        data to someone new, and that should not be a surprise when it starts.
-      </p>
-      {/* MOVE THIS `li` INTO THE LIST ABOVE IN THE SAME WINDOW AS THE
-          `resolve-ride-location` DEPLOY — `add-ride-map-tiles/tasks.md` 8.4c.
-          The heading is the only thing here that depends on whether the
-          function is live; the bullet itself describes what happens when a
-          ride is saved and reads true on either side of that deploy. It was
-          rewritten that way deliberately, because the sentence it used to end
-          on — "Today no ride has coordinates and nothing is sent anywhere" —
-          was true up to the deploy and false one second after it, on a public
-          page describing where a home address goes. A claim that flips on an
-          owner action nobody in a session can take is a claim nothing will
-          catch. Do not reintroduce one. */}
-      <ul className="text-muted list-disc pl-5 space-y-2">
+        {/* Every bullet in this list describes what the app does when a rider
+            acts, never what has or has not happened yet. The Geoapify one used
+            to sit under a "Planned, and not running yet" heading and to end on
+            "Today no ride has coordinates and nothing is sent anywhere" — true
+            until the function was deployed and false one second after, on a
+            public page describing where a home address goes. A claim that flips
+            on an owner action nobody in a session can take is a claim nothing
+            will catch. Do not reintroduce one. */}
         <li>
           <span className="font-medium">Geoapify</span> — turns a ride&rsquo;s meeting point into
           map coordinates and renders the small map shown on a ride. Saving a ride sends the

@@ -190,15 +190,14 @@ removal landing without its code repair is an outage.
   re-authentication proof from 3.4; run the club transfer, then the Storage sweep, then
   `deleteUser(sub)` with **hard delete**, never Supabase's soft-delete mode.
 
-  **The re-authentication clause is now in the repo (PD-102, 2026-08-16), and this stays
-  unticked because "in the repo" is not "true in production".** `signInWithPassword` verifies the
-  proof before the club transfer runs, returning `reauth_required` rather than `unauthorized` so
-  the client never confuses a wrong password with an already-deleted account. **The deployed
-  build on both projects still predates this commit** — no session can redeploy it (no `supabase`
-  CLI, no MCP deploy tool) — so this box stays open until the owner redeploys and someone verifies
-  the deployed `PREFIXES`/body-read by content, not by a changed `ezbr_sha256` alone (see 2.3a and
-  3.4's own notes on why the sha check stopped being sufficient the moment three tasks shared one
-  redeploy).
+  **The re-authentication clause is deployed as well as committed, verified by content (PD-249,
+  2026-08-19).** `signInWithPassword` verifies the proof before the club transfer runs, returning
+  `reauth_required` rather than `unauthorized` so the client never confuses a wrong password with an
+  already-deleted account. The owner redeployed on 2026-08-17 — PROD v9, DEV v5, both `ACTIVE`,
+  `verify_jwt` true, both `ezbr_sha256` `9793933d…` — and the deployed source read back through
+  `get_edge_function` carries both `signInWithPassword`/`reauth_required` and `'ride-maps'` in
+  `PREFIXES`. **The sha is not what closed this**: three tasks wanted the same redeploy, so one
+  moved digest satisfies any of them by accident; the deployed body is the evidence.
 - [x] 2.3 Storage sweep across every prefix in the `media` bucket keyed on the rider's uid —
   `postcards/<uid>/`, `avatars/<uid>/`, `covers/<uid>/`, `club-avatars/<uid>/`,
   `club-covers/<uid>/` and, since PD-104, `ride-maps/<uid>/` — through the
@@ -224,12 +223,15 @@ removal landing without its code repair is an outage.
    where schemaname = 'storage' and tablename = 'objects'
    order by prefix;
   ```
-- [ ] 2.3a **OWNER ACTION — `delete-account` must be redeployed, and it is not this change's own
-  deploy that is outstanding.** `PREFIXES` in `supabase/functions/delete-account/index.ts` gained
-  `'ride-maps'` in PD-104's PR #183, but **the deployed build predates it** and no session can
-  redeploy: there is no `supabase` CLI in the build container and the MCP server exposes no deploy
-  tool. Until the owner does it, an account deletion runs the five-prefix sweep and leaves the
-  tiles.
+- [x] 2.3a **OWNER ACTION — `delete-account` redeployed. Done 2026-08-17, confirmed by content
+  2026-08-19 (PD-249).** `PREFIXES` gained `'ride-maps'` in PD-104's PR #183 and the deployed build
+  predated it for five days; it no longer does — `get_edge_function` against both refs returns a
+  `PREFIXES` array containing `'ride-maps'`. The sweep is six prefixes on both projects.
+
+  **The window closed in the right order, which is the part worth keeping.** `resolve-ride-location`
+  — the only thing that ever writes `ride-maps/` — was deployed in the same window, so no deletion
+  ever ran the five-prefix sweep against a bucket that had tiles in it. `add-ride-map-tiles` 8.3 is
+  the other half of this pair.
 
   It is not urgent *yet* and the reason is worth stating rather than assuming: nothing writes
   `ride-maps/` until `resolve-ride-location` is deployed, which is PD-104 task 8.3 — and that task
@@ -281,13 +283,18 @@ removal landing without its code repair is an outage.
   does not exist and should not. The password field (D6) sits between the body copy and the
   buttons, built from `LoginPage`'s `<Input type="password">` — the designer still owns the
   final control per the note below.
-- [x] 3.4 **The re-authentication arm is in the repo, in its own commit ahead of the client half —
-  the deployed build still predates it.** `supabase/functions/delete-account/index.ts` now reads
-  `{ password }` and verifies it with `signInWithPassword` before anything destructive runs,
-  returning `reauth_required` (never `unauthorized`) on a missing or wrong one. **Redeploying is
-  still an owner action** (`PD-86`) — nothing in this session's tools can do it — so until it
-  happens, a password submitted through 3.3's sheet is checked by nothing on either project. Verify
-  by content, not by sha, per this task's own note.
+- [x] 3.4 **The re-authentication arm is deployed, not merely committed (PD-249, 2026-08-19).**
+  `supabase/functions/delete-account/index.ts` reads `{ password }` and verifies it with
+  `signInWithPassword` before anything destructive runs, returning `reauth_required` (never
+  `unauthorized`) on a missing or wrong one — and the **deployed** source on both projects contains
+  that arm, read back through `get_edge_function` rather than inferred from a moved digest. A
+  password submitted through 3.3's sheet is now checked on both projects.
+
+  **One arm of it is still unexercised against a live endpoint**, and that is a different claim from
+  the deploy: a request with no `password` comes back `reauth_required` without ever reaching
+  `signInWithPassword`, so that probe does not test `classifyAuthError`'s handling of a real,
+  non-empty wrong password. The function's own header records the same gap. Nothing here is blocked
+  on it; it is a probe somebody should run.
 - [x] 3.5 `getAccountDeletionImpact()` (`src/lib/data/profile.ts`) — clubs changing hands, upcoming
   rides to cancel, riders on those rides' crews, read under the rider's own session. Renders
   nothing when there is nothing, per the spec's own scenario; **not gated on this read succeeding**

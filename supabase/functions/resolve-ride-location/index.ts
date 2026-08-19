@@ -3,25 +3,45 @@
  * map tiles, and stores them against the ride.
  *
  * ===========================================================================
- * NOT DEPLOYED, AND NEVER EXERCISED AGAINST THE VENDOR.
+ * DEPLOYED, AND THE DEPLOYED BUILD IS BEHIND THIS FILE. Read the state.
  * ===========================================================================
- * Task 4 of `openspec/changes/add-ride-map-tiles/tasks.md` is titled "written,
- * not deployed", and this file is exactly that. Two separate gaps, and they are
- * not the same gap:
+ * Measured 2026-08-19 — `ACTIVE` on both projects, `verify_jwt` true, v1,
+ * `ezbr_sha256` `d5932de9…` on each. Re-take it rather than trusting the line;
+ * the deploy moves without this file moving, and so does this file without the
+ * deploy moving:
  *
- *   1. **No deploy path exists in a session.** There is no `supabase` CLI in the
- *      build container and the Supabase MCP server exposes no deploy tool, so
- *      task 8.3 is an OWNER ACTION. Same blocker as `delete-account` and PD-86.
- *   2. **`*.geoapify.com` is egress-blocked from the build container.** Not one
- *      request in this file has ever been issued. `WebFetch` returns
- *      `EGRESS_BLOCKED` and so does a bare `curl` through the agent proxy. Every
- *      vendor-facing constant in `gates.ts` therefore says whether it was
- *      measured or assumed, and the three assumed ones are named in that file's
- *      header. **Do not read "the tests pass" as "the vendor agrees."**
+ *   mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
+ *   mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
  *
- * Task 8.4 is where both close: one real ride create and one real address edit
- * on DEV, confirming tiles appear, that an edit clears then replaces them, and
- * that a non-organizer's call is refused.
+ *   TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- \
+ *     supabase/functions/resolve-ride-location/
+ *   # newer than the deploy's updated_at means the deployed build is stale
+ *
+ * **It IS stale right now, behaviourally rather than in comments.** PD-114's
+ * picked-ride branch is merged in this file and deployed nowhere: a ride
+ * carrying `start_place_id` should skip the geocode and render from the stored
+ * coordinate, and the deployed build geocodes unconditionally instead. `PD-267`
+ * is the owner action that closes it, and it must land together with removing
+ * the `if (!location)` guard in `src/lib/actions/rides.ts` — deploying one half
+ * alone leaves picked rides with no map at all, silently. Deploying is an OWNER
+ * action: no `supabase` CLI in the build container, and `deploy_edge_function`
+ * is on `.claude/settings.json`'s deny list. Same blocker as `delete-account`
+ * and PD-86.
+ *
+ * **`*.geoapify.com` is still egress-blocked from the build container**, so no
+ * session can issue a request from here — `WebFetch` returns `EGRESS_BLOCKED`
+ * and so does a bare `curl` through the agent proxy. What has changed is that
+ * the DEPLOYED function has now called the vendor: DEV's
+ * `ride_map_render_attempts` holds 2 rows (2026-08-17), PROD's holds none. One
+ * of `gates.ts`'s three assumed constants is measured off that traffic —
+ * `scaleFactor` is real (`PD-236`) — and the map `style` value and the
+ * `result_type` vocabulary are still assumptions. **Do not read "the tests
+ * pass" as "the vendor agrees."**
+ *
+ * Task 8.4 is still open on the parts a ledger row cannot answer: that an edit
+ * clears then replaces the tiles, that a non-organizer's call is refused, and
+ * whether the burned-in credit is legible at 80×148 (`PD-236`, blocked on
+ * `PD-234`).
  *
  * ---------------------------------------------------------------------------
  * NOTHING TYPE-CHECKS THIS FILE — task 4.10
