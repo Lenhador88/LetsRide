@@ -464,6 +464,46 @@ export function toLocalityResult(
 /* The request this function accepts                                           */
 /* -------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------- */
+/* What a failed metering insert MEANS                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Three outcomes, and the split was MEASURED against DEV rather than reasoned
+ * — a probe through the deployed function on 2026-08-19 found the first draft
+ * reporting a participation-gate refusal as a vendor outage.
+ *
+ *  - **`ceiling`** — an RLS policy refused. `42501` is
+ *    `insufficient_privilege`, what a `WITH CHECK` raises; PostgREST also
+ *    surfaces `PGRST301`. The rider's hourly ceiling, their daily one and the
+ *    application-wide one are three conjuncts of ONE policy, so they are
+ *    deliberately indistinguishable here — the function does not get to know
+ *    which bound, and must not guess.
+ *  - **`forbidden`** — the participation gate refused. `069` hangs
+ *    `enforce_participation_gate` on the ledger, and it raises **`23514`**
+ *    (`check_violation`), not `42501`: measured, message *"complete onboarding
+ *    and accept the terms before writing to place_search_attempts"*. It is the
+ *    account's state, not a limit and not an outage, and it is unreachable
+ *    through the app because the route guard holds that rider in the wizard —
+ *    so it is reported like the anonymous-session refusal, which is the other
+ *    "your account may not do this" case.
+ *  - **`unavailable`** — anything else. `42P01` undefined table, `PGRST205`
+ *    schema-cache miss, a connection failure with no code at all. **This is the
+ *    state PR 1 deployed into**, before `069` existed, and reporting it as a
+ *    ceiling told riders they had hit a limit they had not reached.
+ *
+ * Matched on the code, never the message: the message is a string that can
+ * change under us, and one of these three is a rider-visible state.
+ */
+export type LedgerOutcome = 'ceiling' | 'forbidden' | 'unavailable'
+
+export function classifyLedgerError(error: { code?: string | null } | null): LedgerOutcome {
+  const code = error?.code ?? ''
+  if (code === '42501' || code === 'PGRST301') return 'ceiling'
+  if (code === '23514') return 'forbidden'
+  return 'unavailable'
+}
+
 export type SearchMode = 'search' | 'locality'
 
 export type ProxyRequest = {

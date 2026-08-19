@@ -5,6 +5,7 @@ import {
   buildAutocompleteUrl,
   buildLocalityUrl,
   CANDIDATE_LIMIT,
+  classifyLedgerError,
   ID_NAMESPACE,
   isSearchable,
   MAX_PLACE_ID_CHARS,
@@ -347,6 +348,40 @@ describe('the request this function accepts', () => {
       lat: -90,
       lon: 180,
     })
+  })
+})
+
+describe('what a failed metering insert means', () => {
+  // Measured against DEV through the deployed function, 2026-08-19. The first
+  // draft of this split reported a participation-gate refusal as a vendor
+  // outage, which is why the mapping is asserted per code rather than described.
+  it('reads an RLS refusal as the rider hitting a ceiling', () => {
+    expect(classifyLedgerError({ code: '42501' })).toBe('ceiling')
+    expect(classifyLedgerError({ code: 'PGRST301' })).toBe('ceiling')
+  })
+
+  it('reads the participation gate as forbidden, not as a ceiling', () => {
+    // `enforce_participation_gate` raises 23514 (check_violation), NOT 42501 —
+    // measured, message "complete onboarding and accept the terms before
+    // writing to place_search_attempts". It is the account's state rather than
+    // a limit, and telling that rider they have searched too much is a lie they
+    // cannot act on.
+    expect(classifyLedgerError({ code: '23514' })).toBe('forbidden')
+  })
+
+  it('reads anything else as an outage, including the missing table', () => {
+    // The state PR 1 deployed into, before `069` existed. Reporting it as a
+    // ceiling told riders they had hit a limit they had not reached.
+    expect(classifyLedgerError({ code: '42P01' })).toBe('unavailable')
+    expect(classifyLedgerError({ code: 'PGRST205' })).toBe('unavailable')
+    expect(classifyLedgerError({})).toBe('unavailable')
+    expect(classifyLedgerError(null)).toBe('unavailable')
+  })
+
+  it('never guesses which of the three ceilings bound', () => {
+    // They are three conjuncts of one policy, so Postgres raises the same code
+    // for all of them. A function that claimed to know would be inventing it.
+    expect(classifyLedgerError({ code: '42501' })).toBe('ceiling')
   })
 })
 

@@ -536,8 +536,8 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 68 files. Both projects are at `068` — LEVEL, 2026-08-19, in the hour after
-#269 promoted.** Level is the *exception* rather than the steady state: DEV-ahead is the ordinary
+**Applied state: 69 files. DEV is at `069`, PROD at `068` — DEV-ahead since 2026-08-19, which is
+the ordinary state rather than drift.** Level is the *exception* rather than the steady state: DEV-ahead is the ordinary
 state of a migration between its merge and its promotion, and it is not drift. **Do not read the
 count of unpromoted files off this sentence** — it named exactly one while two were waiting, which
 is the same defect as a stale number in a smaller place, and the promotion is the one job that

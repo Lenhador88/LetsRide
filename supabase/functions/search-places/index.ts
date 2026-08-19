@@ -113,6 +113,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   buildAutocompleteUrl,
   buildLocalityUrl,
+  classifyLedgerError,
   isSearchable,
   parseRequest,
   toLocalityResult,
@@ -184,21 +185,6 @@ const outcome = (reason: string, status: number, body: unknown) => {
   return json(body, status)
 }
 
-/**
- * `42501` is `insufficient_privilege` — what an RLS policy raises when its
- * `WITH CHECK` refuses. PostgREST also surfaces its own `PGRST301` for a row
- * that violates the policy. Anything else — `42P01` undefined table,
- * `PGRST205` schema-cache miss, a connection failure with no code at all — is
- * infrastructure, not the rider.
- *
- * Matched on the code rather than the message, because the message is a vendor
- * string that can change under us and is the wrong thing to branch on.
- */
-function isPolicyRefusal(error: { code?: string | null } | null): boolean {
-  const code = error?.code ?? ''
-  return code === '42501' || code === 'PGRST301'
-}
-
 async function fetchJson(url: string): Promise<unknown | null> {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(VENDOR_TIMEOUT_MS) })
@@ -264,18 +250,18 @@ Deno.serve(async (req: Request) => {
   // the function does not get to know, and must not guess.
   const { error: ledgerError } = await caller.from(LEDGER).insert({ user_id: user.id })
   if (ledgerError) {
-    // **Only a POLICY refusal is the rider's ceiling.** Conflating the rider's
-    // ceiling, the app's and the participation gate is deliberate — they are
-    // three conjuncts of one policy and the function does not get to know which
-    // bound. Conflating those with a MISSING TABLE is not, and it is precisely
-    // the state this PR deploys into: `069` is PR 2, so between the owner's
-    // deploy and that migration every search would tell the rider they had hit
-    // a limit they have not reached. Failing closed is right; blaming the rider
-    // for a broken deploy is not, and PR 2's client renders the difference.
-    if (!isPolicyRefusal(ledgerError)) {
-      return outcome('ledger unavailable', 502, { error: 'unavailable' })
+    // The three-way split lives in `shape.ts` so it is testable — see
+    // `classifyLedgerError` for why each code maps where it does. It is the
+    // difference between "you have searched a lot", "your account cannot do
+    // this" and "search is broken", and only the first two are the rider's.
+    const verdict = classifyLedgerError(ledgerError)
+    if (verdict === 'ceiling') {
+      return outcome('ceiling refused the attempt', 429, { error: 'ceiling' })
     }
-    return outcome('ceiling or gate refused the attempt', 429, { error: 'ceiling' })
+    if (verdict === 'forbidden') {
+      return outcome('participation gate refused the attempt', 403, { error: 'forbidden' })
+    }
+    return outcome('ledger unavailable', 502, { error: 'unavailable' })
   }
 
   const url =

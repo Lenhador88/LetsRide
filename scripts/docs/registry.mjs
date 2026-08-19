@@ -232,7 +232,12 @@ export const claims = [
     // the promotion turned it red on cue, and it is pinned back to LEVEL. The
     // pin is on the RELATIONSHIP in both directions; do not relax it to the
     // count just because the two projects agree today.
-    pattern: /\*\*Applied state: (\d+) files\. Both projects are at `\d+` — LEVEL/,
+    //
+    // 2026-08-19: `069` (PD-273) applied to DEV alone and this went red on cue,
+    // for the reason the paragraph above predicts. Prose and pattern edited
+    // together, as it says — pinned back to DEV AHEAD, and naming BOTH refs so
+    // the direction cannot be inferred from the count alone.
+    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — DEV-ahead/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,

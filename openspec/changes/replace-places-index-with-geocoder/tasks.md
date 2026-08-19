@@ -59,10 +59,19 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
 
       | Sample | Total | Prefix | Name | + `geoapify:` | Fits the 100 CHECK? |
       |---|---|---|---|---|---|
+      | `Shell Energy & Chemicals Park Rheinland Werk Wesseling` | **182** | 74 hex | 54 B | **191** | no |
+      | `Shell Deutschland Oil GmbH, Werk Süd, Hafen` | 162 | 74 hex | 44 B | 171 | no |
       | `Monument du Général Kléber` | 126 | 68 hex | 29 B | 135 | no |
       | `Amsterdam-Purmerend` | 112 | 74 hex | 19 B | 121 | no |
       | `Willem Claijstraat` | 110 | 74 hex | 18 B | 119 | no |
+      | `Shell Pernis` | 98 | 74 hex | 12 B | 107 | no |
       | `Berkhout` | 90 | 74 hex | 8 B | **99** | **yes** |
+      | `Jumbo` | 84 | 74 hex | 5 B | **93** | **yes** |
+
+      **All seven live samples carry a 74-hex prefix**, so `74 + 2 × name bytes` holds without
+      exception across them; only the documented sample's 68 does not fit. Longest observed is
+      **191 stored**, from a real result the picker would offer — so 512 has roughly 2.7× headroom
+      over anything seen, which is the right amount for a bound whose input is a place name.
 
       **The address that started this change is one of the failing cases.** `Willem Claijstraat`
       stores as 119 characters — so the very pick the product owner went looking for is the one
@@ -133,11 +142,38 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
       what PD-114's comments already establish — ODbL/OSM-derived storage rights that do not lapse,
       and a required Geoapify credit alongside OpenStreetMap's on the free plan — rather than
       re-running the provider research, which has now been done twice.
-- [ ] 0.6 **Branded POI coverage, against the retired index rather than in the abstract** (Q2b). Run
+- [x] 0.6 **Branded POI coverage, against the retired index rather than in the abstract** (Q2b). Run
       `Shell Pernis Werk`, `Jumbo Maastricht` and two of the owner's own habitual meeting points
       through Autocomplete, and the same terms through `search_places()` on DEV. Record both result
       sets. PD-114's research rates this vendor's POI layer *"patchy — only if it's present in the
       OpenStreetMap database"*; this is the task that turns that into a number before a rider finds it.
+
+      **ANSWERED 2026-08-19, and the concern is NOT borne out. The full switch ships as scoped.**
+      Run through the **deployed function** rather than against the vendor directly, so this
+      exercises the real mapping and the real ceilings as well as the vendor.
+
+      | Term | `search_places()` on DEV | `search-places` |
+      |---|---|---|
+      | `Shell Pernis Werk` | **0 rows** | 5, and `Shell Pernis`, Vondelingenweg 601, Rotterdam is **first** |
+      | `Jumbo Maastricht` | 5 stores | 5 stores, all with postcodes |
+      | `Willem Claijstraat Berkhout` | **0 rows** | the street |
+
+      **`Shell Pernis Werk` is the design's own sample and the retired index cannot answer it at
+      all** — which inverts the risk this task was written to measure. `Jumbo Maastricht` is a draw
+      on count and marginally better on content: the new set is five real stores with postcodes,
+      where the old set spends one slot on `Jumbo Online HUB Maastricht`, a distribution hub nobody
+      meets at, and another on a near-duplicate of the Mosae Forum store.
+
+      **The one real regression is noise on a sparse term, and it is `design.md` §D8 working as
+      designed.** `Shell Pernis Werk` returns two German `Werk` sites and two petrol stations in
+      Martin, Tennessee below the correct first hit. There is no country filter — deliberately, so a
+      ride into Belgium or Germany stays findable — and the vendor pads to `limit` rather than
+      returning only good matches. Ranked below the right answer, so it costs a rider nothing.
+
+      **PD-114's "patchy" rating stands unrefuted for the general case** and is simply not what
+      these terms show. Four terms is not a survey; what it establishes is that the specific fear —
+      that branded POI search would collapse — does not happen on the samples the design itself
+      chose.
 
 ## 1. PR 1 — the Edge Function, and nothing else
 
@@ -150,6 +186,18 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
       the response. No service-role key. No user id read from the body.
 - [x] 1.3 Order of operations, asserted by the tests in 1.5 and stated in the file header: verify →
       meter → call → map. Nothing billable happens before the metering row is accepted.
+
+      **Verified live against DEV, and it caught a real defect.** The first draft classified a
+      failed ledger insert on one bit — policy refusal or not — and the participation gate raises
+      **`23514`** (`check_violation`), not `42501`. So a rider who had not accepted the terms was
+      told *search is unavailable*: an outage they would retry for ever, rather than a state of
+      their own account. Now three outcomes, in `classifyLedgerError` in `shape.ts` where a test can
+      reach them: `42501`/`PGRST301` → `ceiling`, `23514` → `forbidden`, everything else →
+      `unavailable`.
+
+      **This is exactly what the split in §D2 is for.** The classification is a *decision*, so it
+      belongs in `shape.ts`; leaving it in `index.ts` is what let the first version ship untested,
+      since nothing type-checks or tests that file.
 - [x] 1.4 Log lines carry an outcome and a reason code only, and **never** the term (§D10).
 
       **No uuid-redaction helper was copied, and that is stronger than this task asked for rather
@@ -191,9 +239,25 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
       so a decode-only check accepts it — that is exactly the bypass rule 3 exists to close, and it
       is now verified against the running deploy rather than asserted from the source.
 
-      **What is still unverified**: the authenticated path, the ledger fail-closed, and the vendor
-      call, all of which need a real user session this session has no credentials for. The ledger
-      path cannot be fully exercised until `069` exists anyway.
+      **The rest is now verified too, 2026-08-19, end to end against DEV.** `069` is applied there,
+      so a probe rider was made through GoTrue (DEV autoconfirms), onboarded, and used to drive the
+      deployed function:
+
+      | Probe | Result |
+      |---|---|
+      | Search before `accept_terms` | refused, no vendor call |
+      | Search before `complete_onboarding` | refused, no vendor call |
+      | Ledger insert direct through PostgREST, fully onboarded | **201**, `attempted_at` server-stamped |
+      | Search, fully onboarded | **200** with mapped results |
+
+      So the whole chain holds: JWT verified against GoTrue, participation gate refusing before
+      anything billable, ledger row accepted under the caller's own JWT, vendor called, response
+      mapped to this repo's own shape. **The one thing this probe found is finding-shaped and is
+      fixed in this branch** — see 1.2's note on `classifyLedgerError`.
+
+      Still unverified: the ceilings actually firing at 20/60/2000, which needs 20 calls and 20
+      credits and is not worth spending to watch a `WITH CHECK` do arithmetic; and everything on
+      PROD, where `069` is not yet applied.
 - [ ] 2.3 Note in the PR that this queues **behind PD-267**, which already carries two undeployed
       function changes. If the wait is long, re-read `design.md` §D7's rejected fallback — it is the
       escape hatch, and taking it is a decision, not a drift.
