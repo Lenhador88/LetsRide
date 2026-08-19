@@ -31,10 +31,21 @@ trap one layer up. No call site survives.
   *"all three DOCUMENTATION-DERIVED and none measured"* — 0.4 is what would make them measured.
   Both need egress no session has.
 - **§2.2 is not satisfied, and it is `070`'s own precondition 1 on PROD.** `search-places` is
-  deployed v1 on both projects at 15:51Z/15:52Z, against a file that moved at 17:20Z with `a363cb2`
-  — `classifyLedgerError` and its wiring. So the deployed build reports a `23514` gate refusal as a
-  ceiling or an outage. **A redeploy is owed on both projects** and it is an owner action;
-  verify by content, not by a moved digest.
+  deployed v1 on both projects at 15:51Z/15:52Z and the deployed source is `71053cd` (#273) —
+  **#274, #275 and #276 are all undeployed**, `classifyLedgerError` among them. So the deployed
+  build answers a `23514` gate refusal with **502 `unavailable`**, telling the rider search is
+  broken rather than that a limit was reached. **A redeploy is owed on both projects** and it is
+  an owner action; verify by content, not by a moved digest.
+
+  **What the deployed v1 does NOT do is fail** — verified against the deployed source rather than
+  reasoned: its only database access is the ledger insert, no `.rpc(`, no `.from('places')`, and
+  every behavioural constant matches HEAD. So `070`'s precondition 1 is met and dropping `places`
+  is safe; the misclassification is the whole defect.
+
+  **But v1 fails CLOSED on that ledger insert, and the insert precedes the vendor call.** So on a
+  project where `place_search_attempts` does not exist yet, every search returns 502 — dead, not
+  degraded. That is what makes `069`-before-the-build a hard ordering constraint on PROD rather
+  than a preference, and the window is rider-visible.
 - **PROD:** promote, apply `069` **before** the promotion build is serving traffic, apply `070`
   only **after** it is. `070`'s header is explicit that merged is not deployed, and DEV is the
   worked example of getting that backwards — its `070` landed 102 seconds after the merge commit.

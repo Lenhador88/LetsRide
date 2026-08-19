@@ -458,9 +458,14 @@ file**, measured 2026-08-19:
 behaviour is current — and that date moves with every header edit, which is why it is read off
 the command rather than trusted here); `resolve-ride-location` deployed 2026-08-16 against a file that moved
 2026-08-19 with `067` — real code, so a **picked** ride start renders no map tile on either
-project; and `search-places` deployed 15:51Z/15:52Z against a file that moved 17:20Z the same day
-with `a363cb2` — also real code, `classifyLedgerError`, so the deployed build reports a `23514`
-participation-gate refusal to the rider as a ceiling or an outage. PD-267 is the first redeploy,
+project; and `search-places` deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) with
+**#274, #275 and #276 all undeployed** — real code, including `classifyLedgerError`, so the
+deployed build reports a `23514` participation-gate refusal to the rider as **502
+`unavailable`**: search is broken, not "you hit a limit". `isPolicyRefusal` matches `42501`
+only, and the gate raises `23514`, so it falls to the outage branch. **`git log -1` on the
+directory tells you the file is newer than the deploy and never by how many commits** — list the
+directory's history against the deploy timestamp, or a three-commit gap reads as one.
+PD-267 is the first redeploy,
 and it has a second half: the guard in `src/lib/actions/rides.ts` must come out in the same PR.
 **The newest function going stale within two hours of its first deploy is the point** — a
 deployed function is drift the moment anyone edits its file, and this section has already read
