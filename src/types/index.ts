@@ -295,6 +295,28 @@ export type RideDetail = {
  * schema actually has, against the five drawn fields the v1 frame has no
  * column for.
  */
+/**
+ * One of the rider's own recent start locations, as the place field offers them
+ * back — PD-274.
+ *
+ * **Only a PICKED start is one of these**, which is what makes the shape total:
+ * `067`'s `rides_location_coupling` says a non-null `start_place_id` implies a
+ * non-null coordinate pair, so every field here is present or the row is not a
+ * recent at all. A meeting point the rider merely typed carries no place id and
+ * is deliberately not offered — a suggestion that restores no pin looks
+ * identical to one that does and behaves differently, and there is nothing a
+ * pick-less row could write that the rider's own typing does not already.
+ *
+ * `name` rather than `meeting_point`: it is what `PlaceValue` calls the same
+ * quantity, and this is fed straight into that field.
+ */
+export type RecentRideStart = {
+  name: string
+  placeId: string
+  lat: number
+  lon: number
+}
+
 export type RideForEdit = {
   id: string
   title: string

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  RECENT_STARTS_LIMIT,
   RIDE_AVATAR_LIMIT,
+  dedupeRecentStarts,
   isRideCrew,
   toRideListItem,
   withOrganizer,
@@ -265,5 +267,72 @@ describe('withOrganizer', () => {
     const crew = withOrganizer({ going: [], maybe: [] }, ORGANIZER.id, null)
 
     expect(crew.going[0]).toMatchObject({ user_id: ORGANIZER.id, profile: null })
+  })
+})
+
+describe('dedupeRecentStarts', () => {
+  const start = (placeId: string, name = placeId) => ({
+    meeting_point: name,
+    start_place_id: placeId,
+    latitude: 52.1,
+    longitude: 4.5,
+  })
+
+  it('keeps the newest ride for each place and drops the repeats', () => {
+    // Rows arrive newest-first, so the FIRST occurrence is the recent one.
+    // Keeping the last would answer with the oldest ride that used each place
+    // and quietly invert the ordering the query paid for.
+    const starts = dedupeRecentStarts([
+      start('geoapify:cafe', 'Cafe de Pomp'),
+      start('geoapify:layby'),
+      start('geoapify:cafe', 'Cafe de Pomp, Utrecht'),
+      start('geoapify:shell'),
+    ])
+
+    expect(starts.map((s) => s.placeId)).toEqual([
+      'geoapify:cafe',
+      'geoapify:layby',
+      'geoapify:shell',
+    ])
+    expect(starts[0].name).toBe('Cafe de Pomp')
+  })
+
+  it('answers with at most RECENT_STARTS_LIMIT places', () => {
+    const starts = dedupeRecentStarts(
+      Array.from({ length: 10 }, (_, i) => start(`geoapify:${i}`))
+    )
+
+    expect(starts).toHaveLength(RECENT_STARTS_LIMIT)
+    expect(RECENT_STARTS_LIMIT).toBe(3)
+  })
+
+  it('drops a row with no place id, and one missing half its coordinate', () => {
+    // 067's rides_location_coupling makes both of these unreachable from the
+    // database — this narrows the nullable columns rather than defending
+    // against a row Postgres can produce. A geocoded ride carries a
+    // confidence and no place id, and offering that back would relabel a
+    // vendor's guess as the rider's own pick.
+    const starts = dedupeRecentStarts([
+      { meeting_point: 'The layby past the second roundabout', start_place_id: null, latitude: 52.0, longitude: 4.0 },
+      { meeting_point: 'Half a pin', start_place_id: 'geoapify:half', latitude: 52.0, longitude: null },
+      start('geoapify:whole'),
+    ])
+
+    expect(starts.map((s) => s.placeId)).toEqual(['geoapify:whole'])
+  })
+
+  it('carries the meeting point through as the name the field writes back', () => {
+    const [only] = dedupeRecentStarts([start('geoapify:cafe', 'Cafe de Pomp, Utrecht')])
+
+    expect(only).toEqual({
+      name: 'Cafe de Pomp, Utrecht',
+      placeId: 'geoapify:cafe',
+      lat: 52.1,
+      lon: 4.5,
+    })
+  })
+
+  it('answers with nothing when the rider has no picked start at all', () => {
+    expect(dedupeRecentStarts([])).toEqual([])
   })
 })

@@ -25,7 +25,7 @@ src/
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout) — plus username-verdict.ts, pure + tested, the postcards/deck.ts shape rather than a fifth component
-│   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, MarkRideChatSeen, RideAttendanceBar, RideCard, RideChatButton, RideChatComposer, RideChatRow, RideChatThread, RideChip, RideCrewRail, RideFilterBar, RideHeader, RideJournal, RideMap
+│   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, MarkRideChatSeen, RideAttendanceBar, RideCard, RideChatButton, RideChatComposer, RideChatRow, RideChatThread, RideChip, RideCrewRail, RideFilterBar, RideHeader, RideJournal, RideMap, recentStarts
 │   ├── clubs/              # ClubCard, ClubCreateRideRow, ClubDetailHeader, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPostcardCarousel, CreateClubForm, DeleteClubControl, EditClubForm, ExploreClubsStrip, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem

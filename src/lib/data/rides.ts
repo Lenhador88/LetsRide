@@ -6,6 +6,7 @@ import { resolveAvatarUrls, resolveRideMapUrls } from '@/lib/data/media'
 import type {
   EmbeddedClub,
   PublicProfile,
+  RecentRideStart,
   RideAttendance,
   RideCrew,
   RideCrewMember,
@@ -633,4 +634,108 @@ async function collageAvatars(
   return organizerIds
     .map((id) => byId.get(id))
     .filter((url): url is string => !!url)
+}
+
+/**
+ * How many of the rider's own rides the recents read scans before it dedupes.
+ *
+ * **The bound is on the SCAN, not on the answer** — `RECENT_STARTS_LIMIT` below
+ * is what a rider sees. The two differ because the same start is the common
+ * case rather than the exception: an organizer who meets their crew at the same
+ * café every Sunday has twenty rides and one distinct place, and a read bounded
+ * at three would then offer one row and call it "your last three". Twenty is
+ * the smallest window that still answers with three distinct places for a rider
+ * who alternates between a handful of regular starts, and it is a fixed,
+ * index-supported read (`rides_organizer_id_idx`) rather than a growing one.
+ *
+ * Beyond it the list saturates rather than misleads — the same trade
+ * `RIDE_FILTER_SCAN_LIMIT` makes above.
+ */
+export const RECENT_STARTS_SCAN_LIMIT = 20
+
+/** How many recent starts the field offers. Three — the product owner's. */
+export const RECENT_STARTS_LIMIT = 3
+
+/**
+ * The rider's own recent start locations, newest first — PD-274, the list the
+ * place field shows the moment it is focused with an empty input.
+ *
+ * **The `organizer_id` filter is the rule, not a redundant belt.** RLS admits
+ * every ride this rider may *read* — rides they joined, and their clubs' rides —
+ * and offering one of those back as "your recent start" would be offering
+ * somebody else's choice. The policy is what stops another rider's rows being
+ * readable; this filter is what stops a readable row being treated as a
+ * recent.
+ *
+ * **Only picked starts, which is what makes the shape total.** `067`'s
+ * `rides_location_coupling` makes `start_place_id IS NOT NULL` imply a complete
+ * coordinate, so the null checks below narrow a nullable column rather than
+ * defending against a row the database can produce. A ride whose free text a
+ * geocoder resolved carries a confidence and no place id and is not a recent:
+ * re-offering a *guess* as the rider's own pick is the same relabelling
+ * `getRideForEdit` refuses to do.
+ *
+ * **Ordered by `created_at`, deliberately, and it is a trade.** That is when
+ * the rider *chose* the place; `departure_at` is when the ride happens and can
+ * be a year out, so ordering by it would float next summer's plan above this
+ * morning's. The accepted cost is that editing an old ride's start does not
+ * move it up the list — the row is old even though the choice is fresh.
+ *
+ * Deduped here rather than in SQL because PostgREST cannot express
+ * `DISTINCT ON`, and an RPC for three rows would be a migration this change
+ * exists to avoid.
+ */
+export async function getRecentRideStarts(): Promise<RecentRideStart[]> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const rows = unwrapList(
+    await supabase
+      .from('rides')
+      .select('meeting_point, start_place_id, latitude, longitude')
+      .eq('organizer_id', user.id)
+      .not('start_place_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(RECENT_STARTS_SCAN_LIMIT),
+    'your recent start locations',
+  ) as RecentStartRow[]
+
+  return dedupeRecentStarts(rows)
+}
+
+type RecentStartRow = {
+  meeting_point: string
+  start_place_id: string | null
+  latitude: number | null
+  longitude: number | null
+}
+
+/**
+ * Newest-first rows in, at most `RECENT_STARTS_LIMIT` distinct places out.
+ *
+ * Pure and exported for the reason `isRideCrew` and `toRideListItem` are: the
+ * dedupe is the rule, the query is only how the rows arrive. Keeping the first
+ * occurrence is what makes "newest first" survive the dedupe — the last one
+ * would answer with the oldest ride that used each place.
+ */
+export function dedupeRecentStarts(rows: RecentStartRow[]): RecentRideStart[] {
+  const seen = new Set<string>()
+  const starts: RecentRideStart[] = []
+
+  for (const row of rows) {
+    if (starts.length === RECENT_STARTS_LIMIT) break
+    if (!row.start_place_id || row.latitude === null || row.longitude === null) continue
+    if (seen.has(row.start_place_id)) continue
+
+    seen.add(row.start_place_id)
+    starts.push({
+      name: row.meeting_point,
+      placeId: row.start_place_id,
+      lat: row.latitude,
+      lon: row.longitude,
+    })
+  }
+
+  return starts
 }

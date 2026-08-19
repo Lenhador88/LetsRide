@@ -241,6 +241,27 @@ export const queryKeys = {
     all: (): QueryKey => ['rides'],
     list: (filter: string | null): QueryKey => ['rides', 'list', filter],
     filters: (): QueryKey => ['rides', 'filters'],
+    /**
+     * The rider's own last picked start locations, offered by the place field
+     * on focus — PD-274, `getRecentRideStarts`.
+     *
+     * **Under `rides` because `rides.all()` is what moves it, and no call site
+     * is added for it.** `createRide`, `updateRide` and `deleteRide` already
+     * invalidate the `['rides']` prefix, and `invalidate` matches by prefix
+     * (`keyStartsWith`), so all three reach this key on the mutations that can
+     * actually change the answer — a new pick, a pick typed over, a ride
+     * deleted. A key nested by *name* under a block whose parent nothing
+     * invalidates would look identical here and never refresh.
+     *
+     * `setRideAttendance` invalidates the same prefix and will refetch this for
+     * no reason. That is the safe direction and it is three rows.
+     *
+     * **No rider id in the key**, matching every other key in this file: the
+     * cache is destroyed at sign-out (`clearQueryCache`) rather than
+     * partitioned per rider, which is what keeps the next rider on a shared
+     * device from being shown these.
+     */
+    recentStarts: (): QueryKey => ['rides', 'recentStarts'],
     detail: (rideId: string): QueryKey => ['rides', 'detail', rideId],
     crew: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'crew'],
     /**
