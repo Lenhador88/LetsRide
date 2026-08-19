@@ -1434,6 +1434,36 @@ table.
 
 ## Known issues, roughly by cost to fix
 
+**Ride times are still `APP_TIME_ZONE`, and the obvious fix has two holes — PD-193, parked in
+`Needs decision` 2026-08-19.** `CLAUDE.md` §Technology Decisions calls the pinned zone a
+documented interim whose answer is "a zone column on `rides`". That column was picked up and
+deliberately **not** built, because the scope as written produces a wrong result twice:
+
+1. **It changes the read and not the write.** On create the zone is unknown —
+   `resolve-ride-location` runs *after* the insert — so `wallClockToUtc` still resolves the typed
+   string in `APP_TIME_ZONE` and a Lisbon ride is stored as 09:00 Amsterdam. The moment the
+   function writes `timezone`, the screen starts drawing **08:00** for a ride the organizer typed
+   as 09:00: a new defect, arriving asynchronously, worse than today's error because today's is at
+   least uniform. Preserving the typed wall-clock means the statement that writes the zone must
+   also shift `departure_at`, which the issue does not mention.
+2. **A picked ride never geocodes, so it never learns a zone.** `resolvePickedCoordinate`
+   short-circuits before the vendor call by design, and `places` cannot supply one:
+
+   ```sql
+   select column_name from information_schema.columns
+    where table_schema='public' and table_name='places';
+   -- no timezone column; Overture's Places theme carries none
+   ```
+
+   So the rides with the **best** coordinates would keep the Amsterdam fallback for ever — the
+   same inversion the entry below names for tiles.
+
+Two things to carry into whatever is built: `rides` UPDATE grants are an **absolute** column list
+(`044`/`046`), so a `timezone` column needs its own `grant update (timezone)` or the function's
+write is refused into the existing `column_write_refused` path; and a CHECK cannot validate an IANA
+name, because `pg_timezone_names` is a view and is not immutable — a trigger can. The findings and
+a scored comparison of four options are on PD-193.
+
 **A picked ride gets no map until `resolve-ride-location` is redeployed, and the guard that makes
 that safe must be REMOVED at the same moment — PD-114.** Recorded here rather than only in
 `openspec/changes/add-ride-start-location-search/tasks.md` §6.5, because archiving that change
