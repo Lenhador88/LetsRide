@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
-import { CloseIcon, LocationOutlineIcon, SearchIcon } from '@/components/icons/generated'
+import { ClockIcon, CloseIcon, LocationOutlineIcon, SearchIcon } from '@/components/icons/generated'
 import {
   PLACE_SEARCH_CACHE_MS,
   PLACE_SEARCH_MAX_CHARS,
@@ -208,8 +208,20 @@ export function PlaceSearchField({
 
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
-  // Whether this field has ever had focus — what gates both reads it can make.
+  // Whether this field has ever had focus — what gates the recents read.
   const [touched, setTouched] = useState(false)
+  // **What the lookup searches, and it is NOT the field's text.** Both edit
+  // forms seed their text at mount — `EditRideForm` from `meeting_point`,
+  // which is `NOT NULL`, and `EditClubForm` from a stored location — so a
+  // lookup keyed on the text would call a metered vendor 400ms after the edit
+  // screen renders, for a rider who has touched nothing. `069`'s ledger row is
+  // written before the vendor call, so that spends a credit against a 20/hour
+  // ceiling per screen open and cannot be taken back by aborting.
+  //
+  // Set by typing and cleared by everything that ends a search — a pick, a
+  // clear, a blur. That also stops a pick from searching for its own name,
+  // which the sheet got for free by unmounting.
+  const [searchTerm, setSearchTerm] = useState('')
 
   // Place mode's visible text is a *search term* and is never submitted (§D5),
   // so this holds it — but only while the rider is actually typing one. `null`
@@ -225,7 +237,7 @@ export function PlaceSearchField({
   const text = freeText ? freeText.text : (draft ?? value?.name ?? '')
   const setText = freeText ? freeText.onTextChange : setDraft
 
-  const { results, searching, failure, retry } = usePlaceLookup(text, open)
+  const { results, searching, failure, retry } = usePlaceLookup(searchTerm)
   // Read through the key `recents` names, and only once the rider has actually
   // touched the field: a form carrying this must not read a rider's history
   // because it rendered. `useQuery` rather than a hand-rolled fetch, so the
@@ -244,13 +256,14 @@ export function PlaceSearchField({
   // filtered by the term and never merged with results.
   const showRecents = text.trim().length === 0 && recentPicks.length > 0
   const options: SuggestionOption[] = showRecents
-    ? recentPicks.map((pick) => ({ value: pick, label: pick.name, meta: null }))
+    ? recentPicks.map((pick) => ({ value: pick, label: pick.name, meta: null, recent: true }))
     : text.trim().length < PLACE_SEARCH_MIN_CHARS
       ? []
       : (results ?? []).map((place) => ({
           value: toPlaceValue(place, maxNameLength),
           label: place.label,
           meta: place.meta,
+          recent: false,
         }))
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -263,6 +276,7 @@ export function PlaceSearchField({
     // and the input reads the new pick.
     if (freeText) freeText.onTextChange(next.name)
     else setDraft(null)
+    setSearchTerm('')
     setOpen(false)
     setActiveIndex(-1)
   }
@@ -274,7 +288,14 @@ export function PlaceSearchField({
     onChange(null)
     if (freeText) freeText.onTextChange('')
     else setDraft(null)
+    setSearchTerm('')
     setActiveIndex(-1)
+    // Clearing is how a rider gets back to their recents — `place-search`
+    // names this control by name — so focus stays here and the list stays
+    // open. Without it the tap blurs the input, the keyboard drops, and the
+    // rider has to tap the field again to see the list they were reaching for.
+    inputRef.current?.focus()
+    setOpen(true)
   }
 
   return (
@@ -314,6 +335,7 @@ export function PlaceSearchField({
             value={text}
             onChange={(event) => {
               setText(event.target.value)
+              setSearchTerm(event.target.value)
               setActiveIndex(-1)
               setOpen(true)
               // Typing throws the pin away in free-text mode ONLY, because
@@ -334,6 +356,11 @@ export function PlaceSearchField({
             onBlur={() => {
               setOpen(false)
               setActiveIndex(-1)
+              // A debounce still pending when the rider leaves would spend a
+              // credit on a list nobody is looking at. The results already
+              // fetched survive, so coming back to the same text costs
+              // nothing.
+              setSearchTerm('')
               // Place mode: what is on screen must be what a submit would
               // store, so an unpicked draft is dropped and the input goes back
               // to the pick — or to empty when there is none.
@@ -398,6 +425,10 @@ export function PlaceSearchField({
           <button
             type="button"
             onClick={clear}
+            /* Same reason the panel does it: without this the tap blurs the
+               input before the click lands, and `clear` would be refocusing a
+               field the rider has just been thrown out of. */
+            onMouseDown={(event) => event.preventDefault()}
             aria-label={`Clear ${label.toLowerCase()}`}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted transition-colors active:bg-border"
           >
@@ -408,17 +439,23 @@ export function PlaceSearchField({
         )}
       </div>
 
-      {open && !disabled && (
+      {/* Open is not enough: a prefilled edit form focused and not typed into
+          has no recents (the input is not empty), no results (nothing has been
+          searched) and nothing to say — so it shows no panel at all rather
+          than a hint that contradicts the text sitting above it. */}
+      {open && !disabled && (options.length > 0 || searchTerm.length > 0 || text.trim().length === 0) && (
         <div
           className="overflow-y-auto rounded-lg border-2 border-border bg-surface"
           style={{ maxHeight: `${VISIBLE_ROWS * 72}px` }}
-          /* The rows own their own mousedown; this catches a drag that starts
-             on the panel's padding or its scrollbar, which would otherwise
-             blur the input and tear the list down mid-tap. */
+          /* On the WHOLE panel rather than on the rows (§D6). A row handler
+             would save a tap on a row and lose the two controls that are not
+             rows — the attribution link and the Retry button — because the
+             tap aimed at them would blur the input and unmount the list
+             first. A credit nobody can tap is not a credit. */
           onMouseDown={(event) => event.preventDefault()}
         >
           <ListBody
-            term={text}
+            term={searchTerm}
             listId={listId}
             options={options}
             heading={showRecents ? recents?.heading : undefined}
@@ -490,7 +527,7 @@ export function wrapIndex(activeIndex: number, delta: 1 | -1, count: number): nu
  * off the deleted sheet unchanged, because none of it is a property of the
  * surface.
  */
-function usePlaceLookup(term: string, open: boolean) {
+function usePlaceLookup(term: string) {
   const [results, setResults] = useState<PlaceSearchResult[] | null>(null)
   const [searching, setSearching] = useState(false)
   // The thrown error itself rather than a re-derived message — `searchPlaces`
@@ -517,7 +554,7 @@ function usePlaceLookup(term: string, open: boolean) {
   const controllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    if (!open || biasAsked.current) return
+    if (term.length === 0 || biasAsked.current) return
     biasAsked.current = true
 
     let cancelled = false
@@ -535,7 +572,7 @@ function usePlaceLookup(term: string, open: boolean) {
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [term])
 
   /**
    * The one place a search actually runs — reached from the debounce effect
@@ -559,6 +596,12 @@ function usePlaceLookup(term: string, open: boolean) {
     if (cached.data !== undefined && Date.now() - cached.updatedAt < PLACE_SEARCH_CACHE_MS) {
       setFailure(null)
       setResults(cached.data)
+      // A superseded attempt's `finally` is scoped to its own generation and
+      // this one never sets the flag, so without this the list reads
+      // "Searching…" for ever whenever a cache hit lands over an in-flight
+      // request and the next real answer is empty. Carried over from the
+      // sheet, where it behaved the same way.
+      setSearching(false)
       return
     }
 
@@ -621,7 +664,7 @@ function usePlaceLookup(term: string, open: boolean) {
     execute(trimmed, controller)
   }, [term, execute])
 
-  return { results, searching, failure, retry, bias }
+  return { results, searching, failure, retry }
 }
 
 /**
@@ -701,6 +744,13 @@ type SuggestionOption = {
   /** The design's second line. Recents have none — a stored meeting point is
    *  one string, and there is no second field to draw. */
   meta: string | null
+  /**
+   * Which list this row belongs to, drawn rather than only headed (§D8).
+   * A rider has to be able to tell a place they have used before from one the
+   * geocoder just offered, and a heading alone stops saying so the moment the
+   * list is scrolled past it.
+   */
+  recent: boolean
 }
 
 function ListBody({
@@ -730,6 +780,15 @@ function ListBody({
 }) {
   const trimmed = term.trim()
 
+  // The panel scrolls at four rows, and neither the highlight nor
+  // `aria-activedescendant` moves it — so arrowing into row five would move a
+  // cursor the rider cannot see, and Enter would take something they never
+  // looked at.
+  const activeRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [activeIndex])
+
   if (options.length > 0) {
     return (
       <>
@@ -747,6 +806,7 @@ function ListBody({
               <button
                 type="button"
                 id={`${listId}-${index}`}
+                ref={index === activeIndex ? activeRef : null}
                 role="option"
                 aria-selected={index === activeIndex}
                 onClick={() => onPick(option.value)}
@@ -755,7 +815,11 @@ function ListBody({
                   index === activeIndex && 'bg-background'
                 )}
               >
-                <LocationOutlineIcon className="h-6 w-6 shrink-0 text-muted" />
+                {option.recent ? (
+                  <ClockIcon className="h-6 w-6 shrink-0 text-muted" />
+                ) : (
+                  <LocationOutlineIcon className="h-6 w-6 shrink-0 text-muted" />
+                )}
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-base font-medium text-foreground">
                     {option.label}

@@ -1,117 +1,117 @@
 ## 1. Re-measure the ground this rests on
 
-- [ ] 1.1 Confirm on DEV that `rides`' SELECT policy still leads with `organizer_id = auth.uid()`
+- [x] 1.1 Confirm on DEV that `rides`' SELECT policy still leads with `organizer_id = auth.uid()`
       (`pg_policy`), so no policy is needed for the recents read
-- [ ] 1.2 Confirm `authenticated` still holds column SELECT on `meeting_point`, `start_place_id`,
+- [x] 1.2 Confirm `authenticated` still holds column SELECT on `meeting_point`, `start_place_id`,
       `latitude`, `longitude` (`information_schema.column_privileges`), and that
       `rides_organizer_id_idx` still exists
-- [ ] 1.3 Confirm `rides_location_coupling` still makes `start_place_id IS NOT NULL` imply
+- [x] 1.3 Confirm `rides_location_coupling` still makes `start_place_id IS NOT NULL` imply
       `latitude`/`longitude` NOT NULL, so a recents row can never be a half-pick
-- [ ] 1.4 Record in the PR that **this change adds no migration** — no table, column, grant, policy or
+- [x] 1.4 Record in the PR that **this change adds no migration** — no table, column, grant, policy or
       RLS assertion — and that 1.1–1.3 are why. If any of the three has changed, stop and re-propose:
       the no-migration claim is the whole cost case
-- [ ] 1.5 Re-read `openspec/changes/replace-places-index-with-geocoder/specs/place-search/spec.md`'s
+- [x] 1.5 Re-read `openspec/changes/replace-places-index-with-geocoder/specs/place-search/spec.md`'s
       seven-state table and confirm the reworded copy in this change's delta still matches it state
       for state
 
 ## 2. The recents read
 
-- [ ] 2.1 Add the row type to `src/types/index.ts` — meeting point, place id, latitude, longitude
-- [ ] 2.2 Add `getRecentRideStarts()` to `src/lib/data/rides.ts`: explicit `organizer_id` filter,
+- [x] 2.1 Add the row type to `src/types/index.ts` — meeting point, place id, latitude, longitude
+- [x] 2.2 Add `getRecentRideStarts()` to `src/lib/data/rides.ts`: explicit `organizer_id` filter,
       `start_place_id is not null`, `order by created_at desc`, bounded by a named scan constant. State
       in the comment what the bound actually buys — `rides_organizer_id_idx` is `btree (organizer_id)`
       alone, so the limit caps the transfer while the work stays proportional to that rider's own ride
       count
-- [ ] 2.3 Dedupe by `start_place_id` and cap at a named `RECENT_STARTS_LIMIT` (3) inside that function,
+- [x] 2.3 Dedupe by `start_place_id` and cap at a named `RECENT_STARTS_LIMIT` (3) inside that function,
       so no caller can ask for a different shape
-- [ ] 2.4 Add `queryKeys.rides.recentStarts()` to `src/lib/query/keys.ts` under the `rides` block,
+- [x] 2.4 Add `queryKeys.rides.recentStarts()` to `src/lib/query/keys.ts` under the `rides` block,
       with a docstring saying why it is nested there (`rides.all()` already invalidates it) and that
       no new `invalidate()` call site is added
-- [ ] 2.5 Verify by inspection that `createRide`, `updateRide` and `deleteRide` each already invalidate
+- [x] 2.5 Verify by inspection that `createRide`, `updateRide` and `deleteRide` each already invalidate
       `queryKeys.rides.all()`, and add nothing to them
 
 ## 3. The inline suggestion list
 
-- [ ] 3.1 Delete `PlaceSearchSheet`, its portal, its `role="dialog"`, its header and its Cancel button
-- [ ] 3.2 Render the suggestion list in flow inside the field's container, capped at four rows plus the
+- [x] 3.1 Delete `PlaceSearchSheet`, its portal, its `role="dialog"`, its header and its Cancel button
+- [x] 3.2 Render the suggestion list in flow inside the field's container, capped at four rows plus the
       credit, scrolling internally beyond that
-- [ ] 3.3 Move the seven states onto the list, keeping every message and both ceiling messages distinct
+- [x] 3.3 Move the seven states onto the list, keeping every message and both ceiling messages distinct
       — no state collapsed to save vertical space
-- [ ] 3.4 Keep the abort, the lookup's generation counter, the shared-cache read/write and the
+- [x] 3.4 Keep the abort, the lookup's generation counter, the shared-cache read/write and the
       explicit Retry tap as they are; **raise the debounce to 400ms** and say why at the constant — the
       input is now the meeting-point field, so a long typed answer that was never meant as a lookup
       settles several times, and `069`'s ledger row is written before the vendor call
-- [ ] 3.5 Move `resolveRiderLocation()` from "sheet opened" to **first focus of the field**, never form
+- [x] 3.5 Move `resolveRiderLocation()` from "sheet opened" to **first focus of the field**, never form
       mount, so a rider who never touches the field is never located
-- [ ] 3.6 Render `PlaceDataCredit` as the list's last row whenever the list has rows, recents included
-- [ ] 3.7 Show the `Type at least N characters to search.` hint for 1–3 characters and for an empty
+- [x] 3.6 Render `PlaceDataCredit` as the list's last row whenever the list has rows, recents included
+- [x] 3.7 Show the `Type at least N characters to search.` hint for 1–3 characters and for an empty
       input with no recents — a SHALL in the seven-states requirement, not a choice
 
 ## 4. Recents on the ride start field
 
-- [ ] 4.1 Fetch recents on the field's first focus, through the cache key, only on a field the caller
+- [x] 4.1 Fetch recents on the field's first focus, through the cache key, only on a field the caller
       marks as offering them
-- [ ] 4.2 Render them only while the input is empty, under a `Recent starts` heading row with an icon
+- [x] 4.2 Render them only while the input is empty, under a `Recent starts` heading row with an icon
       distinct from the lookup rows' pin
-- [ ] 4.3 Show them **exactly while the input's value is empty** — not on a keystroke, so paste, cut,
+- [x] 4.3 Show them **exactly while the input's value is empty** — not on a keystroke, so paste, cut,
       undo, an IME commit and the field's own Clear control all behave — and never filter them by what
       the field holds
-- [ ] 4.4 Confirm no separate late-answer guard is needed or added: recents are read through
+- [x] 4.4 Confirm no separate late-answer guard is needed or added: recents are read through
       `queryKeys.rides.recentStarts()` and rendered only while the value is empty, which is the guard.
       A second generation counter here would be a rule free to disagree with 4.3
-- [ ] 4.5 Selecting a recent SHALL write the meeting point, place id, latitude and longitude together,
+- [x] 4.5 Selecting a recent SHALL write the meeting point, place id, latitude and longitude together,
       make no vendor call and write no ledger row
-- [ ] 4.6 Treat a failed or offline recents read as "no recents": no error, no retry, no blocked submit
-- [ ] 4.7 Confirm recents still render and remain selectable while a lookup ceiling is in force
+- [x] 4.6 Treat a failed or offline recents read as "no recents": no error, no retry, no blocked submit
+- [x] 4.7 Confirm recents still render and remain selectable while a lookup ceiling is in force
 
 ## 5. Combobox semantics and the keyboard
 
-- [ ] 5.1 `role="combobox"` with `aria-expanded`, `aria-controls`, `aria-activedescendant`;
+- [x] 5.1 `role="combobox"` with `aria-expanded`, `aria-controls`, `aria-activedescendant`;
       `role="listbox"`/`role="option"` on the list and its rows
-- [ ] 5.1a Keep the `Recent starts` heading and `PlaceDataCredit` **outside** the `ul[role=listbox]`
+- [x] 5.1a Keep the `Recent starts` heading and `PlaceDataCredit` **outside** the `ul[role=listbox]`
       but inside the panel; render every message state instead of the list rather than inside it; set
       `aria-expanded` true only when options are actually present
-- [ ] 5.2 Arrow keys move the active option; Enter with an active option selects and calls
+- [x] 5.2 Arrow keys move the active option; Enter with an active option selects and calls
       `preventDefault()` so the form is not submitted
-- [ ] 5.3 Escape closes the list and does not clear the input, drop the pick, or submit
-- [ ] 5.4 Put `onMouseDown` + `preventDefault()` on the **whole panel**, not the rows, so the credit
+- [x] 5.3 Escape closes the list and does not clear the input, drop the pick, or submit
+- [x] 5.4 Put `onMouseDown` + `preventDefault()` on the **whole panel**, not the rows, so the credit
       link and the Retry button survive the tap aimed at them as well — a licence credit nobody can tap
       is not a credit
-- [ ] 5.5 `type="text"` rather than `type="search"`, and `autoComplete="off"`, so no native dropdown or
+- [x] 5.5 `type="text"` rather than `type="search"`, and `autoComplete="off"`, so no native dropdown or
       clear affordance competes with the list
-- [ ] 5.6 `scrollIntoView({ block: 'nearest' })` on open so the input and at least two rows clear the
+- [x] 5.6 `scrollIntoView({ block: 'nearest' })` on open so the input and at least two rows clear the
       keyboard
 
 ## 6. The four callers
 
-- [ ] 6.1 Remove the `sheetTitle` prop from the primitive and from all four call sites
-- [ ] 6.2 `CreateClubForm` and `EditClubForm`: swap the value button for a search input carrying **no
+- [x] 6.1 Remove the `sheetTitle` prop from the primitive and from all four call sites
+- [x] 6.2 `CreateClubForm` and `EditClubForm`: swap the value button for a search input carrying **no
       `name` attribute**, keeping the four hidden inputs unchanged
-- [ ] 6.3 Club mode: typing SHALL NOT drop a held pick; on blur with unpicked text revert the input to
+- [x] 6.3 Club mode: typing SHALL NOT drop a held pick; on blur with unpicked text revert the input to
       the picked name or to empty; Clear drops the pick and empties the text together and is the only
       thing that removes a stored club location
-- [ ] 6.3a Club mode: Enter with the list open and no active option reverts the text to the held pick
+- [x] 6.3a Club mode: Enter with the list open and no active option reverts the text to the held pick
       and closes the list **without** preventing the submit — the path where no blur ever happens, which
       is how a typed-over club location would otherwise be submitted as written
-- [ ] 6.4 `CreateRideForm` and `EditRideForm`: unchanged storage — the visible input is still
+- [x] 6.4 `CreateRideForm` and `EditRideForm`: unchanged storage — the visible input is still
       `meeting_point`, typing still throws the pin away, and only these two pass `recents`
-- [ ] 6.5 Verify PD-199 retention on all four: a refused submit gives every typed field back, and
+- [x] 6.5 Verify PD-199 retention on all four: a refused submit gives every typed field back, and
       opening or closing the list never clears the text
-- [ ] 6.6 Check the edit forms specifically: a prefilled meeting point means no recents until the rider
+- [x] 6.6 Check the edit forms specifically: a prefilled meeting point means no recents until the rider
       clears the field
 
 ## 7. Tests
 
-- [ ] 7.1 Update `src/components/ui/__tests__/place-search-field.test.tsx` for the club field's new
+- [x] 7.1 Update `src/components/ui/__tests__/place-search-field.test.tsx` for the club field's new
       shape — the four hidden inputs still present, the visible input carrying no `name`
-- [ ] 7.2 Assert `PlaceDataCredit` still renders Geoapify and the OpenStreetMap link (existing test,
+- [x] 7.2 Assert `PlaceDataCredit` still renders Geoapify and the OpenStreetMap link (existing test,
       unchanged)
-- [ ] 7.3 Unit-test `getRecentRideStarts()`: dedupe by place id, newest first, capped at 3, rows with a
+- [x] 7.3 Unit-test `getRecentRideStarts()`: dedupe by place id, newest first, capped at 3, rows with a
       null place id excluded, and the organizer filter present
 - [ ] 7.4 Test the combobox keys — Escape does not submit or clear, Enter with an active option selects
       and does not submit, Enter with none in place mode reverts and still submits (needs an
       event-capable environment; see design.md Q4)
-- [ ] 7.5 `npm run test:unit`, `npx tsc --noEmit`, `npm run lint`, `npm run build` all green
+- [x] 7.5 `npm run test:unit`, `npx tsc --noEmit`, `npm run lint`, `npm run build` all green
 - [ ] 7.6 `npm test` (RLS suite) still green — expected untouched, since no migration is added
 
 ## 8. Verify it on something that renders
@@ -129,15 +129,35 @@
 
 ## 9. Close out
 
-- [ ] 9.1 Update `docs/reference/repo-layout.md` and any doc that describes the search sheet as a
+- [x] 9.1 Update `docs/reference/repo-layout.md` and any doc that describes the search sheet as a
       full-screen surface
-- [ ] 9.2 `npm run docs:check` — no claim about the field, the sheet or the dependency count left stale
-- [ ] 9.3 `reviewer` pass on the final diff before the PR
+- [x] 9.2 `npm run docs:check` — no claim about the field, the sheet or the dependency count left stale
+- [x] 9.3 `reviewer` pass on the final diff before the PR
 - [ ] 9.4 Confirm the four falsified standing requirements in
       `add-ride-start-location-search/specs/ride-start-location/spec.md` are all covered by a MODIFIED
       block here — free text (the `Cancel` scenarios), the sheet-linked attribution requirement, that
       file's own states table, and the bias trigger inside retention — so no fold can leave a
       self-contradicting standing spec
-- [ ] 9.5 When `replace-places-index-with-geocoder` and `add-ride-start-location-search` close, fold
+- [x] 9.5 When `replace-places-index-with-geocoder` and `add-ride-start-location-search` close, fold
       `place-search` and `ride-start-location` into `openspec/specs/` (archive, or `openspec sync`)
       and confirm this change's MODIFIED blocks apply cleanly
+
+## 10. What is NOT ticked above, and why
+
+Every unticked box needs something this container has not got. None of them is forgotten, and none
+of them is optional for the story — they are owed by the next session or the owner, not by the diff.
+
+- **7.4 — the combobox-key test in an event-capable environment.** Declined, with the reasoning in
+  `design.md` Q4: the key *decision* is `resolveComboboxKey`, pure and covered; the `onKeyDown`
+  wiring that calls it — including place mode's Enter revert (6.3a) — is verified by reading.
+- **7.6 — the RLS suite.** Postgres is not running here. This diff touches no `supabase/**` file, so
+  CI's job is correctly skipped rather than red.
+- **8.1–8.4 — the walk and the three hand checks on DEV.** This session has no `WALK_EMAIL` /
+  `WALK_PASSWORD`, so the only gate in this repo that renders anything did not run against the one
+  screen that changed. **This is what caught the lookup-on-mount regression too late** — the diff
+  review found it by reading, and 8.1/8.2 would have walked straight through it.
+- **8.5 — the keyboard-occlusion check on a real device.** The native shell's, and unrunnable
+  anywhere else: no native project has ever been generated here.
+- **9.4 — folding the two delta capabilities into `openspec/specs/`.** Waits on
+  `replace-places-index-with-geocoder` and `add-ride-start-location-search` closing, which is
+  neither this change's work nor available to it.

@@ -9,7 +9,8 @@ See `proposal.md` for motivation. What shapes the approach:
 - **The lookup itself is untouched.** `searchPlaces()` still calls the `search-places` Edge Function,
   which still writes `069`'s ledger row *before* the vendor call, so abort saves flicker and never a
   credit. `PLACE_SEARCH_MIN_CHARS` (4), `PLACE_SEARCH_MAX_CHARS` (200), `PLACE_SEARCH_CACHE_MS`
-  (5 min), `DEBOUNCE_MS` (250) and the three error classes all survive unchanged.
+  (5 min) and the three error classes all survive unchanged. **`DEBOUNCE_MS` does not** — it is
+  400 here rather than the sheet's 250, for the reason D6b gives.
 - **The client is the whole render model.** No server step exists to pre-fill recents, and reads
   happen in effects and event handlers, never during render (`resolve.browser.ts` throws in the
   prerender pass by design).
@@ -207,6 +208,28 @@ that was never meant as a lookup settles several times on its way through — ea
 and a vendor credit, because `069`'s ledger is written before the vendor is called. 400ms is the cost
 of that difference, and it is a spend control rather than a politeness.
 
+### D6c — The lookup searches a TYPED term, never the field's text
+
+The sheet could key its debounce on its own search box, which started empty and unmounted when the
+sheet closed. Inline, the obvious equivalent — key it on the field's text — calls a metered vendor
+**on mount of both edit forms**: `EditRideForm` seeds its text from `meeting_point`, which is
+`NOT NULL`, and `EditClubForm` from any stored location, so 400 ms after the edit screen renders a
+rider who has touched nothing has spent a credit against `069`'s 20/hour ceiling. It cannot be
+taken back — the ledger row is written before the vendor call — and a rider opening the edit screen
+twenty times to fix a typo would be locked out of search for an hour by a message about how much
+they had searched.
+
+So the search term is its own state, set by typing and cleared by everything that ends a search: a
+pick, a clear, a blur. Clearing it on a pick is what stops the field searching for the name it has
+just filled itself with, which the sheet also got for free by unmounting. Clearing it on blur means
+a debounce still pending when the rider leaves does not spend a credit on a list nobody is looking
+at; the results already fetched survive, so returning to the same text costs nothing.
+
+**A consequence worth stating, because it looks like a missing state:** a prefilled edit form that
+is focused and not typed into shows *no panel at all* — no recents (the input is not empty), no
+results (nothing has been searched) and no hint, because a hint telling the rider to type four
+characters above a field already holding forty would be answering a question nobody asked.
+
 ### D7 — The bias moves from "the sheet opened" to "the field was focused"
 
 `resolveRiderLocation()` is memoised, never prompts, and was deliberately resolved when the sheet
@@ -272,9 +295,15 @@ owner, on `native`'s advice.* Default: no plugin in this change; ship the CSS an
 device, and raise it as its own decision if it fails.
 
 **Q4 — Add `jsdom` as a devDependency for one keyboard test?** *Non-blocking; `test` agent's call
-with the owner.* Default: yes, one test file with a jsdom environment for the combobox keys, because
-the alternative is that Escape-does-not-submit has no gate at all. It is a devDependency, so it does
-not touch the nine runtime dependencies or the bundle.
+with the owner.* **Answered NO in the build, and the gap is named rather than left implied.** The
+key *decision* was split out as `resolveComboboxKey` — pure, and covered case by case, the same
+split `src/lib/auth/guard.ts` makes and for the same reason — so Escape-does-not-submit and
+Enter-selects-without-submitting both have a gate without a new environment. What that leaves
+ungated is the **wiring**: the `onKeyDown` branch that calls it, and in particular place mode's
+Enter-with-no-active-option revert (§D5's "the case that hides", task 6.3a). That branch is
+verified by reading and by nothing else. Reopen this if a second such branch appears — one
+untested wiring line is a smaller debt than a test environment nothing else in the repo uses, two
+is not.
 
 **Q5 — Should the walk gain a phase for this?** *Non-blocking; `test` agent.* Default: no. The walk's
 remit is one question per route plus six named phases, and a new phase needs a defect no other gate
