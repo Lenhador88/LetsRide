@@ -4,8 +4,9 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 /**
- * The Geoapify key exists in `supabase/functions/resolve-ride-location/`'s
- * secret store and nowhere this repo can reach.
+ * The Geoapify key exists in the secret store of the two Edge Functions that
+ * call the vendor — `resolve-ride-location/` and `search-places/` — and nowhere
+ * this repo can reach. One key, one vendor, one place to rotate it.
  *
  * `specs/ride-map-tiles/spec.md` — *The vendor SHALL NOT be contacted from a
  * rider's device* — makes this one decision answering four problems: the key
@@ -44,10 +45,11 @@ import { describe, expect, it } from 'vitest'
  * address. A rule keyed on the word would forbid the one page that has to carry
  * it — which is the shape of guard that gets deleted rather than fixed.
  *
- * Rule 2 is scoped to files that ship. `src/__tests__/ride-geocode-gates.test.ts`
- * asserts the *outbound request* the Edge Function builds and so must name the
- * host; it is not in the bundle, and excluding it is what keeps rule 2 absolute
- * for everything that is. The count assertion below is what stops that exclusion
+ * Rule 2 is scoped to files that ship. **Two** test files —
+ * `ride-geocode-gates.test.ts` and `place-search-shape.test.ts` — assert the
+ * *outbound request* an Edge Function builds and so must name the host; neither
+ * is in the bundle, and excluding them is what keeps rule 2 absolute for
+ * everything that is. The count assertion below is what stops that exclusion
  * quietly growing to cover the app.
  *
  * Comment lines are stripped before either rule runs, for the reason `CLAUDE.md`

@@ -97,9 +97,17 @@ rather than described.
 `069` adds:
 
 ```
-public.place_search_attempts (id uuid pk, user_id uuid not null references profiles/auth.users,
+public.place_search_attempts (id uuid pk default uuid_generate_v4(),
+                              user_id uuid not null references profiles/auth.users,
                               attempted_at timestamptz not null default now())
 ```
+
+**`id` MUST carry that default, and this sketch previously omitted it.** The proxy inserts
+`{ user_id }` and supplies no id — copying `052`, which works only because
+`ride_map_render_attempts.id` has `uuid_generate_v4()` (verified on DEV). A migration written from
+the earlier sketch would take the grant on `id` as licence to require one, and the resulting NOT
+NULL violation lands on the ledger-failure branch: **every search app-wide would read as a ceiling,
+with no error visible anywhere.** Copy `052`'s column definition rather than this paragraph.
 
 - RLS on. **INSERT** policy, all four conjuncts — `user_id = auth.uid()` **AND**
   `private.place_searches_in_window(auth.uid(), '1 hour') < PER_RIDER_HOURLY` **AND**
@@ -253,6 +261,16 @@ So: every non-2xx from the vendor, 429 included, becomes a single "unavailable" 
 shape `resolve-ride-location`'s `fetchJson` already uses, for the same stated reason ("the
 rider-visible outcome is identical to an outage"). No retry, no backoff, no `Retry-After` shown to a
 rider.
+
+**A failed ledger insert splits the other way, on the error code, and the split is not optional.**
+Collapsing the rider's ceiling, the application ceiling and the participation gate into one
+`ceiling` outcome is deliberate — they are three conjuncts of one policy and the function does not
+get to know which one bound. Collapsing *those* with a missing table or a schema-cache miss is not,
+and it is exactly the state PR 1 deploys into: `069` is PR 2, so between the owner's deploy and
+that migration every search would tell the rider they had hit a limit they have not reached, and
+PR 2's client renders that as the rider's fault. So `42501`/`PGRST301` is the ceiling and anything
+else — `42P01`, `PGRST205`, no code at all — is `unavailable`. Matched on the code, never the
+message, which is a vendor string that can change under us.
 
 ### D10 — Nothing logs the term, and the metering row cannot become a search log
 

@@ -126,6 +126,23 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 // key, one vendor, one place to rotate it.
 const GEOAPIFY_API_KEY = Deno.env.get('GEOAPIFY_API_KEY')!
 
+/**
+ * **A misconfigured deploy must fail on boot rather than spend riders'
+ * ceilings**, and `!` above is a type assertion that does nothing at runtime:
+ * an unset variable becomes the literal string `undefined` in the query, the
+ * vendor answers 401, and the rider reads `unavailable` — *after* the ledger
+ * row has committed. At a 250 ms debounce that spends `PER_RIDER_HOURLY` in
+ * seconds and locks the rider out for an hour, and fixing the key does not give
+ * it back.
+ *
+ * **This surface is the first that would ever discover a bad key on PROD.**
+ * PROD's `ride_map_render_attempts` holds zero rows, so the PROD secret has
+ * never been exercised, and `resolve-ride-location` fails *open* — it renders
+ * no tile and tells nobody — so it never would have been. Throwing here is what
+ * makes the discovery a failed deploy instead of a day of locked-out riders.
+ */
+if (!GEOAPIFY_API_KEY) throw new Error('search-places: GEOAPIFY_API_KEY is not set')
+
 const LEDGER = 'place_search_attempts'
 
 /**
@@ -165,6 +182,21 @@ const json = (body: unknown, status: number) =>
 const outcome = (reason: string, status: number, body: unknown) => {
   console.info('search-places:', reason)
   return json(body, status)
+}
+
+/**
+ * `42501` is `insufficient_privilege` — what an RLS policy raises when its
+ * `WITH CHECK` refuses. PostgREST also surfaces its own `PGRST301` for a row
+ * that violates the policy. Anything else — `42P01` undefined table,
+ * `PGRST205` schema-cache miss, a connection failure with no code at all — is
+ * infrastructure, not the rider.
+ *
+ * Matched on the code rather than the message, because the message is a vendor
+ * string that can change under us and is the wrong thing to branch on.
+ */
+function isPolicyRefusal(error: { code?: string | null } | null): boolean {
+  const code = error?.code ?? ''
+  return code === '42501' || code === 'PGRST301'
 }
 
 async function fetchJson(url: string): Promise<unknown | null> {
@@ -216,8 +248,10 @@ Deno.serve(async (req: Request) => {
   if (!request) return json({ error: 'bad_request' }, 400)
 
   // Below the floor is not an error and not a refusal — it is "keep typing",
-  // and it costs nothing to answer here rather than at the vendor.
-  if (!isSearchable(request.text)) {
+  // and it costs nothing to answer here rather than at the vendor. The floor is
+  // per-mode: a locality term is a stored, complete `profiles.location`, not
+  // typing, and three-letter cities are real (`Ede`, `Oss`). See `isSearchable`.
+  if (!isSearchable(request.text, request.mode)) {
     return json(request.mode === 'locality' ? { centroid: null } : { results: [] }, 200)
   }
 
@@ -230,6 +264,17 @@ Deno.serve(async (req: Request) => {
   // the function does not get to know, and must not guess.
   const { error: ledgerError } = await caller.from(LEDGER).insert({ user_id: user.id })
   if (ledgerError) {
+    // **Only a POLICY refusal is the rider's ceiling.** Conflating the rider's
+    // ceiling, the app's and the participation gate is deliberate — they are
+    // three conjuncts of one policy and the function does not get to know which
+    // bound. Conflating those with a MISSING TABLE is not, and it is precisely
+    // the state this PR deploys into: `069` is PR 2, so between the owner's
+    // deploy and that migration every search would tell the rider they had hit
+    // a limit they have not reached. Failing closed is right; blaming the rider
+    // for a broken deploy is not, and PR 2's client renders the difference.
+    if (!isPolicyRefusal(ledgerError)) {
+      return outcome('ledger unavailable', 502, { error: 'unavailable' })
+    }
     return outcome('ceiling or gate refused the attempt', 429, { error: 'ceiling' })
   }
 

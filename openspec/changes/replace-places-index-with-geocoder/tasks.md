@@ -51,8 +51,13 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
       the response. No service-role key. No user id read from the body.
 - [x] 1.3 Order of operations, asserted by the tests in 1.5 and stated in the file header: verify →
       meter → call → map. Nothing billable happens before the metering row is accepted.
-- [x] 1.4 Log lines carry an outcome and a reason code only. Copy `resolve-ride-location`'s uuid
-      redaction; **never** log the term (§D10).
+- [x] 1.4 Log lines carry an outcome and a reason code only, and **never** the term (§D10).
+
+      **No uuid-redaction helper was copied, and that is stronger than this task asked for rather
+      than a shortfall.** `resolve-ride-location` needs one because it logs about a specific ride
+      and an id can reach a message; this function logs nothing derived from input at all — one
+      helper, a fixed vocabulary, no interpolation — so there is nothing to redact. Reworded rather
+      than left ticked against a helper that does not exist.
 - [x] 1.5 `src/__tests__/place-search-shape.test.ts` — imports `shape.ts` so `tsc` follows it in.
       Assert: the outbound URL carries the key and the bias but no rider identity; a vendor payload
       maps to the documented `PlaceSearchResult` fields; an over-long term is bounded; a vendor

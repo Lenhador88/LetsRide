@@ -124,9 +124,34 @@ export function boundTerm(term: string): string {
     .slice(0, MAX_TERM_CHARS)
 }
 
-/** Whether the term is worth a credit at all. Checked before anything billable. */
-export function isSearchable(term: string): boolean {
-  return boundTerm(term).length >= MIN_TERM_CHARS
+/**
+ * Whether a term is worth a credit at all, **for the mode that is asking**.
+ *
+ * ---------------------------------------------------------------------------
+ * The floor is the SEARCH mode's rule and applying it to `locality` loses real
+ * riders — silently, permanently, and only some of them
+ * ---------------------------------------------------------------------------
+ * `MIN_TERM_CHARS` is derived entirely from per-keystroke typing: a rider on
+ * their way to "Stationsweg" types `sta` first, and neither they nor we want
+ * that fired. **A locality term is not typing.** It is `profiles.location` —
+ * complete, stored at onboarding, and submitted once.
+ *
+ * The path this replaces made exactly that distinction and said so: `040`'s
+ * function COMMENT reads *"it resolves a name the rider already typed, it is
+ * not a search box … no guard, no length cap and no dedup needed"*, and
+ * `getLocalityCentroid` rejects only the empty string.
+ *
+ * Carrying the floor across would drop **`Ede`** (~120k people), **`Oss`**
+ * (~93k), `Epe`, `Ens` and `Hem`, with no vendor call and no error — the proxy
+ * would answer "no centroid" and `resolveRiderLocation` would read that as "no
+ * location". Those riders lose the "X km away" labels and the near-first
+ * ordering on `/clubs` and `/clubs/explore` for ever, which is the shipped
+ * feature §D5 exists to protect. A three-letter city is not a rare input; it is
+ * five of them in one small country.
+ */
+export function isSearchable(term: string, mode: SearchMode = 'search'): boolean {
+  const bounded = boundTerm(term)
+  return mode === 'locality' ? bounded.length > 0 : bounded.length >= MIN_TERM_CHARS
 }
 
 /* -------------------------------------------------------------------------- */
@@ -309,6 +334,37 @@ export const MAX_PLACE_ID_CHARS = 512
 const asFiniteNumber = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 
+/**
+ * A coordinate the destination columns will actually accept.
+ *
+ * **Finite is not the same as valid, and the difference is a `23514`.** Measured
+ * on DEV: `rides_location_coupling` and `clubs_location_coupling` both require
+ * `latitude between -90 and 90` and `longitude between -180 and 180`. A feature
+ * with `lat: 91` is finite, so a finiteness check maps it cleanly, and it
+ * reaches the rider as a tappable result that fails at write time on a value
+ * they can neither see nor shorten — verbatim the failure `MAX_PLACE_ID_CHARS`
+ * exists to prevent, on the other required field.
+ *
+ * `parseRequest` already range-checks the INBOUND bias with exactly these four
+ * comparisons. This is the same rule applied on the way out, and it matters
+ * more, because the inbound value is ours and the outbound one has never been
+ * observed — every property here is typed `unknown` for that reason.
+ *
+ * It bounds `toLocalityResult` too, where the failure is different and quieter:
+ * that coordinate feeds the distance arithmetic behind "X km away", so an
+ * out-of-range value produces a wrong number rather than a refused write.
+ */
+const asCoordinate = (
+  latValue: unknown,
+  lonValue: unknown,
+): { lat: number; lon: number } | null => {
+  const lat = asFiniteNumber(latValue)
+  const lon = asFiniteNumber(lonValue)
+  if (lat === null || lon === null) return null
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null
+  return { lat, lon }
+}
+
 const asNonEmptyString = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : null
 
@@ -342,16 +398,15 @@ export function toPlaceResult(feature: AutocompleteFeature): PlaceResult | null 
     asNonEmptyString(properties.formatted)
   if (!label) return null
 
-  const lat = asFiniteNumber(properties.lat)
-  const lon = asFiniteNumber(properties.lon)
-  if (lat === null || lon === null) return null
+  const coordinate = asCoordinate(properties.lat, properties.lon)
+  if (!coordinate) return null
 
   // Never repeat the label as its own second line: a POI whose address_line1 IS
   // the name renders as the same string twice, which reads as a duplicate result.
   const rawMeta = asNonEmptyString(properties.address_line2)
   const meta = rawMeta && rawMeta !== label ? rawMeta : null
 
-  return { id, label, meta, lat, lon }
+  return { id, label, meta, lat: coordinate.lat, lon: coordinate.lon }
 }
 
 /** The vendor's order is preserved — this proxy does not re-rank. */
@@ -373,10 +428,7 @@ export function toLocalityResult(
 ): LocalityResult | null {
   const properties = response?.features?.[0]?.properties
   if (!properties) return null
-  const lat = asFiniteNumber(properties.lat)
-  const lon = asFiniteNumber(properties.lon)
-  if (lat === null || lon === null) return null
-  return { lat, lon }
+  return asCoordinate(properties.lat, properties.lon)
 }
 
 /* -------------------------------------------------------------------------- */

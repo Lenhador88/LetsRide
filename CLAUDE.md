@@ -397,9 +397,12 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**There are two Edge Functions, and `delete-account` is the only place a service-role key
-exists.** Count rather than trust that — `list_edge_functions` against either ref, against
-`ls supabase/functions/`. Removing an `auth.users` row needs the Auth admin API, which needs the
+**There are three Edge Functions in the repo and TWO deployed, and `delete-account` is the only
+place a service-role key exists.** The two commands that check this now disagree, and the
+disagreement is the state rather than a defect — `ls supabase/functions/` is 3,
+`list_edge_functions` against either ref is 2. `search-places` (PD-273, the place typeahead proxy)
+is the third and is deliberately undeployed: deploying is an owner action and it is on the critical
+path. Run both rather than trusting either, and read a gap as "in the repo, not yet deployed". Removing an `auth.users` row needs the Auth admin API, which needs the
 service-role key; that is decision #8's **first** reading ("more server compute, same database")
 and not its third. `resolve-ride-location` geocodes a ride's meeting point and renders its tiles
 — an outside call and a third-party key, and no service-role key. Each owns one operation, not

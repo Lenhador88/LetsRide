@@ -141,12 +141,31 @@ describe('the term bound', () => {
     expect(boundTerm('a\u200bb')).toBe('a\u200bb')
   })
 
-  it('refuses below the floor and admits at it', () => {
+  it('refuses below the floor and admits at it, in search mode', () => {
     expect(MIN_TERM_CHARS).toBe(4)
     expect(isSearchable('sta')).toBe(false)
     expect(isSearchable('stat')).toBe(true)
     // Whitespace does not buy a rider past the floor.
     expect(isSearchable('  a  ')).toBe(false)
+  })
+
+  it('does NOT apply the floor to the locality mode', () => {
+    // The floor is about typing. A locality term is a stored, complete
+    // `profiles.location`, and carrying the floor across would silently drop
+    // real Dutch cities — `Ede` is ~120k people — taking the "X km away" labels
+    // and near-first ordering off `/clubs` for everyone who lives in one.
+    for (const city of ['Ede', 'Oss', 'Epe', 'Ens', 'Hem']) {
+      expect(isSearchable(city, 'locality')).toBe(true)
+      expect(isSearchable(city, 'search')).toBe(false)
+    }
+    // Empty is still refused in both — there is nothing to resolve.
+    expect(isSearchable('', 'locality')).toBe(false)
+    expect(isSearchable('   ', 'locality')).toBe(false)
+  })
+
+  it('defaults to the stricter mode when none is named', () => {
+    // A caller that forgets the argument must get the floor, not lose it.
+    expect(isSearchable('Ede')).toBe(false)
   })
 
   it('does not bound by token count', () => {
@@ -230,6 +249,31 @@ describe('what the mapping DROPS rather than coerces', () => {
   it('drops a non-finite coordinate', () => {
     expect(toPlaceResult(feature({ place_id: 'x', name: 'N', lat: NaN, lon: 4.9 }))).toBeNull()
     expect(toPlaceResult(feature({ place_id: 'x', name: 'N', lat: Infinity, lon: 4.9 }))).toBeNull()
+  })
+
+  it('drops a coordinate the destination column would refuse', () => {
+    // Finite is not the same as valid. `rides_location_coupling` and
+    // `clubs_location_coupling` both require lat within ±90 and lon within
+    // ±180, so a finite-but-out-of-range value maps cleanly, renders as a
+    // tappable result, and raises `23514` at write time on a value the rider
+    // can neither see nor shorten.
+    expect(toPlaceResult(feature({ place_id: 'x', name: 'N', lat: 91, lon: 4 }))).toBeNull()
+    expect(toPlaceResult(feature({ place_id: 'x', name: 'N', lat: -90.1, lon: 4 }))).toBeNull()
+    expect(toPlaceResult(feature({ place_id: 'x', name: 'N', lat: 52, lon: 180.5 }))).toBeNull()
+    expect(toPlaceResult(feature({ place_id: 'x', name: 'N', lat: 52, lon: -181 }))).toBeNull()
+    // The boundaries themselves are valid.
+    expect(toPlaceResult(feature({ place_id: 'x', name: 'N', lat: 90, lon: -180 }))).not.toBeNull()
+  })
+
+  it('bounds the locality centroid the same way', () => {
+    // Quieter failure, same cause: this coordinate feeds the distance
+    // arithmetic behind "X km away", so out of range is a wrong number rather
+    // than a refused write.
+    expect(toLocalityResult({ features: [feature({ lat: 91, lon: 4 })] })).toBeNull()
+    expect(toLocalityResult({ features: [feature({ lat: 52.4, lon: 4.9 })] })).toEqual({
+      lat: 52.4,
+      lon: 4.9,
+    })
   })
 
   it('drops a feature with no id, and one with no usable label', () => {
