@@ -210,18 +210,38 @@ export type RideListItem = {
   map_card_url: string | null
   /**
    * Read once per list in the data layer rather than per card at render, so
-   * every card in one response agrees about what "now" is — and so the card
-   * stays a pure function of its props.
+   * every card in one response agrees about where the boundary is — and so the
+   * card stays a pure function of its props.
    *
-   * **Always true for anything `/rides` returns**, because that route filters
-   * on the same cutoff this is computed from. It is not vestigial: `RideCard`
-   * renders the design's two past variants (`Went`) from it, and the screens
-   * that will reach them — ride detail, and whatever history ends up being —
-   * reuse the same card. An earlier comment here claimed a ride could "pass
-   * while the page is open"; it cannot, since this is stamped server-side at
-   * fetch time on a component that will not re-render.
+   * **The boundary is midnight in `APP_TIME_ZONE`, not the current instant**
+   * (`rideDayStartUtc`). A ride that departed at 15:00 is still upcoming at
+   * 23:00, so `RideCard` keeps drawing "Going" on it for the rest of its day
+   * and flips to the design's past variant ("Went") at the same moment the ride
+   * moves under the "Previous rides" header. The two have to be computed from
+   * one cutoff or a card reads "Went" while sitting above that header.
+   *
+   * It is exactly `false` for every ride in `RideList.past` and `true` for
+   * every ride in `RideList.upcoming`, which is what makes it safe for
+   * `/rides/detail` to gate RSVP on the same field: a rider can still answer
+   * for a ride that left this morning.
    */
   is_upcoming: boolean
+}
+
+/**
+ * The rides list, in the two sections `/rides` draws.
+ *
+ * One type rather than two calls, because the split is a property of one
+ * answer: both halves are cut at the same `rideDayStartUtc` instant, and a
+ * screen holding two independently-fetched halves can show a ride in neither
+ * section (or in both) across midnight. One query key, one gate, one clock.
+ *
+ * `past` is newest-first and `upcoming` soonest-first — both order *away* from
+ * today, which is the order each section is read in.
+ */
+export type RideList = {
+  upcoming: RideListItem[]
+  past: RideListItem[]
 }
 
 /**

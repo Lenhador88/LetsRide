@@ -6,13 +6,15 @@ import { Header } from '@/components/layout/Header'
 import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
 import { RideCard } from '@/components/rides/RideCard'
 import { RideFilterBar } from '@/components/rides/RideFilterBar'
+import { SectionHeader } from '@/components/ui/SectionHeader'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonFilterBar, SkeletonList } from '@/components/ui/Skeleton'
 import { getRideFilters, getRides } from '@/lib/data/rides'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { parseRideFilter } from '@/lib/validation/rides'
-import type { RideFilter } from '@/types'
+import { cn } from '@/lib/utils'
+import type { RideFilter, RideListItem } from '@/types'
 
 /**
  * The rides list — `Home - Rides - All`, `… - Your rides` and `… - Rides from
@@ -24,11 +26,19 @@ import type { RideFilter } from '@/types'
  * up the bottom padding, because the nav bar on this screen carries the sticky
  * "Create ride" action and is the taller of the design's two variants.
  *
- * Every filter shows **upcoming** rides, which is what all four frames draw and
- * what the "You have no upcoming rides, yet!" empty state says. Ride history has
- * no screen in this flow; `RideCard` renders the design's past variants ("Went")
- * because a ride can pass while the page is open, but nothing here lists a ride
- * whose departure is behind us.
+ * Every filter shows upcoming rides first — which is what all four frames draw
+ * and what the "You have no upcoming rides, yet!" empty state says — and then,
+ * under a "Previous rides" header, the rides that are behind us. The four
+ * frames draw no such section; the club rides screens do, and the header is
+ * their `Section / Header` instance with the product owner's wording in it
+ * (they chose "Previous rides" over the design's "Past rides" on 2026-08-19).
+ *
+ * **The boundary is midnight in `APP_TIME_ZONE`, not the current instant** —
+ * `rideDayStartUtc`. A ride that left at 15:00 is still in the upcoming list at
+ * 23:00 and moves at midnight, which is the product owner's definition and the
+ * only one that does not take a ride off the screen of everyone still on it.
+ * `RideCard`'s past variants ("Went") are cut at the same instant, so the pill
+ * and the section a card sits in can never disagree.
  *
  * ## The split, and why the padding wrapper is out here
  *
@@ -153,13 +163,27 @@ function RidesScreen() {
         <div className="py-2">
           <SkeletonList />
         </div>
-      ) : rides.data.length === 0 ? (
+      ) : rides.data.upcoming.length === 0 && rides.data.past.length === 0 ? (
         <EmptyList filter={filter} />
       ) : (
-        <div className="flex flex-col gap-2 px-4 py-2 motion-safe:animate-fade-in">
-          {rides.data.map((ride) => (
-            <RideCard key={ride.id} ride={ride} showClub={filter?.kind !== 'club'} />
-          ))}
+        <div className="motion-safe:animate-fade-in flex flex-col">
+          {rides.data.upcoming.length === 0 ? (
+            // The same sentence, with the page's own vertical space taken out:
+            // it is a note above the Previous rides header here, not the whole
+            // screen, and `py-24` under a list would read as the end of it.
+            <EmptyList filter={filter} spacing="section" />
+          ) : (
+            <RideCards rides={rides.data.upcoming} filter={filter} />
+          )}
+
+          {rides.data.past.length > 0 && (
+            <>
+              {/* `px-4` to sit over the cards rather than the component's own
+                  `px-6`, the same correction the club detail page makes. */}
+              <SectionHeader title="Previous rides" className="px-4 pb-0 pt-4" />
+              <RideCards rides={rides.data.past} filter={filter} />
+            </>
+          )}
         </div>
       )}
     </>
@@ -189,12 +213,33 @@ function RidesLoading() {
   )
 }
 
+/** One section of the list. Both sections draw the same card, at the same width. */
+function RideCards({ rides, filter }: { rides: RideListItem[]; filter?: RideFilter }) {
+  return (
+    <div className="flex flex-col gap-2 px-4 py-2">
+      {rides.map((ride) => (
+        <RideCard key={ride.id} ride={ride} showClub={filter?.kind !== 'club'} />
+      ))}
+    </div>
+  )
+}
+
 /**
  * Two of these three strings are the design's, verbatim. The club one is not
  * drawn — `Home - Rides - Rides from club` has no empty variant — so it is
  * written to match their shape rather than invented in a different voice.
+ *
+ * `spacing` is the only thing that changes between the two places it renders:
+ * alone on the screen it owns the viewport, above a Previous rides section it
+ * is a line of prose with a list under it.
  */
-function EmptyList({ filter }: { filter?: RideFilter }) {
+function EmptyList({
+  filter,
+  spacing = 'page',
+}: {
+  filter?: RideFilter
+  spacing?: 'page' | 'section'
+}) {
   const message =
     filter?.kind === 'mine'
       ? 'You have no upcoming rides, yet!'
@@ -203,7 +248,12 @@ function EmptyList({ filter }: { filter?: RideFilter }) {
         : 'There are no rides, yet!'
 
   return (
-    <p className="motion-safe:animate-fade-in px-4 py-24 text-center text-sm font-medium text-muted">
+    <p
+      className={cn(
+        'motion-safe:animate-fade-in px-4 text-center text-sm font-medium text-muted',
+        spacing === 'page' ? 'py-24' : 'py-8'
+      )}
+    >
       {message}
     </p>
   )
