@@ -253,18 +253,58 @@ removal landing without its code repair is an outage.
   grep-based unit test that fails if a service-role key pattern appears anywhere under `src/` or
   in a committed env example — the same shape as the existing `use-server-exports` and
   `isomorphic` guards, and for the same reason: this is a rule no reviewer will catch twice.
-- [ ] 2.6 Exercise it against the real project with a disposable account before any UI points at
+- [x] 2.6 Exercise it against the real project with a disposable account before any UI points at
   it: delete succeeds; a second call succeeds; a request with another rider's id in the body still
   deletes only the caller; a request bearing the publishable key is refused; a request with no
   token is refused. **A live run, not a claim** — `docs/HANDOFF.md` records three PRs that merged
   unverified.
 
-  **All five passed on DEV against the build deployed 2026-08-11** — recorded on `PD-86`, which
-  is the evidence rather than this line. It stays unticked on purpose, and the reason is the
-  durable half: **the build that will ship is not the build that was exercised.** Q7's answer
-  adds the re-auth arm, so the five cases plus a sixth — a request with no proof, or a wrong
-  one, is refused and deletes nothing — are owed again against the redeployed function. An
-  exercise pass does not transfer across a redeploy.
+  **All five passed on DEV against the build deployed 2026-08-11** — recorded on `PD-86`. That
+  pass did not transfer, and the durable half is why: **the build that will ship is not the build
+  that was exercised**, so Q7's re-auth arm put all five back in debt against the redeployed
+  function.
+
+  **Re-run against the redeployed build (DEV v5, `ezbr_sha256` 9793933d…) on 2026-08-19, seven
+  cases, all passing.** Three disposable accounts created through `/auth/v1/signup` (DEV
+  autoconfirms, so no mailbox is needed). **The table below deletes two of the three** — case 1
+  takes the first, case 3 takes the second; the third holds the token for cases 6 and 7 and is
+  the account case 3 names in its body, and it was removed by an eighth call to the function with
+  its own correct password once the table was done. `select count(*) from auth.users where email
+  like 'probe-pd102-%'` is 0, which proves no residue and not who removed it — hence saying so:
+
+  | # | Request | Result |
+  |---|---|---|
+  | 1 | valid token, correct password | `{"deleted":true}` 200; `auth.users`, `auth.identities` and `profiles` rows all gone, verified in SQL rather than off the 200 |
+  | 2 | the same token replayed after deletion | `{"error":"unauthorized"}` 401 |
+  | 3 | valid token, `user_id`/`id`/`sub` of a *different* live account in the body, correct password | `{"deleted":true}` 200 — the caller deleted, the named account still present |
+  | 4 | publishable key in the `Authorization` slot | `{"error":"unauthorized"}` 401 |
+  | 5 | no `Authorization` header | `UNAUTHORIZED_NO_AUTH_HEADER` 401, refused at the gateway |
+  | 6 | valid token, no body / `{}` | `{"error":"reauth_required"}` 401 |
+  | 7 | valid token, a real non-empty **wrong** password | `{"error":"reauth_required"}` 401 |
+
+  **Case 2 is the one that stopped being inferred.** Both this file and D7 previously reasoned
+  about the already-deleted shape from GoTrue's documented behaviour — the 2026-08-11 run replayed
+  no real token against a deleted account. It does now: `unauthorized`, which is the contract the
+  client already implements.
+
+  **Case 7 is the other, and it is the one 3.4 left open.** Case 6 never reaches
+  `signInWithPassword`, so only case 7 exercises `classifyAuthError` against
+  `REAUTH_REJECTED_STATUSES` — a wrong password is reported at 400, and 400 is absent from
+  `GETUSER_REJECTED_STATUSES`, so the bug this guards against would have surfaced as
+  `verification_unavailable` (503) telling a rider to retry on a plain typo. It returns
+  `reauth_required`.
+
+  **DEV's `ezbr_sha256` equals PROD's, and that is the one thing sha equality does prove.** It is
+  no currency check — 2.3a and the function's own header both say so — but PROD's v9 and DEV's v5
+  are byte-identical builds, so these seven results describe the PROD function too. What is
+  untested on PROD is PROD's own `SERVICE_ROLE_KEY` secret, and that is separately proven by
+  `PD-86`'s real PROD deletion on 2026-08-16.
+
+  **The browser path is not covered by any of the seven.** Every one is `curl`, which needs no
+  preflight; the function's own CORS note says to test both. The preflight was checked separately
+  and answers `204` with `access-control-allow-methods: POST, OPTIONS` and `authorization,
+  content-type` among the allowed headers — necessary, not sufficient. `6.3`'s live walk through
+  the actual sheet is still owed, and it cannot run until the flag is on.
 
 ## 3. The flow
 
@@ -290,11 +330,12 @@ removal landing without its code repair is an outage.
   that arm, read back through `get_edge_function` rather than inferred from a moved digest. A
   password submitted through 3.3's sheet is now checked on both projects.
 
-  **One arm of it is still unexercised against a live endpoint**, and that is a different claim from
-  the deploy: a request with no `password` comes back `reauth_required` without ever reaching
-  `signInWithPassword`, so that probe does not test `classifyAuthError`'s handling of a real,
-  non-empty wrong password. The function's own header records the same gap. Nothing here is blocked
-  on it; it is a probe somebody should run.
+  **That arm is now exercised against the live endpoint (2026-08-19).** A request with no
+  `password` comes back `reauth_required` without ever reaching `signInWithPassword`, so it tests
+  only the guard above the call; a real, non-empty wrong password reaches `signInWithPassword` and
+  also comes back `reauth_required` rather than the `verification_unavailable` a mis-set status
+  allowlist would have produced. Both are case 6 and case 7 of 2.6's table, which is the evidence
+  rather than this line.
 - [x] 3.5 `getAccountDeletionImpact()` (`src/lib/data/profile.ts`) — clubs changing hands, upcoming
   rides to cancel, riders on those rides' crews, read under the rider's own session. Renders
   nothing when there is nothing, per the spec's own scenario; **not gated on this read succeeding**
