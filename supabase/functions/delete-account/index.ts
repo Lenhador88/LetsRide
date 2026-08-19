@@ -53,12 +53,18 @@
  * together; the client half auto-deploys on merge, the function half deploys
  * by hand, later, if at all — commit order inside a branch says nothing about
  * *deploy* order, which is the thing that would actually matter and which no
- * session can control. **What makes this fail-closed is
- * `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED`** (`src/lib/flags.ts`): the "Delete
- * account" row does not render, on either project, until that project's own
- * env var is set to `'true'` — which the owner does only after confirming
- * THAT project's redeploy enforces the proof. Unset, unrelated or misspelled
- * all read as off.
+ * session can control. What made it fail-closed instead was a client flag,
+ * `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` — the "Delete account" row did not
+ * render until that project's env var read `'true'`.
+ *
+ * **That flag and `src/lib/flags.ts` were deleted on 2026-08-19**, once this
+ * build was verified by content (below), on the product owner's instruction.
+ * The row now renders unconditionally, so **this file is the only gate on the
+ * destructive path, which is where the gate always actually was**: a client
+ * flag never protected this endpoint. It is live under `verify_jwt`, so any
+ * signed-in rider's own access token reaches it with or without a UI — which
+ * is why the ordering lesson above still stands even though the mechanism
+ * enforcing it is gone.
  * **Verify the redeploy by CONTENT, not by sha alone** — 2.3a and 3.4 both
  * name the same reason: three tasks now want the same redeploy, so a changed
  * `ezbr_sha256` no longer proves any one of them shipped. A request with no

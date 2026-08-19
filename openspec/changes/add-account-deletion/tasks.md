@@ -304,7 +304,10 @@ removal landing without its code repair is an outage.
   preflight; the function's own CORS note says to test both. The preflight was checked separately
   and answers `204` with `access-control-allow-methods: POST, OPTIONS` and `authorization,
   content-type` among the allowed headers — necessary, not sufficient. `6.3`'s live walk through
-  the actual sheet is still owed, and it cannot run until the flag is on.
+  the actual sheet is still owed. **It is no longer blocked**: the product owner had the flag
+  removed on 2026-08-19 (*"Just get rid of the toggle and show the delete account option"*), so
+  `src/lib/flags.ts` is deleted and the row renders unconditionally — walking it on DEV is the
+  next thing 6.3 needs, and the flag was the reason it could not be done.
 
 ## 3. The flow
 
