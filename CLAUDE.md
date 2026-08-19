@@ -131,11 +131,12 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **ten** tables on both DEV and
-   PROD — `postcards`,
+   gets inherited as covered.** `enforce_participation_gate` is on **eleven** tables on DEV and
+   **ten** on PROD — `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
-   `postcard_reports`, `ride_messages`, plus `ride_map_render_attempts`, which `051` added and
-   which was DEV-only until PD-201 levelled the projects — and **not** on `profiles` UPDATE, `profile_countries`,
+   `postcard_reports`, `ride_messages`, `ride_map_render_attempts`, plus `place_search_attempts`,
+   which `069` added and which is DEV-only until PD-273 promotes, exactly as `051`'s was until
+   PD-201 levelled the projects — and **not** on `profiles` UPDATE, `profile_countries`,
    `blocks`, `postcard_hides`, `feed_reads` or any `storage.objects` policy, which check the path
    prefix only. So an account created by calling GoTrue's `/auth/v1/signup` directly, never
    calling `accept_terms()`, **can still set a username, write a bio and upload an avatar with
@@ -587,7 +588,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1795** assertions — re-derive rather than trust it:
+Suite **1818** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -595,7 +596,9 @@ what `038` did to one of `036`'s assertions.
 **`031` exists because `029` shipped a function nothing could call, and that is the reusable
 lesson.** `029` put its worker in `private` and revoked EXECUTE from the client roles, assuming
 the deletion Edge Function would reach it as `service_role`. It could not: `service_role` holds
-no USAGE on `private`, and **PostgREST routes only to `public`**, so supabase-js's
+no EXECUTE on anything in `private` — every helper there carries a `revoke ... from public` and
+grants only to the client roles that need it — and above all **PostgREST routes only to `public`**,
+so supabase-js's
 `.schema('private')` is refused before it reaches Postgres. Nothing caught it, because **the RLS
 suite runs as the table owner, for whom neither barrier exists.** The assertion that would have
 caught it names a *role* — `has_function_privilege('service_role', …)` — rather than calling the

@@ -473,12 +473,28 @@ export function toLocalityResult(
  * — a probe through the deployed function on 2026-08-19 found the first draft
  * reporting a participation-gate refusal as a vendor outage.
  *
- *  - **`ceiling`** — an RLS policy refused. `42501` is
- *    `insufficient_privilege`, what a `WITH CHECK` raises; PostgREST also
- *    surfaces `PGRST301`. The rider's hourly ceiling, their daily one and the
- *    application-wide one are three conjuncts of ONE policy, so they are
+ *  - **`ceiling`** — an RLS policy refused. `42501` is `insufficient_privilege`,
+ *    what a `WITH CHECK` raises. The rider's hourly ceiling, their daily one and
+ *    the application-wide one are three conjuncts of ONE policy, so they are
  *    deliberately indistinguishable here — the function does not get to know
  *    which bound, and must not guess.
+ *
+ *    **`42501` is ALSO what a missing table or column grant raises, and this
+ *    repo already knows those two are indistinguishable** — it is `045`'s
+ *    lesson, that `assert_denied` recognises 42501 and nothing else, so a
+ *    missing grant and a failed `WITH CHECK` read the same. The window that
+ *    matters is the PROD apply of `069`: if the table lands with a botched
+ *    grant, **every rider app-wide is told they hit a search limit**, with a
+ *    429, and nothing goes red. The RLS suite's grant assertions are what close
+ *    that, on both projects, rather than anything this function can do.
+ *
+ *    **`PGRST301` is deliberately NOT here.** `@supabase/postgrest-js`'s own
+ *    JSDoc pairs it with "Row level security prevented the request", which is
+ *    where an earlier revision of this mapping got it — but PostgREST's `PGRST3xx`
+ *    group is JWT errors and an RLS refusal surfaces as the Postgres `42501`.
+ *    Mapping a stale token to "you have searched too much" would be a lie the
+ *    rider cannot act on. Unreachable either way, because `index.ts` resolves
+ *    the user through `getUser()` first and a bad JWT is a 401 upstream.
  *  - **`forbidden`** — the participation gate refused. `069` hangs
  *    `enforce_participation_gate` on the ledger, and it raises **`23514`**
  *    (`check_violation`), not `42501`: measured, message *"complete onboarding
@@ -487,6 +503,12 @@ export function toLocalityResult(
  *    through the app because the route guard holds that rider in the wizard —
  *    so it is reported like the anonymous-session refusal, which is the other
  *    "your account may not do this" case.
+ *
+ *    **This is correct by luck of the schema, and the luck is worth naming.**
+ *    `place_search_attempts` carries no CHECK constraint, so the gate is the
+ *    only thing on that table that can raise `23514`. **Adding a checked column
+ *    to it silently reclassifies a data bug as "your account may not do this"** —
+ *    so a migration that adds one has to revisit this mapping.
  *  - **`unavailable`** — anything else. `42P01` undefined table, `PGRST205`
  *    schema-cache miss, a connection failure with no code at all. **This is the
  *    state PR 1 deployed into**, before `069` existed, and reporting it as a
@@ -499,7 +521,7 @@ export type LedgerOutcome = 'ceiling' | 'forbidden' | 'unavailable'
 
 export function classifyLedgerError(error: { code?: string | null } | null): LedgerOutcome {
   const code = error?.code ?? ''
-  if (code === '42501' || code === 'PGRST301') return 'ceiling'
+  if (code === '42501') return 'ceiling'
   if (code === '23514') return 'forbidden'
   return 'unavailable'
 }

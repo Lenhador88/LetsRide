@@ -36,11 +36,15 @@
 -- at 100 characters, sized for an Overture GERS uuid. The replacement provider's
 -- ids are longer and VARIABLE, measured against live responses on 2026-08-19:
 --
---   | Place                       | id  | + `geoapify:` | Fits 100? |
---   |-----------------------------|-----|---------------|-----------|
---   | `Amsterdam-Purmerend`       | 112 |           121 | no        |
---   | `Willem Claijstraat`        | 110 |           119 | no        |
---   | `Berkhout`                  |  90 |            99 | YES       |
+--   | Place                                          | id  | stored | Fits 100? |
+--   |------------------------------------------------|-----|--------|-----------|
+--   | `Shell Energy & Chemicals Park ... Wesseling`   | 182 |    191 | no        |
+--   | `Shell Deutschland Oil GmbH, Werk Sud, Hafen`   | 162 |    171 | no        |
+--   | `Amsterdam-Purmerend`                           | 112 |    121 | no        |
+--   | `Willem Claijstraat`                            | 110 |    119 | no        |
+--   | `Shell Pernis`                                  |  98 |    107 | no        |
+--   | `Berkhout`                                      |  90 |     99 | YES       |
+--   | `Jumbo`                                         |  84 |     93 | YES       |
 --
 -- ** The break is INTERMITTENT, and that is why this cannot wait. ** A rider
 -- picking a short-named village succeeds; the same rider picking a street gets
@@ -48,9 +52,11 @@
 -- distinguishes the two attempts from their side, so it cannot be found by
 -- trying it once and would survive a smoke test that happened to pick a village.
 --
--- 512 is a bound rather than a fitted maximum. The live ids follow
--- `74 + 2 x name bytes`, so a 200-byte name reaches 474 — do not trim this
--- toward the observed 121.
+-- 512 is a bound rather than a fitted maximum. Every live id carries a 74-hex
+-- prefix, so length is `74 + 2 x name bytes` and the longest observed — a real
+-- result the picker would offer — stores at 191. That leaves ~2.7x headroom.
+-- **Do not trim this toward 191**: the input is a place name, and the formula is
+-- only as good as the longest one anyone has seen.
 --
 -- ** This migration must be applied BEFORE the code that writes a new id
 -- deploys, on each project. ** That inverts `docs/ENVIRONMENTS.md` §Migrations'
@@ -186,7 +192,23 @@ comment on function public.enforce_participation_gate() is
 -- Retention — 7 days, swept by the insert that follows (§D11)
 -- ---------------------------------------------------------------------------
 -- Comfortably past the 24-hour counting window, so no expiry can move a ceiling
--- decision. The sweep deletes THE INSERTING RIDER'S OWN expired rows only,
+-- decision.
+--
+-- ** The retention is INSERT-DRIVEN, so it is a ceiling on an active rider's
+-- rows rather than a promise that no row outlives 7 days. ** A rider who
+-- searches once and never searches again keeps those rows indefinitely, because
+-- the only thing that deletes them is their own next insert. Stated rather than
+-- hidden: `design.md` §D11 says "rows expire after 7 days", and that sentence is
+-- true only of riders who come back.
+--
+-- Accepted at this size for now. The rows hold no term and no coordinate — a
+-- user id and a timestamp — so what leaks with age is "this rider looked
+-- something up on this day", and account deletion still takes them all (the FK
+-- is ON DELETE CASCADE). Closing it properly wants a scheduled job, which is an
+-- Edge Function on a cron and therefore an owner deploy; it is not worth one on
+-- its own. **If a term or a coordinate is ever added to this table, this
+-- paragraph stops being an acceptable trade and the sweep must stop depending on
+-- the subject returning.** The sweep deletes THE INSERTING RIDER'S OWN expired rows only,
 -- bounded by the (user_id, attempted_at) index, so its cost never grows with the
 -- table and one rider's sweep cannot fail another rider's search.
 --
@@ -214,6 +236,15 @@ exception
   -- A failed sweep must never fail the rider's search. Retention is
   -- housekeeping; refusing a lookup because housekeeping broke would be the
   -- feature failing for a reason that has nothing to do with the rider.
+  --
+  -- ** `others` does NOT catch query_canceled (57014), and that is the ONE
+  -- realistic failure. ** PL/pgSQL excludes it from OTHERS by design, and
+  -- `authenticated` runs under a statement_timeout — so a slow DELETE under lock
+  -- contention is precisely the case that escapes this block, aborts the insert,
+  -- and fails the rider's search. Caught by name for that reason. `assert_failure`
+  -- is the other OTHERS exclusion and cannot arise here: nothing asserts.
+  when query_canceled then
+    return null;
   when others then
     return null;
 end;
@@ -233,10 +264,17 @@ create trigger sweep_place_search_attempts
 -- Grants and policies
 -- ---------------------------------------------------------------------------
 -- INSERT and SELECT, and nothing else. Both halves of the refusal matter and are
--- asserted separately in the suite: RLS needs a table grant AND a permitting
--- policy, so the missing grant is the outer gate and the missing policy the
--- inner one. Absence is the enforcement here, which is exactly the kind of thing
--- a well-meaning `grant all` puts back.
+-- asserted separately in `supabase/tests/rls_test.sql`'s `069` section: RLS needs
+-- a table grant AND a permitting policy, so the missing grant is the outer gate
+-- and the missing policy the inner one. Absence is the enforcement here, which is
+-- exactly the kind of thing a well-meaning `grant all` puts back.
+--
+-- Table-level INSERT rather than a per-column grant excluding `attempted_at`,
+-- which would also work — `051`'s reasoning, and `design.md` §D3 is reconciled to
+-- it: the requirement is that a caller NAMING `attempted_at` has the value
+-- replaced by server time, and a column grant refuses the statement outright
+-- instead. The trigger is the mandated mechanism, so the grant is left wide
+-- enough for it to be the thing observed, and the suite asserts the replacement.
 revoke all on public.place_search_attempts from anon, authenticated;
 grant select, insert on public.place_search_attempts to authenticated;
 
@@ -311,11 +349,19 @@ comment on column public.rides.start_place_id is
 --          has_function_privilege('authenticated',
 --            'private.place_searches_today()', 'execute');
 --
---   -- false, false — and by nobody else. anon is decision #1; service_role
---   -- holds no USAGE on `private` at all, which is 031's finding restated.
+--   -- false, false — and by nobody else. anon is decision #1; service_role is
+--   -- stopped by the EXECUTE revoke above, NOT by a missing USAGE on `private`.
+--   --
+--   -- ** service_role DOES hold USAGE on `private`, on both projects. ** Measured
+--   -- 2026-08-19: private's ACL is {postgres=UC/postgres,service_role=U/postgres}.
+--   -- 031's finding is about PostgREST refusing to ROUTE to a non-public schema,
+--   -- which is a different barrier and still holds. Writing this check against
+--   -- has_schema_privilege reads a correct database as drift — which is exactly
+--   -- the trap CLAUDE.md's own restatement of 031 falls into today.
 --   select has_function_privilege('anon',
 --            'private.place_searches_today()', 'execute'),
---          has_schema_privilege('service_role', 'private', 'usage');
+--          has_function_privilege('service_role',
+--            'private.place_searches_today()', 'execute');
 --
 --   -- true — they really are definer, and 022's lesson is that this exact
 --   -- clause is the one that silently goes missing between repo and database

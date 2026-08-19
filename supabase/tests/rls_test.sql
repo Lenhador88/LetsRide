@@ -3651,7 +3651,7 @@ reset role;
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  10, 'ten gate triggers, one per gated table');
+  11, '069: eleven gate triggers, one per gated table');
 
 -- Named rather than counted, for the same reason the omissions below are: the
 -- total above cannot tell a gate that MOVED from one that was added, and the
@@ -3678,7 +3678,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  10, 'every gate trigger carries the WHEN guard that reads the invoking role');
+  11, '069: every gate trigger carries the WHEN guard that reads the invoking role');
 
 -- The two halves of the security-definer question, and they point opposite ways.
 -- The gate functions MUST be definer; the profile completion guard must NOT be,
@@ -4091,12 +4091,12 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass),
-  17, '029/061: seventeen FKs reference public.profiles');
+  18, '029/061/069: eighteen FKs reference public.profiles');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
       and confdeltype = 'c'),
-  17, '029/061: ... and every one of them is ON DELETE CASCADE');
+  18, '029/061/069: ... and every one of them is ON DELETE CASCADE');
 
 -- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
 -- grounds that pinning the path to owner_id makes any transfer raise 23514;
@@ -15394,10 +15394,24 @@ select assert_rejected(
      where id = '00000000-0000-0000-0000-0000000000c2'$$,
   '23514', '066: a 201-character location name is refused — the bound is in the database, not only in the Zod schema');
 select assert_rejected(
-  $$update clubs set location_name = 'Utrecht', location_place_id = repeat('x', 101),
+  $$update clubs set location_name = 'Utrecht', location_place_id = repeat('x', 513),
                      latitude = 52.09, longitude = 5.12
      where id = '00000000-0000-0000-0000-0000000000c2'$$,
-  '23514', '066: ... and a 101-character GERS id, which is the field a client controls most directly');
+  '23514', '066/069: ... and a 513-character provider id, which is the field a client controls most directly');
+-- The POSITIVE at the new bound, written for real and read back. The rejection
+-- at 513 passes on its own against a database where 069 never applied, which is
+-- exactly the shape 057's boundary move had to fix: a one-sided boundary test
+-- cannot tell a widened constraint from an unchanged one.
+-- The coupling CHECK requires the whole location set to move together, so the
+-- name and coordinate come with it. That is 066 working, not noise.
+update clubs set location_name = 'Utrecht',
+                 location_place_id = 'geoapify:' || repeat('x', 503),
+                 latitude = 52.09, longitude = 5.12
+ where id = '00000000-0000-0000-0000-0000000000c2';
+select assert_eq(
+  (select char_length(location_place_id)::int from clubs
+    where id = '00000000-0000-0000-0000-0000000000c2'),
+  512, '069: exactly 512 characters is accepted — a provider id observed at 191 has room, and the bound is not the observed maximum');
 
 -- ---------------------------------------------------------------------------
 -- 066.3  A COMPLETE location is accepted, and clearing it back to NULL is too.
@@ -15598,8 +15612,8 @@ select assert_rejected($$
   insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
                      start_place_id, latitude, longitude)
   values ('00000000-0000-0000-0000-000000067006', 'A novel', 'The Pier', now() + interval '9 days',
-          true, '00000000-0000-0000-0000-00000000000a', repeat('x', 101), 52.0, 4.0)$$,
-  '23514', '067: a 101-character GERS id is refused — the id is the field a client controls most directly and nothing stops a rider posting a novel into it');
+          true, '00000000-0000-0000-0000-00000000000a', repeat('x', 513), 52.0, 4.0)$$,
+  '23514', '067/069: a 513-character provider id is refused — the id is the field a client controls most directly and nothing stops a rider posting a novel into it');
 
 select assert_rejected($$
   insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
@@ -16293,6 +16307,165 @@ reset role;
 -- Back to the identity every later block assumes. Nothing follows this today,
 -- which is exactly why it is set: the next block appended here would otherwise
 -- inherit …000b and read as a policy defect.
+reset role;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+
+-- ===========================================================================
+-- 069 — the place-search spend ledger (PD-273)
+-- ===========================================================================
+-- `051`'s ledger section is the model, because `069` copies `051`'s shape. What
+-- differs is the subject — a rider rather than a ride — and that there are
+-- THREE ceilings in one policy rather than one.
+--
+-- The gate-trigger count and the widened place_id bounds are asserted in their
+-- own sections above, beside the numbers they moved.
+
+\echo ''
+\echo '# 069: the place-search ledger is append-only and own-row'
+
+-- The catalogue and grant assertions run as the owner; everything that depends
+-- on a POLICY needs `set role authenticated` below, because the owner bypasses
+-- RLS and every one of those assertions would pass while testing nothing.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+select assert_eq((select relrowsecurity from pg_class where oid = 'public.place_search_attempts'::regclass),
+  true, '069: RLS is on for place_search_attempts');
+
+-- Both halves of the refusal, asserted separately: RLS needs a table grant AND
+-- a permitting policy, so the missing grant is the outer gate and the missing
+-- policy the inner one. Absence is the enforcement here, which is exactly what
+-- a well-meaning `grant all` puts back.
+select assert_eq(has_table_privilege('authenticated', 'public.place_search_attempts', 'insert'),
+  true, '069: authenticated holds the INSERT grant');
+select assert_eq(has_table_privilege('authenticated', 'public.place_search_attempts', 'select'),
+  true, '069: ... and SELECT, for its own rows');
+select assert_eq(has_table_privilege('authenticated', 'public.place_search_attempts', 'update'),
+  false, '069: ... and NO UPDATE grant — a rider must not be able to rewrite their own spend');
+select assert_eq(has_table_privilege('authenticated', 'public.place_search_attempts', 'delete'),
+  false, '069: ... and NO DELETE grant — erasing spend is the one direction the ceiling exists to block');
+select assert_eq(has_table_privilege('anon', 'public.place_search_attempts', 'select'),
+  false, '069: anon reaches nothing — decision #1');
+
+-- The inner gate. `051`'s lesson: a grant check alone passes against a table
+-- with a permissive policy nobody meant to write.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'place_search_attempts'),
+  2, '069: exactly two policies on the ledger');
+select assert_eq(
+  (select string_agg(cmd, ',' order by cmd)::text from pg_policies
+    where schemaname = 'public' and tablename = 'place_search_attempts'),
+  'INSERT,SELECT', '069: ... and they are exactly INSERT and SELECT — no UPDATE or DELETE policy either');
+
+-- The counters. Named by ROLE rather than called, which is `031`'s shape: the
+-- suite runs as the table owner, for whom neither the grant barrier nor the
+-- schema barrier exists, so calling the function proves nothing about who can.
+select assert_eq(
+  has_function_privilege('authenticated',
+    'private.place_searches_in_window(uuid, interval)', 'execute'),
+  true, '069: authenticated can execute the per-rider counter — the policy is evaluated AS that role, so without this every insert fails');
+select assert_eq(
+  has_function_privilege('authenticated', 'private.place_searches_today()', 'execute'),
+  true, '069: ... and the application-wide counter');
+select assert_eq(
+  has_function_privilege('anon', 'private.place_searches_in_window(uuid, interval)', 'execute'),
+  false, '069: anon can execute neither counter');
+select assert_eq(
+  has_function_privilege('anon', 'private.place_searches_today()', 'execute'),
+  false, '069: ... nor the application-wide one');
+
+-- `service_role` reaches the counters through neither door, and the door that
+-- matters is EXECUTE rather than USAGE. It DOES hold USAGE on `private` —
+-- measured on both projects, `private`'s ACL is
+-- {postgres=UC/postgres,service_role=U/postgres} — so an assertion written
+-- against the schema grant would read a correct database as drift, which is the
+-- error `031`'s finding gets remembered as.
+select assert_eq(
+  has_function_privilege('service_role', 'private.place_searches_today()', 'execute'),
+  false, '069: service_role cannot execute the counters — the revoke from public is what stops it, NOT a missing USAGE on private, which it holds');
+
+-- `022`'s lesson: this exact clause is the one that goes silently missing
+-- between the repo and the database, and without it the counters are invoker
+-- and the policy recurses (`052`).
+select assert_eq(
+  (select bool_and(prosecdef) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname like 'place_searches%'),
+  true, '069: both counters really are security definer — without it the INSERT policy raises 42P17, which is 051''s bug');
+select assert_eq(
+  -- `proconfig` stores the pin as the literal search_path="" — matching on the
+  -- bare `search_path=` reads false against a correct database, which is how
+  -- this assertion first failed.
+  (select bool_and(proconfig @> array['search_path=""'])
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname like 'place_searches%'),
+  true, '069: ... and both pin an empty search_path');
+
+-- The subject is forced to the caller, so one rider cannot spend another's
+-- allowance. This is the conjunct the Edge Function's "takes no user id" rule
+-- rests on: even a function talked into naming someone else is refused here.
+set role authenticated;
+
+select assert_rejected(
+  $$insert into place_search_attempts (user_id)
+    values ('00000000-0000-0000-0000-00000000000b')$$,
+  '42501', '069: a rider cannot record a search against ANOTHER rider — the ceiling is per rider and this is what makes that true');
+
+select assert_allowed(
+  $$insert into place_search_attempts (user_id)
+    values ('00000000-0000-0000-0000-00000000000a')$$,
+  '069: ... and can record one against themselves');
+
+-- Server-stamped time. A client that can backdate a row out of the rolling
+-- window has no ceiling at all — 034's ruling, applied here as 051 applied it.
+-- The grant is table-level, so the column is nameable and the TRIGGER is the
+-- thing observed: the value is REPLACED rather than the statement refused.
+insert into place_search_attempts (id, user_id, attempted_at)
+values ('00000000-0000-0000-0000-000000069001',
+        '00000000-0000-0000-0000-00000000000a', now() - interval '30 days');
+select assert_eq(
+  (select attempted_at > now() - interval '1 minute' from place_search_attempts
+    where id = '00000000-0000-0000-0000-000000069001'),
+  true, '069: a backdated attempted_at is REPLACED with server time rather than refused — the ceiling is meaningless if a rider can insert themselves out of the window');
+
+-- Own rows only. The ledger holds no term, but a wider SELECT would still make
+-- it an activity oracle: when a named rider was looking up places.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq(
+  (select count(*)::int from place_search_attempts
+    where user_id = '00000000-0000-0000-0000-00000000000a'),
+  0, '069: a rider cannot read another rider''s search ledger');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_eq(
+  (select count(*)::int from place_search_attempts
+    where user_id = '00000000-0000-0000-0000-00000000000a') > 0,
+  true, '069: ... and can read their own');
+
+-- The ceiling actually fires, which is the assertion `051` could not make
+-- because its subquery form raised 42P17 instead.
+--
+-- ** Top up to the ceiling by MEASURING what is there, not by counting the
+-- inserts above. ** `assert_allowed` runs its statement inside a savepoint and
+-- rolls it back, so a hand-written total is one row out and the ceiling test
+-- then passes for the wrong reason — it did, on the first pass here.
+reset role;
+insert into place_search_attempts (user_id)
+select '00000000-0000-0000-0000-00000000000a'
+  from generate_series(1, 20 - (select count(*)::int from place_search_attempts
+                                 where user_id = '00000000-0000-0000-0000-00000000000a'
+                                   and attempted_at > now() - interval '1 hour'));
+select assert_eq(
+  private.place_searches_in_window('00000000-0000-0000-0000-00000000000a', interval '1 hour'),
+  20, '069: the fixture really is at the hourly ceiling — without this the refusal below could pass because the rider is merely over some other limit');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+
+select assert_rejected(
+  $$insert into place_search_attempts (user_id)
+    values ('00000000-0000-0000-0000-00000000000a')$$,
+  '42501', '069: the hourly ceiling refuses the 21st attempt in the window — the whole point of the ledger, and 051 shipped a form that could never reach this');
+
 reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 

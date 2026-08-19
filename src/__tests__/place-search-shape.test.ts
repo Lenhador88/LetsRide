@@ -357,7 +357,21 @@ describe('what a failed metering insert means', () => {
   // outage, which is why the mapping is asserted per code rather than described.
   it('reads an RLS refusal as the rider hitting a ceiling', () => {
     expect(classifyLedgerError({ code: '42501' })).toBe('ceiling')
-    expect(classifyLedgerError({ code: 'PGRST301' })).toBe('ceiling')
+  })
+
+  it('does NOT read a JWT error as a ceiling', () => {
+    // PostgREST's PGRST3xx group is JWT errors, not RLS refusals — an RLS
+    // refusal is the Postgres code. `postgrest-js`'s own JSDoc pairs PGRST301
+    // with "Row level security prevented the request", which is where an earlier
+    // revision of this mapping got it wrong. Telling a rider whose token expired
+    // that they searched too much is a lie they cannot act on.
+    expect(classifyLedgerError({ code: 'PGRST301' })).toBe('unavailable')
+  })
+
+  it('reads a serialization failure, a deadlock and a timeout as outages', () => {
+    for (const code of ['40001', '40P01', '57014', '23503', '23502']) {
+      expect(classifyLedgerError({ code })).toBe('unavailable')
+    }
   })
 
   it('reads the participation gate as forbidden, not as a ceiling', () => {

@@ -120,8 +120,12 @@ with no error visible anywhere.** Copy `052`'s column definition rather than thi
   enforcement point is decoration. The window is a parameter of the one helper rather than two
   helpers, so the two ceilings cannot drift apart in implementation.
 - **SELECT** policy: own rows only. No UPDATE grant, no DELETE grant, for any client role.
-- Column grants: `insert (id, user_id)` only — `attempted_at` is server-owned, so a back-dated row is
-  refused by the grant and not merely by a policy.
+- Grants: table-level `select, insert` — **not** the per-column `insert (id, user_id)` an earlier
+  revision of this bullet specified. `051` grants table-level for a stated reason and `069` follows
+  it: the requirement is that a caller naming `attempted_at` has the value **replaced** by server
+  time, and a column grant refuses the statement outright instead. The BEFORE INSERT trigger is the
+  mandated mechanism, so the grant stays wide enough for it to be the thing observed — and the RLS
+  suite asserts the replacement rather than the refusal.
 - `enforce_participation_gate` hangs on it, which takes that trigger from **10 tables to 11**
   (measured 10 on PROD today). An account created by calling GoTrue directly and never accepting the
   terms therefore cannot spend a credit.
@@ -285,9 +289,20 @@ than shared, because the two functions deploy independently.
 ### D11 — Retention: seven days, swept by the insert that follows
 
 Rows expire after **7 days**, comfortably past the 24-hour counting window so no expiry can move a
-ceiling decision. The sweep is a statement-level trigger on INSERT deleting **the inserting rider's
-own** expired rows, bounded by the `(user_id, attempted_at)` index, so its cost never grows with the
+ceiling decision. The sweep is a row-level `after insert` trigger deleting **the inserting rider's
+own** expired rows — row-level and not the statement-level an earlier revision of this paragraph
+specified, because a statement-level trigger has no `NEW` and so could not scope the delete to the
+inserting rider at all — bounded by the `(user_id, attempted_at)` index, so its cost never grows with the
 table and one rider's sweep cannot fail another rider's search.
+
+**Insert-driven, so it bounds an ACTIVE rider's rows rather than promising nothing outlives seven
+days.** A rider who searches once and never returns keeps those rows, because the only thing that
+deletes them is their own next insert. Accepted at this size and stated rather than hidden: the rows
+hold a user id and a timestamp and nothing else — no term, no coordinate — so what persists is "this
+rider looked something up on this day", and deleting the account still takes them all. Closing it
+properly wants a scheduled job, which is an Edge Function on a cron and therefore an owner deploy;
+it is not worth one on its own. **If a term or a coordinate is ever added to this table, that trade
+stops being acceptable.**
 
 This deliberately does *not* reach `ride_map_render_attempts`, which has no retention at all today —
 that is a real gap and it is somebody's follow-up, not a widening of this change.
