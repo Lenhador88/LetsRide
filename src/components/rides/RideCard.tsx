@@ -13,9 +13,11 @@ import type { RideAttendance, RideListItem } from '@/types'
  *
  * The component set has five variants, which are the product of two properties:
  * `is Upcoming` (True/False) and `Are you going?` (No/Maybe/Yes). Neither is
- * stored — upcoming is `departure_at` against now, and the RSVP is the viewer's
- * `ride_members` row — so this component derives both rather than taking a
- * variant name.
+ * stored — upcoming is `departure_at` against the start of today in
+ * `APP_TIME_ZONE` rather than against the clock, so a ride that left at 15:00
+ * still draws `Going` at 23:00 and flips at midnight with the section it sits
+ * in, and the RSVP is the viewer's `ride_members` row — so this component
+ * derives both rather than taking a variant name.
  *
  * Geometry, all read rather than chosen: card radius 8 on White/100 with
  * padding left 4, top 4, **right 16**, bottom 4 and a 16 gap — spelled out

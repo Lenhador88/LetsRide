@@ -382,6 +382,31 @@ export function rideZoneDayKey(date: string): string {
 }
 
 /**
+ * The instant `APP_TIME_ZONE`'s current calendar day began — midnight, as UTC.
+ *
+ * This is where a ride stops being upcoming and becomes a previous ride, and it
+ * is deliberately **not** `now`. A ride that left at 15:00 is still today's
+ * ride at 23:00: dropping it out of the list the moment it departs takes it off
+ * the screen of every rider still on it, and filing it under "Previous rides"
+ * the same evening reads as a day that is already over. It moves at midnight,
+ * once, for everyone.
+ *
+ * Pinned to `APP_TIME_ZONE` for the reason every other ride surface is: the
+ * boundary has to be the same one `formatRideDate` draws its dates in, or a
+ * rider in Lisbon sees a ride filed under a day the date beside it contradicts.
+ * The rider's own zone is not the answer here any more than it is there.
+ *
+ * Built from the two halves that already exist — the day in that zone, then the
+ * instant that wall-clock names — so the DST correction lives in exactly one
+ * place. Midnight is never the skipped hour in `APP_TIME_ZONE` (both
+ * transitions happen at 02:00 or 03:00 local), so the ambiguous-hour caveats on
+ * `wallClockToUtc` do not reach this caller.
+ */
+export function rideDayStartUtc(now: number = Date.now()): string {
+  return wallClockToUtc(`${rideZoneDayKey(new Date(now).toISOString())}T00:00`)
+}
+
+/**
  * A ride chat's day separator — `Today`, `Yesterday`, or `Sat, 16 Nov`.
  *
  * **The design draws no separator at all**, and this is a deliberate addition

@@ -561,9 +561,10 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 70 files, and BOTH projects are at `070` — level as of 2026-08-19, PD-273's
-promotion.** Level is the *exception* rather than the steady state: DEV-ahead is the ordinary
-state of a migration between its merge and its promotion, and it is not drift. **Do not read the
+**Applied state: 71 files; DEV is at `071` and PROD at `070` — measured 2026-08-19, after `071`'s
+`rides(departure_at)` index went on DEV.** That gap is the *ordinary* state, not drift: DEV-ahead
+is where a migration lives between its merge and its promotion. The two were level for a few hours
+that afternoon, at PD-273's promotion, and level is the exception. **Do not read the
 count of unpromoted files off this sentence** — it named exactly one while two were waiting, which
 is the same defect as a stale number in a smaller place, and the promotion is the one job that
 reads it. Run `list_migrations` against `ls supabase/migrations/` and promote everything the gap

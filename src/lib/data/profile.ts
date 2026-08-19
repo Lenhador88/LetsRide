@@ -3,6 +3,7 @@ import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
 import { OWN_PROFILE_COLUMNS, VIEWED_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { profileIdSchema } from '@/lib/validation/profile'
+import { rideDayStartUtc } from '@/lib/utils'
 import type { AccountDeletionImpact, Profile, ViewedProfile } from '@/types'
 
 export async function getCurrentProfile(): Promise<Profile | null> {
@@ -227,7 +228,12 @@ export async function getAccountDeletionImpact(): Promise<AccountDeletionImpact>
         .from('rides')
         .select('id')
         .eq('organizer_id', user.id)
-        .gte('departure_at', new Date().toISOString())
+        // The same boundary `/rides` cuts its two sections at, not the clock.
+        // Against `now` this count disagreed with the list for the rest of the
+        // day: a ride the app still calls upcoming, and still draws a `Going`
+        // pill on, went missing from the sheet warning the rider what deleting
+        // their account destroys. The cascade takes it either way.
+        .gte('departure_at', rideDayStartUtc())
         .limit(ACCOUNT_DELETION_RIDES_LIMIT),
       'your upcoming rides',
     ) as unknown as { id: string }[],
