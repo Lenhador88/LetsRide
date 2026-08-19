@@ -1,11 +1,19 @@
 'use client'
 
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createPortal } from 'react-dom'
+import { Button } from '@/components/ui/Button'
 import { CloseIcon, LocationOutlineIcon, SearchIcon } from '@/components/icons/generated'
-import { PLACE_SEARCH_MIN_CHARS, searchPlaces } from '@/lib/data/places'
+import {
+  PLACE_SEARCH_CACHE_MS,
+  PLACE_SEARCH_MAX_CHARS,
+  PLACE_SEARCH_MIN_CHARS,
+  searchPlaces,
+} from '@/lib/data/places'
 import { resolveRiderLocation } from '@/lib/location/rider-location'
+import { getSnapshot, setQueryData } from '@/lib/query'
+import { queryKeys } from '@/lib/query/keys'
 import { cn } from '@/lib/utils'
 import type { PlaceSearchResult } from '@/types'
 
@@ -53,16 +61,22 @@ import type { PlaceSearchResult } from '@/types'
  *
  * ## Debounce, abort, and the reason both are required rather than polite
  *
- * `search_places()`'s own contract says to debounce, and not as advice: cost is
- * roughly linear in rows matched, and the broadest tokens are street-type
- * suffixes rather than city names. `039`'s measurements put a nationwide
- * `straat` at 11,458 ms on the real index — inside the 8 s statement timeout
- * only because `050`'s candidate cap now bounds it. So every keystroke that
- * fires a query is a real cost to a shared database, not a wasted round trip.
+ * **Reworded for PD-273's geocoder switch — the reason changed, not the
+ * requirement.** `search_places()`'s cost used to be a query plan against a
+ * shared database; every keystroke now costs a credit against a shared,
+ * metered daily vendor quota (`search-places/shape.ts`), which is a stronger
+ * argument for debouncing rather than a weaker one — see
+ * `PLACE_SEARCH_MIN_CHARS`'s own doc block in `lib/data/places.ts`.
  *
  * The in-flight request is aborted per keystroke for the reason `searchPlaces`
- * threads a signal at all: without it, results arrive out of order and the
- * list flickers back to an older term's answers.
+ * threads a signal at all — out-of-order results would otherwise flicker the
+ * list back to an older term's answers — and a generation counter in
+ * `PlaceSearchSheet` backs that up rather than relying on abort timing alone,
+ * because an aborted fetch can still resolve before the browser tears it
+ * down. Aborting still does not save the credit: `069`'s ledger row is
+ * written before the vendor is even called, so cancelling client-side is
+ * purely a flicker fix, never a spend control (`place-search`'s own
+ * "Abort SHALL survive" names this explicitly).
  *
  * ## The bias, and why this asks for it rather than taking it as a prop
  *
@@ -306,13 +320,30 @@ function PlaceSearchSheet({
   const [term, setTerm] = useState('')
   const [results, setResults] = useState<PlaceSearchResult[] | null>(null)
   const [searching, setSearching] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // The thrown error itself rather than a re-derived message — `searchPlaces`
+  // already carries the rider-facing copy on `.message` (`PlaceSearchCeilingError`,
+  // `PlaceSearchUnavailableError`, `PlaceSearchOfflineError` in `lib/data/places.ts`),
+  // so this is the one place that copy is written rather than the second.
+  const [failure, setFailure] = useState<Error | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // The bias, resolved once when the sheet opens. Held in a ref rather than
   // state: nothing renders it, and setting state for it would re-run the
   // search effect the moment it landed.
   const bias = useRef<{ lat: number; lon: number } | null>(null)
+
+  // Which invocation of `execute` is the current one — a rider who keeps
+  // typing (or taps Retry) must never have an OLDER attempt's late response
+  // land over a NEWER one's, whichever settles first. Stronger than relying
+  // on abort timing alone: an aborted fetch can still resolve before the
+  // browser tears it down, and this generation check is what actually decides
+  // whether that resolution is allowed to touch state — the same pattern
+  // `lib/query/queryClient.ts` uses for the same reason.
+  const generationRef = useRef(0)
+  // The controller backing whichever attempt is current, so a later one
+  // (debounced or retried) can cancel an earlier in-flight request rather
+  // than merely outracing it.
+  const controllerRef = useRef<AbortController | null>(null)
 
   const onCloseRef = useRef(onClose)
   useEffect(() => {
@@ -344,6 +375,61 @@ function PlaceSearchSheet({
     }
   }, [])
 
+  /**
+   * The one place a search actually runs — reached from the debounce effect
+   * below AND from the Retry tap, which is why it is pulled out rather than
+   * living inline in the timer the way the RPC-backed version had it: a
+   * retry is `place-search`'s own requirement ("A retry costs a credit and
+   * says so by requiring a tap ... an automatic retry SHALL NOT be armed on
+   * a timer"), and it must run the identical cache-check-then-fetch path a
+   * debounced search does rather than a hand-rolled second copy.
+   *
+   * **Checks the shared query cache FIRST** — `queryKeys.places.search`'s first
+   * caller (`client-cache-invalidation`'s "a read that costs money SHALL be
+   * cached"). A hit answers with no round trip, no metering row and no
+   * vendor call, exactly the way `PLACE_SEARCH_CACHE_MS`'s own doc block
+   * describes. Only a genuine result set is ever written back — a failure is
+   * never cached, so a retry after one is never served a stale refusal.
+   */
+  const execute = useCallback((trimmedTerm: string, controller: AbortController) => {
+    const generation = ++generationRef.current
+
+    const cacheKey = queryKeys.places.search(trimmedTerm, bias.current)
+    const cached = getSnapshot<PlaceSearchResult[]>(cacheKey)
+    if (cached.data !== undefined && Date.now() - cached.updatedAt < PLACE_SEARCH_CACHE_MS) {
+      setFailure(null)
+      setResults(cached.data)
+      return
+    }
+
+    setFailure(null)
+    setSearching(true)
+    searchPlaces(trimmedTerm, bias.current, controller.signal)
+      .then((rows) => {
+        if (generationRef.current !== generation) return
+        setQueryData(cacheKey, rows)
+        setResults(rows)
+      })
+      .catch((cause: unknown) => {
+        // A cancellation is a rider who kept typing, not a broken query —
+        // `searchPlaces` rethrows it as a plain AbortError precisely so this
+        // branch can tell them apart. Showing a failure for one would put a
+        // message on every fast typist's screen.
+        if (cause instanceof Error && cause.name === 'AbortError') return
+        if (generationRef.current !== generation) return
+        setFailure(cause instanceof Error ? cause : new Error('Places could not be searched.'))
+        setResults([])
+      })
+      // Unconditionally, including on an abort — gating on `!signal.aborted`
+      // left this stuck true whenever a rider deleted back below the minimum
+      // mid-request, since nothing else would ever clear it. Scoped to this
+      // attempt's own generation so an old attempt's `finally` cannot clear
+      // the flag a newer, still-running one just set.
+      .finally(() => {
+        if (generationRef.current === generation) setSearching(false)
+      })
+  }, [])
+
   useEffect(() => {
     const trimmed = term.trim()
     // Below the minimum there is nothing to search and nothing to reset:
@@ -354,37 +440,27 @@ function PlaceSearchSheet({
     if (trimmed.length < PLACE_SEARCH_MIN_CHARS) return
 
     const controller = new AbortController()
-    const timer = setTimeout(() => {
-      // Inside the timer rather than beside it, for the same reason: by the
-      // time this runs the effect body has long returned, so this is an
-      // ordinary async update rather than a render cascade.
-      setSearching(true)
-      searchPlaces(trimmed, bias.current, controller.signal)
-        .then((rows) => {
-          setResults(rows)
-          setError(null)
-        })
-        .catch((cause: unknown) => {
-          // A cancellation is a rider who kept typing, not a broken query —
-          // `searchPlaces` rethrows it as a plain AbortError precisely so this
-          // branch can tell them apart. Showing an error for one would put a
-          // failure message on every fast typist's screen.
-          if (cause instanceof Error && cause.name === 'AbortError') return
-          setError('Places could not be searched. Check your connection.')
-          setResults([])
-        })
-        // Unconditionally, including on an abort. Gating it on
-        // `!signal.aborted` left the flag stuck true whenever a rider deleted
-        // back below the minimum mid-request: the effect returns early on the
-        // next term and never re-runs, so nothing else would ever clear it.
-        .finally(() => setSearching(false))
-    }, DEBOUNCE_MS)
+    controllerRef.current = controller
+    const timer = setTimeout(() => execute(trimmed, controller), DEBOUNCE_MS)
 
     return () => {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [term])
+  }, [term, execute])
+
+  /** The explicit tap `place-search`'s spec requires — never armed on a
+   *  timer, never fired automatically. Re-runs the CURRENT term immediately,
+   *  bypassing the debounce, because a rider who tapped Retry has already
+   *  waited. */
+  const retry = () => {
+    const trimmed = term.trim()
+    if (trimmed.length < PLACE_SEARCH_MIN_CHARS) return
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
+    execute(trimmed, controller)
+  }
 
   // Through a portal for the reason `ContextMenu` documents: any ancestor with
   // a transform becomes the containing block for `position: fixed`, and this
@@ -424,6 +500,12 @@ function PlaceSearchSheet({
             placeholder={placeholder}
             aria-label={title}
             autoComplete="off"
+            // `place-search`'s own requirement: a pasted essay is bounded
+            // before it is sent. Native `maxLength` truncates a paste as well
+            // as typing, so this is what `PLACE_SEARCH_MAX_CHARS` actually
+            // enforces client-side — the proxy bounds it again regardless,
+            // because this UI is not the only caller.
+            maxLength={PLACE_SEARCH_MAX_CHARS}
             className="min-w-0 flex-1 bg-transparent text-base font-medium text-foreground placeholder:text-muted focus:outline-none"
           />
         </div>
@@ -434,8 +516,9 @@ function PlaceSearchSheet({
           term={term}
           results={results}
           searching={searching}
-          error={error}
+          failure={failure}
           onPick={onPick}
+          onRetry={retry}
         />
       </div>
 
@@ -448,15 +531,15 @@ function PlaceSearchSheet({
 /**
  * The place-data credit, paid ONCE and rendered here rather than per result.
  *
- * Overture's Places theme is CDLA Permissive 2.0 + Apache 2.0, and §3 exempts
- * what an application renders ("Results") from carrying the licence text — so a
- * result row owes nothing and this line is the whole obligation (PD-191).
- * Required by PD-114 and PD-259 in the same words; PD-259 shipped this control
- * without it, which is what PD-114 found.
+ * **Names Geoapify and OpenStreetMap, not Overture** — PD-273's geocoder
+ * switch. Every result the proxy returns carries `datasource.attribution: "©
+ * OpenStreetMap contributors"` (measured live,
+ * `openspec/changes/replace-places-index-with-geocoder/tasks.md` task 0.3),
+ * and that credit is unconditional, unlike a map tile's burned-in one — a
+ * list of results carries no credit of its own, so this line is the whole
+ * obligation for the surface that renders them.
  *
- * On the shared control, so clubs are credited by the same link. Not a
- * per-source line either: `/legal/attributions` names all eight contributors,
- * which is broader than anything a sheet could carry.
+ * On the shared control, so clubs are credited by the same link.
  *
  * **Its own component so it can be tested.** The sheet renders through a
  * portal and needs an event loop; this does not, so `renderToStaticMarkup`
@@ -469,9 +552,9 @@ export function PlaceDataCredit() {
           create-ride or create-club form, so a document navigation would
           reload the bundle and take everything typed with it — the pick
           included. In the Capacitor shell it is a hard reload of the app. */}
-      Place data from{' '}
+      Place data from Geoapify and{' '}
       <Link href="/legal/attributions" className="underline">
-        Overture Maps
+        OpenStreetMap
       </Link>
     </p>
   )
@@ -481,14 +564,18 @@ function SheetBody({
   term,
   results,
   searching,
-  error,
+  failure,
   onPick,
+  onRetry,
 }: {
   term: string
   results: PlaceSearchResult[] | null
   searching: boolean
-  error: string | null
+  /** The thrown error itself — see the field's own state comment for why the
+   *  message lives on it rather than being re-derived here. */
+  failure: Error | null
   onPick: (place: PlaceSearchResult) => void
+  onRetry: () => void
 }) {
   const trimmed = term.trim()
 
@@ -503,8 +590,26 @@ function SheetBody({
     )
   }
 
-  if (error) {
-    return <p className="py-8 text-center text-sm font-medium text-danger">{error}</p>
+  // The seven states `place-search`'s spec requires the surface to tell
+  // apart, minus "below the minimum" (handled above) and "searching" (below):
+  // a `PlaceSearchCeilingError` reads as one of two DISTINCT messages
+  // depending on `.scope` — "wait" means an hour under one and until
+  // tomorrow under the other — a `PlaceSearchOfflineError` names the device
+  // rather than the surface, and everything else (`PlaceSearchUnavailableError`
+  // included, which is also what the application-wide ceiling reads as —
+  // deliberately not the rider's own fault) gets the one retry affordance the
+  // spec requires: an explicit tap, never armed on a timer.
+  if (failure) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-8">
+        <p className="text-center text-sm font-medium text-danger">{failure.message}</p>
+        {failure.name === 'PlaceSearchUnavailableError' && (
+          <Button type="button" variant="secondary" size="sm" onClick={onRetry}>
+            Try again
+          </Button>
+        )}
+      </div>
+    )
   }
 
   // `results === null` is "not yet", `[]` is "nothing matched" — the same
@@ -517,7 +622,7 @@ function SheetBody({
   if (results.length === 0) {
     return (
       <p className="py-8 text-center text-sm font-medium text-muted">
-        {searching ? 'Searching…' : 'No places match that search.'}
+        {searching ? 'Searching…' : 'No places match that search. Try fewer words, or type it in.'}
       </p>
     )
   }

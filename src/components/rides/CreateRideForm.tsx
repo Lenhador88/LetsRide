@@ -185,17 +185,24 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
           "the layby past the second roundabout" is a real meeting point and a
           picker that refuses it is worse than the bare field it replaced.
           Picking is the fast path; typing throws the pin away. */}
-      <PlaceSearchField
-        label="Starting location"
-        sheetTitle="Set start location"
-        placeholder="Search location"
-        value={startPlace}
-        onChange={setStartPlace}
-        names={RIDE_LOCATION_FIELD_NAMES}
-        maxNameLength={RIDE_MEETING_POINT_MAX}
-        freeText={{ text: meetingPoint, onTextChange: setMeetingPoint, required: true }}
-        disabled={pending}
-      />
+      <div className="flex flex-col gap-1.5">
+        <PlaceSearchField
+          label="Starting location"
+          sheetTitle="Set start location"
+          value={startPlace}
+          onChange={setStartPlace}
+          names={RIDE_LOCATION_FIELD_NAMES}
+          maxNameLength={RIDE_MEETING_POINT_MAX}
+          freeText={{ text: meetingPoint, onTextChange: setMeetingPoint, required: true }}
+          disabled={pending}
+        />
+        {/* place-search's own requirement: a ride SHALL remain creatable while
+            lookup is unavailable, and nothing on screen said a typed meeting
+            point was fine before this line. */}
+        <p className="px-1 text-xs text-muted">
+          Typing a meeting point is fine — search just adds a map and a pin.
+        </p>
+      </div>
 
       <div className="flex flex-col gap-1.5">
         {/*
