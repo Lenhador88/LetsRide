@@ -322,25 +322,35 @@ export const ID_NAMESPACE = 'geoapify:'
  * every pick would raise `23514` on a value the rider can neither see nor
  * shorten. `069` widens both to 512.
  *
- * **512 is a bound, and the reason it must not be trimmed is now MEASURED
- * rather than reasoned.** Two samples, two different prefixes:
+ * **The bound is 512 and the length is MEASURED, across three samples:**
  *
- *   | Sample | Total | Prefix | Name | Source |
- *   |---|---|---|---|---|
- *   | `Monument du Général Kléber` | 126 | 68 hex (34 bytes) | 29 bytes | vendor docs |
- *   | `Amsterdam-Purmerend` ×5 | 112 | **74 hex (37 bytes)** | 19 bytes | live response, 2026-08-19 |
+ *   | Sample | Total | Prefix | Name | + `geoapify:` | Source |
+ *   |---|---|---|---|---|---|
+ *   | `Monument du Général Kléber` | 126 | 68 hex | 29 B | 135 | vendor docs |
+ *   | `Amsterdam-Purmerend` | 112 | **74 hex** | 19 B | 121 | live, 2026-08-19 |
+ *   | `Berkhout` | 90 | **74 hex** | 8 B | **99** | live, 2026-08-19 |
  *
- * An earlier revision of this block read the first sample as
- * `68 + 2 × name bytes` and treated 68 as a constant. **It is not** — the live
- * response predicts 106 under that formula and is 112. So the prefix varies
- * with something the id does not disclose, and the length is not predictable
- * from the name at all. That makes 512 *more* clearly right, not less: there is
- * no formula to size a tighter bound from.
+ * The two live samples agree on a 74-hex prefix, so `74 + 2 × name bytes` holds
+ * for both. The documented sample's 68 does not fit that and is left unexplained
+ * rather than reasoned away — a different id generation, most likely. **Do not
+ * trim 512 toward the observed maximum**: the formula is only as good as the
+ * longest name anyone has seen, and a 200-byte name would reach 474.
  *
- * What both samples agree on is the only thing that has to be true here: **both
- * exceed the 100-character CHECK** that `066` and `067` put on the two columns,
- * so `069` widening them is load-bearing rather than precautionary. With this
- * file's `geoapify:` prefix the live id stores as 121 characters.
+ * ---------------------------------------------------------------------------
+ * The break against the CURRENT CHECK is INTERMITTENT, which is worse than
+ * universal
+ * ---------------------------------------------------------------------------
+ * `066` and `067` bound both columns at 100 characters. Read the right-hand
+ * column: `Berkhout` stores as **99 and fits**, `Amsterdam-Purmerend` as 121 and
+ * does not. So on today's schema a rider picking a short-named place succeeds
+ * and a rider picking a long-named one gets a raw `23514`, with nothing about
+ * the two attempts looking different to them.
+ *
+ * An earlier revision of this block said every pick would fail. That was the
+ * safer error to make, but it is still wrong, and the correction matters for how
+ * `069` gets prioritised: a break that fires on *some* places cannot be found by
+ * trying it once, and would survive a manual smoke test that happened to pick a
+ * village.
  */
 export const MAX_PLACE_ID_CHARS = 512
 

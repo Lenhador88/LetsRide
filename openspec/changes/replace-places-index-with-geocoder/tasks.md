@@ -12,6 +12,30 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
       record the responses verbatim in this file. **This is the premise of the change** — if the
       vendor cannot find a residential street either, stop and report rather than build.
 
+      **HALF ANSWERED, 2026-08-19, and the answered half is not the half that matters.**
+      `autocomplete?text=Berkhout` returns exactly **one** feature and it is the right one: the
+      village, `result_type: "city"`, `rank.confidence: 1`, `population: 2215`, at 52.640243 /
+      4.9967877. `address_line1` = `Berkhout`, `address_line2` = `NH, Netherlands`, so
+      `toPlaceResult` maps it to label `Berkhout` / meta `NH, Netherlands` — correct, and no code
+      change needed.
+
+      **`Willem Claijstraat Berkhout` has still not been called.** That is the premise: a town
+      resolving proves nothing the retired index could not already do — `search_places('Berkhout')`
+      returns five rows today. The whole change rests on the *street* resolving, and it is the one
+      call still outstanding.
+
+      Two things the town response settles in passing:
+
+      - **Autocomplete returns one feature for a specific term**, not the five the `geocode/search`
+        probe returned for `Amsterdam`. So the five-spread-candidates shape is a property of the
+        unfiltered search endpoint, not of autocomplete — which weakens, without killing, the
+        hypothesis on PD-267 that `resolve-ride-location`'s separation gate is what has been
+        refusing every tile.
+      - **A city carries `rank.confidence_city_level`, not `confidence_street_level`.**
+        `resolve-ride-location`'s `GeocodeFeature` reads only the street-level field, and a city is
+        rejected by the granularity gate before confidence is consulted, so nothing is broken —
+        but the vocabulary is wider than that type documents.
+
       **Partially answered, 2026-08-19, and the answer is supporting evidence rather than the
       exercise this task asks for.** The street is real and is in the Dutch BAG: `Willem Claijstraat`,
       Berkhout, municipality of Koggenland, postcodes `1647 AM` / `1647 AL`, house numbers 1–30. NL's
@@ -21,12 +45,26 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
 - [x] 0.2 Record the length and character set of the returned `place_id`, and the longest one across
       the two responses. This sets the CHECK in 3.2 (`design.md` §D6).
 
-      **MEASURED against a live response, 2026-08-19** — `geocode/search?text=Amsterdam`, five
-      features, every `place_id` **112 lowercase hex characters**. Past the 100-character CHECK that
-      `066` and `067` put on `clubs.location_place_id` and `rides.start_place_id`, so on today's
-      schema every pick raises `23514` on both tables. `069` widening them to 512 is load-bearing
-      rather than precautionary. With the `geoapify:` namespace prefix the live id stores as **121**
-      characters.
+      **MEASURED across three samples, 2026-08-19** — two live, one documented:
+
+      | Sample | Total | Prefix | Name | + `geoapify:` | Fits the 100 CHECK? |
+      |---|---|---|---|---|---|
+      | `Monument du Général Kléber` | 126 | 68 hex | 29 B | 135 | no |
+      | `Amsterdam-Purmerend` | 112 | 74 hex | 19 B | 121 | no |
+      | `Berkhout` | 90 | 74 hex | 8 B | **99** | **yes** |
+
+      **The break against today's CHECK is INTERMITTENT, and that is worse than universal.** An
+      earlier revision of this task said every pick would raise `23514`. It will not: `Berkhout`
+      stores in 99 characters and fits. So on the current schema a rider picking a short-named place
+      succeeds and one picking a long-named place gets a raw constraint error, with nothing about
+      the two attempts looking different to them. A break that fires on *some* places cannot be
+      found by trying it once, and would survive a manual smoke test that happened to pick a
+      village. `069` widening both columns to 512 stays load-bearing.
+
+      The two live samples agree on a 74-hex prefix, so `74 + 2 × name bytes` holds for both; the
+      documented sample's 68 does not fit that and is left unexplained rather than reasoned away.
+      **512 must not be trimmed toward the observed maximum** — the formula is only as good as the
+      longest name anyone has seen, and a 200-byte name reaches 474.
 
       **The formula recorded here on the documentation pass was WRONG, and how it was wrong is the
       reusable part.** That pass read the vendor's 126-character sample as a 34-byte binary prefix
