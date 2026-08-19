@@ -195,9 +195,8 @@
  * that is already gone never reaches the `deleteUser` already-gone branch.
  * **This shape was inferred until 2026-08-19 and is now measured**: the
  * 2026-08-14 probe never replayed a real, well-formed token against a deleted
- * account — only a missing header, a garbage `apikey`, and a garbage bearer —
- * and an earlier revision of the status-set comment below cited it as one of
- * the measured cases when it was not (reviewer, 2026-08-17). The replay ran on
+ * account — only a missing header, a garbage `apikey`, and a garbage bearer.
+ * The replay ran on
  * DEV against this deployed build (v5, `ezbr_sha256` 9793933d…): a disposable
  * account deleted, then the same still-unexpired access token sent again,
  * answering `{"error":"unauthorized"}` 401 — `add-account-deletion`'s task 2.6

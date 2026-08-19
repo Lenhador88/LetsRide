@@ -266,8 +266,11 @@ removal landing without its code repair is an outage.
 
   **Re-run against the redeployed build (DEV v5, `ezbr_sha256` 9793933d…) on 2026-08-19, seven
   cases, all passing.** Three disposable accounts created through `/auth/v1/signup` (DEV
-  autoconfirms, so no mailbox is needed) and all three deleted by the probe itself — `select
-  count(*) from auth.users where email like 'probe-pd102-%'` is 0:
+  autoconfirms, so no mailbox is needed). **The table below deletes two of the three** — case 1
+  takes the first, case 3 takes the second; the third holds the token for cases 6 and 7 and is
+  the account case 3 names in its body, and it was removed by an eighth call to the function with
+  its own correct password once the table was done. `select count(*) from auth.users where email
+  like 'probe-pd102-%'` is 0, which proves no residue and not who removed it — hence saying so:
 
   | # | Request | Result |
   |---|---|---|

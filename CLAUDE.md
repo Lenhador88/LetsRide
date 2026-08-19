@@ -397,12 +397,20 @@ Four rules, each with a test naming the trap it avoids:
 
 ## Supabase Rules
 
-**There are three Edge Functions in the repo and TWO deployed, and `delete-account` is the only
-place a service-role key exists.** The two commands that check this now disagree, and the
-disagreement is the state rather than a defect — `ls supabase/functions/` is 3,
-`list_edge_functions` against either ref is 2. `search-places` (PD-273, the place typeahead proxy)
-is the third and is deliberately undeployed: deploying is an owner action and it is on the critical
-path. Run both rather than trusting either, and read a gap as "in the repo, not yet deployed". Removing an `auth.users` row needs the Auth admin API, which needs the
+**There are three Edge Functions in the repo and all three are deployed to both projects, and
+`delete-account` is the only place a service-role key exists.** `search-places` (PD-273, the place
+typeahead proxy) was the odd one out and stopped being so on 2026-08-19 — the owner deployed it to
+DEV at 15:51Z and PROD at 15:52Z, v1 on both, `ezbr_sha256` `1f375a67…` equal. **A gap between the
+two commands is the ordinary state rather than a defect**, because deploying is an owner action and
+merging is not, so run both rather than trusting either and read a gap as "in the repo, not yet
+deployed":
+
+```bash
+ls supabase/functions/ | wc -l                    # what the repo has
+```
+```
+mcp__Supabase__list_edge_functions <ref>          # what each project runs
+``` Removing an `auth.users` row needs the Auth admin API, which needs the
 service-role key; that is decision #8's **first** reading ("more server compute, same database")
 and not its third. `resolve-ride-location` geocodes a ride's meeting point and renders its tiles
 — an outside call and a third-party key, and no service-role key. Each owns one operation, not
@@ -426,8 +434,9 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
 
 **Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, and each one's `ezbr_sha256`
 is equal across the two projects — and NEITHER is current against its file**, measured 2026-08-19:
-`delete-account` deployed 2026-08-17 against a file that moved 2026-08-18 (comments only, so the
-behaviour is current), and `resolve-ride-location` deployed 2026-08-16 against a file that moved
+`delete-account` deployed 2026-08-17 against a file that moved 2026-08-19 (comments only, so the
+behaviour is current — and that date moves with every header edit, which is why it is read off
+the command rather than trusted here), and `resolve-ride-location` deployed 2026-08-16 against a file that moved
 2026-08-19 with `067` — real code, so a **picked** ride start renders no map tile on either
 project. PD-267 is the redeploy, and it has a second half: the guard in `src/lib/actions/rides.ts`
 must come out in the same PR. **Cross-project equality is not what establishes currency**: it says

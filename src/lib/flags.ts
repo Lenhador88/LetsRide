@@ -13,12 +13,16 @@
  * function that enforced nothing: three taps and one character irreversibly
  * destroys the account, the `auth.users` row and every Storage object.
  *
- * **That precondition is now satisfied on both projects.** The owner
- * redeployed 2026-08-17 (PROD v9 / DEV v5), and the redeploy was verified by
- * CONTENT on 2026-08-19 rather than by a moved `ezbr_sha256` — a request with
- * no password and a request with a real non-empty wrong password both answer
- * `reauth_required`, and the two projects' digests are equal so the DEV run
- * describes PROD's build too. `openspec/changes/add-account-deletion/tasks.md`
+ * **That precondition is now satisfied — on DEV by probe, on PROD by content
+ * identity.** The owner redeployed 2026-08-17 (PROD v9 / DEV v5). DEV's build
+ * was verified by CONTENT on 2026-08-19 rather than by a moved `ezbr_sha256`:
+ * a request with no password and a request with a real non-empty wrong
+ * password both answer `reauth_required`. PROD was not probed; its digest
+ * equals DEV's, which makes the two builds byte-identical, and 3.4 separately
+ * read PROD's deployed SOURCE back through `get_edge_function`. **Both grades
+ * are stated because they are not the same grade** — the second is an
+ * argument, the first is a measurement, and this is the paragraph an owner
+ * reads immediately before flipping PROD's variable. `openspec/changes/add-account-deletion/tasks.md`
  * task 2.6 carries all seven cases.
  *
  * **The flag is still the gate, and it is still off until the owner sets it.**

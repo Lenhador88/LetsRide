@@ -41,18 +41,26 @@ import { useSignOut } from '@/lib/actions/navigate'
  * riders' postcards, and `supabase/functions/delete-account/` owns the
  * auth-row delete.
  *
- * **The deployed Edge Function does not yet enforce the password
- * `DeleteAccountSheet` collects, and this row is gated behind
- * `accountDeletionEnabled()` (`src/lib/flags.ts`) for exactly that reason —
- * reviewer finding #1, 2026-08-16.** Committing the function ahead of the
- * client inside one branch does not make a redeploy fail-closed: both merge
- * together, the client half auto-deploys, the function half deploys by hand
- * later if at all. Without the flag, merging this PR puts a live "Delete
- * account" affordance on `/profile` whose password is checked by nothing —
- * three taps and one character destroys the account. The flag defaults off
- * (unset, or anything but the literal string `'true'`); the owner sets it per
- * project only after confirming that project's redeploy enforces the proof by
- * content, never by a changed `ezbr_sha256` alone.
+ * **This row is gated behind `accountDeletionEnabled()` (`src/lib/flags.ts`),
+ * and it is still off everywhere — but the reason it went up is gone.** When
+ * the gate was added the deployed Edge Function enforced no password at all
+ * (reviewer finding #1, 2026-08-16): committing the function ahead of the
+ * client inside one branch does not make a redeploy fail-closed, since both
+ * merge together, the client half auto-deploys and the function half deploys
+ * by hand later if at all. Without the flag that merge would have put a live
+ * "Delete account" affordance on `/profile` whose password is checked by
+ * nothing.
+ *
+ * **The function now enforces it on both projects, measured rather than
+ * inferred — 2026-08-19, seven cases against the deployed build**, including
+ * a real non-empty wrong password answering `reauth_required`;
+ * `openspec/changes/add-account-deletion/tasks.md` §2.6 carries the table.
+ * So what keeps this row invisible is no longer a fake gate, it is that
+ * nothing sets `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED` on either Vercel
+ * target. The flag still defaults off (unset, or anything but the literal
+ * string `'true'`), and turning it on stays the owner's: the variable is
+ * inlined at build time, so it takes setting the variable on that target's
+ * env scope AND redeploying that target.
  *
  * Sign out goes through `lib/actions/auth.ts`, not a bare
  * `supabase.auth.signOut()` as the v1 button did — and that stays true now that
