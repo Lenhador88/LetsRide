@@ -894,31 +894,15 @@ export type NotificationCursor = { createdAt: string; id: string }
 
 /**
  * One row of `public.places` (`037`) — the self-hosted Overture Maps index the
- * ride meeting-point picker searches.
+ * ride meeting-point picker used to search.
  *
- * **Reference data, not rider content.** There is no owner column, no
- * `created_at` and no `updated_at`, because nothing in the app writes here:
- * `authenticated` holds SELECT and nothing else, and the rows arrive by
- * `\copy` from `scripts/places/extract-nl.py`. Nullability below is measured
- * against the 2026-07-22.0 release rather than assumed — `brand` is null on
- * 92% of rows and `street` on ~5%.
- *
- * **Attribution is SETTLED (PD-191, 2026-08-18) and it is NOT ODbL**, so a
- * screen may render a result. Overture publishes the Places theme under CDLA
- * Permissive 2.0 and Apache 2.0; the credit is paid once, on
- * `/legal/attributions`, and nothing is owed per result. The reflex to credit
- * "© OpenStreetMap contributors" is the trap this comment used to fall into:
- * measured across 527,725 sampled rows — roughly 72% of the extract — *zero*
- * cite OpenStreetMap. See `scripts/places/README.md` §Attribution for the
- * reasoning and the one thing still inferred rather than measured.
- *
- * Most screens want `PlaceSearchResult` instead. **Nothing reads this RAW
- * shape** — `src/lib/data/places.ts` exists, but it reads through
- * `search_places()`/`locality_centroid()`, which return `PlaceSearchResult`/
- * `LocalityCentroid`, never a row of this type directly. The table is loaded on
- * both projects (`PD-195`) — `docs/reference/schema.md`'s `places` row carries
- * the count, and `docs/HANDOFF.md` §`places` carries the command that
- * re-derives it.
+ * **RETIRED, PD-273.** `supabase/migrations/070_retire_places_index.sql` drops
+ * `public.places` along with `search_places()` and `locality_centroid()`; the
+ * typeahead now reads a geocoder through `search-places` (see
+ * `PlaceSearchResult`'s own doc block below). This type is kept, unused,
+ * because it still describes what a `place_search_attempts`-adjacent reader
+ * might expect to find historically — nothing in `src/` reads it, and nothing
+ * has since the proxy shipped.
  */
 export type Place = {
   /** The Overture GERS id. A string, not a uuid — GERS ids are opaque. */
@@ -934,115 +918,49 @@ export type Place = {
   /** ISO 3166-1 alpha-2. `'NL'` on every row today. */
   country: string
   confidence: number | null
-  /**
-   * `name`, `brand`, `street` and `locality` space-joined — the column
-   * `search_places()` matches tokens against (`039`). `postcode` is deliberately
-   * not in it.
-   *
-   * **Read-only, and two things the generated `Database` type gets wrong.** It
-   * is a STORED GENERATED column, so it appears in the generator's `Insert` and
-   * `Update` shapes and writing it raises `428C9` — there is no INSERT or UPDATE
-   * grant here in any case. And the generator types it `string | null`, which it
-   * never is: `name` is `NOT NULL` and every other field is coalesced, so the
-   * worst case is a string of separators. Trust this type over that one.
-   */
   search_text: string
 }
 
 /**
- * One row from the `search_places(q, near_lat, near_lon)` RPC (`037`) — at most
- * five, because the design's result sheet draws five.
+ * One result from the place typeahead — at most five, because the design's
+ * result sheet draws five (`CANDIDATE_LIMIT`, `search-places/shape.ts`).
  *
- * `label` over `meta` is the design's two-line result row: the place name, then
- * street and locality joined.
+ * **Answered by a geocoder through the `search-places` Edge Function proxy
+ * since PD-273**, not by the self-hosted `search_places()` RPC this type used
+ * to document. The SHAPE did not change — `{id, label, meta, lat, lon}` is
+ * still exactly what `PlaceSearchField` consumes — only where it comes from,
+ * so a later vendor swap is a change to `search-places/shape.ts` alone.
  *
- * **`meta` is nullable and the generated `Database` type says it is not.**
- * `generate_typescript_types` renders every `RETURNS TABLE` column
- * non-nullable, which is a generator limitation rather than a fact about the
- * function: a place with neither `street` nor `locality` yields `null` here, on
- * purpose, so the UI draws one line instead of an empty second one. Trust this
- * type over the generated one.
+ * `label` over `meta` is the design's two-line result row: the place name (or
+ * the vendor's `formatted`/`address_line1` fallback for a bare address), then
+ * street and locality on the second line.
  *
- * Six behaviours the caller has to know, all enforced in the function body
- * rather than by validation the client could skip:
+ * Three things that changed under this type when the vendor did, all in
+ * `lib/data/places.ts` and `search-places/shape.ts` rather than here:
  *
- *  - **Matching is PER TOKEN and ANDed, over `name`, `brand`, `street` and
- *    `locality`** (`039`). The term is split on whitespace and every token must
- *    appear somewhere in the row's searchable text, so `Jumbo Maastricht`
- *    reaches a Jumbo whose *locality* is Maastricht. **Adding a word always
- *    narrows** — useful for a "did you mean fewer results?" affordance, and the
- *    reason a two-word query can return nothing where one word returned five.
- *    `postcode` is NOT searchable.
- *  - **A place the query NAMES outranks a place it merely LOCATES.** Searching
- *    `Amsterdam` puts a place called "Amsterdam …" above the thousands merely
- *    located there. Within the top tier the order is trigram similarity to the
- *    name; within the address tier it is distance. Nothing to do client-side —
- *    just do not re-sort the rows, the order is the product.
- *  - **Fewer than three consecutive alphanumerics returns zero rows**, always.
- *    Not an error and not "no matches" — the query is refused, because below
- *    that a trigram index cannot serve the search and it degrades to a
- *    full-table scan (1,443 ms on a 750k-row synthetic bench; the real table is
- *    empty until it is loaded). Debounce and gate the input on it rather than
- *    rendering an empty state. The guard is on the WHOLE term, not per token, so
- *    `Kerkstraat 40` is fine and its two-character token is honoured rather than
- *    dropped — but `ab 40` is refused.
- *  - **More than EIGHT distinct tokens returns zero rows** (`049`), by the same
- *    refusal as the guard above rather than by an error. Deduplication is
- *    applied first and it is case-insensitive, so `Jumbo jumbo` spends one slot,
- *    not two. `boundTerm` in `src/lib/data/places.ts` normalises every term to
- *    at most eight space-separated tokens before calling, so this app's count
- *    cannot exceed the cap — note the direction of that claim: it is a property
- *    of what the client SENDS, not a prediction of how Postgres will tokenise a
- *    raw string. Predicting it was wrong on both the whitespace class and the
- *    case fold, and `places.ts` carries the measurements. The refusal itself
- *    exists for a caller reaching PostgREST directly, which no client-side rule
- *    can reach.
- *  - **`near_lat`/`near_lon` are optional, and they are a bias with a sharp
- *    edge.** Matches within roughly 28 km fill the list first and the rest of
- *    the country fills only what is left — so when five nearby matches exist,
- *    the national pass never runs and a *distant branch of a nearby chain is
- *    unreachable* ("Jumbo" in Utrecht cannot reach the Maastricht one).
- *    Deliberate, and `039` makes it MORE likely by widening what matches.
- *    **The escape hatch is now something a rider can type**: naming the town
- *    ("Jumbo Maastricht") empties the local box and lets the national pass run.
- *    Omitting the point entirely still works and ranks on text alone.
- *  - **A nonsense coordinate is discarded, not rejected.** `Infinity`, `NaN`
- *    and anything outside ±90 / ±180 fall back to the nationwide ranking rather
- *    than raising, so a broken GPS costs relevance and never an error toast.
+ *  - **Matching, ranking and ordering are the vendor's**, not a Postgres
+ *    function this repo wrote. The proxy does not re-rank — the vendor's own
+ *    order is the order a rider sees.
+ *  - **No country filter, bias only** (`design.md` §D8) — a ride into Belgium
+ *    or Germany stays findable, where the retired index was NL-only by
+ *    accident of its extract.
+ *  - **`id` is namespaced by provider** — `geoapify:<id>` — because `rides.
+ *    start_place_id`/`clubs.location_place_id` are provenance-only text with
+ *    no foreign key, and a namespace is what lets a stored id say which
+ *    provider issued it without consulting anything outside the row. An id
+ *    stored before this ships (one DEV ride carries an Overture GERS uuid)
+ *    stays valid provenance and is never rewritten.
  *
- * **Debounce it — required, not advisable, and the numbers are worse than a
- * city name.** Cost is roughly linear in matched rows (8–11 µs each) and the
- * broadest tokens in Dutch address text are street-type suffixes. On the same
- * 750k-row synthetic bench, national pass: `straat` **2,957 ms** (it matches
- * 52% of rows), `sta` **996 ms**, `weg` 740 ms, a city name 497 ms.
- *
- * **`sta` is the one to design around** — three characters, so it is the *first*
- * query this fires the instant the guard stops refusing, for anyone typing
- * "Stationsweg". Two things to do about it, both client-side:
- *
- *  - Fire on a pause, not a keystroke.
- *  - **Always pass `near_lat`/`near_lon` when you have them.** With a location
- *    every term above measured 29–152 ms, because the bbox applies. Without one
- *    there is nothing to narrow the scan.
- *  - **Gate the token COUNT, not just the timing — still worth doing, but for a
- *    different reason since `049`.** Per-candidate work is linear in the number
- *    of distinct patterns, so a term holding many patterns that match the same
- *    rows multiplies the whole query: ten substrings of one word inside 49
- *    characters measured **5,914 ms**. `039` §5d collapses case-insensitively
- *    duplicate tokens, which closes the repeat vector; nothing collapses
- *    genuinely distinct substrings and a function-level `statement_timeout`
- *    cannot bound it (the timer is armed before the function is entered), so
- *    **`049` refuses above eight distinct tokens** and that is now the real
- *    bound. The client-side truncation is no longer the only thing standing
- *    between a rider and a six-second query — it is what keeps a rider from
- *    meeting the refusal, which is a UX job rather than a safety one.
- *
- * Nothing exceeds the 8 s statement timeout, so a slow query surfaces as a slow
- * screen rather than an error — which is why this is worth reading rather than
- * discovering.
+ * **Debounce and abort both still matter, and the reason changed from a query
+ * plan to a credit.** Every request now costs one credit against a shared,
+ * metered daily vendor quota (`search-places/shape.ts`'s `PER_RIDER_HOURLY`/
+ * `PER_RIDER_DAILY`/`APP_DAILY_SEARCH`), so firing on every keystroke is a
+ * spend problem now rather than only a latency one. See
+ * `PLACE_SEARCH_MIN_CHARS`'s own doc block in `src/lib/data/places.ts`.
  */
 export type PlaceSearchResult = {
-  /** The Overture GERS id. Store this on the ride, not the label. */
+  /** A namespaced, opaque provider id. Store this on the ride or club, not
+   *  the label — see the note on namespacing above. */
   id: string
   /** The place name — the design's Label line. */
   label: string
@@ -1054,78 +972,35 @@ export type PlaceSearchResult = {
 }
 
 /**
- * The single row from the `locality_centroid(q)` RPC (`040`) — or **no row at
- * all**, which is the case the caller has to handle first.
+ * The centroid the `search-places` proxy's `locality` mode answers with, or
+ * `null` when it has none — the case a caller has to handle first.
  *
- * It exists for one job: when the rider declines GPS, `profiles.location` — the
- * free-text city from onboarding — is the position signal to fall back on. It
- * is no longer the *only* one: `051` gave `rides` `latitude`/`longitude`, so a
- * ride the rider is looking at can supply a coordinate too (`PD-114` step 3).
- * Nothing stores a rider's own position. This turns
- * that string into a `near_lat`/`near_lon` pair for `search_places()`, which is
- * the difference between a 2,957 ms nationwide search and a 152 ms local one.
+ * It exists for one job: when the rider declines GPS, `profiles.location` —
+ * the free-text city from onboarding — is the position signal to fall back
+ * on. It is no longer the *only* one: `051` gave `rides` `latitude`/
+ * `longitude`, so a ride the rider is looking at can supply a coordinate too
+ * (`PD-114` step 3). Nothing stores a rider's own position.
  *
  * ```ts
- * const [c] = await supabase.rpc('locality_centroid', { q: profile.location })
- *   .then(r => r.data ?? [])
- * const { data } = await supabase.rpc('search_places',
- *   c ? { q: term, near_lat: c.lat, near_lon: c.lon } : { q: term })
+ * const centroid = await getLocalityCentroid(profile.location)
+ * const results = await searchPlaces(term, centroid)
  * ```
  *
- * Four things the caller has to know:
+ * **No `place_count` any more — PD-273.** The retired `locality_centroid()`
+ * RPC counted rows in the self-hosted index it resolved against; there is no
+ * table to count rows in once the geocoder answers instead, and nothing read
+ * the field for anything other than a rough confidence signal. `null` (no
+ * centroid) is now the whole "I don't know this place" answer, exactly as
+ * zero rows was before.
  *
- *  - **Zero rows is the "no location" answer.** It is returned for an unknown
- *    city, for a null or empty `q`, and for every input against an index that
- *    has not been loaded. All of these mean the same thing at the call site:
- *    call `search_places()` without coordinates. Do **not** try to tell them
- *    apart; an unloaded index is indistinguishable from an unknown city by
- *    design, not by oversight.
- *
- *    **It is not the common answer, and `040` — the migration this block sends
- *    you to — states in its own header that it is.** That file says `places`
- *    "holds 0 rows on DEV and does not exist on PROD at all", and that `rides`
- *    "has no coordinate columns … That is the whole inventory". Both were true
- *    when it was written and neither is now; migrations are append-only, so
- *    those lines stay wrong for ever and reading the source is what re-derives
- *    the mistake. Count instead:
- *
- *    ```sql
- *    select (select count(*) from public.places) as rows,
- *           (select count(*) from public.locality_centroid('Utrecht')) as resolves;
- *    -- 736,538 / 1 on both projects, 2026-08-17
- *    ```
- *  - **Matching is EXACT** — `lower(btrim(locality))` on both sides, so case and
- *    surrounding whitespace are forgiven and nothing else is. `Utrech`,
- *    `trecht` and `Utrechtt` all return zero rows. This is deliberate and the
- *    migration argues it at length: it is why this lookup has none of
- *    `search_places`' scan-cost surface and needs no guard, no length cap and no
- *    debounce. If a rider's stored city does not resolve, that is a data
- *    question, not a reason to loosen the predicate.
- *  - **Cache it for the session.** A rider's onboarding city does not change
- *    between keystrokes, so resolving it once per screen is right and calling it
- *    alongside every `search_places()` doubles the round trips for nothing.
- *  - **`place_count` is a row count, NOT a confidence score**, and the
- *    difference bites. It answers "does the index know this town, and from more
- *    than a handful of rows". It cannot see the case that actually goes wrong:
- *    Dutch names repeat — Bergen NH and Bergen L are 180 km apart — and such a
- *    locality reports a perfectly healthy count while having no single centre.
- *    The centroid is a **median** rather than a mean precisely so that case
- *    resolves to the larger of the two towns instead of a field between them
- *    (measured: 68 km off under a mean, 2.3 km under a median), but no number in
- *    this row flags it. Treat a low count as "maybe don't bias on this"; do not
- *    read a high one as certainty.
- *
- * Unlike `PlaceSearchResult.meta`, **every field here is genuinely non-nullable**
- * and the generated `Database` type is right for once: `places.lat`/`lon` are
- * `not null`, and the function's `having count(*) > 0` means a returned row
- * always had at least one input. Emptiness is expressed as *zero rows*, never as
- * a row of nulls — which is the whole reason that `having` is in the migration.
+ * **Cache it — `PLACE_SEARCH_CACHE_MS`-scale, not per keystroke.** A rider's
+ * onboarding city does not change between searches, so resolving it once per
+ * `resolveRiderLocation()` memo (`src/lib/location/rider-location.ts`) is
+ * right; calling it alongside every search would double the credits spent for
+ * nothing.
  */
 export type LocalityCentroid = {
-  /** Median latitude of the places in that locality. */
   lat: number
   /** `lon`, not `lng` — matching `Place.lon` and `PlaceSearchResult.lon`. */
   lon: number
-  /** How many rows backed the answer. A row count, not a confidence score. */
-  place_count: number
 }

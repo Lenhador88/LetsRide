@@ -1,239 +1,133 @@
+import { FunctionsHttpError, FunctionsFetchError } from '@supabase/supabase-js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * `search_places()` (`037`/`039`) and `locality_centroid()` (`040`), read
- * through `lib/data/places.ts`.
+ * `search-places` (PD-273), read through `searchPlaces`/`getLocalityCentroid`
+ * in `lib/data/places.ts`. Replaces the `search_places()`/`locality_centroid()`
+ * RPC-era suite this file used to hold — the token cap and `boundTerm` are
+ * gone with the query plan they bounded, and the seven-state contract
+ * (`PlaceSearchCeilingError`/`PlaceSearchUnavailableError`/
+ * `PlaceSearchOfflineError`) is what replaces "throws honestly" for the cases
+ * a rider needs told apart.
  *
- * The client is a thenable stub rather than a mock of `@supabase/supabase-js`
- * — same reasoning as `media.test.ts`'s header: what is worth pinning is the
- * contract `searchPlaces`/`getLocalityCentroid` rely on (one `.rpc()` call,
- * `.abortSignal()` chaining, `{ data, error }`), not the library's internals.
+ * A thenable stub rather than a mock of `@supabase/supabase-js`'s client —
+ * `media.test.ts`'s reasoning: what is worth pinning is the contract
+ * `searchPlaces`/`getLocalityCentroid` rely on (`functions.invoke`'s
+ * `{data, error}` shape), not the library's internals. `FunctionsHttpError`
+ * itself is real, imported from the real package, because `edgeFunctionErrorCode`
+ * narrows on `instanceof` — a structural stand-in would defeat the very check
+ * being tested.
  */
 
-type RpcResult = { data: unknown; error: unknown }
-
-function fakeQuery(result: RpcResult) {
-  const query = {
-    abortSignal: vi.fn(() => query),
-    then(onFulfilled: (v: RpcResult) => unknown, onRejected?: (e: unknown) => unknown) {
-      return Promise.resolve(result).then(onFulfilled, onRejected)
-    },
-  }
-  return query
-}
-
-const rpc = vi.fn()
+const invoke = vi.fn()
 
 vi.mock('@/lib/supabase/resolve', () => ({
-  resolveSupabase: async () => ({ rpc }),
+  resolveSupabase: async () => ({ functions: { invoke } }),
 }))
 
-const { PLACE_SEARCH_MIN_CHARS, PLACE_SEARCH_MAX_TOKENS, searchPlaces, getLocalityCentroid } =
-  await import('@/lib/data/places')
+const {
+  PLACE_SEARCH_MIN_CHARS,
+  PLACE_SEARCH_MAX_CHARS,
+  PlaceSearchCeilingError,
+  PlaceSearchOfflineError,
+  PlaceSearchUnavailableError,
+  searchPlaces,
+  getLocalityCentroid,
+  resetPlaceSearchCeilingHeuristic,
+} = await import('@/lib/data/places')
+
+/** A `FunctionsHttpError` whose `.context` is a real `Response`-shaped object
+ *  carrying the function's own JSON body — exactly what `edgeFunctionErrorCode`
+ *  reads. */
+function httpError(status: number, body: unknown): FunctionsHttpError {
+  return new FunctionsHttpError({
+    status,
+    json: async () => body,
+  } as unknown as Response)
+}
 
 beforeEach(() => {
-  rpc.mockReset()
-  rpc.mockReturnValue(fakeQuery({ data: [], error: null }))
+  invoke.mockReset()
+  resetPlaceSearchCeilingHeuristic()
+  invoke.mockResolvedValue({ data: { results: [] }, error: null })
 })
 
 describe('the 4-character gate', () => {
-  it('is 4, not the database\'s 3', () => {
-    // The database's own floor is a *security* guard (`term ~
-    // '[[:alnum:]]{3}'`), refused rather than "no matches". This constant is
-    // a stricter, unrelated performance/UX choice layered on top — see the
-    // constant's own doc comment for why collapsing the two would be wrong in
-    // either direction.
+  it('is 4', () => {
+    // Carried over from the RPC era deliberately — `lib/data/places.ts`'s own
+    // doc block on the constant explains why the number survives even though
+    // the reason (a credit, not a sequential scan) changed underneath it.
     expect(PLACE_SEARCH_MIN_CHARS).toBe(4)
   })
 
   it('returns empty with no round trip below the floor', async () => {
     await expect(searchPlaces('sta', null)).resolves.toEqual([])
-    expect(rpc).not.toHaveBeenCalled()
+    expect(invoke).not.toHaveBeenCalled()
   })
 
   it('fires at exactly the floor', async () => {
-    rpc.mockReturnValue(fakeQuery({ data: [{ id: '1', label: 'Stationsweg', meta: null, lat: 1, lon: 2 }], error: null }))
+    invoke.mockResolvedValue({
+      data: { results: [{ id: 'geoapify:1', label: 'Stationsweg', meta: null, lat: 1, lon: 2 }] },
+      error: null,
+    })
 
     const results = await searchPlaces('stat', null)
 
-    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(invoke).toHaveBeenCalledTimes(1)
     expect(results).toHaveLength(1)
   })
 
   it('gates on the trimmed length, not the raw one', async () => {
-    // Three visible characters padded with whitespace must not sneak past the
-    // floor by counting the padding.
     await expect(searchPlaces('  ab  ', null)).resolves.toEqual([])
-    expect(rpc).not.toHaveBeenCalled()
+    expect(invoke).not.toHaveBeenCalled()
 
     await searchPlaces('  abcd  ', null)
-    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(invoke).toHaveBeenCalledTimes(1)
   })
 })
 
-describe('the token cap', () => {
-  it('truncates rather than refusing a long term', async () => {
-    const tokens = Array.from({ length: PLACE_SEARCH_MAX_TOKENS + 5 }, (_, i) => `word${i}`)
-
-    await searchPlaces(tokens.join(' '), null)
-
-    expect(rpc).toHaveBeenCalledWith(
-      'search_places',
-      expect.objectContaining({ q: tokens.slice(0, PLACE_SEARCH_MAX_TOKENS).join(' ') })
-    )
-  })
-
-  it('leaves a short term untouched', async () => {
-    await searchPlaces('Jumbo Maastricht', null)
-
-    expect(rpc).toHaveBeenCalledWith('search_places', expect.objectContaining({ q: 'Jumbo Maastricht' }))
-  })
-
-  /**
-   * The nit reviewer flagged: `039` §5d dedups case-insensitively before
-   * building patterns, so the CAP must do the same before slicing — otherwise
-   * eight repeats of one word (case-varied, so a naive dedup would miss it)
-   * fill the whole budget and a genuinely distinct final word never reaches
-   * the database at all.
-   */
-  it('dedupes case-insensitively before truncating, so a repeated word cannot push out a distinct one', async () => {
-    const repeated = ['Jumbo', 'jumbo', 'JUMBO', 'Jumbo', 'jumbo', 'JUMBO', 'Jumbo', 'jumbo']
-    expect(repeated).toHaveLength(PLACE_SEARCH_MAX_TOKENS)
-
-    await searchPlaces([...repeated, 'Maastricht'].join(' '), null)
-
-    // `Maastricht` survives — the point of deduping before the slice. The
-    // repeats do NOT reach the database: normalisation is unconditional now, so
-    // the deduped list is what is sent rather than the raw term. That only
-    // helps, since `similarity(term, name)` was being diluted by them.
-    expect(rpc).toHaveBeenCalledWith(
-      'search_places',
-      expect.objectContaining({ q: 'Jumbo Maastricht' })
-    )
-  })
-
-  it('still truncates once the number of genuinely distinct tokens exceeds the cap', async () => {
-    const distinct = Array.from({ length: PLACE_SEARCH_MAX_TOKENS + 2 }, (_, i) => `word${i}`)
-
-    await searchPlaces(distinct.join(' '), null)
-
-    expect(rpc).toHaveBeenCalledWith(
-      'search_places',
-      expect.objectContaining({ q: distinct.slice(0, PLACE_SEARCH_MAX_TOKENS).join(' ') })
-    )
-  })
-
-  /**
-   * **The assertion that survives an ICU upgrade, which is the one that
-   * matters.** Everything else here pins a number; this pins the PROPERTY the
-   * correctness argument actually rests on — the database receives at most
-   * eight tokens separated by single U+0020, and containing no character any
-   * locale's `\s` could split on.
-   *
-   * The two inputs are the measured divergence vectors, not invented ones. The
-   * first defeats a client that predicts Postgres's SPLIT (`U+001F` separates
-   * there and not in JavaScript); the second defeats one that predicts its
-   * FOLD (`U+1C89`/`U+1C8A` are one token to V8's `toLowerCase` and two to the
-   * server's ICU). Both reached the database as nine before `boundTerm` began
-   * normalising unconditionally.
-   */
-  it.each([
-    ['a control character Postgres splits on and JavaScript does not', 'aabb cc dd ee ff gg hh ii'],
-    ['a case pair V8 folds and ICU does not', 'Ᲊx ᲊx abc def ghi jkl mno pqr stu'],
-    ['ordinary text', 'Albert Heijn XL Hoog Catharijne Utrecht'],
-    ['whitespace of every kind', 'aa bb cc\tdd　eeffgg hh ii jj'],
-  ])('sends at most eight single-space-separated tokens — %s', async (_label, term) => {
-    await searchPlaces(term, null)
-
-    const { q } = rpc.mock.calls[0][1] as { q: string }
-
-    expect(q.split(' ').length).toBeLessThanOrEqual(PLACE_SEARCH_MAX_TOKENS)
-    // No leading, trailing or doubled separator, and nothing but U+0020 between
-    // tokens — so Postgres's own split cannot find a boundary this one did not.
-    expect(q).toBe(q.trim())
-    expect(q).not.toMatch(/[\s\p{Zs}\p{Cc}]{2}|^[\s\p{Zs}\p{Cc}]|[\s\p{Zs}\p{Cc}]$/u)
-    expect(q.replace(/ /g, '')).not.toMatch(/[\s\p{Zs}\p{Cc}]/u)
-  })
-
-  /**
-   * **A second copy of a number is the shape that goes stale, so this reads the
-   * live one.** The database's cap and `PLACE_SEARCH_MAX_TOKENS` must stay
-   * equal in one direction: drop the database's below this one and every
-   * seven-or-eight-token query silently returns zero rows.
-   *
-   * It scans for the LAST migration that sets a cap rather than naming `049`.
-   * Migrations are append-only, so a future `050` lowering it would leave a
-   * hardcoded `049` reading a frozen file — green, while the live database
-   * refused at the new number. That is precisely the dead zone this exists to
-   * catch, so the test has to follow the supersession rather than the filename.
-   */
-  it('is the same number the newest migration refuses above', async () => {
-    const { readFileSync, readdirSync } = await import('node:fs')
-
-    const caps = readdirSync('supabase/migrations')
-      .filter((f) => f.endsWith('.sql'))
-      .sort()
-      .map((f) => ({
-        file: f,
-        cap: readFileSync(`supabase/migrations/${f}`, 'utf8').match(
-          /array_length\(tk\.pats, 1\), 0\) <= (\d+) as searchable/
-        ),
-      }))
-      .filter((m) => m.cap !== null)
-
-    expect(caps.length, 'no migration carries a search_places token cap in the form this reads').toBeGreaterThan(0)
-    expect(Number(caps[caps.length - 1].cap![1])).toBe(PLACE_SEARCH_MAX_TOKENS)
-  })
-})
-
-describe('the proximity bias', () => {
-  it('passes near_lat/near_lon through when supplied', async () => {
+describe('the character bound — replaces the retired token cap', () => {
+  it('sends the mode, the text and the bias — no rider identity', async () => {
     await searchPlaces('Stationsweg', { lat: 52.09, lon: 5.12 })
 
-    expect(rpc).toHaveBeenCalledWith('search_places', {
-      q: 'Stationsweg',
-      near_lat: 52.09,
-      near_lon: 5.12,
+    expect(invoke).toHaveBeenCalledWith('search-places', {
+      body: { mode: 'search', text: 'Stationsweg', near: { lat: 52.09, lon: 5.12 } },
+      signal: undefined,
     })
   })
 
-  it('passes null coordinates rather than omitting them when there is no bias', async () => {
+  it('truncates a pasted essay before it is sent, at PLACE_SEARCH_MAX_CHARS', async () => {
+    const long = 'x'.repeat(PLACE_SEARCH_MAX_CHARS + 50)
+
+    await searchPlaces(long, null)
+
+    const body = invoke.mock.calls[0][1].body as { text: string }
+    expect(body.text).toHaveLength(PLACE_SEARCH_MAX_CHARS)
+  })
+
+  it('passes null when there is no bias', async () => {
     await searchPlaces('Stationsweg', null)
 
-    expect(rpc).toHaveBeenCalledWith('search_places', {
-      q: 'Stationsweg',
-      near_lat: null,
-      near_lon: null,
+    expect(invoke).toHaveBeenCalledWith('search-places', {
+      body: { mode: 'search', text: 'Stationsweg', near: null },
+      signal: undefined,
     })
   })
 })
 
 describe('cancellation', () => {
-  it('chains abortSignal onto the query only when one is given', async () => {
-    const query = fakeQuery({ data: [], error: null })
-    rpc.mockReturnValue(query)
+  it('passes the signal through to functions.invoke', async () => {
     const controller = new AbortController()
 
     await searchPlaces('Stationsweg', null, controller.signal)
 
-    expect(query.abortSignal).toHaveBeenCalledWith(controller.signal)
+    expect(invoke).toHaveBeenCalledWith('search-places', expect.objectContaining({ signal: controller.signal }))
   })
 
-  it('does not call abortSignal without one', async () => {
-    const query = fakeQuery({ data: [], error: null })
-    rpc.mockReturnValue(query)
-
-    await searchPlaces('Stationsweg', null)
-
-    expect(query.abortSignal).not.toHaveBeenCalled()
-  })
-
-  it('surfaces a cancelled request as AbortError, not as a data-read failure', async () => {
+  it('surfaces an aborted request as AbortError, not as a data-read failure', async () => {
     const controller = new AbortController()
     controller.abort()
-    rpc.mockReturnValue(
-      fakeQuery({ data: null, error: { message: 'AbortError: The user aborted a request.' } })
-    )
+    invoke.mockResolvedValue({ data: null, error: new FunctionsFetchError(new DOMException('', 'AbortError')) })
 
     await expect(searchPlaces('Stationsweg', null, controller.signal)).rejects.toMatchObject({
       name: 'AbortError',
@@ -241,61 +135,137 @@ describe('cancellation', () => {
   })
 })
 
-describe('a genuine failure', () => {
-  it('throws honestly, the same way every other read in this directory does', async () => {
-    rpc.mockReturnValue(fakeQuery({ data: null, error: { message: 'connection refused', code: '08006' } }))
+describe('the seven-state contract — searchPlaces throws a named error per state', () => {
+  it('throws PlaceSearchCeilingError on a 429, never a generic failure', async () => {
+    invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
 
-    await expect(searchPlaces('Stationsweg', null)).rejects.toThrow(/Could not read places/)
+    await expect(searchPlaces('Stationsweg', null)).rejects.toBeInstanceOf(PlaceSearchCeilingError)
+  })
+
+  it('the two rider ceilings do NOT share a message — the requirement place-search states explicitly', async () => {
+    // No local evidence of a burst -> the safe default, 'daily'.
+    invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+    const daily = await searchPlaces('Stationsweg', null).catch((e) => e)
+    expect(daily).toBeInstanceOf(PlaceSearchCeilingError)
+    expect(daily.scope).toBe('daily')
+
+    // Local evidence of a burst (20 accepted attempts in the last hour) ->
+    // 'hourly'. Each accepted attempt is a successful (or ledger-accepted)
+    // response, which is what a real search actually looks like before a
+    // ceiling bites.
+    resetPlaceSearchCeilingHeuristic()
+    invoke.mockResolvedValue({ data: { results: [] }, error: null })
+    for (let i = 0; i < 20; i++) await searchPlaces('Stationsweg', null)
+
+    invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+    const hourly = await searchPlaces('Stationsweg', null).catch((e) => e)
+    expect(hourly).toBeInstanceOf(PlaceSearchCeilingError)
+    expect(hourly.scope).toBe('hourly')
+
+    expect(daily.message).not.toBe(hourly.message)
+  })
+
+  it('a 403 (the participation gate) reads the same as a ceiling, never disclosing which gate refused', async () => {
+    invoke.mockResolvedValue({ data: null, error: httpError(403, { error: 'forbidden' }) })
+
+    await expect(searchPlaces('Stationsweg', null)).rejects.toBeInstanceOf(PlaceSearchCeilingError)
+  })
+
+  it('a vendor/ledger outage (502) throws PlaceSearchUnavailableError, not a ceiling', async () => {
+    invoke.mockResolvedValue({ data: null, error: httpError(502, { error: 'unavailable' }) })
+
+    await expect(searchPlaces('Stationsweg', null)).rejects.toBeInstanceOf(PlaceSearchUnavailableError)
+  })
+
+  it('a network failure that never reached the function also reads as unavailable', async () => {
+    invoke.mockResolvedValue({ data: null, error: new FunctionsFetchError(new TypeError('fetch failed')) })
+
+    await expect(searchPlaces('Stationsweg', null)).rejects.toBeInstanceOf(PlaceSearchUnavailableError)
+  })
+
+  it('an offline device is refused before functions.invoke is ever called', async () => {
+    // No `original` guard — Node's built-in `navigator` carries no `onLine`
+    // property at all until this defines one, so a guard that skips
+    // restoration when there was nothing to restore FROM leaves `onLine`
+    // permanently `false` for every test file after this one. Deleting is
+    // the correct undo for "the property did not exist before".
+    const original = Object.getOwnPropertyDescriptor(globalThis.navigator, 'onLine')
+    Object.defineProperty(globalThis.navigator, 'onLine', { value: false, configurable: true })
+    try {
+      await expect(searchPlaces('Stationsweg', null)).rejects.toBeInstanceOf(PlaceSearchOfflineError)
+      expect(invoke).not.toHaveBeenCalled()
+    } finally {
+      if (original) {
+        Object.defineProperty(globalThis.navigator, 'onLine', original)
+      } else {
+        delete (globalThis.navigator as { onLine?: boolean }).onLine
+      }
+    }
+  })
+
+  it('no message ever names the vendor, a status code, or a quota number', async () => {
+    invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+    let ceiling: Error | undefined
+    try {
+      await searchPlaces('Stationsweg', null)
+    } catch (e) {
+      ceiling = e as Error
+    }
+
+    invoke.mockResolvedValue({ data: null, error: httpError(502, { error: 'unavailable' }) })
+    let unavailable: Error | undefined
+    try {
+      await searchPlaces('Stationsweg', null)
+    } catch (e) {
+      unavailable = e as Error
+    }
+
+    expect(ceiling).toBeDefined()
+    expect(unavailable).toBeDefined()
+    for (const message of [ceiling!.message, unavailable!.message]) {
+      expect(message.toLowerCase()).not.toMatch(/geoapify|429|502|quota|credit/)
+    }
   })
 })
 
 describe('the ordinary success path', () => {
-  it('returns the rows as the RPC gave them', async () => {
-    const rows = [{ id: 'gers-1', label: 'Café de Molen', meta: 'Kerkstraat 1, Utrecht', lat: 52.09, lon: 5.12 }]
-    rpc.mockReturnValue(fakeQuery({ data: rows, error: null }))
+  it('returns the rows as the function gave them', async () => {
+    const rows = [{ id: 'geoapify:1', label: 'Café de Molen', meta: 'Kerkstraat 1, Utrecht', lat: 52.09, lon: 5.12 }]
+    invoke.mockResolvedValue({ data: { results: rows }, error: null })
 
     await expect(searchPlaces('Café de Molen', null)).resolves.toEqual(rows)
+  })
+
+  it('falls back to [] when the response body carries no results array', async () => {
+    invoke.mockResolvedValue({ data: {}, error: null })
+
+    await expect(searchPlaces('Café de Molen', null)).resolves.toEqual([])
   })
 })
 
 describe('getLocalityCentroid', () => {
-  beforeEach(() => {
-    rpc.mockReset()
-  })
-
   it('does not call out for an empty or whitespace-only query', async () => {
     expect(await getLocalityCentroid('')).toBeNull()
     expect(await getLocalityCentroid('   ')).toBeNull()
-    expect(rpc).not.toHaveBeenCalled()
+    expect(invoke).not.toHaveBeenCalled()
   })
 
-  it('resolves a locality to its full row — lat, lon AND place_count', async () => {
-    // `LocalityCentroid` (`src/types/index.ts`, `040`) is the canonical type;
-    // this returns the row as-is rather than narrowing it to `{lat, lon}`.
-    rpc.mockReturnValue(fakeQuery({ data: [{ lat: 52.09, lon: 5.12, place_count: 431 }], error: null }))
+  it('resolves a locality to {lat, lon} — no place_count any more, the table that counted rows is gone', async () => {
+    invoke.mockResolvedValue({ data: { centroid: { lat: 52.09, lon: 5.12 } }, error: null })
 
-    await expect(getLocalityCentroid('Utrecht')).resolves.toEqual({ lat: 52.09, lon: 5.12, place_count: 431 })
-    expect(rpc).toHaveBeenCalledWith('locality_centroid', { q: 'Utrecht' })
+    await expect(getLocalityCentroid('Utrecht')).resolves.toEqual({ lat: 52.09, lon: 5.12 })
+    expect(invoke).toHaveBeenCalledWith('search-places', { body: { mode: 'locality', text: 'Utrecht', near: null } })
   })
 
-  /**
-   * The behaviour this accessor is *for*: a function that is renamed,
-   * dropped, or refused by a role grant must degrade the resolver to "no
-   * bias" rather than take a search sheet down. Deliberately not narrowed to
-   * a specific error code, because a broken deploy can surface as several
-   * different shapes depending on what PostgREST's schema cache currently
-   * holds. Also asserts the `console.warn` fires — the thing that keeps that
-   * kind of break from being invisible forever.
-   */
-  it('degrades to null on any RPC error, not only "function missing" — and warns rather than staying silent', async () => {
+  it('degrades to null on ANY failure — a ceiling, an outage, or a malformed body — and warns rather than staying silent', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
-      rpc.mockReturnValue(fakeQuery({ data: null, error: { message: 'could not find function', code: '42883' } }))
+      invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
       await expect(getLocalityCentroid('Utrecht')).resolves.toBeNull()
       expect(warn).toHaveBeenCalled()
 
       warn.mockClear()
-      rpc.mockReturnValue(fakeQuery({ data: null, error: { message: 'PGRST202', code: 'PGRST202' } }))
+      invoke.mockResolvedValue({ data: null, error: httpError(502, { error: 'unavailable' }) })
       await expect(getLocalityCentroid('Utrecht')).resolves.toBeNull()
       expect(warn).toHaveBeenCalled()
     } finally {
@@ -303,29 +273,29 @@ describe('getLocalityCentroid', () => {
     }
   })
 
-  it('returns null for a locality with no matching rows (zero rows, never a row of nulls)', async () => {
-    rpc.mockReturnValue(fakeQuery({ data: [], error: null }))
+  it('returns null for "no centroid", never a row of nulls', async () => {
+    invoke.mockResolvedValue({ data: { centroid: null }, error: null })
     await expect(getLocalityCentroid('Nowhereville')).resolves.toBeNull()
   })
 
-  it('sanity-checks lat/lon rather than trusting a malformed row blindly', async () => {
-    rpc.mockReturnValue(fakeQuery({ data: [{ lat: null, lon: null, place_count: 0 }], error: null }))
+  it('sanity-checks lat/lon rather than trusting a malformed pair blindly', async () => {
+    invoke.mockResolvedValue({ data: { centroid: { lat: null, lon: null } }, error: null })
     await expect(getLocalityCentroid('Nowhereville')).resolves.toBeNull()
 
-    rpc.mockReturnValue(fakeQuery({ data: [{ lat: NaN, lon: 5.12, place_count: 1 }], error: null }))
+    invoke.mockResolvedValue({ data: { centroid: { lat: NaN, lon: 5.12 } }, error: null })
     await expect(getLocalityCentroid('Nowhereville')).resolves.toBeNull()
   })
+})
 
-  it('takes the first row when more than one comes back', async () => {
-    rpc.mockReturnValue(
-      fakeQuery({
-        data: [
-          { lat: 52.09, lon: 5.12, place_count: 10 },
-          { lat: 1, lon: 1, place_count: 999 },
-        ],
-        error: null,
-      })
-    )
-    await expect(getLocalityCentroid('Utrecht')).resolves.toEqual({ lat: 52.09, lon: 5.12, place_count: 10 })
+describe('resetPlaceSearchCeilingHeuristic — the sign-out sweep', () => {
+  it('clears the local evidence, so a fresh ceiling reads as the safe default again', async () => {
+    invoke.mockResolvedValue({ data: { results: [] }, error: null })
+    for (let i = 0; i < 20; i++) await searchPlaces('Stationsweg', null)
+
+    resetPlaceSearchCeilingHeuristic()
+
+    invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+    const outcome = await searchPlaces('Stationsweg', null).catch((e) => e)
+    expect(outcome.scope).toBe('daily')
   })
 })

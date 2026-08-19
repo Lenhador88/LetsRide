@@ -10,6 +10,7 @@ export { combineQueries } from '@/lib/query/combine'
 export {
   clearQueryCache,
   DEFAULT_STALE_TIME,
+  getSnapshot,
   invalidate,
   setQueryData,
   type QueryKey,
