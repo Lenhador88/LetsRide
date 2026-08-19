@@ -596,13 +596,23 @@ function SheetBody({
   // depending on `.scope` — "wait" means an hour under one and until
   // tomorrow under the other — a `PlaceSearchOfflineError` names the device
   // rather than the surface, and everything else (`PlaceSearchUnavailableError`
-  // included, which is also what the application-wide ceiling reads as —
-  // deliberately not the rider's own fault) gets the one retry affordance the
-  // spec requires: an explicit tap, never armed on a timer.
+  // included) gets the one retry affordance the spec requires: an explicit
+  // tap, never armed on a timer. **The application-wide ceiling reads as
+  // unavailable and lands here too** — reached by elimination in
+  // `readCeilingScope` rather than by anything the refusal itself says, since
+  // `069`'s three conjuncts all raise the same code. It is deliberately not
+  // the rider's own fault, and the retry button is the affordance that says so.
   if (failure) {
     return (
       <div className="flex flex-col items-center gap-3 py-8">
-        <p className="text-center text-sm font-medium text-danger">{failure.message}</p>
+        {/* `danger-strong`, not `danger`. Measured against this sheet's own
+            `bg-background` (#F2ECE6): `--color-danger` #D92140 is 4.22:1 and
+            `--color-danger-strong` #99001A is 7.56:1. At `text-sm`/500 this is
+            not large text, so the bar is 4.5:1 and the lighter token fails it.
+            The pairing predates this change on one state; four of the seven
+            render through here now, which is what made it worth fixing rather
+            than inheriting. */}
+        <p className="text-center text-sm font-medium text-danger-strong">{failure.message}</p>
         {failure.name === 'PlaceSearchUnavailableError' && (
           <Button type="button" variant="secondary" size="sm" onClick={onRetry}>
             Try again

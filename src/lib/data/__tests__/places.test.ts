@@ -145,15 +145,22 @@ describe('cancellation', () => {
 })
 
 describe('the seven-state contract — searchPlaces throws a named error per state', () => {
-  it('throws PlaceSearchCeilingError on a 429, never a generic failure', async () => {
+  it("throws PlaceSearchCeilingError on a 429 the rider's own ledger accounts for", async () => {
+    // A 429 alone is NOT enough to blame the rider: `069`'s policy has three
+    // conjuncts and the app-wide one raises the same code. The ledger has to
+    // show the rider actually at one of their own ceilings — here, the hourly.
     invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+    ledgerCount.mockResolvedValue({ count: 20, error: null })
 
     await expect(searchPlaces('Stationsweg', null)).rejects.toBeInstanceOf(PlaceSearchCeilingError)
   })
 
   it('the two rider ceilings do NOT share a message — the requirement place-search states explicitly', async () => {
-    // No local evidence of a burst -> the safe default, 'daily'.
+    // Under the hourly ceiling but at the daily one -> 'daily'.
     invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+    ledgerCount
+      .mockResolvedValueOnce({ count: 3, error: null })
+      .mockResolvedValueOnce({ count: 60, error: null })
     const daily = await searchPlaces('Stationsweg', null).catch((e) => e)
     expect(daily).toBeInstanceOf(PlaceSearchCeilingError)
     expect(daily.scope).toBe('daily')
@@ -168,6 +175,33 @@ describe('the seven-state contract — searchPlaces throws a named error per sta
     expect(hourly.scope).toBe('hourly')
 
     expect(daily.message).not.toBe(hourly.message)
+  })
+
+  it('reads the application-wide ceiling as unavailable, not as the rider\'s own', async () => {
+    // The refusal is one undifferentiated 42501, but a rider under BOTH of
+    // their own ceilings can only have been stopped by the app-wide arm — and
+    // the spec requires that to read as unavailable, because there is nothing
+    // about their own behaviour they can change. Before this, a rider who had
+    // searched ZERO times was told "search resumes tomorrow", with no retry
+    // affordance, the moment the app hit 2,000 in a day.
+    invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+    ledgerCount.mockResolvedValue({ count: 0, error: null })
+
+    await expect(searchPlaces('Stationsweg', null)).rejects.toBeInstanceOf(
+      PlaceSearchUnavailableError
+    )
+  })
+
+  it('still reads the daily ceiling as the rider\'s own when they have reached it', async () => {
+    // The boundary the case above must not swallow: at 60 in 24h it IS theirs.
+    invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+    ledgerCount
+      .mockResolvedValueOnce({ count: 5, error: null })
+      .mockResolvedValueOnce({ count: 60, error: null })
+
+    const outcome = await searchPlaces('Stationsweg', null).catch((e) => e)
+    expect(outcome).toBeInstanceOf(PlaceSearchCeilingError)
+    expect(outcome.scope).toBe('daily')
   })
 
   it('falls back to the safer message when the ledger cannot be read', async () => {
@@ -189,9 +223,14 @@ describe('the seven-state contract — searchPlaces throws a named error per sta
   })
 
   it('a 403 (the participation gate) reads the same as a ceiling, never disclosing which gate refused', async () => {
+    // And it must NOT go through the elimination: the gate writes no ledger
+    // row, so the rider is under both their own ceilings by construction and
+    // the app-wide branch would fire for every un-onboarded caller.
     invoke.mockResolvedValue({ data: null, error: httpError(403, { error: 'forbidden' }) })
+    ledgerCount.mockResolvedValue({ count: 0, error: null })
 
     await expect(searchPlaces('Stationsweg', null)).rejects.toBeInstanceOf(PlaceSearchCeilingError)
+    expect(ledgerCount).not.toHaveBeenCalled()
   })
 
   it('a vendor/ledger outage (502) throws PlaceSearchUnavailableError, not a ceiling', async () => {

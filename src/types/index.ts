@@ -491,8 +491,8 @@ export type Club = {
    * non-null coordinate pair and vice versa. **NULL is the normal state**: the
    * field is optional at create, and every club made before `066` has none.
    *
-   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
-   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * `location_place_id` is the provider's opaque id for the picked place, namespaced by provider (`geoapify:...`). Provenance,
+   * never a join key — the id is a third party's and this app stores no copy of it, so it can dangle and
    * nothing in the database will say so.
    */
   location_name: string | null
@@ -540,8 +540,8 @@ export type ClubListItem = {
    * non-null coordinate pair and vice versa. **NULL is the normal state**: the
    * field is optional at create, and every club made before `066` has none.
    *
-   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
-   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * `location_place_id` is the provider's opaque id for the picked place, namespaced by provider (`geoapify:...`). Provenance,
+   * never a join key — the id is a third party's and this app stores no copy of it, so it can dangle and
    * nothing in the database will say so.
    */
   location_name: string | null
@@ -597,8 +597,8 @@ export type ClubDetail = {
    * non-null coordinate pair and vice versa. **NULL is the normal state**: the
    * field is optional at create, and every club made before `066` has none.
    *
-   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
-   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * `location_place_id` is the provider's opaque id for the picked place, namespaced by provider (`geoapify:...`). Provenance,
+   * never a join key — the id is a third party's and this app stores no copy of it, so it can dangle and
    * nothing in the database will say so.
    */
   location_name: string | null
@@ -631,8 +631,8 @@ export type ClubForEdit = {
    * non-null coordinate pair and vice versa. **NULL is the normal state**: the
    * field is optional at create, and every club made before `066` has none.
    *
-   * `location_place_id` is the Overture GERS id of the picked row. Provenance,
-   * never a join key — `places` is reloaded wholesale, so it can dangle and
+   * `location_place_id` is the provider's opaque id for the picked place, namespaced by provider (`geoapify:...`). Provenance,
+   * never a join key — the id is a third party's and this app stores no copy of it, so it can dangle and
    * nothing in the database will say so.
    */
   location_name: string | null

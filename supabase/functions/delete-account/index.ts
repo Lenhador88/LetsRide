@@ -54,7 +54,7 @@
  * by hand, later, if at all — commit order inside a branch says nothing about
  * *deploy* order, which is the thing that would actually matter and which no
  * session can control. **What makes this fail-closed is
- * `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED`** (`src/lib/flags.ts`): the "Delete
+ * `NEXT_PUBLIC_ACCOUNT_DELETION_ENABLED`** (`the client (the flag it named was removed 2026-08-19, PD-102)`): the "Delete
  * account" row does not render, on either project, until that project's own
  * env var is set to `'true'` — which the owner does only after confirming
  * THAT project's redeploy enforces the proof. Unset, unrelated or misspelled

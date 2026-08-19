@@ -13745,12 +13745,15 @@ select assert_eq(
 -- these columns most likely to be "fixed" by a later reader who has not read
 -- 066's header. A reload of `places` deletes every row first.
 select assert_eq(
-  (select count(*)::int from information_schema.table_constraints tc
-     join information_schema.constraint_column_usage ccu
-       on ccu.constraint_name = tc.constraint_name
-   where tc.table_schema = 'public' and tc.table_name = 'clubs'
-     and tc.constraint_type = 'FOREIGN KEY' and ccu.table_name = 'places'),
-  0, '066: clubs holds NO foreign key to places — the index is reloaded wholesale, so a FK would either block every reload or silently wipe every club''s location on one');
+  -- Keyed on the COLUMN, not on a target table. It used to name `places`, and
+  -- `070` dropped that table — so the old form counted 0 by construction and
+  -- would have gone on passing against a schema that grew a FK to something
+  -- else entirely. This asks the question that outlives the provider.
+  (select count(*)::int from pg_constraint c
+     join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+   where c.conrelid = 'public.clubs'::regclass and c.contype = 'f'
+     and a.attname = 'location_place_id'),
+  0, '066/070: clubs.location_place_id carries NO foreign key to anything — it holds a third party''s opaque id, so it is provenance and a dangling value is a normal state');
 
 rollback to savepoint club_location_066;
 
@@ -14277,12 +14280,14 @@ select assert_eq(
   '067: no rides policy mentions the start location — the audience of where a ride starts IS the audience of the ride, and adding an arm for it would be inventing a second predicate over the same row');
 
 select assert_eq(
-  (select count(*)::int from information_schema.table_constraints tc
-     join information_schema.constraint_column_usage ccu
-       on ccu.constraint_name = tc.constraint_name
-   where tc.table_schema = 'public' and tc.table_name = 'rides'
-     and tc.constraint_type = 'FOREIGN KEY' and ccu.table_name = 'places'),
-  0, '067: rides holds NO foreign key to places — the index is reloaded wholesale, so a FK would either block every reload or silently wipe every ride''s pick on one. start_place_id is provenance, and a dangling id is a normal state');
+  -- Keyed on the COLUMN rather than on `places`, for the reason the matching
+  -- `clubs` assertion gives: `070` dropped that table, so the old form asked a
+  -- question the schema could no longer answer wrong.
+  (select count(*)::int from pg_constraint c
+     join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+   where c.conrelid = 'public.rides'::regclass and c.contype = 'f'
+     and a.attname = 'start_place_id'),
+  0, '067/070: rides.start_place_id carries NO foreign key to anything — provenance, and a dangling id is a normal state');
 
 -- The old constraint is gone BY NAME, which anything grepping for it must be
 -- updated for — this assertion is what makes that visible rather than silent.

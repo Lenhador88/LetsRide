@@ -110,10 +110,11 @@ export class PlaceSearchCeilingError extends Error {
  * Thrown for every failure that is not the rider's own doing — a vendor or
  * ledger outage, a bad or missing session, a network failure that never
  * reached the function, or the application-wide ceiling (`069`'s third
- * conjunct). `place-search`'s spec is explicit that the app-wide ceiling
- * SHALL be presented this way rather than as the rider's own ceiling: "it is
- * not the rider's fault and there is nothing about their own behaviour they
- * can change."
+ * conjunct — reached here by elimination in `readCeilingScope`, since the
+ * refusal itself cannot say which arm bound). `place-search`'s spec is
+ * explicit that the app-wide ceiling SHALL be presented this way rather than
+ * as the rider's own: "it is not the rider's fault and there is nothing about
+ * their own behaviour they can change."
  */
 export class PlaceSearchUnavailableError extends Error {
   constructor() {
@@ -146,36 +147,79 @@ export class PlaceSearchOfflineError extends Error {
  */
 const PER_RIDER_HOURLY = 20
 
+/** `069`'s daily ceiling. Same three-copy problem and same pin as
+ *  `PER_RIDER_HOURLY` — see that constant. */
+const PER_RIDER_DAILY = 60
+
 /**
- * Which of the rider's two ceilings refused them, read from the ledger rather
- * than guessed.
+ * Which ceiling refused the rider — read from the ledger rather than guessed,
+ * and **including the case where it was not the rider's ceiling at all**.
  *
- * `069` grants `authenticated` SELECT on their own `place_search_attempts`
- * rows and nobody else's, so this is one indexed count over
- * `(user_id, attempted_at)` — the index `069` creates for the ceilings
- * themselves. It runs only on a refusal, which is the rare path, so it costs
- * nothing on every other search.
+ * `069`'s INSERT policy has three conjuncts and Postgres does not report which
+ * arm of a multi-arm `WITH CHECK` failed, so the refusal arrives as one
+ * undifferentiated `42501`. But two of the three are the RIDER's, and the
+ * rider can read their own ledger rows (`069` grants `authenticated` SELECT on
+ * `user_id = auth.uid()` and nothing else). So counting both windows settles
+ * it by elimination:
  *
- * **It reads the hourly window only.** If the rider is at or past the hourly
- * ceiling, that is what refused them; if they are not, the daily one did, or
- * the application-wide one did and `searchPlaces` has already routed that to
- * `PlaceSearchUnavailableError` before reaching here. A second count would
- * add a round trip to distinguish nothing.
+ *   at/over 20 in the last hour  -> `'hourly'`
+ *   at/over 60 in the last 24h   -> `'daily'`
+ *   under BOTH, yet refused      -> the APPLICATION-WIDE arm bound
  *
- * Falls back to `'daily'` on any failure — including RLS returning nothing,
- * which is what a caller with no session would see. Never throws: this runs
- * while already handling an error, and a failure here must not replace the
- * rider's real message with a worse one.
+ * **That third case is why this returns `null` rather than a scope**, and it
+ * is a rider-visible bug fixed rather than a nicety. `specs/place-search`
+ * requires the application-wide ceiling to read as *unavailable*: "it is not
+ * the rider's fault and there is nothing about their own behaviour they can
+ * change." Without the elimination, a rider who had searched **zero** times
+ * that day was told *"You've searched a lot today — search resumes tomorrow"*
+ * the moment the app hit 2,000, and got no retry affordance, because the
+ * retry button renders only for `PlaceSearchUnavailableError`. That fires for
+ * every rider at once, on the app's busiest day.
+ *
+ * `design.md` §D9 says the FUNCTION must not guess which arm bound, and that
+ * stays true — it cannot see an app-wide count under the caller's RLS. The
+ * client is a different vantage point: it cannot see the app-wide count
+ * either, but it can see that neither of the rider's own is reached, which is
+ * the same answer by elimination and needs no new grant.
+ *
+ * Two counts on a path that only runs after a refusal, so it costs nothing on
+ * any other search.
+ *
+ * **The windows are computed from the DEVICE clock** against an `attempted_at`
+ * that `069`'s trigger stamps with SERVER time — deliberately, because client
+ * time cannot be trusted for enforcement. This is not enforcement, only which
+ * message to show, and a clock skewed by minutes can move the boundary. Worth
+ * knowing before this shape is copied somewhere it would decide something.
+ *
+ * Falls back to `'daily'` on any failure, never throwing: it runs while
+ * already handling an error, and a failure here must not replace the rider's
+ * real message with a worse one. `'daily'` rather than `null` on failure,
+ * because turning an unreadable count into "search is down" would be a
+ * bigger lie than the safe one.
  */
-async function readCeilingScope(): Promise<'hourly' | 'daily'> {
+async function readCeilingScope(): Promise<'hourly' | 'daily' | null> {
   try {
     const supabase = await resolveSupabase()
-    const { count, error } = await supabase
-      .from('place_search_attempts')
-      .select('id', { count: 'exact', head: true })
-      .gte('attempted_at', new Date(Date.now() - 60 * 60_000).toISOString())
-    if (error || count === null) return 'daily'
-    return count >= PER_RIDER_HOURLY ? 'hourly' : 'daily'
+    const since = (ms: number) => new Date(Date.now() - ms).toISOString()
+    const countSince = async (ms: number): Promise<number | null> => {
+      const { count, error } = await supabase
+        .from('place_search_attempts')
+        .select('id', { count: 'exact', head: true })
+        .gte('attempted_at', since(ms))
+      return error ? null : count
+    }
+
+    const hourly = await countSince(60 * 60_000)
+    if (hourly === null) return 'daily'
+    if (hourly >= PER_RIDER_HOURLY) return 'hourly'
+
+    const daily = await countSince(24 * 60 * 60_000)
+    if (daily === null) return 'daily'
+    if (daily >= PER_RIDER_DAILY) return 'daily'
+
+    // Refused while under both of their own ceilings: the application-wide arm
+    // is the only one left.
+    return null
   } catch {
     return 'daily'
   }
@@ -197,8 +241,8 @@ async function readCeilingScope(): Promise<'hourly' | 'daily'> {
  * are represented as four distinct thrown shapes a caller can branch on by
  * `.name`, the same pattern `AbortError` already uses here: `AbortError`
  * (cancelled), `PlaceSearchOfflineError` (no connection),
- * `PlaceSearchCeilingError` (one of the rider's own ceilings, `.scope` says
- * which — see its own doc block for why that is inferred), and
+ * `PlaceSearchCeilingError` (one of the rider's OWN ceilings, `.scope` says
+ * which — read from the ledger, see `readCeilingScope`), and
  * `PlaceSearchUnavailableError` (everything else: a vendor or ledger outage,
  * the application-wide ceiling, an un-onboarded account, a bad session). A
  * caller that only wants rows or nothing can catch all four and fall back to
@@ -237,8 +281,18 @@ export async function searchPlaces(
       throw aborted
     }
     const code = await edgeFunctionErrorCode(response.error)
-    if (code === 'ceiling' || code === 'forbidden') {
-      throw new PlaceSearchCeilingError(await readCeilingScope())
+    // `'forbidden'` is the participation gate and never reaches the ledger, so
+    // there is nothing to count and no elimination to do — the spec requires it
+    // to read as a ceiling anyway ("the rider SHALL NOT be told which gate
+    // refused them"), so it takes the safe scope directly.
+    if (code === 'forbidden') throw new PlaceSearchCeilingError('daily')
+    if (code === 'ceiling') {
+      const scope = await readCeilingScope()
+      // `null` means neither of the rider's own ceilings is reached, so the
+      // application-wide one bound — not the rider's fault, and the spec
+      // requires it to read as unavailable rather than as their own limit.
+      if (scope === null) throw new PlaceSearchUnavailableError()
+      throw new PlaceSearchCeilingError(scope)
     }
     throw new PlaceSearchUnavailableError()
   }
