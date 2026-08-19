@@ -94,17 +94,20 @@ npm run release:check                 # only before a store submission — see �
 - **`development` is the repo's default branch.** So a session clones `development` and reads
   `CLAUDE.md` and `.claude/` from it — an instruction merged there is now actually in force.
   `docs/ENVIRONMENTS.md` §The last piece has the reasoning and the ordered checklist.
-- **`main` is at `f2c75f2`** — promoted via #207 as a merge commit, back-merged by fast-forward,
-  so both branches sit on that sha. That promotion carried **15** commits — `p1..p2`, the same
-  rule the counts beside the earlier promotions use; the incl-merge number is 16: a username
-  keeping the case the rider typed (PD-226), the postcard swipe committing on lift (PD-221), the
-  app-wide content fade (PD-216), both lists reserving their filter bar's height (PD-217,
-  PD-218), the rides filter bar gating on its own read (PD-210), a refused signup keeping its
-  consent box (PD-214), and a back button on notifications (PD-209). The three before it were
-  #191 (27 commits), #163 and #154.
+- **`main` is at `53409e3`** — promoted via #269 as a merge commit, back-merged by fast-forward,
+  so both branches sit on that sha. That promotion carried **44** commits — `p1..p2`, the same
+  rule the counts beside the earlier promotions use; the incl-merge number is 45. The headline
+  items: a ride's start location and a club's home town both PICKED from `places` (PD-114,
+  PD-259), `max_riders` finally capping a crew (PD-174), the ride chat unread watermark (PD-120),
+  a photo's capture time and place (PD-255), `postcards.ride_id` reading through an accessor
+  (PD-166), the ride and club details each merged into one screen (PD-254, PD-262), and the
+  account-deletion flow behind its flag (PD-102). The four before it were #225, #222, #214 and
+  #207 (15 commits).
 
-  **`056` was applied to PROD BEFORE this promotion merged**, because it is additive and its code
-  shipped in it. That is the ordering rule, not a preference — §Migrations has what the reversed
+  **Eight of the nine migrations were applied to PROD BEFORE this promotion merged** — `060`,
+  `061`, `062`, `064`, `065`, `066`, `067`, `068` — because they are additive or order-neutral and
+  their code shipped in it. `063` is a tightening (it refuses a join over a cap) and went **after**
+  the deploy. That is the ordering rule, not a preference — §Migrations has what the reversed
   order costs a rider, and it is not a rollback.
 
   **Re-derive both numbers rather than editing the tail of this list** — a previous revision
@@ -802,9 +805,35 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — the repo and DEV hold 68, PROD holds 59
+## Migrations — the repo, DEV and PROD all hold 68
 
-**`068` is PD-253's and is on DEV ONLY, applied 2026-08-19.** Two live defects on `feed_reads`,
+**`060`–`068` reached PROD on 2026-08-19 around #269, and how they were applied is worth
+carrying.** Each file was reduced to its executing statements — every `--` comment outside a
+string or a `$$` body stripped, every comment *inside* a `$$` body preserved, so `prosrc` is
+untouched — and applied through `apply_migration` in filename order. That is `CLAUDE.md`
+§Supabase Rules' technique for a file too large to retype, used here for a different reason: nine
+files at 195 KB is a lot of hand-copied production DDL, and a reduction plus a proof is safer than
+nine verbatim transcriptions.
+
+**The proof is the objects, never the recorded text**, exactly as that section prescribes. After
+the eight pre-merge files, eight digests over PROD matched DEV — which holds the same files
+applied in full — and after `063` the function and trigger digests matched too:
+
+```sql
+-- run on both refs and compare; see git log for the full query
+md5(string_agg(pg_get_functiondef(oid), …))   -- public + private
+md5(string_agg(pg_get_triggerdef(oid), …))    -- public
+-- plus pg_policies, information_schema.columns, pg_indexes, pg_constraint,
+-- and role_table_grants / role_column_grants for anon + authenticated
+```
+
+**One digest did NOT match, and it is pre-existing rather than this promotion's.** The
+`obj_description` of three functions differs between the projects — `enforce_ride_club_audience`,
+`my_onboarding_state` and `propagate_club_privacy_to_rides`, all three from `022`/`021`, none
+touched by `060`–`068`. Comments only: no privilege, no body, no behaviour. It is the kind of drift
+`028`/`033` exist to repair, and nothing measures it today.
+
+**`068` is PD-253's and is on BOTH projects — DEV 2026-08-19, PROD 2026-08-19 (#269).** Two live defects on `feed_reads`,
 neither introduced by it — `061` found both while building `ride_reads` and deliberately refused to
 inherit them.
 
@@ -834,7 +863,7 @@ postcard arm, and creating a ride in a club fans out (`055`/`060`), so an organi
 badging their own club is plausibly wanted rather than obviously wrong. Assertion `068.3` pins the
 decision, so changing the behaviour means changing a test that says why.
 
-**`067` is PD-114's and is on DEV ONLY, applied 2026-08-18.** It lets a ride's start be **picked**
+**`067` is PD-114's and is on BOTH projects — DEV 2026-08-18, PROD 2026-08-19 (#269).** It lets a ride's start be **picked**
 rather than only geocoded: one column (`start_place_id`), `rides_geocode_coupling` replaced by a
 three-armed `rides_location_coupling`, a length CHECK, two `BEFORE UPDATE` triggers and two
 **additive** grants. No policy, no index, no FK to `places`.
@@ -859,7 +888,7 @@ no new coordinates keeps the row's old coordinates under the new id. Constraint-
 and undecidable from `OLD`/`NEW` — the app always sends the three together. Recorded in the
 migration header.
 
-**`066` is PD-259's and is on DEV ONLY, applied 2026-08-18.** It gives `clubs` its own location —
+**`066` is PD-259's and is on BOTH projects — DEV 2026-08-18, PROD 2026-08-19 (#269).** It gives `clubs` its own location —
 `location_name`, `location_place_id`, `latitude`, `longitude` — from a picked `public.places` row,
 with three CHECKs, two **additive** grants and **no policy, no trigger, no index and no backfill**.
 
@@ -883,7 +912,7 @@ fetches** — tens of rows, no second round trip, no index. `066` §4 names the 
 into SQL: a club count that outgrows `CLUBS_PAGE_SIZE`, at which point the question changes from
 "sort these fifty" to "find the nearest fifty of five thousand".
 
-**`064` is PD-255's and is on DEV ONLY, applied 2026-08-18.** It adds five nullable columns to
+**`064` is PD-255's and is on BOTH projects — DEV 2026-08-18, PROD 2026-08-19 (#269).** It adds five nullable columns to
 `postcards` — `taken_at`, `taken_at_offset_minutes`, `taken_latitude`, `taken_longitude`,
 `taken_location_precision` — with four CHECKs and two absolute grant statements, and **no policy,
 no trigger, no index and no backfill**. The specification is
@@ -933,7 +962,7 @@ string is now **permanent rather than pending an answer** — which is the half 
 misread, since the old wording invited a future session to treat the ban as expiring the day the
 question closed.
 
-**`063` is PD-174's and is on DEV ONLY, applied 2026-08-18.** It hangs
+**`063` is PD-174's and is on BOTH projects — DEV 2026-08-18, PROD 2026-08-19 (#269).** It hangs
 `private.enforce_ride_capacity()` on `ride_members` as a `BEFORE INSERT OR UPDATE` trigger, so
 `rides.max_riders` finally counts against a crew — it had been enforced by nothing since `001`,
 with `018` bounding the value and saying in its own header that it bounded nothing else. Read the
@@ -988,7 +1017,7 @@ project is over its cap** — measured before and after: DEV has 2 capped rides 
 PROD 1 of 2.
 
 
-**`062` is PD-166's and is on DEV ONLY, applied 2026-08-17.** It revokes table-level SELECT on
+**`062` is PD-166's and is on BOTH projects — DEV 2026-08-17, PROD 2026-08-19 (#269).** It revokes table-level SELECT on
 `public.postcards` from `authenticated` and re-grants seven columns — `ride_id` is not among them —
 adds `public.ride_journal_postcard_ids(ride uuid)`, the `security definer` accessor the ride Journal
 filters through, and **restates the `ride_id` column comment**, because `041` had put the grant
@@ -1033,7 +1062,7 @@ restatement — it is `private.can_read_ride`, already pinned by `060.1`.
 postcard is no longer possible client-side, even on a rider's own postcard. Nothing in the design
 draws one; a screen that wants one needs its own accessor.
 
-**`061` is PD-120's and is on DEV ONLY, applied 2026-08-17.** It adds `public.ride_reads` — the
+**`061` is PD-120's and is on BOTH projects — DEV 2026-08-17, PROD 2026-08-19 (#269).** It adds `public.ride_reads` — the
 per-ride chat read watermark behind the header dot — with three policies, a `BEFORE INSERT OR
 UPDATE` timestamp trigger, and `public.ride_has_unread(uuid)`. Purely **additive**: nothing dropped,
 no existing policy altered, no grant revoked, no row touched, so apply-then-deploy is its order and
@@ -1052,9 +1081,8 @@ assertion in the suite scoped to its grantee. Advisors re-read afterwards: **nin
 `feed_reads`, so that count stays at ten. The count that does move is the FKs into `profiles`,
 16 → 17, and the suite asserts it.
 
-**`060` is PD-211's and is on DEV ONLY, applied 2026-08-17.** PROD takes it at the next
-promotion, which is step 5 of `docs/ENVIRONMENTS.md` §Migrations rather than an oversight —
-it is **additive** (three new functions, three replaced bodies, no DDL on any table, no policy, no
+**`060` is PD-211's and is on BOTH projects — DEV 2026-08-17, PROD 2026-08-19 (#269).** It is
+**additive** (three new functions, three replaced bodies, no DDL on any table, no policy, no
 trigger and no grant to a client role), so apply-then-deploy is its order and either sequence is
 safe here because no application code calls any of it.
 
