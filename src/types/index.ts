@@ -169,8 +169,10 @@ export type RideAttendance = 'going' | 'maybe' | null
 /**
  * One card in the rides list — `v2 / Component / List / Ride`, whose five
  * variants are the product of `is Upcoming` and `Are you going?`. Both are
- * derived here rather than stored: upcoming is `departure_at` against now, and
- * `attendance` is this viewer's row in `ride_members`.
+ * derived here rather than stored: upcoming is `departure_at` against the start
+ * of today in `APP_TIME_ZONE` (see `is_upcoming` below, which is where that
+ * boundary is spelled out), and `attendance` is this viewer's row in
+ * `ride_members`.
  */
 export type RideListItem = {
   id: string

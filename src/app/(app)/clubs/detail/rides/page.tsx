@@ -99,8 +99,11 @@ function ClubRidesScreen() {
             ) : (
               <>
                 {rides.data.upcoming.length === 0 ? (
+                  // Not the same sentence as the branch above, which claims the
+                  // club has no rides at all: there are rides right under this
+                  // one. Only the upcoming half is empty, and it has to say so.
                   <p className="py-8 text-center text-sm font-medium text-muted">
-                    No rides are planned, yet!
+                    No upcoming rides are planned, yet!
                   </p>
                 ) : (
                   <RideList rides={rides.data.upcoming} />

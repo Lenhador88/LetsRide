@@ -168,9 +168,11 @@ function RidesScreen() {
       ) : (
         <div className="motion-safe:animate-fade-in flex flex-col">
           {rides.data.upcoming.length === 0 ? (
-            // The same sentence, with the page's own vertical space taken out:
-            // it is a note above the Previous rides header here, not the whole
-            // screen, and `py-24` under a list would read as the end of it.
+            // A different sentence and a different amount of room: this one
+            // sits above the Previous rides header rather than owning the
+            // screen, so `py-24` would read as the end of the page — and the
+            // claim it makes has to be about *upcoming* rides, since there are
+            // demonstrably rides underneath it.
             <EmptyList filter={filter} spacing="section" />
           ) : (
             <RideCards rides={rides.data.upcoming} filter={filter} />
@@ -225,13 +227,17 @@ function RideCards({ rides, filter }: { rides: RideListItem[]; filter?: RideFilt
 }
 
 /**
- * Two of these three strings are the design's, verbatim. The club one is not
- * drawn — `Home - Rides - Rides from club` has no empty variant — so it is
- * written to match their shape rather than invented in a different voice.
+ * Two of these strings are the design's, verbatim. The other two are not drawn
+ * — `Home - Rides - Rides from club` has no empty variant, and no frame draws
+ * this screen with previous rides but none ahead — so both are written to match
+ * their shape rather than invented in a different voice.
  *
- * `spacing` is the only thing that changes between the two places it renders:
- * alone on the screen it owns the viewport, above a Previous rides section it
- * is a line of prose with a list under it.
+ * **`spacing` changes the claim, not only the padding, and that is the point.**
+ * Alone on the screen the unfiltered message is "There are no rides, yet!",
+ * which is true. Above a Previous rides section it is flatly contradicted by the
+ * list under it, so that one case says *upcoming* instead — the qualification
+ * the `mine` and `club` strings already carry, which is why only this branch
+ * needed it.
  */
 function EmptyList({
   filter,
@@ -245,7 +251,9 @@ function EmptyList({
       ? 'You have no upcoming rides, yet!'
       : filter?.kind === 'club'
         ? 'This club has no upcoming rides, yet!'
-        : 'There are no rides, yet!'
+        : spacing === 'page'
+          ? 'There are no rides, yet!'
+          : 'There are no upcoming rides, yet!'
 
   return (
     <p

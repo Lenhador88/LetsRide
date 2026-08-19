@@ -193,10 +193,9 @@ describe('toRideListItem', () => {
 const crewMember = (n: number) => ({ user_id: `rider-${n}`, profile: rider(n) })
 
 /**
- * The client's mirror of `private.is_ride_crew` (034), which gates both entry
- * points to the ride chat. Asserted rather than assumed because it restates a
- * database predicate: if 034 narrows, one of these cases starts failing, which
- * is the signal that three screens need looking at.
+ * The merge behind the `mine` filter's two arms. Its correctness argument lives
+ * on the function; these are the four properties that argument rests on, and
+ * the last one is the one a naive implementation gets wrong.
  */
 describe('mergeMine', () => {
   const at = (id: string, departure_at: string) => row({ id, departure_at })
@@ -246,6 +245,12 @@ describe('mergeMine', () => {
   })
 })
 
+/**
+ * The client's mirror of `private.is_ride_crew` (034), which gates both entry
+ * points to the ride chat. Asserted rather than assumed because it restates a
+ * database predicate: if 034 narrows, one of these cases starts failing, which
+ * is the signal that three screens need looking at.
+ */
 describe('isRideCrew', () => {
   it('is true for the organizer with no RSVP row of their own', () => {
     expect(isRideCrew(true, null)).toBe(true)

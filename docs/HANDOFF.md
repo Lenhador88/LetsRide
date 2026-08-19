@@ -570,9 +570,12 @@ relay itself cannot reach Supabase without it.
 account owns a ride and a club** — 47/47 measured 2026-08-12, plus the consent-box assertion
 PD-214 added to the refused-signup phase, which has **not** been run against DEV. **The account that measures the full total
 is whoever currently organises the earliest-departing ride, not a fixed name**: `checkEditRetention`
-picks the first candidate whose form actually renders, and `getRides` orders `/rides` by
-`departure_at` ascending, so `discoverDetailPaths` hands it whichever ride is soonest regardless of
-who created it or when. Re-derive who currently qualifies rather than trusting a name written here:
+picks the first candidate whose form actually renders, and `discoverDetailPaths` hands it whichever
+ride is soonest regardless of who created it or when. **That follows from the section order, not
+from one sort**: `getRides` orders the upcoming window ascending and the previous one descending,
+so the soonest ride is first in the DOM only because the upcoming section is drawn first. A DEV
+with nothing upcoming hands over a departed ride instead — see §The walk on why the fixture is
+dated a year out. Re-derive who currently qualifies rather than trusting a name written here:
 
 ```sql
 select p.username, r.title, r.departure_at
@@ -679,10 +682,14 @@ WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV.supabase.co \
 It creates a ride and a club **through `/rides/new` and `/clubs/new`** rather than by insert,
 which exercises the two create forms end to end — nothing else in this repo submits them. It
 fills **only what is missing**, so it is idempotent and needs no cleanup pass; a second run
-creates nothing and still walks the same routes. The ride is dated a year out on purpose:
-`getRides` filters `.gte('departure_at', now)`, so a short-dated fixture ages off `/rides` and
-the next run creates another that nothing lists and nothing removes — idempotence with an
-expiry date is not idempotence.
+creates nothing and still walks the same routes. The ride is dated a year out on purpose, and
+the reason changed shape when `/rides` grew its Previous rides section rather than going away:
+a departed fixture used to vanish from the list, so the next run created another that nothing
+listed and nothing removed. It is now filed under Previous rides instead — no longer a leak, but
+`discoverDetailPaths` takes the first `?id=` link in DOM order, so on a DEV where every ride has
+departed the walk would check the ride detail screen's *past* variants believing it held an
+upcoming ride. A year out keeps the fixture at the top of the upcoming section, which every
+phase after provisioning assumes.
 
 **A fixture that was asked for and did not arrive fails the run**, and the report comes from the
 **re-read, never from the attempt**. Printing `+ created a ride` straight after the click lets an
@@ -808,11 +815,20 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — the repo holds 70 and both projects are at `070`
+## Migrations — the repo holds 71, DEV is at `071` and PROD at `070`
 
-**`list_migrations` prints 72 on DEV and 70 on PROD against 70 files, and neither is drift.** `063` was applied on DEV in three
-increments — `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private` — while
-PROD holds it as the one consolidated file. Repo 70 files, PROD 70 rows, DEV 72 rows, one chain.
+**`list_migrations` prints 73 on DEV and 70 on PROD against 71 files, and none of the three gaps is
+drift.** Two of them are `063`, applied on DEV in three increments —
+`ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private` — while PROD holds it
+as the one consolidated file. The third is `071` (`rides(departure_at)`, applied to DEV
+2026-08-19), which is simply unpromoted and goes to PROD with the next promotion. Repo 71 files,
+PROD 70 rows, DEV 73 rows, one chain.
+
+**`071` records its filename prefix, and that took a correction.** `apply_migration`'s `name`
+argument is what `db:drift` compares, and it was passed as `rides_departure_at_index` — every other
+row carries the `NNN_` prefix, so the bare name would have read as a missing file on both sides of
+that comparison for ever. Fixed in place with an `update` on
+`supabase_migrations.schema_migrations`. Pass the **filename stem**, prefix included.
 
 **`069` and `070` reached PROD on 2026-08-19, either side of the promotion build**, which is the
 worked example of the additive/destructive split: `069` applied before the `main` build served,
@@ -1331,7 +1347,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/ | wc -l          # 70 — 069 and 070 (PD-273) are DEV-only, PROD is at 068
+ls supabase/migrations/ | wc -l          # 71 — 071 is DEV-only, PROD is at 070
 ```
 
 **`055` is PD-129's and is now on both projects.** It replaces one function body —

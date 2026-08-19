@@ -724,10 +724,17 @@ function fixturesPermitted(ref) {
 
 async function provision({ ride, club }) {
   if (!ride) {
-    // A year out, not ten days. `getRides` filters `.gte('departure_at', now)`,
-    // so a short-dated fixture ages off /rides and the next run creates another
-    // that nothing lists and nothing cleans up — idempotence with an expiry
-    // date is not idempotence.
+    // A year out, not ten days, and the reason changed shape rather than going
+    // away. `getRides` used to drop a departed ride entirely, so a short-dated
+    // fixture aged off /rides and the next run created another that nothing
+    // listed and nothing cleaned up. It now files it under Previous rides
+    // instead, which fixes the leak and introduces a quieter one:
+    // `discoverDetailPaths` takes the first `?id=` link in DOM order, and on a
+    // DEV where every ride has departed that is a *past* ride — so the walk
+    // would check the detail screen's past variants (no Directions, "Rode")
+    // believing it had an upcoming ride, and provision nothing. Dating the
+    // fixture a year out keeps it at the top of the upcoming section, which is
+    // what the phases after this one assume.
     const departure = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 16)
     await page.goto(`${BASE}/rides/new`, { waitUntil: 'networkidle' })
     await page.fill('input[name="title"]', 'Walk fixture ride')
