@@ -8,6 +8,7 @@ import { PlaceSearchField, type PlaceValue } from '@/components/ui/PlaceSearchFi
 import { Textarea } from '@/components/ui/Textarea'
 import { DeleteRideControl } from '@/components/rides/DeleteRideControl'
 import { updateRide } from '@/lib/actions/rides'
+import { RECENT_STARTS } from '@/components/rides/recentStarts'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState, type ActionState } from '@/lib/actions/state'
 import { useRestoreChecked, useRestoreSelection } from '@/lib/actions/retain'
@@ -171,12 +172,12 @@ export function EditRideForm({
         <div className="flex flex-col gap-1.5">
           <PlaceSearchField
             label="Starting location"
-            sheetTitle="Set start location"
             value={startPlace}
             onChange={setStartPlace}
             names={RIDE_LOCATION_FIELD_NAMES}
             maxNameLength={RIDE_MEETING_POINT_MAX}
             freeText={{ text: meetingPoint, onTextChange: setMeetingPoint, required: true }}
+            recents={RECENT_STARTS}
             disabled={pending}
           />
           <p className="px-1 text-xs text-muted">

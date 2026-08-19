@@ -379,13 +379,18 @@ is a drawn value this repo no longer builds:
       same PD-176 designer question rather than logged again as new.
 
       **PD-259 DEVIATED rather than adding a fifth, and that is the precedent worth having.**
-      `PlaceSearchField`'s sheet header has a `Cancel` text button, which
+      `PlaceSearchField`'s sheet header had a `Cancel` text button, which
       `Rides / Add starting location - Filled` (`1918:15967`) draws in `Accent (OLD)/100` —
-      the same pairing at the same 3.00:1. It ships as `text-foreground` instead. The reason
-      to break the tie this way rather than wait: this control is new, so nothing regresses,
+      the same pairing at the same 3.00:1. It shipped as `text-foreground` instead. The reason
+      to break the tie that way rather than wait: the control was new, so nothing regressed,
       and a fifth instance would have made the eventual fix five edits instead of four. The
       **existing four are untouched** — changing those is the designer's call, not a
       side effect of an unrelated story.
+
+      **The instance itself is gone with PD-274** — the sheet, its header and its `Cancel`
+      went with the move to an inline suggestion list, so there is nothing left here to fix.
+      The precedent is what the entry is kept for: a new control breaks this tie by
+      deviating, an existing one waits for the designer.
 
 - [ ] **A SECOND failing pairing arrived with the same commit and is a different one:
       `text-muted` on `bg-track`.** `#666666` on `#E5DACF` measures **4.17:1** against a 4.5:1

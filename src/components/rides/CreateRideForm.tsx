@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input'
 import { PlaceSearchField, type PlaceValue } from '@/components/ui/PlaceSearchField'
 import { Textarea } from '@/components/ui/Textarea'
 import { createRide } from '@/lib/actions/rides'
+import { RECENT_STARTS } from '@/components/rides/recentStarts'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { retaining, seedRetained, useRestoreSelection, wasChecked } from '@/lib/actions/retain'
@@ -188,12 +189,12 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
       <div className="flex flex-col gap-1.5">
         <PlaceSearchField
           label="Starting location"
-          sheetTitle="Set start location"
           value={startPlace}
           onChange={setStartPlace}
           names={RIDE_LOCATION_FIELD_NAMES}
           maxNameLength={RIDE_MEETING_POINT_MAX}
           freeText={{ text: meetingPoint, onTextChange: setMeetingPoint, required: true }}
+          recents={RECENT_STARTS}
           disabled={pending}
         />
         {/* place-search's own requirement: a ride SHALL remain creatable while
