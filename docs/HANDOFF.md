@@ -808,15 +808,18 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — the repo holds 70, DEV is at `070` and PROD at `068`
+## Migrations — the repo holds 70 and both projects are at `070`
 
-**`list_migrations` prints 72 on DEV against 70 files, and that is not drift.** `063` was applied there in three
+**`list_migrations` prints 72 on DEV and 70 on PROD against 70 files, and neither is drift.** `063` was applied on DEV in three
 increments — `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private` — while
-PROD holds it as the one consolidated file. Repo 70 files, PROD 68 rows, DEV 72 rows, one chain.
-The two DEV-only files are `069` and `070` (both PD-273). `069` is additive and must land on each
-project **before** the code that writes a new-format `place_id`; `070` is destructive and must land
-**after** the geocoder client is live there. Both therefore belong with the promotion rather than
-ahead of it, in filename order — `069` before the `main` merge is served, `070` after.
+PROD holds it as the one consolidated file. Repo 70 files, PROD 70 rows, DEV 72 rows, one chain.
+
+**`069` and `070` reached PROD on 2026-08-19, either side of the promotion build**, which is the
+worked example of the additive/destructive split: `069` applied before the `main` build served,
+`070` only after `app.letsride.social` was confirmed resolving to a `READY` deployment on the
+promotion sha with `aliasError` null. The deployed proxy fails closed on its ledger insert, so
+`069` arriving after instead would have returned 502 on every production search for the length of
+a build. `070` took PROD from 350 MB to **13 MB** (DEV: 14 MB).
 `npm run db:drift` compares migration *names*, so it reads those two extra rows as a difference;
 the objects are identical, which is the comparison that decides.
 
@@ -1402,18 +1405,18 @@ Read it before concluding either database has drifted.
 
 ## `places` — RETIRED, `070` (PD-273)
 
-**Gone on DEV, still there on PROD — check before you reason about it:**
+**Gone from BOTH projects as of 2026-08-19:**
 
 ```
 mcp__Supabase__execute_sql <ref>
   select count(*) from pg_class where relname = 'places' and relkind = 'r';
-  -- DEV fpmrimzxadewsaiwpsel: 0   ·   PROD zwprydcyryvudhurbnye: 1
+  -- DEV fpmrimzxadewsaiwpsel: 0   ·   PROD zwprydcyryvudhurbnye: 0
 ```
 
 Was the self-hosted Overture Maps index loaded on both projects (736,538 rows, 336.9 MB) for the
 ride/club place typeahead. Dropped by `070` — `public.places`, `search_places()` and
-`locality_centroid()` — on DEV 2026-08-19, and on PROD only once the promotion is serving there,
-per `070`'s own precondition. Retired
+`locality_centroid()` — DEV first, PROD once the promotion build was confirmed serving there.
+Retired
 once the typeahead moved to a geocoder reached through the `search-places`
 Edge Function proxy, because the index structurally could not find a residential street (Overture's
 Places theme is businesses and amenities, never addresses). The full load history, the attribution

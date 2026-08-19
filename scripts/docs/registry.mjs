@@ -236,8 +236,11 @@ export const claims = [
     // 2026-08-19: `069` (PD-273) applied to DEV alone and this went red on cue,
     // for the reason the paragraph above predicts. Prose and pattern edited
     // together, as it says — pinned back to DEV AHEAD, and naming BOTH refs so
-    // the direction cannot be inferred from the count alone.
-    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — DEV-ahead/,
+    // the direction cannot be inferred from the count alone. Later the same day
+    // PD-273 promoted and `069`/`070` both reached PROD, so it went red again on
+    // cue and is pinned back to LEVEL. Twice in one day is not the tripwire
+    // misbehaving; it is what "budget for it" meant.
+    pattern: /\*\*Applied state: (\d+) files, and BOTH projects are at `\d+` — level/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,

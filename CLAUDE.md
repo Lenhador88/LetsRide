@@ -459,7 +459,7 @@ behaviour is current — and that date moves with every header edit, which is wh
 the command rather than trusted here); `resolve-ride-location` deployed 2026-08-16 against a file that moved
 2026-08-19 with `067` — real code, so a **picked** ride start renders no map tile on either
 project; and `search-places` deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) with
-**#274, #275 and #276 all undeployed** — real code, including `classifyLedgerError`, so the
+**#274, #275 and #276 all undeployed on both projects** — real code, including `classifyLedgerError`, so the
 deployed build reports a `23514` participation-gate refusal to the rider as **502
 `unavailable`**: search is broken, not "you hit a limit". `isPolicyRefusal` matches `42501`
 only, and the gate raises `23514`, so it falls to the outage branch. **`git log -1` on the
@@ -525,7 +525,8 @@ grants, the cascade behaviour and the audience predicate for each, and several a
 `ride_messages`' audience is an intersection and neither half alone is it).
 
 **`places` — the self-hosted Overture Maps index the place typeahead used to search — is RETIRED
-(`070`, PD-273).** The typeahead is now a geocoder reached through the `search-places` Edge
+(`070`, PD-273), and gone from BOTH projects as of 2026-08-19.** It was 96% of everything this app
+stored: DEV went 350 MB → 14 MB and PROD 350 MB → 13 MB, against a 500 MB free-tier ceiling. The typeahead is now a geocoder reached through the `search-places` Edge
 Function proxy, and `docs/reference/schema.md`'s `places` row carries the retirement rather than a
 live table description. The Overture attribution paragraph that used to live here left with the
 data: `/legal/attributions` credits Geoapify and OpenStreetMap now, an unconditional credit
@@ -560,22 +561,23 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 70 files. DEV is at `070`, PROD at `068` — DEV-ahead by two since 2026-08-19,
-which is the ordinary state rather than drift.** `069` and `070` (both PD-273) are what the gap
-holds. `070` drops `public.places`, `search_places()` and `locality_centroid()`, and per its own
-header it may only apply to a project once the `search-places`-backed client is **serving
-traffic** there. **"Merged" is not that**, and DEV is the worked example of getting it wrong:
-`070` was applied 102 seconds after #279's commit, which no Vercel build of this app finishes
-in, so it almost certainly dropped `search_places()` out from under a Preview still serving the
-bundle that called it. Nothing red — the typeahead simply returned its unavailable state until
-the build landed. PROD does not reach the gate until the promotion build is live, so PROD still
-carries the 337 MB index and both retired functions and that is correct rather than drift. Level is the *exception* rather
-than the steady state: DEV-ahead is the ordinary state of a migration between its merge and its
-promotion, and it is not drift. **Do not read the count of unpromoted files off this sentence** —
-it named exactly one while two were waiting, which is the same defect as a stale number in a
-smaller place, and the promotion is the one job that reads it. Run `list_migrations` against
-`ls supabase/migrations/` and promote everything the gap contains, in filename order, per step 5 of
-`docs/ENVIRONMENTS.md` §Migrations.
+**Applied state: 70 files, and BOTH projects are at `070` — level as of 2026-08-19, PD-273's
+promotion.** Level is the *exception* rather than the steady state: DEV-ahead is the ordinary
+state of a migration between its merge and its promotion, and it is not drift. **Do not read the
+count of unpromoted files off this sentence** — it named exactly one while two were waiting, which
+is the same defect as a stale number in a smaller place, and the promotion is the one job that
+reads it. Run `list_migrations` against `ls supabase/migrations/` and promote everything the gap
+contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md` §Migrations.
+
+**`069` and `070` went opposite ways round the same event, and that is the reusable part.** `069`
+is additive and applied to PROD **before** the promotion build served; `070` is destructive and
+applied **after** it was confirmed serving — `app.letsride.social` resolving to a `READY`
+deployment on the promotion sha, `aliasError` null. Not "after the merge": `070`'s header is
+explicit that *"'Merged' is not 'deployed'"*, and DEV is the worked example of getting it
+backwards, its `070` having landed 102 seconds after the merge commit, out from under a Preview
+still calling the function it had just dropped. On PROD that window is rider-visible, and the
+deployed proxy **fails closed** on its ledger insert — so had `069` gone after instead, every
+production search would have returned 502 for the length of a build.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
