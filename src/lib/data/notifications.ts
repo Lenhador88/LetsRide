@@ -50,9 +50,12 @@ type NotificationRawRow = Omit<NotificationRow, 'postcard'> & {
  * descending, matching the index `036` §9 adds. PostgREST has no row-wise
  * comparison operator, so the boundary is expressed as the equivalent OR:
  * `created_at < cursor.createdAt`, or equal on `created_at` and `id <
- * cursor.id`. Interpolated directly, matching `getRides`' own `.or()` id
- * list — both are values this app generated a moment earlier (a UUID and a
- * timestamp this same function returned), never rider-typed text.
+ * cursor.id`. Interpolated directly, which is safe for the reason rather than
+ * by precedent: both halves are values this app generated a moment earlier — a
+ * UUID and a timestamp this same function returned — never rider-typed text.
+ * (It used to cite `getRides`' own interpolated `.or()` id list as the
+ * precedent. That list is gone, so the reason has to stand on its own, which is
+ * what it was doing all along.)
  */
 export async function getNotificationsPage(
   cursor?: NotificationCursor,

@@ -239,8 +239,11 @@ export const claims = [
     // the direction cannot be inferred from the count alone. Later the same day
     // PD-273 promoted and `069`/`070` both reached PROD, so it went red again on
     // cue and is pinned back to LEVEL. Twice in one day is not the tripwire
-    // misbehaving; it is what "budget for it" meant.
-    pattern: /\*\*Applied state: (\d+) files, and BOTH projects are at `\d+` — level/,
+    // misbehaving; it is what "budget for it" meant. Three times, as it turned
+    // out: `071` (the rides `departure_at` index) went on DEV that evening and
+    // this went red a third time. Pinned back to DEV AHEAD, naming both refs.
+    pattern:
+      /\*\*Applied state: (\d+) files; DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
