@@ -42,25 +42,25 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
 
 ## 1. PR 1 — the Edge Function, and nothing else
 
-- [ ] 1.1 `supabase/functions/search-places/shape.ts` — no Deno global, no `jsr:` import, no network
+- [x] 1.1 `supabase/functions/search-places/shape.ts` — no Deno global, no `jsr:` import, no network
       call: the endpoint constants, the URL builders for both modes, the term bound, the vendor→
       `PlaceSearchResult` mapping, and the ceiling constants with §D4's arithmetic in the comment.
-- [ ] 1.2 `supabase/functions/search-places/index.ts` — the wiring only: CORS preflight, POST-only,
+- [x] 1.2 `supabase/functions/search-places/index.ts` — the wiring only: CORS preflight, POST-only,
       bearer extraction, `getUser(token)` against the auth server, `is_anonymous` refusal, the
       metering insert under the **caller's** JWT, the vendor call with a bounded timeout, the mapping,
       the response. No service-role key. No user id read from the body.
-- [ ] 1.3 Order of operations, asserted by the tests in 1.5 and stated in the file header: verify →
+- [x] 1.3 Order of operations, asserted by the tests in 1.5 and stated in the file header: verify →
       meter → call → map. Nothing billable happens before the metering row is accepted.
-- [ ] 1.4 Log lines carry an outcome and a reason code only. Copy `resolve-ride-location`'s uuid
+- [x] 1.4 Log lines carry an outcome and a reason code only. Copy `resolve-ride-location`'s uuid
       redaction; **never** log the term (§D10).
-- [ ] 1.5 `src/__tests__/place-search-shape.test.ts` — imports `shape.ts` so `tsc` follows it in.
+- [x] 1.5 `src/__tests__/place-search-shape.test.ts` — imports `shape.ts` so `tsc` follows it in.
       Assert: the outbound URL carries the key and the bias but no rider identity; a vendor payload
       maps to the documented `PlaceSearchResult` fields; an over-long term is bounded; a vendor
       response missing coordinates is dropped rather than mapped to `NaN`.
-- [ ] 1.6 Extend `src/__tests__/no-geoapify-key.test.ts` to cover the new function directory, keeping
+- [x] 1.6 Extend `src/__tests__/no-geoapify-key.test.ts` to cover the new function directory, keeping
       its self-check (that the detector still catches a real instance) intact and its exemption list
       from growing beyond the one test file that must name the host.
-- [ ] 1.7 PR 1 body states plainly that the client still calls `search_places()` and that this PR
+- [x] 1.7 PR 1 body states plainly that the client still calls `search_places()` and that this PR
       changes no rider-visible behaviour.
 
 ## 2. Deploy — OWNER ACTION, on the critical path
