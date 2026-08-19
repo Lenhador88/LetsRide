@@ -8,25 +8,79 @@ stop the change being built on assumptions.
 answered. A finding sourced from vendor documentation is evidence, not an exercise of the API — it is
 labelled as such per CLAUDE.md §Working Principles, and a live call still supersedes it.
 
-- [ ] 0.1 Issue one Autocomplete call for `Willem Claijstraat Berkhout` and one for `Berkhout`, and
+- [x] 0.1 Issue one Autocomplete call for `Willem Claijstraat Berkhout` and one for `Berkhout`, and
       record the responses verbatim in this file. **This is the premise of the change** — if the
       vendor cannot find a residential street either, stop and report rather than build.
 
-      **Partially answered, 2026-08-19, and the answer is supporting evidence rather than the
-      exercise this task asks for.** The street is real and is in the Dutch BAG: `Willem Claijstraat`,
-      Berkhout, municipality of Koggenland, postcodes `1647 AM` / `1647 AL`, house numbers 1–30. NL's
-      BAG is imported into OpenStreetMap, and this vendor's geocoder is OSM- plus
-      OpenAddresses-derived, so the street should resolve. **"Should" is what the retired index was
-      chosen on** — keep this task open until a real call returns a real payload.
+      **ANSWERED, 2026-08-19. THE PREMISE HOLDS.** `autocomplete?text=Willem Claijstraat Berkhout`
+      returns exactly one feature and it is the street:
+
+      | Field | Value |
+      |---|---|
+      | `name` / `street` | `Willem Claijstraat` |
+      | `result_type` | **`street`** |
+      | `rank.confidence` / `confidence_street_level` | 1 / 1 |
+      | `postcode` / `city` / `hamlet` | `1647 AM` / `Berkhout` / `Oosteinde` |
+      | coordinate | 52.6419786 / 5.0005068 |
+      | `address_line1` / `address_line2` | `Willem Claijstraat` / `1647 AM Berkhout, Netherlands` |
+
+      The vendor also parsed the query structurally — `parsed: {street, city, expected_type:
+      "street"}` — so it understood the shape of the request rather than fuzzy-matching it.
+
+      **This is the whole justification for the change, and it is now measured rather than
+      reasoned.** The retired index returns nothing for this term: `search_places('Willem
+      Claijstraat Berkhout')` = `[]`, and `street ilike '%claijstraat%'` = 0 rows nationally.
+      `toPlaceResult` maps the response to label `Willem Claijstraat` / meta `1647 AM Berkhout,
+      Netherlands` with no code change.
+
+      **The town half proves nothing on its own and is recorded so nobody mistakes it for the
+      premise.** `autocomplete?text=Berkhout` returns one feature — the village, `result_type:
+      "city"`, confidence 1, population 2215, `address_line2` = `NH, Netherlands`. Correct, and
+      `search_places('Berkhout')` already returns five rows today, so a town resolving was never in
+      question.
+
+      Two things these two responses settle in passing:
+
+      - **Autocomplete returns ONE feature for a specific term**, not the five the unfiltered
+        `geocode/search` returned for `Amsterdam`. So the five-spread-candidates shape belongs to
+        that endpoint rather than to autocomplete — which weakens, without killing, the hypothesis
+        on PD-267 that `resolve-ride-location`'s separation gate has been refusing every tile, since
+        that function calls the unfiltered endpoint. It also means this street would sail through
+        all three of those gates: street-level, confidence 1, one candidate so nothing to separate.
+      - **`rank` carries `confidence_city_level` as well as `confidence_street_level`**, and a city
+        result carries only the former. `resolve-ride-location`'s `GeocodeFeature` reads only the
+        street-level field; the granularity gate rejects a city before confidence is consulted, so
+        nothing is broken — but the vocabulary is wider than that type documents.
+
 - [x] 0.2 Record the length and character set of the returned `place_id`, and the longest one across
       the two responses. This sets the CHECK in 3.2 (`design.md` §D6).
 
-      **MEASURED against a live response, 2026-08-19** — `geocode/search?text=Amsterdam`, five
-      features, every `place_id` **112 lowercase hex characters**. Past the 100-character CHECK that
-      `066` and `067` put on `clubs.location_place_id` and `rides.start_place_id`, so on today's
-      schema every pick raises `23514` on both tables. `069` widening them to 512 is load-bearing
-      rather than precautionary. With the `geoapify:` namespace prefix the live id stores as **121**
-      characters.
+      **MEASURED across three samples, 2026-08-19** — two live, one documented:
+
+      | Sample | Total | Prefix | Name | + `geoapify:` | Fits the 100 CHECK? |
+      |---|---|---|---|---|---|
+      | `Monument du Général Kléber` | 126 | 68 hex | 29 B | 135 | no |
+      | `Amsterdam-Purmerend` | 112 | 74 hex | 19 B | 121 | no |
+      | `Willem Claijstraat` | 110 | 74 hex | 18 B | 119 | no |
+      | `Berkhout` | 90 | 74 hex | 8 B | **99** | **yes** |
+
+      **The address that started this change is one of the failing cases.** `Willem Claijstraat`
+      stores as 119 characters — so the very pick the product owner went looking for is the one
+      today's schema would refuse, while the village two fields away in the same result would have
+      gone through.
+
+      **The break against today's CHECK is INTERMITTENT, and that is worse than universal.** An
+      earlier revision of this task said every pick would raise `23514`. It will not: `Berkhout`
+      stores in 99 characters and fits. So on the current schema a rider picking a short-named place
+      succeeds and one picking a long-named place gets a raw constraint error, with nothing about
+      the two attempts looking different to them. A break that fires on *some* places cannot be
+      found by trying it once, and would survive a manual smoke test that happened to pick a
+      village. `069` widening both columns to 512 stays load-bearing.
+
+      All three live samples agree on a 74-hex prefix, so `74 + 2 × name bytes` holds across them;
+      the documented sample's 68 does not fit and is left unexplained rather than reasoned away.
+      **512 must not be trimmed toward the observed maximum** — the formula is only as good as the
+      longest name anyone has seen, and a 200-byte name reaches 474.
 
       **The formula recorded here on the documentation pass was WRONG, and how it was wrong is the
       reusable part.** That pass read the vendor's 126-character sample as a 34-byte binary prefix
@@ -122,6 +176,24 @@ labelled as such per CLAUDE.md §Working Principles, and a live call still super
 - [ ] 2.2 Verify **by content**, not by a moved digest: `get_edge_function` on both refs, confirming
       the deployed source carries the metering write and both modes. A moved `ezbr_sha256` proves a
       deploy happened, never which build (PD-249).
+
+      **Partly done, 2026-08-19 — the owner deployed and the reachable half is verified live.**
+      `*.supabase.co` is NOT egress-blocked from a session (only `*.geoapify.com` is), so the
+      deployed function can be called from here. Against DEV:
+
+      | Probe | Result |
+      |---|---|
+      | `OPTIONS` preflight | **204** with CORS headers |
+      | `POST`, no bearer | **401** |
+      | `POST`, publishable key as bearer | **401** `{"error":"unauthorized"}` |
+
+      **The third probe is the one worth having.** The publishable key is a structurally valid JWT,
+      so a decode-only check accepts it — that is exactly the bypass rule 3 exists to close, and it
+      is now verified against the running deploy rather than asserted from the source.
+
+      **What is still unverified**: the authenticated path, the ledger fail-closed, and the vendor
+      call, all of which need a real user session this session has no credentials for. The ledger
+      path cannot be fully exercised until `069` exists anyway.
 - [ ] 2.3 Note in the PR that this queues **behind PD-267**, which already carries two undeployed
       function changes. If the wait is long, re-read `design.md` §D7's rejected fallback — it is the
       escape hatch, and taking it is a decision, not a drift.
