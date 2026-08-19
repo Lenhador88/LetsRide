@@ -83,7 +83,6 @@ design/                     # Committed Figma snapshot — READ THIS, don't call
 ├── components/*.json       # One pruned tree per component set
 └── icons/                  # index.json + exported SVGs
 scripts/figma/              # The snapshot pipeline (pull -> extract -> query)
-scripts/places/             # The Overture extract behind the self-hosted place search (037), plus load.sql — the transactional load and its detector (PD-173)
 scripts/docs/               # docs:check — the numeric doc-claims registry + runner (PD-155)
 scripts/native/             # the two build-shape guards — the bundle carries no rider data, the web build is not an export (PD-142)
 openspec/                   # config.yaml, plus:

@@ -25,12 +25,17 @@ export const CLUB_DESCRIPTION_MAX = 500
  * CLAUDE.md asks for: Zod owns the *message*, the database owns the
  * *guarantee*. Change one and the other refuses the write with a raw 23514.
  *
- * 200 is generous against the longest label `search_places()` returns (a name
- * plus a street plus a locality); 100 bounds an opaque GERS id, which is the
- * field a client controls most directly.
+ * 200 is generous against the longest label the picker builds (a name plus a
+ * street plus a locality). `CLUB_LOCATION_PLACE_ID_MAX` was 100, sized for an
+ * Overture GERS uuid; `069` (PD-273) raises it to 512 for the geocoder
+ * switch — the new provider's ids are variable-length and materially longer,
+ * measured up to 191 stored characters on a real result the picker would
+ * offer (`069`'s own header carries the table). **The break against 100 was
+ * intermittent, not universal** — a short-named village fit, a long street
+ * name did not — which is why it could not be found by trying it once.
  */
 export const CLUB_LOCATION_NAME_MAX = 200
-export const CLUB_LOCATION_PLACE_ID_MAX = 100
+export const CLUB_LOCATION_PLACE_ID_MAX = 512
 
 /**
  * A club's location, or none — `066`, PD-259.

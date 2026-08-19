@@ -17,9 +17,11 @@ geocoded typed meeting points through **Geoapify** since 2026-08-09, with the ke
 function's secret store and never in the bundle. Adding Autocomplete is the same vendor, the same
 key, the same secret store, and one more endpoint.
 
-**Google and Mapbox stay rejected** on the clauses in `scripts/places/README.md` §Why this is not a
-geocoding API — Google's 30-day deletion rule and its point-in-polygon ban (which kills the
-eventual `rides` timezone column by name), and Mapbox's "only in conjunction with a Mapbox map",
+**Google and Mapbox stay rejected** on the clauses the deleted `scripts/places/README.md` used to
+carry under "Why this is not a geocoding API" — this change's own task 8.4 removes that file, so
+read them with `git show f6e62ce -- scripts/places/README.md` instead. The clauses: Google's 30-day
+deletion rule and its point-in-polygon ban (which kills the eventual `rides` timezone column by
+name), and Mapbox's "only in conjunction with a Mapbox map",
 which decision #3's deeplink and every tile-less surface violate. **The direction was approved by
 the product owner this session and is not reopened here.**
 
