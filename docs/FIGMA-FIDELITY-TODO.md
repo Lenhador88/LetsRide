@@ -593,11 +593,19 @@ heading that claims nothing was guessed is exactly where a guess goes unnoticed.
       what `Home - Rides - No rides` draws — no club tiles at all when there are no rides — but
       it means a club you belong to that has scheduled nothing has no tile. Consistent with
       the design; flagged because it is a rule nobody stated in words.
-- [ ] **The list is upcoming-only, and ride history has no screen.** All four frames draw
-      upcoming rides, and the empty state says "no *upcoming* rides". But the component set
-      carries two past variants (`Went`), which nothing in this flow can reach. Either a past
-      section belongs on "Your rides" or history lives on the profile — the design does not
-      say.
+- [x] ~~**The list is upcoming-only, and ride history has no screen.**~~ **Closed 2026-08-19**
+      — the product owner answered the question the design left open: a past section, on the
+      list, under every filter. `getRides` returns two windows and `/rides` draws a
+      **Previous rides** header between them, so the component set's `Went` variants are
+      reachable at last.
+      **Two deviations registered rather than hidden, both deliberate.** The four frames draw
+      no such section at all, so the header is borrowed from `Private club - Rides`, which
+      draws exactly this pair of `Section / Header` instances. And its wording is the owner's:
+      they chose "Previous rides" over the design's "Past rides" — the v1 string, on
+      OLD-stylesheet frames — and both screens use the one word rather than differing.
+      The boundary is **midnight in `APP_TIME_ZONE`**, not the departure instant, which is a
+      product rule the design does not speak to either: a ride at 15:00 is still today's ride
+      at 23:00.
 - [x] ~~**Timezone.**~~ **Fixed 2026-08-05** — see §Ride detail, where the same bug was found
       from a real device and fixed once for both screens. `RideCard` calls
       `formatRideDate`/`formatRideTime`, which are now pinned to `APP_TIME_ZONE`. The `en-US`
