@@ -727,7 +727,7 @@ async function provision({ ride, club }) {
     // A year out, not ten days, and the reason changed shape rather than going
     // away. `getRides` used to drop a departed ride entirely, so a short-dated
     // fixture aged off /rides and the next run created another that nothing
-    // listed and nothing cleaned up. It now files it under Previous rides
+    // listed and nothing cleaned up. It now files it under Past rides
     // instead, which fixes the leak and introduces a quieter one:
     // `discoverDetailPaths` takes the first `?id=` link in DOM order, and on a
     // DEV where every ride has departed that is a *past* ride — so the walk

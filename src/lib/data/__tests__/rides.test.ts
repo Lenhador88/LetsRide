@@ -146,7 +146,7 @@ describe('toRideListItem', () => {
   it('keeps a ride that departed earlier today on the upcoming side', () => {
     // The cutoff it is handed is the start of the day, not the clock, so a
     // ride at 15:00 still reads as upcoming to a rider looking at 23:00 —
-    // which is what keeps the pill and the "Previous rides" header agreeing.
+    // which is what keeps the pill and the "Past rides" header agreeing.
     const dayStart = new Date('2026-08-15T22:00:00.000Z').getTime()
     expect(
       toRideListItem(row({ departure_at: '2026-08-16T13:00:00Z' }), undefined, dayStart).is_upcoming

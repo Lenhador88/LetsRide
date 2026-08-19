@@ -28,10 +28,9 @@ import type { RideFilter, RideListItem } from '@/types'
  *
  * Every filter shows upcoming rides first — which is what all four frames draw
  * and what the "You have no upcoming rides, yet!" empty state says — and then,
- * under a "Previous rides" header, the rides that are behind us. The four
- * frames draw no such section; the club rides screens do, and the header is
- * their `Section / Header` instance with the product owner's wording in it
- * (they chose "Previous rides" over the design's "Past rides" on 2026-08-19).
+ * under a "Past rides" header, the rides that are behind us. The four
+ * frames draw no such section; the club rides screens do, so the header is
+ * their `Section / Header` instance, string included.
  *
  * **The boundary is midnight in `APP_TIME_ZONE`, not the current instant** —
  * `rideDayStartUtc`. A ride that left at 15:00 is still in the upcoming list at
@@ -169,7 +168,7 @@ function RidesScreen() {
         <div className="motion-safe:animate-fade-in flex flex-col">
           {rides.data.upcoming.length === 0 ? (
             // A different sentence and a different amount of room: this one
-            // sits above the Previous rides header rather than owning the
+            // sits above the Past rides header rather than owning the
             // screen, so `py-24` would read as the end of the page — and the
             // claim it makes has to be about *upcoming* rides, since there are
             // demonstrably rides underneath it.
@@ -182,7 +181,7 @@ function RidesScreen() {
             <>
               {/* `px-4` to sit over the cards rather than the component's own
                   `px-6`, the same correction the club detail page makes. */}
-              <SectionHeader title="Previous rides" className="px-4 pb-0 pt-4" />
+              <SectionHeader title="Past rides" className="px-4 pb-0 pt-4" />
               <RideCards rides={rides.data.past} filter={filter} />
             </>
           )}
@@ -229,12 +228,12 @@ function RideCards({ rides, filter }: { rides: RideListItem[]; filter?: RideFilt
 /**
  * Two of these strings are the design's, verbatim. The other two are not drawn
  * — `Home - Rides - Rides from club` has no empty variant, and no frame draws
- * this screen with previous rides but none ahead — so both are written to match
+ * this screen with past rides but none ahead — so both are written to match
  * their shape rather than invented in a different voice.
  *
  * **`spacing` changes the claim, not only the padding, and that is the point.**
  * Alone on the screen the unfiltered message is "There are no rides, yet!",
- * which is true. Above a Previous rides section it is flatly contradicted by the
+ * which is true. Above a Past rides section it is flatly contradicted by the
  * list under it, so that one case says *upcoming* instead — the qualification
  * the `mine` and `club` strings already carry, which is why only this branch
  * needed it.

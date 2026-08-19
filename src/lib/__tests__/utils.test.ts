@@ -441,7 +441,7 @@ describe('rideDayStartUtc', () => {
     // CEST, UTC+2 — so the day that starts on 16 August in Amsterdam starts at
     // 22:00Z on the 15th. TZ is pinned to UTC on the runner, so a helper that
     // read the process zone would answer `2026-08-16T00:00:00.000Z` here and
-    // file nothing under Previous rides for two hours a day.
+    // file nothing under Past rides for two hours a day.
     expect(rideDayStartUtc(Date.parse('2026-08-16T09:00:00Z'))).toBe('2026-08-15T22:00:00.000Z')
   })
 

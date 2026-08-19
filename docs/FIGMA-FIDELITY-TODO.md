@@ -596,13 +596,12 @@ heading that claims nothing was guessed is exactly where a guess goes unnoticed.
 - [x] ~~**The list is upcoming-only, and ride history has no screen.**~~ **Closed 2026-08-19**
       — the product owner answered the question the design left open: a past section, on the
       list, under every filter. `getRides` returns two windows and `/rides` draws a
-      **Previous rides** header between them, so the component set's `Went` variants are
+      **Past rides** header between them, so the component set's `Went` variants are
       reachable at last.
-      **Two deviations registered rather than hidden, both deliberate.** The four frames draw
-      no such section at all, so the header is borrowed from `Private club - Rides`, which
-      draws exactly this pair of `Section / Header` instances. And its wording is the owner's:
-      they chose "Previous rides" over the design's "Past rides" — the v1 string, on
-      OLD-stylesheet frames — and both screens use the one word rather than differing.
+      **One deviation registered rather than hidden.** The four `Home - Rides` frames draw no
+      such section at all, so the header is borrowed from `Private club - Rides`, which draws
+      exactly this pair of `Section / Header` instances — its component, its geometry and its
+      string, so the borrowing is total and there is no new wording to justify.
       The boundary is **midnight in `APP_TIME_ZONE`**, not the departure instant, which is a
       product rule the design does not speak to either: a ride at 15:00 is still today's ride
       at 23:00.
