@@ -892,34 +892,11 @@ export type NotificationCursor = { createdAt: string; id: string }
 // `Friendship` was removed with the table in 013. The product's social graph is
 // clubs plus blocking; the design has no friendship concept anywhere.
 
-/**
- * One row of `public.places` (`037`) — the self-hosted Overture Maps index the
- * ride meeting-point picker used to search.
- *
- * **RETIRED, PD-273.** `supabase/migrations/070_retire_places_index.sql` drops
- * `public.places` along with `search_places()` and `locality_centroid()`; the
- * typeahead now reads a geocoder through `search-places` (see
- * `PlaceSearchResult`'s own doc block below). This type is kept, unused,
- * because it still describes what a `place_search_attempts`-adjacent reader
- * might expect to find historically — nothing in `src/` reads it, and nothing
- * has since the proxy shipped.
- */
-export type Place = {
-  /** The Overture GERS id. A string, not a uuid — GERS ids are opaque. */
-  id: string
-  name: string
-  brand: string | null
-  category: string | null
-  lon: number
-  lat: number
-  street: string | null
-  locality: string | null
-  postcode: string | null
-  /** ISO 3166-1 alpha-2. `'NL'` on every row today. */
-  country: string
-  confidence: number | null
-  search_text: string
-}
+// `Place` was removed with `public.places` in 070 (PD-273). It described one row
+// of the self-hosted Overture index the typeahead used to search; the geocoder
+// answers with `PlaceSearchResult` below and nothing reads a stored place row
+// any more. `rides.start_place_id` and `clubs.location_place_id` survive as
+// provenance text and were never typed by this.
 
 /**
  * One result from the place typeahead — at most five, because the design's
@@ -967,7 +944,8 @@ export type PlaceSearchResult = {
   /** Street and locality, comma-joined. Null when the place has neither. */
   meta: string | null
   lat: number
-  /** `lon`, not `lng` — one name for one quantity, matching `Place.lon`. */
+  /** `lon`, not `lng` — one name for one quantity, `037` §5bb's rule, kept
+   *  after `070` because the columns and the proxy both still spell it that way. */
   lon: number
 }
 
