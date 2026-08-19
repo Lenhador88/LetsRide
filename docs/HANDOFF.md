@@ -1488,35 +1488,44 @@ table.
 
 ## Known issues, roughly by cost to fix
 
-**Ride times are still `APP_TIME_ZONE`, and the obvious fix has two holes — PD-193, parked in
-`Needs decision` 2026-08-19.** `CLAUDE.md` §Technology Decisions calls the pinned zone a
-documented interim whose answer is "a zone column on `rides`". That column was picked up and
-deliberately **not** built, because the scope as written produces a wrong result twice:
+**Ride times are still `APP_TIME_ZONE`. The fix is decided and unbuilt — PD-193, `Todo AI`
+2026-08-19.** `CLAUDE.md` §Technology Decisions calls the pinned zone a documented interim whose
+answer is "a zone column on `rides`". The column was picked up, deliberately **not** built, and the
+scope as written was wrong twice; the product owner's question — *should the zone not be known while
+posting?* — resolved both, and the answer differs per path rather than per screen.
 
-1. **It changes the read and not the write.** On create the zone is unknown —
-   `resolve-ride-location` runs *after* the insert — so `wallClockToUtc` still resolves the typed
-   string in `APP_TIME_ZONE` and a Lisbon ride is stored as 09:00 Amsterdam. The moment the
-   function writes `timezone`, the screen starts drawing **08:00** for a ride the organizer typed
-   as 09:00: a new defect, arriving asynchronously, worse than today's error because today's is at
-   least uniform. Preserving the typed wall-clock means the statement that writes the zone must
-   also shift `departure_at`, which the issue does not mention.
-2. **A picked ride never geocodes, so it never learns a zone.** `resolvePickedCoordinate`
-   short-circuits before the vendor call by design, and `places` cannot supply one:
+**A picked place: knowable at post time.** The client holds the coordinate at submit, so the zone
+goes in the same INSERT as `departure_at` and `wallClockToUtc` resolves against it. No async
+correction. And every pickable place is Dutch today, so the existing fallback is already right:
 
-   ```sql
-   select column_name from information_schema.columns
-    where table_schema='public' and table_name='places';
-   -- no timezone column; Overture's Places theme carries none
-   ```
+```sql
+select country, count(*) from public.places group by country;   -- NL 736538, one row
+```
 
-   So the rides with the **best** coordinates would keep the Amsterdam fallback for ever — the
-   same inversion the entry below names for tiles.
+**So "a picked ride never learns a zone" is true in principle and unreachable in practice** — it is
+work for the day the index grows, not now, and dropping it removes the one part of this story no
+session could measure (`*.geoapify.com` is egress-blocked, so a zone lookup could not be tested).
+**Do not hardcode Amsterdam for picked rides**; derive it, or the day the index grows is a silent
+wrong answer rather than a new feature.
 
-Two things to carry into whatever is built: `rides` UPDATE grants are an **absolute** column list
+**A typed address: NOT knowable at post time, structurally.** The zone comes from the geocode, the
+geocode needs the Geoapify key, that key exists only in the function's secret store, and
+`requestRideMapRender` is fire-and-forget by requirement — `specs/ride-map-tiles` refuses a vendor
+call between Save and the redirect. So it lands after the insert, and **typing is the only way to
+enter a foreign address today**, the index having no foreign places. Which makes the typed path the
+whole of this story: `resolve-ride-location` must write `timezone` **and** shift `departure_at` in
+the same statement, or the organizer sees 08:00 for a ride they typed as 09:00, asynchronously,
+minutes after Save. The correction fires only when the resolved zone differs from `APP_TIME_ZONE`,
+so a Dutch ride is untouched.
+
+Four things to carry into the build. `rides` UPDATE grants are an **absolute** column list
 (`044`/`046`), so a `timezone` column needs its own `grant update (timezone)` or the function's
-write is refused into the existing `column_write_refused` path; and a CHECK cannot validate an IANA
-name, because `pg_timezone_names` is a view and is not immutable — a trigger can. The findings and
-a scored comparison of four options are on PD-193.
+write is refused into the existing `column_write_refused` path. A CHECK cannot validate an IANA
+name — `pg_timezone_names` is a view and is not immutable — but a trigger can. `departure_at` is
+read by the `036`/`055`/`060` notification fan-out, so shifting it is not only a display concern.
+And it should ride **PD-267**'s redeploy rather than asking for a second one. The scored comparison
+of four options, and the multi-country note (a `timezone` column on `places` filled by the loader
+offline, rather than a client-side coordinate→IANA library), are on PD-193.
 
 **A picked ride gets no map until `resolve-ride-location` is redeployed, and the guard that makes
 that safe must be REMOVED at the same moment — PD-114.** Recorded here rather than only in
