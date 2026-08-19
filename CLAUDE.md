@@ -421,11 +421,15 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, each one's `ezbr_sha256`
-equal across the two projects, and both current against their files** — measured 2026-08-17,
-after the owner redeployed `delete-account` (`9793933d…`, PROD v9 / DEV v5). **Cross-project
-equality is not what establishes that second half**: it says the two projects agree, never that
-either matches the repo, so currency is the `updated_at`-against-commit-date check below.
+**Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, and each one's `ezbr_sha256`
+is equal across the two projects — and NEITHER is current against its file**, measured 2026-08-19:
+`delete-account` deployed 2026-08-17 against a file that moved 2026-08-18 (comments only, so the
+behaviour is current), and `resolve-ride-location` deployed 2026-08-16 against a file that moved
+2026-08-19 with `067` — real code, so a **picked** ride start renders no map tile on either
+project. PD-267 is the redeploy, and it has a second half: the guard in `src/lib/actions/rides.ts`
+must come out in the same PR. **Cross-project equality is not what establishes currency**: it says
+the two projects agree, never that either matches the repo, so currency is the
+`updated_at`-against-commit-date check below.
 Deploying is an **owner action** — there is no
 `supabase` CLI in the build container, and the
 MCP server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list, which
@@ -529,12 +533,13 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 68 files. DEV is at `068`, PROD at `059` — DEV AHEAD, 2026-08-19.** DEV-ahead is
-the ordinary state of a migration between its merge and its promotion, not drift. **Do not read
-the count of unpromoted files off this sentence either** — it named exactly one while two were
-waiting, which is the same defect as a stale number in a smaller place, and the promotion is the
-one job that reads it. Run `list_migrations` against `ls supabase/migrations/` and promote
-everything the gap contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md` §Migrations.
+**Applied state: 68 files. Both projects are at `068` — LEVEL, 2026-08-19, in the hour after
+#269 promoted.** Level is the *exception* rather than the steady state: DEV-ahead is the ordinary
+state of a migration between its merge and its promotion, and it is not drift. **Do not read the
+count of unpromoted files off this sentence** — it named exactly one while two were waiting, which
+is the same defect as a stale number in a smaller place, and the promotion is the one job that
+reads it. Run `list_migrations` against `ls supabase/migrations/` and promote everything the gap
+contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md` §Migrations.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
