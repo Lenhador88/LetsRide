@@ -328,13 +328,14 @@ export const ID_NAMESPACE = 'geoapify:'
  *   |---|---|---|---|---|---|
  *   | `Monument du Général Kléber` | 126 | 68 hex | 29 B | 135 | vendor docs |
  *   | `Amsterdam-Purmerend` | 112 | **74 hex** | 19 B | 121 | live, 2026-08-19 |
+ *   | `Willem Claijstraat` | 110 | **74 hex** | 18 B | 119 | live, 2026-08-19 |
  *   | `Berkhout` | 90 | **74 hex** | 8 B | **99** | live, 2026-08-19 |
  *
- * The two live samples agree on a 74-hex prefix, so `74 + 2 × name bytes` holds
- * for both. The documented sample's 68 does not fit that and is left unexplained
- * rather than reasoned away — a different id generation, most likely. **Do not
- * trim 512 toward the observed maximum**: the formula is only as good as the
- * longest name anyone has seen, and a 200-byte name would reach 474.
+ * All three live samples agree on a 74-hex prefix, so `74 + 2 × name bytes`
+ * holds across them. The documented sample's 68 does not fit and is left
+ * unexplained rather than reasoned away — a different id generation, most
+ * likely. **Do not trim 512 toward the observed maximum**: the formula is only
+ * as good as the longest name anyone has seen, and a 200-byte name reaches 474.
  *
  * ---------------------------------------------------------------------------
  * The break against the CURRENT CHECK is INTERMITTENT, which is worse than
@@ -351,6 +352,11 @@ export const ID_NAMESPACE = 'geoapify:'
  * `069` gets prioritised: a break that fires on *some* places cannot be found by
  * trying it once, and would survive a manual smoke test that happened to pick a
  * village.
+ *
+ * **The address that started this change is one of the failing cases.**
+ * `Willem Claijstraat` stores as 119 characters. So the very pick the product
+ * owner went looking for is the one today's schema would refuse, while the
+ * village two fields away in the same result would have gone through.
  */
 export const MAX_PLACE_ID_CHARS = 512
 
