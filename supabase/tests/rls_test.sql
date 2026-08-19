@@ -2069,30 +2069,67 @@ select assert_denied($$
 \echo '# The badge counts activity since the watermark, under RLS (migration 015)'
 
 -- Deterministic rather than seed-dependent: this postcard is created inside the
--- suite's transaction, so `now()` — which is the transaction start time — sits
--- strictly before it. An ancient watermark must count it; a watermark of now()
--- must not.
+-- suite's transaction, so `now()` — the transaction start time — is the fixed
+-- point everything here is arranged around.
+--
+-- **068 moved two things in this block, and neither is a change of intent.**
+-- Both are mechanical consequences of the migration, written down because the
+-- obvious repair to either one silently stops testing the rule:
+--
+--   * **The postcard moves, not the watermark.** 068 hangs a BEFORE INSERT OR
+--     UPDATE trigger on `feed_reads` that stamps `now()`, and a trigger fires
+--     for the table owner exactly as it does for `authenticated` — so a
+--     watermark written at `now() - interval '10 years'` is no longer
+--     expressible, here or anywhere. `postcards.created_at` moves instead, as
+--     the owner, because 044 withholds that column's grant from
+--     `authenticated`. A session that "fixes" this by writing `last_seen_at`
+--     directly will find its value silently replaced and this assertion passing
+--     for the wrong reason.
+--   * **000b reads, not 000a.** 068 excludes the reader's OWN postcards, and
+--     this one is 000a's. Read as 000a it would answer zero for a reason that
+--     has nothing to do with the watermark. 000b is the other member of c1.
 insert into postcards (id, author_id, club_id, image_path, caption) values
   ('00000000-0000-0000-0000-0000000000ef', '00000000-0000-0000-0000-00000000000a',
    '00000000-0000-0000-0000-0000000000c1',
    'postcards/00000000-0000-0000-0000-00000000000a/ffffffff-0000-4000-8000-0000000015a1.jpg',
    'After the watermark');
 
-insert into feed_reads (user_id, club_id, last_seen_at)
-values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000000c1',
-        now() - interval '10 years');
+reset role;
+update postcards set created_at = now() + interval '1 hour'
+ where id = '00000000-0000-0000-0000-0000000000ef';
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+insert into feed_reads (user_id, club_id)
+values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000000c1');
 
 select assert_eq(
   (select unread from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c1') > 0,
   true, 'activity after the watermark counts as unread');
 
-update feed_reads set last_seen_at = now()
- where user_id = '00000000-0000-0000-0000-00000000000a'
-   and club_id = '00000000-0000-0000-0000-0000000000c1';
+-- The watermark cannot be advanced past the postcard inside one transaction —
+-- 068 stamps it `now()`, which does not move — so the postcard comes back
+-- behind it instead. Same comparison, same rule, the other operand; 061
+-- arranges its own "read to the end" case this way for the same reason.
+--
+-- This label read 'advancing the watermark clears the badge' before 068. It is
+-- renamed rather than kept because the mechanism it names is no longer the one
+-- being exercised, and a label that describes a movement the suite can no
+-- longer make is how the next reader tries to make it.
+reset role;
+update postcards set created_at = now() - interval '1 minute'
+ where id = '00000000-0000-0000-0000-0000000000ef';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
 
 select assert_eq(
   (select unread from club_unread_counts() where club_id = '00000000-0000-0000-0000-0000000000c1'),
-  0, 'advancing the watermark clears the badge');
+  0, 'nothing newer than the watermark clears the badge');
+
+-- Back to 000a for the rest of this section: c2's only member is 000a, and c5
+-- is 000b's OWN club — read as 000b, the two assertions below would answer
+-- NULL and 1 and fail for reasons that are nothing to do with what they test.
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
 
 -- A club with no postcards and no rides badges zero rather than going missing:
 -- the row comes from club_members, so every joined club is always represented.
@@ -16001,6 +16038,257 @@ select assert_eq(
   5, '067: rides carries five non-internal triggers — 051 took it from three to four and 067 adds the precedence one');
 
 rollback to savepoint ride_start_location_067;
+
+reset role;
+
+\echo ''
+\echo '# The feed watermark runs on the server''s clock, and your own postcard is not news (068)'
+
+-- ===========================================================================
+-- 068. Two defects in 015, both named by 061 and neither fixed there.
+-- ===========================================================================
+--
+-- Self-contained fixtures, for 061's reason: this section needs content placed
+-- on either side of a watermark, and after 068 the watermark is the one thing
+-- that cannot be moved — the trigger stamps `now()` for the table owner exactly
+-- as it does for `authenticated`. So the POSTCARDS and the RIDE carry explicit
+-- `created_at` values, written as the owner because 044 and 045 withhold those
+-- columns' grants from the client roles.
+--
+-- The riders, and what each one is for:
+--   6801  the reader. Member of both clubs, authors the postcard that must NOT
+--         badge them, and organizes the ride that deliberately still does
+--   6802  the other member. Authors the postcard that MUST badge 6801, and is
+--         the rider for whom 6801's postcard is news — which is what stops the
+--         exclusion assertion from passing merely because nothing is unread
+--
+-- The two clubs are split by content type on purpose. `club_unread_counts()`
+-- returns one number per club — postcards plus rides — so a club holding both
+-- could not tell "the postcard was excluded" from "the ride was excluded", and
+-- the rides half is the arm 068 deliberately did NOT change.
+savepoint feed_watermark_068;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000068001', 'watermarkreader@example.com'),
+  ('00000000-0000-0000-0000-000000068002', 'watermarkauthor@example.com');
+reset role;
+
+update profiles set username = 'watermarkreader', location = 'Utrecht',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000068001';
+update profiles set username = 'watermarkauthor', location = 'Tilburg',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000068002';
+
+-- 68c1 — postcards only.
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000000680c1', 'Watermark Postcards MC', false,
+   '00000000-0000-0000-0000-000000068001');
+insert into club_members (club_id, user_id, role, joined_at) values
+  ('00000000-0000-0000-0000-0000000680c1', '00000000-0000-0000-0000-000000068001',
+   'owner', now() - interval '2 days'),
+  ('00000000-0000-0000-0000-0000000680c1', '00000000-0000-0000-0000-000000068002',
+   'member', now() - interval '2 days');
+
+-- 68c2 — rides only.
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000000680c2', 'Watermark Rides MC', false,
+   '00000000-0000-0000-0000-000000068001');
+insert into club_members (club_id, user_id, role, joined_at) values
+  ('00000000-0000-0000-0000-0000000680c2', '00000000-0000-0000-0000-000000068001',
+   'owner', now() - interval '2 days');
+
+-- Both postcards sit AFTER `now()`, which is where every watermark this suite
+-- can write lands. 68e1 is the reader's own; 68e2 is the other member's.
+insert into postcards (id, author_id, club_id, image_path, caption, created_at) values
+  ('00000000-0000-0000-0000-0000000680e1', '00000000-0000-0000-0000-000000068001',
+   '00000000-0000-0000-0000-0000000680c1',
+   'postcards/00000000-0000-0000-0000-000000068001/680e1000-0000-4000-8000-0000000680e1.jpg',
+   'My own postcard', now() + interval '1 hour'),
+  ('00000000-0000-0000-0000-0000000680e2', '00000000-0000-0000-0000-000000068002',
+   '00000000-0000-0000-0000-0000000680c1',
+   'postcards/00000000-0000-0000-0000-000000068002/680e2000-0000-4000-8000-0000000680e2.jpg',
+   'Somebody else''s postcard', now() + interval '2 hours');
+
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id, created_at) values
+  ('00000000-0000-0000-0000-0000000680d1', 'Watermark Run', 'The Quay',
+   now() + interval '7 days', false, '00000000-0000-0000-0000-0000000680c2',
+   '00000000-0000-0000-0000-000000068001', now() + interval '1 hour');
+
+set role authenticated;
+select assert_eq(current_user::text, 'authenticated',
+  'the 068 assertions run as authenticated, or they prove nothing');
+
+-- ---------------------------------------------------------------------------
+-- 068.1  The trigger owns the clock, on both arms
+-- ---------------------------------------------------------------------------
+-- Run for real rather than through `assert_allowed`, which unwinds its own
+-- subtransaction before the value could be read back. The insert SUCCEEDING is
+-- itself part of the proof: the column grant is deliberately left table-wide
+-- (068 §1), so what makes the value true is the trigger and not a refusal at
+-- the door.
+select set_config('test.uid', '00000000-0000-0000-0000-000000068001', false);
+
+insert into feed_reads (user_id, club_id, last_seen_at)
+values ('00000000-0000-0000-0000-000000068001', '00000000-0000-0000-0000-0000000680c1',
+        timestamptz '3000-01-01 00:00:00+00');
+select assert_eq(
+  (select last_seen_at from feed_reads
+    where user_id = '00000000-0000-0000-0000-000000068001'
+      and club_id = '00000000-0000-0000-0000-0000000680c1') = now(),
+  true, '068: a forged last_seen_at is overwritten with server time on INSERT — the device no longer owns one side of the comparison');
+
+update feed_reads set last_seen_at = timestamptz '3000-01-01 00:00:00+00'
+ where user_id = '00000000-0000-0000-0000-000000068001'
+   and club_id = '00000000-0000-0000-0000-0000000680c1';
+select assert_eq(
+  (select last_seen_at from feed_reads
+    where user_id = '00000000-0000-0000-0000-000000068001'
+      and club_id = '00000000-0000-0000-0000-0000000680c1') = now(),
+  true, '068: ... and on UPDATE too, which is the arm the upsert reaches on every visit after the first');
+
+-- The statement PostgREST compiles `.upsert({…}, {onConflict:"user_id,club_id"})`
+-- to, written out. The suite speaks SQL rather than HTTP, so this pins the half
+-- of the mechanism the database owns — that the ON CONFLICT arm reaches the
+-- trigger — and cannot pin the half PostgREST owns, which is that the column
+-- stays in the SET list because `markClubSeen` keeps it in the request body.
+insert into feed_reads (user_id, club_id, last_seen_at)
+values ('00000000-0000-0000-0000-000000068001', '00000000-0000-0000-0000-0000000680c1',
+        timestamptz '3000-01-01 00:00:00+00')
+on conflict (user_id, club_id) do update
+  set user_id = excluded.user_id,
+      club_id = excluded.club_id,
+      last_seen_at = excluded.last_seen_at;
+select assert_eq(
+  (select last_seen_at from feed_reads
+    where user_id = '00000000-0000-0000-0000-000000068001'
+      and club_id = '00000000-0000-0000-0000-0000000680c1') = now(),
+  true, '068: ... including through the ON CONFLICT DO UPDATE arm itself, which is the statement the client actually sends');
+
+-- `markFeedSeen` writes the app-wide row and sends the same forged value. The
+-- trigger is on the table rather than on a predicate, so this is a check that
+-- the NULL audience was not somehow special-cased.
+insert into feed_reads (user_id, club_id, last_seen_at)
+values ('00000000-0000-0000-0000-000000068001', null, timestamptz '3000-01-01 00:00:00+00');
+select assert_eq(
+  (select last_seen_at from feed_reads
+    where user_id = '00000000-0000-0000-0000-000000068001' and club_id is null) = now(),
+  true, '068: the app-wide watermark is stamped identically — markFeedSeen sends the same forged value markClubSeen does');
+
+-- 015 gave the column `default now()` and the defect shipped anyway: a default
+-- applies only when the column is OMITTED, and both callers name it. The
+-- default is still there and is still not what makes the value true, which is
+-- the trap most likely to be re-derived from reading the column definition.
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'feed_reads'
+      and column_name = 'last_seen_at' and column_default like 'now()%'),
+  1, '068: last_seen_at still carries 015''s DEFAULT — which is not what defends it, because a default applies only when the column is omitted');
+
+-- ---------------------------------------------------------------------------
+-- 068.2  Your own postcard is not news
+-- ---------------------------------------------------------------------------
+-- 6801 holds a watermark at `now()`. Both postcards in 68c1 are newer than it;
+-- one is theirs and one is not.
+select assert_eq(
+  (select unread from club_unread_counts()
+    where club_id = '00000000-0000-0000-0000-0000000680c1'),
+  1, '068: a club badge counts the OTHER member''s postcard and only it — two postcards are newer than the watermark and one of them is the reader''s own');
+
+-- Isolated, so nothing else can hold the number above zero and make a broken
+-- exclusion look correct: the other member's postcard is moved behind the
+-- watermark, leaving the reader's own as the only thing newer than it.
+reset role;
+update postcards set created_at = now() - interval '1 minute'
+ where id = '00000000-0000-0000-0000-0000000680e2';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000068001', false);
+select assert_eq(
+  (select count(*)::int from postcards
+    where id = '00000000-0000-0000-0000-0000000680e1' and created_at > now()), 1,
+  '068: the rider''s own postcard is still there and still newer than their watermark ...');
+select assert_eq(
+  (select unread from club_unread_counts()
+    where club_id = '00000000-0000-0000-0000-0000000680c1'),
+  0, '068: ... and does not badge their own club — the author_id <> auth.uid() arm 015 was missing, reachable every time because a postcard is authored from /postcards/new rather than from inside a club');
+
+-- ... and the same postcard DOES badge the other member, which is what stops
+-- the assertion above from passing merely because nothing was unread. 6802
+-- holds no watermark, so their comparison point is `joined_at` — two days back,
+-- which every postcard here is newer than. Their OWN postcard is excluded by
+-- the same arm, so the answer is 1 rather than 2.
+select set_config('test.uid', '00000000-0000-0000-0000-000000068002', false);
+select assert_eq(
+  (select unread from club_unread_counts()
+    where club_id = '00000000-0000-0000-0000-0000000680c1'),
+  1, '068: the same postcard DOES badge another member, so the exclusion above is not vacuous — and their own is excluded from that number by the same arm');
+
+-- ---------------------------------------------------------------------------
+-- 068.3  The rides arm is deliberately NOT given the same exclusion
+-- ---------------------------------------------------------------------------
+-- 68d1 is 6801's own ride in 68c2, newer than their watermark there. This is
+-- the one assertion in the section that pins a decision rather than a fix: 068
+-- §2 records why `organizer_id <> auth.uid()` was not added — creating a ride
+-- fans out to the club, so the organizer's own ride badging their own club may
+-- well be wanted, and PD-253 names only the postcard arm. A session that adds
+-- the exclusion must change this line, which is the point of it.
+select set_config('test.uid', '00000000-0000-0000-0000-000000068001', false);
+insert into feed_reads (user_id, club_id)
+values ('00000000-0000-0000-0000-000000068001', '00000000-0000-0000-0000-0000000680c2');
+select assert_eq(
+  (select unread from club_unread_counts()
+    where club_id = '00000000-0000-0000-0000-0000000680c2'),
+  1, '068: a rider''s OWN ride still badges their own club — the rides arm keeps no organizer exclusion, deliberately (068 §2)');
+
+-- ---------------------------------------------------------------------------
+-- 068.4  Shape: what 068 must NOT have changed
+-- ---------------------------------------------------------------------------
+select assert_eq((select prosecdef from pg_proc where proname = 'stamp_feed_read'),
+  false, '068: stamp_feed_read needs no elevated rights — it reads nothing and writes nothing but NEW');
+select assert_eq(
+  (select proconfig[1] from pg_proc where proname = 'stamp_feed_read'),
+  'search_path=""', '068: ... and carries the pinned empty search_path every function in this repo does');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.stamp_feed_read()', 'execute'),
+  false, '068: no client role can call the trigger function directly — Postgres checks EXECUTE at CREATE TRIGGER time, so the revoke is free');
+
+-- Both arms, head-on. `tgtype` bit 2 is BEFORE, bit 4 INSERT, bit 16 UPDATE. A
+-- BEFORE INSERT trigger alone would impose the value on the first visit to an
+-- audience and keep the client's on every visit after — it works on fresh rows
+-- and drifts in use, and an INSERT-only assertion passes against it.
+select assert_eq(
+  (select (tgtype & 4 > 0)::int + (tgtype & 16 > 0)::int + (tgtype & 2 > 0)::int
+     from pg_trigger where tgname = 'stamp_feed_read' and not tgisinternal),
+  3, '068: the stamp trigger is BEFORE and fires on both INSERT and UPDATE');
+
+-- The rewrite is a `create or replace`, which preserves the ACL — asserted
+-- rather than assumed, because "preserved" is a property of the statement and
+-- is invisible in the migration file.
+select assert_eq((select prosecdef from pg_proc where proname = 'club_unread_counts'),
+  false, '068: club_unread_counts is still SECURITY INVOKER after the rewrite, so blocks and hides still decide what it counts');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.club_unread_counts()', 'execute'),
+  true, '068: ... the replace preserved 015''s execute grant to authenticated ...');
+select assert_eq(
+  has_function_privilege('anon', 'public.club_unread_counts()', 'execute'),
+  false, '068: ... and anon still cannot call it — decision #1');
+
+-- 068 adds a trigger, not a surface. Scoped to the grantee, per 015's own
+-- footer: the unscoped DELETE-grant count reads 2 against a correct database.
+select assert_eq((select count(*)::int from pg_policies where tablename = 'feed_reads'),
+  3, '068: feed_reads still carries exactly three policies — select, insert, update');
+select assert_eq(has_table_privilege('authenticated', 'public.feed_reads', 'delete'),
+  false, '068: ... and authenticated still holds no DELETE grant, so a watermark still cannot be reset');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.feed_reads', 'last_seen_at', 'update'),
+  true, '068: ... and KEEPS the UPDATE grant on last_seen_at, which 068 §1 requires — the column must stay nameable so the upsert body carries it into the ON CONFLICT SET list');
+
+rollback to savepoint feed_watermark_068;
+
+reset role;
 
 -- Back to the identity every later block assumes. Nothing follows this today,
 -- which is exactly why it is set: the next block appended here would otherwise

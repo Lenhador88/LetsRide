@@ -63,9 +63,11 @@ function requestRideMapRender(supabase: DataClient, rideId: string): void {
       if (data?.rendered) invalidate(queryKeys.rides.all())
     })
     .catch(() => {
-      // Swallowed on purpose. The function is not deployed yet (task 8.3 is an
-      // owner action), so today every one of these is a 404 — and that must look
-      // exactly like the vendor being down, which is to say like nothing at all.
+      // Swallowed on purpose. A transport failure here — the vendor down, the
+      // function cold, the tab closing mid-flight — must look like nothing at
+      // all, because the ride is already saved and the rider asked for a ride
+      // rather than a picture. There is deliberately nothing to distinguish it
+      // from the function answering 200 with `rendered: false`.
     })
 }
 

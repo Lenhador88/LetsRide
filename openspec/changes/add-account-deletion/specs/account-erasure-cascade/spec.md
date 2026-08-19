@@ -311,9 +311,12 @@ select distinct split_part(name, '/', 1) from storage.objects where bucket_id = 
 
 It lists folders that currently **contain** an object, so it cannot see a prefix nothing has
 written yet — and **a prefix is empty at exactly the moment it is introduced, which is the moment
-this list needs updating.** Measured on DEV 2026-08-12 it returns the five-prefix answer this
-requirement exists to correct, because `resolve-ride-location` is undeployed and no tile has ever
-been written. A reader obeying it concludes the six-element `PREFIXES` array has one entry too
+this list needs updating.** Measured on DEV 2026-08-12 it returned the five-prefix answer this
+requirement exists to correct, and it still returns it — but the *reason* has changed and the
+warning now rests on a narrower fact. `resolve-ride-location` was deployed on 2026-08-16 and DEV's
+`ride_map_render_attempts` holds render attempts, so the function is no longer what is holding the
+prefix empty; no tile has reached storage yet, which is all that still separates this query's
+answer from the truth. A reader obeying it concludes the six-element `PREFIXES` array has one entry too
 many. By the time the objects query *can* discover `ride-maps/`, the first such object is a
 rendered picture of a rider's home address that the sweep has been missing — the harm this
 requirement names.

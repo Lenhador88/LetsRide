@@ -214,6 +214,20 @@ export async function markClubSeen(clubId: string): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
+  // `last_seen_at` is sent and then DISCARDED. 068 hangs a BEFORE INSERT OR
+  // UPDATE trigger on `feed_reads` that overwrites it with the server's `now()`,
+  // for 061 §3's reason rather than for tamper-resistance: the value is compared
+  // against `postcards.created_at` and `rides.created_at`, which 044 and 045
+  // make server-generated, and a comparison with one clock on each side is
+  // wrong in a way nothing logs — a phone running ten minutes fast marks read
+  // everything posted in the next ten minutes.
+  //
+  // It is still sent because the column must be in the request body: PostgREST
+  // builds `on conflict … do update set` over the columns the body carries, so
+  // dropping it leaves a SET list of the two key columns and the advance on
+  // every visit after the first depends on PostgREST still emitting a DO UPDATE
+  // at all. Nothing in this repo can gate that, and a watermark that silently
+  // stops advancing looks exactly like a badge that will not clear.
   await supabase
     .from('feed_reads')
     .upsert(
@@ -249,6 +263,10 @@ export async function markFeedSeen(): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
+  // Same as `markClubSeen`: the timestamp is sent and discarded, 068's trigger
+  // imposes the server's, and the column stays in the body so PostgREST keeps
+  // it in the `on conflict … do update set` list. The reasoning is written out
+  // once, above — do not "tidy" this line away in isolation.
   await supabase
     .from('feed_reads')
     .upsert(

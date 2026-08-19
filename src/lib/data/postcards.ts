@@ -222,6 +222,20 @@ export const UNSEEN_SCAN_LIMIT = 100
  * The count runs under RLS, so blocks and hides are excluded by the same
  * policies the deck obeys — the reason this is a query rather than a
  * denormalised counter.
+ *
+ * **It still counts the rider's own postcards, and since `068` the club badge
+ * does not. That divergence is recorded rather than fixed here.** `068` gave
+ * `club_unread_counts()` an `author_id <> auth.uid()` arm, so posting into a
+ * club no longer badges it — but a postcard is composed at `/postcards/new` and
+ * the rider lands back on *this* screen, where "All new" still reads `+1` for
+ * the thing they just wrote. Same shape, one screen apart.
+ *
+ * Not fixed in `068`'s change for a reason that is about evidence rather than
+ * effort: `club_unread_counts()` is a database function, so the RLS suite can
+ * pin its behaviour and did (`068.2`). This is a client-side query under the
+ * caller's own session, which **no assertion in `supabase/tests/` can reach** —
+ * so adding the arm here would change a rider-visible count with nothing able to
+ * hold it. It wants its own change, with whatever test can actually see it.
  */
 async function countUnseenPostcards(supabase: DataClient): Promise<number> {
   const { data: { user } } = await supabase.auth.getUser()
