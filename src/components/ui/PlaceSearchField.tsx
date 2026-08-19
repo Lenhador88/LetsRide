@@ -125,10 +125,15 @@ export function PlaceSearchField({
   /**
    * The column's own length bound, so what this writes can always be stored.
    *
-   * **Measured, not assumed:** `search_places()` returns `places.name`
-   * verbatim, whose longest row on the real index is 203 characters, and
-   * `placeLabel` appends a locality on top — 214 at the maximum, over 200 on
-   * exactly one row of 736,538. A picker that can return a value its own
+   * **The bound is the column's, and the distribution behind it is gone.** It
+   * was set from the retired index — `search_places()` returned `places.name`
+   * verbatim, longest row 203 characters, 214 with a locality appended, over
+   * 200 on exactly one row of 736,538 — and `070` dropped that table, so no
+   * measurement stands behind the number now. The vendor's label is a
+   * `name` -> `address_line1` -> `formatted` chain (`search-places/shape.ts`),
+   * and `formatted` is a whole address on one line, so it is likelier to run
+   * long than anything the index held. The CHECK is what makes this safe
+   * regardless: this truncates to what the column accepts. A picker that can return a value its own
    * table's CHECK refuses is a dead end a rider cannot escape: the field owns
    * the value, so there is nothing for them to shorten.
    *

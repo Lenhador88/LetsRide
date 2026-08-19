@@ -2,15 +2,14 @@
 
 ## Where this change stands, 2026-08-19
 
-**Everything through §8 has landed on DEV and in the repo; PROD is the whole remainder.** The
-boxes below were not ticked as the three PRs merged, so re-derive rather than reading them —
-they under-report. What is measured rather than assumed:
+**§3 through §8 have landed on DEV and in the repo. §0, §2 and PROD are the remainder** — and the
+boxes below were not ticked as the three PRs merged, so re-derive rather than reading them. What is
+measured:
 
 ```bash
-grep -rn "search_places\|locality_centroid" src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'   # 0
-ls scripts/places .github/workflows/places-load.yml 2>&1                               # gone
-grep -cE "'0(37|39|40|49|50):" supabase/tests/rls_test.sql                              # 0 — retired sections
-grep -c "069:" supabase/tests/rls_test.sql                                              # 30 — replacement asserted
+ls scripts/places .github/workflows/places-load.yml     # both gone
+grep -cE "'0(37|39|40|49|50):" supabase/tests/rls_test.sql   # 0 — retired sections
+grep -c "069:" supabase/tests/rls_test.sql                   # 30 — replacement asserted
 ```
 
 ```
@@ -18,11 +17,28 @@ mcp__Supabase__execute_sql fpmrimzxadewsaiwpsel   -- DEV: places 0, retired fns 
 mcp__Supabase__execute_sql zwprydcyryvudhurbnye   -- PROD: places 1, retired fns 2, 350 MB
 ```
 
-**PROD still carries the index and both functions, and that is correct rather than drift.** `070`
-may only apply where the geocoder client is *live*; `main` is behind `development`, so PROD's app
-still calls `search_places()`. The remaining work is §7.5 and §8.6's second half, in that order:
-promote, apply `069` **before** the merge is served, apply `070` after. §9's live exercises are
-unrun on either project.
+**The obvious fourth command reads 1, not 0, and the survivor is not a defect.**
+`grep -rn "search_places\|locality_centroid" src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'` returns
+`src/lib/location/__tests__/rider-location.test.ts:325` — the retired name inside an `it(...)`
+title, a string rather than a comment, so the comment filter cannot see it. CLAUDE.md's comment
+trap one layer up. No call site survives.
+
+**What is NOT done, and none of it is closed by the promotion:**
+
+- **§0.4 and §0.5 are open vendor questions and survive PROD.** The credit cost of an autocomplete
+  call and of the static map, and the plan terms for storing results indefinitely and rendering
+  them on a non-Geoapify map. `shape.ts`'s ceiling block says its three vendor inputs are
+  *"all three DOCUMENTATION-DERIVED and none measured"* — 0.4 is what would make them measured.
+  Both need egress no session has.
+- **§2.2 is not satisfied, and it is `070`'s own precondition 1 on PROD.** `search-places` is
+  deployed v1 on both projects at 15:51Z/15:52Z, against a file that moved at 17:20Z with `a363cb2`
+  — `classifyLedgerError` and its wiring. So the deployed build reports a `23514` gate refusal as a
+  ceiling or an outage. **A redeploy is owed on both projects** and it is an owner action;
+  verify by content, not by a moved digest.
+- **PROD:** promote, apply `069` **before** the promotion build is serving traffic, apply `070`
+  only **after** it is. `070`'s header is explicit that merged is not deployed, and DEV is the
+  worked example of getting that backwards — its `070` landed 102 seconds after the merge commit.
+- **§9's live exercises are unrun on either project.**
 
 ## 0. Measure the vendor before anything is written
 

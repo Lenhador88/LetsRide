@@ -451,14 +451,20 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**Both are deployed to both projects and `ACTIVE`, `verify_jwt` true, and each one's `ezbr_sha256`
-is equal across the two projects — and NEITHER is current against its file**, measured 2026-08-19:
+**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and each one's
+`ezbr_sha256` is equal across the two projects — and NOT ONE of the three is current against its
+file**, measured 2026-08-19:
 `delete-account` deployed 2026-08-17 against a file that moved 2026-08-19 (comments only, so the
 behaviour is current — and that date moves with every header edit, which is why it is read off
-the command rather than trusted here), and `resolve-ride-location` deployed 2026-08-16 against a file that moved
+the command rather than trusted here); `resolve-ride-location` deployed 2026-08-16 against a file that moved
 2026-08-19 with `067` — real code, so a **picked** ride start renders no map tile on either
-project. PD-267 is the redeploy, and it has a second half: the guard in `src/lib/actions/rides.ts`
-must come out in the same PR. **Cross-project equality is not what establishes currency**: it says
+project; and `search-places` deployed 15:51Z/15:52Z against a file that moved 17:20Z the same day
+with `a363cb2` — also real code, `classifyLedgerError`, so the deployed build reports a `23514`
+participation-gate refusal to the rider as a ceiling or an outage. PD-267 is the first redeploy,
+and it has a second half: the guard in `src/lib/actions/rides.ts` must come out in the same PR.
+**The newest function going stale within two hours of its first deploy is the point** — a
+deployed function is drift the moment anyone edits its file, and this section has already read
+"both" while three were deployed. **Cross-project equality is not what establishes currency**: it says
 the two projects agree, never that either matches the repo, so currency is the
 `updated_at`-against-commit-date check below.
 Deploying is an **owner action** — there is no
@@ -552,9 +558,13 @@ by anything, and has been deleted. It is unrelated to `letsride-dev`.
 **Applied state: 70 files. DEV is at `070`, PROD at `068` — DEV-ahead by two since 2026-08-19,
 which is the ordinary state rather than drift.** `069` and `070` (both PD-273) are what the gap
 holds. `070` drops `public.places`, `search_places()` and `locality_centroid()`, and per its own
-header it may only apply to a project once the `search-places`-backed client is *live* there —
-DEV met that on the merge of #279, PROD does not until the promotion, so PROD still carries the
-337 MB index and both retired functions and that is correct rather than drift. Level is the *exception* rather
+header it may only apply to a project once the `search-places`-backed client is **serving
+traffic** there. **"Merged" is not that**, and DEV is the worked example of getting it wrong:
+`070` was applied 102 seconds after #279's commit, which no Vercel build of this app finishes
+in, so it almost certainly dropped `search_places()` out from under a Preview still serving the
+bundle that called it. Nothing red — the typeahead simply returned its unavailable state until
+the build landed. PROD does not reach the gate until the promotion build is live, so PROD still
+carries the 337 MB index and both retired functions and that is correct rather than drift. Level is the *exception* rather
 than the steady state: DEV-ahead is the ordinary state of a migration between its merge and its
 promotion, and it is not drift. **Do not read the count of unpromoted files off this sentence** —
 it named exactly one while two were waiting, which is the same defect as a stale number in a

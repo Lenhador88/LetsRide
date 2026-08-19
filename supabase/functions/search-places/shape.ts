@@ -25,8 +25,11 @@
  * constant below is marked **measured**, **documentation-derived** or
  * **assumed**, and the middle one is the common case here: better than a guess,
  * not a substitute for a response. `openspec/changes/…/tasks.md` §0 carries the
- * live calls that convert them, and **task 0.1 is still open — the premise that
- * this vendor can find a residential street is evidenced, not exercised.**
+ * live calls that convert them. **Task 0.1 is CLOSED** — the premise was
+ * exercised against this deployed function on DEV: `Willem Claijstraat Berkhout`
+ * returned the street at `result_type: street`, confidence 1, where
+ * `search_places()` returned nothing. **0.4 and 0.5 are still open**, which is
+ * why the three ceiling inputs below stay documentation-derived.
  *
  * Do not read "the tests pass" as "the vendor agrees."
  */
