@@ -246,9 +246,16 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
           disabled={upload.status === 'uploading'}
           aria-label={preview ? 'Choose a different photo' : undefined}
           className={cn(
-            'flex aspect-4/5 w-full items-center justify-center overflow-hidden rounded-xl bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50',
+            'flex w-full items-center justify-center overflow-hidden rounded-lg bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50',
             !preview && 'border-2 border-dashed border-border-strong',
           )}
+          // The design's own box — 358x224 inside a 390-wide frame, so a ratio
+          // rather than a height, and it survives a wider screen. It is also
+          // what the FEED draws (`PostcardCard`, 334/200): the previous
+          // `aspect-4/5` showed the rider a tall crop of a photo that posts
+          // landscape, so shrinking this made the preview honest as well as
+          // smaller.
+          style={{ aspectRatio: '358 / 224' }}
         >
           {preview ? (
             // eslint-disable-next-line @next/next/no-img-element -- a blob: object URL, not a remote asset next/image can optimise
