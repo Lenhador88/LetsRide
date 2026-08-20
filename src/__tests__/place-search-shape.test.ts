@@ -4,6 +4,7 @@ import {
   boundTerm,
   buildAutocompleteUrl,
   buildLocalityUrl,
+  buildReverseUrl,
   CANDIDATE_LIMIT,
   classifyLedgerError,
   ID_NAMESPACE,
@@ -109,6 +110,36 @@ describe('the outbound request', () => {
     expect(url.searchParams.get('apiKey')).toBe(KEY)
   })
 
+  it('asks the reverse mode for one CITY at the photo coordinate', () => {
+    const url = new URL(buildReverseUrl({ lat: 52.63, lon: 4.99 }, KEY))
+    expect(url.origin + url.pathname).toBe('https://api.geoapify.com/v1/geocode/reverse')
+    // `type=city` is the privacy rule at the source: the composer offers this
+    // as the setting BETWEEN hiding a location and publishing an exact one, so
+    // a street coming back would defeat the whole middle option, and nothing
+    // downstream could re-coarsen it.
+    expect(url.searchParams.get('type')).toBe('city')
+    expect(url.searchParams.get('limit')).toBe('1')
+    expect(url.searchParams.get('apiKey')).toBe(KEY)
+    expect(url.searchParams.get('format')).toBe('geojson')
+  })
+
+  it('sends the reverse coordinate as two parameters, in the obvious order', () => {
+    // The reverse endpoint takes `lat` and `lon` separately, so the `lon,lat`
+    // trap `bias` carries does not apply here — copying that idiom across is
+    // how it would be introduced.
+    const url = new URL(buildReverseUrl({ lat: 52.63, lon: 4.99 }, KEY))
+    expect(url.searchParams.get('lat')).toBe('52.63')
+    expect(url.searchParams.get('lon')).toBe('4.99')
+    expect(url.searchParams.has('text')).toBe(false)
+  })
+
+  it('sends no rider identity in a reverse lookup either', () => {
+    const url = buildReverseUrl({ lat: 52.63, lon: 4.99 }, KEY)
+    for (const forbidden of ['user', 'uid', 'session', 'token', 'authorization', 'email']) {
+      expect(url.toLowerCase()).not.toContain(forbidden)
+    }
+  })
+
   it('escapes a term rather than letting it build the query', () => {
     const url = new URL(buildAutocompleteUrl('Kerk&apiKey=stolen straat', null, KEY))
     expect(url.searchParams.get('apiKey')).toBe(KEY)
@@ -162,6 +193,13 @@ describe('the term bound', () => {
     // Empty is still refused in both — there is nothing to resolve.
     expect(isSearchable('', 'locality')).toBe(false)
     expect(isSearchable('   ', 'locality')).toBe(false)
+  })
+
+  it('has no floor at all in reverse mode, because there is no term', () => {
+    // The subject is a coordinate `parseRequest` has already range-checked, so
+    // the term is always '' and a floor measured against it would refuse every
+    // reverse lookup there is.
+    expect(isSearchable('', 'reverse')).toBe(true)
   })
 
   it('defaults to the stricter mode when none is named', () => {
@@ -316,8 +354,8 @@ describe('the request this function accepts', () => {
     // Rule 2. The subject comes from the verified JWT and nowhere else, so a
     // body naming a user must not be able to move it.
     const parsed = parseRequest({ mode: 'search', text: 'Berkhout', user_id: 'someone-else' })
-    expect(parsed).toEqual({ mode: 'search', text: 'Berkhout', near: null })
-    expect(Object.keys(parsed!)).toEqual(['mode', 'text', 'near'])
+    expect(parsed).toEqual({ mode: 'search', text: 'Berkhout', near: null, at: null })
+    expect(Object.keys(parsed!)).toEqual(['mode', 'text', 'near', 'at'])
   })
 
   it('refuses a body that names no valid mode', () => {
@@ -348,6 +386,38 @@ describe('the request this function accepts', () => {
       lat: -90,
       lon: 180,
     })
+  })
+
+  it('takes a coordinate and no term in reverse mode', () => {
+    expect(parseRequest({ mode: 'reverse', lat: 52.37, lon: 4.9 })).toEqual({
+      mode: 'reverse',
+      text: '',
+      near: null,
+      at: { lat: 52.37, lon: 4.9 },
+    })
+  })
+
+  it('REFUSES a reverse request whose coordinate is missing or out of range', () => {
+    // Unlike the bias, which collapses to "no bias" and still answers: there is
+    // nothing left to ask the vendor here, and a dropped coordinate would reach
+    // the rider as "this photo has no town" — a real answer's exact shape.
+    for (const body of [
+      { mode: 'reverse' },
+      { mode: 'reverse', lat: 52.37 },
+      { mode: 'reverse', lat: 91, lon: 4 },
+      { mode: 'reverse', lat: 52, lon: 181 },
+      { mode: 'reverse', lat: NaN, lon: 4 },
+      { mode: 'reverse', lat: '52.37', lon: 4.9 },
+    ]) {
+      expect(parseRequest(body)).toBeNull()
+    }
+  })
+
+  it('ignores a term sent alongside a reverse coordinate', () => {
+    // A reverse lookup is billable and its whole subject is the coordinate. A
+    // term riding along would be a second, unmetered search term reaching the
+    // vendor under a mode that never sends one.
+    expect(parseRequest({ mode: 'reverse', lat: 52.37, lon: 4.9, text: 'Berkhout' })?.text).toBe('')
   })
 })
 

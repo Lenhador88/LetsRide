@@ -113,6 +113,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   buildAutocompleteUrl,
   buildLocalityUrl,
+  buildReverseUrl,
   classifyLedgerError,
   isSearchable,
   parseRequest,
@@ -267,7 +268,12 @@ Deno.serve(async (req: Request) => {
   const url =
     request.mode === 'locality'
       ? buildLocalityUrl(request.text, GEOAPIFY_API_KEY)
-      : buildAutocompleteUrl(request.text, request.near, GEOAPIFY_API_KEY)
+      : request.mode === 'reverse'
+        // Non-null by construction: `parseRequest` refuses a `reverse` request
+        // whose coordinate is missing or out of range, so this branch cannot be
+        // reached without one.
+        ? buildReverseUrl(request.at!, GEOAPIFY_API_KEY)
+        : buildAutocompleteUrl(request.text, request.near, GEOAPIFY_API_KEY)
 
   // BILLABLE from here.
   const payload = await fetchJson(url)
@@ -278,5 +284,9 @@ Deno.serve(async (req: Request) => {
   if (request.mode === 'locality') {
     return json({ centroid: toLocalityResult(payload as never) }, 200)
   }
+  // `reverse` answers in the same envelope as `search` — a `results` array,
+  // zero or one long — so the client shares one parser and a coordinate that
+  // names no town is an empty list rather than a distinct failure. There is
+  // nothing for a rider to do differently about the two.
   return json({ results: toPlaceResults(payload as never) }, 200)
 })

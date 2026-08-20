@@ -145,11 +145,20 @@ export function PlaceSearchField({
   onChange: (value: PlaceValue | null) => void
   /**
    * What the four hidden inputs are called, so the caller's action reads them
-   * back off `FormData` under its own column names. Required rather than
-   * defaulted: two different tables want this control and a shared default
-   * would silently write a club's column names onto a ride.
+   * back off `FormData` under its own column names. Never defaulted: two
+   * different tables want this control and a shared default would silently
+   * write a club's column names onto a ride.
+   *
+   * **Omitted means the field writes NO form fields at all** — it is a
+   * controlled input whose only output is `onChange`, and the caller submits
+   * whatever it decides the pick means. The postcard composer is the first such
+   * caller and the reason this became optional: there, a picked town is only
+   * one of three things the location control can mean, and which one is decided
+   * by a button beneath this field. Hidden inputs carrying the town regardless
+   * would submit it under `Hide` — the one state whose whole promise is that
+   * nothing is sent.
    */
-  names: { name: string; placeId: string; lat: string; lon: string }
+  names?: { name: string; placeId: string; lat: string; lon: string }
   /**
    * The column's own length bound, so what this writes can always be stored.
    *
@@ -303,15 +312,21 @@ export function PlaceSearchField({
       {/* The value travels as named fields rather than as JSON in one: the
           action parses them with `readClubLocation`/`readRideLocation`, and
           named strings are what a `FormData` round trip cannot half-decode.
+          A caller passing no `names` submits nothing from here at all — see
+          the prop's own note.
 
           `names.name` is the rider's own editable input in free-text mode and
           hidden in place mode — the other three are hidden in both. In place
           mode the VISIBLE input carries no `name` at all, so a typed-but-
           unpicked club location cannot be submitted (§D5). */}
-      {!freeText && <input type="hidden" name={names.name} value={value?.name ?? ''} />}
-      <input type="hidden" name={names.placeId} value={value?.placeId ?? ''} />
-      <input type="hidden" name={names.lat} value={value ? String(value.lat) : ''} />
-      <input type="hidden" name={names.lon} value={value ? String(value.lon) : ''} />
+      {names && (
+        <>
+          {!freeText && <input type="hidden" name={names.name} value={value?.name ?? ''} />}
+          <input type="hidden" name={names.placeId} value={value?.placeId ?? ''} />
+          <input type="hidden" name={names.lat} value={value ? String(value.lat) : ''} />
+          <input type="hidden" name={names.lon} value={value ? String(value.lon) : ''} />
+        </>
+      )}
 
       <div
         className={cn(
@@ -330,8 +345,11 @@ export function PlaceSearchField({
                native clear affordance that duplicates this field's own. */
             type="text"
             /* Place mode's input is a search box and is deliberately nameless
-               — see the hidden-input comment above. */
-            name={freeText ? names.name : undefined}
+               — see the hidden-input comment above. In free-text mode this IS
+               the stored field, so a caller wanting free text and passing no
+               `names` would submit nothing at all; `?.` keeps that from being a
+               crash, and nothing in the app does it. */
+            name={freeText ? names?.name : undefined}
             value={text}
             onChange={(event) => {
               setText(event.target.value)

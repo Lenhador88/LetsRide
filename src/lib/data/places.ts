@@ -353,3 +353,68 @@ export async function getLocalityCentroid(q: string): Promise<LocalityCentroid |
 
   return { lat, lon }
 }
+
+/**
+ * `reverseGeocodePlace` reads the proxy's `reverse` mode: a photo's own EXIF
+ * coordinate in, the town or city it sits in out.
+ *
+ * **Degrades to `null` on every failure, like `getLocalityCentroid` and unlike
+ * `searchPlaces`.** This fills a field the rider can fill themselves, so every
+ * way it can fail has the same answer — an empty input and a typeahead. That is
+ * what makes the composer safe to ship ahead of the deploy that makes this
+ * work: an undeployed `reverse` mode is a `bad_request` from the function,
+ * which lands here as `null`, which the composer already draws as "we could not
+ * read a town from this photo". No error reaches the rider for a convenience
+ * they did not ask for, and nothing needs a flag to hide it.
+ *
+ * **`type=city` is enforced at the vendor, not here** (`shape.ts`'s
+ * `buildReverseUrl`) — this is the setting between hiding a location and
+ * publishing an exact one, so a street coming back would defeat the middle
+ * option entirely and no amount of client-side filtering could re-coarsen it.
+ *
+ * **Metered under the same ledger as every other lookup** (`069`), so a reverse
+ * call spends one of the rider's 20/hour. That is why the composer calls this
+ * once per photo — on the upload settling — rather than on every render: the
+ * ledger row is written before the vendor is reached, so a repeated call cannot
+ * be taken back. A ceiling refusal arrives here as an error like any other and
+ * becomes `null`, which is the honest answer: the rider types the town.
+ */
+export async function reverseGeocodePlace(
+  latitude: number,
+  longitude: number
+): Promise<PlaceSearchResult | null> {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
+
+  const supabase = await resolveSupabase()
+
+  // `functions.invoke` never rejects — see `searchPlaces`'s own comment.
+  const response = await supabase.functions.invoke('search-places', {
+    body: { mode: 'reverse', lat: latitude, lon: longitude },
+  })
+
+  if (response.error) {
+    console.warn('[places] search-places (reverse) failed — the rider types the town', response.error)
+    return null
+  }
+
+  const results = (response.data as { results?: unknown } | null)?.results
+  if (!Array.isArray(results) || results.length === 0) return null
+
+  const first = results[0] as PlaceSearchResult
+  // The same sanity check `getLocalityCentroid` applies, for the same reason:
+  // the proxy already drops a feature with no usable coordinate, so a value
+  // arriving here malformed means something changed upstream — and a `NaN`
+  // reaching the composer would be submitted as a location.
+  if (
+    typeof first?.lat !== 'number' ||
+    typeof first?.lon !== 'number' ||
+    !Number.isFinite(first.lat) ||
+    !Number.isFinite(first.lon) ||
+    typeof first?.label !== 'string' ||
+    first.label.trim() === ''
+  ) {
+    return null
+  }
+
+  return first
+}
