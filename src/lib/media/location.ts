@@ -18,12 +18,17 @@
  * ~1 km cell, and described to the rider as "about a kilometre". It is now a
  * **place the rider names**, prefilled from the photo where that is possible and
  * typed where it is not. The rounding survives, and its job inverted: it was the
- * *promise* and it is now the *mechanism*. A named town is what the rider reads;
+ * *promise* and it is now the *mechanism*. A named place is what the rider reads;
  * the 2dp coordinate under it is what stops the schema describing a driveway as
  * a city.
  *
  * `region` is gone from this file and still legal in the column — one row on DEV
  * carries it. The client stops writing it; nothing backfills it.
+ *
+ * **The rider-facing label for the middle mode is `Region` and the marker is
+ * still `place`** (2026-08-20). The two words are deliberately different, for
+ * exactly the reason in the paragraph above: `'region'` already means `064`'s
+ * rounded coordinate in this column.
  */
 
 /**
@@ -48,7 +53,7 @@ export const DEFAULT_PHOTO_LOCATION_MODE: PhotoLocationMode = 'hide'
  * **It bounds the NAMED place too, not only the retired rounding**, and that is
  * the whole reason it survived the rename. The typeahead is a geocoder: it
  * returns streets and buildings, so a rider can name their own address in a
- * field labelled `Town`. Rounding what is stored means the name is as specific
+ * field labelled `Region`. Rounding what is stored means the name is as specific
  * as the rider chose to be and the *coordinate* never is.
  */
 export const COARSE_DECIMAL_PLACES = 2
@@ -154,16 +159,42 @@ export function resolvePhotoLocation(
     }
   }
 
+  // `precise` has TWO sources and the photo's own fix is only the first.
+  //
+  // Product owner, 2026-08-20: the option came back because a photo that
+  // carries no fix — every HEIC before this session, and anything through a
+  // share sheet — removed it from the screen entirely, which read as a lost
+  // feature rather than as a photo that knew nothing. So a place the rider
+  // PICKED is the second source: they named a spot and asked for it exactly,
+  // which is a coherent request and the only other exact coordinate on this
+  // screen.
   const { latitude, longitude } = capture
-  if (latitude === null || longitude === null) return NO_PHOTO_LOCATION
-
-  return {
-    latitude,
-    longitude,
-    precision: 'precise',
-    // The name rides along as a LABEL for a coordinate that did not come from
-    // it, so the two may disagree — deliberately, and cosmetically. It is a
-    // caption, not evidence.
-    placeName: place?.name.trim() || null,
+  if (latitude !== null && longitude !== null) {
+    return {
+      latitude,
+      longitude,
+      precision: 'precise',
+      // The name rides along as a LABEL for a coordinate that did not come from
+      // it, so the two may disagree — deliberately, and cosmetically. It is a
+      // caption, not evidence.
+      placeName: place?.name.trim() || null,
+    }
   }
+
+  // **A PICKED place only — never a typed one.** A typed name has no coordinate
+  // at all, so there is nothing to be exact about; emitting the name under
+  // `precise` would mark a row as carrying an exact spot that it does not have.
+  // That falls through to the `hide`-shaped answer below, which is arm 1 and
+  // exactly what a rider who has named nothing should get.
+  const name = place?.name.trim()
+  if (place && place.lat !== null && place.lon !== null) {
+    return {
+      latitude: place.lat,
+      longitude: place.lon,
+      precision: 'precise',
+      placeName: name || null,
+    }
+  }
+
+  return NO_PHOTO_LOCATION
 }

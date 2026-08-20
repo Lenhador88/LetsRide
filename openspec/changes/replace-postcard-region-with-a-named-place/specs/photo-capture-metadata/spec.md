@@ -96,11 +96,24 @@ truth for a value the rider can change after the hint has rendered.
 
 #### Scenario: The strings
 - **WHEN** each mode is selected
-- **THEN** the hint SHALL read, with the lead clause emphasised:
-  - Hide — "Nothing is saved." / "No location is stored with this postcard."
-  - Town — "Only the town is saved." / "Whoever can see this postcard sees the town, never the
-    exact spot."
-  - Precise — "Saved exactly." / "Anyone who can see this photo can see where you took it."
+- **THEN** the hint SHALL carry a lead clause, emphasised, and a sentence naming what a reader of
+  the postcard would learn:
+  - Hide — that nothing is stored
+  - the named-place mode — that the words are the rider's own and the exact spot is not stored
+  - Precise — that a reader can see where the photo was taken, or, where the coordinate came from
+    a picked place rather than the photo, that the place is exact and the photo's own spot is not
+    what was stored
+
+> **AMENDED 2026-08-20 — properties, not transcriptions.** This scenario pinned three exact
+> strings and two of them were already stale against the shipped screen when review read it. A
+> spec that transcribes copy drifts on the first wording change and reports it as a violation,
+> which trains the next reader to ignore it. The strings live in
+> `src/components/postcards/locationCopy.ts` and `resolveLocationCopy`'s tests are what hold them;
+> what belongs here is the claim each one must make.
+
+#### Scenario: A mode that would store nothing SHALL NOT claim a save
+- **WHEN** a saving mode is selected and the request it would build carries no location
+- **THEN** the lead clause SHALL state that nothing is saved yet
 
 #### Scenario: The hint does not change with the audience
 - **WHEN** the rider switches the audience between the app-wide feed and a club
@@ -108,32 +121,59 @@ truth for a value the rider can change after the hint has rendered.
 
 #### Scenario: The middle label
 - **WHEN** the mode control renders
-- **THEN** the middle segment SHALL NOT be labelled "Region"
+- **THEN** the middle segment SHALL NOT be labelled with a unit of distance
+
+> **AMENDED 2026-08-20.** This originally read *SHALL NOT be labelled "Region"*, and the shipped
+> label is now `Region`. The requirement was aimed at the WORD standing for a ~1 km cell — the
+> thing the rider was being asked to reason about — and `Town` failed the owner's own test within
+> a day: a rider in the Pyrenees names a mountain range. `Region` as the name of a place a rider
+> chooses is not the rejected reading. The **stored marker** is unaffected and remains `place`;
+> `'region'` still means `064`'s rounded coordinate in the column.
 
 ## ADDED Requirements
 
-### Requirement: The precise mode SHALL NOT be offered for a photo with no coordinate
+### Requirement: The precise mode SHALL carry an exact coordinate or none
 
-Where the chosen photo carries no coordinate, the precise mode SHALL NOT be presented at all —
-neither enabled nor disabled — and no request SHALL be capable of carrying the precise marker.
+The precise mode SHALL be presented in every state, and the request it builds SHALL carry the
+precise marker only alongside a coordinate that is exact for what the rider named.
 
-A named place's coordinate is a centroid. Storing it under a marker that says "this is exactly
-where the photo was taken" would make the schema state something false about the rider's own
-privacy choice, and the whole architecture rests on the marker and the value being produced
-together or not at all.
+**Two sources are exact and they are ordered.** The photo's own fix is the first, and where it
+exists it is what precise means. Where it does not, a place the rider **picked** from the
+typeahead is the second, stored unrounded: the rider named a spot and asked for it exactly.
 
-A disabled segment is refused for the same reason the previous spec refused one: it still draws a
-label and still reads as a choice somebody made, and a radiogroup whose options are dead is worse
-for a screen reader than one that never offered them.
+**A TYPED place is not a source.** It carries no coordinate at all, so a request marking it
+precise would assert an exact spot the row does not hold.
 
-#### Scenario: Two buttons, not three greyed
-- **WHEN** the chosen photo carries no coordinate
-- **THEN** the mode control SHALL present exactly the hide and the named-place modes
+Where neither source exists the mode SHALL resolve to the same empty answer as hide, and the
+control SHALL say so rather than implying a save.
 
-#### Scenario: A named place cannot become a precise location
-- **WHEN** a rider names a place for a photo that carried no coordinate
-- **THEN** no request SHALL be constructible that carries that place's coordinate under the
-  precise marker
+> **REPLACES, 2026-08-20, the requirement that the precise mode SHALL NOT be offered for a photo
+> with no coordinate.** That requirement was written when the only exact coordinate on the screen
+> came from the camera, and it removed the control rather than disabling it — sound reasoning
+> whose premise stopped holding the moment the product owner posted from an iPad. Every HEIC
+> carried no fix (`exif.ts` read JPEG only), so the option was absent for every photo and nothing
+> said why; the owner read it as a lost feature and asked for it back. The rejection of a
+> *disabled* segment still stands and is untouched. What changed is that there is now a second
+> exact source, so the mode has a referent in states where it previously had none.
+
+#### Scenario: Three buttons, always
+- **WHEN** the mode control renders, whatever the photo carries
+- **THEN** it SHALL present the hide, named-place and precise modes
+
+#### Scenario: A PICKED place may become a precise location
+- **WHEN** a rider picks a place from the typeahead for a photo that carried no coordinate, and
+  selects precise
+- **THEN** the request SHALL carry that place's coordinate unrounded under the precise marker
+
+#### Scenario: A TYPED place cannot become a precise location
+- **WHEN** a rider types a name without picking a suggestion, for a photo that carried no
+  coordinate, and selects precise
+- **THEN** no request SHALL be constructible that carries the precise marker
+
+#### Scenario: Precise with nothing to be precise about
+- **WHEN** precise is selected and neither a photo fix nor a picked place exists
+- **THEN** the request SHALL carry no location, and the control SHALL state that nothing is saved
+  yet and name a mode that would store the rider's text
 
 #### Scenario: The photo's own coordinate is what precise means
 - **WHEN** the photo carries a coordinate and the rider selects precise

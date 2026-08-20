@@ -18,14 +18,26 @@
  * the TIFF header, and two IFDs; everything it does not understand it reports as
  * `null` rather than guessing.
  *
+ * ## Two containers, one TIFF
+ *
+ * JPEG and **HEIC/HEIF** — what an iPhone and an iPad shoot by default — store
+ * the same EXIF structure in completely different wrappers: an APP1 marker
+ * segment near the front of a JPEG, an ISOBMFF *item* in a HEIC whose bytes are
+ * usually far into `mdat`. So there are two ways in, `findExifTiffHeader` and
+ * `locateHeifExif`, and one walk out of both — `readCaptureFromTiff`.
+ *
+ * The HEIC path is the only asynchronous one, because locating the item and
+ * reading it are two different slices of the file. See `readExifCapture`.
+ *
+ * **One HEIF layout is not read: `mdat` before `meta`, where `mdat` is larger
+ * than the header slice.** `readBox` refuses a box claiming more than the
+ * buffer holds, so the top-level walk stops before it reaches `meta` and the
+ * file reports no metadata — the safe answer, and the same one the format's
+ * usual layout would have given for a photo with nothing to read. Every
+ * encoder this app expects writes `meta` first.
+ *
  * ## What it does NOT read
  *
- * - **HEIC/HEIF**, which is what an iPhone shoots by default. Its metadata is in
- *   an ISOBMFF box structure, not a JPEG APP1 segment, so this returns nulls for
- *   one. That is a real gap and it is deliberate: it fails to the safe answer —
- *   no time, no location, and a composer that says so — rather than to a wrong
- *   one. (A browser that cannot decode HEIC at all fails earlier, in
- *   `createImageBitmap`.)
  * - **PNG, WebP, GIF.** No EXIF in the shapes this app sees.
  * - Anything already stripped — an image that has been through another app's
  *   share sheet usually has no EXIF left, which is again the safe answer.
@@ -108,6 +120,21 @@ type Ifd = Map<number, Entry>
 export async function readExifCapture(file: File | Blob): Promise<ExifCapture> {
   try {
     const head = await file.slice(0, HEADER_BYTES).arrayBuffer()
+
+    // **HEIC is read in two slices and a JPEG in one, and that asymmetry is the
+    // format's rather than a choice.** A JPEG carries its EXIF in a segment near
+    // the front, so one header read finds it. HEIF carries a *directory* near
+    // the front (`meta`) that points at a payload which is usually inside
+    // `mdat`, tens of megabytes in — so the first slice locates it and the
+    // second reads exactly the bytes it named. Reading far enough to catch
+    // `mdat` speculatively would mean pulling most of the photo into memory to
+    // find a few hundred bytes.
+    const extent = locateHeifExif(head)
+    if (extent) {
+      const payload = await file.slice(extent.offset, extent.offset + extent.length).arrayBuffer()
+      return parseHeifExifPayload(payload)
+    }
+
     return parseExifCapture(head)
   } catch {
     return NOTHING
@@ -124,20 +151,39 @@ export function parseExifCapture(buffer: ArrayBuffer): ExifCapture {
     const view = new DataView(buffer)
     const tiffAt = findExifTiffHeader(view)
     if (tiffAt === null) return NOTHING
-
-    const little = readByteOrder(view, tiffAt)
-    if (little === null) return NOTHING
-
-    const ifd0At = readU32(view, tiffAt + 4, little)
-    const ifd0 = readIfd(view, tiffAt, tiffAt + ifd0At, little)
-    if (!ifd0) return NOTHING
-
-    return {
-      ...readTakenAt(view, tiffAt, ifd0, little),
-      ...readCoordinates(view, tiffAt, ifd0, little),
-    }
+    return readCaptureFromTiff(view, tiffAt)
   } catch {
     return NOTHING
+  }
+}
+
+/**
+ * The TIFF walk itself, from the byte order mark onward — **shared by both
+ * container formats and unaware of either.**
+ *
+ * A JPEG reaches it through `findExifTiffHeader`'s marker walk and a HEIC
+ * through `locateHeifExif`'s box tree, and past this point the two are the same
+ * bytes in the same layout: EXIF inside HEIF is not a second dialect, it is the
+ * identical TIFF structure relocated into an ISOBMFF item. Splitting here is
+ * what keeps `readTakenAt`'s offset resolution, the coordinate clamp and the
+ * 1995 floor from acquiring a per-format copy.
+ */
+function readCaptureFromTiff(view: DataView, tiffAt: number): ExifCapture {
+  // `readByteOrder` reads four bytes and `readU32` four more. The JPEG path
+  // proves this at its call site; the HEIF path cannot, because the extent
+  // length comes from the file rather than from a segment this module walked.
+  if (tiffAt < 0 || tiffAt + 8 > view.byteLength) return NOTHING
+
+  const little = readByteOrder(view, tiffAt)
+  if (little === null) return NOTHING
+
+  const ifd0At = readU32(view, tiffAt + 4, little)
+  const ifd0 = readIfd(view, tiffAt, tiffAt + ifd0At, little)
+  if (!ifd0) return NOTHING
+
+  return {
+    ...readTakenAt(view, tiffAt, ifd0, little),
+    ...readCoordinates(view, tiffAt, ifd0, little),
   }
 }
 
@@ -205,6 +251,361 @@ function isExifSignature(view: DataView, at: number): boolean {
     view.getUint8(at + 4) === 0x00 &&
     view.getUint8(at + 5) === 0x00
   )
+}
+
+/* -------------------------------------------------------------------------- */
+/* HEIC / HEIF — the container an iPhone and an iPad shoot by default          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Where a HEIC's EXIF payload lives, as an absolute byte range in the file.
+ *
+ * Absolute rather than relative to anything this module read, because that is
+ * what `iloc` stores and what the second `Blob.slice` needs.
+ */
+export type HeifExifExtent = { offset: number; length: number }
+
+/**
+ * Brands that mean "this ISOBMFF file is a still image with the HEIF item
+ * structure". Checked against the major brand **and** every compatible brand,
+ * because encoders disagree about which one goes first — an iPhone writes
+ * `heic` as major with `mif1` compatible, and some writers do the reverse.
+ *
+ * `avif`/`avis` are here for the same reason they cost nothing: AVIF is the
+ * identical box structure with a different codec, so the EXIF item is found by
+ * exactly this walk. Nothing in the app produces one today; a file that turns
+ * up gets read rather than silently returning no metadata.
+ */
+const HEIF_BRANDS = new Set([
+  'heic', 'heix', 'heim', 'heis', 'hevc', 'hevx', 'hevm', 'hevs',
+  'mif1', 'msf1', 'miaf', 'avif', 'avis',
+])
+
+/** Ceilings on what a corrupt or hostile file can make this walk do. */
+const MAX_BOXES = 64
+const MAX_ITEMS = 1024
+/** An EXIF block is bounded at 64 KiB in JPEG; HEIF has no such bound, so this
+ *  is the second slice's ceiling rather than the format's. */
+const MAX_EXIF_PAYLOAD_BYTES = 512 * 1024
+
+type Box = { type: string; end: number; bodyAt: number }
+
+function fourCC(view: DataView, at: number): string {
+  return String.fromCharCode(
+    view.getUint8(at),
+    view.getUint8(at + 1),
+    view.getUint8(at + 2),
+    view.getUint8(at + 3)
+  )
+}
+
+/**
+ * One ISOBMFF box header: a 32-bit size, a four-character type, and two escape
+ * hatches — `1` meaning a 64-bit size follows, `0` meaning "to the end".
+ *
+ * `limit` is the parent's end rather than the buffer's, so a child box claiming
+ * more than its parent holds is refused here instead of walking out of it.
+ */
+function readBox(view: DataView, at: number, limit: number): Box | null {
+  if (at + 8 > limit) return null
+  const size = view.getUint32(at, false)
+  const type = fourCC(view, at + 4)
+
+  let bodyAt = at + 8
+  let end: number
+  if (size === 1) {
+    if (at + 16 > limit) return null
+    const large = view.getBigUint64(at + 8, false)
+    if (large > BigInt(Number.MAX_SAFE_INTEGER)) return null
+    end = at + Number(large)
+    bodyAt = at + 16
+  } else if (size === 0) {
+    end = limit
+  } else if (size < 8) {
+    return null
+  } else {
+    end = at + size
+  }
+
+  if (end <= at || end > limit) return null
+  return { type, end, bodyAt }
+}
+
+/** `offset_size`, `length_size` and `base_offset_size` are 0, 4 or 8 per the
+ *  spec; anything else is a malformed file rather than a size to guess at. */
+function readSizedUint(view: DataView, at: number, size: number, limit: number): number | null {
+  if (size === 0) return 0
+  if (at + size > limit) return null
+  if (size === 4) return view.getUint32(at, false)
+  if (size === 8) {
+    const large = view.getBigUint64(at, false)
+    return large > BigInt(Number.MAX_SAFE_INTEGER) ? null : Number(large)
+  }
+  return null
+}
+
+/**
+ * Finds the EXIF payload in a HEIC without reading the payload itself.
+ *
+ * **The two-step is the whole reason this function exists separately from the
+ * parse.** HEIF stores metadata as *items*: `iinf` is a table of what items
+ * exist and what each one is, `iloc` is a table of where each one's bytes are,
+ * and both sit near the front of the file inside `meta` — while the bytes
+ * themselves are usually in `mdat`, which on a 4 MB photo starts megabytes in.
+ * So the caller reads a header slice, this names an exact byte range, and the
+ * caller reads that range and nothing else.
+ *
+ * Returns `null` for a JPEG, for anything that is not a HEIF-branded ISOBMFF
+ * file, and for every malformed or unsupported shape — which is what makes it
+ * safe to try before the JPEG path rather than after.
+ *
+ * Exported for the unit suite: an ISOBMFF fixture is exact to build in `node`
+ * where a browser `File` is not, the same reason `parseExifCapture` is split
+ * out of `readExifCapture`.
+ */
+export function locateHeifExif(buffer: ArrayBuffer): HeifExifExtent | null {
+  try {
+    const view = new DataView(buffer)
+    const limit = view.byteLength
+
+    const ftyp = readBox(view, 0, limit)
+    if (!ftyp || ftyp.type !== 'ftyp' || !isHeifBrand(view, ftyp)) return null
+
+    let at = ftyp.end
+    let meta: Box | null = null
+    for (let guard = 0; guard < MAX_BOXES && at < limit; guard++) {
+      const box = readBox(view, at, limit)
+      if (!box) return null
+      if (box.type === 'meta') {
+        meta = box
+        break
+      }
+      at = box.end
+    }
+    if (!meta) return null
+
+    // `meta` is a FullBox: one version byte and three flag bytes before its
+    // children start.
+    let itemId: number | null = null
+    let iloc: Box | null = null
+    let child = meta.bodyAt + 4
+    for (let guard = 0; guard < MAX_BOXES && child < meta.end; guard++) {
+      const box = readBox(view, child, meta.end)
+      if (!box) return null
+      if (box.type === 'iinf') itemId = findExifItemId(view, box)
+      else if (box.type === 'iloc') iloc = box
+      child = box.end
+    }
+    if (itemId === null || !iloc) return null
+
+    return readItemExtent(view, iloc, itemId)
+  } catch {
+    return null
+  }
+}
+
+function isHeifBrand(view: DataView, ftyp: Box): boolean {
+  if (ftyp.bodyAt + 4 > ftyp.end) return false
+  if (HEIF_BRANDS.has(fourCC(view, ftyp.bodyAt))) return true
+  // major_brand, then a 4-byte minor_version, then the compatible list.
+  for (let at = ftyp.bodyAt + 8; at + 4 <= ftyp.end; at += 4) {
+    if (HEIF_BRANDS.has(fourCC(view, at))) return true
+  }
+  return false
+}
+
+/**
+ * The item id whose type is `Exif`, from the item-info table.
+ *
+ * **Only `infe` version 2 and above carry an item TYPE at all** — version 0 and
+ * 1 identify an item by a MIME string in a variable-length name field instead.
+ * Nothing that shoots HEIC writes those, and skipping them is the safe answer
+ * rather than a gap worth parsing: a version this does not understand yields no
+ * id, which yields no metadata.
+ */
+function findExifItemId(view: DataView, iinf: Box): number | null {
+  // A FullBox is 8 bytes of header and 4 of version/flags; a `readBox` that
+  // returned an 8-byte box has none of those. The wrapper would catch the throw
+  // and return the right answer anyway — this is here so the module header's
+  // claim that every read is bounds-checked stays literally true.
+  if (iinf.bodyAt + 4 > iinf.end) return null
+  const version = view.getUint8(iinf.bodyAt)
+  let at = iinf.bodyAt + 4
+
+  let count: number
+  if (version === 0) {
+    if (at + 2 > iinf.end) return null
+    count = view.getUint16(at, false)
+    at += 2
+  } else {
+    if (at + 4 > iinf.end) return null
+    count = view.getUint32(at, false)
+    at += 4
+  }
+  if (count > MAX_ITEMS) return null
+
+  for (let i = 0; i < count && at < iinf.end; i++) {
+    const infe = readBox(view, at, iinf.end)
+    if (!infe) return null
+    at = infe.end
+    if (infe.type !== 'infe') continue
+
+    const infeVersion = view.getUint8(infe.bodyAt)
+    if (infeVersion < 2) continue
+
+    let p = infe.bodyAt + 4
+    let id: number
+    if (infeVersion === 2) {
+      if (p + 2 > infe.end) continue
+      id = view.getUint16(p, false)
+      p += 2
+    } else {
+      if (p + 4 > infe.end) continue
+      id = view.getUint32(p, false)
+      p += 4
+    }
+    p += 2 // item_protection_index
+    if (p + 4 > infe.end) continue
+    if (fourCC(view, p) === 'Exif') return id
+  }
+  return null
+}
+
+/**
+ * The first extent of one item, from the item-location table.
+ *
+ * **Every item is walked even once the wanted one is found**, because the
+ * per-item records are variable-length and the only way to reach record *n* is
+ * to have measured every record before it. The early return is therefore inside
+ * the extent loop rather than around it.
+ *
+ * Two shapes are refused rather than handled. **A construction method other
+ * than 0** means the bytes are not at a file offset — method 1 puts them inside
+ * an `idat` box and method 2 in another item — and no HEIC encoder stores EXIF
+ * that way; returning null costs a rider nothing and guessing an offset would
+ * read arbitrary bytes. **An extent beyond `MAX_EXIF_PAYLOAD_BYTES`** is
+ * refused so a corrupt length cannot make the caller allocate the whole photo.
+ */
+function readItemExtent(view: DataView, iloc: Box, wantedId: number): HeifExifExtent | null {
+  if (iloc.bodyAt + 4 > iloc.end) return null
+  const version = view.getUint8(iloc.bodyAt)
+  let at = iloc.bodyAt + 4
+  if (at + 2 > iloc.end) return null
+
+  const sizes = view.getUint8(at)
+  const offsetSize = sizes >> 4
+  const lengthSize = sizes & 0x0f
+  const baseAndIndex = view.getUint8(at + 1)
+  const baseOffsetSize = baseAndIndex >> 4
+  // The low nibble is `index_size` only in versions 1 and 2; in version 0 it is
+  // reserved, and reading it as a size would shift every extent that follows.
+  const indexSize = version === 1 || version === 2 ? baseAndIndex & 0x0f : 0
+  at += 2
+
+  let count: number
+  if (version < 2) {
+    if (at + 2 > iloc.end) return null
+    count = view.getUint16(at, false)
+    at += 2
+  } else {
+    if (at + 4 > iloc.end) return null
+    count = view.getUint32(at, false)
+    at += 4
+  }
+  if (count > MAX_ITEMS) return null
+
+  for (let i = 0; i < count; i++) {
+    let id: number
+    if (version < 2) {
+      if (at + 2 > iloc.end) return null
+      id = view.getUint16(at, false)
+      at += 2
+    } else {
+      if (at + 4 > iloc.end) return null
+      id = view.getUint32(at, false)
+      at += 4
+    }
+
+    let constructionMethod = 0
+    if (version === 1 || version === 2) {
+      if (at + 2 > iloc.end) return null
+      constructionMethod = view.getUint16(at, false) & 0x0f
+      at += 2
+    }
+    at += 2 // data_reference_index
+
+    const base = readSizedUint(view, at, baseOffsetSize, iloc.end)
+    if (base === null) return null
+    at += baseOffsetSize
+
+    if (at + 2 > iloc.end) return null
+    const extentCount = view.getUint16(at, false)
+    at += 2
+
+    // **The one loop whose cursor can fail to advance.** With `offset_size`,
+    // `length_size` and `index_size` all zero the body below moves `at` by
+    // nothing, so no bounds guard inside it can ever fire and it runs
+    // `extent_count` — up to 65535 — times per item. Bounded rather than
+    // unbounded (`MAX_ITEMS` caps the outer loop) and it allocates nothing, but
+    // a 6 KB crafted file measured ~200 ms of blocked main thread on a desktop,
+    // which is a second or two on a phone the moment a rider picks the file.
+    // An extent with no offset and no length describes nothing, so refusing is
+    // also the honest answer rather than only the cheap one. Found by review.
+    if (offsetSize === 0 && lengthSize === 0) return null
+
+    for (let e = 0; e < extentCount; e++) {
+      at += indexSize
+      const offset = readSizedUint(view, at, offsetSize, iloc.end)
+      if (offset === null) return null
+      at += offsetSize
+      const length = readSizedUint(view, at, lengthSize, iloc.end)
+      if (length === null) return null
+      at += lengthSize
+
+      if (id === wantedId && e === 0) {
+        if (constructionMethod !== 0) return null
+        if (length <= 0 || length > MAX_EXIF_PAYLOAD_BYTES) return null
+        return { offset: base + offset, length }
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * The bytes `locateHeifExif` pointed at, as capture metadata.
+ *
+ * The payload is an `ExifDataBlock`: a 32-bit big-endian offset to the TIFF
+ * header, then — at that offset — the identical structure a JPEG's APP1 segment
+ * carries. In practice the offset is 6 and the six bytes it skips are the
+ * `Exif\0\0` signature.
+ *
+ * **The fallback exists because that prefix is the one part encoders get
+ * wrong.** Some write the payload with no length prefix at all, starting
+ * straight at `Exif\0\0`. Trying the declared offset first and the signature
+ * second is not guesswork: both candidates are confirmed by `readByteOrder`,
+ * which refuses anything that is not `II`/`MM` followed by 42, so a wrong guess
+ * yields no metadata rather than misread bytes.
+ */
+export function parseHeifExifPayload(buffer: ArrayBuffer): ExifCapture {
+  try {
+    const view = new DataView(buffer)
+    if (view.byteLength < 4) return NOTHING
+
+    // Tested on the VALUE rather than on identity with `NOTHING`: a valid TIFF
+    // header carrying neither tag returns a fresh all-null object, and reading
+    // that as "the declared offset was wrong" would send a legitimately bare
+    // photo down the fallback for no reason.
+    const declared = readCaptureFromTiff(view, 4 + view.getUint32(0, false))
+    if (declared.takenAt !== null || declared.latitude !== null) return declared
+
+    if (view.byteLength >= 6 && isExifSignature(view, 0)) {
+      return readCaptureFromTiff(view, 6)
+    }
+    return declared
+  } catch {
+    return NOTHING
+  }
 }
 
 /** `II` little-endian or `MM` big-endian, then the 42 that confirms both. */
