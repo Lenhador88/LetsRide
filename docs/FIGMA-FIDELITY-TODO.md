@@ -1096,19 +1096,21 @@ rider's identity in this change.
       children at all, just the photo as the fill. Making the whole box tappable is ours —
       defensible on the 44px glove-target floor, and the owner asked for it — but it is a
       deviation, not a measured match, and belongs here rather than only in the docstring.
-- [ ] **Photo box styling deviates from the frame on six counts — found 2026-08-08,
-      deliberately not adopted.** Same status as §Rides list's RSVP-pill contrast finding: a
-      design question on record, not a bug to silently patch. The frame's box is a 358×224
-      landscape rectangle (~1.6:1) at radius 8, 1px solid `Grey/20%`, with a `Grey/60` icon and
-      "Add photo" set as an `Accent Brand/100` 14/Semibold link button. The shipped box
-      (`aspect-4/5`, `rounded-xl`, `border-2 border-dashed border-border-strong`, icon and
-      label both `text-muted` via `currentColor`, label `text-xs`) deviates on all six, and
-      none are adopted here:
-      - **Aspect ratio** — `aspect-4/5` (0.8:1, portrait) vs. the frame's ~1.6:1 landscape box.
-        PD-112 specified `aspect-4/5` directly; silently reversing an explicit instruction
-        would be worse than logging the gap.
-      - **Radius** — `rounded-xl` (12px) vs. the frame's 8px (`rounded-lg`). No product reason
-        is on record for the difference; logged rather than guessed at.
+- [ ] **Photo box styling deviated from the frame on six counts — found 2026-08-08. TWO are
+      now adopted (2026-08-20, PD-275) and four are still deliberately not.** Same status as
+      §Rides list's RSVP-pill contrast finding: a design question on record, not a bug to
+      silently patch. The frame's box is a 358×224 landscape rectangle (~1.6:1) at radius 8,
+      1px solid `Grey/20%`, with a `Grey/60` icon and "Add photo" set as an
+      `Accent Brand/100` 14/Semibold link button.
+      - **Aspect ratio — ADOPTED.** The box is `358 / 224` now, not `aspect-4/5`. PD-112 had
+        specified `aspect-4/5` directly, which is why the gap was logged rather than closed;
+        the product owner reopened it on 2026-08-20 ("takes too much space") and the design's
+        own ratio is the answer. It also made the preview honest: the FEED renders `334 / 200`,
+        so a portrait preview was showing the rider a tall crop of a photo that posts
+        landscape.
+      - **Radius — ADOPTED.** `rounded-lg` (8px), matching the frame. It was logged rather than
+        guessed at because no product reason was on record for `rounded-xl`; none appeared, and
+        it changed with the ratio.
       - **Stroke** — `border-2 border-dashed` vs. the frame's 1px solid. The colour already
         matches (`border-border-strong` **is** `Grey/20%`); only weight and dash differ.
       - **Icon colour** — `Grey/80` (via `currentColor`) vs. the frame's `Grey/60`. `CLAUDE.md`
@@ -1120,6 +1122,14 @@ rider's identity in this change.
         14/Semibold link style. Kept on purpose: the frame's green measures **3.52:1** on
         `White/100`, under the 4.5:1 bar for 14px text, while `text-muted` measures **5.74:1**.
         Adopting the design's colour here would trade a passing label for a failing one.
+- [x] ~~**Header and back control**~~ — **closed 2026-08-20 (PD-275).** The screen drew its own
+      `Back` link button and an `<h1>` *inside* the shell's `pt-header` padding, so a 96px band
+      of nothing sat above a second, smaller title — the "unused space on the top" the product
+      owner reported. It renders `<Header title backHref />` now, the same primitive
+      `/rides/new` and `/clubs/new` use. That is closer to the frame in placement (a header row
+      with a control at the left) and still differs from it in kind: the frame's header carries
+      `Cancel` and a small primary `Post`, where this one carries a back arrow and leaves `Post`
+      inline at the bottom. That half stays open, in the frame entry above.
 - [ ] **Upload progress** — *chose:* a 6px `Accent Brand/100` bar plus "Uploading… N%".
       Unread entirely.
 - [ ] **Failure states** — *chose:* upload failure inline under the picker; the insert's own
