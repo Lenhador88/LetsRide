@@ -245,7 +245,14 @@ a shipped write path. Do not copy `063`'s §3.
 
 ## 8. The walk and the docs
 
-- [ ] 8.1 `npm run walk` with fixtures, through the relay. The create-postcard phase must reach the
+- [x] 8.1 `npm run walk` with fixtures, through the relay. **Ran 2026-08-20, green** — exit 0,
+      `18/18 screens rendered clean`, `44/44 guard, navigation and sign-out checks correct`, and
+      `/postcards/new` confirmed rendering the Location block with **no photo chosen**, checked
+      against the live DOM rather than inferred from the source. The 44 is **four below** the
+      handoff's 48/48 baseline and the walk says why itself — the freshly-minted account owns no
+      ride or club, so `provision()` did not fire (DEV already had both from other accounts) and
+      the edit-retention phase correctly refused to test somebody else's. A shrink is a skip rather
+      than a pass, so it is recorded here rather than read as clean. Original task text: The create-postcard phase must reach the
       composer with the block rendered before a photo is chosen — a screen that throws on load is
       invisible to `tsc`, ESLint, Vitest, `next build` and the RLS suite.
 - [x] 8.2 Update `docs/reference/schema.md`'s `postcards` row: the two columns, the new grant

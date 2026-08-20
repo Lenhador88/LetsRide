@@ -368,16 +368,27 @@ export async function getLocalityCentroid(q: string): Promise<LocalityCentroid |
  * read a town from this photo". No error reaches the rider for a convenience
  * they did not ask for, and nothing needs a flag to hide it.
  *
- * **`type=city` is enforced at the vendor, not here** (`shape.ts`'s
+ * **`type=city` is ASKED FOR at the vendor, not enforced here** (`shape.ts`'s
  * `buildReverseUrl`) — this is the setting between hiding a location and
  * publishing an exact one, so a street coming back would defeat the middle
- * option entirely and no amount of client-side filtering could re-coarsen it.
+ * option entirely and no client-side filtering can re-coarsen a name. **Whether
+ * the vendor honours it is inferred rather than measured**: `*.geoapify.com` is
+ * egress-blocked from the build container, so the parameter is
+ * documentation-derived and confirmed by nobody. PD-276's redeploy is where it
+ * gets checked by content.
  *
  * **Metered under the same ledger as every other lookup** (`069`), so a reverse
- * call spends one of the rider's 20/hour. That is why the composer calls this
- * once per photo — on the upload settling — rather than on every render: the
- * ledger row is written before the vendor is reached, so a repeated call cannot
- * be taken back. A ceiling refusal arrives here as an error like any other and
+ * call spends one of the rider's 20/hour. The composer calls it **once per
+ * photo, from the rider tapping `Town`** — never on upload, and never on a
+ * render. That timing is a privacy decision rather than a spend one (firing on
+ * upload would send a photo-derived coordinate while the control still read
+ * `Hide`), and the spend follows from it: the ledger row is written before the
+ * vendor is reached, so a repeated call cannot be taken back.
+ *
+ * One consequence of the timing, recoverable and not obvious: a rider who taps
+ * `Town` while the photo is still uploading gets no prefill for it, because
+ * nothing re-fires when the upload settles. Tapping `Hide` then `Town` asks
+ * again. A ceiling refusal arrives here as an error like any other and
  * becomes `null`, which is the honest answer: the rider types the town.
  */
 /**

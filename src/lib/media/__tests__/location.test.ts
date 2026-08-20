@@ -58,7 +58,7 @@ describe('resolvePhotoLocation', () => {
     expect(resolvePhotoLocation('hide', NO_FIX, TYPED)).toEqual(NO_PHOTO_LOCATION)
   })
 
-  it('stores a picked place rounded, with its provenance — arm 3', () => {
+  it('stores a picked place rounded, and only its name — arm 3', () => {
     expect(resolvePhotoLocation('place', AMSTERDAM, PICKED)).toEqual({
       latitude: 52.37,
       longitude: 4.9,
@@ -67,7 +67,7 @@ describe('resolvePhotoLocation', () => {
     })
   })
 
-  it('stores a typed place as a name with no pin and no id — arm 2', () => {
+  it('stores a typed place as a name with no pin — arm 2', () => {
     expect(resolvePhotoLocation('place', AMSTERDAM, TYPED)).toEqual({
       latitude: null,
       longitude: null,

@@ -284,8 +284,19 @@ export function buildLocalityUrl(term: string, apiKey: string): string {
  * **`type=city` is the whole privacy argument, not a tidiness one.** The
  * composer offers this as the middle setting between hiding a location and
  * publishing an exact one, so what comes back must be a town and never the
- * street the rider was standing on. Asking the vendor for a city is what makes
- * that true at the source; nothing downstream could re-coarsen an address.
+ * street the rider was standing on. Asking the vendor for a city is the only
+ * place that can be made true — nothing downstream can re-coarsen a NAME.
+ *
+ * **And it is INFERRED, exactly like the endpoint above.** `*.geoapify.com` is
+ * egress-blocked from the build container, so no session has watched this
+ * parameter be honoured on the reverse endpoint. It matters more here than the
+ * response shape does, and the "a wrong guess degrades to an empty list"
+ * argument does **not** cover it: a `type` the vendor ignores returns a
+ * perfectly well-shaped feature whose label is the nearest address, which the
+ * composer writes into its field. The mitigations are that the value is visible
+ * in the input before the rider posts, and that this mode is not the default —
+ * **not** that the request is known to be filtered. PD-276's redeploy is where
+ * it gets confirmed by content; until then the whole path is dark.
  *
  * **`lat`/`lon` as separate parameters here, not `lon,lat` in one** — the
  * reverse endpoint takes two, so the ordering trap `buildAutocompleteUrl`

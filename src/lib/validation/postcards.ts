@@ -190,11 +190,6 @@ export const createPostcardSchema = z
       path: ['takenLocationPrecision'],
     }
   )
-  // Not a duplicate of the coupling above: this is the one rule that says a
-  // rider who chose `Region` actually GOT a region. The rounding happens in the
-  // browser, so this is the client checking its own work — `064`'s
-  // postcards_region_location_is_rounded is what makes it true for a client
-  // that skips this file entirely.
   // Not a duplicate of the arms above: this is the one rule that says a rider
   // whose coordinate is marked COARSE actually got a coarse one. The rounding
   // happens in the browser, so this is the client checking its own work —

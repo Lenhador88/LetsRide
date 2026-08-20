@@ -213,18 +213,29 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
       return
     }
 
+    // Read before `setPreview` replaces it: this is "was there a photo before
+    // this one", and it is what decides whether a named town was about that
+    // photo or about nothing yet.
+    const hadPhoto = preview !== null
     setPreview(URL.createObjectURL(file))
     setUpload({ status: 'uploading', percent: 0 })
-    // Back to Hide for the new photo, and the named place goes with it. A rider
-    // who picked Precise for a shot of the coast road and then swapped in one
-    // taken at home must not inherit the first photo's answer — and a town that
-    // described the first photo is just as wrong about the second. Clearing
-    // costs a retype and is the only version of this with no way to publish a
-    // place the rider never meant.
+    // Back to Hide for the new photo. A rider who picked Precise for a shot of
+    // the coast road and then swapped in one taken at home must not inherit the
+    // first photo's answer.
     setLocationMode(DEFAULT_PHOTO_LOCATION_MODE)
-    writePlaceText('')
-    setPlace(null)
     attemptedPrefillFor.current = null
+
+    // **The town goes only when there WAS a previous photo for it to describe.**
+    // A town that described the first photo is just as wrong about the second,
+    // so a swap clears it. But the Location block renders before any photo now,
+    // which makes a new order reachable: type `Berkhout`, scroll up to the box
+    // that says "Choose a photo first", pick one — and clearing unconditionally
+    // would erase what the rider had just written, with no notice, for a photo
+    // there was nothing to be wrong about.
+    if (hadPhoto) {
+      writePlaceText('')
+      setPlace(null)
+    }
 
     try {
       const { path, capture } = await uploadPostcardImage(file, {
