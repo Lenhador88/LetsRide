@@ -94,6 +94,16 @@ is also narrower than it was used for here: *widened* there means broadening `Hi
 beyond the location, which is what PD-265 settled on 2026-08-18 when it decided `Hide` must not
 also cover the capture time.
 
+> **SUPERSEDED 2026-08-20 — the label is `Region` after all, and the marker is still `place`.**
+> The owner shipped `Town`, then hit the case this section did not consider: a rider in the
+> Pyrenees names a mountain range, and *"maybe region is better?"* The reasoning below stands for
+> everything except the first rejection — `Region` was rejected as "the word the owner asked to
+> replace", which was true of `Region` **meaning a ~1 km cell** and is not true of it meaning a
+> place a rider names. The stored marker deliberately did NOT follow the label back: `'region'` is
+> still live in `taken_location_precision` under `064`'s meaning (arm 5 of `073`'s coupling, one
+> DEV row), so reusing the string would give one word two meanings in one column. Label `Region`,
+> marker `place`, and `CreatePostcardForm`'s `LOCATION_MODES` carries the note.
+
 **Rejected labels.** `Region` — the word the owner asked to replace. `Place` — collides with the
 picker's own vocabulary, and reads too close to `Precise` at a glance in a three-across control.
 `Nearby` — says how far, not what. `Area` — a unit again, which is the failure being fixed.

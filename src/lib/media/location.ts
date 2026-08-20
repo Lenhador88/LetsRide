@@ -154,16 +154,42 @@ export function resolvePhotoLocation(
     }
   }
 
+  // `precise` has TWO sources and the photo's own fix is only the first.
+  //
+  // Product owner, 2026-08-20: the option came back because a photo that
+  // carries no fix — every HEIC before this session, and anything through a
+  // share sheet — removed it from the screen entirely, which read as a lost
+  // feature rather than as a photo that knew nothing. So a place the rider
+  // PICKED is the second source: they named a spot and asked for it exactly,
+  // which is a coherent request and the only other exact coordinate on this
+  // screen.
   const { latitude, longitude } = capture
-  if (latitude === null || longitude === null) return NO_PHOTO_LOCATION
-
-  return {
-    latitude,
-    longitude,
-    precision: 'precise',
-    // The name rides along as a LABEL for a coordinate that did not come from
-    // it, so the two may disagree — deliberately, and cosmetically. It is a
-    // caption, not evidence.
-    placeName: place?.name.trim() || null,
+  if (latitude !== null && longitude !== null) {
+    return {
+      latitude,
+      longitude,
+      precision: 'precise',
+      // The name rides along as a LABEL for a coordinate that did not come from
+      // it, so the two may disagree — deliberately, and cosmetically. It is a
+      // caption, not evidence.
+      placeName: place?.name.trim() || null,
+    }
   }
+
+  // **A PICKED place only — never a typed one.** A typed name has no coordinate
+  // at all, so there is nothing to be exact about; emitting the name under
+  // `precise` would mark a row as carrying an exact spot that it does not have.
+  // That falls through to the `hide`-shaped answer below, which is arm 1 and
+  // exactly what a rider who has named nothing should get.
+  const name = place?.name.trim()
+  if (place && place.lat !== null && place.lon !== null) {
+    return {
+      latitude: place.lat,
+      longitude: place.lon,
+      precision: 'precise',
+      placeName: name || null,
+    }
+  }
+
+  return NO_PHOTO_LOCATION
 }

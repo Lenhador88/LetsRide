@@ -61,11 +61,11 @@ type Upload =
  * 2026-08-18: it should not.
  *
  * The sentence used to read *"The photo's location never leaves your phone."*
- * That was a promise about the DEVICE, and the town lookup is a request to a
+ * That was a promise about the DEVICE, and the place lookup is a request to a
  * third party — so the product owner chose (2026-08-20) to fire that lookup only
- * once the rider taps `Town`, which keeps the old sentence true, and to reword
+ * once the rider taps `Region`, which keeps the old sentence true, and to reword
  * it anyway so it says the thing riders actually care about. **It is scoped to
- * LetsRide rather than to the world**: a rider who taps `Town`, is shown a
+ * LetsRide rather than to the world**: a rider who taps `Region`, is shown a
  * lookup, and comes back to `Hide` has had a ~1 km cell reach a geocoder, so
  * "not stored anywhere" would be a promise about somebody else's logs. What this
  * app does with it is a promise this app can keep.
@@ -87,8 +87,8 @@ const LOCATION_MODES: {
   },
   {
     value: 'place',
-    label: 'Town',
-    lead: 'Only the town is saved.',
+    label: 'Region',
+    lead: 'Only the place you name is saved.',
     // Says nothing about a ride. The old string read "Enough to place it on the
     // ride" — and this form has no ride field at all, so `ride_id` is NULL on
     // every postcard it has ever written. The product owner reported it as
@@ -96,18 +96,32 @@ const LOCATION_MODES: {
     // one context-free sentence rather than three conditional ones.
     // **"the place you named", not "the town"** — the review pass caught the
     // overclaim. The typeahead is a geocoder and returns streets as readily as
-    // towns, so a rider CAN name their own street in a field labelled `Town`.
-    // What is true whatever they name is this: the words are theirs, and the
-    // coordinate under them is rounded to a ~1 km cell before it is sent. The
-    // prefill is narrower still — the proxy asks the vendor for a city — so an
-    // auto-filled value is always a locality.
+    // towns, so a rider CAN name their own street here. What is true whatever
+    // they name is this: the words are theirs, and the coordinate under them is
+    // rounded to a ~1 km cell before it is sent. The prefill is narrower still
+    // — the proxy asks the vendor for a city — so an auto-filled value is
+    // always a locality.
+    //
+    // **The label is `Region` and the stored marker is `place`, and they are
+    // deliberately different words.** Product owner, 2026-08-20: `Town` is too
+    // narrow for what the field holds — a rider in the Pyrenees names a
+    // mountain range, not a town. `Region` is the rider-facing word for that.
+    // The marker stays `place` because `'region'` is ALREADY a live value in
+    // `taken_location_precision` meaning the retired ~1 km rounding, and one
+    // DEV row carries it; reusing the string would make one word mean two
+    // things in the same column. Nothing here writes `'region'` ever again.
     hint: 'Whoever can see this postcard sees the place you named, never the exact spot.',
   },
   {
     value: 'precise',
     label: 'Precise',
     lead: 'Saved exactly.',
-    hint: 'Anyone who can see this photo can see where you took it.',
+    // **This is the PHOTO-FIX copy specifically.** `Precise` has two sources
+    // and a third state with neither, and the component overrides these two
+    // strings for the other two cases — see `preciseCopy`. The entry keeps the
+    // commonest one rather than a placeholder so there is no string here that
+    // nothing ever renders.
+    hint: 'Anyone who can see this postcard can see where you took the photo.',
   },
 ]
 
@@ -263,22 +277,21 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
   const hasPhotoFix =
     capture !== null && capture.latitude !== null && capture.longitude !== null
 
-  // **`Precise` is REMOVED, not disabled, when the photo carries no fix.** It
-  // means "the exact spot this photo was taken", and with no fix there is no
-  // such spot — a named town's centroid stored under that marker would be the
-  // schema lying about the rider's own privacy choice. `064` §D8's rule
-  // (replace the control, do not disable it) applied one level down: a disabled
-  // segment still draws a label and still reads as a choice somebody made, and
-  // a radiogroup with a dead option is worse for a screen reader than one that
-  // never offered it.
-  const modes = hasPhotoFix ? LOCATION_MODES : LOCATION_MODES.filter((m) => m.value !== 'precise')
-  // Derived rather than corrected in an effect: a mode that is not on screen
-  // must not be what the hidden inputs are computed from, and an effect would
-  // leave one render where it was. Reachable only transiently — `onFileChange`
-  // already resets the mode — which is exactly the kind of window that produces
-  // a bug nobody can reproduce.
-  const activeMode: PhotoLocationMode =
-    locationMode === 'precise' && !hasPhotoFix ? DEFAULT_PHOTO_LOCATION_MODE : locationMode
+  // **All three modes, always — `Precise` is no longer removed when the photo
+  // carries no fix.** It used to be, on the reasoning that "the exact spot this
+  // photo was taken" has no referent without one. The product owner hit the
+  // other half of that on 2026-08-20: an iPad photo with no EXIF made the
+  // option vanish from the screen, which reads as a feature that was taken
+  // away rather than as a photo that knows nothing about itself.
+  //
+  // What makes keeping it honest is that `resolvePhotoLocation` now has a
+  // second exact source — a place the rider PICKED — so `Precise` means "the
+  // exact spot" either way, and the two are told apart in the hint below rather
+  // than by hiding the control. With neither source it resolves to the same
+  // answer as `Hide` and says so, which is the one state a rider could
+  // otherwise misread as "saved exactly" when nothing is saved at all.
+  const modes = LOCATION_MODES
+  const activeMode: PhotoLocationMode = locationMode
 
   /**
    * **The town lookup fires here, in the event handler, and nowhere else.**
@@ -349,6 +362,30 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
       : null
   )
   const selectedMode = LOCATION_MODES.find((mode) => mode.value === activeMode)
+
+  // **`Precise` is the one mode whose sentence cannot be a constant**, because
+  // it now has two sources and a third state where it has none. Read off
+  // `location` rather than off the inputs, so the line under the control and the
+  // hidden inputs above it are computed from the same answer and cannot
+  // disagree about whether anything is being saved.
+  // `null` means "the entry's own copy is right", which is the photo-fix case —
+  // so the commonest sentence has exactly one definition, in LOCATION_MODES.
+  const preciseCopy = hasPhotoFix
+    ? null
+    : location.precision === 'precise'
+      ? {
+          lead: 'Saved exactly.',
+          hint: 'The place you picked, to the metre — not where the photo was taken.',
+        }
+      : {
+          lead: 'Nothing to save yet.',
+          hint: 'This photo carries no location. Name a place above to save one exactly.',
+        }
+
+  const override = activeMode === 'precise' ? preciseCopy : null
+  const lead = override?.lead ?? selectedMode?.lead
+  const hint = override?.hint ?? selectedMode?.hint
+
   const remaining = POSTCARD_CAPTION_MAX_LENGTH - caption.length
 
   return (
@@ -519,8 +556,8 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
             below it. See the state declaration for why place mode would be
             wrong here. */}
         <PlaceSearchField
-          label="Town or city"
-          placeholder="Search for a town or city"
+          label="Region"
+          placeholder="Search for a town, city or area"
           value={place}
           onChange={setPlace}
           maxNameLength={POSTCARD_PLACE_NAME_MAX_LENGTH}
@@ -532,7 +569,7 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
             failure — see the prefill effect. */}
         {prefilling && (
           <p aria-live="polite" className="px-1 text-xs text-muted">
-            Reading the town from your photo…
+            Reading the location from your photo…
           </p>
         )}
 
@@ -548,8 +585,8 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
             rider using a screen reader hears the new label and would otherwise
             not hear what it means. */}
         <p aria-live="polite" className="text-xs text-muted">
-          <span className="font-semibold text-foreground">{selectedMode?.lead}</span>{' '}
-          {selectedMode?.hint}
+          <span className="font-semibold text-foreground">{lead}</span>{' '}
+          {hint}
         </p>
       </div>
 

@@ -121,8 +121,40 @@ describe('resolvePhotoLocation', () => {
     })
   })
 
-  it('yields nothing under precise when the photo carried no location', () => {
-    expect(resolvePhotoLocation('precise', NO_FIX, PICKED)).toEqual(NO_PHOTO_LOCATION)
+  it('falls back to the PICKED place under precise when the photo carried no fix', () => {
+    // The rule the product owner asked for on 2026-08-20, after an iPad photo
+    // with no EXIF removed the control from the screen entirely. The place is
+    // stored UNROUNDED here, which is the whole difference from `place`: the
+    // rider named a spot and asked for it exactly.
+    expect(resolvePhotoLocation('precise', NO_FIX, PICKED)).toEqual({
+      latitude: 52.370216,
+      longitude: 4.895168,
+      precision: 'precise',
+      placeName: 'Amsterdam',
+    })
+  })
+
+  it('prefers the PHOTO fix over the picked place when both exist', () => {
+    // Not interchangeable: `precise` means the exact spot, and when the photo
+    // knows one that is the answer. The name stays as a caption.
+    const elsewhere = { name: 'Berkhout', lat: 52.6412, lon: 4.9987 }
+    expect(resolvePhotoLocation('precise', AMSTERDAM, elsewhere)).toEqual({
+      latitude: 52.370216,
+      longitude: 4.895168,
+      precision: 'precise',
+      placeName: 'Berkhout',
+    })
+  })
+
+  it('yields nothing under precise for a TYPED place — a name is not a spot', () => {
+    // The negative case that keeps the fallback honest. A typed name has no
+    // coordinate at all, so marking the row `precise` would claim an exact spot
+    // the row does not carry.
+    expect(resolvePhotoLocation('precise', NO_FIX, TYPED)).toEqual(NO_PHOTO_LOCATION)
+  })
+
+  it('yields nothing under precise with no fix and no place at all', () => {
+    expect(resolvePhotoLocation('precise', NO_FIX, null)).toEqual(NO_PHOTO_LOCATION)
   })
 
   it('refuses a half pair rather than storing one coordinate', () => {
