@@ -232,7 +232,12 @@ a shipped write path. Do not copy `063`'s §3.
 - [x] 7.4 `PGPASSWORD=postgres npm test` green, and reconcile the assertion count by **label set**
       against `origin/development`, recording the new/relabelled split in `docs/HANDOFF.md`'s
       assertion row.
-- [x] 7.5 `npm run db:drift` — the repo, DEV and PROD agree on the chain.
+- [ ] 7.5 `npm run db:drift` — the repo, DEV and PROD agree on the chain. **NOT RUN, and not
+      runnable from a session**: it needs `PROD_DATABASE_URL` and `DEV_DATABASE_URL`, which are
+      passwords no session holds. What was checked instead is the weaker thing that IS available —
+      `list_migrations` against `ls supabase/migrations/`, recorded in `docs/HANDOFF.md` §Migrations
+      as repo 73 / DEV 75 rows / PROD 70, one chain. Do not read the tick above this line as
+      drift having been ruled out the way `db:drift` rules it out.
 - [ ] 7.6 Promote to PROD in filename order with everything else in the gap, per
       `docs/ENVIRONMENTS.md` §Migrations. Nothing here is destructive to a running client — an old
       client's rows satisfy arms 1, 4 and 5 — so the additive-first ordering constraint is the
