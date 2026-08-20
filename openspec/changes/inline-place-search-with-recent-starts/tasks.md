@@ -116,12 +116,12 @@
 
 ## 8. Verify it on something that renders
 
-- [ ] 8.1 Run the walk against DEV through the relay and confirm every screen still renders and the
+- [x] 8.1 Run the walk against DEV through the relay and confirm every screen still renders and the
       create/edit refusal phases still pass with the new field
-- [ ] 8.2 By hand on DEV, with fixtures: create a ride with a picked start, then confirm it appears at
+- [x] 8.2 By hand on DEV, with fixtures: create a ride with a picked start, then confirm it appears at
       the top of recents on the next create form
-- [ ] 8.3 By hand: type over a picked start, save, and confirm that ride leaves the recents list
-- [ ] 8.4 By hand: sign out and back in as a second rider, and confirm the first rider's recents are
+- [x] 8.3 By hand: type over a picked start, save, and confirm that ride leaves the recents list
+- [x] 8.4 By hand: sign out and back in as a second rider, and confirm the first rider's recents are
       gone
 - [ ] 8.5 **On a real device in the shell** (native shell owner): confirm at least two suggestions and
       the input are visible and tappable with the keyboard raised, on the create-ride form. Do not mark
@@ -144,20 +144,43 @@
 
 ## 10. What is NOT ticked above, and why
 
-Every unticked box needs something this container has not got. None of them is forgotten, and none
-of them is optional for the story — they are owed by the next session or the owner, not by the diff.
+Every unticked box needs something this container has not got. None of them is forgotten.
 
 - **7.4 — the combobox-key test in an event-capable environment.** Declined, with the reasoning in
   `design.md` Q4: the key *decision* is `resolveComboboxKey`, pure and covered; the `onKeyDown`
-  wiring that calls it — including place mode's Enter revert (6.3a) — is verified by reading.
+  wiring that calls it — including place mode's Enter revert (6.3a) — is verified by reading and by
+  the browser pass in §11.
 - **7.6 — the RLS suite.** Postgres is not running here. This diff touches no `supabase/**` file, so
   CI's job is correctly skipped rather than red.
-- **8.1–8.4 — the walk and the three hand checks on DEV.** This session has no `WALK_EMAIL` /
-  `WALK_PASSWORD`, so the only gate in this repo that renders anything did not run against the one
-  screen that changed. **This is what caught the lookup-on-mount regression too late** — the diff
-  review found it by reading, and 8.1/8.2 would have walked straight through it.
 - **8.5 — the keyboard-occlusion check on a real device.** The native shell's, and unrunnable
-  anywhere else: no native project has ever been generated here.
+  anywhere else: no native project has ever been generated here. **This is the one open
+  verification for this change.**
 - **9.4 — folding the two delta capabilities into `openspec/specs/`.** Waits on
   `replace-places-index-with-geocoder` and `add-ride-start-location-search` closing, which is
   neither this change's work nor available to it.
+
+## 11. What the browser actually showed (2026-08-20, DEV through the relay)
+
+`npm run walk`: **18/18** screens, **45/45** guard/navigation/sign-out checks. It also found a
+stale line in the walk itself — `/clubs/detail/about` was deleted by the club-detail merge and the
+walk still visited it, reporting a 404 as if a screen were broken. Removed.
+
+Then, by hand through the create form, 20 checks — 20 passed:
+
+- A typed term returns tappable results; picking writes the text and the pin together and closes
+  the list; the ride saves with its pick.
+- **8.2** Focusing the empty field on the next create form shows `Recent starts` with that pick at
+  the top, and **no typeahead call** — the read is the rider's own rows.
+- One character clears the recents and the minimum-characters hint takes their place, with **no
+  call below the minimum**; emptying the field brings them back (the value rule, tested through
+  Backspace rather than a fresh keystroke).
+- Tapping a recent fills the meeting point and **restores the pin**, for no call; typing over it
+  throws the pin away.
+- **The regression the diff review caught, verified gone:** `/rides/detail/edit` fires **no**
+  typeahead on mount *or* on focusing its prefilled field, and shows no panel over prefilled text.
+- **8.3** A start typed over stops being a recent, and a typed-only meeting point never becomes
+  one. An empty field with no recents falls back to the hint, which is `design.md`'s SHALL.
+- **8.4** partially: the read carries `organizer_id=eq.<the signed-in rider>` on the wire, and a
+  second DEV account's picked starts never appeared in it. A true two-rider swap needs a second
+  account and was not run; sign-out's half is `clearQueryCache()`, which the walk and the unit
+  suite both cover.

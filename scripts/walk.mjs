@@ -581,7 +581,11 @@ async function discoverDetailPaths({ quiet = false } = {}) {
           '/clubs/detail',
           '/clubs/detail/rides',
           '/clubs/detail/members',
-          '/clubs/detail/about',
+          // `/clubs/detail/about` is NOT here: the club-detail merge deleted
+          // that route outright (its page's own docstring says so) and nothing
+          // links to it. The walk kept visiting it and reporting a 404, which
+          // reads as a broken screen rather than a stale line in this list —
+          // one permanent red mark in the only gate that renders anything.
           '/clubs/detail/edit',
         ].map((p) => detail(p, club))
       : []),

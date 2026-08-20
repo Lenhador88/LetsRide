@@ -663,6 +663,18 @@ fails the second, so seeding only with `page.fill` would gate nothing for an aut
 Each attempt asserts its own refusal before its email, because a submit that never happened
 leaves the field filled too.
 
+**The walk no longer visits `/clubs/detail/about`, and a reader comparing totals should know
+why.** That route was deleted outright by the club-detail merge — its own page docstring says so
+and nothing in `src/` links to it — but `scripts/walk.mjs` kept it in the club sub-page list, so
+every run reported a 404 against a screen that was *meant* to be gone. Removed 2026-08-20 with
+PD-274, which is when the walk first ran with credentials again; a run that used to read `19/19`
+with one red mark reads `18/18` clean.
+
+**Measured 2026-08-20**, signed in as an owner-supplied DEV account owning one ride and no club:
+`18/18` screens and `45/45` guard, navigation and sign-out checks. The refused-edit phase is the
+one that did not exercise — it needs a ride *or* club the walk account owns at the time the phase
+runs.
+
 **The screens figure is data-dependent and is not a pass/fail number.** The detail routes are
 discovered rather than hardcoded, so a list with no rows yields no path and the total shrinks —
 `13/13` against a DEV with a club but no ride, `16/16` once the ride is there, `18/18` measured
