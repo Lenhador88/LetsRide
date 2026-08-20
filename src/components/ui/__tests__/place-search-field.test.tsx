@@ -132,6 +132,22 @@ describe('PlaceSearchField form shape', () => {
     expect(html).not.toContain('type="text" name=')
   })
 
+  it('writes NO form fields at all when the caller passes no names', () => {
+    // The postcard composer's case: the pick is an input to a decision made by
+    // the buttons under this field, not a value to submit. A hidden input
+    // carrying the town would travel under `Hide`, whose whole promise is that
+    // nothing does.
+    const html = renderToStaticMarkup(
+      <PlaceSearchField
+        label="Location"
+        value={{ name: 'Amsterdam', placeId: 'geoapify:x', lat: 52.37, lon: 4.9 }}
+        onChange={noop}
+      />
+    )
+    expect(html).not.toContain('type="hidden"')
+    expect(html).not.toContain('name=')
+  })
+
   it('free-text mode makes the NAME field editable and keeps the other three hidden', () => {
     const html = renderToStaticMarkup(
       <PlaceSearchField

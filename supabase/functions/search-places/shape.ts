@@ -54,6 +54,20 @@ export const AUTOCOMPLETE_ENDPOINT = 'https://api.geoapify.com/v1/geocode/autoco
  */
 export const GEOCODE_ENDPOINT = 'https://api.geoapify.com/v1/geocode/search'
 
+/**
+ * The `reverse` mode's endpoint — a coordinate in, a place out. What the
+ * postcard composer calls to name the town a photo was taken in.
+ *
+ * Documentation-derived, like the two above, and **unverified against a live
+ * response**: `*.geoapify.com` is egress-blocked from the build container, so
+ * no session can observe what this returns. What is *not* inferred is the
+ * response SHAPE — reverse geocoding returns the same GeoJSON `features` array
+ * the autocomplete does, which is why `toPlaceResults` reads it unchanged and
+ * why a shape this file guessed wrong degrades to an empty list rather than to
+ * a wrong town. <https://apidocs.geoapify.com/docs/geocoding/reverse-geocoding/>
+ */
+export const REVERSE_ENDPOINT = 'https://api.geoapify.com/v1/geocode/reverse'
+
 /* -------------------------------------------------------------------------- */
 /* The term bound                                                              */
 /* -------------------------------------------------------------------------- */
@@ -153,6 +167,11 @@ export function boundTerm(term: string): string {
  * five of them in one small country.
  */
 export function isSearchable(term: string, mode: SearchMode = 'search'): boolean {
+  // `reverse` has no term at all — its input is a coordinate `parseRequest` has
+  // already range-checked, and there is nothing here for a floor to measure.
+  // Returning true rather than adding a fourth branch at the call site keeps
+  // the "is this worth a credit" question in one function.
+  if (mode === 'reverse') return true
   const bounded = boundTerm(term)
   return mode === 'locality' ? bounded.length > 0 : bounded.length >= MIN_TERM_CHARS
 }
@@ -252,6 +271,45 @@ export function buildAutocompleteUrl(
 export function buildLocalityUrl(term: string, apiKey: string): string {
   const url = new URL(GEOCODE_ENDPOINT)
   url.searchParams.set('text', boundTerm(term))
+  url.searchParams.set('limit', '1')
+  url.searchParams.set('type', 'city')
+  url.searchParams.set('format', 'geojson')
+  url.searchParams.set('apiKey', apiKey)
+  return url.toString()
+}
+
+/**
+ * The `reverse` mode. A photo's own coordinate in, the town it sits in out.
+ *
+ * **`type=city` is the whole privacy argument, not a tidiness one.** The
+ * composer offers this as the middle setting between hiding a location and
+ * publishing an exact one, so what comes back must be a town and never the
+ * street the rider was standing on. Asking the vendor for a city is the only
+ * place that can be made true — nothing downstream can re-coarsen a NAME.
+ *
+ * **And it is INFERRED, exactly like the endpoint above.** `*.geoapify.com` is
+ * egress-blocked from the build container, so no session has watched this
+ * parameter be honoured on the reverse endpoint. It matters more here than the
+ * response shape does, and the "a wrong guess degrades to an empty list"
+ * argument does **not** cover it: a `type` the vendor ignores returns a
+ * perfectly well-shaped feature whose label is the nearest address, which the
+ * composer writes into its field. The mitigations are that the value is visible
+ * in the input before the rider posts, and that this mode is not the default —
+ * **not** that the request is known to be filtered. PD-276's redeploy is where
+ * it gets confirmed by content; until then the whole path is dark.
+ *
+ * **`lat`/`lon` as separate parameters here, not `lon,lat` in one** — the
+ * reverse endpoint takes two, so the ordering trap `buildAutocompleteUrl`
+ * carries does not apply and copying its `bias` idiom into this function is how
+ * it would be introduced.
+ */
+export function buildReverseUrl(
+  at: { lat: number; lon: number },
+  apiKey: string,
+): string {
+  const url = new URL(REVERSE_ENDPOINT)
+  url.searchParams.set('lat', String(at.lat))
+  url.searchParams.set('lon', String(at.lon))
   url.searchParams.set('limit', '1')
   url.searchParams.set('type', 'city')
   url.searchParams.set('format', 'geojson')
@@ -529,12 +587,22 @@ export function classifyLedgerError(error: { code?: string | null } | null): Led
   return 'unavailable'
 }
 
-export type SearchMode = 'search' | 'locality'
+export type SearchMode = 'search' | 'locality' | 'reverse'
 
 export type ProxyRequest = {
   mode: SearchMode
   text: string
   near: { lat: number; lon: number } | null
+  /**
+   * `reverse`'s subject, and `null` for every other mode.
+   *
+   * A flat field rather than a discriminated union because `index.ts` reads
+   * `mode` once and branches; a union would make every existing read of `text`
+   * a narrowing exercise for the benefit of one new mode. What keeps it honest
+   * is that `parseRequest` REFUSES a `reverse` request without it, so `at` is
+   * non-null exactly where it is read.
+   */
+  at: { lat: number; lon: number } | null
 }
 
 /**
@@ -548,15 +616,47 @@ export type ProxyRequest = {
  * `between` is false for NaN and for either infinity, so all three become "no
  * location" and the unbiased path handles them.
  */
-export function parseRequest(body: unknown): ProxyRequest | null {
-  if (typeof body !== 'object' || body === null) return null
+/**
+ * What `parseRequest` says about a body it will not build a request from.
+ *
+ * **Two refusals, two codes, and the split is not cosmetic.** The client latches
+ * on `bad_request` to mean *this deployed build has no reverse mode, stop
+ * asking for the rest of the page load* — which is sound only because today's
+ * build answers an unknown mode that way, before the ledger insert, for free. A
+ * malformed coordinate on a build that DOES support reverse must not be able to
+ * trip that latch: it would disable a working feature for the rest of the page
+ * load over one bad value. Found by the proposal's review pass.
+ */
+export type ParseRefusal = 'bad_request' | 'bad_coordinate'
+
+export function parseRequest(body: unknown): ProxyRequest | ParseRefusal {
+  if (typeof body !== 'object' || body === null) return 'bad_request'
   const raw = body as Record<string, unknown>
 
-  const mode = raw.mode === 'locality' ? 'locality' : raw.mode === 'search' ? 'search' : null
-  if (!mode) return null
+  const mode: SearchMode | null =
+    raw.mode === 'locality'
+      ? 'locality'
+      : raw.mode === 'search'
+        ? 'search'
+        : raw.mode === 'reverse'
+          ? 'reverse'
+          : null
+  if (!mode) return 'bad_request'
+
+  // `reverse` carries a coordinate and no term. Refused rather than defaulted
+  // when the coordinate is missing or out of range: the alternative is a
+  // billable vendor call for a request that cannot name anything, and a
+  // silently-dropped `at` would reach the rider as "this photo has no town"
+  // — indistinguishable from a real answer. Refused under its OWN code, so it
+  // cannot be mistaken for a build that does not know this mode.
+  if (mode === 'reverse') {
+    const at = asCoordinate(raw.lat, raw.lon)
+    if (!at) return 'bad_coordinate'
+    return { mode, text: '', near: null, at }
+  }
 
   const text = typeof raw.text === 'string' ? raw.text : null
-  if (text === null) return null
+  if (text === null) return 'bad_request'
 
   const nearRaw = raw.near
   let near: { lat: number; lon: number } | null = null
@@ -569,5 +669,5 @@ export function parseRequest(body: unknown): ProxyRequest | null {
     }
   }
 
-  return { mode, text, near }
+  return { mode, text, near, at: null }
 }

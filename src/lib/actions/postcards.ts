@@ -132,6 +132,7 @@ export async function createPostcard(
     takenLatitude: formData.get('takenLatitude'),
     takenLongitude: formData.get('takenLongitude'),
     takenLocationPrecision: formData.get('takenLocationPrecision'),
+    takenPlaceName: formData.get('takenPlaceName'),
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
@@ -144,17 +145,19 @@ export async function createPostcard(
     takenLatitude,
     takenLongitude,
     takenLocationPrecision,
+    takenPlaceName,
   } = parsed.data
 
   // `.select('id').single()` with the row discarded: the id was only ever used
   // to build `` revalidatePath(`/postcards/${id}`) ``, which a cache key does
   // not need. `single()` stays because it is what turns a zero-row insert into
   // an error rather than a silent success.
-  // **The five capture columns are written here and nowhere else, ever.** `064`
-  // grants INSERT on them and no UPDATE at all, so this statement is the only
-  // moment in a postcard's life at which its capture time or its location can be
-  // set — which is what makes the composer's Hide / Region / Precise choice
-  // final rather than a default somebody can revise later.
+  // **The six capture columns are written here and nowhere else, ever.**
+  // `064` and `072` grant INSERT on them and no UPDATE at all, so this
+  // statement is the only moment in a postcard's life at which its capture time
+  // or its location can be set — which is what makes the composer's
+  // Hide / Town / Precise choice final rather than a default somebody can
+  // revise later.
   //
   // What arrives here has ALREADY been reduced on the device by
   // `resolvePhotoLocation`. A precise coordinate the rider chose to hide never
@@ -171,6 +174,7 @@ export async function createPostcard(
       taken_latitude: takenLatitude,
       taken_longitude: takenLongitude,
       taken_location_precision: takenLocationPrecision,
+      taken_place_name: takenPlaceName,
     })
     .select('id')
     .single()

@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { WaveFilledIcon } from '@/components/icons/derived'
 import { WaveIcon } from '@/components/icons/generated'
 import { PostcardActionButton } from '@/components/postcards/PostcardAction'
 import { likePostcard, unlikePostcard } from '@/lib/actions/postcards'
-import { cn } from '@/lib/utils'
 
 type LikeButtonProps = {
   postcardId: string
@@ -21,21 +21,23 @@ type LikeButtonProps = {
  * The glyph is the motorcycle wave rather than a heart (PD-228) — the one
  * gesture every rider already knows.
  *
- * **One icon serves both states, and that is deliberate rather than an
- * oversight.** The heart it replaced was a filled/outline pair, but a hand
- * cannot do that: a solid silhouette loses the folded fingers and thumb that
- * make the glyph legible at 24px, and a merely bolder copy is
- * indistinguishable from the outline on a phone. So the toggle is carried by
- * `text-like` (Pink/100, the design's only use of that colour) alone —
- * measured at 4.51:1 between the two states, clearing the 3:1 that a
- * colour-only distinction needs.
+ * **Filled when liked, outline when not** — product owner, 2026-08-20. This
+ * file used to argue for one glyph in two colours, on the grounds that a solid
+ * hand loses the folded fingers that make the gesture legible at 24px. That
+ * cost is real and is now paid deliberately; what it buys is a state
+ * distinction that survives a rider who cannot tell Pink/100 from Grey. The
+ * colour is kept alongside it, so the two states differ in shape *and* in
+ * colour rather than trading one for the other.
  *
- * That makes `aria-pressed` the whole of the non-visual signal, which is why
- * the accessible name is now **constant**. It used to flip to "Unlike…" when
- * liked, and a toggle button that both reports `pressed` and renames itself to
- * the undo action announces "Unlike, 5 likes, pressed" — a control named for
- * undoing, reported as done. Pick one mechanism: this is the `aria-pressed`
- * one, so the name states what the control is, never what the next tap does.
+ * `WaveFilledIcon` is the same exported asset with its interior subpath
+ * dropped, not a second drawing — see `src/components/icons/derived.tsx`.
+ *
+ * `aria-pressed` is still the whole of the non-visual signal, which is why the
+ * accessible name is **constant**. It used to flip to "Unlike…" when liked, and
+ * a toggle button that both reports `pressed` and renames itself to the undo
+ * action announces "Unlike, 5 likes, pressed" — a control named for undoing,
+ * reported as done. Pick one mechanism: this is the `aria-pressed` one, so the
+ * name states what the control is, never what the next tap does.
  */
 export function LikeButton({ postcardId, likesCount, isLiked }: LikeButtonProps) {
   const [liked, setLiked] = useState(isLiked)
@@ -67,7 +69,13 @@ export function LikeButton({ postcardId, likesCount, isLiked }: LikeButtonProps)
         count={count}
         label={`Like, ${count} likes`}
         className={pending ? 'opacity-70' : undefined}
-        icon={<WaveIcon className={cn('h-6 w-6', liked && 'text-like')} />}
+        icon={
+          liked ? (
+            <WaveFilledIcon className="h-6 w-6 text-like" />
+          ) : (
+            <WaveIcon className="h-6 w-6" />
+          )
+        }
       />
       {error && (
         // Absolutely placed so a failed like cannot reflow the action row and

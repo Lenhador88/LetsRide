@@ -752,7 +752,8 @@ export type Postcard = {
 
 /**
  * How exactly a postcard's stored coordinate describes where the photo was
- * taken — the composer's `Region` and `Precise` buttons, and nothing else.
+ * taken — the composer's `Town` and `Precise` buttons, plus `'region'`, which
+ * the client no longer writes.
  *
  * There is deliberately no `'hide'` member. Hide is the ABSENCE of a
  * coordinate, not a third kind of one: nothing is uploaded, so there is nothing
@@ -761,7 +762,14 @@ export type Postcard = {
  * one — indistinguishable on purpose, because a marker saying "this rider chose
  * to hide it" would itself be the disclosure the choice exists to avoid.
  */
-export type PhotoLocationPrecision = 'region' | 'precise'
+/**
+ * **`'region'` is LEGACY and the client never writes it again.** It marked the
+ * photo's own coordinate rounded to a ~1 km cell, which `072` replaced with
+ * `'place'` — a town the rider named. It stays in the type because it stays in
+ * the column: one row on DEV carries it, nothing backfills it, and a reader that
+ * cannot represent it would crash on that row rather than draw it.
+ */
+export type PhotoLocationPrecision = 'region' | 'place' | 'precise'
 
 /**
  * What the composer sends about where and when a photo was taken.
@@ -779,6 +787,12 @@ export type PostcardCaptureInput = {
   takenLatitude: number | null
   takenLongitude: number | null
   takenLocationPrecision: PhotoLocationPrecision | null
+  /** The place the rider named. Present without a coordinate when they typed a
+   *  town rather than picking one — `072`'s arm 2, and a first-class state.
+   *
+   *  There is deliberately no provider id beside it; see `NamedPlace` in
+   *  `src/lib/media/location.ts` for why storing one would undo the rounding. */
+  takenPlaceName: string | null
 }
 
 export type PostcardComment = {

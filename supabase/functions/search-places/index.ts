@@ -113,6 +113,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   buildAutocompleteUrl,
   buildLocalityUrl,
+  buildReverseUrl,
   classifyLedgerError,
   isSearchable,
   parseRequest,
@@ -231,7 +232,10 @@ Deno.serve(async (req: Request) => {
   }
 
   const request = parseRequest(body)
-  if (!request) return json({ error: 'bad_request' }, 400)
+  // Both refusals are pre-ledger and therefore free, and they are told apart on
+  // purpose: the client latches on `bad_request` to mean "this build has no
+  // reverse mode", so a malformed coordinate must not be able to say that.
+  if (typeof request === 'string') return json({ error: request }, 400)
 
   // Below the floor is not an error and not a refusal — it is "keep typing",
   // and it costs nothing to answer here rather than at the vendor. The floor is
@@ -267,7 +271,12 @@ Deno.serve(async (req: Request) => {
   const url =
     request.mode === 'locality'
       ? buildLocalityUrl(request.text, GEOAPIFY_API_KEY)
-      : buildAutocompleteUrl(request.text, request.near, GEOAPIFY_API_KEY)
+      : request.mode === 'reverse'
+        // Non-null by construction: `parseRequest` refuses a `reverse` request
+        // whose coordinate is missing or out of range, so this branch cannot be
+        // reached without one.
+        ? buildReverseUrl(request.at!, GEOAPIFY_API_KEY)
+        : buildAutocompleteUrl(request.text, request.near, GEOAPIFY_API_KEY)
 
   // BILLABLE from here.
   const payload = await fetchJson(url)
@@ -278,5 +287,9 @@ Deno.serve(async (req: Request) => {
   if (request.mode === 'locality') {
     return json({ centroid: toLocalityResult(payload as never) }, 200)
   }
+  // `reverse` answers in the same envelope as `search` — a `results` array,
+  // zero or one long — so the client shares one parser and a coordinate that
+  // names no town is an empty list rather than a distinct failure. There is
+  // nothing for a rider to do differently about the two.
   return json({ results: toPlaceResults(payload as never) }, 200)
 })

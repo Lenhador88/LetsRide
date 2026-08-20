@@ -24,11 +24,11 @@ export type { ExifCapture } from './exif'
 export {
   DEFAULT_PHOTO_LOCATION_MODE,
   NO_PHOTO_LOCATION,
-  REGION_DECIMAL_PLACES,
+  COARSE_DECIMAL_PLACES,
   resolvePhotoLocation,
-  roundToRegion,
+  roundToCoarseGrid,
 } from './location'
-export type { PhotoLocation, PhotoLocationMode } from './location'
+export type { NamedPlace, PhotoLocation, PhotoLocationMode } from './location'
 export type { CompressImageOptions, CompressedImage } from './compress'
 export {
   uploadObject,

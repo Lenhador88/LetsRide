@@ -288,7 +288,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (45 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests. **Two** component tests exist — `PostcardAction` (asserting the class list rather than any measured size) and `PlaceSearchField` (asserting which inputs each of its two modes writes — the contract its callers' actions read back off `FormData` — plus `resolveComboboxKey`, the pure half of its keyboard, split out for exactly the reason `guard.ts` was). Both render through `renderToStaticMarkup`; the environment is still `node`, and jsdom is the answer only when something needs a layout or an event |
+| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (45 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests. **Three** component tests exist — `PostcardAction` (asserting the class list rather than any measured size), `PlaceSearchField` (asserting which inputs each of its three modes writes — the contract its callers' actions read back off `FormData`, and for the composer's nameless mode the contract that it writes *nothing* — plus `resolveComboboxKey`, the pure half of its keyboard, split out for exactly the reason `guard.ts` was), and `WaveFilledIcon` (re-deriving the filled glyph from the generated outline, because `generated.tsx` is rewritten wholesale and a redrawn icon would otherwise leave the two drawing different hands). All three render through `renderToStaticMarkup`; the environment is still `node`, and jsdom is the answer only when something needs a layout or an event |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Refuses a sign-in and checks the email survives it, signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. It then refuses a create and an edit and checks every field and choice of each survives. With `WALK_FIXTURES=1` it **creates** the ride and club the detail routes need, through the app's own forms; a shrunken `N/N` is a skip, not a pass. Writes are refused unless the session's own project is on the allowlist |
 | End-to-end | Playwright | Still deferred as a full suite. **The walk is not the gap being filled**: it asks one question per route — did this render — and asserts behaviour only in its six named phases, each covering a defect no other gate here can see (PD-196's cleared email, PD-199's cleared create form and its silently-rewritten edit form, PD-111's navigation cost, the guard's redirects, what sign-out leaves behind). Adding a phase means adding a reason, not broadening a remit |
 
@@ -561,9 +561,9 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 71 files; DEV is at `071` and PROD at `070` — measured 2026-08-19, after `071`'s
-`rides(departure_at)` index went on DEV.** That gap is the *ordinary* state, not drift: DEV-ahead
-is where a migration lives between its merge and its promotion. The two were level for a few hours
+**Applied state: 73 files; DEV is at `073` and PROD at `070` — measured 2026-08-20, after `072`
+and `073` (the postcard's named place, PD-275) went on DEV.** That gap is the *ordinary* state, not
+drift: DEV-ahead is where a migration lives between its merge and its promotion. The two were level for a few hours
 that afternoon, at PD-273's promotion, and level is the exception. **Do not read the
 count of unpromoted files off this sentence** — it named exactly one while two were waiting, which
 is the same defect as a stale number in a smaller place, and the promotion is the one job that
@@ -623,7 +623,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1617** assertions — re-derive rather than trust it:
+Suite **1657** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
