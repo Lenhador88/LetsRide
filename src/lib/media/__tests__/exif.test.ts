@@ -548,9 +548,23 @@ type HeicOptions = {
   itemType?: string
   /** A brand outside the HEIF set. */
   majorBrand?: string
+  /** `iloc` FullBox version. 0 has NO `construction_method` and NO `index_size`. */
+  ilocVersion?: 0 | 1 | 2
+  /** `infe` FullBox version. 2 gives a u16 item id, 3 a u32 one. */
+  infeVersion?: 2 | 3
+  /**
+   * Set the low nibble of `iloc`'s second byte, which is `index_size` in
+   * versions 1 and 2 and RESERVED in version 0. A parser that reads it in
+   * version 0 shifts every extent that follows.
+   */
+  reservedNibble?: number
+  /** `offset_size` and `length_size` both 0 — an extent that describes nothing. */
+  zeroSizes?: boolean
 }
 
 function buildHeic(fixture: ExifFixture, options: HeicOptions = {}): ArrayBuffer {
+  const ilocVersion = options.ilocVersion ?? 1
+  const infeVersion = options.infeVersion ?? 2
   const tiff = buildTiff(fixture)
   const payload = options.noTiffHeaderOffset
     ? [...ascii('Exif'), 0, 0, ...tiff]
@@ -567,36 +581,45 @@ function buildHeic(fixture: ExifFixture, options: HeicOptions = {}): ArrayBuffer
     ...ascii(heif ? 'heic' : 'isom'),
   ])
 
-  // infe, FullBox version 2: item_ID (u16), protection index, item_type, name.
+  const itemId = infeVersion === 2 ? u16(1) : u32(1)
   const infe = box('infe', [
-    2, 0, 0, 0,
-    ...u16(1),
+    infeVersion, 0, 0, 0,
+    ...itemId,
     ...u16(0),
     ...ascii(options.itemType ?? 'Exif'),
     0,
   ])
   const iinf = box('iinf', [0, 0, 0, 0, ...u16(1), ...infe])
 
-  // iloc, FullBox version 1 so `construction_method` is present and testable.
-  // offset_size 4, length_size 4, base_offset_size 0, index_size 0.
-  const ilocSize = 8 + 4 + 1 + 1 + 2 + (2 + 2 + 2 + 2 + 4 + 4)
+  // offset_size 4, length_size 4, base_offset_size 0.
+  const ilocItemId = ilocVersion < 2 ? u16(1) : u32(1)
+  const construction = ilocVersion === 0 ? [] : u16(options.idatConstruction ? 1 : 0)
+  const ilocCount = ilocVersion < 2 ? u16(1) : u32(1)
+  const ilocBody = [
+    ilocVersion, 0, 0, 0,
+    options.zeroSizes ? 0x00 : 0x44,
+    options.reservedNibble ?? 0x00,
+    ...ilocCount,
+    ...ilocItemId,
+    ...construction,
+    ...u16(0),
+    ...u16(1),
+    // The extent offset is patched below, once the box sizes are known.
+    ...u32(0),
+    ...u32(payload.length),
+  ]
+  const ilocSize = 8 + ilocBody.length
   const metaSize = 8 + 4 + iinf.length + ilocSize
   const payloadOffset = ftyp.length + metaSize + 8
 
-  const iloc = box('iloc', [
-    1, 0, 0, 0,
-    0x44,
-    0x00,
-    ...u16(1),
-    ...u16(1),
-    ...u16(options.idatConstruction ? 1 : 0),
-    ...u16(0),
-    ...u16(1),
-    ...u32(payloadOffset),
-    ...u32(payload.length),
-  ])
-  expect(iloc.length).toBe(ilocSize)
+  // Patched rather than computed inline so an offset that happens to be right
+  // for one fixture cannot be wrong for the next — which is the whole bug this
+  // path can have.
+  const offsetAt = ilocBody.length - 8
+  ilocBody.splice(offsetAt, 4, ...u32(payloadOffset))
 
+  const iloc = box('iloc', ilocBody)
+  expect(iloc.length).toBe(ilocSize)
   const meta = box('meta', [0, 0, 0, 0, ...iinf, ...iloc])
   expect(meta.length).toBe(metaSize)
 
@@ -648,6 +671,49 @@ describe('locateHeifExif', () => {
 
   it('refuses a construction method other than a file offset rather than guessing one', () => {
     expect(locateHeifExif(buildHeic({}, { idatConstruction: true }))).toBeNull()
+  })
+
+  it('reads an iloc version 0, which has no construction_method field at all', () => {
+    // The version this parser is most likely to get wrong and least likely to
+    // meet from Apple: v0 omits `construction_method`, so a reader that expects
+    // it consumes two bytes of `data_reference_index` and every extent after
+    // that is shifted. Common outside Apple's encoder.
+    const extent = locateHeifExif(buildHeic({ dateTimeOriginal: AUGUST_NOON }, { ilocVersion: 0 }))
+    expect(extent).not.toBeNull()
+    expect(readHeic(buildHeic({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '+02:00' }, { ilocVersion: 0 })).takenAt)
+      .toBe('2026-08-10T10:15:30.000Z')
+  })
+
+  it('ignores the RESERVED low nibble in an iloc version 0 rather than reading it as index_size', () => {
+    // The same byte is `index_size` in v1/v2 and reserved in v0. Reading it in
+    // v0 would advance past four bytes that are not there. A non-zero reserved
+    // nibble must change nothing.
+    const clean = locateHeifExif(buildHeic({}, { ilocVersion: 0 }))
+    const dirty = locateHeifExif(buildHeic({}, { ilocVersion: 0, reservedNibble: 0x04 }))
+    expect(dirty).toEqual(clean)
+    expect(dirty).not.toBeNull()
+  })
+
+  it('reads an iloc version 2, whose item ids are 32-bit', () => {
+    expect(readHeic(buildHeic({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '+02:00' }, { ilocVersion: 2 })).takenAt)
+      .toBe('2026-08-10T10:15:30.000Z')
+    // And the construction-method refusal still fires on v2, where the field exists.
+    expect(locateHeifExif(buildHeic({}, { ilocVersion: 2, idatConstruction: true }))).toBeNull()
+  })
+
+  it('reads an infe version 3, whose item ids are 32-bit', () => {
+    expect(readHeic(buildHeic({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '+02:00' }, { infeVersion: 3 })).takenAt)
+      .toBe('2026-08-10T10:15:30.000Z')
+  })
+
+  it('refuses an extent with no offset and no length rather than spinning on it', () => {
+    // **This pins the REFUSAL, not the timing.** A zero-width extent already
+    // resolved to null through the `length <= 0` check, so the early guard in
+    // `readItemExtent` is not what makes this pass — its job is that a file
+    // with many non-matching items does not spin `extent_count` times over
+    // each of them before reaching the same answer, which is a cost no
+    // assertion here measures. Both are correct; only one is tested.
+    expect(locateHeifExif(buildHeic({ dateTimeOriginal: AUGUST_NOON }, { zeroSizes: true }))).toBeNull()
   })
 
   it('returns null for an empty buffer and for truncated boxes instead of throwing', () => {

@@ -29,6 +29,13 @@
  * The HEIC path is the only asynchronous one, because locating the item and
  * reading it are two different slices of the file. See `readExifCapture`.
  *
+ * **One HEIF layout is not read: `mdat` before `meta`, where `mdat` is larger
+ * than the header slice.** `readBox` refuses a box claiming more than the
+ * buffer holds, so the top-level walk stops before it reaches `meta` and the
+ * file reports no metadata — the safe answer, and the same one the format's
+ * usual layout would have given for a photo with nothing to read. Every
+ * encoder this app expects writes `meta` first.
+ *
  * ## What it does NOT read
  *
  * - **PNG, WebP, GIF.** No EXIF in the shapes this app sees.
@@ -417,6 +424,11 @@ function isHeifBrand(view: DataView, ftyp: Box): boolean {
  * id, which yields no metadata.
  */
 function findExifItemId(view: DataView, iinf: Box): number | null {
+  // A FullBox is 8 bytes of header and 4 of version/flags; a `readBox` that
+  // returned an 8-byte box has none of those. The wrapper would catch the throw
+  // and return the right answer anyway — this is here so the module header's
+  // claim that every read is bounds-checked stays literally true.
+  if (iinf.bodyAt + 4 > iinf.end) return null
   const version = view.getUint8(iinf.bodyAt)
   let at = iinf.bodyAt + 4
 
@@ -475,6 +487,7 @@ function findExifItemId(view: DataView, iinf: Box): number | null {
  * refused so a corrupt length cannot make the caller allocate the whole photo.
  */
 function readItemExtent(view: DataView, iloc: Box, wantedId: number): HeifExifExtent | null {
+  if (iloc.bodyAt + 4 > iloc.end) return null
   const version = view.getUint8(iloc.bodyAt)
   let at = iloc.bodyAt + 4
   if (at + 2 > iloc.end) return null
@@ -528,6 +541,17 @@ function readItemExtent(view: DataView, iloc: Box, wantedId: number): HeifExifEx
     if (at + 2 > iloc.end) return null
     const extentCount = view.getUint16(at, false)
     at += 2
+
+    // **The one loop whose cursor can fail to advance.** With `offset_size`,
+    // `length_size` and `index_size` all zero the body below moves `at` by
+    // nothing, so no bounds guard inside it can ever fire and it runs
+    // `extent_count` — up to 65535 — times per item. Bounded rather than
+    // unbounded (`MAX_ITEMS` caps the outer loop) and it allocates nothing, but
+    // a 6 KB crafted file measured ~200 ms of blocked main thread on a desktop,
+    // which is a second or two on a phone the moment a rider picks the file.
+    // An extent with no offset and no length describes nothing, so refusing is
+    // also the honest answer rather than only the cheap one. Found by review.
+    if (offsetSize === 0 && lengthSize === 0) return null
 
     for (let e = 0; e < extentCount; e++) {
       at += indexSize

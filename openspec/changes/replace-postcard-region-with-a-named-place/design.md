@@ -65,6 +65,15 @@ entire population carrying the old middle-mode meaning is one test row on DEV.
 
 ### D1 — The wording: `Town`, and a hint that names no distance and no ride
 
+> **SUPERSEDED 2026-08-20, in three places — the label, the control's shape, and the strings.**
+> The label is `Region` (see the note under *Rejected labels*), the control is always three
+> segments (D2's note), and the table below is a snapshot of what this change proposed rather than
+> what shipped: the two saving modes' sentences are **conditional on what would actually be
+> stored**, because a mode selected with an empty field was telling riders a place was saved when
+> none was. The strings and that logic live in `src/components/postcards/locationCopy.ts`, with
+> `resolveLocationCopy`'s tests holding them. What survives below unchanged is the *reasoning* —
+> no distance, no ride, and `Precise` written to make a rider hesitate.
+
 The label is **`Town`**. The three-segment control reads **Hide · Town · Precise**, and where the
 photo carries no fix it reads **Hide · Town**.
 
@@ -96,10 +105,10 @@ also cover the capture time.
 
 > **SUPERSEDED 2026-08-20 — the label is `Region` after all, and the marker is still `place`.**
 > The owner shipped `Town`, then hit the case this section did not consider: a rider in the
-> Pyrenees names a mountain range, and *"maybe region is better?"* The reasoning below stands for
-> everything except the first rejection — `Region` was rejected as "the word the owner asked to
-> replace", which was true of `Region` **meaning a ~1 km cell** and is not true of it meaning a
-> place a rider names. The stored marker deliberately did NOT follow the label back: `'region'` is
+> Pyrenees names a mountain range, and *"maybe region is better?"* `Region` was rejected here as
+> "the word the owner asked to replace", which was true of `Region` **meaning a ~1 km cell** and is
+> not true of it meaning a place a rider names; the other four rejections stand. **This note is
+> scoped to the label** — D1, D2 and D3 carry their own supersession notes. The stored marker deliberately did NOT follow the label back: `'region'` is
 > still live in `taken_location_precision` under `064`'s meaning (arm 5 of `073`'s coupling, one
 > DEV row), so reusing the string would give one word two meanings in one column. Label `Region`,
 > marker `place`, and `CreatePostcardForm`'s `LOCATION_MODES` carries the note.
@@ -132,6 +141,16 @@ the same. These are **owner-supplied wording proposed by this change**, not read
 
 ### D2 — The input renders always; `Precise` does not
 
+> **SUPERSEDED 2026-08-20 — `Precise` renders always too.** The reasoning below is sound and its
+> premise stopped holding the same week: it assumed the only exact coordinate on the screen comes
+> from the camera. Every HEIC reached the composer with no fix at all — `exif.ts` read JPEG only —
+> so the button was absent for every photo the product owner tried, with nothing on screen saying
+> why, and it read as a feature that had been taken away. `resolvePhotoLocation` now has a second
+> exact source, a place the rider **picked**, stored unrounded; a **typed** place still cannot
+> become a precise location, which is the half of the argument below that was load-bearing. The
+> refusal of a *disabled* segment is untouched — the control is live in every state, and where
+> neither source exists it resolves to `hide`'s answer and says so.
+
 Product owner: *"Location fields always show regardless if there is a photo there or not."* So the
 `Location` block — icon, label, input, buttons — mounts unconditionally, where today the whole
 block is gated on `upload.status === 'done'`.
@@ -162,7 +181,7 @@ So there is one pair, and `taken_location_precision` says what it is:
 |---|---|---|
 | NULL | NULL | NULL |
 | `'place'` | **required** | the place's centroid, **rounded**, or NULL |
-| `'precise'` | optional | the photo's own fix, unrounded |
+| `'precise'` | optional | an exact fix, unrounded — the photo's own, or a **picked** place's where the photo carries none (2026-08-20) |
 | `'region'` | NULL | a rounded photo fix — **legacy, §D9** |
 
 **There is no provider-id column**; see the proposal's own note. It looked like free provenance and

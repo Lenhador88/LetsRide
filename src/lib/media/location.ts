@@ -18,12 +18,17 @@
  * ~1 km cell, and described to the rider as "about a kilometre". It is now a
  * **place the rider names**, prefilled from the photo where that is possible and
  * typed where it is not. The rounding survives, and its job inverted: it was the
- * *promise* and it is now the *mechanism*. A named town is what the rider reads;
+ * *promise* and it is now the *mechanism*. A named place is what the rider reads;
  * the 2dp coordinate under it is what stops the schema describing a driveway as
  * a city.
  *
  * `region` is gone from this file and still legal in the column — one row on DEV
  * carries it. The client stops writing it; nothing backfills it.
+ *
+ * **The rider-facing label for the middle mode is `Region` and the marker is
+ * still `place`** (2026-08-20). The two words are deliberately different, for
+ * exactly the reason in the paragraph above: `'region'` already means `064`'s
+ * rounded coordinate in this column.
  */
 
 /**
@@ -48,7 +53,7 @@ export const DEFAULT_PHOTO_LOCATION_MODE: PhotoLocationMode = 'hide'
  * **It bounds the NAMED place too, not only the retired rounding**, and that is
  * the whole reason it survived the rename. The typeahead is a geocoder: it
  * returns streets and buildings, so a rider can name their own address in a
- * field labelled `Town`. Rounding what is stored means the name is as specific
+ * field labelled `Region`. Rounding what is stored means the name is as specific
  * as the rider chose to be and the *coordinate* never is.
  */
 export const COARSE_DECIMAL_PLACES = 2
