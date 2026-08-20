@@ -1,3 +1,4 @@
+import { roundToRegion } from '@/lib/media/location'
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { edgeFunctionErrorCode } from '@/lib/supabase/functions'
 import type { LocalityCentroid, PlaceSearchResult } from '@/types'
@@ -387,9 +388,19 @@ export async function reverseGeocodePlace(
 
   const supabase = await resolveSupabase()
 
+  // **The ROUNDED coordinate, never the fix — and this is the whole privacy
+  // rule of the composer, not a nicety.** A prefill fires while the mode still
+  // reads `Hide`, so an unrounded coordinate here would send a rider's driveway
+  // to a third party on the strength of them having chosen a photo. A
+  // town-level lookup does not need better than ~1 km, so this costs nothing in
+  // answer quality, and it keeps `064`'s central property intact: the exact
+  // value leaves the device only as part of a `precise` write the rider
+  // explicitly chose.
+  const at = { lat: roundToRegion(latitude), lon: roundToRegion(longitude) }
+
   // `functions.invoke` never rejects — see `searchPlaces`'s own comment.
   const response = await supabase.functions.invoke('search-places', {
-    body: { mode: 'reverse', lat: latitude, lon: longitude },
+    body: { mode: 'reverse', lat: at.lat, lon: at.lon },
   })
 
   if (response.error) {
