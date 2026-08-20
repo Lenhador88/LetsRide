@@ -103,6 +103,7 @@ describe('createPostcardSchema', () => {
         takenLatitude: null,
         takenLongitude: null,
         takenLocationPrecision: null,
+        takenPlaceName: null,
       })
     }
   })

@@ -355,14 +355,17 @@ describe('the request this function accepts', () => {
     // body naming a user must not be able to move it.
     const parsed = parseRequest({ mode: 'search', text: 'Berkhout', user_id: 'someone-else' })
     expect(parsed).toEqual({ mode: 'search', text: 'Berkhout', near: null, at: null })
-    expect(Object.keys(parsed!)).toEqual(['mode', 'text', 'near', 'at'])
+    expect(Object.keys(parsed as object)).toEqual(['mode', 'text', 'near', 'at'])
   })
 
-  it('refuses a body that names no valid mode', () => {
-    expect(parseRequest({ text: 'Berkhout' })).toBeNull()
-    expect(parseRequest({ mode: 'delete', text: 'Berkhout' })).toBeNull()
-    expect(parseRequest(null)).toBeNull()
-    expect(parseRequest('search')).toBeNull()
+  it('refuses a body that names no valid mode, as a BAD REQUEST', () => {
+    // The code matters: the client latches on `bad_request` to mean "this
+    // deployed build does not know the reverse mode", which is sound only
+    // because an unknown mode is the thing that produces it.
+    expect(parseRequest({ text: 'Berkhout' })).toBe('bad_request')
+    expect(parseRequest({ mode: 'delete', text: 'Berkhout' })).toBe('bad_request')
+    expect(parseRequest(null)).toBe('bad_request')
+    expect(parseRequest('search')).toBe('bad_request')
   })
 
   it('collapses an out-of-range bias to no bias rather than refusing', () => {
@@ -377,15 +380,14 @@ describe('the request this function accepts', () => {
       { lat: '52', lon: 4 },
       'nearby',
     ]) {
-      expect(parseRequest({ mode: 'search', text: 'Berkhout', near })?.near).toBeNull()
+      const parsed = parseRequest({ mode: 'search', text: 'Berkhout', near })
+      expect(typeof parsed === 'string' ? null : parsed.near).toBeNull()
     }
   })
 
   it('accepts a bias at the range boundaries', () => {
-    expect(parseRequest({ mode: 'search', text: 'x', near: { lat: -90, lon: 180 } })?.near).toEqual({
-      lat: -90,
-      lon: 180,
-    })
+    const parsed = parseRequest({ mode: 'search', text: 'x', near: { lat: -90, lon: 180 } })
+    expect(typeof parsed === 'string' ? null : parsed.near).toEqual({ lat: -90, lon: 180 })
   })
 
   it('takes a coordinate and no term in reverse mode', () => {
@@ -409,7 +411,9 @@ describe('the request this function accepts', () => {
       { mode: 'reverse', lat: NaN, lon: 4 },
       { mode: 'reverse', lat: '52.37', lon: 4.9 },
     ]) {
-      expect(parseRequest(body)).toBeNull()
+      // Its OWN code, never `bad_request`: one malformed coordinate must not be
+      // able to convince the client that a build supporting reverse does not.
+      expect(parseRequest(body)).toBe('bad_coordinate')
     }
   })
 
@@ -417,7 +421,8 @@ describe('the request this function accepts', () => {
     // A reverse lookup is billable and its whole subject is the coordinate. A
     // term riding along would be a second, unmetered search term reaching the
     // vendor under a mode that never sends one.
-    expect(parseRequest({ mode: 'reverse', lat: 52.37, lon: 4.9, text: 'Berkhout' })?.text).toBe('')
+    const parsed = parseRequest({ mode: 'reverse', lat: 52.37, lon: 4.9, text: 'Berkhout' })
+    expect(typeof parsed === 'string' ? null : parsed.text).toBe('')
   })
 })
 

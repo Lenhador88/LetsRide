@@ -232,7 +232,10 @@ Deno.serve(async (req: Request) => {
   }
 
   const request = parseRequest(body)
-  if (!request) return json({ error: 'bad_request' }, 400)
+  // Both refusals are pre-ledger and therefore free, and they are told apart on
+  // purpose: the client latches on `bad_request` to mean "this build has no
+  // reverse mode", so a malformed coordinate must not be able to say that.
+  if (typeof request === 'string') return json({ error: request }, 400)
 
   // Below the floor is not an error and not a refusal — it is "keep typing",
   // and it costs nothing to answer here rather than at the vendor. The floor is

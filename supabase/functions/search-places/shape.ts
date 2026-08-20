@@ -605,8 +605,21 @@ export type ProxyRequest = {
  * `between` is false for NaN and for either infinity, so all three become "no
  * location" and the unbiased path handles them.
  */
-export function parseRequest(body: unknown): ProxyRequest | null {
-  if (typeof body !== 'object' || body === null) return null
+/**
+ * What `parseRequest` says about a body it will not build a request from.
+ *
+ * **Two refusals, two codes, and the split is not cosmetic.** The client latches
+ * on `bad_request` to mean *this deployed build has no reverse mode, stop
+ * asking for the rest of the page load* — which is sound only because today's
+ * build answers an unknown mode that way, before the ledger insert, for free. A
+ * malformed coordinate on a build that DOES support reverse must not be able to
+ * trip that latch: it would disable a working feature for the rest of the page
+ * load over one bad value. Found by the proposal's review pass.
+ */
+export type ParseRefusal = 'bad_request' | 'bad_coordinate'
+
+export function parseRequest(body: unknown): ProxyRequest | ParseRefusal {
+  if (typeof body !== 'object' || body === null) return 'bad_request'
   const raw = body as Record<string, unknown>
 
   const mode: SearchMode | null =
@@ -617,21 +630,22 @@ export function parseRequest(body: unknown): ProxyRequest | null {
         : raw.mode === 'reverse'
           ? 'reverse'
           : null
-  if (!mode) return null
+  if (!mode) return 'bad_request'
 
   // `reverse` carries a coordinate and no term. Refused rather than defaulted
   // when the coordinate is missing or out of range: the alternative is a
   // billable vendor call for a request that cannot name anything, and a
   // silently-dropped `at` would reach the rider as "this photo has no town"
-  // — indistinguishable from a real answer.
+  // — indistinguishable from a real answer. Refused under its OWN code, so it
+  // cannot be mistaken for a build that does not know this mode.
   if (mode === 'reverse') {
     const at = asCoordinate(raw.lat, raw.lon)
-    if (!at) return null
+    if (!at) return 'bad_coordinate'
     return { mode, text: '', near: null, at }
   }
 
   const text = typeof raw.text === 'string' ? raw.text : null
-  if (text === null) return null
+  if (text === null) return 'bad_request'
 
   const nearRaw = raw.near
   let near: { lat: number; lon: number } | null = null

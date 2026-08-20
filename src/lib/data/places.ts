@@ -1,4 +1,4 @@
-import { roundToRegion } from '@/lib/media/location'
+import { roundToCoarseGrid } from '@/lib/media/location'
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { edgeFunctionErrorCode } from '@/lib/supabase/functions'
 import type { LocalityCentroid, PlaceSearchResult } from '@/types'
@@ -380,10 +380,29 @@ export async function getLocalityCentroid(q: string): Promise<LocalityCentroid |
  * be taken back. A ceiling refusal arrives here as an error like any other and
  * becomes `null`, which is the honest answer: the rider types the town.
  */
+/**
+ * Latched for the page load once the deployed function has told us it does not
+ * know this mode.
+ *
+ * **`bad_request` is the one answer that means "asking again cannot help".**
+ * The deployed handler runs `parseRequest` BEFORE it writes the ledger row, and
+ * an unrecognised mode returns `400 bad_request` — so probing an undeployed
+ * build costs no credit and is distinguishable from every other failure on this
+ * path. Every other failure is transient and stays retryable; this one is a
+ * property of the build, so re-asking on the next photo would be a request that
+ * is guaranteed to fail.
+ *
+ * Module state, so it dies on page load — which is the correct lifetime: the
+ * next load may reach a redeployed function, and nothing here should outlive
+ * the deploy it is describing.
+ */
+let reverseModeUnsupported = false
+
 export async function reverseGeocodePlace(
   latitude: number,
   longitude: number
 ): Promise<PlaceSearchResult | null> {
+  if (reverseModeUnsupported) return null
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
 
   const supabase = await resolveSupabase()
@@ -396,7 +415,7 @@ export async function reverseGeocodePlace(
   // answer quality, and it keeps `064`'s central property intact: the exact
   // value leaves the device only as part of a `precise` write the rider
   // explicitly chose.
-  const at = { lat: roundToRegion(latitude), lon: roundToRegion(longitude) }
+  const at = { lat: roundToCoarseGrid(latitude), lon: roundToCoarseGrid(longitude) }
 
   // `functions.invoke` never rejects — see `searchPlaces`'s own comment.
   const response = await supabase.functions.invoke('search-places', {
@@ -404,6 +423,11 @@ export async function reverseGeocodePlace(
   })
 
   if (response.error) {
+    if ((await edgeFunctionErrorCode(response.error)) === 'bad_request') {
+      reverseModeUnsupported = true
+      console.info('[places] search-places has no reverse mode deployed — not asking again')
+      return null
+    }
     console.warn('[places] search-places (reverse) failed — the rider types the town', response.error)
     return null
   }
