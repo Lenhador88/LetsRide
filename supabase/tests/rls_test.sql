@@ -14740,20 +14740,31 @@ select assert_rejected(
 reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 
+
 \echo ''
-\echo '# 072: a postcard''s location is a place the rider NAMES, not a grid cell'
+\echo '# 072/073: a postcard''s location is a place the rider NAMES, and no more than that'
 
 -- ===========================================================================
--- 072.  postcards.taken_place_name / taken_place_id, the replaced coupling and
---       the RENAMED rounding CHECK.
+-- 072/073.  postcards.taken_place_name, the replaced coupling and the RENAMED
+--       rounding CHECK.
 --
---       The privacy rule this file cannot test, stated so nobody reads the
+--       **Read as one unit.** `072` added `taken_place_name` and
+--       `taken_place_id`; `073` dropped the provider id — it resolves through a
+--       details lookup to the picked feature's exact geometry, so beside a
+--       deliberately 2dp-rounded coordinate it hands back the precision the
+--       rounding exists to remove — and corrected the coupling, which `072`
+--       wrote with a bare `=` against a nullable marker and which therefore
+--       ACCEPTED the half-populated rows it was written to refuse (a CHECK
+--       treats NULL as satisfied). Assertions are labelled by the file that
+--       owns the rule, not by the file that last touched the line.
+--
+--       The privacy rule neither file can test, stated so nobody reads the
 --       absence as coverage: **the choice is made in the BROWSER, before the
 --       request is built**, and a rider who picks Hide sends no location
 --       columns at all. By the time a row exists that decision is already made.
 --       What the database CAN own, and what is asserted below, is everything
 --       that follows — which columns may ever be written, that a COARSE marker
---       really is coarse whatever produced it, that a name/id/coordinate/marker
+--       really is coarse whatever produced it, that a name/coordinate/marker
 --       combination the design does not list is refused, and that nobody can
 --       edit any of it afterwards.
 --
@@ -14769,30 +14780,53 @@ savepoint postcard_place_072;
 reset role;
 
 -- ---------------------------------------------------------------------------
--- 072.1  INSERT and SELECT reach both new columns — a rider writes the place
---        they named and must be able to read back what they published.
+-- 072.1  INSERT and SELECT reach the place name — a rider writes the place they
+--        named and must be able to read back what they published.
 -- ---------------------------------------------------------------------------
-select assert_eq(
-  (select bool_and(has_column_privilege('authenticated', 'public.postcards', c, 'INSERT'))
-     from unnest(array['taken_place_name', 'taken_place_id']) c),
-  true, '072: authenticated may INSERT both place columns — the rider''s own choice is what writes them');
-select assert_eq(
-  (select bool_and(has_column_privilege('authenticated', 'public.postcards', c, 'SELECT'))
-     from unnest(array['taken_place_name', 'taken_place_id']) c),
-  true, '072: ... and may SELECT both — the audience of a place IS the audience of the postcard, and there is no narrower one available');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'taken_place_name', 'INSERT'),
+  true, '072: authenticated may INSERT the place name — the rider''s own choice is what writes it');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'taken_place_name', 'SELECT'),
+  true, '072: ... and may SELECT it — the audience of a place IS the audience of the postcard, and there is no narrower one available');
 
 -- ---------------------------------------------------------------------------
--- 072.2  NO UPDATE, on either column, ever — and the UPDATE LIST HAS NOT MOVED.
---        072 rewrote two absolute grant lists on this table, which is the third
---        time it has been done; 044 and 046 are the worked example of an
---        absolute list written from a document reinstating what a previous file
---        removed, with nothing red. The per-column assertion cannot catch that
---        on its own — only the exact list can.
+-- 073.1  THE PROVIDER ID IS GONE, as a COLUMN and not merely as a grant. A
+--        revoked grant on a column that still exists is one `grant` away from
+--        being back, and the reason it must not come back is a property of the
+--        VALUE: a geoapify id resolves through a details lookup to the picked
+--        feature's exact geometry, which is precisely the precision the 2dp
+--        rounding beside it exists to remove.
+--
+--        Asserted against information_schema.columns rather than by a failing
+--        insert, because a write naming a column that does not exist raises
+--        42703 — a different rule passing under the same label.
 -- ---------------------------------------------------------------------------
 select assert_eq(
-  (select bool_or(has_column_privilege('authenticated', 'public.postcards', c, 'UPDATE'))
-     from unnest(array['taken_place_name', 'taken_place_id']) c),
-  false, '072: neither place column holds UPDATE — the remedy for a mis-published location is still deleting the postcard, and 072 issues no UPDATE statement of any kind');
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'postcards'
+      and column_name = 'taken_place_id'),
+  0, '073: postcards has NO taken_place_id column — a provider id beside a deliberately blunted coordinate is a precision backdoor, and unlike clubs.location_place_id it sits next to a value whose whole point is that it has been coarsened');
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'postcards'
+      and column_name = 'taken_place_id'),
+  0, '073: ... so no role holds any privilege on it either, in any verb — the column going is what makes that true rather than a revoke somebody has to keep re-issuing');
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.postcards'::regclass
+      and conname = 'postcards_taken_place_id_length'),
+  0, '073: ... and its length bound went with it, named explicitly in 073 rather than auto-dropped, so it cannot reappear as a mystery in a later pg_constraint diff');
+
+-- ---------------------------------------------------------------------------
+-- 072.2  NO UPDATE on the place name, ever — and the UPDATE LIST HAS NOT MOVED.
+--        072 and 073 between them rewrote this table's INSERT and SELECT lists,
+--        which is the third and fourth time it has been done; 044 and 046 are
+--        the worked example of an absolute list written from a document
+--        reinstating what a previous file removed, with nothing red. The
+--        per-column assertion cannot catch that on its own — only the exact
+--        list can.
+-- ---------------------------------------------------------------------------
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'taken_place_name', 'UPDATE'),
+  false, '072: the place name holds no UPDATE — the remedy for a mis-published location is still deleting the postcard, and 072 issues no UPDATE statement of any kind while 073 issues no grant statement at all');
 
 select assert_eq(
   (select string_agg(column_name, ',' order by column_name)
@@ -14800,7 +14834,7 @@ select assert_eq(
     where table_schema = 'public' and table_name = 'postcards'
       and grantee = 'authenticated' and privilege_type = 'UPDATE'),
   'caption,club_id,image_path',
-  '072: the UPDATE list is UNMOVED at exactly three columns — if this goes red, 072 mentioned a verb it must not mention');
+  '072/073: the UPDATE list is UNMOVED at exactly three columns, through two files that rewrote the other two — if this goes red, one of them mentioned a verb it must not mention');
 
 -- The SELECT list, exact and scoped to its grantee. There was no pin on this
 -- list before 072 rewrote it, and the per-column assertions above cannot catch
@@ -14812,7 +14846,7 @@ select assert_eq(
     where table_schema = 'public' and table_name = 'postcards'
       and grantee = 'authenticated' and privilege_type = 'SELECT'),
   'author_id,caption,club_id,created_at,id,image_path,taken_at,taken_at_offset_minutes,taken_latitude,taken_location_precision,taken_longitude,taken_place_name,updated_at',
-  '062/064/072/073: the SELECT grant list is exactly thirteen columns — 072 added two place columns, 073 dropped the provider id, and ride_id is STILL not among them');
+  '062/064/072/073: the SELECT grant list is exactly thirteen columns — the place name IS on it, the provider id is not, and ride_id is STILL not among them');
 
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'ride_id', 'SELECT'),
   false, '072: ... ride_id specifically, because 062 took it out deliberately and an absolute re-grant list is exactly how that gets silently reverted');
@@ -14822,13 +14856,12 @@ select assert_eq(has_table_privilege('authenticated', 'public.postcards', 'inser
   false, '072: ... as is the TABLE-level INSERT grant — 072 re-issued a column list, it did not replace the list with a table grant');
 
 -- ---------------------------------------------------------------------------
--- 072.3  anon holds nothing on either column, in any verb. Decision #1.
+-- 072.3  anon holds nothing on the place name, in any verb. Decision #1.
 -- ---------------------------------------------------------------------------
 select assert_eq(
-  (select bool_or(has_column_privilege('anon', 'public.postcards', c, p))
-     from unnest(array['taken_place_name', 'taken_place_id']) c,
-          unnest(array['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) p),
-  false, '072: anon holds no privilege of any kind on either place column — a named town is the last thing that should reach a role with no session');
+  (select bool_or(has_column_privilege('anon', 'public.postcards', 'taken_place_name', p))
+     from unnest(array['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) p),
+  false, '072: anon holds no privilege of any kind on the place name — a named town is the last thing that should reach a role with no session');
 
 -- ---------------------------------------------------------------------------
 -- 072.4  The constraint OBJECTS. The rounding CHECK was RENAMED rather than
@@ -14848,13 +14881,13 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_constraint
     where conrelid = 'public.postcards'::regclass and contype = 'c'
-      and conname in ('postcards_taken_place_name_length', 'postcards_taken_place_id_length')),
-  2, '072: both new length bounds exist — a text column with no bound takes a megabyte in a field a card renders on one line');
+      and conname = 'postcards_taken_place_name_length'),
+  1, '072: the place name''s length bound exists — a text column with no bound takes a megabyte in a field a card renders on one line');
 
 -- ---------------------------------------------------------------------------
--- 072.5  The COUPLING, arm by arm. Four nullable columns plus a marker admit
+-- 072.5  The COUPLING, arm by arm. Three nullable columns plus a marker admit
 --        far more states than the design lists; the five legal ones are in
---        design.md §D3 and everything else is refused.
+--        design.md §D3 as 073 narrowed them, and everything else is refused.
 --
 --        Positives first, so a constraint that refuses everything cannot pass
 --        the negatives below for the wrong reason.
@@ -14870,22 +14903,9 @@ insert into postcards (id, author_id, image_path, taken_place_name, taken_locati
           'Utrecht', 'place');
 select assert_eq(
   (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000072f001'),
-  1, '072: a TYPED place with no coordinate and no provider id lands — a name without a pin is a first-class stored value');
+  1, '072: a TYPED place with no coordinate lands — a name without a pin is a first-class stored value, not a partial row');
 
--- Arm 3: a named place WITH a pin, and with the provider id that says where the
--- pin came from.
-insert into postcards (id, author_id, image_path, taken_place_name, taken_place_id,
-                       taken_latitude, taken_longitude, taken_location_precision)
-  values ('00000000-0000-0000-0000-00000072f002',
-          '00000000-0000-0000-0000-00000000000a',
-          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000072a02.jpg',
-          'Utrecht', 'geoapify:51c1f2f0e0', 52.09, 5.12, 'place');
-select assert_eq(
-  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000072f002'),
-  1, '072: a PICKED place — name, provider id and a rounded centroid — lands');
-
--- ... and the same shape with no provider id, because a typed name can still
--- resolve to a centroid. The id is optional on this arm and required on none.
+-- Arm 3: a named place WITH a pin, the centroid rounded to 2dp in the browser.
 insert into postcards (id, author_id, image_path, taken_place_name,
                        taken_latitude, taken_longitude, taken_location_precision)
   values ('00000000-0000-0000-0000-00000072f003',
@@ -14894,7 +14914,7 @@ insert into postcards (id, author_id, image_path, taken_place_name,
           'Utrecht', 52.09, 5.12, 'place');
 select assert_eq(
   (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000072f003'),
-  1, '072: ... and the same pin with NO provider id lands too — the id is provenance, never a requirement');
+  1, '072: a PICKED place — a name beside a rounded centroid — lands');
 
 -- Arm 4: a precise photo location MAY carry a name, and the name MAY disagree
 -- with the coordinate. That is deliberate and cosmetic (design.md §D5): a name
@@ -14936,15 +14956,6 @@ select assert_rejected($$
   '23514', '072: the place marker with NO name is refused — the name IS the disclosure under this marker, so a marker without one describes nothing');
 
 select assert_rejected($$
-  insert into postcards (id, author_id, image_path, taken_place_name, taken_place_id,
-                         taken_latitude, taken_longitude, taken_location_precision)
-  values ('00000000-0000-0000-0000-00000072f007',
-          '00000000-0000-0000-0000-00000000000a',
-          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000072a07.jpg',
-          'Amsterdam', 'geoapify:51c1f2f0e0', 52.370216, 4.895168, 'precise')$$,
-  '23514', '072: a provider id alongside a PRECISE coordinate is refused — the id is provenance FOR THE STORED COORDINATE, and under precise that coordinate came from the camera, so an id naming a town would make one column mean two things');
-
-select assert_rejected($$
   insert into postcards (id, author_id, image_path, taken_place_name,
                          taken_latitude, taken_location_precision)
   values ('00000000-0000-0000-0000-00000072f008',
@@ -14952,22 +14963,6 @@ select assert_rejected($$
           'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000072a08.jpg',
           'Utrecht', 52.09, 'place')$$,
   '23514', '072: half a coordinate under the place marker is refused — 064''s rule survived the rewrite, and retyping a coupling is exactly where an arm loses a column');
-
-select assert_rejected($$
-  insert into postcards (id, author_id, image_path, taken_place_name)
-  values ('00000000-0000-0000-0000-00000072f009',
-          '00000000-0000-0000-0000-00000000000a',
-          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000072a09.jpg',
-          'Utrecht')$$,
-  '23514', '072: a name with NO marker is refused — the marker is what says whose the location is, and a bare name would leave every reader guessing which mode wrote it');
-
-select assert_rejected($$
-  insert into postcards (id, author_id, image_path, taken_place_id)
-  values ('00000000-0000-0000-0000-00000072f010',
-          '00000000-0000-0000-0000-00000000000a',
-          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000072a10.jpg',
-          'geoapify:51c1f2f0e0')$$,
-  '23514', '072: a provider id on its own is refused — it is provenance for a value that is not there');
 
 select assert_rejected($$
   insert into postcards (id, author_id, image_path, taken_place_name, taken_location_precision)
@@ -15003,6 +14998,37 @@ select assert_rejected($$
           'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000072a14.jpg',
           'Utrecht', 52.09, 195.0, 'place')$$,
   '23514', '072: ... and an out-of-range longitude with it');
+
+-- ---------------------------------------------------------------------------
+-- 073.2  THE NULL-MARKER HOLE, which 072 shipped and 073 closed. A CHECK
+--        constraint refuses only an explicit FALSE — NULL is ACCEPTED — so an
+--        arm reading `taken_location_precision = 'precise'` evaluates to NULL
+--        rather than FALSE when the marker is absent, and the whole disjunction
+--        goes NULL with it. 072 split 064's single coupled arm into four
+--        marker-specific ones and left 064's `is not null` guard behind; the
+--        fix is `is not distinct from`, which is boolean for every input.
+--
+--        064's own "a coordinate with no precision marker is refused" is what
+--        caught it, so THAT assertion is the regression test and it lives in
+--        064's block. These are the cases 064 has no assertion for, because the
+--        columns did not exist when it was written.
+-- ---------------------------------------------------------------------------
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_place_name)
+  values ('00000000-0000-0000-0000-00000073f001',
+          '00000000-0000-0000-0000-00000000000a',
+          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000073a01.jpg',
+          'Utrecht')$$,
+  '23514', '073: a NAME with no marker is refused — under 072 this SUCCEEDED, because the two arms that could have refused it compared a NULL marker with = and returned NULL, which a CHECK accepts');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_place_name,
+                         taken_latitude, taken_longitude)
+  values ('00000000-0000-0000-0000-00000073f002',
+          '00000000-0000-0000-0000-00000000000a',
+          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000073a02.jpg',
+          'Utrecht', 52.09, 5.12)$$,
+  '23514', '073: ... and a name WITH a coordinate and no marker too — the marker is what says whose the location is, and without it no reader can tell a town centroid from a driveway');
 
 -- ---------------------------------------------------------------------------
 -- 072.6  A COARSE location must ACTUALLY BE COARSE, whatever produced it. This
@@ -15064,10 +15090,10 @@ select assert_eq(
   1, '072: a precise row keeps every digit — the retarget named the two COARSE markers and must not have swept precise in with them');
 
 -- ---------------------------------------------------------------------------
--- 072.7  The length bounds. 200 mirrors clubs_location_name_length against the
---        same producer; 512 mirrors both other provider-id columns after 069
---        widened them. Each is asserted with a pair straddling the wall, so
---        relaxing a bound cannot pass unnoticed.
+-- 072.7  The length bound. 200 mirrors clubs_location_name_length against the
+--        same producer — the provider's label falls back through a chain ending
+--        in a whole address on one line. Asserted with a pair straddling the
+--        wall, so relaxing the bound cannot pass unnoticed.
 -- ---------------------------------------------------------------------------
 insert into postcards (id, author_id, image_path, taken_place_name, taken_location_precision)
   values ('00000000-0000-0000-0000-00000072f019',
@@ -15076,7 +15102,7 @@ insert into postcards (id, author_id, image_path, taken_place_name, taken_locati
           repeat('x', 200), 'place');
 select assert_eq(
   (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000072f019'),
-  1, '072: a place name at exactly 200 characters lands — the provider''s label falls back to a whole address on one line, so it runs long more readily than "a town name" suggests');
+  1, '072: a place name at exactly 200 characters lands — the provider''s label runs long more readily than "a town name" suggests');
 
 select assert_rejected($$
   insert into postcards (id, author_id, image_path, taken_place_name, taken_location_precision)
@@ -15086,30 +15112,11 @@ select assert_rejected($$
           repeat('x', 201), 'place')$$,
   '23514', '072: ... and 201 is refused, one character outside, so the bound is where the file says it is');
 
-insert into postcards (id, author_id, image_path, taken_place_name, taken_place_id,
-                       taken_latitude, taken_longitude, taken_location_precision)
-  values ('00000000-0000-0000-0000-00000072f021',
-          '00000000-0000-0000-0000-00000000000a',
-          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000072a21.jpg',
-          'Utrecht', repeat('g', 512), 52.09, 5.12, 'place');
-select assert_eq(
-  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000072f021'),
-  1, '072: a provider id at exactly 512 characters lands — 069''s bound, copied rather than fitted to the ids that happen to exist today');
-
-select assert_rejected($$
-  insert into postcards (id, author_id, image_path, taken_place_name, taken_place_id,
-                         taken_latitude, taken_longitude, taken_location_precision)
-  values ('00000000-0000-0000-0000-00000072f022',
-          '00000000-0000-0000-0000-00000000000a',
-          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000072a22.jpg',
-          'Utrecht', repeat('g', 513), 52.09, 5.12, 'place')$$,
-  '23514', '072: ... and 513 is refused — the shape is otherwise identical to the row above, so the length CHECK is what fired');
-
 -- ---------------------------------------------------------------------------
--- 072.8  THE REACH. The two columns add NO audience: they sit on postcards, RLS
---        is row-level, and the postcard's existing SELECT policy is the whole
+-- 072.8  THE REACH. The column adds NO audience: it sits on postcards, RLS is
+--        row-level, and the postcard's existing SELECT policy is the whole
 --        answer. Asserted as a role reading a real row rather than as a policy
---        count, because "no policy changed" and "the columns are as visible as
+--        count, because "no policy changed" and "the column is as visible as
 --        the row" are different claims and only the second is the requirement.
 -- ---------------------------------------------------------------------------
 insert into postcards (id, author_id, club_id, image_path, taken_place_name, taken_location_precision)
@@ -15125,7 +15132,7 @@ set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 select assert_eq(
   (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000072f023'),
-  0, '072: a NON-MEMBER reaches nothing of a private club''s postcard, so neither place column can be read — the columns ride the row''s audience and add no reach of their own');
+  0, '072: a NON-MEMBER reaches nothing of a private club''s postcard, so the place cannot be read — the column rides the row''s audience and adds no reach of its own');
 select assert_eq(
   (select count(*)::int from postcards
     where taken_place_name = 'Utrecht' and club_id = '00000000-0000-0000-0000-0000000000c1'),
@@ -15158,9 +15165,9 @@ select assert_denied($$
 reset role;
 
 -- ---------------------------------------------------------------------------
--- 072.9  NO POLICY MOVED. 072 is a columns-grants-and-constraints change; a
---        policy mentioning either new column would be a second audience
---        invented for a value that already has one.
+-- 072.9  NO POLICY MOVED. 072 is a column-grants-and-constraints change and 073
+--        touches no grant at all; a policy mentioning the place would be a
+--        second audience invented for a value that already has one.
 -- ---------------------------------------------------------------------------
 select assert_eq(
   (select count(*)::int from pg_policies
@@ -15168,13 +15175,12 @@ select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public' and tablename = 'postcards'
       and (coalesce(qual, '') || coalesce(with_check, '')) not like '%taken_place%'),
-  '072: no postcards policy mentions either place column — the audience of a photo''s town is the audience of the photo, and adding an arm for it would be inventing a second one');
+  '072: no postcards policy mentions the place column — the audience of a photo''s town is the audience of the photo, and adding an arm for it would be inventing a second one');
 
 rollback to savepoint postcard_place_072;
 
 reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
-
 
 rollback;
 

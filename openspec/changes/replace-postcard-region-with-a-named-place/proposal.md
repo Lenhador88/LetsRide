@@ -1,13 +1,11 @@
 # A postcard's location is a place the rider names, not a grid cell rounded off their photo
 
-> **No Linear issue was supplied and none was found.** The five owner instructions this change
-> is built from arrived through the spawning message, verbatim and dated 2026-08-20; a grep of
-> `docs/HANDOFF.md` and `openspec/` for their wording returns nothing, and this agent holds
-> `get_issue`/`list_comments` but no search tool, so no id could be resolved to read the body or
-> its comments. **Everything attributed to the product owner below is second-hand.** Whoever
-> files the issue should point it at this file rather than restate it (`CLAUDE.md` §The roadmap
-> lives in Linear), and should re-read this proposal against the issue's own comments — the
-> standing lesson is that a stale body gets corrected by a comment rather than a rewrite.
+> **PD-275** is the issue, filed by the main thread while this was being written — so no id was
+> available to the agent that wrote it, and everything attributed to the product owner here came
+> through the spawning message rather than off the board. The owner has since answered `Q1`
+> directly, in session, and that answer is recorded below and in `design.md` §Q1. Read this file
+> against PD-275's comments rather than the other way round: the standing lesson is that a stale
+> body gets corrected by a comment rather than a rewrite.
 
 ## Why
 
@@ -62,12 +60,18 @@ one test row on DEV.
   not a precise photo location and must never be stored under that marker. With no photo fix the
   control draws two buttons, not three greyed ones.
 
-### Two columns on `public.postcards`, and one coordinate pair that keeps its meaning
+### One column on `public.postcards`, and one coordinate pair that keeps its meaning
 
 | Column | Type | Meaning |
 |---|---|---|
 | `taken_place_name` | `text null` | The place the rider named — prefilled from the photo, typed, or picked |
-| `taken_place_id` | `text null` | The provider's opaque id for that place. **Provenance, never a join key** |
+
+**There is deliberately no provider-id column, and an earlier revision of this proposal specified
+one.** The review pass caught what it costs: a `geoapify:` id is a pointer a place-details lookup
+resolves back to the picked feature's **exact geometry**, so stored beside a deliberately
+2dp-rounded coordinate it hands any reader of the row the precision the rounding exists to remove.
+Arm 3 would have shipped a coordinate the CHECK calls coarse next to a pointer that is not. Nothing
+in the app renders a postcard's location, so it was provenance bought for nothing.
 
 **There is still exactly ONE coordinate pair, and `taken_location_precision` says whose it is.**
 A second pair — the town's beside the photo's — would be the "stored but hidden" state `064`
@@ -99,15 +103,21 @@ error the rider has to read. The current build answers an unknown mode with `400
 **before the ledger insert**, so an undeployed reverse mode costs zero credits and is
 distinguishable from every other failure. `design.md` §D6.
 
-### **BREAKING for one shipped promise, and it is the owner's call**
+### One shipped promise moves, and the owner decided how — `Q1`, ANSWERED 2026-08-20
 
-The prefill sends a coordinate derived from the photo to a third party **before the rider has
-chosen anything**, while the mode still reads `Hide`, whose shipped hint says *"The photo's
-location never leaves your phone."* This change specifies that **only the 2dp-rounded coordinate
-is ever sent for a prefill**, so what leaves is a ~1 km cell rather than a fix — but the sentence
-as written becomes false either way. `Q1` in `design.md` puts the question and its recommended
-default. This is the one item that cannot be decided by a build agent: `CLAUDE.md` records that
-copy as permanently not-to-be-widened, and weakening it to keep it true is still a change to it.
+The lookup fires **only when the rider taps `Town`**, never on upload: tapping it is the rider
+asking where they were, which is the moment the request becomes one they made. Only the 2dp-rounded
+coordinate is ever sent, so what leaves is a ~1 km cell rather than a fix.
+
+`Hide`'s hint is reworded anyway, to *"LetsRide never stores the location of this photo."* —
+**scoped to this app rather than to the world**, because a rider who taps `Town` and comes back has
+had a rounded cell reach a geocoder, and "not stored anywhere" would be a promise about somebody
+else's logs.
+
+The rule that this copy must not be widened is recorded in
+`src/components/postcards/CreatePostcardForm.tsx`, **not in `CLAUDE.md`** — an earlier revision of
+this file said otherwise. `design.md` §Q1 carries the decision and the false premise the question
+was first put on.
 
 ## Capabilities
 
@@ -154,6 +164,11 @@ directory and is why the client half is specified to work without it.
 **Tests** — `supabase/tests/rls_test.sql` (the grant-list pins and the constraint definitions
 move, loudly, which is what they are for), `src/lib/validation/__tests__`,
 `src/__tests__/place-search-shape.test.ts`, and the walk's create-postcard phase.
+
+**Retention and deletion** — nothing new, stated because "the answer is obvious" is how an unstated
+one gets inherited. Both columns live on `postcards`, whose `author_id` cascades from `profiles`, so
+a rider deleting their account takes every place name they ever wrote with it, by the same path
+`064`'s columns already take.
 
 **Not in scope** — displaying a postcard's location anywhere. This change makes a display
 *possible* for the first time and deliberately does not build one; a display is a separate

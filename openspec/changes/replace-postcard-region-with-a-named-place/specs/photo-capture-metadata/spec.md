@@ -46,7 +46,9 @@ were shown the sentence "This photo has no location" and given no way to say whe
 *Replaces "Region SHALL round the photo's coordinate to 2 decimal places in the browser."*
 
 The middle mode SHALL store the place the rider has named — its name, and where one is available
-its coordinate and its provider id — and SHALL NOT store any coordinate derived from the photo.
+its coordinate — and SHALL NOT store any coordinate derived from the photo, nor any provider
+identifier for the place. A provider id resolves back to the picked feature's exact geometry, so it
+would return the precision the rounding below exists to remove.
 
 The coordinate stored under the middle mode SHALL be rounded to 2 decimal places before the
 request is built, whatever its origin.
@@ -58,8 +60,9 @@ coordinate would arrive carrying a place name that actively misdescribes it.
 #### Scenario: The named place is what is stored
 - **WHEN** a rider selects the middle mode with a place named in the input
 - **THEN** the request SHALL carry that place's name
-- **AND** SHALL carry its coordinate rounded to 2 decimal places, and its provider id, where the
-  place was picked or resolved rather than typed
+- **AND** SHALL carry its coordinate rounded to 2 decimal places, where the place was picked or
+  resolved rather than typed
+- **AND** SHALL carry no provider identifier, whatever produced the place
 - **AND** SHALL carry the marker for a named place
 
 #### Scenario: The photo's coordinate does not travel under the middle mode
@@ -69,7 +72,7 @@ coordinate would arrive carrying a place name that actively misdescribes it.
 
 #### Scenario: A typed place with no pin
 - **WHEN** a rider types a place name and never picks a suggestion
-- **THEN** the request SHALL carry the name and the marker, with no coordinate and no provider id
+- **THEN** the request SHALL carry the name and the marker, with no coordinate
 - **AND** the postcard SHALL be created successfully
 
 #### Scenario: A picked place more specific than a town
@@ -161,7 +164,7 @@ extended to the name and the id.
 
 #### Scenario: The fields are absent, not empty
 - **WHEN** hide is selected
-- **THEN** no form field for a place name, provider id, coordinate or marker SHALL exist in the
+- **THEN** no form field for a place name, coordinate or marker SHALL exist in the
   composer's document
 
 #### Scenario: The lookup control does not submit on its own

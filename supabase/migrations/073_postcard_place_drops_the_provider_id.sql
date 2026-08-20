@@ -199,27 +199,31 @@ comment on column public.postcards.taken_place_name is
 --    where table_schema='public' and table_name='postcards'
 --      and grantee='anon';                                            -- 0
 --
--- 3. The coupling, as pg_get_constraintdef returns it.
+-- 3. The coupling, as pg_get_constraintdef returns it. **NOTE THE RENDERING**:
+--    Postgres prints `is not distinct from` as `NOT (x IS DISTINCT FROM y)`, so
+--    grepping pg_constraint for the phrase this file was written with returns
+--    nothing on a correct database.
 --
 --   postcards_taken_location_coupling
 --     CHECK ((((taken_place_name IS NULL) AND (taken_latitude IS NULL) AND
 --     (taken_longitude IS NULL) AND (taken_location_precision IS NULL)) OR
---     ((taken_place_name IS NOT NULL) AND (taken_location_precision IS NOT
---     DISTINCT FROM 'place'::text) AND (taken_latitude IS NULL) AND
---     (taken_longitude IS NULL)) OR ((taken_place_name IS NOT NULL) AND
---     (taken_location_precision IS NOT DISTINCT FROM 'place'::text) AND
+--     ((taken_place_name IS NOT NULL) AND (NOT (taken_location_precision IS
+--     DISTINCT FROM 'place'::text)) AND (taken_latitude IS NULL) AND
+--     (taken_longitude IS NULL)) OR ((taken_place_name IS NOT NULL) AND (NOT
+--     (taken_location_precision IS DISTINCT FROM 'place'::text)) AND
 --     (taken_latitude IS NOT NULL) AND (taken_longitude IS NOT NULL) AND
 --     (taken_latitude >= ('-90'::integer)::double precision) AND (taken_latitude
 --     <= (90)::double precision) AND (taken_longitude >=
 --     ('-180'::integer)::double precision) AND (taken_longitude <= (180)::double
 --     precision)) OR ((taken_latitude IS NOT NULL) AND (taken_longitude IS NOT
---     NULL) AND (taken_location_precision IS NOT DISTINCT FROM 'precise'::text)
---     AND (taken_latitude >= ('-90'::integer)::double precision) AND
---     (taken_latitude <= (90)::double precision) AND (taken_longitude >=
---     ('-180'::integer)::double precision) AND (taken_longitude <= (180)::double
---     precision)) OR ((taken_latitude IS NOT NULL) AND (taken_longitude IS NOT
---     NULL) AND (taken_location_precision IS NOT DISTINCT FROM 'region'::text)
---     AND (taken_place_name IS NULL) AND (taken_latitude >=
+--     NULL) AND (NOT (taken_location_precision IS DISTINCT FROM
+--     'precise'::text)) AND (taken_latitude >= ('-90'::integer)::double
+--     precision) AND (taken_latitude <= (90)::double precision) AND
+--     (taken_longitude >= ('-180'::integer)::double precision) AND
+--     (taken_longitude <= (180)::double precision)) OR ((taken_latitude IS NOT
+--     NULL) AND (taken_longitude IS NOT NULL) AND (NOT
+--     (taken_location_precision IS DISTINCT FROM 'region'::text)) AND
+--     (taken_place_name IS NULL) AND (taken_latitude >=
 --     ('-90'::integer)::double precision) AND (taken_latitude <= (90)::double
 --     precision) AND (taken_longitude >= ('-180'::integer)::double precision)
 --     AND (taken_longitude <= (180)::double precision))))
@@ -250,3 +254,19 @@ comment on column public.postcards.taken_place_name is
 -- 7. The advisors. `get_advisors(security)` on DEV after applying: ten, the
 --    same ten CLAUDE.md §Supabase Rules records. **No new advisor.** This file
 --    adds no function, no view and nothing `security definer`.
+--
+-- ---------------------------------------------------------------------------
+-- One COMMENT-ONLY divergence from what was applied, recorded rather than
+-- hidden
+-- ---------------------------------------------------------------------------
+-- §3 above was first written with the predicate spelled `IS NOT DISTINCT FROM`
+-- and was corrected to Postgres's own `NOT (x IS DISTINCT FROM y)` rendering
+-- after reading it back. That edit is inside a `--` comment in this footer and
+-- changes no statement: every line of executing SQL in §1-§3 is byte-identical
+-- to what `apply_migration` ran on DEV. So `md5(statements[1])` in
+-- supabase_migrations will NOT equal `md5sum` of this file, and the reason is
+-- this paragraph rather than drift.
+--
+-- **Compare the OBJECT, never the recorded text** — `pg_get_constraintdef`
+-- against §3, `information_schema.column_privileges` against §1 — which is what
+-- CLAUDE.md §Supabase Rules already prescribes for exactly this reading.

@@ -77,12 +77,22 @@ photo carries no fix it reads **Hide · Town**.
 `Precise`'s pair is `064`'s, unchanged and deliberately so — it is the one string in the block
 whose job is to make a rider hesitate.
 
-**`Hide`'s hint changes only if `Q1` is answered "prefill".** Today it reads *"The photo's location
-never leaves your phone."* That sentence is true today and becomes false the moment a prefill
-request is made, because a prefill happens while the mode still says `Hide`. The replacement above
-promises less and stays true under either answer. `CLAUDE.md` and `064` both record that this copy
-must never be *widened*; narrowing it to match what the app actually does is the opposite move,
-and it is still the owner's to make.
+**`Hide`'s hint changed, and `Q1` is ANSWERED.** Product owner, 2026-08-20: fire the lookup only
+once the rider taps `Town`, and reword the hint anyway. The shipped string is
+*"LetsRide never stores the location of this photo."*
+
+**It is scoped to LetsRide rather than to the world, and that is a correction rather than a
+hedge.** The owner asked for *"The photo's location is never stored anywhere"*; a rider who taps
+`Town`, is shown a lookup and comes back to `Hide` has had a ~1 km cell reach a geocoder, so
+*anywhere* would be a promise about somebody else's logs. What this app stores is a promise this
+app can keep.
+
+**The rule about not widening it is recorded in `src/components/postcards/CreatePostcardForm.tsx`,
+not in `CLAUDE.md`** — an earlier revision of this file cited the wrong place, which costs a reader
+who greps `CLAUDE.md`, finds nothing, and concludes the constraint is imaginary. The recorded rule
+is also narrower than it was used for here: *widened* there means broadening `Hide`'s **subject**
+beyond the location, which is what PD-265 settled on 2026-08-18 when it decided `Hide` must not
+also cover the capture time.
 
 **Rejected labels.** `Region` — the word the owner asked to replace. `Place` — collides with the
 picker's own vocabulary, and reads too close to `Precise` at a glance in a three-across control.
@@ -138,12 +148,16 @@ audience available for a column than the row it sits on.
 
 So there is one pair, and `taken_location_precision` says what it is:
 
-| marker | `taken_place_name` | `taken_place_id` | `taken_latitude/longitude` |
-|---|---|---|---|
-| NULL | NULL | NULL | NULL |
-| `'place'` | **required** | optional | the place's centroid, **rounded**, or NULL |
-| `'precise'` | optional | **NULL** | the photo's own fix, unrounded |
-| `'region'` | NULL | NULL | a rounded photo fix — **legacy, §D9** |
+| marker | `taken_place_name` | `taken_latitude/longitude` |
+|---|---|---|
+| NULL | NULL | NULL |
+| `'place'` | **required** | the place's centroid, **rounded**, or NULL |
+| `'precise'` | optional | the photo's own fix, unrounded |
+| `'region'` | NULL | a rounded photo fix — **legacy, §D9** |
+
+**There is no provider-id column**; see the proposal's own note. It looked like free provenance and
+it is a pointer back to exact geometry, which is the one thing a deliberately rounded coordinate
+must not sit beside.
 
 Three things this table decides, each of which would otherwise be decided by whoever wrote the
 migration:
@@ -173,7 +187,7 @@ That is a worse outcome than the one the constraint was written for, because it 
 label that actively misdirects. So:
 
 - **The town's centroid is rounded to 2dp in the browser before it is sent**, exactly as the
-  photo's coordinate used to be, through the same `roundToRegion` helper.
+  photo's coordinate used to be, through the same `roundToCoarseGrid` helper.
 - **The constraint is renamed `postcards_coarse_location_is_rounded`** and covers both coarse
   markers: `taken_location_precision not in ('region','place')` or the coordinates are at 2dp.
   A NULL coordinate passes, which is the `'place'`-with-no-pin arm.
@@ -186,13 +200,12 @@ is dead.
 
 **Rounding a centroid costs nothing.** A locality centroid is already an arbitrary point inside a
 polygon kilometres across; moving it by up to ~1.1 km of latitude changes which pixel a future map
-draws and nothing else, and `taken_place_name` plus `taken_place_id` carry the place's exact
-identity regardless. `roundToRegion` uses `Math.round(v*100)/100`, and `064` measured that any
+draws and nothing else, and `taken_place_name` carries what the rider actually meant regardless. `roundToCoarseGrid` uses `Math.round(v*100)/100`, and `064` measured that any
 `integer/100` satisfies the Postgres predicate, so the JS/Postgres halfway-case disagreement
 (4.895 → 4.89 vs 4.90) still cannot fail this.
 
 **The rejected alternative — drop the constraint.** It would leave the middle mode's coarseness
-resting entirely on `roundToRegion` running in a browser this app does not control, which
+resting entirely on `roundToCoarseGrid` running in a browser this app does not control, which
 `CLAUDE.md` names as advisory in as many words: *"a rider can simply not run your validation."*
 The client owns the mutation path here; the CHECK is the only thing that is not a suggestion.
 
@@ -263,6 +276,12 @@ precise value on the device for every mode except the one where the rider asked 
 The rule, stated so it can be tested: **the unrounded coordinate leaves the device only as part of
 a `precise` write the rider explicitly chose.** Nothing else — not a lookup, not a bias, not a
 log — may carry it.
+
+**As written that is prose, not a gate**, and the review pass is right that this repo's idiom for a
+universal negative is a tripwire that fails the build — `src/__tests__/no-service-role-key.test.ts`,
+`src/lib/data/__tests__/isomorphic.test.ts`, `src/__tests__/use-server-exports.test.ts`. The
+tripwire this wants asserts that the only reader of `ExifCapture.latitude`/`longitude` outside
+`resolvePhotoLocation` is the rounding helper. Filed rather than built here.
 
 **It still collides with `Hide`'s shipped hint**, because the prefill fires while the mode reads
 `Hide`, and *"The photo's location never leaves your phone"* admits no rounded exception. That is
@@ -377,6 +396,7 @@ and nobody else. Every role, spelled out:
 |---|---|
 | **The author** | Reads their own postcard and therefore its location. This is why `064` granted SELECT at all — a rider must be able to read back what they published |
 | **A club member**, where `club_id` is set | Reads it exactly as they read the caption |
+| **A club ADMIN** (`club_members.role = 'admin'`, which `001` has had all along) | Reads exactly as a member does, and no more. `private.is_club_member` does not discriminate on role, so the role confers no extra reach on this table and no moderation over it — `postcards` UPDATE stays `author_id`-keyed. Stated because `openspec/config.yaml` names admin in the roles a proposal must enumerate, and an earlier revision of this table omitted it: the unstated role is the one that gets assumed |
 | **A non-member**, where `club_id` is set | Reads nothing — the row is invisible, so the columns are |
 | **Any signed-in rider**, where `club_id` is NULL | Reads it. `club_id IS NULL` **is** the app-wide audience, and a rider choosing that audience is publishing the town to every rider on LetsRide |
 | **A blocked rider** (either direction) | Reads nothing. `009`'s policy carries the `private.is_blocked` conjunct and blocking is symmetric; the row does not exist for them, so neither do these columns |
@@ -397,10 +417,9 @@ cannot write these columns any more than it can write a caption.
 | Rule | Enforced by | Reachable by a patched client? |
 |---|---|---|
 | A coarse location is coarse | `postcards_coarse_location_is_rounded` | No |
-| Name/id/coordinate/marker arrive in a legal combination | `postcards_taken_location_coupling` | No |
+| Name/coordinate/marker arrive in a legal combination | `postcards_taken_location_coupling` | No |
 | The marker is one of three known values | same | No |
 | A name fits its column | `postcards_taken_place_name_length` (200) | No |
-| A provider id fits its column | `postcards_taken_place_id_length` (512) | No |
 | Nothing is writable after insert | the absent UPDATE grant | No |
 | The location is only as visible as the postcard | `postcards` SELECT policy + per-column grant | No |
 | `Hide` sends nothing | the composer | **Yes — and it costs the rider only their own privacy, never anyone else's** |
@@ -468,14 +487,19 @@ one and it is the product owner's alone.**
 `Hide`'s shipped hint says *"The photo's location never leaves your phone."* A prefill makes that
 false, even at 2dp.
 
-**Recommended default: yes, prefill — and change the hint to "No location is stored with this
-postcard."** The alternative that keeps the sentence intact is to fire the lookup only after the
-rider moves off `Hide`, which delays the prefill past the moment it is useful and contradicts
-*"We attempt to load the location from the photo."*
+**ANSWERED 2026-08-20 — fire the lookup only when the rider taps `Town`, and reword the hint
+anyway.** Product owner's call. Tapping `Town` IS the rider asking where they were, so the delay
+this was thought to cost is not a delay past the useful moment; it lands on it.
 
-A build agent must not take this default on its own: `CLAUDE.md` names this copy as permanently
-not-to-be-widened, and while narrowing a promise to keep it true is the opposite move, it is still
-an edit to a sentence a rider has already read.
+**The question as first put rested on a false premise, found by the review pass**, and it is
+recorded rather than deleted because the same premise is easy to re-derive. Firing later does
+**not** on its own keep *"The photo's location never leaves your phone"* intact: the place field
+mounts unconditionally and `PlaceSearchField` resolves `resolveRiderLocation()` on first focus,
+sending the rider's **current** position to the vendor as a proximity bias — 2dp-rounded, never
+prompting, and never mentioned by any spec file here. That is a different and often more sensitive
+datum than the photo's. The shipped hint survives it only because it is scoped to what LetsRide
+**stores**, and a bias is not stored. Whether that bias belongs on this screen at all is filed
+rather than settled.
 
 ### Q2 — Non-blocking, owner or designer. Should the field offer only towns and cities?
 

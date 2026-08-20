@@ -8,12 +8,16 @@ is shipped and unarchived — and those are named where they apply.
 
 ## ADDED Requirements
 
-### Requirement: A postcard's place SHALL be stated by two columns whose visibility is the postcard's own
+### Requirement: A postcard's place SHALL be stated by one column whose visibility is the postcard's own
 
-`public.postcards` SHALL carry `taken_place_name text null` and `taken_place_id text null`.
-`taken_place_id` SHALL be provenance for the stored coordinate and SHALL NOT be a join key: it
-holds a third party's opaque, provider-namespaced identifier, it may dangle, and no foreign key
-SHALL be created for it.
+`public.postcards` SHALL carry `taken_place_name text null`.
+
+**No provider-id column SHALL be added.** An earlier revision of this delta specified one, as
+provenance. A provider's place id is a pointer that a place-details lookup resolves back to the
+picked feature's **exact geometry**, so stored beside a deliberately 2dp-rounded coordinate it
+returns the precision the rounding exists to remove — a row whose coordinate the CHECK calls coarse
+carrying a pointer that is not. Nothing renders a postcard's location, so it was bought for
+nothing. A future display that genuinely needs provenance SHALL argue for it on its own terms.
 
 **No policy SHALL be added or changed by this capability.** The columns sit on `postcards`, RLS is
 row-level, and the postcard's existing SELECT policy is therefore the whole visibility answer.
@@ -74,9 +78,9 @@ one remedy, which is to delete the postcard.
 - **THEN** the UPDATE list SHALL be exactly `caption, club_id, image_path`
 
 #### Scenario: The new columns are not updatable
-- **WHEN** UPDATE privilege on `taken_place_name` and `taken_place_id` is checked for
-  `authenticated`
-- **THEN** both SHALL be false
+#### Scenario: The new column is not updatable
+- **WHEN** UPDATE privilege on `taken_place_name` is checked for `authenticated`
+- **THEN** it SHALL be false
 
 #### Scenario: The grant lists are built from the database
 - **WHEN** the absolute INSERT and SELECT lists are written
@@ -88,29 +92,21 @@ one remedy, which is to delete the postcard.
 The coupling constraint on `postcards` SHALL be replaced so that a row is refused unless it is one
 of exactly these:
 
-1. **Nothing** — name, provider id, both coordinates and the marker all NULL.
-2. **A named place with no pin** — name present, marker `'place'`, provider id and both
-   coordinates NULL.
-3. **A named place with a pin** — name present, marker `'place'`, both coordinates present and in
-   range; the provider id may be present or absent.
-4. **A precise photo location** — both coordinates present and in range, marker `'precise'`,
-   provider id NULL; the name may be present or absent.
+1. **Nothing** — name, both coordinates and the marker all NULL.
+2. **A named place with no pin** — name present, marker `'place'`, both coordinates NULL.
+3. **A named place with a pin** — name present, marker `'place'`, both coordinates present, in
+   range, and at 2 decimal places.
+4. **A precise photo location** — both coordinates present and in range, marker `'precise'`; the
+   name may be present or absent.
 5. **A legacy rounded photo location** — both coordinates present and in range, marker
-   `'region'`, name and provider id NULL.
+   `'region'`, name NULL.
 
 There SHALL be exactly one coordinate pair on this table and the marker SHALL say whose it is. A
 second pair holding the photo's location beside the named place's would be the stored-but-hidden
 state this capability already forbids: RLS is row-level, so any reader of the row reads it.
 
-A `'precise'` row carries no provider id because the identifier is provenance for the stored
-coordinate, and under that marker the coordinate came from the camera.
-
 #### Scenario: A marker with no name is refused for a named place
 - **WHEN** a row is written with the `'place'` marker and a NULL name
-- **THEN** the statement SHALL be refused
-
-#### Scenario: A provider id cannot accompany a precise location
-- **WHEN** a row is written with the `'precise'` marker and a non-NULL provider id
 - **THEN** the statement SHALL be refused
 
 #### Scenario: A coordinate cannot be half a pair
@@ -118,7 +114,7 @@ coordinate, and under that marker the coordinate came from the camera.
 - **THEN** the statement SHALL be refused
 
 #### Scenario: A typed place with no coordinate is accepted
-- **WHEN** a row is written with a name, the `'place'` marker, and NULL coordinates and provider id
+- **WHEN** a row is written with a name, the `'place'` marker and NULL coordinates
 - **THEN** the statement SHALL succeed
 
 #### Scenario: An unknown marker is refused
@@ -130,22 +126,16 @@ coordinate, and under that marker the coordinate came from the camera.
   shapes
 - **THEN** the statement SHALL succeed, because those shapes are arms 1, 4 and 5
 
-### Requirement: Both new columns SHALL be length-bounded
+### Requirement: The new column SHALL be length-bounded
 
-`taken_place_name` SHALL be bounded at 200 characters and `taken_place_id` at 512.
+`taken_place_name` SHALL be bounded at 200 characters.
 
 200 mirrors `clubs_location_name_length`, against the same producer: the provider's label falls
 back through a chain ending in a whole address on one line, so it runs long more readily than a
 town name suggests.
 
-512 mirrors both other provider-id columns after `069` widened them from 100. The live ids
-measured for those columns carry a 74-hex prefix and follow `74 + 2 × name bytes`, and 512 is a
-bound rather than a fitted maximum — a 200-byte name reaches 474. A tighter bound is the defect
-`069` exists to fix: a pick that fails on a value the rider can neither see nor shorten, and only
-for *some* places, which is worse than failing for all of them.
-
-The client SHALL truncate to these bounds rather than surfacing a constraint violation, because
-the picker owns the value and the rider has nothing to shorten.
+The client SHALL truncate to this bound rather than surfacing a constraint violation, because the
+field owns the value and a rider handed an over-long label has nothing to shorten.
 
 #### Scenario: An over-long name is refused by the database
 - **WHEN** a row is written with a 201-character place name
@@ -153,14 +143,6 @@ the picker owns the value and the rider has nothing to shorten.
 
 #### Scenario: A name at the bound is accepted
 - **WHEN** a row is written with a 200-character place name
-- **THEN** the statement SHALL succeed
-
-#### Scenario: An over-long provider id is refused
-- **WHEN** a row is written with a 513-character provider id
-- **THEN** the statement SHALL be refused
-
-#### Scenario: A provider id at the bound is accepted
-- **WHEN** a row is written with a 512-character provider id
 - **THEN** the statement SHALL succeed
 
 ## MODIFIED Requirements
