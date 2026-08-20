@@ -561,9 +561,9 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 71 files; DEV is at `071` and PROD at `070` — measured 2026-08-19, after `071`'s
-`rides(departure_at)` index went on DEV.** That gap is the *ordinary* state, not drift: DEV-ahead
-is where a migration lives between its merge and its promotion. The two were level for a few hours
+**Applied state: 73 files; DEV is at `073` and PROD at `070` — measured 2026-08-20, after `072`
+and `073` (the postcard's named place, PD-275) went on DEV.** That gap is the *ordinary* state, not
+drift: DEV-ahead is where a migration lives between its merge and its promotion. The two were level for a few hours
 that afternoon, at PD-273's promotion, and level is the exception. **Do not read the
 count of unpromoted files off this sentence** — it named exactly one while two were waiting, which
 is the same defect as a stale number in a smaller place, and the promotion is the one job that
@@ -623,7 +623,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1617** assertions — re-derive rather than trust it:
+Suite **1657** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
