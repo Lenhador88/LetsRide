@@ -1484,7 +1484,30 @@ async function checkEditProfileRetention() {
 
   const bikeModel = `Walk probe bike ${Date.now()}`
   const tooLongLocation = 'A'.repeat(101)
-  await page.fill(field('location'), tooLongLocation)
+  // `page.fill()` CANNOT deliver this, and finding that out cost a red run:
+  // every field on this form carries `maxLength`, and fill() honours it — so
+  // the 101 characters arrived as 100, the action accepted them, and the phase
+  // failed while ALSO writing a 100-character location over the walk account's
+  // stored one. Since PD-286 made all three fields optional, there is no value
+  // this form's own DOM will let a typist submit that the action refuses.
+  //
+  // So the refusal is driven the way a patched client would drive it: the
+  // native value setter past `maxLength`, plus the `input` event React listens
+  // for. That is not a contrivance — it is the case the action's parse exists
+  // for, since `maxLength` is an editing constraint and not a guarantee, and
+  // `018`'s `profiles_location_length` is what actually holds the line.
+  await page.$eval(
+    field('location'),
+    (el, value) => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value'
+      ).set
+      setter.call(el, value)
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    },
+    tooLongLocation
+  )
   await page.fill(field('bike_model'), bikeModel)
 
   await page.click('button[type="submit"]')

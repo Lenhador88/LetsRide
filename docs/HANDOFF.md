@@ -636,16 +636,37 @@ input, an uncontrolled textarea and an uncontrolled checkbox in a single refusal
 `checkEditProfileRetention` is the only phase touching the one form where `retaining`'s
 `defaultValue` fallback ever reaches a *stored* value (`state.retained.location ?? profile.location
 ?? ''`) rather than an empty string, and asserts that fallback on load before submitting anything.
-**Its refusal trigger is a 101-character location, not a whitespace one, and that is load-bearing
-rather than incidental** — `075` (PD-286) made the field optional, so a whitespace value now
-SUCCEEDS, which would clear the walk account's stored location on DEV and break this phase's own
-first assertion on every later run. `max(100)` is what still refuses. **Nothing in the repo seeds
-that account's location**, so confirm it is non-null before reading a failure here as a
-regression:
+**Its refusal trigger is a 101-character location, and it cannot be delivered with
+`page.fill()` — measured 2026-08-24, on a red run.** `075` (PD-286) made every field on this
+form optional, so the old whitespace trigger now SUCCEEDS; `max(100)` is what still refuses. But
+**every field carries `maxLength`, and `fill()` honours it**, so the 101 characters arrived as
+100, the action accepted them, and the phase failed *while writing a 100-character location over
+the walk account's stored one* — the same self-destroying-fixture failure in a new form.
+
+So the phase drives the refusal the way a patched client would: the native value setter past
+`maxLength`, plus the `input` event React listens for. **Since PD-286 there is no value this
+form's own DOM will let a typist submit that the action refuses**, which is why that is the
+honest shape rather than a contrivance — `maxLength` is an editing constraint, and `018`'s
+`profiles_location_length` is what actually holds the line.
+
+**Nothing in the repo seeds that account's location**, so confirm it is non-null before reading
+a failure here as a regression:
 
 ```sql
 select location from public.profiles where id = (select id from auth.users where email = '<WALK_EMAIL>');
 ```
+
+**Last run: 2026-08-24, `18/18` screens and `48/48` checks, against `development` at `92095e1`**
+— the first run since the client render migration, and the run that verified PD-279, PD-286,
+PD-284 and PD-285 render at all. `/onboarding/location -> /postcards` passed, which is the
+deleted route reaching the guard's catch-all through a real browser rather than through the
+`curl` probe in `CLAUDE.md`.
+
+**One unexplained flake, seen once in three consecutive runs**: the signed-in guard block
+reported `/auth/signup -> /auth/signup` and `/onboarding/username -> /auth/login`, i.e. the guard
+answering as if there were no session, on a run whose every other assertion passed. Both were
+green on the runs either side. Recorded rather than explained — re-run before treating either as
+a regression.
 `checkRefusedSignup` reuses the walk's own already-registered address and proves only the DEV
 branch of `signUp` — with confirmation ON (PROD) GoTrue's duplicate-signup mitigation returns
 success instead, so the `alreadyRegistered` branch this phase exercises is unreachable there; the
