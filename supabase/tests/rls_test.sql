@@ -1554,6 +1554,155 @@ select assert_denied($$
   'nobody can withdraw a report, including its author');
 
 \echo ''
+\echo '# Reports have a reader, and it is outside the API (migration 076)'
+
+-- 076 closes 011's KNOWN GAP without inventing an admin role. Everything it
+-- adds lives in `private`, so the first three assertions are the ones that
+-- matter: the schema itself is the barrier for the two client roles, and the
+-- third names the one role for which it is not.
+reset role;
+
+select assert_eq(has_schema_privilege('anon', 'private', 'usage'),
+  false, 'anon holds no USAGE on private, so the report queue is unreachable before any grant');
+select assert_eq(has_schema_privilege('authenticated', 'private', 'usage'),
+  false, 'authenticated holds no USAGE on private either');
+-- service_role DOES hold USAGE (031 granted it so the deletion function could
+-- reach its worker), so for this role the schema proves nothing and the grant
+-- is the whole defence. Naming the role rather than calling the object is 031's
+-- own lesson: this suite runs as the table owner, for whom neither barrier
+-- exists, so a test that merely selected from the view would pass against a
+-- database that had granted it to everyone.
+select assert_eq(has_table_privilege('service_role', 'private.postcard_report_queue', 'select'),
+  false, 'service_role cannot read the report queue, though it holds USAGE on private');
+select assert_eq(has_function_privilege('service_role', 'private.remove_reported_postcard(uuid)', 'execute'),
+  false, 'service_role cannot call the take-down');
+select assert_eq(has_function_privilege('authenticated', 'private.remove_reported_postcard(uuid)', 'execute'),
+  false, 'authenticated cannot call the take-down');
+select assert_eq(has_function_privilege('anon', 'private.remove_reported_postcard(uuid)', 'execute'),
+  false, 'anon cannot call the take-down');
+
+-- 011 §5 revoked from `anon, authenticated` and never named `service_role`, so
+-- Supabase's project default stood and the one credential in this system that
+-- bypasses RLS could read every report. 076 §3b closes it.
+--
+-- ** THESE TWO CANNOT FAIL LOCALLY, AND THE LABELS SAY SO. ** The privilege
+-- they revoke is installed by the hosted project's `pg_default_acl`, which this
+-- scratch database has none of — mutation-tested: deleting the revoke from 076
+-- leaves the whole suite green. They are here to state the intent and to be the
+-- line a reviewer greps for; the measurement is 076's §Verification block
+-- against the hosted project, and the probe below is what proves the predicate
+-- itself still works. Same split as 042 §Verification item 1 and 047 step 2.
+select assert_eq(has_table_privilege('service_role', 'public.postcard_reports', 'select'),
+  false, '076: service_role cannot read the reports themselves either (intent; hosted check is the measurement)');
+select assert_eq(has_table_privilege('service_role', 'public.postcard_reports', 'delete'),
+  false, '076: nor delete one (intent; hosted check is the measurement)');
+-- ... and the reporter's own read is untouched by that revoke. 011's policy and
+-- grant both still stand, which is the half a broad revoke would have taken.
+select assert_eq(has_table_privilege('authenticated', 'public.postcard_reports', 'select'),
+  true, '076: authenticated still holds the SELECT grant 011 gave it');
+select assert_eq(has_table_privilege('authenticated', 'public.postcard_reports', 'insert'),
+  true, '076: ... and the INSERT grant, so a rider can still file a report');
+
+-- ANTI-VACUITY, per 047 §Verification. Every `service_role` assertion above is
+-- true of a database where the revoke never ran — `private` carries no default
+-- ACL and this scratch database inherits none of the hosted project's. What the
+-- probes establish is the other half: that the predicate is capable of reading
+-- a real grant, so its `false` is a measurement of the ACL rather than a
+-- misspelled object name or a helper that answers false for everything. Grant
+-- inside a savepoint, watch it flip, roll it back.
+savepoint acl_probe;
+grant usage on schema private to service_role;
+grant select on private.postcard_report_queue to service_role;
+select assert_eq(has_table_privilege('service_role', 'private.postcard_report_queue', 'select'),
+  true, '076 ANTI-VACUITY: the queue assertion CAN read a real grant, so its false is a measurement');
+grant select on public.postcard_reports to service_role;
+select assert_eq(has_table_privilege('service_role', 'public.postcard_reports', 'select'),
+  true, '076 ANTI-VACUITY: ... and so can the one on the reports table');
+rollback to savepoint acl_probe;
+select assert_eq(has_table_privilege('service_role', 'public.postcard_reports', 'select'),
+  false, '076: and the probe left nothing behind');
+
+-- The one that catches the whole thing being built in the wrong schema. A view
+-- of this name in `public` would be published by PostgREST and readable by
+-- every signed-in rider, which is the failure 076 exists to avoid rather than a
+-- style preference.
+select assert_eq((select to_regclass('public.postcard_report_queue') is null),
+  true, 'the report queue is not in public, where PostgREST would publish it');
+
+-- Not security definer, deliberately: the only caller is already the owner, and
+-- marking it definer would add an advisor for a function nothing can execute.
+select assert_eq((select p.prosecdef from pg_proc p
+                    join pg_namespace n on n.oid = p.pronamespace
+                   where n.nspname = 'private' and p.proname = 'remove_reported_postcard'),
+  false, 'the take-down is not security definer — its caller is the owner already');
+
+-- It answers for the owner, with the names a report cannot be judged without.
+-- Seeded: ff1, the outsider's spam report against clubowner's e1.
+select assert_eq((select count(*)::int from private.postcard_report_queue), 1,
+  'the owner reads the seeded report through the queue');
+select assert_eq((select author_username from private.postcard_report_queue
+                   where report_id = '00000000-0000-0000-0000-000000000ff1'),
+  'clubowner', 'the queue names the reported rider, so a report can be judged');
+-- The reporter is a uuid and nothing more. A name is not needed to decide
+-- whether a photo breaks the terms, the two counts do the pattern-spotting it
+-- would otherwise be reached for, and a surface that carries less leaks less if
+-- it ever escapes its schema. This assertion is what stops the column coming
+-- back in a later `create or replace`.
+select assert_eq((select count(*)::int from information_schema.columns
+                   where table_schema = 'private'
+                     and table_name = 'postcard_report_queue'
+                     and column_name like '%reporter%'),
+  1, 'the queue carries exactly one reporter column, and it is the uuid');
+select assert_eq((select count(*)::int from information_schema.columns
+                   where table_schema = 'private'
+                     and table_name = 'postcard_report_queue'
+                     and column_name = 'reporter_id'),
+  1, '... which is reporter_id — no reporter username, email or profile column');
+-- An inner join drops the row rather than nulling a column, so a join written
+-- against the wrong key empties the queue silently. This is the assertion that
+-- notices.
+select assert_eq((select reports_on_this_postcard::int from private.postcard_report_queue
+                   where report_id = '00000000-0000-0000-0000-000000000ff1'),
+  1, 'the queue counts the reports on the postcard');
+
+-- The take-down removes exactly one postcard and returns what it destroyed.
+-- Rolled back, because e1 is load-bearing for most of this file.
+savepoint takedown;
+select assert_eq((private.remove_reported_postcard('00000000-0000-0000-0000-0000000000e1') ->> 'removed'),
+  'true', 'the take-down reports that it removed the postcard');
+select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000000e1'),
+  0, 'the reported postcard is gone');
+select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000000e2'),
+  1, 'and nothing else was removed with it');
+-- 011's second known gap, asserted as the decision 076 made rather than left to
+-- be discovered: the reports cascade away with their subject, which is why the
+-- function returns them to the operator before it deletes.
+select assert_eq((select count(*)::int from postcard_reports
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  0, 'the reports about it cascade away — the returned evidence is the only copy');
+rollback to savepoint takedown;
+
+select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000000e1'),
+  1, 'the postcard is back after the rollback (this suite depends on it)');
+
+-- A queue row somebody already acted on is a clean false, not an error — the
+-- shape moderate_comment settled on in 011 §1b.
+select assert_eq((private.remove_reported_postcard('00000000-0000-0000-0000-0000000000dd') ->> 'removed'),
+  'false', 'taking down a postcard that does not exist is a clean false');
+
+-- Nothing above widened the table itself. 076 changes no policy and adds no
+-- grant to a client role, and these re-assert it from the other side.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_denied('select count(*) from private.postcard_report_queue',
+  'a signed-in rider cannot read the queue');
+select assert_denied($$select private.remove_reported_postcard('00000000-0000-0000-0000-0000000000e1')$$,
+  'a signed-in rider cannot call the take-down');
+select assert_eq((select count(*)::int from postcard_reports), 0,
+  'and the reported postcard''s author still reads no reports about it');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+\echo ''
 \echo '# Hiding a postcard is per-viewer, and it happens in RLS (migration 011)'
 
 -- Unlike a block, a hide is one-directional and affects nobody but its owner.
