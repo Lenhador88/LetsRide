@@ -967,7 +967,10 @@ Blocked on schema, same shape as the ride detail's banner:
       The signing fan-out is the part worth knowing about: **nine components render an
       avatar and all nine read `avatar_url`**, so `resolveAvatarUrls` writes the signed URL
       *into that field* rather than adding a second one. **Nine call sites**, counted with
-      `git grep -c "await resolveAvatarUrls(" -- src/` rather than by hand — the first draft
+      `git grep -c "await resolveAvatarUrls(" -- src/ ':!src/**/__tests__/**'` rather than by
+      hand. **The pathspec exclusion is not tidiness** — without it `media.test.ts` alone
+      contributes five and the command answers 14 against a claim of nine, which reads as
+      drift on a correct file. The first draft
       of this line said "five", and the two it overlooked (`collageAvatars` on the rides
       filter bar, and the v1 club page) were precisely the two that had been left unsigned.
       Miss one and avatars fall back to initials on that screen alone, which reads as a

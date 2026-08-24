@@ -1,10 +1,11 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
-import { CLUB_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { CLUB_EMBED_COLUMNS, CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { rideIdSchema } from '@/lib/validation/rides'
-import { resolveAvatarUrls, resolveRideMapUrls } from '@/lib/data/media'
+import { resolveAvatarUrls, resolveClubImageUrls, resolveRideMapUrls } from '@/lib/data/media'
 import { rideDayStartUtc } from '@/lib/utils'
 import type {
+  ClubFilterEmbed,
   EmbeddedClub,
   PublicProfile,
   RecentRideStart,
@@ -669,7 +670,7 @@ export function withOrganizer(
 type FilterRow = {
   id: string
   organizer_id: string
-  club: EmbeddedClub | null
+  club: ClubFilterEmbed | null
 }
 
 /**
@@ -699,7 +700,7 @@ export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<Ri
       unwrapList(
         await supabase
           .from('rides')
-          .select(`id, organizer_id, club:clubs(${CLUB_EMBED_COLUMNS})`)
+          .select(`id, organizer_id, club:clubs(${CLUB_FILTER_EMBED_COLUMNS})`)
           .gte('departure_at', dayStart)
           .order('departure_at', { ascending: true })
           .limit(limit),
@@ -708,10 +709,12 @@ export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<Ri
     myUpcomingRideIds(supabase, user?.id, dayStart),
   ])
 
-  // The club tiles draw the club's avatar, so they need the same signing pass
-  // the cards get. Before the loop, because the loop copies `avatar_url` into
+  // The club tiles draw the club's avatar and, since PD-284, its cover behind
+  // it — `resolveClubImageUrls` signs both in one pass, unlike
+  // `resolveAvatarUrls`, which only ever touches `avatar_path` (see its own
+  // header). Before the loop, because the loop copies the signed URLs into
   // each tile and a pass afterwards would sign rows nothing reads again.
-  await resolveAvatarUrls(rows.map((row) => row.club), supabase)
+  await resolveClubImageUrls(rows.map((row) => row.club), supabase)
 
   const joinedIds = new Set(joined)
   const clubs = new Map<string, RideFilterOption>()
@@ -730,6 +733,7 @@ export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<Ri
           id: row.club.id,
           name: row.club.name,
           imageUrl: row.club.avatar_url,
+          coverUrl: row.club.cover_image_url,
           count: 1,
         })
     }

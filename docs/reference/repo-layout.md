@@ -28,7 +28,7 @@ src/
 │   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, MarkRideChatSeen, RideAttendanceBar, RideCard, RideChatButton, RideChatComposer, RideChatRow, RideChatThread, RideChip, RideCrewRail, RideFilterBar, RideHeader, RideJournal, RideMap, recentStarts
 │   ├── clubs/              # ClubCard, ClubCreateRideRow, ClubDetailHeader, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPostcardCarousel, CreateClubForm, DeleteClubControl, EditClubForm, ExploreClubsStrip, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
-│   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem
+│   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem, NotificationsPanel
 │   └── profile/            # CountryFlags, EditProfileForm, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu
 ├── lib/
 │   ├── supabase/
