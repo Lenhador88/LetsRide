@@ -457,9 +457,16 @@ export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
         {/* Free-text, and carrying no `names`: the visible input is the stored
             name, and what actually gets submitted is decided by the buttons
             below it. See the state declaration for why place mode would be
-            wrong here. */}
+            wrong here.
+
+            **Not labelled `Region`, and the collision is the reason.** The
+            section heading above already says `Location`, and `Region` is one
+            of the mode buttons directly below — so the same word named the
+            box you type a place into and the privacy setting that decides what
+            leaves the device with it (PD-281). The label answers "what do I
+            type here" instead. */}
         <PlaceSearchField
-          label="Region"
+          label="Town or city"
           placeholder="Search for a town, city or area"
           value={place}
           onChange={setPlace}

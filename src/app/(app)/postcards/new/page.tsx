@@ -15,7 +15,7 @@ export default function NewPostcardPage() {
     <>
       <Header title="New postcard" backHref="/postcards" />
 
-      <div className="px-4 pb-8">
+      <div className="px-4 pt-4 pb-8">
         {/* The club picker is the only thing this screen reads, and a postcard
             with no club is the app-wide feed rather than an invalid one — so a
             rider could in principle compose while the list is still arriving. It
