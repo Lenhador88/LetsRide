@@ -2,9 +2,17 @@ import { getLocalityCentroid } from '@/lib/data/places'
 import { getMyLocationText } from '@/lib/data/profile'
 
 /**
- * Best-available coordinates for biasing `search_places()` — the highest
- * -leverage performance fix that file has, per its own doc block (17-152 ms
- * with a bias, 171-2,957 ms without).
+ * Best-available coordinates for biasing the place typeahead — the `near` on a
+ * `search` request, which `buildAutocompleteUrl` turns into the vendor's
+ * `bias=proximity:`.
+ *
+ * **The bias REORDERS, it does not filter** (`search-places/shape.ts` §D8), so
+ * nothing findable without one stops being findable with it — which is what
+ * makes a best-effort chain the right shape here rather than a hard
+ * requirement. An earlier version of this block justified the bias by a
+ * latency figure quoted from `search_places()`, the self-hosted Postgres
+ * search `070` retired; there is no query plan to speed up any more, and the
+ * numbers were synthetic besides (PD-200).
  *
  * ## Why this is not a domain type in `src/types/index.ts`
  *
