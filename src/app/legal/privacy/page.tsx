@@ -81,6 +81,16 @@ export default function PrivacyPage() {
 
         The address is `SUPPORT_EMAIL`, never a literal — see that file, which still carries
         an owner question about the mailbox itself.
+
+        "its photo stops being viewable immediately" is a MECHANISM and is why that clause can
+        be written in the present tense: `010` §2's read policy on `storage.objects` requires a
+        `postcards` row whose `image_path` is the object AND whose author owns the folder, and
+        the `media` bucket is private — so an object with no row pointing at it is unreadable by
+        everyone, the uploader included. `010` §2 states that consequence in those words.
+
+        "We delete the stored file as well" is a PROCEDURE and is deliberately a separate
+        sentence. No cascade reaches Storage (`009` §3), so it is step two of `076`'s runbook,
+        done by a human. Do not merge the two clauses into one that reads as automatic.
       */}
       <h2 className="text-base font-semibold pt-4">Reporting content, and how to reach us</h2>
       <p className="text-muted">
@@ -96,7 +106,9 @@ export default function PrivacyPage() {
         <Link href="/legal/terms" className="underline">
           Terms and Conditions
         </Link>
-        . Removing a postcard removes its photo, its comments and its likes with it.
+        . Removing a postcard takes its comments and its likes with it, and its photo stops being
+        viewable immediately — no account can fetch an image whose postcard is gone. We delete the
+        stored file as well.
       </p>
       <p className="text-muted">
         If something needs attention sooner, or you would rather write to a person than use the

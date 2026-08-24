@@ -1581,6 +1581,47 @@ select assert_eq(has_function_privilege('authenticated', 'private.remove_reporte
 select assert_eq(has_function_privilege('anon', 'private.remove_reported_postcard(uuid)', 'execute'),
   false, 'anon cannot call the take-down');
 
+-- 011 §5 revoked from `anon, authenticated` and never named `service_role`, so
+-- Supabase's project default stood and the one credential in this system that
+-- bypasses RLS could read every report. 076 §3b closes it.
+--
+-- ** THESE TWO CANNOT FAIL LOCALLY, AND THE LABELS SAY SO. ** The privilege
+-- they revoke is installed by the hosted project's `pg_default_acl`, which this
+-- scratch database has none of — mutation-tested: deleting the revoke from 076
+-- leaves the whole suite green. They are here to state the intent and to be the
+-- line a reviewer greps for; the measurement is 076's §Verification block
+-- against the hosted project, and the probe below is what proves the predicate
+-- itself still works. Same split as 042 §Verification item 1 and 047 step 2.
+select assert_eq(has_table_privilege('service_role', 'public.postcard_reports', 'select'),
+  false, '076: service_role cannot read the reports themselves either (intent; hosted check is the measurement)');
+select assert_eq(has_table_privilege('service_role', 'public.postcard_reports', 'delete'),
+  false, '076: nor delete one (intent; hosted check is the measurement)');
+-- ... and the reporter's own read is untouched by that revoke. 011's policy and
+-- grant both still stand, which is the half a broad revoke would have taken.
+select assert_eq(has_table_privilege('authenticated', 'public.postcard_reports', 'select'),
+  true, '076: authenticated still holds the SELECT grant 011 gave it');
+select assert_eq(has_table_privilege('authenticated', 'public.postcard_reports', 'insert'),
+  true, '076: ... and the INSERT grant, so a rider can still file a report');
+
+-- ANTI-VACUITY, per 047 §Verification. Every `service_role` assertion above is
+-- true of a database where the revoke never ran — `private` carries no default
+-- ACL and this scratch database inherits none of the hosted project's. What the
+-- probes establish is the other half: that the predicate is capable of reading
+-- a real grant, so its `false` is a measurement of the ACL rather than a
+-- misspelled object name or a helper that answers false for everything. Grant
+-- inside a savepoint, watch it flip, roll it back.
+savepoint acl_probe;
+grant usage on schema private to service_role;
+grant select on private.postcard_report_queue to service_role;
+select assert_eq(has_table_privilege('service_role', 'private.postcard_report_queue', 'select'),
+  true, '076 ANTI-VACUITY: the queue assertion CAN read a real grant, so its false is a measurement');
+grant select on public.postcard_reports to service_role;
+select assert_eq(has_table_privilege('service_role', 'public.postcard_reports', 'select'),
+  true, '076 ANTI-VACUITY: ... and so can the one on the reports table');
+rollback to savepoint acl_probe;
+select assert_eq(has_table_privilege('service_role', 'public.postcard_reports', 'select'),
+  false, '076: and the probe left nothing behind');
+
 -- The one that catches the whole thing being built in the wrong schema. A view
 -- of this name in `public` would be published by PostgREST and readable by
 -- every signed-in rider, which is the failure 076 exists to avoid rather than a
@@ -1599,10 +1640,24 @@ select assert_eq((select p.prosecdef from pg_proc p
 -- Seeded: ff1, the outsider's spam report against clubowner's e1.
 select assert_eq((select count(*)::int from private.postcard_report_queue), 1,
   'the owner reads the seeded report through the queue');
-select assert_eq((select reporter_username || ' -> ' || author_username
-                    from private.postcard_report_queue
+select assert_eq((select author_username from private.postcard_report_queue
                    where report_id = '00000000-0000-0000-0000-000000000ff1'),
-  'outsider -> clubowner', 'the queue carries both usernames, so a report can be judged');
+  'clubowner', 'the queue names the reported rider, so a report can be judged');
+-- The reporter is a uuid and nothing more. A name is not needed to decide
+-- whether a photo breaks the terms, the two counts do the pattern-spotting it
+-- would otherwise be reached for, and a surface that carries less leaks less if
+-- it ever escapes its schema. This assertion is what stops the column coming
+-- back in a later `create or replace`.
+select assert_eq((select count(*)::int from information_schema.columns
+                   where table_schema = 'private'
+                     and table_name = 'postcard_report_queue'
+                     and column_name like '%reporter%'),
+  1, 'the queue carries exactly one reporter column, and it is the uuid');
+select assert_eq((select count(*)::int from information_schema.columns
+                   where table_schema = 'private'
+                     and table_name = 'postcard_report_queue'
+                     and column_name = 'reporter_id'),
+  1, '... which is reporter_id — no reporter username, email or profile column');
 -- An inner join drops the row rather than nulling a column, so a join written
 -- against the wrong key empties the queue silently. This is the assertion that
 -- notices.

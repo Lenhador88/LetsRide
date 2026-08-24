@@ -66,11 +66,20 @@
 -- pane at the moment they act on it. That is a deliberately human answer to a
 -- retention question, and it is honest about being one.
 --
--- **The image is not deleted, because no cascade can do it.** `009` §3 records
--- the same thing for an author deleting their own postcard: the row goes, the
--- object at `image_path` in Storage stays. The function returns the path for
--- that reason — a take-down that leaves the photo served from a public bucket
--- URL has not taken anything down. See the §Operating it footer.
+-- **The image is not deleted, because no cascade can do it — but it does stop
+-- being viewable the instant the row goes, and the difference matters.** `009`
+-- §3 records the first half: the row goes, the object at `image_path` stays.
+-- The second half is `010` §2, measured rather than assumed — the `media`
+-- bucket is `public = false`, and the read policy on `storage.objects` requires
+-- a `postcards` row whose `image_path` IS the object and whose author owns the
+-- folder. So an orphaned object is, in that file's own words, *"unreadable by
+-- anyone at all, including whoever just uploaded it"*.
+--
+-- What is left is therefore a stored file nobody can fetch: a billing line and
+-- a copy of a rider's photo, not a live exposure. The function returns the path
+-- so the operator can delete it in Storage — step two of the runbook, and the
+-- reason `/legal/privacy` states the viewability in the present tense and the
+-- deletion as a separate sentence. See the §Operating it footer.
 
 -- ---------------------------------------------------------------------------
 -- 1. The queue — one row per open report, with the context to judge it
@@ -83,9 +92,12 @@
 -- nobody could see. There is no caller but the owner — see the revokes in §3 —
 -- so nothing is being stepped past here that the reader could not already read.
 --
--- It joins `profiles` twice, for the reporter and the author, because a report
--- with no names in it cannot be judged and the alternative is the operator
--- writing the join by hand every time, differently.
+-- It joins `profiles` for the AUTHOR only, and the reporter appears as a uuid.
+-- A photo is judged on the photo: the reported rider's name is context, and the
+-- reporter's is not needed to decide whether a caption breaks the terms. Two
+-- counts do the pattern-spotting a name would otherwise be reached for. The
+-- owner can always join `profiles` by hand — this is about what the default
+-- surface carries, so that a view which ever escapes its schema leaks less.
 create or replace view private.postcard_report_queue
 with (security_invoker = false) as
   select
@@ -93,8 +105,7 @@ with (security_invoker = false) as
     r.created_at        as reported_at,
     r.reason,
     r.note,
-    reporter.id         as reporter_id,
-    reporter.username   as reporter_username,
+    r.reporter_id,
     p.id                as postcard_id,
     p.created_at        as postcard_created_at,
     p.caption,
@@ -108,7 +119,6 @@ with (security_invoker = false) as
       where other_p.author_id = p.author_id) as reports_on_this_author
   from public.postcard_reports r
   join public.postcards p        on p.id = r.postcard_id
-  join public.profiles reporter  on reporter.id = r.reporter_id
   join public.profiles author    on author.id = p.author_id
   order by r.created_at desc;
 
@@ -158,15 +168,14 @@ begin
            'image_path', p.image_path,
            'postcard_created_at', p.created_at,
            'reports', coalesce(
+             -- Reporters by uuid here too, for the reason the view gives.
              (select jsonb_agg(jsonb_build_object(
                        'reported_at', r.created_at,
                        'reason', r.reason,
                        'note', r.note,
-                       'reporter_id', r.reporter_id,
-                       'reporter_username', rp.username)
+                       'reporter_id', r.reporter_id)
                      order by r.created_at)
                 from public.postcard_reports r
-                join public.profiles rp on rp.id = r.reporter_id
                where r.postcard_id = p.id),
              '[]'::jsonb))
     into evidence
@@ -205,6 +214,44 @@ revoke all on private.postcard_report_queue from public, anon, authenticated, se
 revoke all on function private.remove_reported_postcard(uuid) from public, anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
+-- 3b. And `service_role` stops reading the reports themselves
+-- ---------------------------------------------------------------------------
+-- Measured on DEV before this file, and it is the shape `011` §5 missed rather
+-- than a new exposure: it revoked from `anon, authenticated` and never named
+-- `service_role`, so Supabase's project default stood.
+--
+--   authenticated | INSERT, SELECT
+--   service_role  | SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+--
+-- The key that holds those privileges lives in exactly one place — the
+-- `delete-account` function's secret store — so this is not a live leak. It is
+-- a standing one: the only thing between that key and every reporter's identity
+-- was that nothing had asked. Reporter safety is why the suite already asserts
+-- that a reported postcard's author cannot read reports about them.
+--
+-- Safe, and the two reasons are independent. `delete-account` never touches
+-- this table — it removes Storage objects under six prefixes and the
+-- `auth.users` row, and the database's own cascades do the rest. And a
+-- referential cascade does not consult privileges at all: it runs as the
+-- constraint's system trigger, not as the deleting role. **Measured rather than
+-- reasoned**, in a rolled-back transaction on the scratch database, because
+-- getting this wrong takes account deletion down and nothing in CI would
+-- notice:
+--
+--   grant all on public.postcard_reports to service_role;   -- the hosted default
+--   revoke all on public.postcard_reports from service_role;-- this line
+--   set local role service_role;
+--   delete from public.profiles where id = '<a reporter>';  -- DELETE 1
+--   -- reports_before 1 -> reports_after 0, with has_table_privilege(
+--   --   'service_role', 'public.postcard_reports', 'delete') = false throughout.
+--
+-- The narrowness is deliberate and is not a claim about the other tables:
+-- `service_role` still holds Supabase's default on every one of them. What this
+-- revoke buys is that a report cannot be enumerated by the one credential in
+-- this system that bypasses RLS.
+revoke all on public.postcard_reports from service_role;
+
+-- ---------------------------------------------------------------------------
 -- 4. The table comment stops saying nobody can triage
 -- ---------------------------------------------------------------------------
 -- `011` set this comment and it was true for the whole life of the table. It
@@ -225,9 +272,15 @@ comment on table public.postcard_reports is
 --   -- act on one, keeping the result: it is the only copy of the evidence
 --   select private.remove_reported_postcard('<postcard_id>');
 --
--- Then delete the Storage object the result names, under `postcards/`, in
--- Storage → the bucket → the path from `image_path`. Nothing in the database
--- can do this step: `009` §3 records that no cascade reaches Storage.
+-- Then delete the Storage object the result names: the `media` bucket (the only
+-- one this project has), under `postcards/<author uuid>/`, at the path from
+-- `image_path`. Nothing in the database can do this step — no cascade reaches
+-- Storage (`009` §3), and Supabase refuses a direct `delete from
+-- storage.objects` with `42501: Direct deletion from storage tables is not
+-- allowed`, which is why `scripts/storage/sweep-orphans.mjs` goes through the
+-- Storage API. **It is not urgent and it is not optional**: nobody can fetch
+-- the object once its row is gone (`010` §2), so what is left is a stored copy
+-- of a rider's photo and a billing line.
 --
 -- Leaving a report and taking no action needs no SQL at all — a report is not
 -- state, it is a row that stays. There is deliberately no `resolved_at`: that
@@ -247,5 +300,7 @@ comment on table public.postcard_reports is
 --            'private.remove_reported_postcard(uuid)', 'execute');         -- f
 --   select has_function_privilege('authenticated',
 --            'private.remove_reported_postcard(uuid)', 'execute');         -- f
+--   select has_table_privilege('service_role',
+--            'public.postcard_reports', 'select');                         -- f
 --
 --   -- and no new advisor: the ten in CLAUDE.md §Supabase Rules, unchanged
