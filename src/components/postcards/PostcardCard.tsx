@@ -7,7 +7,7 @@ import { CommentsLink } from '@/components/postcards/CommentsLink'
 import { ShareButton } from '@/components/postcards/ShareButton'
 import { PostcardMenu } from '@/components/postcards/PostcardMenu'
 import { routes } from '@/lib/routes'
-import { cn, formatPostcardDate } from '@/lib/utils'
+import { cn, countryFlagEmoji, formatPostcardDate } from '@/lib/utils'
 import type { Postcard } from '@/types'
 
 type PostcardCardProps = {
@@ -44,9 +44,13 @@ type PostcardCardProps = {
  * wins; the 2px white inner stroke is invisible against it for the same reason
  * and is not reproduced.
  *
- * **The design's photo overlay carries city and country and the schema has
- * neither** — `postcards` has no location columns. The date is real and renders;
- * the location does not, rather than borrowing the author's profile location,
+ * **The design's photo overlay draws `flag · City, Country`; this draws
+ * `flag · name`.** `taken_place_name` (`072`, PD-279's town half) is vendor
+ * text stored as one string rather than a city/country pair, so there is no
+ * comma to draw — the flag comes from `taken_country_code` (`074`, PD-279's
+ * flag half) instead of the design's traced `Element / Flag` SVG, built as a
+ * regional-indicator emoji the same way `lib/countries.ts` already does for
+ * the profile picker. Neither ever borrows the author's profile location,
  * which is where they live and not where the photo was taken. Registered in
  * docs/FIGMA-FIDELITY-TODO.md.
  *
@@ -73,6 +77,10 @@ function PostcardCardComponent({
   fill = false,
 }: PostcardCardProps) {
   const username = postcard.author?.username ?? 'Rider'
+  // `null` for a typed-and-never-picked town, which has no vendor country
+  // behind it at all — the pin icon below is what that state falls back to,
+  // matching what this card drew before PD-279's flag half existed.
+  const flag = countryFlagEmoji(postcard.taken_country_code)
 
   return (
     <article
@@ -145,10 +153,23 @@ function PostcardCardComponent({
             one other place this app puts text over rider imagery. */}
         {postcard.taken_place_name && (
           <span className="absolute bottom-1.5 left-2 flex max-w-[50%] items-center gap-1 rounded bg-scrim px-1.5 py-0.5 text-2xs font-medium text-white">
-            <LocationOutlineIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
-            {/* The icon is decorative, so without this a screen reader hears a
-                bare place name between the photo's alt text and the date, with
-                nothing saying what it is. */}
+            {/* The design's `Element / Flag` — a country flag ahead of the town,
+                never the location pin (`v2 / Component / Postcard`'s `Location`
+                frame). Built as the regional-indicator pair `lib/countries.ts`
+                already uses for the profile picker rather than as ~40 traced
+                SVGs — same trade, same doc note (docs/FIGMA-FIDELITY-TODO.md
+                §Countries). Falls back to the pin for a typed-and-never-picked
+                town, which has no vendor country behind it to draw a flag for. */}
+            {flag ? (
+              <span aria-hidden="true" className="shrink-0 leading-none">
+                {flag}
+              </span>
+            ) : (
+              <LocationOutlineIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
+            )}
+            {/* The icon (or flag) is decorative, so without this a screen reader
+                hears a bare place name between the photo's alt text and the
+                date, with nothing saying what it is. */}
             <span className="sr-only">Taken in</span>
             <span className="truncate">{postcard.taken_place_name}</span>
           </span>

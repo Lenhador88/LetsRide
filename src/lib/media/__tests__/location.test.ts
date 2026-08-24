@@ -10,9 +10,11 @@ const AMSTERDAM = { latitude: 52.370216, longitude: 4.895168 }
 const NO_FIX = { latitude: null, longitude: null }
 
 /** A picked place: a name and the pin that came with it. */
-const PICKED = { name: 'Amsterdam', lat: 52.370216, lon: 4.895168 }
+const PICKED = { name: 'Amsterdam', lat: 52.370216, lon: 4.895168, countryCode: null }
 /** A typed place: a name and nothing else, which is a first-class state. */
-const TYPED = { name: 'Amsterdam', lat: null, lon: null }
+const TYPED = { name: 'Amsterdam', lat: null, lon: null, countryCode: null }
+/** A picked place carrying the vendor's own country — PD-279. */
+const PICKED_WITH_COUNTRY = { name: 'Amsterdam', lat: 52.370216, lon: 4.895168, countryCode: 'NL' }
 
 describe('roundToCoarseGrid', () => {
   it('keeps two decimal places', () => {
@@ -64,6 +66,7 @@ describe('resolvePhotoLocation', () => {
       longitude: 4.9,
       precision: 'place',
       placeName: 'Amsterdam',
+      placeCountryCode: null,
     })
   })
 
@@ -73,7 +76,24 @@ describe('resolvePhotoLocation', () => {
       longitude: null,
       precision: 'place',
       placeName: 'Amsterdam',
+      placeCountryCode: null,
     })
+  })
+
+  it('carries the country alongside a PICKED place — PD-279', () => {
+    expect(resolvePhotoLocation('place', AMSTERDAM, PICKED_WITH_COUNTRY)).toEqual({
+      latitude: 52.37,
+      longitude: 4.9,
+      precision: 'place',
+      placeName: 'Amsterdam',
+      placeCountryCode: 'NL',
+    })
+  })
+
+  it('never invents a country for a TYPED place — there is no vendor data behind it', () => {
+    // TYPED carries `countryCode: null` because a rider who only typed a town
+    // never resolved it against the vendor, unlike PICKED_WITH_COUNTRY above.
+    expect(resolvePhotoLocation('place', AMSTERDAM, TYPED).placeCountryCode).toBeNull()
   })
 
   it('never lets the photo fix leak into a named place', () => {
@@ -96,7 +116,7 @@ describe('resolvePhotoLocation', () => {
 
   it('rounds a picked STREET too, because the typeahead returns streets', () => {
     // The label may be as specific as the rider likes; the coordinate may not.
-    const street = { name: 'Kerkstraat 40', lat: 52.363214, lon: 4.883333 }
+    const street = { name: 'Kerkstraat 40', lat: 52.363214, lon: 4.883333, countryCode: null }
     const resolved = resolvePhotoLocation('place', NO_FIX, street)
     expect(resolved.latitude).toBe(52.36)
     expect(resolved.longitude).toBe(4.88)
@@ -109,6 +129,7 @@ describe('resolvePhotoLocation', () => {
       longitude: 4.895168,
       precision: 'precise',
       placeName: null,
+      placeCountryCode: null,
     })
   })
 
@@ -118,6 +139,17 @@ describe('resolvePhotoLocation', () => {
       longitude: 4.895168,
       precision: 'precise',
       placeName: 'Amsterdam',
+      placeCountryCode: null,
+    })
+  })
+
+  it('keeps the country alongside the label under precise too', () => {
+    expect(resolvePhotoLocation('precise', AMSTERDAM, PICKED_WITH_COUNTRY)).toEqual({
+      latitude: 52.370216,
+      longitude: 4.895168,
+      precision: 'precise',
+      placeName: 'Amsterdam',
+      placeCountryCode: 'NL',
     })
   })
 
@@ -126,23 +158,25 @@ describe('resolvePhotoLocation', () => {
     // with no EXIF removed the control from the screen entirely. The place is
     // stored UNROUNDED here, which is the whole difference from `place`: the
     // rider named a spot and asked for it exactly.
-    expect(resolvePhotoLocation('precise', NO_FIX, PICKED)).toEqual({
+    expect(resolvePhotoLocation('precise', NO_FIX, PICKED_WITH_COUNTRY)).toEqual({
       latitude: 52.370216,
       longitude: 4.895168,
       precision: 'precise',
       placeName: 'Amsterdam',
+      placeCountryCode: 'NL',
     })
   })
 
   it('prefers the PHOTO fix over the picked place when both exist', () => {
     // Not interchangeable: `precise` means the exact spot, and when the photo
     // knows one that is the answer. The name stays as a caption.
-    const elsewhere = { name: 'Berkhout', lat: 52.6412, lon: 4.9987 }
+    const elsewhere = { name: 'Berkhout', lat: 52.6412, lon: 4.9987, countryCode: null }
     expect(resolvePhotoLocation('precise', AMSTERDAM, elsewhere)).toEqual({
       latitude: 52.370216,
       longitude: 4.895168,
       precision: 'precise',
       placeName: 'Berkhout',
+      placeCountryCode: null,
     })
   })
 
@@ -166,12 +200,13 @@ describe('resolvePhotoLocation', () => {
     )
     // And on the named side: a place carrying half a pin is stored as a name.
     expect(
-      resolvePhotoLocation('place', NO_FIX, { name: 'Amsterdam', lat: 52.37, lon: null })
+      resolvePhotoLocation('place', NO_FIX, { name: 'Amsterdam', lat: 52.37, lon: null, countryCode: null })
     ).toEqual({
       latitude: null,
       longitude: null,
       precision: 'place',
       placeName: 'Amsterdam',
+      placeCountryCode: null,
     })
   })
 
@@ -181,6 +216,7 @@ describe('resolvePhotoLocation', () => {
       longitude: 0,
       precision: 'precise',
       placeName: null,
+      placeCountryCode: null,
     })
   })
 })

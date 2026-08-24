@@ -74,6 +74,8 @@ export function EditRideForm({
           placeId: ride.start_place_id,
           lat: ride.latitude,
           lon: ride.longitude,
+          // Never stored on a ride — see `PlaceValue.countryCode`'s own note.
+          countryCode: null,
         }
       : null
   )

@@ -66,6 +66,8 @@ export function EditClubForm({ club }: { club: ClubForEdit }) {
           placeId: club.location_place_id,
           lat: club.latitude,
           lon: club.longitude,
+          // Never stored on a club — see `PlaceValue.countryCode`'s own note.
+          countryCode: null,
         }
       : null
   )

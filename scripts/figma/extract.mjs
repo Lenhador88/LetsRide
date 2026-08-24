@@ -10,7 +10,8 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { exit } from 'node:process'
 import {
   DESIGN_DIR, FILE_KEY, RAW_DIR,
-  collectGeometry, collectTokens, dominant, isLegacy, pruneNode, renderTokensTable, slug, total, walk,
+  collectGeometry, collectTokens, dominant, isLegacy, pruneNode, renderTokensTable,
+  resolveIconCollisions, slug, total, walk,
 } from './lib.mjs'
 
 const ICON_PREFIX = 'Element / Icon / '
@@ -224,14 +225,16 @@ const icons = []
 for (const doc of docs) {
   for (const node of walk(doc.root)) {
     if (typeof node.name === 'string' && node.name.startsWith(ICON_PREFIX)) {
-      icons.push({ id: node.id, name: node.name.slice(ICON_PREFIX.length), slug: slug(node.name.slice(ICON_PREFIX.length)) })
+      const name = node.name.slice(ICON_PREFIX.length)
+      icons.push({ id: node.id, name, slug: slug(name), type: node.type })
     }
   }
 }
 // Component sets repeat their name on each variant; one entry per icon name.
-const uniqueIcons = [...new Map(icons.map((i) => [i.name, i])).values()].sort((a, b) =>
-  a.name.localeCompare(b.name),
-)
+// On a name collision, resolveIconCollisions prefers a COMPONENT/COMPONENT_SET
+// over an INSTANCE regardless of walk order — see its own comment (PD-261).
+const { resolved, collisions: iconCollisions } = resolveIconCollisions(icons)
+const uniqueIcons = resolved.map(({ id, name, slug: iconSlug }) => ({ id, name, slug: iconSlug }))
 await emit('icons/index.json', { prefix: ICON_PREFIX, count: uniqueIcons.length, icons: uniqueIcons })
 
 // ---- Manifest and index -----------------------------------------------------
@@ -285,4 +288,12 @@ if (ambiguous.length) {
 
 if (!svgs.length && uniqueIcons.length) {
   console.log('\nNo icon SVGs yet. Run `npm run figma:icons` — that stage needs the network.')
+}
+
+if (iconCollisions.length) {
+  console.log(`\n${iconCollisions.length} icon name collision(s) resolved (PD-261 — COMPONENT/COMPONENT_SET wins over INSTANCE):`)
+  for (const { name, chosen, candidates } of iconCollisions) {
+    const seen = candidates.map((c) => `${c.type} ${c.id}`).join(', ')
+    console.log(`  ${name}: kept ${chosen.type} ${chosen.id}  (saw ${seen})`)
+  }
 }

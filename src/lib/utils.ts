@@ -243,6 +243,34 @@ export function formatPostcardDate(date: string) {
   })
 }
 
+const REGIONAL_INDICATOR_A = 0x1f1e6
+const LETTER_A = 'A'.charCodeAt(0)
+
+/**
+ * `NL` (or `nl`) → `🇳🇱` — the postcard card's flag, PD-279. Two regional
+ * indicator symbols, arithmetic rather than an asset, the same trick
+ * `src/lib/countries.ts`'s `countryFlag` uses for the profile picker.
+ *
+ * **Not that function, on purpose.** `taken_country_code` reaches this having
+ * already been uppercased once — by `search-places/shape.ts` on the way in,
+ * and by `074`'s CHECK on the way to storage — but a card renders whatever a
+ * row actually holds, including a stray value from a build that skipped
+ * either step. `countryFlag` answers a well-formed alpha-2 code from a picker
+ * that only ever offers one; this answers an arbitrary two-character string
+ * from the database, so it normalises case itself and answers `null` — never
+ * the raw string — for anything that is not two letters once it has, which is
+ * what keeps a malformed value from reaching `String.fromCodePoint` and
+ * printing as mojibake rather than as no flag at all.
+ */
+export function countryFlagEmoji(code: string | null | undefined): string | null {
+  if (!code) return null
+  const upper = code.toUpperCase()
+  if (!/^[A-Z]{2}$/.test(upper)) return null
+  return String.fromCodePoint(
+    ...[...upper].map((letter) => REGIONAL_INDICATOR_A + letter.charCodeAt(0) - LETTER_A)
+  )
+}
+
 /**
  * The date on a ride list card — `SAT, 16 NOV`, uppercased as the design draws
  * it (`v2 / Component / List / Ride`, Poppins/14/Medium).

@@ -104,6 +104,7 @@ describe('createPostcardSchema', () => {
         takenLongitude: null,
         takenLocationPrecision: null,
         takenPlaceName: null,
+        takenCountryCode: null,
       })
     }
   })
@@ -252,5 +253,69 @@ describe('createPostcardSchema — capture time and place', () => {
       takenLocationPrecision: 'approximate',
     })
     expect(result.success).toBe(false)
+  })
+})
+
+/**
+ * The country code (PD-279), mirroring `postcards_taken_country_code_is_iso_
+ * alpha2` and `postcards_taken_country_code_needs_a_place` (`074`) the same
+ * way the block above mirrors `064`'s.
+ */
+describe('createPostcardSchema — the country code', () => {
+  const base = { imagePath: VALID_PATH, caption: null, clubId: '' }
+
+  it('accepts a country beside a named place', () => {
+    const result = createPostcardSchema.safeParse({
+      ...base,
+      takenPlaceName: 'Amsterdam',
+      takenLocationPrecision: 'place',
+      takenCountryCode: 'NL',
+    })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.takenCountryCode).toBe('NL')
+  })
+
+  it('treats an empty hidden input as absent rather than as a value', () => {
+    const result = createPostcardSchema.safeParse({ ...base, takenCountryCode: '' })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.takenCountryCode).toBeNull()
+  })
+
+  it('rejects a country with no place to describe', () => {
+    // Mirrors postcards_taken_country_code_needs_a_place: a flag with no town
+    // beside it is a value PostcardCard can never render.
+    const result = createPostcardSchema.safeParse({ ...base, takenCountryCode: 'NL' })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects a lowercase code — the composer uppercases before this ever runs', () => {
+    const result = createPostcardSchema.safeParse({
+      ...base,
+      takenPlaceName: 'Amsterdam',
+      takenLocationPrecision: 'place',
+      takenCountryCode: 'nl',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it.each(['N', 'NLD', '12', ''])('rejects %s as not two letters', (bad) => {
+    if (bad === '') return // '' is "absent", asserted above rather than here.
+    const result = createPostcardSchema.safeParse({
+      ...base,
+      takenPlaceName: 'Amsterdam',
+      takenLocationPrecision: 'place',
+      takenCountryCode: bad,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts a named place with no country — the typed-and-never-picked case', () => {
+    const result = createPostcardSchema.safeParse({
+      ...base,
+      takenPlaceName: 'Amsterdam',
+      takenLocationPrecision: 'place',
+    })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.takenCountryCode).toBeNull()
   })
 })

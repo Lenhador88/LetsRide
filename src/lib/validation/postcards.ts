@@ -137,6 +137,22 @@ export const postcardPlaceNameSchema = z.preprocess(
     .transform((value) => (value === null || value === '' ? null : value))
 )
 
+/**
+ * The flag half of PD-279 — vendor text stored verbatim, never parsed out of
+ * the place name. Mirrors `postcards_taken_country_code_is_iso_alpha2` (`074`):
+ * uppercase, two letters, matching `profile_countries_code_is_iso_alpha2`
+ * (`014`/`020`) rather than the vendor's own lowercase — the composer
+ * uppercases before this ever runs, so this is the client checking its own
+ * work, exactly as the rounding refine below does for the coordinate.
+ */
+export const postcardCountryCodeSchema = z.preprocess(
+  emptyToNull,
+  z
+    .string()
+    .regex(/^[A-Z]{2}$/, 'Not a valid country code.')
+    .nullable()
+)
+
 export const createPostcardSchema = z
   .object({
     imagePath: postcardImagePathSchema,
@@ -148,6 +164,7 @@ export const createPostcardSchema = z
     takenLongitude: postcardLongitudeSchema,
     takenLocationPrecision: postcardLocationPrecisionSchema,
     takenPlaceName: postcardPlaceNameSchema,
+    takenCountryCode: postcardCountryCodeSchema,
   })
   // The two couplings `064` enforces, restated so an honest client fails
   // readably instead of meeting a constraint violation it cannot explain.
@@ -205,5 +222,13 @@ export const createPostcardSchema = z
         value.takenLongitude === Math.round(value.takenLongitude * 100) / 100),
     { message: 'That location is not rounded.', path: ['takenLatitude'] }
   )
+  // Mirrors `postcards_taken_country_code_needs_a_place` (`074`): a country
+  // with nothing for `PostcardCard` to draw it beside is not a shape the
+  // database will take either. Never the other direction — a name with no
+  // country is arm 2's typed-and-never-picked case, which is legal.
+  .refine((value) => value.takenCountryCode === null || value.takenPlaceName !== null, {
+    message: 'A country needs a place to describe.',
+    path: ['takenCountryCode'],
+  })
 
 export type CreatePostcardInput = z.output<typeof createPostcardSchema>

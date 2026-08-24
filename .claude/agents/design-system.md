@@ -145,9 +145,12 @@ fill. So the 24×24 single-vector convention is a convention you have to hold yo
 node with three children exports and generates just as happily, and a clean export is **not**
 evidence the node was authored correctly. Two consequences that bite:
 
-- **Duplicates resolve silently, and the last one walked wins** — `new Map(icons.map(…))` keyed
-  on the name. A scratch node left behind under a real icon's name displaces the real component
-  depending on walk order, with nothing printed.
+- **A duplicate no longer resolves silently, and a real component now wins** — `PD-261` replaced
+  the name-keyed `new Map(icons.map(…))` with `resolveIconCollisions`, which ranks a
+  COMPONENT/COMPONENT_SET above an INSTANCE regardless of walk order and makes `figma:extract`
+  print every collision it resolved. **Two same-rank nodes still resolve last-walked-wins with no
+  error** — two real components, or two scratch instances, sharing a name — so the discipline
+  below is unchanged: name it exactly, and delete every scratch node.
 - **A genuinely missing icon is loud, not silent.** `figma:icons` prints `Missing: <names>` and
   the decision-#4 line. Do not read silence as a skip; read it as an export that happened.
 
