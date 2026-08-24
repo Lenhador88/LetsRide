@@ -42,9 +42,10 @@ const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') 
  * - **An end time.** The frame draws a second date and time; `rides` has
  *   `departure_at` and nothing else. The ride detail draws only a start too.
  * - **Distance in km** and **"Includes offroad"**, neither of which exists.
- * - **"Public seats"** as a number distinct from `max_riders`. `max_riders`
- *   itself is real and, since `063`, enforced — what has no column is a
- *   *second* number beside it.
+ * - **"Public seats"**, and a rider limit of any kind. `max_riders` was real
+ *   and enforced until `077` (PD-293) dropped both the column and `063`'s
+ *   join gate: a cap the design never draws anywhere is a refusal a rider
+ *   cannot see coming, which is worse than no cap.
  * - **A cover photo** ("Add photo"). `rides` has no image column; the list's
  *   80-wide strip is empty for the same reason.
  * - **Rider invitations** with an Admin role, the same unbuilt feature the
@@ -54,7 +55,7 @@ const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') 
  * and no screen has ever set it, so a club's Rides sub-page could only ever be
  * empty — a hole the club detail made visible.
  */
-// Every field on the form. This is the screen with the most to lose: seven
+// Every field on the form. This is the screen with the most to lose: six
 // answers and two defaults, all of which React's post-action `form.reset()`
 // used to erase on any refusal. See lib/actions/retain.ts.
 const RIDE_FIELDS = [
@@ -63,7 +64,6 @@ const RIDE_FIELDS = [
   'meeting_point',
   'departure_at',
   'route_description',
-  'max_riders',
   'is_public',
 ] as const
 
@@ -155,7 +155,6 @@ export function CreateRideForm({
     const data = submittedData.current
     const form = formRef.current
     if (!data || !form) return
-    const rawMax = (data.get('max_riders') as string)?.trim()
     const rawClub = (data.get('club_id') as string)?.trim()
     const parsed = rideSchema.safeParse({
       title: data.get('title'),
@@ -163,7 +162,6 @@ export function CreateRideForm({
       meeting_point: data.get('meeting_point'),
       route_description: data.get('route_description'),
       departure_at: data.get('departure_at'),
-      max_riders: rawMax ? Number(rawMax) : null,
       is_public: data.get('is_public') === 'on',
       club_id: rawClub || null,
       location: readRideLocation(data),
@@ -257,17 +255,6 @@ export function CreateRideForm({
         rows={2}
         maxLength={RIDE_ROUTE_MAX}
         defaultValue={state.retained.route_description}
-      />
-
-      <Input
-        name="max_riders"
-        type="number"
-        inputMode="numeric"
-        min={1}
-        max={999}
-        label="Maximum riders"
-        placeholder="Leave blank for no limit"
-        defaultValue={state.retained.max_riders}
       />
 
       {clubs.length > 0 && (

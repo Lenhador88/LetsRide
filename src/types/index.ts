@@ -135,7 +135,6 @@ export type Ride = {
   route_description: string | null
   meeting_point: string
   departure_at: string
-  max_riders: number | null
   is_public: boolean
   club_id: string | null
   organizer_id: string
@@ -275,7 +274,6 @@ export type RideDetail = {
   route_description: string | null
   meeting_point: string
   departure_at: string
-  max_riders: number | null
   club_id: string | null
   organizer_id: string
   organizer: PublicProfile | null
@@ -338,7 +336,6 @@ export type RideForEdit = {
   route_description: string | null
   meeting_point: string
   departure_at: string
-  max_riders: number | null
   is_public: boolean
   club_id: string | null
   /**

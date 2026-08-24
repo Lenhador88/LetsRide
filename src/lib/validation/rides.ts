@@ -145,23 +145,6 @@ export const rideSchema = z.object({
     .string()
     .min(1, 'Pick a departure date and time.')
     .refine((value) => !Number.isNaN(Date.parse(value)), 'That is not a valid date and time.'),
-  /**
-   * These bounds mirror `018`'s `rides_max_riders_range`, and since `063` the
-   * number they bound is one the database keeps: `enforce_ride_capacity` counts
-   * `ride_members` against it. So this is the ordinary split — the schema owns
-   * the message, `018` owns what can be stored, and `063` owns what the cap
-   * means.
-   *
-   * `.positive()` rather than `.min(1)` is load-bearing for the walk, which
-   * submits `max_riders = 0` in two phases precisely because it is refused here
-   * *and* by `018` and so cannot write a ride at either layer.
-   */
-  max_riders: z
-    .number()
-    .int()
-    .positive('A ride needs room for at least one rider.')
-    .max(999, 'That is more riders than a ride can hold.')
-    .nullable(),
   is_public: z.boolean(),
   /** NULL is a ride with no club, exactly as `postcards.club_id` NULL is the app-wide feed. */
   club_id: z.string().uuid('Pick a club from the list.').nullable(),

@@ -410,9 +410,9 @@ async function checkRefusedSignup(targetPage) {
  * `fixturesPermitted()` gates fixture writes behind — review finding on
  * PD-203's first pass.
  *
- * **Unlike `checkFormRetention`'s ride** (`max_riders = 0`, refused by both
- * `rideSchema`'s `.positive()` and `018`'s CHECK, so it cannot write at
- * either layer and needs no gate), nothing makes `signUp`'s refusal
+ * **Unlike `checkFormRetention`'s ride** (a whitespace-only `meeting_point`,
+ * refused by both `rideSchema`'s `.trim().min(1)` and `018`'s CHECK, so it
+ * cannot write at either layer and needs no gate), nothing makes `signUp`'s refusal
  * unconditional. "The walk's own address is already registered" is a fact
  * about the environment this session measured, not a schema or database
  * guarantee — so pointed at a project where that address is *not*
@@ -1084,11 +1084,22 @@ async function checkSignOut() {
  * them work is indistinguishable from a correct one until a rider meets the
  * fourth.
  *
- * **The submit cannot create a ride, at either layer.** `max_riders = 0` fails
- * `rideSchema`'s `.positive()` before any network call, and `018` bounds the
- * column at 1–999 in the database — so even a regression that dropped the
- * client parse could not turn this phase into a writer. That is why it runs on
- * every full walk rather than behind `WALK_FIXTURES`.
+ * **The submit cannot create a ride, at either layer.** A whitespace-only
+ * `meeting_point` fails `rideSchema`'s `.trim().min(1)` before any network
+ * call, and `018`'s `rides_meeting_point_length` (`length(btrim(...)) >= 1`)
+ * refuses the same whitespace at the database — so even a regression that
+ * dropped the client parse could not turn this phase into a writer. That is
+ * why it runs on every full walk rather than behind `WALK_FIXTURES`.
+ *
+ * **The refusal used to be `max_riders = 0` and that field no longer exists**
+ * — `077` (PD-293) dropped the column and `063`'s join gate with it. The
+ * replacement is deliberately the same two-layer shape the club phase below
+ * already uses, and it costs this phase exactly one assertion: the separate
+ * `max_riders survives it` check is gone, while `meeting_point` keeps its
+ * place in the retention loop and now carries the refusal as well. A
+ * whitespace value exercises `retaining` through identical code — what it
+ * would fail on is a build that trims or drops it, which is the defect the
+ * assertion is for.
  *
  * The club `<select>` only exists when the rider belongs to a club, so its
  * assertion is counted only when it runs — `ran` rather than a fixed constant.
@@ -1109,7 +1120,11 @@ async function checkFormRetention() {
   const filled = {
     title: 'Retention probe',
     description: 'Two lines\nof description',
-    meeting_point: 'Kanaalweg 1',
+    // **This one is the refusal**, not just a field to retain — see the
+    // header. HTML `required` is satisfied by a non-empty string, and the form
+    // carries `noValidate` besides, so it reaches the action and is refused
+    // there and at the database.
+    meeting_point: '   ',
     departure_at: '2027-03-14T09:15',
     route_description: 'Along the dyke, back over the bridge',
   }
@@ -1125,8 +1140,6 @@ async function checkFormRetention() {
   for (const [name, value] of Object.entries(filled)) {
     await page.fill(field(name), value)
   }
-  // The refusal, and the reason nothing can be written — see above.
-  await page.fill(field('max_riders'), '0')
   // Ticked by default, so unticking is what proves the restore reads the
   // submission rather than reinstating the literal default.
   //
@@ -1176,9 +1189,6 @@ async function checkFormRetention() {
     report(actual === value, `${name} survives it`, `read ${JSON.stringify(actual)}`)
   }
 
-  const max = await page.inputValue(field('max_riders')).catch(() => null)
-  report(max === '0', 'max_riders survives it', `read ${JSON.stringify(max)}`)
-
   const stillPublic = await page.isChecked(field('is_public')).catch(() => null)
   report(stillPublic === false, 'the cleared "public" box stays cleared', 'it was re-ticked')
 
@@ -1212,7 +1222,7 @@ async function checkFormRetention() {
  * reaches `createClub`'s action, and `clubSchema`'s `.trim().min(1)` refuses
  * it before any query runs; `018`'s `clubs_name_length` CHECK
  * (`length(btrim(name)) >= 1`) refuses the same whitespace at the database,
- * exactly as `018` bounds `rides.max_riders`. (`clubSchema`'s own header
+ * exactly as `018` bounds `rides.meeting_point`. (`clubSchema`'s own header
  * comment still says `clubs.name` carries no CHECK — that predates `018` and
  * is stale; tracked separately, not by this phase.)
  */
@@ -1299,8 +1309,8 @@ async function checkCreateClubRetention() {
  * behind: a ride detached from its club, and a club made public again. Both
  * succeed, and neither says anything.
  *
- * Refused by `max_riders = 0` exactly as the create phase is, and unable to
- * write for the same two reasons.
+ * Refused by a whitespace-only required field exactly as the create phase is,
+ * and unable to write for the same two reasons.
  */
 async function checkEditRetention(candidates) {
   let bad = 0
@@ -1374,12 +1384,12 @@ async function checkEditRetention(candidates) {
   await page.click('form label:has(input[name="is_public"])')
   const publicWanted = !publicBefore
 
-  // **The refusal is whitespace, and the reason is worth keeping.** The create
-  // form carries `noValidate`, so `max_riders = 0` reaches its action; neither
-  // edit form does, so the browser's own constraint validation blocks an
-  // out-of-range number, no action runs, no reset happens — and every
-  // assertion below then passes without exercising anything. The refusal
-  // assertion is what caught that.
+  // **The refusal is whitespace, and the reason is worth keeping.** Neither
+  // edit form carries `noValidate`, so anything the browser's own constraint
+  // validation can catch never reaches the action: no action runs, no reset
+  // happens, and every assertion below then passes without exercising
+  // anything. The refusal assertion is what caught that when this phase
+  // briefly used an out-of-range number instead.
   //
   // A whitespace-only required field satisfies HTML `required` (it checks for a
   // non-empty string) and is refused by `.trim().min(1)` in both `rideSchema`

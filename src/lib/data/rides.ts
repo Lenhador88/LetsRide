@@ -75,17 +75,14 @@ export const RIDE_FILTER_SCAN_LIMIT = 500
  * How much of a crew `/rides/detail/crew` will read, and **not** because a
  * motorcycle ride has 200 riders.
  *
- * `063` caps `ride_members` at `max_riders`, and **that does not make this
- * bound redundant** — which is the trap worth stating, because the cap looks
- * like it retires the limit. `max_riders` is NULLABLE and NULL means no cap,
- * which is what most rides carry — 4 of DEV's 6 and 1 of PROD's 2 on
- * 2026-08-18 — and what every organizer who leaves the box empty still creates.
- * So an uncapped ride's
- * roster is exactly as unbounded as it was; what changed is that a *capped*
- * one is now bounded at 1000 — `018`'s ceiling of 999, plus the one row the
- * organizer exemption may add — which is still five times this.
- * Unbounded, the crew read selects every row plus a joined profile each and
- * renders one list item per row with no virtualisation, on a 390px screen.
+ * **Nothing bounds `ride_members` in the database, and since `077` (PD-293)
+ * nothing ever did for long.** `063` capped a crew at `rides.max_riders` for
+ * six days; `077` dropped both the column and the trigger, because a cap the
+ * design never draws is a refusal a rider cannot see coming. So this constant
+ * is the ONLY ceiling on what this screen reads, which is the thing worth
+ * stating: unbounded, the crew read selects every row plus a joined profile
+ * each and renders one list item per row with no virtualisation, on a 390px
+ * screen.
  *
  * Beyond this the list truncates rather than misleads — the same saturating
  * trade `RIDE_FILTER_SCAN_LIMIT` makes above, and the honest one until
@@ -462,7 +459,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
       // draws the 358×160 panel and nothing else `051` added.
       .select(`
         id, title, description, route_description, meeting_point, departure_at,
-        max_riders, club_id, organizer_id, map_detail_path,
+        club_id, organizer_id, map_detail_path,
         organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
         club:clubs(${CLUB_EMBED_COLUMNS})
       `)
@@ -511,7 +508,6 @@ export async function getRide(id: string): Promise<RideDetail | null> {
     route_description: row.route_description,
     meeting_point: row.meeting_point,
     departure_at: row.departure_at,
-    max_riders: row.max_riders,
     club_id: row.club_id,
     organizer_id: row.organizer_id,
     organizer: row.organizer,
@@ -558,7 +554,7 @@ export async function getRideForEdit(id: string): Promise<RideForEdit | null> {
     .from('rides')
     .select(`
       id, title, description, route_description, meeting_point, departure_at,
-      max_riders, is_public, club_id, organizer_id,
+      is_public, club_id, organizer_id,
       start_place_id, latitude, longitude,
       club:clubs(id, name)
     `)

@@ -81,9 +81,6 @@ export function EditRideForm({
   )
   const [routeDescription, setRouteDescription] = useState(ride.route_description ?? '')
   const [departureAt, setDepartureAt] = useState(formatRideDepartureInput(ride.departure_at))
-  const [maxRiders, setMaxRiders] = useState(
-    ride.max_riders !== null ? String(ride.max_riders) : ''
-  )
   const [isPublic, setIsPublic] = useState(ride.is_public)
   const [clubId, setClubId] = useState(ride.club_id ?? '')
   // **Controlled is not enough for either of these, and here it costs data
@@ -105,14 +102,12 @@ export function EditRideForm({
   // one does not because nothing here resets out from under it.
   useEffect(() => {
     if (!state.error) return
-    const rawMax = maxRiders.trim()
     const parsed = rideSchema.safeParse({
       title,
       description,
       meeting_point: meetingPoint,
       route_description: routeDescription,
       departure_at: departureAt,
-      max_riders: rawMax ? Number(rawMax) : null,
       is_public: isPublic,
       club_id: clubId || null,
       location: startPlace
@@ -208,18 +203,6 @@ export function EditRideForm({
           maxLength={RIDE_ROUTE_MAX}
           value={routeDescription}
           onChange={(event) => setRouteDescription(event.target.value)}
-        />
-
-        <Input
-          name="max_riders"
-          type="number"
-          inputMode="numeric"
-          min={1}
-          max={999}
-          label="Maximum riders"
-          placeholder="Leave blank for no limit"
-          value={maxRiders}
-          onChange={(event) => setMaxRiders(event.target.value)}
         />
 
         {clubsUnavailable ? (
