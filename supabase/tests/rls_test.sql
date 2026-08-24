@@ -2586,8 +2586,15 @@ select assert_allowed($$
   'a club with no description is accepted');
 
 -- rides: title 1..80, description 500, meeting_point 1..120,
--- route_description 1000, max_riders 1..999. club_id stays NULL throughout so
--- these test 018 and not 017's membership predicate or 022's audience rule.
+-- route_description 1000. club_id stays NULL throughout so these test 018 and
+-- not 017's membership predicate or 022's audience rule.
+--
+-- **`rides_max_riders_range` is not in this list, and it is not an omission.**
+-- 018's fifth CHECK bounded `max_riders` 1..999, and 077 dropped the column, so
+-- the constraint went with it — a column-level CHECK is a dependent object of
+-- its column. The two refusals that lived here (0 and 1000) and the 999 in the
+-- all-boundaries insert below went with it too. 077's own section asserts the
+-- constraint is gone by name, which is the assertion that replaces them.
 select assert_rejected($$
   insert into rides (title, meeting_point, departure_at, is_public, organizer_id)
   values (repeat('x', 81), 'The Pier', now() + interval '1 day', true,
@@ -2624,23 +2631,11 @@ select assert_rejected($$
           '00000000-0000-0000-0000-00000000000a')$$,
   '23514', 'a route description over 1000 characters is refused');
 
-select assert_rejected($$
-  insert into rides (title, meeting_point, departure_at, max_riders, is_public, organizer_id)
-  values ('Dusk Run', 'The Pier', now() + interval '1 day', 0, true,
-          '00000000-0000-0000-0000-00000000000a')$$,
-  '23514', 'a ride with room for zero riders is refused');
-
-select assert_rejected($$
-  insert into rides (title, meeting_point, departure_at, max_riders, is_public, organizer_id)
-  values ('Dusk Run', 'The Pier', now() + interval '1 day', 1000, true,
-          '00000000-0000-0000-0000-00000000000a')$$,
-  '23514', 'a ride with room for 1000 riders is refused');
-
 select assert_allowed($$
   insert into rides (title, description, route_description, meeting_point,
-                     departure_at, max_riders, is_public, organizer_id)
+                     departure_at, is_public, organizer_id)
   values (repeat('t', 80), repeat('d', 500), repeat('r', 1000), repeat('m', 120),
-          now() + interval '1 day', 999, true,
+          now() + interval '1 day', true,
           '00000000-0000-0000-0000-00000000000a')$$,
   'a ride at every boundary value at once is accepted');
 
@@ -2648,7 +2643,7 @@ select assert_allowed($$
   insert into rides (title, meeting_point, departure_at, is_public, organizer_id)
   values ('Minimal Run', 'X', now() + interval '1 day', true,
           '00000000-0000-0000-0000-00000000000a')$$,
-  'a ride with NULL description, route and max_riders is accepted');
+  'a ride with NULL description and route is accepted');
 
 -- ===========================================================================
 -- 019: club_members.role is not self-assignable
@@ -8267,7 +8262,6 @@ update rides
        route_description = null,
        meeting_point     = 'The Weir',
        departure_at      = timestamptz '2026-09-01 09:00:00+00',
-       max_riders        = null,
        is_public         = false,
        club_id           = '00000000-0000-0000-0000-00000017c1c1'
  where id = '00000000-0000-0000-0000-00000017d1d1'
@@ -8310,8 +8304,7 @@ select assert_denied($$
          route_description = null,
          meeting_point     = 'The Weir',
          departure_at      = timestamptz '2026-09-01 09:00:00+00',
-         max_riders        = null,
-         is_public         = false,
+           is_public         = false,
          club_id           = '00000000-0000-0000-0000-00000017c1c1'
    where id = '00000000-0000-0000-0000-00000017d1d1'
   returning id$$,
@@ -8341,7 +8334,6 @@ update rides
        route_description = null,
        meeting_point     = 'The Weir',
        departure_at      = timestamptz '2026-09-01 09:00:00+00',
-       max_riders        = null,
        is_public         = false,
        club_id           = '00000000-0000-0000-0000-00000017c1c1'
  where id = '00000000-0000-0000-0000-00000017d1d1'
@@ -8367,7 +8359,6 @@ update rides
        route_description = null,
        meeting_point     = 'The Weir',
        departure_at      = timestamptz '2026-09-01 09:00:00+00',
-       max_riders        = null,
        is_public         = true,
        club_id           = null
  where id = '00000000-0000-0000-0000-00000017d1d1'
@@ -8630,8 +8621,8 @@ select assert_eq(
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'rides'
       and grantee = 'authenticated' and privilege_type = 'INSERT'),
-  'club_id,departure_at,description,id,is_public,latitude,longitude,max_riders,meeting_point,organizer_id,route_description,start_place_id,title',
-  '045/067: exactly thirteen columns of rides hold INSERT, and created_at is not among them — 067 added the three a pick is made of, and deliberately NOT geocode_confidence');
+  'club_id,departure_at,description,id,is_public,latitude,longitude,meeting_point,organizer_id,route_description,start_place_id,title',
+  '045/067/077: exactly twelve columns of rides hold INSERT, and created_at is not among them — 067 added the three a pick is made of, deliberately NOT geocode_confidence, and 077 took max_riders out by dropping the column, which removes its grants with no revoke');
 select assert_eq(has_column_privilege('authenticated', 'public.rides', 'geocode_confidence', 'INSERT'),
   false, '067: geocode_confidence is the one location column with no INSERT grant — no client produces a vendor score, so a rider cannot author the geocoded arm at create time at all');
 select assert_eq(
@@ -8639,8 +8630,8 @@ select assert_eq(
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'rides'
       and grantee = 'authenticated' and privilege_type = 'UPDATE'),
-  'club_id,departure_at,description,geocode_confidence,is_public,latitude,longitude,map_card_path,map_detail_path,max_riders,meeting_point,route_description,start_place_id,title',
-  '045/051/067: exactly fourteen columns of rides hold UPDATE — created_at, id and organizer_id are still not among them, the five 051 added ARE, and 067 added start_place_id so a rider can re-pick or clear');
+  'club_id,departure_at,description,geocode_confidence,is_public,latitude,longitude,map_card_path,map_detail_path,meeting_point,route_description,start_place_id,title',
+  '045/051/067/077: exactly thirteen columns of rides hold UPDATE — created_at, id and organizer_id are still not among them, the five 051 added ARE, 067 added start_place_id so a rider can re-pick or clear, and 077 removed max_riders with the column');
 
 -- ---- clubs -------------------------------------------------------------
 select assert_eq(has_table_privilege('authenticated', 'public.clubs', 'insert'),
@@ -8743,24 +8734,26 @@ set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
 
 -- createRide: the spread of rideSchema, plus departure_at and organizer_id.
+-- Eight columns since 077 dropped max_riders; rideSchema lost the field in the
+-- same PR, so this stays the statement createRide actually issues.
 insert into rides (title, description, route_description, meeting_point,
-                   departure_at, max_riders, is_public, club_id, organizer_id)
+                   departure_at, is_public, club_id, organizer_id)
 values ('045 ride', 'desc', 'route', 'Meeting point', now() + interval '7 days',
-        10, true, null, '00000000-0000-0000-0000-00000000000a');
+        true, null, '00000000-0000-0000-0000-00000000000a');
 select assert_eq((select count(*)::int from rides where title = '045 ride'),
-  1, '045: createRide''s exact nine-column insert still lands');
+  1, '045/077: createRide''s exact eight-column insert still lands');
 select assert_eq(
   (select created_at > now() - interval '1 minute' from rides where title = '045 ride'),
   true, '045: ... and its created_at came from the default, which is the only place it can now come from');
 
--- updateRide: the explicit eight.
+-- updateRide: the explicit seven, one fewer since 077.
 update rides set title = '045 ride edited', description = 'desc2',
                  route_description = 'route2', meeting_point = 'Elsewhere',
-                 departure_at = now() + interval '8 days', max_riders = 12,
+                 departure_at = now() + interval '8 days',
                  is_public = true, club_id = null
  where title = '045 ride';
 select assert_eq((select count(*)::int from rides where title = '045 ride edited'),
-  1, '045: updateRide''s exact eight-column update still lands');
+  1, '045/077: updateRide''s exact seven-column update still lands');
 
 -- createClub: the spread of clubSchema, plus owner_id. The two path columns are
 -- named as NULL on purpose — naming a column in the list needs the privilege
@@ -12996,400 +12989,34 @@ reset role;
 rollback to savepoint ride_journal_accessor_062;
 
 \echo ''
-\echo '# A ride cap that actually caps — max_riders reaches ride_members (063)'
+\echo '# 063 is gone — the rider limit was removed in full (077)'
 
 -- ===========================================================================
--- 063. rides.max_riders finally counts against ride_members.
+-- 063 -> 077. This section is DELETED, not disabled.
 -- ===========================================================================
 --
--- PD-174. The column has existed since 001, 018 bounded its VALUE and said so
--- explicitly ("this bounds what can be *stored*, and nothing else"), and
--- nothing ever counted a crew against it. An organizer could set 5 and get 50.
+-- 063 (PD-174) made `rides.max_riders` a real join gate on `ride_members`, and
+-- twenty-five assertions lived here: the refusal, the `maybe` count, the two
+-- exemptions, the block case that proved the count had to be `security
+-- definer`, the seat-move bypass, the freed seat. 077 (PD-293) dropped the
+-- trigger, the function and the column, so every one of them asserted a thing
+-- that no longer exists.
 --
--- What is asserted here is a JOIN GATE, not an invariant. "Crew size <=
--- max_riders" is deliberately NOT true at all times: lowering a cap below the
--- current crew is allowed and evicts nobody, so an over-subscribed ride is a
--- legal state and 063.4 asserts it as one. Reading these as invariant
--- assertions and "fixing" the over-subscribed case would delete somebody's
--- RSVP.
+-- **They are removed rather than commented out or softened in place.** An
+-- assertion kept alive against a rule that is gone stops measuring the product
+-- and starts measuring its own scaffolding, and it does so while still printing
+-- `ok`. The replacement is at the end of this file, with the rest of 077's
+-- assertions.
 --
--- The riders, and what each one is for:
---   6301  organizer of the capped ride, and one of its two seats
---   6302  the second seat, held at `maybe` -- so every refusal below also
---         asserts that `maybe` counts toward the cap
---   6303  a would-be sixth rider: the plain refusal
---   6304  blocks 6302, so HALF THE ROSTER IS INVISIBLE TO THEM -- 063.6, the
---         one case that fails if the count is ever made `security invoker`
---   6305  joins after a seat is freed
-savepoint ride_capacity_063;
-
-set role auth_admin;
-insert into auth.users (id, email) values
-  ('00000000-0000-0000-0000-000000063001', 'caphost@example.com'),
-  ('00000000-0000-0000-0000-000000063002', 'capmaybe@example.com'),
-  ('00000000-0000-0000-0000-000000063003', 'capsixth@example.com'),
-  ('00000000-0000-0000-0000-000000063004', 'capblocker@example.com'),
-  ('00000000-0000-0000-0000-000000063005', 'caplate@example.com');
-reset role;
-
-update profiles set username = 'caphost',    location = 'Gouda',
-                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
-                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
-  where id = '00000000-0000-0000-0000-000000063001';
-update profiles set username = 'capmaybe',   location = 'Delft',
-                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
-                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
-  where id = '00000000-0000-0000-0000-000000063002';
-update profiles set username = 'capsixth',   location = 'Breda',
-                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
-                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
-  where id = '00000000-0000-0000-0000-000000063003';
-update profiles set username = 'capblocker', location = 'Venlo',
-                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
-                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
-  where id = '00000000-0000-0000-0000-000000063004';
-update profiles set username = 'caplate',    location = 'Assen',
-                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
-                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
-  where id = '00000000-0000-0000-0000-000000063005';
-
--- Public rides, so the ride_members INSERT policy's EXISTS resolves for every
--- rider here and a refusal below can only be the capacity trigger.
-insert into rides (id, title, meeting_point, departure_at, is_public, max_riders, organizer_id) values
-  ('00000000-0000-0000-0000-00000063f001', 'Capped Run', 'The Ferry',
-   now() + interval '7 days', true, 2,    '00000000-0000-0000-0000-000000063001'),
-  ('00000000-0000-0000-0000-00000063f002', 'Uncapped Run', 'The Ferry',
-   now() + interval '7 days', true, null, '00000000-0000-0000-0000-000000063001');
-
-insert into ride_members (ride_id, user_id, status) values
-  ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063001', 'going'),
-  ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063002', 'maybe');
-
-insert into blocks (blocker_id, blocked_id) values
-  ('00000000-0000-0000-0000-000000063004', '00000000-0000-0000-0000-000000063002');
-
--- A private club and its ride, for 063.7b. 6305 is NOT a member, so `rides`'
--- SELECT policy hides this ride from them entirely — which is the whole point,
--- and also the reason that assertion cannot look the id up through a subquery.
-insert into clubs (id, name, is_public, owner_id) values
-  ('00000000-0000-0000-0000-0000000630c1', 'Capacity Private MC', false,
-   '00000000-0000-0000-0000-000000063001');
-insert into rides (id, title, meeting_point, departure_at, is_public, club_id, max_riders, organizer_id) values
-  ('00000000-0000-0000-0000-00000063f009', 'Members Only Run', 'The Ferry',
-   now() + interval '7 days', false, '00000000-0000-0000-0000-0000000630c1', null,
-   '00000000-0000-0000-0000-000000063001');
-
--- ---------------------------------------------------------------------------
--- 063.1  The mechanism itself. `security definer` is REQUIRED (063.6 is why),
---        and a definer function that the client can CALL is a different thing
---        from one a trigger invokes -- 031's lesson is to assert the ROLE
---        rather than to call the function, so that is what these do.
--- ---------------------------------------------------------------------------
-select assert_eq(
-  (select p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'private' and p.proname = 'enforce_ride_capacity'),
-  true, '063: the capacity function is security definer — an invoker-rights count is short by the caller''s blocks');
-
--- In `private`, so PostgREST cannot route to it at all — the schema is the
--- barrier and the revoke below is the second lock on the same door. A row here
--- for `public` would mean the revoke is the only one.
-select assert_eq(
-  (select array_agg(n.nspname order by n.nspname)::text[] from pg_proc p
-     join pg_namespace n on n.oid = p.pronamespace
-    where p.proname = 'enforce_ride_capacity'),
-  array['private'],
-  '063: ... and lives in private, off the PostgREST surface, like notify_ride_joined on this same table');
-
-select assert_eq(
-  has_function_privilege('authenticated', 'private.enforce_ride_capacity()', 'execute'),
-  false, '063: ... with no EXECUTE for authenticated — asserted on the ROLE rather than by calling it (031''s lesson)');
-
-select assert_eq(
-  has_function_privilege('anon', 'private.enforce_ride_capacity()', 'execute'),
-  false, '063: ... nor for anon');
-
--- Both verbs, because 048 grants UPDATE on `ride_id` and an INSERT-only trigger
--- is one `update ride_members set ride_id = ...` away from being bypassed —
--- 063.7 is that statement.
-select assert_eq(
-  (select pg_get_triggerdef(oid) like '%BEFORE INSERT OR UPDATE%'
-     from pg_trigger where tgrelid = 'public.ride_members'::regclass
-      and tgname = 'enforce_ride_capacity'),
-  true, '063: the trigger fires on INSERT and on UPDATE, not on INSERT alone');
-
--- Name order is firing order for same-timing row triggers, and this is the
--- right way round: an un-onboarded rider is told to finish onboarding rather
--- than that the ride is full. Both raise 23514, so the ORDER is the only thing
--- that decides which message they get.
-select assert_eq(
-  (select array_agg(tgname order by tgname)::text[] from pg_trigger
-    where tgrelid = 'public.ride_members'::regclass and not tgisinternal
-      and (tgtype & 2) = 2),
-  array['enforce_participation_gate', 'enforce_ride_capacity'],
-  '063: the participation gate sorts before the capacity gate, so consent is refused before capacity is');
-
--- ---------------------------------------------------------------------------
--- 063.2  A full ride refuses the next rider, and `maybe` is what filled it.
---        The second seat is 6302's `maybe` row, so every refusal in this
---        section is also the assertion that `maybe` counts.
--- ---------------------------------------------------------------------------
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000063003', false);
-
-select assert_rejected($$
-  insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063003', 'going')$$,
-  '23514', '063: a third rider is refused on a cap of 2 — and the second seat is a `maybe`, so `maybe` counts');
-
-select assert_rejected($$
-  insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063003', 'maybe')$$,
-  '23514', '063: ... and cannot slip in as a `maybe` either — the cap is on the crew, not on one status');
-
--- **The message is contract, so the SQLSTATE alone is not enough.**
--- `setRideAttendance` matches `error.message.includes('this ride is full')`
--- alongside the code, because `018`'s four text CHECKs on `rides` and `023`'s
--- gate all raise 23514 — so a reworded raise would silently downgrade a full
--- ride to "the ride may no longer be available". `assert_rejected` reads the
--- SQLSTATE only, hence the block.
-do $cap$
-declare msg text;
-begin
-  begin
-    insert into ride_members (ride_id, user_id, status)
-      values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063003', 'going');
-    raise exception 'FAIL  063: a full ride accepted a rider';
-  exception when check_violation then
-    get stacked diagnostics msg = message_text;
-    if msg <> 'this ride is full' then
-      raise exception 'FAIL  063: the refusal message is the client contract — expected "this ride is full", got "%"', msg;
-    end if;
-    raise notice 'ok    063: the refusal message is exactly `this ride is full`, which is what setRideAttendance matches on';
-  end;
-end
-$cap$;
-
--- ---------------------------------------------------------------------------
--- 063.3  An UNCAPPED ride is untouched. NULL is "no cap", which is what every
---        ride in both projects carries today — so this is the assertion that
---        063 changed nothing for anybody.
--- ---------------------------------------------------------------------------
-savepoint cap_uncapped;
-insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f002', '00000000-0000-0000-0000-000000063003', 'going');
-select assert_eq(
-  (select count(*)::int from ride_members where ride_id = '00000000-0000-0000-0000-00000063f002'),
-  1, '063: an uncapped ride takes the rider a capped one refused');
-rollback to savepoint cap_uncapped;
-
--- ---------------------------------------------------------------------------
--- 063.4  A rider ALREADY on a full ride can still change their mind. This is
---        the case a plain `count(*) >= max_riders` gets wrong and nothing else
---        here would catch: `setRideAttendance` is an UPSERT, and a BEFORE
---        INSERT trigger fires on an upsert even when it resolves to an UPDATE
---        (measured, Postgres 16). Counting the caller's own row would freeze
---        every existing member's RSVP on a full ride — a worse bug than the one
---        063 fixes. An EXISTS exemption is what answers it; 063.5 carries the
---        over-subscribed case, which is where the narrower fix breaks.
--- ---------------------------------------------------------------------------
-select set_config('test.uid', '00000000-0000-0000-0000-000000063002', false);
-
-savepoint cap_reRsvp;
-insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063002', 'going')
-  on conflict (ride_id, user_id) do update
-    set ride_id = excluded.ride_id, user_id = excluded.user_id, status = excluded.status;
-select assert_eq(
-  (select status from ride_members
-    where ride_id = '00000000-0000-0000-0000-00000063f001'
-      and user_id = '00000000-0000-0000-0000-000000063002'),
-  'going', '063: a member of a FULL ride can still switch maybe -> going — the upsert''s BEFORE INSERT fires even though it resolves to an UPDATE');
-rollback to savepoint cap_reRsvp;
-
--- The plain UPDATE form of the same change, which takes the trigger's early
--- return rather than the count: `ride_id` is unchanged, so no new seat is taken.
-savepoint cap_flip;
-update ride_members set status = 'going'
-  where ride_id = '00000000-0000-0000-0000-00000063f001'
-    and user_id = '00000000-0000-0000-0000-000000063002';
-select assert_eq(
-  (select status from ride_members
-    where ride_id = '00000000-0000-0000-0000-00000063f001'
-      and user_id = '00000000-0000-0000-0000-000000063002'),
-  'going', '063: ... and by a plain UPDATE too — a status change takes no new seat');
-rollback to savepoint cap_flip;
-
--- ---------------------------------------------------------------------------
--- 063.5  Lowering the cap below the current crew is ALLOWED and evicts nobody.
---        The rule is a join gate: an over-subscribed ride is legal, and what
---        the lowered cap buys the organizer is that nobody else gets on.
--- ---------------------------------------------------------------------------
-reset role;
-savepoint cap_lowered;
-update rides set max_riders = 1 where id = '00000000-0000-0000-0000-00000063f001';
-
-select assert_eq(
-  (select count(*)::int from ride_members where ride_id = '00000000-0000-0000-0000-00000063f001'),
-  2, '063: lowering the cap below the crew evicts nobody — an over-subscribed ride is a legal state, not a repair job');
-
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000063003', false);
-select assert_rejected($$
-  insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063003', 'going')$$,
-  '23514', '063: ... and no further rider may join while the crew is over it');
-
--- **The case the first cut of `063` got wrong, and the reason this assertion is
--- an UPSERT.** Excluding only the writer's own row from the count is enough on
--- a ride exactly AT its cap and not enough on one OVER it: 2 rows against a cap
--- of 1 leaves 1 other, which still meets the cap, so an existing member's RSVP
--- was refused — a lowered cap froze the crew it had promised not to evict. The
--- bare `update ride_members set status` form passes against that bug, because
--- it takes the trigger's early return, so an assertion in that shape would have
--- been vacuous. This is the statement `setRideAttendance` actually issues.
-select set_config('test.uid', '00000000-0000-0000-0000-000000063002', false);
-insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063002', 'going')
-  on conflict (ride_id, user_id) do update
-    set ride_id = excluded.ride_id, user_id = excluded.user_id, status = excluded.status;
-select assert_eq(
-  (select status from ride_members
-    where ride_id = '00000000-0000-0000-0000-00000063f001'
-      and user_id = '00000000-0000-0000-0000-000000063002'),
-  'going', '063: a member of an OVER-SUBSCRIBED ride can still change their RSVP — a lowered cap must not freeze the crew it did not evict');
-
-reset role;
-rollback to savepoint cap_lowered;
-
--- ---------------------------------------------------------------------------
--- 063.6  THE BLOCK CASE, and the reason the count is `security definer`.
---        009 put private.is_blocked on the ride_members SELECT policy itself,
---        so 6304 — who blocked 6302 — sees ONE of the two crew rows. Counted
---        under their own RLS the ride would look half empty, and the cap would
---        be exceeded by exactly the number of blocks in play.
--- ---------------------------------------------------------------------------
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000063004', false);
-
-select assert_eq(
-  (select count(*)::int from ride_members where ride_id = '00000000-0000-0000-0000-00000063f001'),
-  1, '063: the blocking rider can see only ONE of the two crew rows — 009 hides the other');
-
-select assert_rejected($$
-  insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063004', 'going')$$,
-  '23514', '063: ... and is refused anyway — the definer count sees the roster the blocker cannot');
-
--- ---------------------------------------------------------------------------
--- 063.7  The bypass 048 left open. `authenticated` holds UPDATE on `ride_id`
---        (PostgREST's ON CONFLICT DO UPDATE SET list carries it, so it had to
---        be granted), which means a seat can be MOVED. An INSERT-only trigger
---        would be one statement away from useless.
--- ---------------------------------------------------------------------------
-select set_config('test.uid', '00000000-0000-0000-0000-000000063005', false);
-insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f002', '00000000-0000-0000-0000-000000063005', 'going');
-
-select assert_rejected($$
-  update ride_members set ride_id = '00000000-0000-0000-0000-00000063f001'
-   where ride_id = '00000000-0000-0000-0000-00000063f002'
-     and user_id = '00000000-0000-0000-0000-000000063005'$$,
-  '23514', '063: a seat cannot be MOVED into a full ride — the trigger fires on UPDATE, not on INSERT alone');
-
--- 063.7b  And the neighbouring question a reader of the policy list WILL ask,
---         answered here so it is not re-derived wrongly: the UPDATE policy's
---         `with check` is a bare `auth.uid() = user_id` while the INSERT
---         policy's carries an EXISTS against `rides`, which reads like a hole —
---         move the row instead of inserting it and the ride-visibility test is
---         skipped. It is not a hole. Postgres also applies the SELECT policy to
---         the NEW row of an UPDATE, so a row cannot be updated into
---         invisibility.
+-- It is a different SHAPE by necessity, which is worth stating so nobody tries
+-- to port the old ones across: with the column gone there is no cap to set, so
+-- the positive case can only be "N riders join one ride and all N rows land",
+-- never "the N+1th is refused".
 --
--- **The target id is a LITERAL, and that is the whole assertion.** Written as a
--- subquery selecting "a private ride this rider is not in", it runs under the
--- rider's own RLS — which hides exactly those rides — so it evaluates to NULL,
--- the statement becomes `set ride_id = null`, and the 42501 comes from the
--- roster policy's EXISTS failing on a NULL. That version passes while measuring
--- nothing about visibility. Caught in review; do not reintroduce it.
-select assert_eq(
-  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000063f009'),
-  0, '063: the rider cannot see the private club''s ride at all — without this the next line proves nothing');
+-- 063's reasoning is not lost — the file is in git and its header is the record
+-- of what the gate was, why it counted both statuses, and why it was definer.
+-- What is NOT in git is a reason to build it again: see 077's header.
 
-select assert_rejected($$
-  update ride_members set ride_id = '00000000-0000-0000-0000-00000063f009'
-   where ride_id = '00000000-0000-0000-0000-00000063f002'
-     and user_id = '00000000-0000-0000-0000-000000063005'$$,
-  '42501', '063: ... and cannot move their seat onto it — RLS refuses that one, not the capacity trigger, and that ride is UNCAPPED so only visibility can be doing the work');
-
--- ---------------------------------------------------------------------------
--- 063.8  Leaving frees the seat, with no further machinery: `No` deletes the
---        row (there is no third status), so the next rider simply fits.
--- ---------------------------------------------------------------------------
-select set_config('test.uid', '00000000-0000-0000-0000-000000063002', false);
-delete from ride_members
-  where ride_id = '00000000-0000-0000-0000-00000063f001'
-    and user_id = '00000000-0000-0000-0000-000000063002';
-select assert_eq(
-  (select count(*)::int from ride_members where ride_id = '00000000-0000-0000-0000-00000063f001'),
-  1, '063: leaving a full ride removes the row — `No` has no stored status');
-
-select set_config('test.uid', '00000000-0000-0000-0000-000000063003', false);
-insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f001', '00000000-0000-0000-0000-000000063003', 'going');
-select assert_eq(
-  (select count(*)::int from ride_members where ride_id = '00000000-0000-0000-0000-00000063f001'),
-  2, '063: ... and the rider refused a moment ago now fits — the gate reopens on its own');
-
--- ---------------------------------------------------------------------------
--- 063.9  createRide's shape at the tightest cap the CHECK allows. The organizer
---        inserts the ride and then their own crew row, two statements and no
---        transaction, so a capacity rule that counted the row it is about to
---        write would make `max_riders = 1` uncreatable.
--- ---------------------------------------------------------------------------
-select set_config('test.uid', '00000000-0000-0000-0000-000000063001', false);
-insert into rides (id, title, meeting_point, departure_at, is_public, max_riders, organizer_id)
-  values ('00000000-0000-0000-0000-00000063f003', 'Solo Run', 'The Ferry',
-          now() + interval '7 days', true, 1, '00000000-0000-0000-0000-000000063001');
-insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f003', '00000000-0000-0000-0000-000000063001', 'going');
-select assert_eq(
-  (select count(*)::int from ride_members where ride_id = '00000000-0000-0000-0000-00000063f003'),
-  1, '063: an organizer''s own crew row lands at max_riders = 1 — a solo ride is creatable');
-
-select set_config('test.uid', '00000000-0000-0000-0000-000000063003', false);
-select assert_rejected($$
-  insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f003', '00000000-0000-0000-0000-000000063003', 'going')$$,
-  '23514', '063: ... and nobody else may join it');
-
--- ---------------------------------------------------------------------------
--- 063.10 THE ORGANIZER IS EXEMPT, and the reason is not generosity. `getRide`
---        and `toRideListItem` both render a host holding no `ride_members` row
---        as `going`, so the row records a fact rather than claiming a seat —
---        and `createRide`'s two inserts have no transaction and its rollback
---        runs in the browser, so a closed tab leaves exactly this state.
---        Without the exemption the app shows an organizer on a ride the
---        database will not let them onto, permanently.
--- ---------------------------------------------------------------------------
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000063001', false);
-delete from ride_members
-  where ride_id = '00000000-0000-0000-0000-00000063f003'
-    and user_id = '00000000-0000-0000-0000-000000063001';
-reset role;
-insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f003', '00000000-0000-0000-0000-000000063005', 'going');
-
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000063001', false);
-insert into ride_members (ride_id, user_id, status)
-  values ('00000000-0000-0000-0000-00000063f003', '00000000-0000-0000-0000-000000063001', 'going');
-select assert_eq(
-  (select count(*)::int from ride_members where ride_id = '00000000-0000-0000-0000-00000063f003'),
-  2, '063: an organizer restores their own crew row on a ride already at its cap — their row is a record, not a seat, and it is the one thing that may exceed the cap');
-
-reset role;
-rollback to savepoint ride_capacity_063;
 
 \echo ''
 \echo '# A photo''s capture time and place — bounded, coupled, and insert-only (064)'
@@ -16009,6 +15636,263 @@ select assert_eq(
 reset role;
 drop function public.pd075_assert_message(text, text, text);
 rollback to savepoint no_location_075;
+
+-- ===========================================================================
+-- 077: the rider limit is gone — no trigger, no function, no column
+-- ===========================================================================
+
+\echo ''
+\echo '# 077: a ride takes as many riders as ask — the cap and its column are gone'
+
+-- PD-293. 063's join gate refused a rider with `this ride is full` (23514) and
+-- the v2 design draws no capacity affordance at all — no "Ride is full" state,
+-- no seats-remaining count, no disabled RSVP pill — so a rider learned a ride
+-- was full by tapping Going and reading an error. The owner dropped the limit
+-- rather than draw the affordance.
+--
+-- What these assertions have to establish is BOTH halves, because the risky
+-- half of a removal is never the thing removed:
+--   * the capacity refusal is gone, in all four of its parts (trigger,
+--     function, column, CHECK), and
+--   * nothing ELSE on this write path went with it — 023's consent gate, 009's
+--     block predicate and the RLS refusal 063.7b pinned are each re-asserted
+--     here, because "the RSVP still works" is exactly what a suite says right
+--     up until it turns out the wrong rule was removed.
+--
+-- The riders:
+--   7701  organizer of the open ride
+--   7702-7705  four more riders, so the crew reaches SIX with the organizer —
+--         a number no cap 018 allowed below 6 could ever have produced
+--   7706  never consented, so 023 still refuses them: the negative that proves
+--         this file removed a CAPACITY rule and not a PARTICIPATION one
+savepoint rider_limit_dropped_077;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000077001', 'nocaphost@example.com'),
+  ('00000000-0000-0000-0000-000000077002', 'nocap2@example.com'),
+  ('00000000-0000-0000-0000-000000077003', 'nocap3@example.com'),
+  ('00000000-0000-0000-0000-000000077004', 'nocap4@example.com'),
+  ('00000000-0000-0000-0000-000000077005', 'nocap5@example.com'),
+  ('00000000-0000-0000-0000-000000077006', 'nocapnoconsent@example.com');
+reset role;
+
+update profiles set username = 'nocaphost', location = 'Zwolle',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000077001';
+update profiles set username = 'nocap2', location = 'Ede',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000077002';
+update profiles set username = 'nocap3', location = 'Apeldoorn',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000077003';
+update profiles set username = 'nocap4', location = 'Zutphen',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000077004';
+update profiles set username = 'nocap5', location = 'Deventer',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000077005';
+-- 7706 is deliberately left with both stamps NULL.
+update profiles set username = 'nocap6', location = 'Kampen'
+  where id = '00000000-0000-0000-0000-000000077006';
+
+-- ---------------------------------------------------------------------------
+-- 077.1  The four objects, each asserted by NAME rather than by a count.
+--        A count cannot tell a rename from a removal, and every one of these
+--        would read as "gone" if it had merely moved.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.ride_members'::regclass
+      and tgname = 'enforce_ride_capacity' and not tgisinternal),
+  0, '077: the enforce_ride_capacity trigger is gone from ride_members');
+
+-- Scoped to this table and spelled out, not counted: a second surface landing a
+-- trigger here later must not make this assertion pass for a new reason. It is
+-- also the assertion that 077 removed ONE trigger and not the neighbouring two.
+select assert_eq(
+  (select array_agg(tgname order by tgname)::text[] from pg_trigger
+    where tgrelid = 'public.ride_members'::regclass and not tgisinternal),
+  array['enforce_participation_gate', 'notify_ride_joined'],
+  '077: ... and ride_members keeps exactly its other two — 023''s consent gate and 055''s fan-out are untouched');
+
+-- Nothing on this table fires on UPDATE any more: 063's was the only one, and
+-- 023's gate is BEFORE INSERT with a WHEN clause.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.ride_members'::regclass and not tgisinternal
+      and (tgtype & 16) = 16),
+  0, '077: ... and no trigger on ride_members fires on UPDATE at all now');
+
+-- In EVERY schema, not just `private` — 063 was moved from public to private
+-- mid-build, so a schema-scoped check here would pass against a leftover copy.
+select assert_eq(
+  (select count(*)::int from pg_proc where proname = 'enforce_ride_capacity'),
+  0, '077: private.enforce_ride_capacity() is gone, and no copy of it survives in any schema');
+
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'rides'
+      and column_name = 'max_riders'),
+  0, '077: rides.max_riders is gone — dropped rather than left in place unread, because a dead column that reads as live is what 063 was built on top of');
+
+-- 018's CHECK names only `max_riders`, so the column drop took it as a
+-- dependent object with no `cascade` and no `drop constraint` statement. This
+-- is the assertion that VERIFIES that rather than assuming it.
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.rides'::regclass and conname = 'rides_max_riders_range'),
+  0, '077: ... and 018''s rides_max_riders_range CHECK went with it automatically, because it named that column alone');
+
+-- The grants went the same way. Asserted per-grantee, because a table-wide
+-- count reads non-zero against a correct database — `postgres` and
+-- `service_role` hold everything by Supabase default (015's footer got this
+-- wrong once).
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'rides'
+      and column_name = 'max_riders'),
+  0, '077: ... and so did every grant on it, for every role — a dropped column cannot be revoked and none of 045/046/047/067''s absolute lists can re-grant it');
+
+-- ---------------------------------------------------------------------------
+-- 077.2  The column is unreachable in the shape a STALE CLIENT would use it.
+--        A build that still names it gets 42703, not a silently ignored field —
+--        which is the whole reason 077 is a destructive migration that must
+--        apply after its code deploys.
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000077001', false);
+
+select assert_rejected($$
+  insert into rides (title, meeting_point, departure_at, max_riders, is_public, organizer_id)
+  values ('Stale Client Run', 'The Ferry', now() + interval '7 days', 4, true,
+          '00000000-0000-0000-0000-000000077001')$$,
+  '42703', '077: an INSERT still naming max_riders is refused undefined_column — a build that has not caught up fails loudly rather than silently dropping the field');
+
+-- ---------------------------------------------------------------------------
+-- 077.3  THE POSITIVE CASE, and the point of the whole migration. Six riders
+--        on one ride. Under 063 this was expressible only up to whatever the
+--        organizer typed; there is no number to type now, so the assertion is
+--        that N riders join and all N rows land.
+-- ---------------------------------------------------------------------------
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id)
+  values ('00000000-0000-0000-0000-00000077f001', 'Open Run', 'The Ferry',
+          now() + interval '7 days', true, '00000000-0000-0000-0000-000000077001');
+insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-00000077f001', '00000000-0000-0000-0000-000000077001', 'going');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000077002', false);
+insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-00000077f001', '00000000-0000-0000-0000-000000077002', 'going');
+select set_config('test.uid', '00000000-0000-0000-0000-000000077003', false);
+insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-00000077f001', '00000000-0000-0000-0000-000000077003', 'maybe');
+select set_config('test.uid', '00000000-0000-0000-0000-000000077004', false);
+insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-00000077f001', '00000000-0000-0000-0000-000000077004', 'going');
+select set_config('test.uid', '00000000-0000-0000-0000-000000077005', false);
+insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-00000077f001', '00000000-0000-0000-0000-000000077005', 'going');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-00000077f001'),
+  5, '077: five riders join ONE ride and all five rows land — the crew has no ceiling, which is what dropping the limit means');
+
+-- `maybe` is in that five on purpose: 063 counted both statuses toward the cap,
+-- so a `maybe` was the row most likely to be silently dropped by a half-removal.
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-00000077f001' and status = 'maybe'),
+  1, '077: ... including the `maybe`, which 063 counted toward the cap and which nothing counts now');
+
+-- setRideAttendance's exact repeat-RSVP shape. 063 needed an EXISTS exemption
+-- to keep this working on a full ride; with no cap it works for no reason at
+-- all, and asserting it is how the removal of that exemption is shown to have
+-- cost nothing.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000077003', false);
+insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-00000077f001', '00000000-0000-0000-0000-000000077003', 'going')
+  on conflict (ride_id, user_id) do update
+    set ride_id = excluded.ride_id, user_id = excluded.user_id, status = excluded.status;
+select assert_eq(
+  (select status from ride_members
+    where ride_id = '00000000-0000-0000-0000-00000077f001'
+      and user_id = '00000000-0000-0000-0000-000000077003'),
+  'going', '077: a rider already on the ride still switches maybe -> going through the upsert — the exemption 063 needed for this is gone with the rule that needed it');
+
+-- ---------------------------------------------------------------------------
+-- 077.4  THE NEGATIVES. What 077 removed is a CAPACITY refusal and nothing
+--        else, and each of these would be the way to find out otherwise.
+-- ---------------------------------------------------------------------------
+
+-- 023's consent gate still refuses. Same table, same verb, same SQLSTATE 23514
+-- that 063 raised — so this is also the assertion that a reader cannot confuse
+-- the two rules by their error code alone.
+select set_config('test.uid', '00000000-0000-0000-0000-000000077006', false);
+select assert_rejected($$
+  insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-00000077f001', '00000000-0000-0000-0000-000000077006', 'going')$$,
+  '23514', '077: an un-onboarded rider is STILL refused by 023''s participation gate — 077 removed the capacity rule, not the consent one, and both raise 23514');
+
+-- The seat-move path 063.7b pinned. 048 grants UPDATE on `ride_id`, so a seat
+-- can be moved between rides; 063's trigger is no longer watching that, and the
+-- thing that refuses a move onto an invisible ride was never the trigger — it
+-- is the SELECT policy applied to the NEW row. Worth re-asserting precisely
+-- because removing the trigger is the moment someone would assume otherwise.
+--
+-- The target id is a LITERAL, and that is the whole assertion: written as a
+-- subquery it would run under the rider's own RLS, which hides exactly this
+-- ride, evaluate to NULL, and turn the statement into `set ride_id = null`.
+reset role;
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000000770c1', 'No Cap Private MC', false,
+   '00000000-0000-0000-0000-000000077001');
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-00000077f009', 'Members Only Run', 'The Ferry',
+   now() + interval '7 days', false, '00000000-0000-0000-0000-0000000770c1',
+   '00000000-0000-0000-0000-000000077001');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000077005', false);
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000077f009'),
+  0, '077: a non-member cannot see the private club''s ride at all — without this the next line proves nothing');
+select assert_rejected($$
+  update ride_members set ride_id = '00000000-0000-0000-0000-00000077f009'
+   where ride_id = '00000000-0000-0000-0000-00000077f001'
+     and user_id = '00000000-0000-0000-0000-000000077005'$$,
+  '42501', '077: ... and still cannot move their seat onto it — RLS refuses that, and it always did; dropping the capacity trigger did not open the seat-move path 048''s ride_id grant leaves reachable');
+
+-- 009's block predicate on the ride_members SELECT policy. 063 was `security
+-- definer` because of it, so this is the assertion that the reason outlived the
+-- function: blocking still hides crew rows, and removing the definer counter
+-- did not quietly change what a blocker can see.
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000077004', '00000000-0000-0000-0000-000000077002');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000077004', false);
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-00000077f001'
+      and user_id = '00000000-0000-0000-0000-000000077002'),
+  0, '077: a blocked rider''s crew row is still invisible to the blocker — 009''s predicate outlived the definer count that was written around it');
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-00000077f001'),
+  4, '077: ... and the blocker sees four of the five, which is the same short roster 063 could not be allowed to count');
+
+reset role;
+rollback to savepoint rider_limit_dropped_077;
 
 reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);

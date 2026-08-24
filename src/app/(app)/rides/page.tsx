@@ -15,6 +15,7 @@ import { getMyLocationText } from '@/lib/data/profile'
 import { getRideFilters, getRides } from '@/lib/data/rides'
 import { nearLabel } from '@/lib/location/near-label'
 import type { NearLabel } from '@/lib/location/near-label'
+import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
 import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
@@ -226,7 +227,16 @@ function RidesScreen() {
   // It carries its own padding, so an off strip renders nothing whatsoever —
   // no wrapper, no 8px above an error state. See the component.
   const strip = (
-    <NearbyRidesStrip count={nearCount} near={label} active={near} href={nearHref} />
+    <>
+      <NearbyRidesStrip count={nearCount} near={label} active={near} href={nearHref} />
+      {/* Below the near-you strip and in the same slot, because it is the same
+          question from the other side: the strip says how many rides are near
+          you, this says how to get an answer at all. `locationPrimingState`
+          makes them mutually exclusive in every state but one — a rider who
+          arrives on `?near=1` with no position sees the strip drawing itself as
+          the way OUT of the filter, and the row offering the way in. */}
+      <UseMyLocationRow position={positionSettled ? positionValue : undefined} />
+    </>
   )
 
   const gate = combineQueries(rides, filters)

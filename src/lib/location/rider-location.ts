@@ -167,6 +167,38 @@ async function permissionState(): Promise<PermissionState | 'unsupported'> {
 }
 
 /**
+ * What the device will do if something asks for a position right now — the
+ * question a priming sheet has to answer BEFORE it draws anything (PD-170).
+ *
+ * Four answers rather than the Permissions API's three, because "this platform
+ * has no geolocation at all" and "it will ask" are different products: the
+ * first has nothing to offer the rider and must draw no affordance, the second
+ * is exactly the state worth priming.
+ *
+ * **`'unsupported'` from `permissionState()` is folded into `'prompt'`, never
+ * into `'granted'` or `'denied'`.** That is this module's existing rule —
+ * *never assume consent from an API's absence* — read in the one direction
+ * that is safe for a control the rider taps: offering to ask costs nothing if
+ * the answer turns out to be a silent refusal, whereas reading it as `denied`
+ * would hide the only affordance on a WebView whose Permissions API simply
+ * does not recognise the descriptor.
+ */
+export type DeviceLocationPermission = 'granted' | 'prompt' | 'denied' | 'unavailable'
+
+/**
+ * Reads that state without ever prompting. Safe to call from an effect on
+ * every screen that draws a location affordance.
+ */
+export async function deviceLocationPermission(): Promise<DeviceLocationPermission> {
+  if (!hasGeolocation()) return 'unavailable'
+
+  const state = await permissionState()
+  if (state === 'granted') return 'granted'
+  if (state === 'denied') return 'denied'
+  return 'prompt' // 'prompt' and 'unsupported' alike — see the type's comment
+}
+
+/**
  * `arm` decides whether the JS-level backstop timer starts counting from
  * THIS call. It must only be `true` when the caller already knows, before
  * calling, that no OS permission dialog can appear for this request — see

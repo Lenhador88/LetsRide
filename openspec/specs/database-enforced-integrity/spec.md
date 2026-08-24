@@ -31,6 +31,9 @@ Verified against `pg_constraint` on the live project 2026-08-05: no CHECK exists
 `rides.title`, `rides.description`, `rides.meeting_point`, `rides.route_description`, or
 `rides.max_riders`. Each SHALL gain a CHECK matching its Zod schema exactly.
 
+**Nine of the ten are still live. `rides.max_riders` is not** — `077` (PD-293) dropped the column
+and `018`'s `rides_max_riders_range` with it, so the requirement holds over the remaining nine.
+
 The bounds themselves are not new decisions. `clubs` and `rides` bounds were chosen rather
 than measured (their Figma frames are OLD-stylesheet and marked To do) and the migration
 adopts them as written rather than reopening them.
@@ -407,10 +410,13 @@ folders, none granted to anything but `authenticated`, and none of them UPDATE.
   `club-covers/` outside their own folder
 - **THEN** Storage SHALL refuse the upload
 
-#### Scenario: Unenforced capacity is recorded, not silently assumed
-- **WHEN** `rides.max_riders` is set
-- **THEN** nothing SHALL claim it is enforced: no policy, trigger or constraint limits
-  `ride_members` by it, and this migration does not add one
+#### Scenario: No capacity rule is claimed for `ride_members`
+- **WHEN** a rider joins a ride
+- **THEN** nothing SHALL limit the size of its crew: `rides.max_riders` was enforced by
+  `063` and dropped, column and trigger together, by `077` (PD-293) — the design draws no
+  capacity affordance anywhere, so the rule could only reach a rider as an unexplained refusal
+- **AND** nothing SHALL claim otherwise: `RIDE_CREW_LIMIT` bounds what the crew rail *renders*
+  and is not a database rule
 
 ### Requirement: A child table whose audience is NARROWER than its parent's SHALL enforce that by composition, never by a privileged helper alone
 
