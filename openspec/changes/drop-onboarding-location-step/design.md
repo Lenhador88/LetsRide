@@ -155,6 +155,33 @@ The special case it replaces — *step 2 cannot be reached before step 1* — di
 Its comment should not be deleted silently; the migration from two steps to one is what makes it
 moot, and the replacement comment should say so.
 
+**The catch-all only works if `RouteGuard` mounts for an unmatched URL, and that was measured
+rather than reasoned about.** The doubt is real and specific: `not-found.tsx` sits at `(app)/`,
+`/onboarding/*` is outside that route group, and if Next served a bare 404 without rendering the
+root layout then `RouteGuard` — which is mounted in the **root** layout — would never run, leaving
+the rider on a dead page with no way back and the redirect above never firing. That is a framework
+behaviour, not a repo one, so it is the kind of thing the next session re-derives or, worse,
+assumes:
+
+```bash
+npm run build && npx next start &
+curl -si localhost:3000/onboarding/location | head -40   # compare against /auth/login
+```
+
+**Measured: HTTP 404, and the response body carries the root layout and the guard.** The markup
+holds `<body class="min-h-full bg-background text-foreground font-sans antialiased">` and
+`RouteGuard`'s `logo-splash` image, byte-identical in that region to `/auth/login`, with no visible
+404 text anywhere. So the root layout renders, the guard mounts, the splash paints and the redirect
+fires — the rider sees the ordinary boot, not a 404. **The status code stays 404 and that is
+correct**: it is a real unmatched URL, and the redirect is a client-side decision layered on top of
+an honest status rather than a rewrite of it.
+
+Two consequences worth keeping. The `(app)/not-found.tsx` boundary is **not** what saves this, so
+moving or deleting it changes nothing here — do not read this measurement as depending on it. And
+because the guard's answer arrives after hydration, this is a redirect rather than a render: a
+rider on a slow connection sees the splash first, which is the same first paint every cold load
+already produces.
+
 ## D7. The availability check tells a rider their own name is taken
 
 `056`'s `public.username_exists(p_username text)` is
@@ -169,13 +196,29 @@ with **no exclusion for the caller**. `security invoker`, and its own comment sa
 can see, so retyping the name they already chose returns `true` and the field draws
 `USERNAME_TAKEN_MESSAGE` in red.
 
-That is unreachable today — the only screen calling it is the username step, and a rider reaches it
-once, before they have a name. **This change makes it reachable**, because §D3's recovery path and
-§Q1's mid-wizard rider both consist of returning to that screen *with a username already set*.
+**This is a shipped defect, not one this change pre-empts** — an earlier revision of this section
+said the opposite ("unreachable today; the only screen calling it is the username step, and a rider
+reaches it once, before they have a name") and that was wrong in a way worth naming, because the
+same reasoning is what makes it invisible. `/onboarding/location` carries
+`back={{ href: '/onboarding/username', label: 'Back' }}`, and the guard **permits** the move: its
+own comment says *"Going backwards stays allowed — step 2 has a Back link, and editing a username
+you already chose is fine"*, and `guard.test.ts` carried a case named *"may still go backwards to
+step 1 once step 2 is reachable"* proving it. So on `main` today, a rider who picks a name,
+advances, taps Back and retypes the name they just chose is told in red that it is taken.
+
+What this change does is make that path **ordinary** rather than merely available: §D3's recovery
+after a partially-failed completion, and §Q1's mid-wizard rider at the deploy, both consist of
+arriving at that screen with a username already set, and neither requires anyone to press Back.
+
+The correction matters beyond the sentence. "Unreachable today" is the reasoning that would have
+made this a follow-up ticket, and it survives review easily because it is *nearly* true — the
+screen is reached once in the happy path. A defect reachable only by a Back button is still
+reachable by every rider who presses one.
 
 **Decision: fix the function, in `075`, rather than documenting what the rider sees.** One
 predicate — `and profiles.id <> (select auth.uid())`. Three reasons, and the first is the one that
-settles it:
+settles it — note that the first two now argue for fixing a live defect rather than for
+forestalling a new one:
 
 - **§D3 is a safety argument, and it is only sound if the retry is clean.** The two-round-trip
   window is defended in this proposal on the grounds that the recovery is the screen the rider is

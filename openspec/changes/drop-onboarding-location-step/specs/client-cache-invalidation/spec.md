@@ -9,10 +9,50 @@ them is about the **query** cache in `src/lib/query/`. This one is about the **g
 `keys.ts` entry. It is ADDED rather than folded into `Every mutation SHALL declare what it
 invalidates` for that reason.
 
+**This delta also carries one MODIFIED requirement**, `Redirect-after-write SHALL survive the loss
+of server redirects`, whose `Onboarding still advances one step at a time` scenario asserts a
+location step that stops existing. No other active change claims it — re-derive with the command
+below — so archiving replaces it with no race. It is here rather than in `client-render-shell`
+because that is where it lives in the standing spec.
+
 Re-derive before archiving:
 
     grep -rn "^### Requirement:" openspec/changes/*/specs/ | grep -v archive
 -->
+
+## MODIFIED Requirements
+
+### Requirement: Redirect-after-write SHALL survive the loss of server redirects
+
+A successful create SHALL navigate the rider to the created resource or the list containing it,
+and MUST NOT leave the form indistinguishable from never having been submitted.
+
+Twelve action call sites end in `redirect()` from `next/navigation` — signup, both onboarding
+steps, password update, sign-out, club creation, ride creation, postcard creation. A client
+mutation cannot redirect from the server, and the redirect is load-bearing in at least two
+places: it is what makes "posted" distinguishable from "not submitted yet" when both states
+are `{ error: null }`.
+
+**The onboarding half of that list is one step shorter since PD-286**, and the scenario below is
+rewritten rather than dropped. `setUsername` no longer hands off to a second wizard screen: it is
+the terminal step, so its redirect is `/postcards` and the property worth asserting moves with it.
+What has to survive is the *reason* the scenario existed — a wizard step whose success is
+indistinguishable from its initial state strands the rider on it — not the number of steps.
+
+#### Scenario: Success is distinguishable from the initial state
+- **WHEN** a create action succeeds
+- **THEN** the rider SHALL be navigated to the created resource or the list that now contains it
+- **AND** the form SHALL NOT be left in a state indistinguishable from never having been
+  submitted
+
+#### Scenario: Onboarding still advances one step at a time
+- **WHEN** the username step succeeds
+- **THEN** the rider SHALL land on `/postcards`, because it is the last step of the wizard and
+  commits `onboarding_completed_at` itself
+- **AND** the rider SHALL NOT reach any app route before the username is set, which the route
+  guard enforces as a redirect and `023`'s participation gate enforces as a refusal
+- **AND** the redirect SHALL name a destination rather than a wizard step, leaving the guard to
+  resolve where a rider actually belongs — the shape `acceptTerms` already uses
 
 ## ADDED Requirements
 

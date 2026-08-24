@@ -384,6 +384,13 @@ background gradient included — and made a tab tap read as a page reload.
 finishes a step and is sent straight back into it. `npm run walk` has a phase that measures this
 — see `docs/HANDOFF.md` §The walk.
 
+**An unmatched URL still reaches it, and that is measured rather than assumed.** `not-found.tsx`
+sits at `(app)/`, so a path outside that group — `/onboarding/*`, say — falls to Next's built-in
+404, and the guard only redirects if the ROOT layout renders for it. It does: `next start`, then
+`curl -s localhost:3000/onboarding/location` returns 404 **with** the root `<body>` class and
+`RouteGuard`'s `logo-splash`, identical to a real route. So a deleted step's URL in a bookmark
+redirects rather than dead-ending.
+
 **It is not a security boundary and must never be treated as one.** RLS is. Every rule the
 guard enforces has a database counterpart — `023` refuses content writes without a consent
 stamp, `003`/`012` own the completion invariants, `025` means the client cannot even read the

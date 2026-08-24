@@ -388,9 +388,18 @@ $$;
 -- see hold this name" with no exclusion for the caller's own row — so a rider
 -- retyping the name they already hold is told it is taken, in red, by the field.
 --
--- That is unreachable TODAY: the only screen calling it is the username step,
--- and a rider reaches it once, before they have a name. **This change is what
--- makes it reachable.** With the location step gone, the username step is the
+-- **It is reachable on `main` today — this change does not create it, it fixes
+-- it.** An earlier draft of this header claimed the opposite, on the reasoning
+-- that the username step is reached once, before a rider has a name. That is
+-- wrong: the location step carried `back={{ href: '/onboarding/username' }}`
+-- and the guard permitted it, which the deleted test case `may still go
+-- backwards to step 1 once step 2 is reachable` asserted. So a rider who picked
+-- a name, advanced, tapped Back and retyped it is told it is taken, in red,
+-- right now. Recorded precisely because a migration file is append-only once
+-- applied, so a wrong claim here is permanent.
+--
+-- What this change does is make it MATTER. With the location step gone, the
+-- username step is the
 -- one that completes onboarding, and the proposal's safety case for its two
 -- writes (username, then the RPC) is that the recovery from a failure between
 -- them is the screen the rider is already on — with a username already set. A
