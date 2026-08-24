@@ -602,9 +602,9 @@ than from here: 5 refused-sign-in assertions, 4 refused-signup assertions when t
 (0 when it does not), 9 refused-ride-create assertions (8 with no club, so the club `<select>` is
 not drawn), 4 refused-club-create assertions, 2 or 3 refused-edit assertions (2 on the club edit
 form, which has no select), 4 refused-profile-edit assertions, then `all N taps navigated`,
-`no stamp re-read`, `the shell stayed mounted`, `the splash never painted`, then 6 signed-in guard
+`no stamp re-read`, `the shell stayed mounted`, `the splash never painted`, then 7 signed-in guard
 rules, 4 sign-out assertions and 5 signed-out guard rules. The walk discovers detail routes from
-the lists, checks eleven route-guard redirects in both signed-in and signed-out states, asserts
+the lists, checks twelve route-guard redirects in both signed-in and signed-out states, asserts
 sign-out leaves no `sb-*` key in `localStorage`, no `sb-*` cookie and no reachable screen, and makes
 five bottom-tab taps across the four tabs to prove a navigation costs no `my_onboarding_state()`
 re-read, does not remount
@@ -636,6 +636,16 @@ input, an uncontrolled textarea and an uncontrolled checkbox in a single refusal
 `checkEditProfileRetention` is the only phase touching the one form where `retaining`'s
 `defaultValue` fallback ever reaches a *stored* value (`state.retained.location ?? profile.location
 ?? ''`) rather than an empty string, and asserts that fallback on load before submitting anything.
+**Its refusal trigger is a 101-character location, not a whitespace one, and that is load-bearing
+rather than incidental** — `075` (PD-286) made the field optional, so a whitespace value now
+SUCCEEDS, which would clear the walk account's stored location on DEV and break this phase's own
+first assertion on every later run. `max(100)` is what still refuses. **Nothing in the repo seeds
+that account's location**, so confirm it is non-null before reading a failure here as a
+regression:
+
+```sql
+select location from public.profiles where id = (select id from auth.users where email = '<WALK_EMAIL>');
+```
 `checkRefusedSignup` reuses the walk's own already-registered address and proves only the DEV
 branch of `signUp` — with confirmation ON (PROD) GoTrue's duplicate-signup mitigation returns
 success instead, so the `alreadyRegistered` branch this phase exercises is unreachable there; the
