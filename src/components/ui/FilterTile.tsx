@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
-import { cn, getInitials } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 /**
  * `v2 / Component / Filter Bar / Item` and the `List` frame that holds it —
@@ -154,13 +154,13 @@ export function FilterClubImage({
   const showCover = !!coverUrl && coverUrl !== brokenCover
 
   if (!showCover) {
-    return avatarUrl ? (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-    ) : (
-      <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-foreground">
-        {getInitials(name)}
-      </span>
+    // Through `Avatar` rather than a bare `<img>` so a dead signed URL degrades
+    // to initials here too. A club transfer nulls both image paths and deletes
+    // the objects while a cached filter row still holds the URL — the same case
+    // the cover branch below handles, and without this the identical club draws
+    // the browser's broken-image glyph when it happens to have no cover.
+    return (
+      <Avatar src={avatarUrl} name={name} size="lg" className="h-full w-full rounded-none" />
     )
   }
 

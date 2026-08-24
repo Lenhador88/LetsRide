@@ -214,10 +214,15 @@ being called done.
       as the same optical size. Selected is a 2px `Accent Brand/100` ring sitting 4px outside
       the image (72 for a circle, 68 at radius 12 for a square) plus an accent-filled badge.
       "All new" is a 2×2 collage of the four newest photos.
-- [ ] **Shape is the only differentiator** — the design gives riders and clubs no label,
-      grouping or badge to tell them apart, only a 4px difference in corner radius at 60px.
-      Built as drawn. Worth a second look on a real device before it ships to riders; the
-      product owner has already flagged it as a possible readability problem.
+- [x] ~~**Shape is the only differentiator**~~ **Fixed for clubs 2026-08-24 (PD-284).** The
+      design gave riders and clubs no label, grouping or badge — only a 4px difference in
+      corner radius at 60px, which is what the product owner flagged as a readability
+      problem. A club tile now draws `ClubCard`'s composition instead: cover behind, avatar
+      in front, degrading to the old full-tile avatar when there is no cover. **The residual
+      is the rider tile**, which is still shape-only — that is now a difference against a
+      thing that looks unmistakably like a club rather than against a 4px radius, so it is
+      recorded rather than open. Figma still draws the flat single image; this composition
+      exists only in code.
 - [ ] **Badge semantics** — see the unread-count gap above. The tile currently badges how many
       postcards in the feed window come from that rider or club.
 
@@ -966,11 +971,16 @@ Blocked on schema, same shape as the ride detail's banner:
 
       The signing fan-out is the part worth knowing about: **nine components render an
       avatar and all nine read `avatar_url`**, so `resolveAvatarUrls` writes the signed URL
-      *into that field* rather than adding a second one. **Nine call sites**, counted with
-      `git grep -c "await resolveAvatarUrls(" -- src/ ':!src/**/__tests__/**'` rather than by
-      hand. **The pathspec exclusion is not tidiness** — without it `media.test.ts` alone
-      contributes five and the command answers 14 against a claim of nine, which reads as
-      drift on a correct file. The first draft
+      *into that field* rather than adding a second one. **Twelve call sites**, counted with
+      `git grep -c "resolveAvatarUrls(" -- src/ ':!src/**/__tests__/**' | awk -F: '{s+=$2} END {print s}'`
+      minus the one definition. **Two things that number gets wrong if either is dropped.**
+      The pathspec exclusion: without it `media.test.ts` alone contributes five and the
+      answer is 17. And the pattern must NOT be anchored on `await ` — three call sites sit
+      inside a `Promise.all` and carry no `await`, so the awaited-only version answered
+      **nine** while twelve existed, and read as verified because nine was also the number
+      written down. That is the comment trap's shape arriving through a grep anchor instead
+      of a comment: a measured-looking command, blind in exactly one direction. The first
+      draft
       of this line said "five", and the two it overlooked (`collageAvatars` on the rides
       filter bar, and the v1 club page) were precisely the two that had been left unsigned.
       Miss one and avatars fall back to initials on that screen alone, which reads as a

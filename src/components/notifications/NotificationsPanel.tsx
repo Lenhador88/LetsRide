@@ -146,7 +146,12 @@ export function NotificationsPanel({
         aria-modal="true"
         aria-label="Notifications"
         tabIndex={-1}
-        className="fixed inset-x-4 top-[calc(var(--header-height)+1px+0.5rem)] z-[70] flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-lg outline-none"
+        // The `max-h` is not belt-and-braces: without it the panel has no
+        // viewport-relative bound at all, and five rows plus the footer is
+        // ~408px — taller than a landscape phone. Page scroll is locked while
+        // this is open and the footer sits OUTSIDE the list's own scroller, so
+        // `Show all` would be unreachable rather than merely off-screen.
+        className="fixed inset-x-4 top-[calc(var(--header-height)+1px+0.5rem)] z-[70] flex max-h-[calc(100dvh-var(--header-height)-2rem)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-lg outline-none"
       >
         {gate.error ? (
           <ErrorState
@@ -162,7 +167,11 @@ export function NotificationsPanel({
         ) : (
           // Five rows (22.5rem) visible before the list scrolls internally —
           // see the header comment for the measurement this is built on.
-          <ul className="flex max-h-[22.5rem] flex-col overflow-y-auto">
+          // `min-h-0` so this can shrink below its content inside the bounded
+          // flex column above — without it a flex item's automatic minimum size
+          // keeps it at full height and pushes the footer out of the panel,
+          // which is the same defect the `max-h` exists to prevent.
+          <ul className="flex max-h-[22.5rem] min-h-0 flex-col overflow-y-auto">
             {list.data.map((row) => (
               <li key={row.id} className="border-b border-border last:border-b-0">
                 <NotificationsListItem row={row} viewerId={viewerId} />
@@ -174,7 +183,13 @@ export function NotificationsPanel({
         <Link
           href={linkWithOrigin('/notifications', from)}
           onClick={onClose}
-          className="flex h-12 shrink-0 items-center justify-center border-t border-border text-sm font-semibold text-accent transition-colors active:bg-border"
+          // `text-accent-strong`, not `text-accent`: 14px/600 is not WCAG large
+          // text, so the bar is 4.5:1 and the brand green measures 3.52:1 on
+          // `bg-surface`. `accent-strong` is 4.75:1 on white and exists for
+          // exactly this — see its comment in globals.css. The existing
+          // `text-accent` links sit on the cream background, which is a
+          // different pairing (3.00:1) and a separate question.
+          className="flex h-12 shrink-0 items-center justify-center border-t border-border text-sm font-semibold text-accent-strong transition-colors active:bg-border"
         >
           Show all
         </Link>
