@@ -1,5 +1,5 @@
 import { getInitials } from '@/lib/utils'
-import { FilterBar, FilterCollage, FilterTile } from '@/components/ui/FilterTile'
+import { FilterBar, FilterClubImage, FilterCollage, FilterTile } from '@/components/ui/FilterTile'
 import type { PostcardFilterOption, PostcardFilters } from '@/types'
 
 /**
@@ -8,7 +8,9 @@ import type { PostcardFilterOption, PostcardFilters } from '@/types'
  * The tile itself lives in `components/ui/FilterTile` — it is one Figma
  * component set shared with the rides bar, and every measurement is documented
  * there. What is specific to this bar is only *which* tiles it draws: the "All
- * new" collage, then every rider, then every club in the feed window.
+ * new" collage, then every rider, then every club in the feed window. A club
+ * tile's image is `FilterClubImage` (PD-284); a rider's stays the plain
+ * avatar-or-initials `TileImage` below, since a rider has no cover to draw.
  */
 type PostcardFilterBarProps = {
   filters: PostcardFilters
@@ -40,13 +42,18 @@ export function PostcardFilterBar({ filters, active }: PostcardFilterBarProps) {
           selected={active?.kind === item.kind && active.id === item.id}
           shape={item.kind === 'rider' ? 'circle' : 'square'}
         >
-          <TileImage option={item} />
+          {item.kind === 'club' ? (
+            <FilterClubImage name={item.name} avatarUrl={item.imageUrl} coverUrl={item.coverUrl} />
+          ) : (
+            <TileImage option={item} />
+          )}
         </FilterTile>
       ))}
     </FilterBar>
   )
 }
 
+/** A rider tile's image — a club tile's is `FilterClubImage` above. */
 function TileImage({ option }: { option: PostcardFilterOption }) {
   if (!option.imageUrl) {
     return (

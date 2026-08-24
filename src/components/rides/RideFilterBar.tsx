@@ -1,7 +1,6 @@
 import { BikeIcon } from '@/components/icons/generated'
-import { FilterBar, FilterCollage, FilterTile } from '@/components/ui/FilterTile'
-import { getInitials } from '@/lib/utils'
-import type { RideFilter, RideFilterOption, RideFilters } from '@/types'
+import { FilterBar, FilterClubImage, FilterCollage, FilterTile } from '@/components/ui/FilterTile'
+import type { RideFilter, RideFilters } from '@/types'
 
 /**
  * `v2 / Component / Filter Bar / Rides` — the same component set as the
@@ -13,7 +12,9 @@ import type { RideFilter, RideFilterOption, RideFilters } from '@/types'
  *    imagery behind it, and the only one that is a *predicate* rather than an
  *    entity.
  * 2. **All rides** — the 2×2 collage.
- * 3. **One per club**, rounded squares, for every club with an upcoming ride.
+ * 3. **One per club**, rounded squares, for every club with an upcoming ride —
+ *    `FilterClubImage`'s cover-behind, avatar-in-front treatment (PD-284), the
+ *    same component `PostcardFilterBar` gives its own club tiles.
  *
  * The design also draws a rider tile among the clubs ("itchyboots"). It is not
  * built — see the note on `RideFilter` in src/types.
@@ -59,21 +60,9 @@ export function RideFilterBar({ filters, active }: RideFilterBarProps) {
           selected={active?.kind === 'club' && active.id === club.id}
           shape="square"
         >
-          <ClubImage club={club} />
+          <FilterClubImage name={club.name} avatarUrl={club.imageUrl} coverUrl={club.coverUrl} />
         </FilterTile>
       ))}
     </FilterBar>
   )
-}
-
-function ClubImage({ club }: { club: RideFilterOption }) {
-  if (!club.imageUrl) {
-    return (
-      <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-foreground">
-        {getInitials(club.name)}
-      </span>
-    )
-  }
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={club.imageUrl} alt="" className="h-full w-full object-cover" />
 }

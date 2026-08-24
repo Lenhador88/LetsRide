@@ -1,9 +1,9 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
-import { CLUB_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
-import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
+import { CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { resolveAvatarUrls, resolveClubImageUrls, signImagePaths } from '@/lib/data/media'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import type {
-  EmbeddedClub,
+  ClubFilterEmbed,
   FeedPage,
   Postcard,
   PostcardFilterOption,
@@ -18,7 +18,7 @@ export type FeedFilter = { kind: 'rider' | 'club'; id: string }
 type FilterRow = {
   image_path: string
   author: PublicProfile | null
-  club: EmbeddedClub | null
+  club: ClubFilterEmbed | null
 }
 
 // The raw shape PostgREST returns before the like state is folded in:
@@ -284,7 +284,7 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
     await supabase
       .from('postcards')
       .select(
-        `image_path, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}), club:clubs(${CLUB_EMBED_COLUMNS})`
+        `image_path, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}), club:clubs(${CLUB_FILTER_EMBED_COLUMNS})`
       )
       .order('created_at', { ascending: false })
       .limit(limit),
@@ -299,10 +299,15 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
   // `clubs.avatar_url`, which parsed, typed and rendered — and was NULL on every
   // row, so the tile showed initials and looked settled. `024` dropped the
   // column; this pass is what actually draws the club's avatar.
-  await resolveAvatarUrls(
-    rows.flatMap((row) => [row.author, row.club]),
-    supabase
-  )
+  //
+  // Two signing passes, run concurrently: a rider embeds only `avatar_path`,
+  // a club also carries `cover_image_path` for PD-284's banner-behind-avatar
+  // tile, and `resolveAvatarUrls` deliberately never touches that second
+  // column (see its own header) — `resolveClubImageUrls` is the pass that does.
+  await Promise.all([
+    resolveAvatarUrls(rows.map((row) => row.author), supabase),
+    resolveClubImageUrls(rows.map((row) => row.club), supabase),
+  ])
 
   const riders = new Map<string, PostcardFilterOption>()
   const clubs = new Map<string, PostcardFilterOption>()
@@ -317,6 +322,7 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
           id: row.author.id,
           name: row.author.username ?? 'Rider',
           imageUrl: row.author.avatar_url,
+          coverUrl: null,
           count: 1,
         })
     }
@@ -330,6 +336,7 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
           id: row.club.id,
           name: row.club.name,
           imageUrl: row.club.avatar_url,
+          coverUrl: row.club.cover_image_url,
           count: 1,
         })
     }

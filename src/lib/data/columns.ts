@@ -102,28 +102,47 @@ export const VIEWED_PROFILE_COLUMNS =
   'id, username, avatar_path, cover_image_path, bio, location, created_at'
 
 /**
- * The club columns an embed needs to draw a club's **image**.
+ * The club columns an embed needs to draw a club's **avatar** — never its
+ * cover. Same rule as `PUBLIC_PROFILE_COLUMNS`, and it exists because `024`
+ * turned a silent wrong answer into a loud one. Five query sites embedded
+ * `clubs(id, name, avatar_url)`, and `clubs.avatar_url` was NULL on every row
+ * and always had been, so any of them that drew an image drew initials instead
+ * — while `/clubs/new` had been uploading to `avatar_path` since `016`, which
+ * the Clubs screens sign and no other screen did.
  *
- * Same rule as `PUBLIC_PROFILE_COLUMNS`, and it exists because `024` turned a
- * silent wrong answer into a loud one. Five query sites embedded `clubs(id,
- * name, avatar_url)`, and `clubs.avatar_url` was NULL on every row and always
- * had been, so any of them that drew an image drew initials instead — while
- * `/clubs/new` had been uploading to `avatar_path` since `016`, which the Clubs
- * screens sign and no other screen did.
+ * **Two call sites draw an image with this constant today: the ride-detail
+ * chip (`getRide`) and the notifications trailing thumbnail (`club_joined`).
+ * `RideCard` and `PostcardCard` render the club as a text chip**, so `getRides`
+ * and the postcard deck embed `id, name` and neither selects nor signs an image
+ * nothing renders. Getting that wrong costs a signing round trip per page and
+ * ships a signed URL in the payload for no reader.
  *
- * **Three of those five draw an image; two draw text.** Use this constant only
- * for the three — the ride-detail chip, the ride filter tiles and the postcard
- * filter tiles. `RideCard` and `PostcardCard` render the club as a text chip, so
- * `getRides` and the postcard deck embed `id, name` and neither selects nor
- * signs an image nothing renders. Getting that wrong costs a signing round trip
- * per page and ships a signed URL in the payload for no reader.
- *
- * It was latent rather than live: as of 2026-08-05 no club and no rider has any
- * `avatar_path` either, so nothing has yet rendered differently. The defect is
- * that the code read a column that could never hold a value.
+ * **The ride and postcard filter tiles used to be on this list and no longer
+ * are** — PD-284 gave a club tile the club-list treatment (cover behind,
+ * avatar in front), which needs a column this constant deliberately withholds
+ * from everything else. They read `CLUB_FILTER_EMBED_COLUMNS` below instead.
  *
  * Selecting the path is only half of it: the caller must then sign it, which is
  * why every use of this constant is followed by a `resolveAvatarUrls` pass over
  * the embedded clubs.
  */
 export const CLUB_EMBED_COLUMNS = 'id, name, avatar_path'
+
+/**
+ * The club columns a **filter-bar tile** needs — `CLUB_EMBED_COLUMNS` plus
+ * `cover_image_path`, for the banner-behind-avatar treatment `FilterClubImage`
+ * draws (PD-284, `ui/FilterTile.tsx`).
+ *
+ * A separate constant rather than widening `CLUB_EMBED_COLUMNS` itself, for the
+ * same reason `VIEWED_PROFILE_COLUMNS` stays narrower than the grant it draws
+ * from: the cover is what one screen shape draws, not what a club embed always
+ * carries, and folding it into the shared constant would ship it to the
+ * ride-detail chip and the notifications thumbnail — a column read and signed
+ * for nothing rendered.
+ *
+ * Used by `getPostcardFilters` and `getRideFilters` only. Both sign the result
+ * through `resolveClubImageUrls` (`lib/data/media.ts`), not
+ * `resolveAvatarUrls`, because a tile needs both `avatar_url` and
+ * `cover_image_url` signed.
+ */
+export const CLUB_FILTER_EMBED_COLUMNS = 'id, name, avatar_path, cover_image_path'

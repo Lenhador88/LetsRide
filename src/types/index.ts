@@ -467,11 +467,17 @@ export type RideChatMessage = RideMessage & {
   pending?: boolean
 }
 
-/** One club tile in the rides filter bar. */
+/**
+ * One club tile in the rides filter bar. `coverUrl` is the club's cover for
+ * `FilterClubImage`'s banner-behind-avatar treatment (PD-284) — see
+ * `PostcardFilterOption.coverUrl`, which carries the same field for the same
+ * reason.
+ */
 export type RideFilterOption = {
   id: string
   name: string
   imageUrl: string | null
+  coverUrl: string | null
   count: number
 }
 
@@ -497,21 +503,37 @@ export type RideFilters = {
 }
 
 /**
- * A club as it appears *embedded on something else* — the chip above a ride, a
- * tile on a filter bar. `CLUB_EMBED_COLUMNS` in lib/data/columns.ts is the query
- * half of this type; keep the two together.
+ * A club as it appears *embedded on something else* — the ride-detail chip, the
+ * notifications trailing thumbnail. `CLUB_EMBED_COLUMNS` in lib/data/columns.ts
+ * is the query half of this type; keep the two together.
  *
  * `avatar_path` is what the query selects. `avatar_url` is the signed URL
  * `resolveAvatarUrls` writes over it at read time — **not** a column: `024`
  * dropped `clubs.avatar_url`. Both fields are present for the same reason
  * `ClubListItem` carries both, and reading the wrong one is now a rendering bug
  * rather than a silent NULL.
+ *
+ * **Not what a filter-bar tile embeds any more** — see `ClubFilterEmbed` below.
  */
 export type EmbeddedClub = {
   id: string
   name: string
   avatar_path: string | null
   avatar_url: string | null
+}
+
+/**
+ * A club as a **filter-bar tile** embeds it — `EmbeddedClub` plus the cover,
+ * for the banner-behind-avatar treatment `FilterClubImage` draws (PD-284).
+ * `CLUB_FILTER_EMBED_COLUMNS` in lib/data/columns.ts is the query half.
+ *
+ * `cover_image_url` is signed by `resolveClubImageUrls`
+ * (`lib/data/media.ts`), not `resolveAvatarUrls` — that helper only ever
+ * touches `avatar_path`.
+ */
+export type ClubFilterEmbed = EmbeddedClub & {
+  cover_image_path: string | null
+  cover_image_url: string | null
 }
 
 export type Club = {
@@ -896,8 +918,14 @@ export type FeedPage = {
 /**
  * One item in the home screen's filter bar (`v2 / Component / Filter Bar / Item`).
  * `kind` is what the design draws as a shape: a rider is a circle, a club a
- * rounded square. That is the *only* thing distinguishing them visually, which is
- * a deliberate design choice recorded rather than second-guessed.
+ * rounded square. That used to be the *only* thing distinguishing them — flagged
+ * in docs/FIGMA-FIDELITY-TODO.md as invisible at 56px — until PD-284 gave a club
+ * tile the club-list treatment (`FilterClubImage`, `ui/FilterTile.tsx`): its
+ * `coverUrl` behind the avatar `imageUrl` already carries.
+ *
+ * `coverUrl` is club-only — a rider tile has no cover to draw, so it is always
+ * null for `kind: 'rider'`. Kept on the shared type rather than split per-kind,
+ * matching `imageUrl` and `count` above it.
  *
  * `count` is how many postcards in the current feed window come from this rider or
  * club. The design's badge means "new", which needs a seen/unseen model the schema
@@ -909,6 +937,8 @@ export type PostcardFilterOption = {
   id: string
   name: string
   imageUrl: string | null
+  /** The club's cover, for `FilterClubImage`. Always null for a rider tile. */
+  coverUrl: string | null
   count: number
 }
 
