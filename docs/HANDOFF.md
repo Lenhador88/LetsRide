@@ -2050,6 +2050,15 @@ indistinguishable from the outline on a phone — so the liked state is carried 
 alone, which is what the product owner chose. A second component was authored and then deleted;
 do not reintroduce one.
 
+**That has now happened twice, and the second time this section did not notice.** PD-266 built a
+filled variant on 2026-08-20 at the owner's request — not in Figma, but as `WaveFilledIcon` in
+`src/components/icons/derived.tsx`, the same exported path with its interior subpath dropped —
+and amended neither this section nor `.claude/agents/design-system.md`, so both read "no filled
+twin" for four days while one shipped. PD-287 reverted it on 2026-08-24 and deleted the file, so
+the paragraph above is true again. It is recorded because "authored and then deleted" now names
+two different attempts, and because the way it went wrong is the ordinary one: the code changed
+and the two documents asserting the opposite were not in the diff.
+
 **That is a legibility argument, not a tooling one, and the difference matters if you generalise
 it.** `Heart Filled`/`Heart Outline` and `Location Filled`/`Location Outline` both ship happily —
 `currentColor` rewriting collapses a pair only when the two are the *same* outline duplicated,

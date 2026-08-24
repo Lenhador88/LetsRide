@@ -111,7 +111,9 @@ stale one here fails silently in the exact way this check exists to prevent.
 `text-like` instead. The reason is legibility, not tooling: a solid hand silhouette loses the
 folded fingers and thumb the glyph depends on at 24px, and the bolder copy that was tried instead
 was indistinguishable from the outline. The product owner chose colour-only on that basis. A
-filled variant was authored and deleted — do not helpfully add one back.
+filled variant was authored and deleted — **twice**, most recently PD-266 on 2026-08-20, reverted
+by PD-287 on 2026-08-24 — so do not helpfully add one back, and do not read a request for one as
+settling it: the second attempt shipped for four days with this line still saying otherwise.
 
 **Filled/outline pairs are fine in general** — `Heart Filled`/`Heart Outline` and
 `Location Filled`/`Location Outline` both ship, and `currentColor` rewriting does not collapse

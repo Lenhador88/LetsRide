@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { WaveFilledIcon } from '@/components/icons/derived'
 import { WaveIcon } from '@/components/icons/generated'
 import { PostcardActionButton } from '@/components/postcards/PostcardAction'
 import { likePostcard, unlikePostcard } from '@/lib/actions/postcards'
@@ -21,16 +20,17 @@ type LikeButtonProps = {
  * The glyph is the motorcycle wave rather than a heart (PD-228) — the one
  * gesture every rider already knows.
  *
- * **Filled when liked, outline when not** — product owner, 2026-08-20. This
- * file used to argue for one glyph in two colours, on the grounds that a solid
- * hand loses the folded fingers that make the gesture legible at 24px. That
- * cost is real and is now paid deliberately; what it buys is a state
- * distinction that survives a rider who cannot tell Pink/100 from Grey. The
- * colour is kept alongside it, so the two states differ in shape *and* in
- * colour rather than trading one for the other.
+ * **One glyph in two colours: the outline always, `text-like` when liked.**
+ * It was filled-when-liked for four days (PD-266, 2026-08-20) and the product
+ * owner reversed it on 2026-08-24 (PD-287). The argument the fill overrode is
+ * the argument that stands again — a solid hand loses the folded fingers that
+ * make the gesture legible at 24px — and `WaveFilledIcon` came out with it,
+ * `src/components/icons/derived.tsx` having had no other caller.
  *
- * `WaveFilledIcon` is the same exported asset with its interior subpath
- * dropped, not a second drawing — see `src/components/icons/derived.tsx`.
+ * **Colour is therefore the only visual signal again**, which the two states
+ * are allowed to be: `Pink/100` against the default measures 4.51:1, clearing
+ * the 3:1 a colour-only distinction owes. `aria-pressed` below is the
+ * non-visual half and is not optional.
  *
  * `aria-pressed` is still the whole of the non-visual signal, which is why the
  * accessible name is **constant**. It used to flip to "Unlike…" when liked, and
@@ -69,13 +69,7 @@ export function LikeButton({ postcardId, likesCount, isLiked }: LikeButtonProps)
         count={count}
         label={`Like, ${count} likes`}
         className={pending ? 'opacity-70' : undefined}
-        icon={
-          liked ? (
-            <WaveFilledIcon className="h-6 w-6 text-like" />
-          ) : (
-            <WaveIcon className="h-6 w-6" />
-          )
-        }
+        icon={<WaveIcon className={liked ? 'h-6 w-6 text-like' : 'h-6 w-6'} />}
       />
       {error && (
         // Absolutely placed so a failed like cannot reflow the action row and

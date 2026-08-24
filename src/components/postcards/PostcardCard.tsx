@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import Link from 'next/link'
+import { LocationOutlineIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { LikeButton } from '@/components/postcards/LikeButton'
 import { CommentsLink } from '@/components/postcards/CommentsLink'
@@ -118,6 +119,23 @@ function PostcardCardComponent({
           className="pointer-events-none absolute inset-x-0 bottom-0 h-10"
           style={{ background: 'linear-gradient(180deg, #00000000 0%, #000000B3 100%)' }}
         />
+        {/* Bottom left, against the date's bottom right, both over the one
+            scrim that already exists for exactly this (PD-279). Capped at half
+            the width so a 200-character vendor name truncates instead of
+            running under the date — the column is bounded at 200, not at
+            something that fits.
+
+            Drawn on a name alone: a non-null `taken_place_name` IS the rider
+            having chosen to publish one, so there is no second column to
+            consult and no state where this appears without their say-so. See
+            the type. */}
+        {postcard.taken_place_name && (
+          <span className="absolute bottom-1.5 left-2 flex max-w-[50%] items-center gap-1 text-2xs font-medium text-white">
+            <LocationOutlineIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span className="truncate">{postcard.taken_place_name}</span>
+          </span>
+        )}
+
         <time
           dateTime={postcard.created_at}
           className="absolute right-2 bottom-1.5 text-2xs font-medium text-white"
