@@ -38,6 +38,10 @@ function row(overrides: Partial<RideRow> = {}): RideRow {
     organizer_id: ORGANIZER.id,
     // NULL on every ride in both databases until the render function ships.
     map_card_path: null,
+    // NULL is the ordinary case: every ride predating `resolve-ride-location`
+    // has no pair, and `nearbyRides` drops such a ride rather than counting it.
+    latitude: null,
+    longitude: null,
     organizer: ORGANIZER,
     club: null,
     riders: [],

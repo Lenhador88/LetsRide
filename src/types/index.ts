@@ -186,6 +186,20 @@ export type RideListItem = {
    * screen draws an avatar and takes the full `EmbeddedClub`.
    */
   club: Pick<EmbeddedClub, 'id' | 'name'> | null
+  /**
+   * Where the ride starts — `051`'s pair, filled by `resolve-ride-location`.
+   *
+   * **Carried on the card even though no card draws it** (PD-260). The near-you
+   * strip filters the list the rider already has rather than issuing a second,
+   * position-keyed read, so the coordinate has to travel with the row; the
+   * alternative re-keys the whole list on the rider's position and refetches it
+   * the moment that lands, which is the double-fetch the clubs screen documents.
+   *
+   * **Null is ordinary.** Any ride created before the geocoder deployed, and any
+   * whose geocode failed, has no pair — such a ride is never near anything.
+   */
+  latitude: number | null
+  longitude: number | null
   /** Drawn first in the avatar row, with the brand ring. */
   organizer: PublicProfile | null
   /** Organizer first, then the crew — capped at RIDE_AVATAR_LIMIT. */

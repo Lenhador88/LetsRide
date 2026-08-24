@@ -179,7 +179,31 @@ export type RideInput = z.infer<typeof rideSchema>
 export const rideSearchParamsSchema = z.object({
   filter: z.literal('mine').optional().catch(undefined),
   club: z.string().uuid().optional().catch(undefined),
+  /**
+   * The near-you toggle (PD-260). A separate axis from `filter`/`club` rather
+   * than a third `RideFilter` kind, because it composes with both — "my rides,
+   * near me" and "this club's rides, near me" are the states a rider asks for,
+   * and a discriminated union cannot hold them at once.
+   *
+   * It is also why it stays out of `parseRideFilter`: `RideFilter` is what the
+   * list *query* is keyed on, and this predicate is applied to the rows that
+   * query already returned. Folding it in would give the same rows two cache
+   * entries and refetch on every toggle.
+   */
+  near: z.literal('1').optional().catch(undefined),
 })
+
+/**
+ * Is the near-you filter on?
+ *
+ * A single literal rather than a boolean coercion: `?near=0` and `?near=false`
+ * both read as *on* under `Boolean(param)`, which is the trap that makes "turn
+ * it off" links silently no-ops. Only the value this app's own strip writes
+ * counts, and anything else is off.
+ */
+export function parseRideNear(params: { near?: string }): boolean {
+  return rideSearchParamsSchema.pick({ near: true }).parse(params).near === '1'
+}
 
 /**
  * `undefined` is the "All rides" tile.

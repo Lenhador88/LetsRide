@@ -106,15 +106,26 @@ export const RIDE_CREW_LIMIT = 200
  * so it does not have to be rediscovered.
  */
 /**
- * `map_card_path` only, and the other four columns `051` added are deliberately
- * absent. `latitude`, `longitude` and `geocode_confidence` are the render
- * function's inputs and no screen draws them — decision #3 is a static
- * thumbnail, so there is no client-side map to hand a coordinate to — and
- * `map_detail_path` belongs to a panel this query's consumer does not render.
- * Selecting a column nothing reads is a column the next rename has to find.
+ * `map_card_path`, plus the coordinate pair — and `geocode_confidence` and
+ * `map_detail_path` are still deliberately absent.
+ *
+ * **`latitude` and `longitude` are selected now because something finally reads
+ * them** (PD-260). Nothing draws them — decision #3 is a static thumbnail, so
+ * there is still no client-side map to hand a coordinate to — but the near-you
+ * strip measures against them, so they are the query's outputs rather than only
+ * the render function's inputs. The other two remain out under the rule that
+ * survives this change unaltered: selecting a column nothing reads is a column
+ * the next rename has to find.
+ *
+ * **A NULL pair is the ordinary case, not a fault.** Every ride created before
+ * `resolve-ride-location` deployed carries one, and so does any ride whose
+ * geocode failed. `distanceKm` answers `null` for it and `nearbyRides` drops
+ * it — a ride with no coordinate is never near anything, and must never be
+ * counted as though it were.
  */
 const RIDE_SELECT = `
   id, title, meeting_point, departure_at, organizer_id, map_card_path,
+  latitude, longitude,
   organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
   club:clubs(id, name),
   riders:ride_members(user_id, status, profile:profiles(${PUBLIC_PROFILE_COLUMNS}))
@@ -127,6 +138,9 @@ export type RideRow = {
   departure_at: string
   organizer_id: string
   map_card_path: string | null
+  /** `051`'s pair, null on any ride the geocoder never resolved. */
+  latitude: number | null
+  longitude: number | null
   /** Synthesised by `resolveRideMapUrls`, never selected — see `avatar_url`. */
   map_card_url?: string | null
   organizer: PublicProfile | null
@@ -168,6 +182,8 @@ export function toRideListItem(
     meeting_point: row.meeting_point,
     departure_at: row.departure_at,
     club: row.club,
+    latitude: row.latitude,
+    longitude: row.longitude,
     organizer: row.organizer,
     riders: riders.slice(0, RIDE_AVATAR_LIMIT),
     // The organizer counts even when their profile is not readable, which is
