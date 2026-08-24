@@ -973,6 +973,17 @@ const GUARD_CASES_SIGNED_IN = [
   ['/auth/signup', '/postcards'],
   ['/onboarding/username', '/postcards'],
   ['/onboarding/terms', '/postcards'],
+  // PD-286 (`075`) deleted this route. For a fully onboarded rider it is just
+  // another path under `/onboarding`, so `resolveDestination`'s existing
+  // `isOnboarding` branch sends it to /postcards with no code of its own —
+  // but that branch is what the guard's new catch-all for an *incomplete*
+  // rider also leans on (unknown /onboarding/* -> the resume step, rather
+  // than a 404 with the guard insisting they belong there). `guard.test.ts`
+  // covers the decision as a pure function; this line is the one gate that
+  // renders anything, so it is what would have caught a deleted route
+  // 404ing while the guard still claims it — PD-125's shape exactly, a
+  // screen nobody can reach with every other gate green.
+  ['/onboarding/location', '/postcards'],
   // Q1, and it broke recovery once: a recovery link establishes an ordinary
   // session before landing here, so a signed-in rider must NOT be bounced.
   ['/auth/reset-password', '/auth/reset-password'],
@@ -1426,9 +1437,12 @@ async function checkEditRetention(candidates) {
  * **The first assertion is the `??` chain's read of the stored value, before
  * anything is submitted** — `state.retained.location` is `{}` on first
  * render, so a non-empty field on load can only have come from `profile`.
- * The walk account is fully onboarded, and `023`'s completion trigger refuses
- * the onboarding stamp while `location` is NULL, so a non-empty value here is
- * guaranteed rather than assumed for this account.
+ * PD-286 (`075`) dropped `location` from the onboarding gate, so this is no
+ * longer a rule `023`'s trigger enforces for every rider — it is a fact about
+ * the walk account specifically, which carries a location from before that
+ * change. 7.4d in that proposal's tasks is what keeps the walk account
+ * carrying one; if this assertion ever starts failing, that is the first
+ * place to look rather than a regression in the retention logic below.
  *
  * **The error region is `role="alert"` (`FormError`), not `role="status"`
  * like the ride/club forms above** — this form draws no live alert while
@@ -1436,9 +1450,15 @@ async function checkEditRetention(candidates) {
  * false-positive trap to guard against and alert text is safe to wait on
  * directly.
  *
- * Refused the same way as the create phase: `noValidate` lets a
- * whitespace-only `location` reach `updateProfile`, and `profileEditSchema`'s
- * `.trim().min(1)` refuses it before any query runs.
+ * Refused the same way as the create phase, but not on whitespace any more:
+ * `location` is optional since PD-286, so a whitespace-only value trims to
+ * `''` and `updateProfile` accepts it — filling it that way would both fail
+ * to trigger a refusal and clear the account's stored location, poisoning
+ * the first assertion on every later run. The trigger is a 101-character
+ * location instead: `profileEditSchema`'s `optionalText` still carries
+ * `max(100)`, so `noValidate` still lets it reach `updateProfile` and Zod
+ * still refuses it before any query runs — same field, same refusal
+ * mechanism, no data loss.
  */
 async function checkEditProfileRetention() {
   let bad = 0
@@ -1463,7 +1483,8 @@ async function checkEditProfileRetention() {
   )
 
   const bikeModel = `Walk probe bike ${Date.now()}`
-  await page.fill(field('location'), '   ')
+  const tooLongLocation = 'A'.repeat(101)
+  await page.fill(field('location'), tooLongLocation)
   await page.fill(field('bike_model'), bikeModel)
 
   await page.click('button[type="submit"]')
@@ -1486,7 +1507,11 @@ async function checkEditProfileRetention() {
   report(Boolean(refusal), 'the refusal is reported', 'no alert text on screen')
 
   const locationAfter = await page.inputValue(field('location')).catch(() => null)
-  report(locationAfter === '   ', 'location survives it', `read ${JSON.stringify(locationAfter)}`)
+  report(
+    locationAfter === tooLongLocation,
+    'location survives it',
+    `read ${JSON.stringify(locationAfter)}`
+  )
 
   const bikeAfter = await page.inputValue(field('bike_model')).catch(() => null)
   report(bikeAfter === bikeModel, 'bike_model survives it', `read ${JSON.stringify(bikeAfter)}`)
