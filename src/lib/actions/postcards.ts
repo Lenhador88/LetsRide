@@ -103,7 +103,7 @@ export async function unlikePostcard(postcardId: string): Promise<ActionState> {
  * what fails.
  *
  * Signature matches the FormData + useActionState shape every other
- * multi-field write in this app uses (see setUsername/setLocation) — the
+ * multi-field write in this app uses (see setUsername/updateProfile) — the
  * form a future create-postcard screen renders would carry `imagePath` in a
  * hidden input, set once uploadPostcardImage resolves, alongside a caption
  * textarea and a club selector.

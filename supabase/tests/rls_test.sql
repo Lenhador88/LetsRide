@@ -3092,14 +3092,31 @@ select set_config('test.uid', '00000000-0000-0000-0000-000000000014', false);
 select assert_rejected($$select public.complete_onboarding('Coimbra')$$,
   '23514', 'complete_onboarding() refuses while username is NULL');
 
--- The location argument. NULL is the arm 018's CHECK cannot cover, because
--- profiles_location_length deliberately permits NULL — every rider is NULL there
--- between signup and step 2.
+-- The location argument, and these are EXPECTED-VALUE FLIPS rather than
+-- renames. Both labels asserted a 23514 until 075 (PD-286) deleted the arm that
+-- raised it, so the old wording names a rule the schema no longer has. They are
+-- kept in place, inverted, with a `075:` prefix and the reason stated — a
+-- session reconciling label sets against `development` has to be able to see
+-- that reinstating either line would re-assert a removed rule and turn a
+-- correct database red. Nothing here is deleted for the same reason.
+--
+-- 0012 is already onboarded and holds 'Aveiro', so these two are also the
+-- re-run case, which is what 075's `coalesce` exists for. The stored value is
+-- read back after each call rather than inferred from the absence of an error:
+-- a function that wrote NULL over 'Aveiro' would return a stamp and look
+-- exactly like a pass. 075.3, at the end of this file, is the same pin on a
+-- fixture of its own.
 select set_config('test.uid', '00000000-0000-0000-0000-000000000012', false);
-select assert_rejected($$select public.complete_onboarding(null)$$,
-  '23514', 'complete_onboarding() refuses a NULL location');
-select assert_rejected($$select public.complete_onboarding('   ')$$,
-  '23514', 'complete_onboarding() refuses a location of nothing but spaces');
+savepoint null_location_075;
+select assert_eq(public.complete_onboarding(null) is not null, true,
+  '075: complete_onboarding() ACCEPTS a NULL location — was "complete_onboarding() refuses a NULL location", and the arm that raised 23514 went with the location step');
+select assert_eq((select location from profiles where id = auth.uid()),
+  'Aveiro', '075: ... and a NULL location leaves the stored value ALONE — the write is conditional now, because deleting the refusal on its own would have made every re-run erase a rider''s location');
+select assert_eq(public.complete_onboarding('   ') is not null, true,
+  '075: complete_onboarding() ACCEPTS a location of nothing but spaces — was "complete_onboarding() refuses a location of nothing but spaces"; nullif(btrim(...), '''') turns it into "leave it alone" rather than a 23514 from 018''s CHECK');
+select assert_eq((select location from profiles where id = auth.uid()),
+  'Aveiro', '075: ... and it leaves the stored value alone too, which a coalesce over the untrimmed argument would not');
+rollback to savepoint null_location_075;
 
 -- 018's CHECK still applies inside a security definer function — measured, not
 -- assumed, and asserted here so the migration does not have to restate a ceiling
@@ -10957,9 +10974,18 @@ select assert_eq(public.username_exists('pedr'), false,
 -- not be repaired at the call site — which is the whole reason this is a
 -- function. The fixture is the collision itself: the name in the table differs
 -- from the probe only where the wildcard would be.
+--
+-- ** 075 moved the FIXTURE and neither label nor expected value. ** The name
+-- used to be written onto 226002 and probed from 226002's own seat, which
+-- worked only while `username_exists` counted the caller's own row. 075
+-- excludes it, so the positive control below would read `false` and the
+-- wildcard assertion above it would then pass by finding nothing at all —
+-- green, and testing neither property. 226001 holds the name now and 226002
+-- still asks the question, which is what both labels always described.
 savepoint underscore_wildcard_056;
-select set_config('test.uid', '00000000-0000-0000-0000-000000226002', false);
+select set_config('test.uid', '00000000-0000-0000-0000-000000226001', false);
 update profiles set username = 'roadXking' where id = auth.uid();
+select set_config('test.uid', '00000000-0000-0000-0000-000000226002', false);
 select assert_eq(public.username_exists('road_king'), false,
   '056: username_exists does not read `_` as a wildcard — `road_king` is free while `roadXking` is taken (this is what .ilike() would get wrong)');
 select assert_eq(public.username_exists('roadXking'), true,
@@ -15363,6 +15389,477 @@ select assert_eq(
   '074: no postcards policy mentions the country column — same audience as the place it describes, no second one invented');
 
 rollback to savepoint postcard_country_074;
+
+\echo ''
+\echo '# 075 — onboarding completes with no location, and a re-run never erases one (PD-286)'
+
+-- ===========================================================================
+-- 075. The location step is gone. `complete_onboarding(text)` no longer refuses
+--      a NULL or blank argument, `enforce_onboarding_completion()` no longer
+--      carries `new.location is null` on either arm, and `username_exists()`
+--      no longer calls a rider's own name taken.
+--
+-- ** THE LABELS BELOW ARE PREFIXED `075:` AND SIT UNDER THIS HEADER **, per
+-- 058's rule: a label is the only thing a failing run prints, so it is the only
+-- place the reader learns which migration is on the hook.
+--
+-- ** THE ONE THAT MATTERS MOST IS 075.3, AND IT IS NOT THE HAPPY PATH. ** The
+-- refusal 075 deletes was silently doing a second job. 059's body ended in an
+-- unconditional `set location = p_location`, safe only because control never
+-- reached it carrying a NULL. Delete the refusal on its own and the very first
+-- call the new client makes writes NULL over whatever the rider had stored.
+-- Every other assertion here proves the relaxation works; 075.3 proves it did
+-- not cost a rider their data, and it is the only one that would notice.
+--
+-- ** 075.5 READS A RAISE MESSAGE AS TEXT, WHICH NOTHING ELSE IN THIS FILE
+-- DOES. ** That is the gap 075 found rather than a stylistic choice: all three
+-- raise sites said 'onboarding cannot be completed before username and
+-- location are set' and every gate covering them matched SQLSTATE 23514, so a
+-- message naming a rule the schema had just lost could not go red anywhere.
+--
+-- Self-contained fixtures — its own riders and its own club, like 038, 056 and
+-- 058 — because this section runs last and must not depend on what the twenty
+-- sections above left behind.
+--   075001  username + consent, NO location, NO stamp   -- the new client's call
+--   075002  the same, for the blank-argument arm
+--   075003  ONBOARDED, holds 'Groningen'                -- the data-loss fixture
+--   075004  consent, NO username                        -- the surviving refusal
+--   075005  username, NO consent                        -- ... and the other one
+--   075006  profile row deleted                         -- the trigger's INSERT arm
+--   075007  holds `pd075self`                           -- username_exists, own row
+--   075008  holds `pd075other`                          -- ... and somebody else's
+--   075009  owner of the welcome club
+--   075010  username + consent, NO location             -- the welcome-club join
+--   075011  username + consent, NO location, NO stamp   -- the trigger's UPDATE arm
+--   075012  profile row deleted, NO username            -- ... its INSERT refusal
+-- ===========================================================================
+savepoint no_location_075;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000075001', 'pd075first@example.com'),
+  ('00000000-0000-0000-0000-000000075002', 'pd075blank@example.com'),
+  ('00000000-0000-0000-0000-000000075003', 'pd075stored@example.com'),
+  ('00000000-0000-0000-0000-000000075004', 'pd075noname@example.com'),
+  ('00000000-0000-0000-0000-000000075005', 'pd075noconsent@example.com'),
+  ('00000000-0000-0000-0000-000000075006', 'pd075born@example.com'),
+  ('00000000-0000-0000-0000-000000075007', 'pd075self@example.com'),
+  ('00000000-0000-0000-0000-000000075008', 'pd075other@example.com'),
+  ('00000000-0000-0000-0000-000000075009', 'pd075owner@example.com'),
+  ('00000000-0000-0000-0000-000000075010', 'pd075joiner@example.com'),
+  ('00000000-0000-0000-0000-000000075011', 'pd075trigger@example.com'),
+  ('00000000-0000-0000-0000-000000075012', 'pd075nameless@example.com');
+reset role;
+
+update profiles set username = 'pd075first',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000075001';
+update profiles set username = 'pd075blank',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000075002';
+update profiles set username = 'pd075stored', location = 'Groningen',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000075003';
+update profiles set terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000075004';
+update profiles set username = 'pd075noconsent'
+  where id = '00000000-0000-0000-0000-000000075005';
+update profiles set username = 'pd075self',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000075007';
+update profiles set username = 'pd075other',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000075008';
+update profiles set username = 'pd075owner', location = 'Lisbon',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000075009';
+update profiles set username = 'pd075joiner',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000075010';
+update profiles set username = 'pd075trigger',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000075011';
+update profiles set terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000075012';
+-- 075006 keeps the row handle_new_user made until 075.6 deletes it, which is
+-- the only way to reach the trigger's INSERT arm at all.
+
+-- ---------------------------------------------------------------------------
+-- 075.1  THE POSITIVE, and the call the shipped client now makes on every
+--        signup: username, consent, and no location anywhere.
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select assert_eq(current_user::text, 'authenticated',
+  '075: the 075 assertions run as authenticated, or they prove nothing');
+select set_config('test.uid', '00000000-0000-0000-0000-000000075001', false);
+
+select assert_eq(public.complete_onboarding(null) is not null, true,
+  '075: a rider with a username, consent and NO LOCATION AT ALL completes the wizard — this is the only call setUsername makes, and it raised 23514 until 075');
+select assert_eq((select onboarding_completed_at is not null from public.my_onboarding_state()),
+  true, '075: ... and the stamp really landed, read back through the accessor rather than inferred from the absence of an error');
+select assert_eq((select location from profiles where id = auth.uid()),
+  null::text, '075: ... while their location is still NULL — a NULL argument means "leave it alone", never "store something"');
+
+-- Completion with no location is real completion rather than a stamp with
+-- nothing behind it, and 023's gate is what says so.
+savepoint first_postcard_075;
+insert into postcards (author_id, image_path, caption)
+values ('00000000-0000-0000-0000-000000075001',
+        'postcards/00000000-0000-0000-0000-000000075001/00000000-0000-0000-0000-000000075a01.jpg', 'hi');
+select assert_eq((select count(*)::int from postcards
+                   where author_id = '00000000-0000-0000-0000-000000075001'),
+  1, '075: ... and the participation gate opens for them, which is what makes the stamp worth having');
+rollback to savepoint first_postcard_075;
+
+-- ---------------------------------------------------------------------------
+-- 075.2  The blank argument on a FIRST completion. 018's
+--        profiles_location_length refuses a trimmed-empty string, so a bare
+--        `coalesce(p_location, p.location)` would raise 23514 right here.
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000075002', false);
+select assert_eq(public.complete_onboarding('   ') is not null, true,
+  '075: a location of nothing but spaces completes the wizard too — the nullif(btrim(...)) half is what turns it into "leave it alone" instead of a 23514 from 018');
+select assert_eq((select location from profiles where id = auth.uid()),
+  null::text, '075: ... storing NULL rather than the spaces, which is the only value 018 admits for "no location"');
+
+-- ---------------------------------------------------------------------------
+-- 075.3  ** THE DATA-LOSS PIN. ** The re-run, which is the whole reason the
+--        write became conditional.
+-- ---------------------------------------------------------------------------
+-- 075003 was onboarded on 2026-01-01, before this transaction existed, and
+-- holds 'Groningen'. Every call below is a re-run: the stamp is pinned by 003
+-- §6b, so the only thing that can move is the location.
+select set_config('test.uid', '00000000-0000-0000-0000-000000075003', false);
+savepoint rerun_075;
+
+select assert_eq(public.complete_onboarding(null), timestamptz '2026-01-01 00:00:00+00',
+  '075: a re-run with NULL returns the ORIGINAL stamp, so the assertion below is reading the result of a real second call rather than of a refusal');
+select assert_eq((select location from profiles where id = auth.uid()),
+  'Groningen',
+  '075: ** THE DATA-LOSS PIN ** a re-run with NULL leaves the stored location ALONE — this is the line that goes red if the write reverts to an unconditional `set location = p_location`, and nothing else in this suite would notice');
+select assert_eq(public.complete_onboarding('   ') is not null, true,
+  '075: ... a re-run with a blank argument is accepted rather than refused by 018''s CHECK');
+select assert_eq((select location from profiles where id = auth.uid()),
+  'Groningen',
+  '075: ... and leaves the stored location alone too — the nullif(btrim(...)) half again, which a coalesce over the raw argument would fail while passing the NULL case above');
+select assert_eq(public.complete_onboarding('Deventer') is not null, true,
+  '075: ... while a REAL location still overwrites the stored one');
+select assert_eq((select location from profiles where id = auth.uid()),
+  'Deventer',
+  '075: ... which is the assertion that fails if the coalesce is written the other way round — `coalesce(p.location, nullif(...))` passes every line above and silently freezes the column for every rider who already has one');
+
+rollback to savepoint rerun_075;
+
+-- ---------------------------------------------------------------------------
+-- 075.4  The two rules that did NOT go, isolated by giving each fixture no
+--        location — so the arm under test is the only one that can fire.
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000075004', false);
+select assert_rejected($$select public.complete_onboarding(null)$$,
+  '23514', '075: completion is still refused for want of a USERNAME, asserted with a NULL location — before 075 both arms fired here and either could have been the one passing this');
+select set_config('test.uid', '00000000-0000-0000-0000-000000075005', false);
+select assert_rejected($$select public.complete_onboarding(null)$$,
+  '23514', '075: ... and still refused for want of CONSENT, same fixture shape — 023 §1.13 is untouched by this change');
+
+-- ---------------------------------------------------------------------------
+-- 075.5  ** THE MESSAGES, READ AS TEXT. ** Tasks 1.3b and 2.10.
+-- ---------------------------------------------------------------------------
+-- The point is not the wording, it is that SOME gate reads the string. Until
+-- 075 nothing did: `rls_test.sql:3100,3102` and every sibling matched 23514
+-- alone, so all three sites could have kept naming a location requirement the
+-- schema no longer has and the suite would have stayed green.
+--
+-- The helper is local to this file because harness.sql owns the shared ones and
+-- 075 changes nothing there. Promote it the day a second migration needs it.
+reset role;
+create function public.pd075_assert_message(stmt text, expected text, label text)
+returns void
+language plpgsql
+as $$
+declare
+  v_message text;
+begin
+  begin
+    execute stmt;
+  exception
+    when others then
+      v_message := sqlerrm;
+  end;
+  if v_message is null then
+    raise exception 'FAIL  % — expected the statement to raise, but it succeeded', label;
+  end if;
+  if v_message is distinct from expected then
+    raise exception 'FAIL  % — expected message "%", got "%"', label, expected, v_message;
+  end if;
+  raise notice 'ok    % (message)', label;
+end;
+$$;
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000075004', false);
+select public.pd075_assert_message($$select public.complete_onboarding(null)$$,
+  'onboarding cannot be completed before a username is set',
+  '075: the RPC''s username refusal says what it now MEANS, word for word — the 23514 gates in the 021 section pass just as happily against the old text, which named a location rule the schema has lost');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000075005', false);
+select public.pd075_assert_message($$select public.complete_onboarding(null)$$,
+  'onboarding cannot be completed before the terms are accepted',
+  '075: ... and the consent refusal is unchanged word for word, so the message edit was the username arm''s alone rather than a sweep across the body');
+
+-- The bodies themselves, per 038.11: the assertions above say the behaviour is
+-- right, these say which line broke when it is not.
+reset role;
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('complete_onboarding', 'enforce_onboarding_completion')
+      and p.prosrc like '%location are set%'),
+  0, '075: neither body still carries the retired message — matched on a FRAGMENT rather than the whole string, deliberately, so a repo-wide grep for the old wording does not count this tripwire as a surviving copy (CLAUDE.md''s comment trap applies to prosrc as much as to a repo grep)');
+select assert_eq(
+  (select (length(prosrc) - length(replace(prosrc, 'new.location is null', '')))
+            / length('new.location is null')
+     from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  0, '075: the trigger carries `new.location is null` on NEITHER arm — the INSERT arm is the one no prose in this repo mentioned, so it is counted rather than assumed');
+select assert_eq(
+  (select (length(prosrc) - length(replace(prosrc, 'new.username is null', '')))
+            / length('new.username is null')
+     from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  2, '075: ... while BOTH `new.username is null` arms survive — the positive control, without which the line above passes just as well against a body that lost the whole test');
+select assert_eq(
+  (select prosrc like '%coalesce(nullif(pg_catalog.btrim(p_location), '''')%'
+     from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  true, '075: and the RPC''s location write is the conditional form in the body itself — 075.3 is the behavioural proof, this is the one that names the line');
+
+-- ---------------------------------------------------------------------------
+-- 075.6  The trigger's own two arms. Unreachable in production, asserted
+--        anyway, because a rule left behind states something the schema no
+--        longer has and would refuse a legitimate support-path write.
+-- ---------------------------------------------------------------------------
+-- 025 leaves `authenticated` no grant on `onboarding_completed_at` at all, so
+-- no client statement ever reaches this function carrying the stamp — the first
+-- assertion is the GRANT refusing, not the trigger. The grant is then simulated
+-- inside a savepoint, which is the only way into the arms, and rolled back.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000075011', false);
+select assert_denied($$
+  update profiles set onboarding_completed_at = pg_catalog.now()
+  where id = '00000000-0000-0000-0000-000000075011'$$,
+  '075: a client write naming the completion stamp is still refused by the column grant, before the trigger is entered — everything below this line is reachable only because the next statement grants what production does not');
+
+savepoint simulated_grant_075;
+reset role;
+grant update (onboarding_completed_at) on public.profiles to authenticated;
+grant insert (id, username, location, terms_accepted_at, onboarding_completed_at)
+  on public.profiles to authenticated;
+
+-- The UPDATE arm.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000075011', false);
+update profiles set onboarding_completed_at = pg_catalog.now(), bio = 'stamped'
+  where id = auth.uid();
+reset role;
+select assert_eq(
+  (select onboarding_completed_at is not null from profiles
+    where id = '00000000-0000-0000-0000-000000075011'),
+  true, '075: the trigger''s UPDATE arm ACCEPTS a completion stamp on a rider with NO location — it carried `new.location is null` until 075 and raised 23514 on exactly this statement');
+select assert_eq(
+  (select location is null from profiles where id = '00000000-0000-0000-0000-000000075011'),
+  true, '075: ... with the location still NULL, so nothing quietly filled it in');
+select assert_eq(
+  (select bio from profiles where id = '00000000-0000-0000-0000-000000075011'),
+  'stamped', '075: ... and the statement''s other column landed, so that is an accepted write rather than an UPDATE filtered to zero rows');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000075004', false);
+select assert_rejected($$update profiles set onboarding_completed_at = pg_catalog.now()
+  where id = '00000000-0000-0000-0000-000000075004'$$,
+  '23514', '075: ... while the same write is still REFUSED for a rider with no username — the arm 075 kept, and now the only one that can be firing');
+select public.pd075_assert_message($$update profiles set onboarding_completed_at = pg_catalog.now()
+  where id = '00000000-0000-0000-0000-000000075004'$$,
+  'onboarding cannot be completed before a username is set',
+  '075: ... in the trigger''s own words — the second of the three raise sites 1.3b rewrote, and the arm no assertion had ever read');
+
+-- The INSERT arm. A row has to be absent to be born, so the fixture's own
+-- profile row (made by handle_new_user) is removed as the owner first.
+reset role;
+delete from profiles where id in ('00000000-0000-0000-0000-000000075006',
+                                  '00000000-0000-0000-0000-000000075012');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000075006', false);
+insert into profiles (id, username, terms_accepted_at, onboarding_completed_at)
+values (auth.uid(), 'pd075born', pg_catalog.now(), pg_catalog.now());
+reset role;
+select assert_eq(
+  (select onboarding_completed_at is not null from profiles
+    where id = '00000000-0000-0000-0000-000000075006'),
+  true, '075: the trigger''s INSERT arm accepts a row BORN complete with no location — the arm no prose in this repo mentions, which is why 075 was written against the deployed prosrc rather than 023''s text');
+select assert_eq(
+  (select location is null from profiles where id = '00000000-0000-0000-0000-000000075006'),
+  true, '075: ... and that row really has no location, so the arm was entered rather than sidestepped');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000075012', false);
+select assert_rejected($$
+  insert into profiles (id, terms_accepted_at, onboarding_completed_at)
+  values ('00000000-0000-0000-0000-000000075012', pg_catalog.now(), pg_catalog.now())$$,
+  '23514', '075: ... while a row born complete with no USERNAME is still refused on that same arm');
+
+rollback to savepoint simulated_grant_075;
+
+reset role;
+select assert_eq(
+  has_column_privilege('authenticated', 'public.profiles', 'onboarding_completed_at', 'update'),
+  false, '075: the simulated grant is rolled back — 025 is exactly where it was, and everything in 075.6 stays unreachable from a client');
+
+-- ---------------------------------------------------------------------------
+-- 075.7  `username_exists` stops calling a rider's own name taken (§3, D7).
+-- ---------------------------------------------------------------------------
+-- Reachable only because of this change: the username step is the step that
+-- completes onboarding now, so a rider who lands back on it already has a name,
+-- and a recovery screen that opens by refusing it in red is not the clean retry
+-- the proposal's safety case claims.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000075007', false);
+
+select assert_eq(public.username_exists('pd075self'), false,
+  '075: a rider''s OWN current username reads AVAILABLE to them — it read `taken` until 075, which is the answer that cannot be right for the one row that can never collide with itself');
+select assert_eq(public.username_exists('PD075SELF'), false,
+  '075: ... in upper case too, so the self-exclusion is not defeated by the folding 056 added');
+select assert_eq(public.username_exists('Pd075Self'), false,
+  '075: ... and in mixed case');
+select assert_eq(public.username_exists('pd075other'), true,
+  '075: ... while another visible rider''s name still reads TAKEN — the exclusion is exactly one row wide, and without this the three lines above pass against a function that lost its predicate entirely');
+select assert_eq(public.username_exists('pd075nobody'), false,
+  '075: ... and a name nobody holds still reads available');
+
+-- The database's own answer to the same question, because an availability check
+-- that disagrees with what happens on submit is worse than none.
+savepoint own_name_075;
+update profiles set username = 'pd075self' where id = auth.uid();
+select assert_eq((select username from profiles where id = auth.uid()),
+  'pd075self', '075: ... and re-writing your own name really is a no-op UPDATE rather than a 23505, so the answer above matches what submitting it does');
+rollback to savepoint own_name_075;
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000075008', false);
+select assert_eq(public.username_exists('pd075self'), true,
+  '075: the SAME name reads TAKEN to a DIFFERENT rider — the predicate keys on auth.uid(), so it can never free a name for the rider who would collide with it');
+select assert_rejected($$update profiles set username = 'pd075self'
+  where id = '00000000-0000-0000-0000-000000075008'$$,
+  '23505', '075: ... and profiles_username_lower_key still refuses them, which is what keeps the availability check advisory rather than the decision');
+
+-- The documented consequence of writing `<>` rather than `is distinct from`,
+-- asserted rather than described. With no session `auth.uid()` is NULL, the
+-- comparison is NULL, and EVERY name reads available. That caller cannot exist
+-- through PostgREST — EXECUTE is revoked from `public` and `anon`, and an
+-- `authenticated` JWT always carries a `sub` — so the revoke asserted below is
+-- the whole reason the operator is safe, rather than a formality. This is the
+-- line that goes red if someone "tidies" it in either direction without
+-- deciding.
+select set_config('test.uid', '', false);
+select assert_eq(public.username_exists('pd075other'), false,
+  '075: a caller with NO SESSION reads even a taken name as available — `<>` against a NULL auth.uid() yields NULL, which is exactly what makes the anon revoke below load-bearing rather than ceremony');
+select set_config('test.uid', '00000000-0000-0000-0000-000000075008', false);
+select assert_eq(public.username_exists('pd075other'), false,
+  '075: ... and the very same probe from the holder''s own seat still reads available for its own reason, so the line above is not passing because the name went missing');
+
+-- 031's lesson has two halves and this file usually asserts only the first.
+-- `anon` is refused when it CALLS, not merely absent from an ACL read.
+reset role;
+set role anon;
+select assert_denied($$select public.username_exists('pd075other')$$,
+  '075: `anon` is refused when it actually calls username_exists — 075 re-issues `revoke all ... from public, anon`, and a catalog read alone cannot tell a correct revoke from a grant that never existed');
+reset role;
+
+-- The catalog half, per 031 and 058.7: 075 replaces this body and re-issues its
+-- `revoke all ... from public, anon`, so the posture is re-asserted under a
+-- label naming the file that last wrote it.
+reset role;
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.username_exists(text)'::regprocedure),
+  false, '075: username_exists is STILL security INVOKER after the replacement — as definer the new predicate would sit inside a block-piercing read, which is the opposite of what it is for');
+select assert_eq(
+  (select proconfig from pg_proc where oid = 'public.username_exists(text)'::regprocedure),
+  array['search_path=""'], '075: ... with its search_path still pinned');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.username_exists(text)', 'execute'),
+  true, '075: ... and `authenticated` can still call it — a mistake in 075''s re-grant leaves the availability check unreachable for the only role that calls it, and 029/031 is what that costs');
+select assert_eq(
+  has_function_privilege('anon', 'public.username_exists(text)', 'execute'),
+  false, '075: ... while `anon` still cannot, per decision #1');
+
+-- ---------------------------------------------------------------------------
+-- 075.8  The identity and the posture of the two functions 075 replaced.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'public'::regnamespace and proname = 'complete_onboarding'),
+  1, '075: there is exactly ONE complete_onboarding — no overload and no DEFAULT was added, because PostgREST answers PGRST203 on an ambiguous one and every call from the client would fail at once');
+select assert_eq(
+  (select pg_get_function_identity_arguments(oid) from pg_proc
+    where pronamespace = 'public'::regnamespace and proname = 'complete_onboarding'),
+  'p_location text', '075: ... and its identity is the one 021 granted and 025''s footer names, unchanged — an old bundle still sending a real location is what makes "apply before the deploy" safe');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  true, '075: complete_onboarding is still SECURITY DEFINER after the replacement — 025 revoked the stamp, so that keyword is the whole path back to it, and 022 shipped one of these missing');
+select assert_eq(
+  (select proconfig from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  array['search_path=""'], '075: ... with its search_path still pinned, which every unqualified name in the body is otherwise exposed to');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  false, '075: enforce_onboarding_completion is still SECURITY INVOKER after ITS replacement — 033''s footer requires it, and as definer its own `current_user <> ''authenticated''` gate would never fire for anyone');
+
+-- ---------------------------------------------------------------------------
+-- 075.9  058's welcome club still fires for a rider who has no location.
+-- ---------------------------------------------------------------------------
+-- The join hangs off the transition into completion, never off the location —
+-- and 075 is the change that makes "no location" the ordinary case rather than
+-- an oddity, so 058's rule is re-exercised under it rather than assumed.
+reset role;
+insert into clubs (id, name, is_public, owner_id, is_default) values
+  ('00000000-0000-0000-0000-0000075c0001', 'PD075 Welcome', true,
+   '00000000-0000-0000-0000-000000075009', true);
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000075c0001', '00000000-0000-0000-0000-000000075009', 'owner');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000075010', false);
+select assert_eq(public.complete_onboarding(null) is not null, true,
+  '075: a rider completing with a NULL location finishes the wizard, with a welcome club present');
+
+reset role;
+select assert_eq(
+  (select role from club_members
+    where club_id = '00000000-0000-0000-0000-0000075c0001'
+      and user_id = '00000000-0000-0000-0000-000000075010'),
+  'member', '075: ... and 058''s join still puts them in the welcome club as a MEMBER — a NULL argument does not short-circuit the block that runs after the update');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000075c0001'),
+  0, '075: ... and still silently, per 058 §4 — the welcome club''s owner hears nothing, which is what stops one account owning a notification list of every signup');
+
+set role authenticated;
+delete from club_members
+  where club_id = '00000000-0000-0000-0000-0000075c0001' and user_id = auth.uid();
+select assert_eq(public.complete_onboarding(null) is not null, true,
+  '075: ... a rider who LEAVES the welcome club and re-runs the RPC with a NULL argument still completes');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000075c0001'
+      and user_id = '00000000-0000-0000-0000-000000075010'),
+  0, '075: ... and is NOT put back in — v_was_complete is captured before the update, which 075''s coalesce leaves exactly where 058 wrote it');
+
+reset role;
+drop function public.pd075_assert_message(text, text, text);
+rollback to savepoint no_location_075;
 
 reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);

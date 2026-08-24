@@ -15,7 +15,7 @@ src/
 │   │   ├── notifications/  # /notifications — PD-118. Becomes /inbox/notifications when the tab returns
 │   │   └── profile/        # /profile (your own), /profile/detail (another rider's — view-rider-profile)
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
-│   ├── onboarding/         # /onboarding/terms, /onboarding/username, /onboarding/location — see decision #5
+│   ├── onboarding/         # /onboarding/terms, /onboarding/username — see decision #5. `location/` went with 075 (PD-286)
 │   ├── legal/              # /legal/terms, /legal/privacy, /legal/account-deletion — public, decision #1
 │   ├── layout.tsx          # Root layout (Poppins, v2 light theme) — mounts <RouteGuard>
 │   ├── page.tsx            # / — splash resolver: redirects by session (see decision #7)

@@ -1,7 +1,7 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { isUsernameTaken } from '@/lib/data/profile'
-import { USERNAME_TAKEN_MESSAGE, checkUsername, locationSchema } from '@/lib/validation/profile'
+import { USERNAME_TAKEN_MESSAGE, checkUsername } from '@/lib/validation/profile'
 import { consentSchema } from '@/lib/validation/auth'
 import type { ActionState } from '@/lib/actions/auth'
 
@@ -90,13 +90,34 @@ export async function setUsername(
   }
   if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
-  // `has_username` is one of the three fields the route guard's decision reads,
-  // and it now holds the answer from before this write. Left stale, the guard
-  // sees step 1 as unfinished and bounces the rider straight back to it from
-  // the step 2 this redirect is about to send them to.
+  // Username is now the last step, and this is the write that commits the
+  // stamp — 075 relaxed complete_onboarding's location requirement, so it takes
+  // `p_location: null` explicitly rather than a value this screen never
+  // collects. The order is contract: username first, RPC second, because a
+  // refused username must never leave a rider stamped complete with no
+  // username. `p_location: null` is a no-op against a rider's stored location
+  // (075's `coalesce`), never a clear.
+  const { data: completed, error: completionError } = await supabase.rpc('complete_onboarding', {
+    p_location: null,
+  })
+
+  if (completionError) {
+    // 23514 is the function's own guard — consent still missing. Reachable by
+    // deep-linking past the terms prompt, which the route guard also covers,
+    // so this is the second line rather than the first.
+    if (completionError.code === '23514') return { error: 'Finish the earlier steps first.' }
+    return { error: 'Could not save that. Try again.' }
+  }
+  if (!completed) return { error: 'Your profile could not be found. Sign in again.' }
+
+  // Invalidated once, after both writes — not between them. Between the
+  // username UPDATE and the RPC the rider has a username and no stamp, and
+  // that window is benign: the resume target for that state is this same
+  // screen, and resubmitting the same name updates their own row rather than
+  // raising a unique violation against itself.
   invalidateOnboardingState()
 
-  return { error: null, redirectTo: '/onboarding/location' }
+  return { error: null, redirectTo: '/postcards' }
 }
 
 /**
@@ -137,45 +158,5 @@ export async function acceptTerms(
   // exists for accounts whose consent predates the write, not for new ones — so
   // naming a wizard step here would send a finished rider to step 1 and rely on
   // the guard to undo it.
-  return { error: null, redirectTo: '/postcards' }
-}
-
-export async function setLocation(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const parsed = locationSchema.safeParse(formData.get('location'))
-  if (!parsed.success) return { error: parsed.error.issues[0].message }
-
-  const supabase = await resolveSupabase()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: null, redirectTo: '/auth/login' }
-
-  // Location is the last step, so completion is stamped here — and both halves
-  // go in one RPC because 021 revokes the client's UPDATE grant on the stamp.
-  // Splitting it into "write location, then stamp completion" would put a
-  // window between them in which a failure leaves a rider with a location and
-  // no completion, which is precisely the resumable-wizard state decision #5
-  // relies on being accurate.
-  //
-  // The function refuses the stamp unless username, location and consent are
-  // all set. It has to check that itself rather than lean on 003's and 023's
-  // triggers: those short-circuit on `current_user <> 'authenticated'`, and
-  // inside a security definer function current_user is the owner.
-  const { data: completed, error } = await supabase.rpc('complete_onboarding', {
-    p_location: parsed.data,
-  })
-
-  if (error) {
-    // 23514 is the function's own guard — username or consent still missing.
-    // Reachable by deep-linking to step 2, which the route guard also covers,
-    // so this is the second line rather than the first.
-    if (error.code === '23514') return { error: 'Finish the earlier steps first.' }
-    return { error: 'Could not save that. Try again.' }
-  }
-  if (!completed) return { error: 'Your profile could not be found. Sign in again.' }
-
-  // Same reason again, and this is the one that would be most visible: without
-  // it the guard reads a NULL completion stamp and returns the rider to the
-  // wizard they have just finished.
-  invalidateOnboardingState()
-
   return { error: null, redirectTo: '/postcards' }
 }

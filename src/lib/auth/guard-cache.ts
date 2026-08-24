@@ -53,11 +53,14 @@ import type { OnboardingState } from '@/types'
  * sign-out, token refresh and user change all arrive there, so no caller has to
  * remember to keep it in step. The **stamps** have three more, and they are
  * writes rather than events, so nothing could deliver them here: `signUp`,
- * `setUsername`, `acceptTerms` and `setLocation` each change a field the
- * decision reads and each calls `invalidateOnboardingState`. `signOut` calls
- * `clearGuardCache`. That is the whole list, and it is worth stating in full
- * because the safety property above — nothing writes during render — is a
- * property of *every* writer, not just the two in this file.
+ * `setUsername` and `acceptTerms` each change a field the decision reads and
+ * each calls `invalidateOnboardingState`. `setUsername` is the terminal one
+ * since PD-286 dropped the location step — it commits the completion stamp
+ * itself, immediately after the username write, so its invalidation is the
+ * one that fires last in the wizard. `signOut` calls `clearGuardCache`. That
+ * is the whole list, and it is worth stating in full because the safety
+ * property above — nothing writes during render — is a property of *every*
+ * writer, not just the two in this file.
  *
  * **The callback issues no Supabase call of its own**, and the reason is
  * narrower than the one first written here. That said the callback runs "while
@@ -556,15 +559,18 @@ export function attachGuardAuthListener(): void {
 }
 
 /**
- * Drop the stamps, keeping the session. For the three onboarding writes —
- * `setUsername`, `acceptTerms` and `setLocation` — each of which changes a field
- * the decision reads.
+ * Drop the stamps, keeping the session. For the two remaining onboarding
+ * writes — `setUsername` and `acceptTerms` — each of which changes a field the
+ * decision reads. `setUsername` now carries the terminal call: since PD-286
+ * dropped the location step it commits the completion stamp itself, in the
+ * same submit as the username write, so this fires once after both rather
+ * than at a separate final step.
  *
  * Invalidation rather than a patch, even though each of those knows what it just
- * made true: two of the three stamps are timestamps this side never sees, so a
- * patch would have to fabricate them, and a fabricated value in a cache is the
- * unlabelled guess CLAUDE.md's working principles exist to prevent. The cost is
- * one round trip at three points in a once-per-account flow.
+ * made true: the stamps are timestamps this side never sees, so a patch would
+ * have to fabricate them, and a fabricated value in a cache is the unlabelled
+ * guess CLAUDE.md's working principles exist to prevent. The cost is one round
+ * trip at each point in a once-per-account flow.
  *
  * Without it a rider finishes a step and the guard, reading the stamp it cached
  * a moment earlier, sends them straight back into it.
