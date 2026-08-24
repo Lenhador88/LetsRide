@@ -290,6 +290,52 @@ export function* walk(node) {
 }
 
 /**
+ * Resolves `Element / Icon / *` name collisions the file walk can produce
+ * (PD-261). A scratch instance dropped into an unrelated frame — e.g. `AI /
+ * Clubs one screen / 2026-08-17` re-used `Chevron Down` and `Chevron Right` —
+ * carries the same name as the real component and walks after it, so keying
+ * on name with "last one wins" silently replaces the canonical component with
+ * an INSTANCE the render endpoint may not export at all (loud: `figma:icons`
+ * prints `Missing:`) or exports as a byte-identical but wrong-sourced SVG
+ * (quiet: `components.mjs` rewrites every fill to `currentColor`, so nothing
+ * in `generated.tsx` changes).
+ *
+ * A COMPONENT or COMPONENT_SET always outranks an INSTANCE sharing its name,
+ * regardless of walk order. Within the same rank, last walked still wins —
+ * that was always the tie-break between two real components (or two
+ * instances) sharing a name, and nothing here changes it.
+ *
+ * Returns the resolved icon per name, plus every name more than one node
+ * claimed, so the caller can print what it chose instead of resolving
+ * silently.
+ */
+export function resolveIconCollisions(icons) {
+  const rankOf = (type) => (type === 'COMPONENT' || type === 'COMPONENT_SET' ? 0 : 1)
+
+  const byName = new Map()
+  const candidatesByName = new Map()
+
+  for (const icon of icons) {
+    if (!candidatesByName.has(icon.name)) candidatesByName.set(icon.name, [])
+    candidatesByName.get(icon.name).push(icon)
+
+    const existing = byName.get(icon.name)
+    // A candidate wins if it outranks the current holder, or ties it — the
+    // tie case is what preserves "last walked wins" for same-rank nodes.
+    if (!existing || rankOf(icon.type) <= rankOf(existing.type)) {
+      byName.set(icon.name, icon)
+    }
+  }
+
+  const resolved = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
+  const collisions = [...candidatesByName.entries()]
+    .filter(([, candidates]) => candidates.length > 1)
+    .map(([name, candidates]) => ({ name, chosen: byName.get(name), candidates }))
+
+  return { resolved, collisions }
+}
+
+/**
  * Counts how often each named paint and text style is used, and with which
  * resolved value. The dominant value is the token; a style resolving to more
  * than one value means the file has drifted and is worth surfacing.
