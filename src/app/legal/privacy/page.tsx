@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 
+import { SUPPORT_EMAIL } from '@/lib/support'
+
 /**
  * Static copy, and one of the three pages a rider can reach without a session
  * (decision #1's deliberate exception, and `/legal/*` in the guard's public
@@ -69,6 +71,42 @@ export default function PrivacyPage() {
           session or IP address to Geoapify.
         </li>
       </ul>
+      {/*
+        App Store Review Guideline 1.2 asks a user-generated-content app for four things: a
+        way to report, a way to block, a way to hide, and a route to a human who acts on what
+        is reported. The first three were built and this page said nothing about any of them,
+        which made the fourth unreachable — a rider had nowhere to write and a reviewer had
+        nothing to check. PD-297 built the read path behind it; this section is where a rider
+        finds out it exists.
+
+        The address is `SUPPORT_EMAIL`, never a literal — see that file, which still carries
+        an owner question about the mailbox itself.
+      */}
+      <h2 className="text-base font-semibold pt-4">Reporting content, and how to reach us</h2>
+      <p className="text-muted">
+        Every postcard carries a <span className="font-medium">Report</span> control, and you
+        can also <span className="font-medium">hide</span> a single postcard or{' '}
+        <span className="font-medium">block</span> a rider outright. Hiding affects only what
+        you see. Blocking is mutual: you and the rider you block disappear from each
+        other&rsquo;s feeds, clubs, ride crews and chats.
+      </p>
+      <p className="text-muted">
+        Reports are read by us, not by other riders — nobody else can see that you filed one.
+        We aim to review each report within 24 hours and to remove anything that breaks our{' '}
+        <Link href="/legal/terms" className="underline">
+          Terms and Conditions
+        </Link>
+        . Removing a postcard removes its photo, its comments and its likes with it.
+      </p>
+      <p className="text-muted">
+        If something needs attention sooner, or you would rather write to a person than use the
+        in-app control, email{' '}
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
+          {SUPPORT_EMAIL}
+        </a>
+        .
+      </p>
+
       <p className="text-muted">
         <Link href="/legal/account-deletion" className="underline">
           How to delete your account
