@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  countryFlagEmoji,
   defaultRideDepartureInput,
   formatNotificationStamp,
   formatPostcardDate,
@@ -318,6 +319,33 @@ describe('formatPostcardDate', () => {
   it('carries no weekday — the stamp has room for three parts', () => {
     // It sits in the corner of a photo, which is what bounds it.
     expect(formatPostcardDate('2025-01-01T10:00:00Z')).toBe('1 Jan 2025')
+  })
+})
+
+describe('countryFlagEmoji', () => {
+  it('turns an uppercase alpha-2 code into its regional-indicator pair', () => {
+    expect(countryFlagEmoji('NL')).toBe('🇳🇱')
+  })
+
+  it('accepts a lowercase code too — the vendor documents lowercase', () => {
+    expect(countryFlagEmoji('nl')).toBe('🇳🇱')
+  })
+
+  it('accepts a mixed-case code', () => {
+    expect(countryFlagEmoji('Nl')).toBe('🇳🇱')
+  })
+
+  it('returns null for anything that is not two letters, rather than mojibake', () => {
+    // `String.fromCodePoint` on a non-letter offset is what "mojibake" means
+    // here — a printable but meaningless glyph, not a thrown error.
+    for (const bad of ['N', 'NLD', '12', 'N1', '', '  ']) {
+      expect(countryFlagEmoji(bad)).toBeNull()
+    }
+  })
+
+  it('returns null for null and undefined, never the empty string', () => {
+    expect(countryFlagEmoji(null)).toBeNull()
+    expect(countryFlagEmoji(undefined)).toBeNull()
   })
 })
 

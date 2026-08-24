@@ -792,6 +792,18 @@ export type Postcard = {
    * drop the caption on that screen with no error anywhere.
    */
   taken_place_name: string | null
+  /**
+   * The ISO-3166-1 alpha-2 country of `taken_place_name`, uppercase — `074`,
+   * PD-279's flag half. `PostcardCard` draws it as a flag emoji immediately
+   * before the town and never on its own, which is what
+   * `postcards_taken_country_code_needs_a_place` enforces at the database:
+   * this is `null` whenever `taken_place_name` is, and may also be `null`
+   * beside a real name — a typed-and-never-picked town carries no vendor data
+   * and therefore no country. Vendor text stored verbatim, never parsed out
+   * of the name. **Not optional**, for the same reason `taken_place_name`
+   * above is not.
+   */
+  taken_country_code: string | null
 }
 
 /**
@@ -1049,6 +1061,13 @@ export type PlaceSearchResult = {
   /** `lon`, not `lng` — one name for one quantity, `037` §5bb's rule, kept
    *  after `070` because the columns and the proxy both still spell it that way. */
   lon: number
+  /**
+   * ISO-3166-1 alpha-2, uppercase, or `null` when the vendor sent none —
+   * `search-places/shape.ts`'s `toPlaceResult` (PD-279). The postcard composer
+   * is the only reader today, storing it verbatim beside `taken_place_name`;
+   * clubs and rides ignore it, and it costs them nothing to carry.
+   */
+  countryCode: string | null
 }
 
 /**

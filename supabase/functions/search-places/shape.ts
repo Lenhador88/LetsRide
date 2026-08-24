@@ -350,6 +350,14 @@ export type AutocompleteFeature = {
     address_line1?: unknown
     /** The design's Meta line — street and locality, already comma-joined. */
     address_line2?: unknown
+    /**
+     * The ISO-3166-1 alpha-2 country, PD-279's flag half. Documentation-derived
+     * casing — the vendor's documented samples are lowercase (`nl`) — and
+     * `toPlaceResult` uppercases it before it reaches the client, because
+     * `profile_countries_code_is_iso_alpha2` (`014`/`020`) is the one other
+     * country column this schema has and it is uppercase-only.
+     */
+    country_code?: unknown
   }
 }
 
@@ -364,6 +372,9 @@ export type PlaceResult = {
   meta: string | null
   lat: number
   lon: number
+  /** The ISO-3166-1 alpha-2 country, or `null` when the vendor sent none —
+   *  PD-279's flag half. Uppercased here, never left to the caller. */
+  countryCode: string | null
 }
 
 /**
@@ -459,6 +470,21 @@ const asNonEmptyString = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : null
 
 /**
+ * A country code the destination column will actually accept — uppercased,
+ * and `null` for anything that is not two letters once it is. Malformed
+ * rather than dropping the whole result: PD-279's flag is cosmetic beside the
+ * name and the coordinate, so a country the vendor sent oddly-shaped degrades
+ * to no flag rather than to no result at all — unlike a bad id or a bad
+ * coordinate, which `toPlaceResult` drops the feature over.
+ */
+const asCountryCode = (value: unknown): string | null => {
+  const raw = asNonEmptyString(value)
+  if (!raw) return null
+  const upper = raw.toUpperCase()
+  return /^[A-Z]{2}$/.test(upper) ? upper : null
+}
+
+/**
  * Maps one vendor feature to this repo's own shape, or **drops it**.
  *
  * Dropping rather than coercing is the whole contract. A feature with no
@@ -496,7 +522,9 @@ export function toPlaceResult(feature: AutocompleteFeature): PlaceResult | null 
   const rawMeta = asNonEmptyString(properties.address_line2)
   const meta = rawMeta && rawMeta !== label ? rawMeta : null
 
-  return { id, label, meta, lat: coordinate.lat, lon: coordinate.lon }
+  const countryCode = asCountryCode(properties.country_code)
+
+  return { id, label, meta, lat: coordinate.lat, lon: coordinate.lon, countryCode }
 }
 
 /** The vendor's order is preserved — this proxy does not re-rank. */

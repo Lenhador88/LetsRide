@@ -234,6 +234,7 @@ describe('mapping a vendor feature to this repo own shape', () => {
       meta: 'Stationsweg 40, Maastricht',
       lat: 50.85,
       lon: 5.69,
+      countryCode: null,
     })
   })
 
@@ -258,6 +259,34 @@ describe('mapping a vendor feature to this repo own shape', () => {
       lon: 2,
     })
     expect(toPlaceResult(line1)!.label).toBe('Willem Claijstraat 22')
+  })
+
+  it('uppercases the country code — PD-279, matching profile_countries', () => {
+    // The vendor's documented casing is lowercase. `profile_countries_code_is_
+    // iso_alpha2` (014/020) is the one other country column this schema has and
+    // it is uppercase-only, so a lowercase value stored here would be the one
+    // place "country code" meant something different.
+    const nl = feature({ place_id: 'x', name: 'Berkhout', lat: 1, lon: 2, country_code: 'nl' })
+    expect(toPlaceResult(nl)!.countryCode).toBe('NL')
+  })
+
+  it('accepts an already-uppercase country code unchanged', () => {
+    const nl = feature({ place_id: 'x', name: 'Berkhout', lat: 1, lon: 2, country_code: 'NL' })
+    expect(toPlaceResult(nl)!.countryCode).toBe('NL')
+  })
+
+  it('drops a country code that is not two letters, degrading to no flag rather than no result', () => {
+    for (const bad of ['nld', 'n', '', '  ', 123, null]) {
+      const withBad = feature({ place_id: 'x', name: 'Berkhout', lat: 1, lon: 2, country_code: bad })
+      const mapped = toPlaceResult(withBad)
+      expect(mapped).not.toBeNull()
+      expect(mapped!.countryCode).toBeNull()
+    }
+  })
+
+  it('answers null when the vendor sends no country at all', () => {
+    const none = feature({ place_id: 'x', name: 'Berkhout', lat: 1, lon: 2 })
+    expect(toPlaceResult(none)!.countryCode).toBeNull()
   })
 
   it('returns a null meta rather than repeating the label as its own second line', () => {

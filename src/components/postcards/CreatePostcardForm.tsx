@@ -279,7 +279,7 @@ export function CreatePostcardForm({
         if (placeTextRef.current.trim() !== '') return
         const name = found.label.slice(0, POSTCARD_PLACE_NAME_MAX_LENGTH)
         writePlaceText(name)
-        setPlace({ name, placeId: found.id, lat: found.lat, lon: found.lon })
+        setPlace({ name, placeId: found.id, lat: found.lat, lon: found.lon, countryCode: found.countryCode })
       })
       .finally(() => setPrefilling(false))
   }
@@ -299,6 +299,9 @@ export function CreatePostcardForm({
           // two cannot disagree about what the rider currently means.
           lat: place?.lat ?? null,
           lon: place?.lon ?? null,
+          // Same rule again, for the country: it rides along with the pin
+          // rather than the text, so typing over a pick drops both together.
+          countryCode: place?.countryCode ?? null,
         }
       : null
   )
@@ -358,6 +361,9 @@ export function CreatePostcardForm({
       )}
       {location.placeName !== null && (
         <input type="hidden" name="takenPlaceName" value={location.placeName} />
+      )}
+      {location.placeCountryCode !== null && (
+        <input type="hidden" name="takenCountryCode" value={location.placeCountryCode} />
       )}
 
       <div className="flex flex-col gap-3">

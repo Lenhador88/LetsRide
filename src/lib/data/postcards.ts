@@ -81,26 +81,29 @@ export const FEED_PAGE_SIZE = 30
 // check that would otherwise catch it. `columns.test.ts` pins both halves: this
 // file's select literals never name `ride_id`, and this list never names a
 // column `062` does not grant.
-// **`taken_place_name` does not exist on PROD yet, and reading it there would
-// take the whole feed down rather than degrade.** `072`/`073` are DEV-only, and
-// PostgREST answers an unknown column with an error that `unwrapList` throws —
-// so every screen built on this select shows a permanent "try again" panel.
+// **`taken_place_name` and `taken_country_code` do not exist on PROD yet, and
+// reading either there would take the whole feed down rather than degrade.**
+// `072`/`073`/`074` are DEV-only, and PostgREST answers an unknown column with
+// an error that `unwrapList` throws — so every screen built on this select
+// shows a permanent "try again" panel.
 // **Five of them, not three**: `getFeed` backs `/postcards` AND `/profile` and
 // `/profile/detail`, where the gate is `combineQueries`, so a whole nav tab
 // becomes an error panel rather than losing a strip. Promoting
-// this file to `main` REQUIRES `072` and `073` applied to PROD first, which is
-// `docs/ENVIRONMENTS.md` §Migrations step 5 doing its ordinary job. Verify
-// rather than assume, per PD-279:
+// this file to `main` REQUIRES `072`, `073` and `074` applied to PROD first,
+// which is `docs/ENVIRONMENTS.md` §Migrations step 5 doing its ordinary job.
+// Verify rather than assume, per PD-279:
 //
 //   information_schema.column_privileges, grantee 'authenticated',
-//   table 'postcards' — the column must be on PROD's SELECT list.
+//   table 'postcards' — both columns must be on PROD's SELECT list.
 //
 // None of the other four capture columns are selected: the caption draws a
 // name, and a coordinate this app does not render is a coordinate it should not
-// ship to the browser.
+// ship to the browser. `taken_country_code` (`074`) follows `taken_place_name`
+// here for the same reason it follows it in the grant list — `PostcardCard`
+// draws the flag immediately before the town, never on its own.
 const POSTCARD_SELECT = `
   id, author_id, club_id, image_path, caption, created_at, updated_at,
-  taken_place_name,
+  taken_place_name, taken_country_code,
   author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}),
   club:clubs(id, name),
   likes_count:postcard_likes(count),

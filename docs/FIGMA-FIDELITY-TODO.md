@@ -40,7 +40,7 @@ remain are real gaps, and three of them are schema gaps rather than design ones.
 | Gap | What the design shows | What is missing |
 |---|---|---|
 | **Unread counts** | Filter tiles carry a badge; the deck is "all *new*"; the empty state is "no *new* postcards, yet!" | No seen/unseen model anywhere. The badge currently counts postcards in the feed window, which is the same number while nothing is marked seen. Needs a `postcard_views` table or a last-seen stamp — a migration, and `012`/`013` are still unapplied ahead of it. |
-| **Photo location** | Every card overlays `flag · City, Country` | `postcards` has no location columns. The date renders; the location does not. The author's `profiles.location` is where they live, not where the photo was taken, so it is not a substitute. |
+| ~~**Photo location**~~ | Every card overlays `flag · City, Country` | **Built 2026-08-24 (`072`–`074`, PD-279).** `taken_place_name` is vendor text stored as ONE string, not a city/country pair, so there is no comma to draw — the card shows `flag · name` rather than `flag · City, Country`. The flag is a regional-indicator emoji from `taken_country_code`, not the design's traced `Element / Flag` SVG — same trade `lib/countries.ts` already made for the profile picker, and it degrades to the pre-existing location pin for a typed-and-never-picked town, which carries no vendor country at all. The author's `profiles.location` is still never the substitute — it is where they live, not where the photo was taken. |
 | **Share count** | The share action shows a count | Nothing is recorded to count. The button shares a link (Web Share API, clipboard fallback) and shows no number. |
 
 ## Why the design was unreadable — historical, resolved 2026-08-04

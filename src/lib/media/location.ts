@@ -88,6 +88,14 @@ export type NamedPlace = {
   name: string
   lat: number | null
   lon: number | null
+  /**
+   * ISO-3166-1 alpha-2, uppercase, or `null` — `PlaceValue.countryCode`
+   * carried through unchanged (PD-279). Present only when `name` came from a
+   * PICKED or reverse-geocoded result; a rider who typed a town and never
+   * picked one has named a place with no vendor data behind it at all, so
+   * there is nothing here to carry.
+   */
+  countryCode: string | null
 }
 
 /**
@@ -121,6 +129,9 @@ export type PhotoLocation = {
   /** `null` for `hide`, and for a mode with nothing to say. */
   precision: 'place' | 'precise' | null
   placeName: string | null
+  /** Rides along with `placeName` exactly — `null` whenever it is, and
+   *  present only when the name itself came from vendor data (PD-279). */
+  placeCountryCode: string | null
 }
 
 export const NO_PHOTO_LOCATION: PhotoLocation = {
@@ -128,6 +139,7 @@ export const NO_PHOTO_LOCATION: PhotoLocation = {
   longitude: null,
   precision: null,
   placeName: null,
+  placeCountryCode: null,
 }
 
 /**
@@ -162,6 +174,10 @@ export function resolvePhotoLocation(
       longitude: hasPin ? roundToCoarseGrid(place!.lon!) : null,
       precision: 'place',
       placeName: name,
+      // A TYPED name has no vendor data behind it at all — `place.countryCode`
+      // is `undefined` for one, never a stale value from an earlier pick, so
+      // this is never wrong about a place the rider only typed.
+      placeCountryCode: place?.countryCode ?? null,
     }
   }
 
@@ -176,6 +192,7 @@ export function resolvePhotoLocation(
   // screen.
   const { latitude, longitude } = capture
   if (latitude !== null && longitude !== null) {
+    const label = place?.name.trim() || null
     return {
       latitude,
       longitude,
@@ -183,7 +200,12 @@ export function resolvePhotoLocation(
       // The name rides along as a LABEL for a coordinate that did not come from
       // it, so the two may disagree — deliberately, and cosmetically. It is a
       // caption, not evidence.
-      placeName: place?.name.trim() || null,
+      placeName: label,
+      // Rides along with the name exactly, per `PhotoLocation`'s own rule —
+      // `postcards_taken_country_code_needs_a_place` refuses one without the
+      // other, so a country beside a NULL name would be refused at the
+      // database rather than merely wrong.
+      placeCountryCode: label ? place?.countryCode ?? null : null,
     }
   }
 
@@ -199,6 +221,7 @@ export function resolvePhotoLocation(
       longitude: place.lon,
       precision: 'precise',
       placeName: name || null,
+      placeCountryCode: name ? place.countryCode ?? null : null,
     }
   }
 

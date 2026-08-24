@@ -115,6 +115,17 @@ export type PlaceValue = {
   placeId: string
   lat: number
   lon: number
+  /**
+   * ISO-3166-1 alpha-2, uppercase, or `null` — carried straight through from
+   * `PlaceSearchResult.countryCode` (PD-279). **Optional**, unlike the four
+   * fields above: `toPlaceValue` always sets it from a fresh lookup, but
+   * `RecentRideStart` and the two edit forms' seeded `PlaceValue`s predate the
+   * column and carry no country at all, so an omitted property here is a
+   * caller that has never had one to offer rather than a bug. Only the
+   * postcard composer reads this today; a club or ride caller ignores it, the
+   * same way both already ignore `meta`.
+   */
+  countryCode?: string | null
 }
 
 /** How long the field waits after the last keystroke before it searches. */
@@ -916,5 +927,6 @@ function toPlaceValue(place: PlaceSearchResult, maxNameLength?: number): PlaceVa
     placeId: place.id,
     lat: place.lat,
     lon: place.lon,
+    countryCode: place.countryCode,
   }
 }

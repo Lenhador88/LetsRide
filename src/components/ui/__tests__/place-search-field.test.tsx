@@ -24,6 +24,7 @@ const place = (over: Partial<PlaceSearchResult> = {}): PlaceSearchResult => ({
   meta: 'Petroleumweg, Vondelingenplaat',
   lat: 51.88,
   lon: 4.36,
+  countryCode: null,
   ...over,
 })
 

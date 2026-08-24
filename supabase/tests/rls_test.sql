@@ -8294,8 +8294,8 @@ select assert_eq(
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'postcards'
       and grantee = 'authenticated' and privilege_type = 'INSERT'),
-  'author_id,caption,club_id,id,image_path,ride_id,taken_at,taken_at_offset_minutes,taken_latitude,taken_location_precision,taken_longitude,taken_place_name',
-  '044/064/072/073: the INSERT grant list is exact, and neither timestamp 044 closed is among the twelve columns on it — 072 added two place columns to 064''s eleven and 073 dropped the provider id again');
+  'author_id,caption,club_id,id,image_path,ride_id,taken_at,taken_at_offset_minutes,taken_country_code,taken_latitude,taken_location_precision,taken_longitude,taken_place_name',
+  '044/064/072/073/074: the INSERT grant list is exact, and neither timestamp 044 closed is among the thirteen columns on it — 072 added two place columns to 064''s eleven, 073 dropped the provider id again, and 074 added the country');
 
 -- The whole migration in one line. **Deliberately a RESTATEMENT** and placed
 -- after the four it summarises rather than before them: all four combinations
@@ -14845,8 +14845,8 @@ select assert_eq(
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'postcards'
       and grantee = 'authenticated' and privilege_type = 'SELECT'),
-  'author_id,caption,club_id,created_at,id,image_path,taken_at,taken_at_offset_minutes,taken_latitude,taken_location_precision,taken_longitude,taken_place_name,updated_at',
-  '062/064/072/073: the SELECT grant list is exactly thirteen columns — the place name IS on it, the provider id is not, and ride_id is STILL not among them');
+  'author_id,caption,club_id,created_at,id,image_path,taken_at,taken_at_offset_minutes,taken_country_code,taken_latitude,taken_location_precision,taken_longitude,taken_place_name,updated_at',
+  '062/064/072/073/074: the SELECT grant list is exactly fourteen columns — the place name and the country are both on it, the provider id is not, and ride_id is STILL not among them');
 
 select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'ride_id', 'SELECT'),
   false, '072: ... ride_id specifically, because 062 took it out deliberately and an absolute re-grant list is exactly how that gets silently reverted');
@@ -15178,6 +15178,191 @@ select assert_eq(
   '072: no postcards policy mentions the place column — the audience of a photo''s town is the audience of the photo, and adding an arm for it would be inventing a second one');
 
 rollback to savepoint postcard_place_072;
+
+reset role;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+
+\echo ''
+\echo '# 074: a postcard''s named place carries a country too'
+
+-- ===========================================================================
+-- 074.  postcards.taken_country_code — the flag half of PD-279.
+--
+--       Grants are asserted BY ROLE with has_column_privilege and by a list
+--       SCOPED TO `authenticated`, never by attempting a write — the same
+--       reason 072's own header gives: this suite runs as the table owner,
+--       for whom no column privilege is a barrier (031's lesson).
+-- ===========================================================================
+savepoint postcard_country_074;
+
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 074.1  INSERT and SELECT reach the country — a rider writes the country they
+--        named and must be able to read back what they published.
+-- ---------------------------------------------------------------------------
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'taken_country_code', 'INSERT'),
+  true, '074: authenticated may INSERT the country — the rider''s own lookup is what writes it');
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'taken_country_code', 'SELECT'),
+  true, '074: ... and may SELECT it back — the audience of a country IS the audience of the postcard');
+
+-- ---------------------------------------------------------------------------
+-- 074.2  NO UPDATE on the country, ever — matching taken_place_name exactly.
+-- ---------------------------------------------------------------------------
+select assert_eq(has_column_privilege('authenticated', 'public.postcards', 'taken_country_code', 'UPDATE'),
+  false, '074: the country holds no UPDATE — the remedy for a mis-published country is the same as for a mis-published town: delete the postcard');
+
+-- The three grant lists, exact and scoped to their grantee — the per-column
+-- assertions above cannot catch a column that acquires a privilege by
+-- accident, and 044/046 are the worked example of an absolute list silently
+-- reinstating what a previous file removed.
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'postcards'
+      and grantee = 'authenticated' and privilege_type = 'INSERT'),
+  'author_id,caption,club_id,id,image_path,ride_id,taken_at,taken_at_offset_minutes,taken_country_code,taken_latitude,taken_location_precision,taken_longitude,taken_place_name',
+  '074: the INSERT grant list is exactly thirteen columns — the country IS on it');
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'postcards'
+      and grantee = 'authenticated' and privilege_type = 'SELECT'),
+  'author_id,caption,club_id,created_at,id,image_path,taken_at,taken_at_offset_minutes,taken_country_code,taken_latitude,taken_location_precision,taken_longitude,taken_place_name,updated_at',
+  '074: the SELECT grant list is exactly fourteen columns — ride_id is STILL not among them');
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'postcards'
+      and grantee = 'authenticated' and privilege_type = 'UPDATE'),
+  'caption,club_id,image_path',
+  '074: the UPDATE list is UNMOVED at exactly three columns, through three files that rewrote the other two');
+
+-- ---------------------------------------------------------------------------
+-- 074.3  anon holds nothing on the country, in any verb. Decision #1.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select bool_or(has_column_privilege('anon', 'public.postcards', 'taken_country_code', p))
+     from unnest(array['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) p),
+  false, '074: anon holds no privilege of any kind on the country');
+
+-- ---------------------------------------------------------------------------
+-- 074.4  The format CHECK — two uppercase letters, matching
+--        profile_countries_code_is_iso_alpha2 (014/020) rather than the
+--        vendor's own lowercase.
+-- ---------------------------------------------------------------------------
+insert into postcards (id, author_id, image_path, taken_place_name, taken_location_precision, taken_country_code)
+  values ('00000000-0000-0000-0000-00000074f001',
+          '00000000-0000-0000-0000-00000000000a',
+          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000074a01.jpg',
+          'Utrecht', 'place', 'NL');
+select assert_eq(
+  (select taken_country_code from postcards where id = '00000000-0000-0000-0000-00000074f001'),
+  'NL', '074: an uppercase two-letter code lands, beside the place it describes');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_place_name, taken_location_precision, taken_country_code)
+  values ('00000000-0000-0000-0000-00000074f002',
+          '00000000-0000-0000-0000-00000000000a',
+          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000074a02.jpg',
+          'Utrecht', 'place', 'nl')$$,
+  '23514', '074: a lowercase code is refused — the composer uppercases before this ever runs, and the database is what holds that true against a client that skips it');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_place_name, taken_location_precision, taken_country_code)
+  values ('00000000-0000-0000-0000-00000074f003',
+          '00000000-0000-0000-0000-00000000000a',
+          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000074a03.jpg',
+          'Utrecht', 'place', 'NLD')$$,
+  '23514', '074: a three-letter code is refused');
+
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_place_name, taken_location_precision, taken_country_code)
+  values ('00000000-0000-0000-0000-00000074f004',
+          '00000000-0000-0000-0000-00000000000a',
+          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000074a04.jpg',
+          'Utrecht', 'place', 'N')$$,
+  '23514', '074: a one-letter code is refused');
+
+-- ---------------------------------------------------------------------------
+-- 074.5  A country needs a place to describe — postcards_taken_country_code_
+--        needs_a_place. PostcardCard draws the flag immediately before the
+--        town and never on its own, so a row carrying a country with no name
+--        would store a value nothing can ever render.
+-- ---------------------------------------------------------------------------
+select assert_rejected($$
+  insert into postcards (id, author_id, image_path, taken_country_code)
+  values ('00000000-0000-0000-0000-00000074f005',
+          '00000000-0000-0000-0000-00000000000a',
+          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000074a05.jpg',
+          'NL')$$,
+  '23514', '074: a country with NO place name is refused — nothing on the card could ever draw it');
+
+-- The other direction is legal: a named place with no country, exactly the
+-- typed-and-never-picked shape 072's arm 2 already allows.
+insert into postcards (id, author_id, image_path, taken_place_name, taken_location_precision)
+  values ('00000000-0000-0000-0000-00000074f006',
+          '00000000-0000-0000-0000-00000000000a',
+          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000074a06.jpg',
+          'Utrecht', 'place');
+select assert_eq(
+  (select taken_country_code from postcards where id = '00000000-0000-0000-0000-00000074f006'),
+  null, '074: a named place with NO country lands — a typed-and-never-picked town carries no vendor data to describe a country with');
+
+-- ---------------------------------------------------------------------------
+-- 074.6  THE REACH. No new audience: the column sits on postcards, RLS is
+--        row-level, and the postcard's existing SELECT policy is the whole
+--        answer — same pattern as 072.8, asserted against a real role.
+-- ---------------------------------------------------------------------------
+insert into postcards (id, author_id, club_id, image_path, taken_place_name, taken_location_precision, taken_country_code)
+  values ('00000000-0000-0000-0000-00000074f007',
+          '00000000-0000-0000-0000-00000000000a',
+          '00000000-0000-0000-0000-0000000000c1',
+          'postcards/00000000-0000-0000-0000-00000000000a/00000000-0000-0000-0000-000000074a07.jpg',
+          'Utrecht', 'place', 'NL');
+
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000074f007'),
+  0, '074: a NON-MEMBER reaches nothing of a private club''s postcard, so the country cannot be read either — the column rides the row''s audience and adds no reach of its own');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_eq(
+  (select taken_country_code from postcards where id = '00000000-0000-0000-0000-00000074f007'),
+  'NL', '074: the AUTHOR reads their own postcard''s country back');
+
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+select assert_eq(
+  (select taken_country_code from postcards where id = '00000000-0000-0000-0000-00000074f007'),
+  'NL', '074: a MEMBER of the club reads the country exactly as they read the place name — one audience, decided by the row');
+
+select assert_denied($$
+  update postcards set taken_country_code = 'BE'
+   where id = '00000000-0000-0000-0000-00000074f007'$$,
+  '074: a member who can READ the country cannot rewrite it — 42501 from the absent column grant, before any policy is consulted');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_denied($$
+  update postcards set taken_country_code = 'BE'
+   where id = '00000000-0000-0000-0000-00000074f007'$$,
+  '074: ... and neither can the AUTHOR');
+
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 074.7  NO POLICY MOVED.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'postcards'),
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'postcards'
+      and (coalesce(qual, '') || coalesce(with_check, '')) not like '%taken_country%'),
+  '074: no postcards policy mentions the country column — same audience as the place it describes, no second one invented');
+
+rollback to savepoint postcard_country_074;
 
 reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);

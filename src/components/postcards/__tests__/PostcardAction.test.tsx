@@ -134,6 +134,7 @@ describe('PostcardCard — the action row', () => {
       comments_count: 0,
       is_liked: false,
       taken_place_name: null,
+      taken_country_code: null,
       ...overrides,
     }
 
@@ -202,6 +203,25 @@ describe('PostcardCard — the action row', () => {
   it('draws no caption when the postcard names no place', () => {
     const html = card({ taken_place_name: null })
     expect(html).not.toContain('Taken in')
+  })
+
+  /**
+   * The flag half (`074`, PD-279). Same absence rule as the name above, plus
+   * the one this card owns on its own: a country with no name never reaches
+   * it at all — `postcards_taken_country_code_needs_a_place` refuses that row
+   * at the database — so the fallback case here is a NAMED place with no
+   * country, which is the typed-and-never-picked shape.
+   */
+  it('draws the flag before the town when the postcard names a country', () => {
+    const html = card({ taken_place_name: 'Berkhout', taken_country_code: 'NL' })
+    expect(html).toContain('🇳🇱')
+    expect(html).toContain('Berkhout')
+  })
+
+  it('falls back to the location pin, not a flag, for a place with no country', () => {
+    const html = card({ taken_place_name: 'Berkhout', taken_country_code: null })
+    expect(html).not.toContain('🇳🇱')
+    expect(html).toContain('Berkhout')
   })
 
   // `Grey/70%` bounds the composite at `#4C4C4C` whatever the photo is —
