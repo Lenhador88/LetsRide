@@ -15,6 +15,7 @@ import { reverseGeocodePlace } from '@/lib/data/places'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { useRestoreSelection } from '@/lib/actions/retain'
+import { seedClubId } from '@/lib/clubs/seed-club-id'
 
 // The caption is controlled already; the audience was not, and it is the one
 // that matters most here. A refusal reset this select to its first option —
@@ -77,9 +78,27 @@ type Upload =
  * deviations rather than adopted — see docs/FIGMA-FIDELITY-TODO.md
  * §Create postcard for the full list.
  */
-export function CreatePostcardForm({ clubs }: { clubs: ClubOption[] }) {
+export function CreatePostcardForm({
+  clubs,
+  initialClubId,
+}: {
+  clubs: ClubOption[]
+  /** See `clubId` below. */
+  initialClubId?: string | null
+}) {
   const [state, formAction, pending] = useActionState(createPostcard, emptyActionState)
-  const [clubId, setClubId] = useState('')
+  /**
+   * The club this composer was opened from, or null (PD-283).
+   *
+   * **Seeded only when the id is one of this rider's own clubs**, which is not
+   * a security check — `017`'s INSERT policy and the audience rule decide, and
+   * a select is a hint — but it is what keeps the control honest: a `<select>`
+   * whose `value` matches no `<option>` renders as the first option while
+   * reporting the unmatched id, so an unknown id in the URL would show one club
+   * and submit another. Unmatched falls back to no club, which is the same
+   * state as arriving here from the tab.
+   */
+  const [clubId, setClubId] = useState(() => seedClubId(clubs, initialClubId))
   const clubRef = useRef<HTMLSelectElement>(null)
   useRestoreSelection(clubRef, clubId, state)
   useActionRedirect(state)

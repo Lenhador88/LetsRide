@@ -49,6 +49,8 @@
  * changes, the absent boundary is a `next build` failure on ten routes at once.
  */
 
+import { clubIdSchema } from '@/lib/validation/clubs'
+
 /** The query parameter every detail route reads its id from. */
 export const DETAIL_ID_PARAM = 'id'
 
@@ -88,4 +90,56 @@ export const routes = {
   /** Another rider — `view-rider-profile`. Own-id is redirected to `/profile`
    * rather than resolving here; see that route's own redirect. */
   profile: (id: string) => detail(detailPaths.profile, id),
+
+  /** `Plan a ride` from a club — see `CREATE_CLUB_PARAM`. */
+  newRideInClub: (clubId: string) => inClub(createPaths.ride, clubId),
+  /** `Add a postcard` from a club — see `CREATE_CLUB_PARAM`. */
+  newPostcardInClub: (clubId: string) => inClub(createPaths.postcard, clubId),
 } as const
+
+/**
+ * Which club a create screen was opened from (PD-283).
+ *
+ * It does two jobs and is deliberately one parameter for both: it seeds the
+ * composer's club `<select>`, and it is what `backFromCreateScreen` turns into
+ * the header's back destination. A rider who taps `Plan a ride` inside a club
+ * means that club and expects to end up back in it, and neither half of that
+ * was knowable from `/rides/new` before.
+ *
+ * **This is NOT `back-navigation.ts`'s mechanism, and the difference is the
+ * point.** That module carries a rider-supplied *path* and so needs
+ * `BACK_ORIGINS` to bound where it can send anyone. This carries an **id**, and
+ * the only route it can ever produce is `routes.club(...)` of a well-formed
+ * uuid — so there is no path to allowlist and no open redirect to close. Adding
+ * a club detail URL to `BACK_ORIGINS` would have been the obvious reuse and is
+ * the wrong one: that list is derived from the screens rendering
+ * `NotificationsHeaderControl`, and its own test fails when it drifts.
+ */
+export const CREATE_CLUB_PARAM = 'club'
+
+const createPaths = {
+  ride: '/rides/new',
+  postcard: '/postcards/new',
+} as const
+
+function inClub(path: string, clubId: string): string {
+  return `${path}?${new URLSearchParams({ [CREATE_CLUB_PARAM]: clubId })}`
+}
+
+/**
+ * The pure half: whatever the URL carried in, an app pathname out, always.
+ *
+ * A malformed or absent id falls back to the tab root the screen belongs to,
+ * because the alternative is a back button that lands on a 404 — worse than the
+ * blunt answer it replaces. The parse is `clubIdSchema` rather than a regex of
+ * this file's own, so there is one definition of "a club id" and it is the one
+ * `getClub` already refuses on.
+ *
+ * It never asks whether the club EXISTS or is VISIBLE, and it does not need to:
+ * a rider sent to a club they cannot read gets that route's ordinary
+ * `notFound()`, which is the same answer they would get by typing the URL.
+ */
+export function backFromCreateScreen(club: string | null | undefined, fallback: string): string {
+  if (!club || !clubIdSchema.safeParse(club).success) return fallback
+  return routes.club(club)
+}

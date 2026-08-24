@@ -1,7 +1,6 @@
-import Link from 'next/link'
-import { EditIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
 import { RideChatButton } from '@/components/rides/RideChatButton'
+import { RideOptionsMenu } from '@/components/rides/RideOptionsMenu'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { routes } from '@/lib/routes'
 
@@ -28,16 +27,21 @@ import { routes } from '@/lib/routes'
  * right and is now spent: there is a table, a route and a screen behind it. The
  * *other* omission it named still stands, and for the same reason:
  *
- * - **Options** (`Element / Icon / Options`, x342) opens a sheet this flow never
- *   draws, and stays absent — inventing rows for a destructive menu is the kind
- *   of guess that gets trusted later. Logged in docs/FIGMA-FIDELITY-TODO.md
- *   §Ride detail. **Edit is not that menu, and PD-101 no longer names this
- *   gap**: `design.md` §D4 decided Edit belongs in the header as a single
- *   affordance and Delete belongs at the foot of the edit screen behind a
- *   second tap, not bundled into an invented overflow sheet. It renders through
- *   `secondaryAction` (x302), which is free here — the organizer's own chat
- *   button already occupies `action` (x342) whenever Edit would show, since an
+ * - **Options** (`Element / Icon / Options`, x342) is BUILT as of PD-280, and
+ *   the rows are no longer invented. This docstring used to argue it should
+ *   stay absent because "inventing rows for a destructive menu is the kind of
+ *   guess that gets trusted later" — sound while the ride was the only screen
+ *   without one, and spent now that four other surfaces ship the same sheet and
+ *   the product owner asked for it here by name (2026-08-24). `RideOptionsMenu`
+ *   carries Share, Edit and Delete; its header has each row's reasoning and
+ *   what it supersedes in `design.md` §D4. It renders through `secondaryAction`
+ *   (x302) rather than the design's x342, which is free here — the organizer's
+ *   own chat button already occupies `action` whenever this shows, since an
  *   organizer is crew by construction.
+ *
+ *   **The menu is drawn for every viewer, not only the organizer**, which the
+ *   old pencil was not: `Share ride` is the row anyone can use, and it is the
+ *   whole reason a rider can send a ride to somebody at all.
  *
  * **The chat button is shown to the crew only**, which is narrower than the
  * design draws — the frames show one header for everybody, because a mock has no
@@ -121,15 +125,9 @@ export function RideHeader({
         undefined
       }
       secondaryAction={
-        !onChat && isOrganizer ? (
-          <Link
-            href={routes.rideEdit(rideId)}
-            aria-label="Edit ride"
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border"
-          >
-            <EditIcon className="h-6 w-6" />
-          </Link>
-        ) : undefined
+        // Not on the chat screen, which draws no way into anything but the
+        // conversation — the same rule the chat button follows one slot over.
+        !onChat ? <RideOptionsMenu rideId={rideId} isOrganizer={isOrganizer} /> : undefined
       }
       // The button and its unread dot are one component, so this header issues
       // no query and this condition is the only gate on either. See

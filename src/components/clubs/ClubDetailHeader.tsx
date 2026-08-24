@@ -42,9 +42,14 @@ export type ClubScreen = 'detail' | 'members' | 'rides'
  *
  * **`clubId` is taken separately from `club` so the header can draw before
  * the club arrives.** Back comes from the route segment (via `current`), so
- * the only things that wait on the read are the name, the avatar and the
- * menu — `club?.viewer_role` decides the last of those, and there is nothing
- * safe to show before it lands.
+ * the only things that wait on the read are the name, the avatar and the menu.
+ *
+ * **The menu waits on the club rather than on membership (PD-280).** It used to
+ * be gated on `club?.viewer_role`, so a non-member browsing a public club got
+ * no dots at all — correct while every row was a member's (`Edit`, `Leave`),
+ * and wrong the moment `Share club` arrived, which is exactly the row a
+ * non-member wants. `club` alone is the gate now: a club that has loaded can be
+ * shared by whoever is looking at it, and `viewerRole` still decides the rest.
  */
 export function ClubDetailHeader({
   clubId,
@@ -76,8 +81,12 @@ export function ClubDetailHeader({
         )
       }
       action={
-        club?.viewer_role ? (
-          <ClubOptionsMenu clubId={clubId} isOwner={club.viewer_role === 'owner'} />
+        club ? (
+          <ClubOptionsMenu
+            clubId={clubId}
+            viewerRole={club.viewer_role}
+            isOwner={club.viewer_is_owner}
+          />
         ) : undefined
       }
     />

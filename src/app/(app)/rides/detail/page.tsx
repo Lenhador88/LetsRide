@@ -229,15 +229,16 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
 
       {blurb && <ExpandableText className="px-6">{blurb}</ExpandableText>}
 
-      {/* Crew only, for the same reason the chat row is: a rider who is not on
-          this ride has no `Add` to be offered and no photos to be shown, so the
-          section would be an empty promise rather than an empty state. */}
-      {isCrew && (
-        <section className="flex flex-col gap-2">
-          <SectionHeader title="Journal" className="py-0" />
-          <RideJournalEmpty />
-        </section>
-      )}
+      {/* Not crew-gated (PD-282). `ride_journal_postcard_ids` gates on
+          `can_read_ride` and the postcard SELECT qual, and never on crew — so
+          anyone who can open this ride can already be shown its photos, and
+          hiding the section was the UI inventing a rule the policy does not
+          have. `canAdd` carries the half that IS a database rule: tagging wants
+          `private.is_ride_crew`, so only the crew is offered the tile. */}
+      <section className="flex flex-col gap-2">
+        <SectionHeader title="Journal" className="py-0" />
+        <RideJournalEmpty canAdd={isCrew} />
+      </section>
 
       {/* The count this rail draws is the one that was removed from this screen
           once already, for counting `maybe` RSVPs under a "going" label and

@@ -636,6 +636,22 @@ export type ClubDetail = {
   members_count: number
   viewer_role: 'owner' | 'admin' | 'member' | null
   /**
+   * Whether the viewer is `clubs.owner_id` — which is **not** the same question
+   * as `viewer_role === 'owner'`, and the difference is load-bearing (PD-280).
+   *
+   * `viewer_role` is a `club_members` row; ownership is a column on `clubs`, and
+   * `043`'s `delete_owned_club` gates on the column alone. The two diverge for
+   * an owner holding no roster row — `createClub` does two un-transacted
+   * inserts, so a lost tab between them leaves exactly that, and
+   * `enforce-creator-membership` calls the state "reachable on demand" and is
+   * unbuilt. Gating `Delete club` on the role would hide it from precisely the
+   * owner the database would let delete.
+   *
+   * Costs nothing: `getClub` already holds the user for the membership read.
+   * Still a display hint rather than authorization — `043` decides.
+   */
+  viewer_is_owner: boolean
+  /**
    * Where the club is based — `066`, PD-259. All four columns move together
    * (`clubs_location_coupling`), so a non-null `location_name` guarantees a
    * non-null coordinate pair and vice versa. **NULL is the normal state**: the

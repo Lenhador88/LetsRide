@@ -442,6 +442,11 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
     cover_image_url: null,
     members_count: row.members_count?.[0]?.count ?? 0,
     viewer_role: (membership?.role as ClubDetail['viewer_role']) ?? null,
+    // The column, not the roster row — see the type. Free here because `user`
+    // is already in hand for the membership read above, which is the same
+    // argument `ClubForEdit.is_owner` makes for computing it rather than
+    // spending a second `auth.getUser()`.
+    viewer_is_owner: !!user && row.owner_id === user.id,
     location_name: row.location_name,
     location_place_id: row.location_place_id,
     latitude: row.latitude,

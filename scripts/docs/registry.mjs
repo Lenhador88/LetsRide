@@ -301,6 +301,19 @@ export const claims = [
     about: "the hourly ceiling: places.ts's client copy against 069's INSERT policy",
   },
 
+  // ---- the ⋯ options-menu convention (PD-280) ----------------------------
+  {
+    id: 'options-menu-surfaces',
+    file: 'docs/reference/design-system.md',
+    pattern:
+      /grep -rln "OptionsIcon" src\/components\/ \| grep -v icons\/\s+# (\d+): account, rider, postcard, club, ride/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    cmd: `grep -rln "OptionsIcon" src/components/ | grep -v icons/ | wc -l`,
+    about:
+      'docs/reference/design-system.md §the ⋯ convention: how many surfaces carry the menu. The section exists so new detail screens adopt it, so this number is EXPECTED to grow — a failure here means update the doc, not the code.',
+  },
+
   // ---- lucide-react retirement (comment trap, both directions) -----------
   {
     id: 'lucide-importers-filtered',

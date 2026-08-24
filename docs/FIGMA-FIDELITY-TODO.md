@@ -342,20 +342,23 @@ is a drawn value this repo no longer builds:
       token choices. **Its time is a single instant** — `14:00`, not the drawn `14:00 -
       18:00` — the same `rides` has-no-end-time gap already logged against the ride detail's
       own date row; not repeated in full here.
-- [ ] **The header's `Options` control is built, and one row the mock draws is not.** Both
-      Options frames (`4181:6897` owner, `4181:6930` member) draw three rows under a
-      hairline: `Edit club` (owner) or nothing (member) above the line, then `Delete club`
-      below it for the owner. `ClubOptionsMenu` builds `Edit club` and `Leave club` and
-      **deliberately omits `Delete club`** — `ClubDetailHeader`'s own docstring and
-      `openspec/changes/add-ride-club-edit-delete/design.md` §D4 (PD-101) already put
-      deletion at the foot of the edit screen behind a second tap, in `DeleteClubControl`,
-      and siting the same destructive control in two places is how it gets tapped by
-      accident. The product owner settles which frame is right; until then
-      `DeleteClubControl` stays the one place it lives.
+- [x] ~~**The header's `Options` control is built, and one row the mock draws is not.**~~
+      **Closed 2026-08-24 (PD-280): the mock was right.** Both Options frames (`4181:6897`
+      owner, `4181:6930` member) draw `Delete club` under a hairline below `Edit club`, and
+      `ClubOptionsMenu` deliberately omitted it —
+      `openspec/changes/add-ride-club-edit-delete/design.md` §D4 (PD-101) put deletion at
+      the foot of the edit screen, and siting one destructive control in two places is how it
+      gets tapped by accident. The product owner settled it the other way, so that the club
+      menu and the new `RideOptionsMenu` offer the same rows. The old argument is kept by the
+      confirmation rather than by the omission: the row opens `DeleteClubSheet`, which is
+      `DeleteClubControl`'s own panel, counts and all. **One row the frames do not draw is
+      built anyway** — `Share club`, the app-wide row PD-280 adds to every surface.
 - [ ] **Join is not in the menu either**, though neither approved frame draws a non-member's
       Options sheet to compare against. `ClubMembershipButton` stays inline on the page
       instead, visible only to a non-member — a constructive action stays visible, only the
-      destructive one (Leave) is tucked away.
+      destructive one (Leave) is tucked away. **A non-member does now get the sheet**, since
+      PD-280: it holds `Share club` and nothing else, where before the whole control was
+      hidden from them.
 - [ ] **`ClubMemberRail`'s avatar stack draws no admin distinction.** The members page marks
       `role = 'admin'` with a trailing label and no ring; the rail's collapsed state shows
       only the host ring, on the owner, matching what `RideCrewRail` draws for the ride
@@ -746,11 +749,14 @@ measurement as current.
       this route — note that is *replacing* the bar, where `RideAttendanceBar` on the ride plan
       *stacks on top of* it. Which of the two a screen does is a per-screen fact the design
       states, not a rule about bars.
-- [ ] **The header's Options button is omitted, and this one is a question, not a task.**
-      The flow never draws what the sheet contains. Ride overflow is presumably
-      edit / cancel / leave, and "No edit or delete UI anywhere" is a standing known issue —
-      inventing three rows for a destructive menu is the kind of guess that gets trusted
-      later. **Ask the designer what belongs in it.**
+- [x] ~~**The header's Options button is omitted, and this one is a question, not a task.**~~
+      **Built 2026-08-24 (PD-280)** — `RideOptionsMenu`, in `secondaryAction` rather than the
+      drawn x342, which the organizer's chat button occupies. The flow still draws no sheet
+      for this screen, so the rows are not read off a frame; they are the product owner's,
+      asked for by name: *"the 3 dots sliding menu should apply for rides and clubs… the app
+      standard for these main pages"*. `Share ride`, then `Edit ride` and `Delete ride` for
+      the organizer, matching `ClubOptionsMenu` row for row. That is what closes this — the
+      entry asked the designer what belongs in it, and the owner answered.
 - [ ] **Crew's sticky "Bring a rider" action is omitted.** Inviting is its own flow
       (`Invite riders`, `Invite riders - Filled`) with no schema behind it.
 
