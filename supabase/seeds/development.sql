@@ -167,20 +167,23 @@ insert into public.club_members (club_id, user_id, role, joined_at) values
 -- ---------------------------------------------------------------------------
 -- 4. Rides — future-dated so they appear in the default list
 -- ---------------------------------------------------------------------------
-insert into public.rides (id, title, description, meeting_point, departure_at, is_public, organizer_id, club_id, max_riders, created_at)
+-- `max_riders` was here until 077 dropped the column (PD-293). Not replaced by
+-- anything: there is no crew ceiling in this product, so a seeded ride carries
+-- no cap field to keep in step.
+insert into public.rides (id, title, description, meeting_point, departure_at, is_public, organizer_id, club_id, created_at)
 values
   ('cccccccc-0000-4000-8000-00000000ccc1', 'Serra da Arrábida loop',
    'Coast road out, hills back. Coffee at the top.', 'Cais do Sodré, Lisbon',
    now() + interval '3 days', true,
-   '11111111-1111-4111-8111-111111111111', 'aaaaaaaa-0000-4000-8000-00000000aaaa', 12, now() - interval '5 days'),
+   '11111111-1111-4111-8111-111111111111', 'aaaaaaaa-0000-4000-8000-00000000aaaa', now() - interval '5 days'),
   ('cccccccc-0000-4000-8000-00000000ccc2', 'Early breakfast run',
    'Short one. Back before the traffic.', 'Ponte da Arrábida, Porto',
    now() + interval '9 days', true,
-   '22222222-2222-4222-8222-222222222222', null, 8, now() - interval '2 days'),
+   '22222222-2222-4222-8222-222222222222', null, now() - interval '2 days'),
   ('cccccccc-0000-4000-8000-00000000ccc3', 'Wet weather practice',
    'Members only. Bring proper gear.', 'Sloterdijk, Amsterdam',
    now() + interval '14 days', false,
-   '33333333-3333-4333-8333-333333333333', 'bbbbbbbb-0000-4000-8000-00000000bbbb', 6, now() - interval '1 day');
+   '33333333-3333-4333-8333-333333333333', 'bbbbbbbb-0000-4000-8000-00000000bbbb', now() - interval '1 day');
 
 insert into public.ride_members (ride_id, user_id, status, joined_at) values
   ('cccccccc-0000-4000-8000-00000000ccc1', '11111111-1111-4111-8111-111111111111', 'going', now() - interval '5 days'),

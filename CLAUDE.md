@@ -577,8 +577,9 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 76 files; DEV is at `076` and PROD at `075` — measured 2026-08-24, after
-`076` (PD-297) went to DEV and `071`–`075` had gone to PROD in one sitting earlier the same day.**
+**Applied state: 77 files; DEV is at `077` and PROD at `075` — measured 2026-08-24, after
+`076` (PD-297) and `077` (PD-293) went to DEV and `071`–`075` had gone to PROD in one sitting
+earlier the same day.**
 DEV-ahead is the resting state: it is where a migration lives between its merge and its promotion,
 and the two were last level for a few hours on 2026-08-20 at PD-273's promotion and again briefly
 on 2026-08-24. **`074` and `075` went to PROD ahead of the build that reads them**, which is the
@@ -642,7 +643,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1763** assertions — re-derive rather than trust it:
+Suite **1752** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.

@@ -235,8 +235,8 @@ Expect to move things when the designer draws it.
 
 - [ ] **Five drawn fields have no column**, and none is built: an **end time** (the frame draws
       a second date and time; `rides` has only `departure_at`), **distance in km**, **"Includes
-      offroad"**, **"Public seats"** as a number separate from `max_riders`, and a **cover
-      photo**. The last is the same missing column that leaves the rides list's 80-wide image
+      offroad"**, **"Public seats"** — a rider limit of any kind, now that `077` (PD-293) has
+      dropped `max_riders` — and a **cover photo**. The last is the same missing column that leaves the rides list's 80-wide image
       strip empty.
 
 - [ ] **Rider invitations with an Admin role** are drawn here as well as on Create club. Same
@@ -252,9 +252,11 @@ Expect to move things when the designer draws it.
       and the design does not draw one, so it borrows the `Input` treatment rather than
       inventing a component. Replace it when a real one is designed.
 
-- [x] ~~**`max_riders` is unenforced**~~ — still true, and still not this form's job. The
-      schema has carried the column since `001` with no policy, trigger or check behind it.
-      The form bounds what can be *typed*, which is not the same thing.
+- [x] ~~**`max_riders` is unenforced**~~ — **closed as DROPPED rather than done.** `063`
+      (PD-174) enforced it for six days; `077` (PD-293) removed the column, the trigger and
+      the form field together, because the design draws no capacity affordance anywhere and an
+      enforced cap a rider cannot see coming is worse than no cap. There is no rider limit on
+      this form to bound.
 
 ### Create club, and the original club detail — built 2026-08-05
 
@@ -828,11 +830,13 @@ Blocked on schema, in the same shape as the rides list's image strip:
 - [ ] **The location row draws a place name over a street address.** `meeting_point` is one
       free-text column, so the primary line carries it and the secondary stays empty. Two
       columns, or a parse nobody should write.
-- [ ] **`max_riders` is not enforced anywhere.** The column has existed since `001` and
-      nothing has ever checked it — not the RSVP action, not a policy, not a trigger — so a
-      ride can be over-subscribed. Out of scope here because the ride plan does not draw
-      capacity at all, and because the correct fix is a constraint the database owns rather
-      than a check-then-insert that races.
+- [x] ~~**`max_riders` is not enforced anywhere.**~~ **Closed as DROPPED — `077` (PD-293).**
+      `063` did enforce it, correctly and in the database (a `security definer` trigger taking
+      a row lock, not the check-then-insert this item warned against). What could not be fixed
+      is the reason this item put it out of scope in the first place: *the ride plan does not
+      draw capacity at all*. So the cap surfaced only as an unexplained refusal, and the
+      product owner dropped the limit rather than commission the frame. Nothing caps a crew
+      now, by decision.
 
 Accessibility — **measured, and both fail**. This is the same palette-wide problem the rides
 list surfaced with its two RSVP pills, arriving on a second screen:
@@ -895,8 +899,8 @@ Deviations that are ours, not the design's:
       by `reviewer` catching a comment that claimed "24/36, measured" over a `text-2xl` that
       was not.
 - [ ] **The crew list is bounded at 200 and does not paginate.** `RIDE_CREW_LIMIT` exists
-      because nothing caps `ride_members` — see `max_riders` above — not because 200 is a
-      real crew. Beyond it the roster truncates silently. The design has no pagination for
+      because nothing caps `ride_members` — true again since `077` dropped the cap, see
+      above — not because 200 is a real crew. Beyond it the roster truncates silently. The design has no pagination for
       this list, so the honest fix needs a design before it needs code.
 
 ### Profile — built from the measurements 2026-08-05
@@ -1481,6 +1485,22 @@ cost of a tagline there is paid on every sign-in. If shared links ever become a 
 channel the fix is more likely routing than copy — send an un-authed deep link to `/auth/signup`,
 and carry the target — which is a change to `src/lib/auth/guard.ts` and its suite, not a fidelity
 item.
+
+### The location permission sheet and its row — built 2026-08-24 (PD-170), from no frame at all
+
+- [ ] **`LocationPrimingSheet` has no Figma frame, and neither does the row that opens it.**
+      `npm run figma -- ls` returns no permission, priming or explainer frame of any kind, so
+      the copy and the vertical rhythm are **written, not measured**. Everything they are built
+      *from* is measured: `ContextMenu` is `v2 / Component / Context Menu` (390 wide, flush to
+      the bottom edge, 16px radius on the top corners, padding 16/24/32/24), the buttons are
+      `Button / Regular / *` at `lg`, and `UseMyLocationRow` is `ExploreClubsStrip`'s row
+      verbatim — 56px on `White/100` at radius 8, 16px padding, 12px gap, a 24px `Location
+      Filled` in `Accent Brand/100`, label at Poppins/14/Semibold, chevron trailing.
+- [ ] **Two claims in that copy are a store-review surface, not decoration.** Apple reads the
+      in-app rationale alongside `NSLocationWhenInUseUsageDescription`. *"Only while the app is
+      open"* and *"we never show other riders where you are"* must both stay true of the code —
+      nothing in `src/` uses `watchPosition`, and a device fix leaves the device only as a
+      ~1 km-rounded proximity bias. A designer rewording this needs to keep both.
 
 ## Rule for anyone building against this
 
