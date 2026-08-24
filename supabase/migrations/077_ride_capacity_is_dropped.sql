@@ -77,10 +77,16 @@
 -- backwards — `070` landed 102 seconds after its merge commit, out from under a
 -- Preview still calling the function it had just dropped.
 --
--- `getRide` and the ride list select `max_riders` **by name**
--- (src/lib/data/rides.ts), so from the instant this applies, any deployed build
--- that still names it gets `42703 column rides.max_riders does not exist` on
--- EVERY ride read — not a degraded card, an empty screen. So:
+-- **`getRide` and `getRideForEdit` select `max_riders` by name** — and those
+-- two only. `RIDE_SELECT`, which the rides LIST reads through, never named it,
+-- so the list survives this and the ride DETAIL and EDIT screens do not: from
+-- the instant this applies, a deployed build that still names it gets
+-- `42703 column rides.max_riders does not exist` on both, and that is an empty
+-- screen rather than a degraded card. Enumerated from
+-- `git grep max_riders -- src/lib/data/rides.ts` at the merge base rather than
+-- reasoned from "the ride reads"; an earlier draft of this paragraph said the
+-- list went down too, which overstates the blast radius in the one paragraph a
+-- promotion session reads before deciding whether to hold. So:
 --
 --   * **DEV**: applied ahead of the merge on purpose, in the same session that
 --     writes the code half, so the window is minutes and DEV serves no riders.

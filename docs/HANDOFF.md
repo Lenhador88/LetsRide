@@ -925,9 +925,12 @@ promotion. Repo 77 files, PROD 75 rows, DEV 79 rows, one chain.
 
 **`077` is DESTRUCTIVE — it drops a column — so it goes to PROD in `070`'s order, not `069`'s:
 after the promotion build is confirmed *serving*, never before.** PROD's app still selects
-`max_riders` in `getRide`, `getRideForEdit` and `RIDE_SELECT` until the promotion deploys, and a
-PostgREST select naming a dropped column is a 400 that takes the ride detail, the edit screen and
-the rides list down together. Applying it first would be a rider-visible outage for the length of
+`max_riders` in `getRide` and `getRideForEdit` — and in those two only — until the promotion
+deploys, and a PostgREST select naming a dropped column is a 400 that takes the ride detail and
+the edit screen down. **`RIDE_SELECT` never named it, so the rides LIST survives**; count the
+call sites rather than reasoning from "the ride reads", which is how an earlier draft of this
+line had the list going down too:
+`git grep -c max_riders origin/development -- src/lib/data/rides.ts`. Applying it first would be a rider-visible outage for the length of
 a build, which is exactly the window `070`'s header exists to describe.
 
 **`076` (PD-297) is on DEV and not on PROD, and it is the one migration in this file whose

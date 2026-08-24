@@ -1,5 +1,24 @@
 # Enforce ride capacity — a join gate in the database, not a count in the client
 
+> ## ⛔ SUPERSEDED AND WITHDRAWN — DO NOT ARCHIVE THIS CHANGE
+>
+> **`077` (PD-293) dropped `rides.max_riders`, `063`'s trigger and its function on 2026-08-24.**
+> Everything below was built, shipped to both projects, and then removed — not because any of it
+> was wrong, but because the design draws **no** capacity affordance anywhere, so the rule could
+> only ever reach a rider as an unexplained refusal at the RSVP. Product owner decision: an
+> enforced cap a rider cannot see coming is worse than no cap.
+>
+> **Archiving this change would create `openspec/specs/ride-capacity/spec.md`** — a *live*
+> capability spec, in SHALL language, for a column that does not exist. That is the one action
+> this banner exists to prevent. `openspec/specs/database-enforced-integrity/spec.md` already
+> carries the surviving rule (*nothing shall limit the size of a crew*), which is where a reader
+> should go instead.
+>
+> Kept rather than deleted for one reason: the race it identifies — a check-then-insert losing
+> two riders to the last seat — is why any future cap must be a `security definer` trigger taking
+> a row lock, and not a branch in front of `setRideAttendance`'s upsert. If capacity ever comes
+> back **with a frame drawn for it**, start from the design notes here.
+
 > Linear **PD-174**. This file is the specification; the issue points at it and must not restate
 > it. `CLAUDE.md` §The roadmap lives in Linear: *"A Linear issue that grows a specification is a
 > bug."*

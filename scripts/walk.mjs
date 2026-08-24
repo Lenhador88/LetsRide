@@ -1388,8 +1388,7 @@ async function checkEditRetention(candidates) {
   // edit form carries `noValidate`, so anything the browser's own constraint
   // validation can catch never reaches the action: no action runs, no reset
   // happens, and every assertion below then passes without exercising
-  // anything. The refusal assertion is what caught that when this phase
-  // briefly used an out-of-range number instead.
+  // anything. The refusal assertion is what catches that.
   //
   // A whitespace-only required field satisfies HTML `required` (it checks for a
   // non-empty string) and is refused by `.trim().min(1)` in both `rideSchema`

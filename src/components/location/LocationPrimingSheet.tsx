@@ -104,16 +104,35 @@ export function LocationPrimingSheet({
               Your device only asks once. To switch it back on, open your device settings, find
               LetsRide, and allow location while using the app.
             </p>
+            {/* **The route out that does not go through Settings**, and the
+                reason this branch has a primary button at all. A rider reading
+                this has no position of any kind — `locationPrimingState`
+                hides the row entirely for anyone who has one — so without this
+                the sheet's only advice is the one thing it has just called
+                one-way, and a rider whose browser or MDM blocks location has
+                no in-app route to a working near-you strip at all. PD-286 is
+                what makes it available: the profile editor no longer
+                *requires* a town, so a rider who skipped it can still add one. */}
+            <p>
+              You do not have to, though. Add the town you ride from on your profile, and we will
+              measure from there instead.
+            </p>
           </div>
         )}
 
         <div className="mt-2 flex flex-col gap-2">
-          {mode === 'ask' && (
+          {mode === 'ask' ? (
             <Button size="lg" onClick={onContinue} loading={pending}>
               Continue
             </Button>
+          ) : (
+            // Navigates, so it is the `href` branch of `Button` — an anchor,
+            // which `ContextMenu`'s focus trap already selects for.
+            <Button size="lg" href="/profile" onClick={onClose}>
+              Add your town
+            </Button>
           )}
-          <Button variant={mode === 'ask' ? 'ghost' : 'secondary'} size="lg" onClick={onClose}>
+          <Button variant="ghost" size="lg" onClick={onClose}>
             {mode === 'ask' ? 'Not now' : 'Close'}
           </Button>
         </div>
