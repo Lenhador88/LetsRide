@@ -69,6 +69,21 @@ the body, reproduced whole with every comment carried verbatim, per `033`'s reco
 arms**, INSERT and UPDATE, leaving `username` and `terms_accepted_at`. Reproduced whole from
 `023`'s definition, comments verbatim.
 
+**The raise message changes in all three places, and that is not cosmetic.** The string
+`'onboarding cannot be completed before username and location are set'` appears in
+`complete_onboarding`'s username arm and in both arms of the trigger, and after `075` every one of
+them names a rule the schema no longer has. `rls_test.sql` asserts on SQLSTATE `23514` and never on
+the text, so nothing would go red — a refusal message asserting a removed rule is exactly the
+`openspec/config.yaml` failure this proposal invokes elsewhere, arriving in the one place a
+support session reads first. It becomes
+`'onboarding cannot be completed before a username is set'`; the consent arm's own message is
+already separate and stays word for word.
+
+**`public.username_exists(text)` gains an `id <> auth.uid()` exclusion** — `056`'s body is
+`exists (select 1 from public.profiles where lower(username) = lower(p_username))` with no such
+arm, so it answers *taken* for the caller's own name. That is reachable only on a path this change
+creates, and §What Changes 2 depends on it; `design.md` §D7 carries the decision.
+
 Three things this migration deliberately does **not** do:
 
 - **It does not drop `p_location`, and it does not add an overload or a DEFAULT.** Keeping the
@@ -122,7 +137,33 @@ shell restoring its last path) gets a 404 body with the guard actively deciding 
 `isOnboarding` is `pathname.startsWith('/onboarding')`, so the catch-all also covers any future
 path under that prefix rather than only the one being deleted.
 
-### 4. Everything the two above drag with them
+### 4. The profile editor stops requiring a location
+
+`profileEditSchema` has `location: locationSchema`, and `locationSchema` is
+`.trim().min(1, 'Tell us where you ride from.')` — so the field is **mandatory on the profile
+form**, and `EditProfileForm` renders it `required`. That population cannot exist today, because
+`complete_onboarding` raises without a location. This change creates it wholesale: every rider
+onboarded under `075` carries NULL there, opens Profile → Edit to change a bio, and has the whole
+form refused until they invent a location.
+
+`location` becomes optional — the same `optionalText` shape `bio` and `bike_model` already use, so
+an empty field means *clear it* and stores NULL rather than `''`, which is what `018`'s
+`profiles_location_length` CHECK permits (`location is null or ...`). The `required` attribute
+comes off the Input.
+
+**This is in scope rather than a follow-up, and the reason is the story's own thesis.** A change
+whose whole point is that a location is not a gate cannot leave it as a gate one screen later, on
+the first screen a new rider visits after the wizard. Nothing would have caught it either:
+`lib/actions/` has no tests, the RLS suite cannot see a Zod schema, and the walk's edit phase runs
+as a fixture rider who has a location.
+
+### 5. Everything the three above drag with them
+
+Two stale comments in `src/lib/auth/guard-cache.ts` (its §Writers header and
+`invalidateOnboardingState`'s own doc block) enumerate `setUsername`, `acceptTerms` **and
+`setLocation`**; the `guard-cache-invalidators` claim greps call sites rather than comments, so
+both would read green for ever. The walk's profile-edit phase uses a whitespace-only location as
+its only refusal trigger and needs a new one — `design.md` §D8.
 
 `Pagination total={2} current={0}` on the username page: **remove the indicator entirely** rather
 than rendering `total={1}` — a one-dot progress bar communicates nothing and the component's own
@@ -138,6 +179,12 @@ profile."* Every rider who onboards after this ships carries `profiles.location`
 who also declines the GPS permission gets an empty near-you strip on Explore clubs, and on the
 rides list once PD-260 lands.
 
+**That argument is only true once §What Changes 4 lands, which is why the two cannot be split.**
+As the code stands the field is not one tap away — it is a mandatory field that refuses the whole
+profile form, so deferring the near-you prompt on top of it would leave a rider a dead end and a
+locked door rather than a dead end. Making `location` optional is what turns the deferral from a
+trap into an ordinary gap.
+
 What this proposal owes that cost is one verified fact and one pointer, not a design:
 
 - **The degradation is quiet, not broken.** `resolveFromProfile` in `src/lib/location/rider-location.ts`
@@ -150,6 +197,13 @@ What this proposal owes that cost is one verified fact and one pointer, not a de
   screens. Specifying it here would put a screen this change does not touch into a proposal whose
   whole subject is an invariant.
 
+**An out-of-scope section is not a board item, and this one has to become one.** Whoever closes
+PD-286 SHALL confirm the near-you prompt is carried on PD-170 — as a comment on that issue naming
+what this change left behind — rather than leaving it recorded only here. A remainder written in a
+proposal that is about to be archived reads as handled on a board and is not: `CLAUDE.md` §The
+roadmap lives in Linear is explicit that partly delivered means the story **stays open** and that
+the remainder is never a comment on a closed issue. `tasks.md` §8 carries it.
+
 **Also out of scope:** dropping `p_location` from the signature (§What Changes 1 says why it stays
 for good), any change to `profiles.location`'s CHECK, grants or editability, and any backfill —
 there is nothing to backfill, since the relaxation only widens what is accepted.
@@ -160,9 +214,11 @@ there is nothing to backfill, since the relaxation only widens what is accepted.
   scenario), `client-render-shell` (MODIFIED — the route guard's resume contract),
   `client-cache-invalidation` (MODIFIED — the invalidator set drops from four writers to three).
 - **Affected code:** `supabase/migrations/075_*.sql` (new), `src/lib/actions/onboarding.ts`,
-  `src/lib/auth/guard.ts`, `src/app/onboarding/location/` (deleted),
-  `src/app/onboarding/username/page.tsx`, `src/lib/auth/__tests__/guard.test.ts`,
-  `supabase/tests/rls_test.sql`, `supabase/tests/seed.sql`, `scripts/walk.mjs`, `CLAUDE.md`.
+  `src/lib/auth/guard.ts`, `src/lib/auth/guard-cache.ts` (comments only),
+  `src/app/onboarding/location/` (deleted), `src/app/onboarding/username/page.tsx`,
+  `src/lib/validation/profile.ts`, `src/components/profile/EditProfileForm.tsx`,
+  `src/lib/auth/__tests__/guard.test.ts`, `supabase/tests/rls_test.sql`,
+  `supabase/tests/seed.sql`, `scripts/walk.mjs`, `CLAUDE.md`.
 - **Not affected:** `profiles` RLS policies, the participation gate, `058`'s welcome-club join,
   the ghost-row SELECT policy, blocking, and every read path. Each is asserted as a negative in
   `specs/database-enforced-integrity/spec.md` rather than left as silence.

@@ -65,6 +65,17 @@ What it costs is one screen of friction for a rider whose RPC call failed: they 
 already chose, because the field has no `defaultValue` and the guard state carries only
 `has_username`, not the name itself. §Q1 is that question.
 
+**"Cleanly" is true only with §D7's one-line fix, and was not true as first written.** The live
+availability check has no exclusion for the caller, so retyping your own name draws the *taken*
+error in red on the field. Submit is not blocked — the check is advisory and the Button carries no
+`disabled` — so a rider who pushes through still completes; but a recovery path that opens by
+telling a rider their own name is taken is not the clean retry this section's safety argument
+leans on. `075` adds the exclusion.
+
+One thing this section does **not** cover, and §D8 does: `location` also stops being mandatory on
+the profile editor in this change. That is not a courtesy — it is what makes the near-you deferral
+in `proposal.md` §Out of scope honest rather than a trap.
+
 ## D4. The line that turns a refusal into data loss
 
 Stated in `proposal.md` §Why and specified as its own requirement, repeated here because it is the
@@ -144,7 +155,82 @@ The special case it replaces — *step 2 cannot be reached before step 1* — di
 Its comment should not be deleted silently; the migration from two steps to one is what makes it
 moot, and the replacement comment should say so.
 
-## D7. Rejected — completing a mid-wizard rider automatically
+## D7. The availability check tells a rider their own name is taken
+
+`056`'s `public.username_exists(p_username text)` is
+
+```sql
+select exists (select 1 from public.profiles
+                where lower(profiles.username) = lower(p_username));
+```
+
+with **no exclusion for the caller**. `security invoker`, and its own comment says so: it answers
+"is this name reachable" under the block-aware SELECT policy. A rider's own row is one the caller
+can see, so retyping the name they already chose returns `true` and the field draws
+`USERNAME_TAKEN_MESSAGE` in red.
+
+That is unreachable today — the only screen calling it is the username step, and a rider reaches it
+once, before they have a name. **This change makes it reachable**, because §D3's recovery path and
+§Q1's mid-wizard rider both consist of returning to that screen *with a username already set*.
+
+**Decision: fix the function, in `075`, rather than documenting what the rider sees.** One
+predicate — `and profiles.id <> (select auth.uid())`. Three reasons, and the first is the one that
+settles it:
+
+- **§D3 is a safety argument, and it is only sound if the retry is clean.** The two-round-trip
+  window is defended in this proposal on the grounds that the recovery is the screen the rider is
+  already on; a recovery screen that opens by telling the rider their name is taken is not the
+  clean retry that argument claims. Documenting it would leave the argument standing on prose.
+- **The exclusion is what the function's own contract already says.** It answers availability *to
+  the caller*, and a rider's own current name **is** available to them — updating a row to the value
+  it already holds raises nothing, and `038` permits a rename. Without the arm the function answers
+  a question nobody asked ("does any visible row hold this string", including yours).
+- **It is the same widening shape as the rest of `075`**, so it inherits §D5's ordering safety
+  wholesale: it can only turn a `true` into a `false` for exactly one row, the caller's own, and the
+  unique index is still what decides. No call site changes; `isUsernameTaken` and
+  `checkUsernameAvailability` are untouched.
+
+It does **not** fix PD-146 and must not be described as doing so. A name held by a rider who has
+blocked the caller still reads free, because that is the SELECT policy rather than this predicate,
+and `usernameVerdict` is still what reconciles the two on screen.
+
+## D8. The profile editor requires a location, and the walk depends on it doing so
+
+**The gate this change would otherwise create one screen past the wizard.** `profileEditSchema`
+carries `location: locationSchema`, and `locationSchema` is
+`.trim().min(1, 'Tell us where you ride from.')`. `updateProfile` parses the whole form through it,
+so a rider with NULL `location` cannot save a bio, a bike, or anything else until they fill it in.
+`EditProfileForm` also renders the Input `required` — which is **not** what refuses the submit, and
+the distinction matters for anyone testing the fix: the form carries `noValidate`, so the browser
+never enforces it and the refusal comes from Zod at the action boundary. Both come off.
+
+`location` takes the `optionalText` shape `bio` and `bike_model` already use: trim, a `max(100)`
+message, and `transform((value) => value || null)`. Empty means **clear it**, and it stores NULL
+rather than `''` — which is the only value `018`'s `profiles_location_length` permits for "no
+location", since that CHECK refuses a trimmed-empty string. One ordering detail for the
+implementer: `optionalText` is declared *below* `locationSchema` in the file today, so the
+definition has to move rather than being edited in place.
+
+**And this breaks a walk phase, which is the part no reviewer pass would find by reading the
+schema.** `checkEditProfileRetention` (`scripts/walk.mjs`) fills `location` with `'   '` **as its
+refusal trigger** — its header says so: *"`noValidate` lets a whitespace-only `location` reach
+`updateProfile`, and `profileEditSchema`'s `.trim().min(1)` refuses it before any query runs."*
+Make the field optional and that submit **succeeds**, with three consequences:
+
+1. `the refusal is reported` fails — there is no alert to find.
+2. `location survives it` fails — nothing was refused, so there was nothing to retain.
+3. **The phase clears the walk account's stored location on DEV**, which poisons its own first
+   assertion (`location loads from the stored profile`) on every subsequent run. A fixture that
+   destroys its own premise is worse than a red phase, because the second run's failure points at
+   the wrong thing.
+
+The phase must keep testing PD-203's `??` chain and the retention, so the fix is a **different
+refusal on the same field**: a 101-character location, which `optionalText`'s `max(100)` still
+refuses. The phase's header also asserts that `023`'s trigger guarantees the walk account a
+non-NULL location — true for that account and no longer true as a *rule*, so it is rewritten rather
+than left.
+
+## D9. Rejected — completing a mid-wizard rider automatically
 
 Tempting, because after `075` a rider with a username and a consent stamp needs nothing further:
 the app could call `complete_onboarding(null)` for them and skip the screen entirely. Rejected on
@@ -161,7 +247,7 @@ mid-wizard with a username (DEV has one incomplete rider who has not chosen a na
 starts at the surviving step anyway). That is a snapshot — one signup before the deploy creates such
 a rider — and §Q1 is the question about what they see.
 
-## D8. What drags along
+## D10. What drags along
 
 - **`Pagination` comes off the username page rather than becoming `total={1}`.** A one-dot progress
   indicator says nothing, and the component's header calls it a wizard step indicator. The location
@@ -178,6 +264,19 @@ a rider — and §Q1 is the question about what they see.
   rather than counts when reconciling two runs, because a count cannot tell a rename from a loss —
   which is exactly what `038` did to one of `036`'s assertions. Rewriting these two in place, with
   new labels naming the new behaviour, is the shape that survives that comparison honestly.
+- **Two comments in `guard-cache.ts` enumerate the writer list in prose** — its §Writers header
+  and `invalidateOnboardingState`'s own doc block both name `setUsername`, `acceptTerms` and
+  `setLocation`. The `guard-cache-invalidators` registry claim greps **call sites**, filtering
+  comment lines out by design, so both of these would read green for ever while naming a function
+  that no longer exists. This is the comment trap in its other direction: not a grep counting
+  obituaries, but a claim that cannot see the prose it is supposed to be keeping honest.
+- **Three raise messages name a rule that will not exist** — `complete_onboarding`'s username arm
+  and both arms of `enforce_onboarding_completion` all raise *"onboarding cannot be completed
+  before username and location are set"*. `rls_test.sql:3100,3102` assert SQLSTATE `23514` only, so
+  nothing goes red, and the message is what a support session reads first.
+- **The walk's profile-edit phase loses its refusal trigger** — §D8. A whitespace-only location
+  stops being refused, so the phase needs a 101-character one instead, and its header comment needs
+  the `023` justification rewritten.
 - **Two `docs:check` claims count guard test cases by running vitest** (`guard-cases-claude`,
   `guard-cases-claude-table`), so editing `guard.test.ts` moves a number in two places in
   `CLAUDE.md`. Both are `kind: 'vitest-file'` and therefore **excluded from CI's cheap set** —
@@ -195,6 +294,10 @@ They have a username and no stamp. The guard sends them to `/onboarding/username
 is **empty** — the page seeds from an empty action state and the guard carries only `has_username`,
 never the name. They retype the name they already chose (or a different one; a rename is permitted)
 and land on `/postcards`.
+
+**With §D7 applied, what they see is an empty field and no error.** Without it they would see their
+own name reported as taken, in red, on a screen they must push through — which is why §D7 is in
+this change rather than in a follow-up.
 
 **Recommended default: ship it as described, and do not prefill.** The measured population is zero
 on both projects, the retype is one field on a screen the rider has seen before, and the alternative
@@ -221,8 +324,9 @@ variant slots it does not use.
 ### Q3 — Should the profile editor prompt for a location at all now? *(non-blocking; product owner)*
 
 Out of scope for this change, and named here only so the omission is not read as an oversight.
-`EditProfileForm` already edits `profiles.location`, so the field is reachable; what nobody has is a
-reason to go there.
+`EditProfileForm` edits `profiles.location`, and after §D8 it does so **without demanding one**, so
+the field is genuinely one tap away rather than nominally so; what nobody has is a reason to go
+there.
 
 **Recommended default: leave it alone in this change**, and take it up with PD-170 (*nothing explains
 why the app wants your location before the permission prompt fires*), which is the same missing

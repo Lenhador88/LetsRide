@@ -198,6 +198,90 @@ argument and whatever the body does with it.
 - **THEN** the column SHALL be left at its previous value rather than being written
 - **AND** no `23514` SHALL reach the caller from `profiles_location_length` for that argument
 
+### Requirement: When the database stops requiring a value, every client-side copy of that requirement SHALL stop requiring it too
+
+A rule relaxed in Postgres SHALL be relaxed in every Zod schema, form attribute and refusal message
+that restates it, in the **same change**. A validity rule that survives only in the client is not
+merely redundant — it is a rule no other gate in this repo can see, applied to a population the
+relaxation itself creates.
+
+`CLAUDE.md` states the direction this normally fails in: a rule that reaches only a Zod schema is
+advisory, because the client owns the mutation path and a rider can decline it. **The inverse is
+the one this change would ship**, and it is worse, because it does not fail open — it fails
+*closed*, refusing a rider the database would have accepted. `profileEditSchema` carries
+`location: locationSchema` (`.trim().min(1)`), so once `075` lands, every rider onboarded under it
+has NULL `location` and cannot save their own profile at all — not a bio, not a bike, not anything
+— until they supply the value the wizard just stopped asking for. It lands on the first screen a
+new rider visits after onboarding.
+
+Nothing in this repo catches it: `lib/actions/` has no direct tests, the RLS suite runs against
+Postgres and cannot see a Zod schema, and the walk's profile-edit phase signs in as a fixture rider
+who already has a location.
+
+The refusal *message* is the same rule in its third form. A retained
+`'onboarding cannot be completed before username and location are set'` asserts a requirement the
+schema no longer has, in the string a support session reads first, and the assertions covering it
+match on SQLSTATE rather than text — so it goes stale silently and by construction.
+
+#### Scenario: A rider with no location can edit their own profile
+- **WHEN** a rider whose `profiles.location` is NULL submits the profile edit form changing only
+  their bio or their bike
+- **THEN** the write SHALL succeed
+- **AND** no field SHALL be presented as mandatory that the database does not require
+- **AND** this SHALL hold for the very first profile edit after onboarding, which is the case the
+  relaxation creates and the only case that exists at first
+
+#### Scenario: Clearing a location is permitted and stores NULL
+- **WHEN** a rider empties the location field and saves
+- **THEN** the column SHALL be set to NULL rather than to an empty string, matching `bio` and
+  `bike_model` and matching the only value `018`'s `profiles_location_length` admits for "none"
+- **AND** a rider who cleared it SHALL be indistinguishable from one who never set it, which is
+  already true of every other optional profile column
+
+#### Scenario: An over-long location is still refused
+- **WHEN** a rider submits a location longer than 100 characters
+- **THEN** the write SHALL be refused with the length message
+- **AND** `018`'s CHECK SHALL remain the guarantee behind it, unchanged — optional is not
+  unbounded
+
+#### Scenario: No refusal message names a rule that was removed
+- **WHEN** any remaining guard refuses a completion attempt
+- **THEN** its message SHALL name only the conditions that still apply — a username, and consent
+- **AND** all three copies SHALL be changed together (`complete_onboarding`, and both arms of
+  `enforce_onboarding_completion`), because the assertions covering them match on SQLSTATE `23514`
+  and cannot tell the messages apart
+
+### Requirement: An availability check SHALL treat the caller's own value as available to the caller
+
+A check answering "may I have this?" SHALL exclude the caller's own row, so that a rider
+resubmitting a value they already hold is told it is available — because it is.
+
+`056`'s `public.username_exists(text)` has no `id <> auth.uid()` arm, so it answers *taken* for the
+caller's own name. That is unreachable today: the one screen calling it is reached once, before the
+rider has a name. This change makes it reachable, because the recovery path for a partially-failed
+completion, and for a rider mid-wizard when the deploy lands, both consist of returning to that
+screen with a username already set.
+
+The exclusion does **not** address PD-146 and SHALL NOT be described as doing so: a name held by a
+rider who has blocked the caller still reads free, because that is the block-aware SELECT policy
+rather than this predicate, and `usernameVerdict` remains what reconciles the two on screen.
+
+#### Scenario: A rider's own username reads as available to them
+- **WHEN** a rider who already holds `ripper` checks the availability of `ripper` or `RIPPER`
+- **THEN** the check SHALL report it available
+- **AND** submitting it SHALL succeed as a no-op update of their own row, raising no `23505`
+
+#### Scenario: Another rider's username still reads as taken
+- **WHEN** a rider checks a name held by a different rider they can see
+- **THEN** the check SHALL report it taken, unchanged
+- **AND** the unique index on `lower(username)` SHALL remain the thing that actually decides, with
+  the check advisory as before
+
+#### Scenario: The exclusion grants no new reach
+- **WHEN** the function is called by any role
+- **THEN** it SHALL remain `security invoker` with `set search_path = ''`, SHALL still return a
+  boolean and never a row or an id, and SHALL remain revoked from `public` and `anon`
+
 ### Requirement: Every role's reach into another rider's onboarding state SHALL be restated when the invariant changes
 
 Relaxing a completion rule SHALL NOT widen who can read or write onboarding state, and the

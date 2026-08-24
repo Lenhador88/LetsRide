@@ -62,7 +62,9 @@ the wizard cannot re-gate anybody.
 #### Scenario: A completed rider is never sent back into the wizard
 - **WHEN** a rider whose `onboarding_completed_at` is set loads any `/onboarding` path
 - **THEN** they SHALL be redirected to `/postcards`, unchanged
-- **AND** clearing `profiles.location` from the profile editor SHALL NOT change that answer
+- **AND** having a NULL `profiles.location` — whether never set, or cleared in the profile editor
+  once this change makes that field optional — SHALL NOT change that answer, because completion is
+  stored rather than derived (`003` §3)
 
 #### Scenario: The unavailable and gone states are untouched
 - **WHEN** `my_onboarding_state()` errors, or answers zero rows for a rider with no `profiles` row
