@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { PaperPlaneIcon } from '@/components/icons/generated'
 import { PostcardActionButton } from '@/components/postcards/PostcardAction'
-import { canonicalOrigin } from '@/lib/origin'
 import { routes } from '@/lib/routes'
+import { shareAppLink } from '@/lib/share'
 
 /**
  * The design's third action (`Type=Share`, `Element / Icon / Paper Plane`).
@@ -19,42 +19,26 @@ import { routes } from '@/lib/routes'
  * something recorded to count, and inventing a number would be worse than an
  * honest omission.
  *
- * The postcard route is behind the auth gate (decision #1), so a recipient who
- * is not signed in lands on the login screen rather than the card. That is the
- * intended behaviour, not a bug — there is no anonymous access anywhere.
+ * **This stays a peer button rather than becoming a row in `PostcardMenu`**, and
+ * it is the one deliberate exception to PD-280's ⋯ convention — settled by the
+ * product owner on 2026-08-24. Every other surface puts its actions behind the
+ * dots; a postcard's action row is a scrolling feed row rather than a detail
+ * header, and share is worth one tap there. Do not "fix" the inconsistency.
+ *
+ * The mechanics — which origin, sheet or clipboard, what a dismissal means —
+ * are `shareAppLink`'s, shared with the ride and club menus since PD-280. The
+ * **path** is `/postcards/detail?id=…` since PD-142; the old shape survives as
+ * a `redirects()` entry in `next.config.ts` for links already in people's
+ * messages, so nothing here may keep generating it.
  */
 export function ShareButton({ postcardId }: { postcardId: string }) {
   const [copied, setCopied] = useState(false)
 
   async function share() {
-    // `canonicalOrigin()` rather than the runtime origin: this URL leaves the
-    // device, and inside the shell the runtime origin is `https://localhost`.
-    // On the web the two are identical (`src/lib/origin.ts`).
-    //
-    // The **path** is `/postcards/detail?id=…` since PD-142. The old shape
-    // survives as a `redirects()` entry in `next.config.ts` for links already in
-    // people's messages, so nothing here may keep generating it.
-    const url = `${canonicalOrigin()}${routes.postcard(postcardId)}`
-
-    if (navigator.share) {
-      try {
-        await navigator.share({ url, title: 'A postcard on LetsRide' })
-        return
-      } catch {
-        // Dismissing the sheet rejects. That is not a failure worth reporting,
-        // and it must not fall through to silently copying instead.
-        return
-      }
-    }
-
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // No share sheet and no clipboard permission leaves nothing to do that the
-      // rider cannot do themselves from the address bar.
-    }
+    const outcome = await shareAppLink(routes.postcard(postcardId), 'A postcard on LetsRide')
+    if (outcome !== 'copied') return
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 2000)
   }
 
   return (

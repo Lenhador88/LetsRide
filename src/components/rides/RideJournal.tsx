@@ -14,9 +14,19 @@ import { ImageIcon, PlusIcon } from '@/components/icons/generated'
  * recording: a section nobody has seen is a feature nobody knows exists, and
  * empty is the state every ride starts in. So it says what it is waiting for.
  *
- * **Crew only** — its caller gates it on the same predicate as the chat row.
- * A rider who is not on the ride has no `Add` to be offered and no photos to be
- * shown, so the section would be an empty promise rather than an empty state.
+ * **The SECTION is shown to anyone who can see the ride; only `Add` is crew
+ * only** (PD-282). This used to be gated whole, on the argument that a
+ * non-member "has no `Add` to be offered and no photos to be shown" — the first
+ * half is true and the second was not.
+ * `public.ride_journal_postcard_ids` (`062`) gates on `private.can_read_ride`
+ * plus `011`'s postcard SELECT qual and **says nothing about crew membership**,
+ * so the database has always been willing to show a ride's photos to anyone who
+ * can open the ride. The gate was the UI inventing a rule the policy does not
+ * have, on the screen a rider reads while deciding whether to join.
+ *
+ * `Add` stays crew-only for the opposite reason — it is the database's rule
+ * rather than the UI's. Tagging requires `private.is_ride_crew` (`041`), so the
+ * tile would be a promise the insert refuses.
  *
  * ## `Add` posts a postcard; it does not yet tag one to this ride
  *
@@ -27,7 +37,7 @@ import { ImageIcon, PlusIcon } from '@/components/icons/generated'
  * `Add` on. Recorded here rather than inferred later: this link is complete only
  * once the composer carries the ride.
  */
-export function RideJournalEmpty() {
+export function RideJournalEmpty({ canAdd }: { canAdd: boolean }) {
   return (
     <div className="flex gap-2 px-4">
       {/* `min-w-0` on both, and it is the difference between a matched pair and
@@ -40,7 +50,14 @@ export function RideJournalEmpty() {
       <div className="flex aspect-square min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-border px-3 text-center">
         <ImageIcon className="h-6 w-6 text-muted opacity-60" aria-hidden="true" />
         <span className="text-xs font-semibold text-foreground">Nothing yet</span>
-        <span className="text-2xs text-muted">Prep shots count</span>
+        {/* The second line is the one thing that differs by viewer, and it has
+            to: `Prep shots count` is an instruction, and instructing a rider
+            who has no `Add` beside them to take photos is the empty promise
+            this section was gated to avoid. Said the other way round, it is
+            still a reason to look again later. */}
+        <span className="text-2xs text-muted">
+          {canAdd ? 'Prep shots count' : 'Photos from this ride land here'}
+        </span>
       </div>
 
       {/* `bg-track`, not `bg-surface`. The mock fills this tile with its
@@ -51,13 +68,15 @@ export function RideJournalEmpty() {
           thing on the screen and reads as a card rather than a slot. `bg-track`
           is the same recessed fill the map panel directly above already uses,
           which is what the mock's relationship actually looks like here. */}
-      <Link
-        href="/postcards/new"
-        className="flex aspect-square min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
-      >
-        <PlusIcon className="h-6 w-6" aria-hidden="true" />
-        <span className="text-xs font-semibold">Add</span>
-      </Link>
+      {canAdd && (
+        <Link
+          href="/postcards/new"
+          className="flex aspect-square min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
+        >
+          <PlusIcon className="h-6 w-6" aria-hidden="true" />
+          <span className="text-xs font-semibold">Add</span>
+        </Link>
+      )}
     </div>
   )
 }

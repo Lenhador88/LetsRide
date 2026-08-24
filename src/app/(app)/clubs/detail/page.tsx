@@ -211,7 +211,7 @@ function ClubScreen() {
           />
           {upcoming.length === 0 ? (
             isMember ? (
-              <ClubCreateRideRow />
+              <ClubCreateRideRow clubId={id} />
             ) : (
               <p className="px-4 text-sm font-medium text-muted">No rides are planned, yet!</p>
             )
@@ -244,7 +244,7 @@ function ClubScreen() {
             }
             className="px-4 py-0"
           />
-          <ClubPostcardCarousel postcards={postcards.data} isMember={isMember} />
+          <ClubPostcardCarousel postcards={postcards.data} isMember={isMember} clubId={id} />
         </section>
 
         {/* Join only — a constructive action stays visible on the page, where

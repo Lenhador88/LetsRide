@@ -1,5 +1,7 @@
 'use client'
 
+import { Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { CreateRideForm } from '@/components/rides/CreateRideForm'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -7,6 +9,7 @@ import { SkeletonForm } from '@/components/ui/Skeleton'
 import { getMyClubs } from '@/lib/data/clubs'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { CREATE_CLUB_PARAM, backFromCreateScreen } from '@/lib/routes'
 
 /**
  * `Create ride`.
@@ -27,13 +30,30 @@ import { queryKeys } from '@/lib/query/keys'
  * `lib/actions/`, and neither boundary moved. What changed is only which
  * Supabase client those two construct, which is the whole reason the migration
  * is bounded.
+ *
+ * **The `Suspense` boundary is not optional** — `useSearchParams()` outside one
+ * opts the whole route out of prerendering, which `output: 'export'` refuses.
+ * `src/lib/routes.ts` carries the full reasoning and the measurement.
  */
 export default function NewRidePage() {
+  return (
+    <Suspense fallback={null}>
+      <NewRideScreen />
+    </Suspense>
+  )
+}
+
+function NewRideScreen() {
   const clubs = useQuery(queryKeys.clubs.mine(), getMyClubs)
+
+  // Opened from a club, or from the Rides tab's create button (PD-283). The id
+  // seeds the club selector and decides where back goes; it authorizes nothing
+  // — see `CreateRideForm`'s `initialClubId`.
+  const fromClub = useSearchParams().get(CREATE_CLUB_PARAM)
 
   return (
     <>
-      <Header title="Create ride" backHref="/rides" />
+      <Header title="Create ride" backHref={backFromCreateScreen(fromClub, '/rides')} />
 
       <div className="px-4 pb-8">
         {/* The club picker is the only thing this screen reads, and a ride with
@@ -49,11 +69,11 @@ export default function NewRidePage() {
           <SkeletonForm />
         ) : (
           // `pt-4` here rather than on the wrapper: `SkeletonForm` and
-        // `ErrorState` carry their own top padding, so a wrapper paying the
-        // 16px would stack it and the first skeleton field would sit twice as
-        // far down as the form that replaces it.
-        <div className="pt-4 motion-safe:animate-fade-in">
-            <CreateRideForm clubs={clubs.data} />
+          // `ErrorState` carry their own top padding, so a wrapper paying the
+          // 16px would stack it and the first skeleton field would sit twice as
+          // far down as the form that replaces it.
+          <div className="pt-4 motion-safe:animate-fade-in">
+            <CreateRideForm clubs={clubs.data} initialClubId={fromClub} />
           </div>
         )}
       </div>

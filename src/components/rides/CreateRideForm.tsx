@@ -1,6 +1,7 @@
 'use client'
 
 import { useActionState, useEffect, useRef, useState } from 'react'
+import { seedClubId } from '@/lib/clubs/seed-club-id'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
@@ -69,7 +70,14 @@ const RIDE_FIELDS = [
 const retainRide = retaining(createRide, RIDE_FIELDS)
 const initialState = seedRetained(emptyActionState)
 
-export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[] }) {
+export function CreateRideForm({
+  clubs,
+  initialClubId,
+}: {
+  clubs: { id: string; name: string }[]
+  /** See `clubId` below. */
+  initialClubId?: string | null
+}) {
   const [state, formAction, pending] = useActionState(retainRide, initialState)
   // **A `<select>` is the one control `retaining` cannot serve, and it is
   // controlled for that reason rather than by preference.** `defaultValue` on a
@@ -83,7 +91,18 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
   // makes a controlled *text* input the wrong fix (see lib/actions/retain.ts):
   // the reset touches the DOM, not React, and no password manager fills a club
   // picker.
-  const [clubId, setClubId] = useState('')
+  /**
+   * The club this composer was opened from, or null (PD-283).
+   *
+   * **Seeded only when the id is one of this rider's own clubs**, which is not
+   * a security check — `017`'s INSERT policy and the audience rule decide, and
+   * a select is a hint — but it is what keeps the control honest: a `<select>`
+   * whose `value` matches no `<option>` renders as the first option while
+   * reporting the unmatched id, so an unknown id in the URL would show one club
+   * and submit another. Unmatched falls back to no club, which is the same
+   * state as arriving here from the tab.
+   */
+  const [clubId, setClubId] = useState(() => seedClubId(clubs, initialClubId))
   // The meeting point is controlled now that it shares a field with the place
   // picker, so it survives a refused submit the way `CreateClubForm`'s name and
   // location do — component state, not `retaining`. `retaining` restores a

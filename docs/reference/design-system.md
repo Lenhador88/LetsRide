@@ -129,5 +129,36 @@ don't substitute lookalikes. The three matches
 the importer count is
 `grep -rl "from 'lucide-react'" src/ | grep -v generated | wc -l` and it is **0**.
 
+**Every main screen answers "what can I do here" with the same control** — `OptionsIcon` in the
+header's action slot, opening `ContextMenu` with one `ContextMenuItem` per row, icon plus label,
+destructive rows `variant="warning"` in their own group behind a hairline. It is the app standard
+as of PD-280, at the product owner's request, and it exists as a written rule because each new
+detail screen had been re-deciding it: the club merge put Edit behind the dots while the ride kept
+a bare pencil, no Delete and no Share at all. Re-derive the set rather than trusting a list here:
+
+```bash
+grep -rln "OptionsIcon" src/components/ | grep -v icons/   # 5: account, rider, postcard, club, ride
+```
+
+Three rules the surfaces already agree on, and one exception:
+
+- **A row is a display hint, never an authorization.** Gate rows on the viewer so the sheet does
+  not offer what the database will refuse; RLS decides what happens. A forged state reaches the
+  same refusal.
+- **A destructive row confirms, and how depends on what it destroys.** A second tap in place
+  (`PostcardMenu`'s `Tap again to delete`) is enough when the row can say the whole consequence.
+  When the confirmation has to *name the collateral* — a ride's crew and chat history, a club's
+  members and their postcards, an account — the row opens a second `ContextMenu` instead
+  (`DeleteRideSheet`, `DeleteClubSheet`, `DeleteAccountSheet`). **Close the first before opening
+  the second**: both render through one fixed z-index stack and `ContextMenu`'s focus trap assumes
+  it is the only one open.
+- **A control that also lives elsewhere stays there.** `DeleteRideControl` and
+  `DeleteClubControl` keep their place at the foot of the edit screens. Two routes to one
+  confirmation is fine; two implementations of it is the defect the sheets exist to avoid.
+- **The exception is the postcard's `ShareButton`**, a peer icon beside the dots rather than a row
+  inside them — decided 2026-08-24. A postcard's action row is a scrolling feed row, not a detail
+  header, and share is worth one tap there. It is recorded here so the next reader does not
+  "fix" it.
+
 **The library scale**, for planning: 52 component sets covering 213 variants, plus 89
 standalone components, 2,449 nodes on the Components page.
