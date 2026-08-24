@@ -577,12 +577,12 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 75 files; DEV is at `075` and PROD at `073` — measured 2026-08-24, after `074`
-(the postcard's country, PD-279) and `075` (onboarding needs no location, PD-286) went on DEV,
-and `071`/`072`/`073` were applied to PROD.** That gap
-is the *ordinary* state, not
-drift: DEV-ahead is where a migration lives between its merge and its promotion. The two were level for a few hours
-on 2026-08-20, at PD-273's promotion, and level is the exception. **Do not read the
+**Applied state: 75 files; DEV is at `075` and PROD at `075` — measured 2026-08-24, after
+`071`–`075` were applied to PROD in one sitting.** Level is the EXCEPTION rather than the resting
+state: DEV-ahead is where a migration normally lives between its merge and its promotion, and the
+two were last level for a few hours on 2026-08-20 at PD-273's promotion. **`074` and `075` went to
+PROD ahead of the build that reads them**, which is the additive-first order — the code for both
+is merged to `development` and not promoted, so PROD's schema is deliberately ahead of PROD's app. **Do not read the
 count of unpromoted files off this sentence** — it named exactly one while two were waiting, which
 is the same defect as a stale number in a smaller place, and the promotion is the one job that
 reads it. Run `list_migrations` against `ls supabase/migrations/` and promote everything the gap

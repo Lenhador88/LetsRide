@@ -860,14 +860,18 @@ reads 2 members until someone new signs up.
 
 ## Migrations — the repo holds 74, DEV is at `074` and PROD at `073`
 
-**`list_migrations` prints 77 on DEV and 73 on PROD against 75 files, and the two differences are
-different KINDS — do not add them together.** DEV's **two surplus rows** (77 against 75 files) are
-`063`, applied there in three increments — `ride_capacity_is_enforced`, `…_exemptions`,
-`ride_capacity_moves_to_private` — while PROD holds it as the one consolidated file; that is a
-recording difference and nothing is missing on either side. The **DEV-ahead gap** is two files,
-`074` (the postcard's country, PD-279) and `075` (onboarding needs no location, PD-286), both
-applied to DEV 2026-08-24, unpromoted and going to PROD with the next promotion in filename
-order. Repo 75 files, PROD 73 rows, DEV 77 rows, one chain.
+**`list_migrations` prints 77 on DEV and 75 on PROD against 75 files, and there is no
+DEV-ahead gap any more.** The whole difference is a recording one: DEV's **two surplus rows**
+are `063`, applied there in three increments — `ride_capacity_is_enforced`, `…_exemptions`,
+`ride_capacity_moves_to_private` — while PROD holds it as the one consolidated file. Nothing is
+missing on either side. Repo 75 files, PROD 75 rows, DEV 77 rows, one chain.
+
+**`074` and `075` reached PROD on 2026-08-24, ahead of the build that reads them** — the
+additive-first order, since the code for both is merged to `development` and not promoted. `075`
+was applied from a comment-stripped reduction that PRESERVES the comments inside its `$$` bodies
+(stripping those changes `prosrc`), and proved by object rather than by text: `md5(prosrc)` for
+`complete_onboarding`, `enforce_onboarding_completion` and `username_exists` is identical on both
+projects, with matching `prosecdef` and `proconfig`.
 
 **`071`, `072` and `073` reached PROD on 2026-08-24**, ahead of the build that reads them, and
 were verified by comparing OBJECTS against DEV rather than by the recorded statement — `md5` over
@@ -1431,7 +1435,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/ | wc -l          # 75 — 074/075 are DEV-only, PROD is at 073
+ls supabase/migrations/ | wc -l          # 75 — both projects are at 075
 ```
 
 **`055` is PD-129's and is now on both projects.** It replaces one function body —
