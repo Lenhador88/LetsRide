@@ -32,9 +32,13 @@ update profiles set username = 'outsider',   location = 'Faro',
                     terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-00000000000c';
 
--- Mid-onboarding, step 2: username chosen, location not. Visible to other
--- riders (the ghost-row policy keys on username, not on completion) but still
--- gated out of the app.
+-- Mid-onboarding: consent given and a username chosen, but no completion stamp.
+-- Visible to other riders (the ghost-row policy keys on username, not on
+-- completion) but still gated out of the app. NOT "step 2 of 2" any more —
+-- `075` (PD-286) made the username step the one that completes onboarding, so
+-- this row is now a rider whose completion write did not land rather than one
+-- with a screen left to fill in. It is kept because that state is still
+-- reachable and the policies still have to answer for it.
 update profiles set username = 'halfway',
                     terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-00000000000d';
