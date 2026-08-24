@@ -70,8 +70,10 @@ one test row on DEV.
 one.** The review pass caught what it costs: a `geoapify:` id is a pointer a place-details lookup
 resolves back to the picked feature's **exact geometry**, so stored beside a deliberately
 2dp-rounded coordinate it hands any reader of the row the precision the rounding exists to remove.
-Arm 3 would have shipped a coordinate the CHECK calls coarse next to a pointer that is not. Nothing
-in the app renders a postcard's location, so it was provenance bought for nothing.
+Arm 3 would have shipped a coordinate the CHECK calls coarse next to a pointer that is not. It was
+also provenance bought for nothing at the time, nothing then rendering a postcard's location —
+**that second clause expired on 2026-08-24 with PD-279 and the first is what the decision rests
+on.**
 
 **There is still exactly ONE coordinate pair, and `taken_location_precision` says whose it is.**
 A second pair — the town's beside the photo's — would be the "stored but hidden" state `064`

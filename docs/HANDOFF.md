@@ -837,6 +837,22 @@ as the one consolidated file. The other three are `071` (`rides(departure_at)`, 
 unpromoted and going to PROD with the next promotion. Repo 73 files, PROD 70 rows, DEV 75 rows, one
 chain.
 
+**`072` and `073` must be APPLIED BEFORE the promotion build serves, and that is new as of
+PD-279 (2026-08-24).** They were "additive, so the ordering is the ordinary one" right up until
+something read the column: `POSTCARD_SELECT` names `taken_place_name` now, PostgREST answers
+`42703` for a column that does not exist, and `unwrapList` throws — so a production build promoted
+ahead of these two migrations puts a permanent "try again" panel on the home feed, the club feed,
+the postcard thread, `/profile` and `/profile/detail`. That is `069`'s shape, one paragraph below,
+rather than `070`'s.
+
+**Nothing can catch this for you.** `db:drift` is not in `ci.yml` and needs two connection strings
+no session holds; `docs:check` cannot reach PROD; `columns.test.ts` reads migration *files*, so it
+is blind to what is applied. The check is `list_migrations` against PROD before the merge:
+
+```
+mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # 072 and 073 must be there first
+```
+
 **`072` and `073` are one change and must promote together.** `072` adds the place columns and
 `073` drops the provider id `072` should never have added *and* fixes a real defect in `072`'s own
 coupling constraint — an arm comparing the nullable marker with `=` evaluates to NULL rather than
@@ -2049,6 +2065,15 @@ folded fingers and thumb that make the glyph legible at 24px, and a merely bolde
 indistinguishable from the outline on a phone — so the liked state is carried by `text-like`
 alone, which is what the product owner chose. A second component was authored and then deleted;
 do not reintroduce one.
+
+**That has now happened twice, and the second time this section did not notice.** PD-266 built a
+filled variant on 2026-08-20 at the owner's request — not in Figma, but as `WaveFilledIcon` in
+`src/components/icons/derived.tsx`, the same exported path with its interior subpath dropped —
+and amended neither this section nor `.claude/agents/design-system.md`, so both read "no filled
+twin" for four days while one shipped. PD-287 reverted it on 2026-08-24 and deleted the file, so
+the paragraph above is true again. It is recorded because "authored and then deleted" now names
+two different attempts, and because the way it went wrong is the ordinary one: the code changed
+and the two documents asserting the opposite were not in the diff.
 
 **That is a legibility argument, not a tooling one, and the difference matters if you generalise
 it.** `Heart Filled`/`Heart Outline` and `Location Filled`/`Location Outline` both ship happily —

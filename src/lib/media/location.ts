@@ -96,8 +96,14 @@ export type NamedPlace = {
  * `geoapify:` id is a pointer a place-details lookup resolves back to the
  * picked feature's exact geometry, so storing one beside a 2dp coordinate would
  * hand any reader of the row the precision the rounding exists to remove. It
- * was bought for nothing, too — nothing in the app renders a postcard's
- * location. Found by the proposal's review pass, 2026-08-20.
+ * Found by the proposal's review pass, 2026-08-20.
+ *
+ * **The second half of that argument is spent and the first is what stands.**
+ * It also said the id "was bought for nothing, too — nothing in the app renders
+ * a postcard's location", which stopped being true on 2026-08-24 when PD-279
+ * put the place name on the card. The precision backdoor is decisive on its own
+ * and is the reason to keep refusing a provider id; do not restate the
+ * rendering clause when quoting this.
  */
 
 /**

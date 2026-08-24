@@ -239,9 +239,15 @@ a shipped write path. Do not copy `063`'s §3.
       as repo 73 / DEV 75 rows / PROD 70, one chain. Do not read the tick above this line as
       drift having been ruled out the way `db:drift` rules it out.
 - [ ] 7.6 Promote to PROD in filename order with everything else in the gap, per
-      `docs/ENVIRONMENTS.md` §Migrations. Nothing here is destructive to a running client — an old
-      client's rows satisfy arms 1, 4 and 5 — so the additive-first ordering constraint is the
-      ordinary one rather than `069`/`070`'s.
+      `docs/ENVIRONMENTS.md` §Migrations. **These migrations MUST be applied BEFORE the promotion
+      build serves** — `069`'s case exactly, not the ordinary one.
+      **This bullet said the opposite until 2026-08-24 and was true when written.** Nothing here is
+      destructive to a running client, which is what it meant: an old client's rows satisfy arms 1,
+      4 and 5. PD-279 changed the other side — `POSTCARD_SELECT` now names `taken_place_name`, so
+      the *new* client cannot read a database without it. PostgREST answers `42703` and
+      `unwrapList` throws, which is the home feed, the club feed, the postcard thread, `/profile`
+      and `/profile/detail` all showing a permanent "try again" panel until the migrations land.
+      Additive-first, and the additive half is these two files.
 
 ## 8. The walk and the docs
 

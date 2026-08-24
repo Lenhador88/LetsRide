@@ -115,13 +115,18 @@ Wrench, Coordinates, Store — plus Arrow Left/Right/Up, Avatar, Block Account, 
 Bubble, Check, Chevron Down/Right, Clock, Close, Clubs, Delete, Edit, Flag, Globe, Heart
 Filled/Outline, Hide, Home, Image, Location Filled/Outline, Lock, Log Out, Mailbox, Menu,
 Mute, Options, Paper Plane, Pin, Plus, Plus Circle, Preferences, Profile, Report, Search,
-Share, and Wave — the two-finger motorcycle wave the like control uses (PD-228). Figma ships no
-filled twin for it, and the like control needs one: `WaveFilledIcon` in
-`src/components/icons/derived.tsx` is the exported path with its interior subpath dropped, which
-is a transformation of the asset rather than new artwork. That file is the only sanctioned home
-for such a variant — `generated.tsx` is rewritten wholesale by `npm run figma:components` — and
-`src/components/icons/__tests__/derived.test.tsx` re-derives it from `WaveIcon` on every run, so
-a redrawn icon cannot leave the two silently drawing different hands.
+Share, and Wave — the two-finger motorcycle wave the like control uses (PD-228). **Figma ships no
+filled twin for it and the app no longer has one**: `LikeButton` toggles `text-like` on the single
+outline, which is what the product owner settled on 2026-08-24 (PD-287) after four days of the
+other answer. `docs/HANDOFF.md` §The wave icon carries the legibility argument and both round
+trips.
+
+**If a variant Figma does not ship is ever needed again, `src/components/icons/derived.tsx` is
+where it goes** — hand-authored but only ever a transformation of an exported asset, never new
+artwork, because `generated.tsx` is rewritten wholesale by `npm run figma:components`. The file
+is deleted rather than kept empty; recreate it with a test that re-derives the variant from its
+source glyph on every run, as `WaveFilledIcon`'s did, or a redraw leaves the two silently
+drawing different hands.
 
 **`lucide-react` is gone** — uninstalled 2026-08-05 with the last v1 page. Don't re-add it and
 don't substitute lookalikes. The three matches
