@@ -837,6 +837,22 @@ as the one consolidated file. The other three are `071` (`rides(departure_at)`, 
 unpromoted and going to PROD with the next promotion. Repo 73 files, PROD 70 rows, DEV 75 rows, one
 chain.
 
+**`072` and `073` must be APPLIED BEFORE the promotion build serves, and that is new as of
+PD-279 (2026-08-24).** They were "additive, so the ordering is the ordinary one" right up until
+something read the column: `POSTCARD_SELECT` names `taken_place_name` now, PostgREST answers
+`42703` for a column that does not exist, and `unwrapList` throws — so a production build promoted
+ahead of these two migrations puts a permanent "try again" panel on the home feed, the club feed,
+the postcard thread, `/profile` and `/profile/detail`. That is `069`'s shape, one paragraph below,
+rather than `070`'s.
+
+**Nothing can catch this for you.** `db:drift` is not in `ci.yml` and needs two connection strings
+no session holds; `docs:check` cannot reach PROD; `columns.test.ts` reads migration *files*, so it
+is blind to what is applied. The check is `list_migrations` against PROD before the merge:
+
+```
+mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # 072 and 073 must be there first
+```
+
 **`072` and `073` are one change and must promote together.** `072` adds the place columns and
 `073` drops the provider id `072` should never have added *and* fixes a real defect in `072`'s own
 coupling constraint — an arm comparing the nullable marker with `=` evaluates to NULL rather than

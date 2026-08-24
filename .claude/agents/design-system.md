@@ -111,9 +111,16 @@ stale one here fails silently in the exact way this check exists to prevent.
 `text-like` instead. The reason is legibility, not tooling: a solid hand silhouette loses the
 folded fingers and thumb the glyph depends on at 24px, and the bolder copy that was tried instead
 was indistinguishable from the outline. The product owner chose colour-only on that basis. A
-filled variant was authored and deleted — **twice**, most recently PD-266 on 2026-08-20, reverted
-by PD-287 on 2026-08-24 — so do not helpfully add one back, and do not read a request for one as
-settling it: the second attempt shipped for four days with this line still saying otherwise.
+filled variant was authored and deleted **twice** — most recently PD-266 on 2026-08-20, reverted by
+PD-287 four days later — so do not helpfully add one back on your own initiative.
+
+**An owner request for one is a different thing and you build it.** `CLAUDE.md`'s standing rule on
+disagreement is one hold per issue: raise the legibility cost once, and if it is reaffirmed, build
+the full request as asked.
+What PD-266 actually got wrong was not the decision, it was the diff: the code changed and the two
+documents asserting the opposite — this paragraph and `docs/HANDOFF.md` §The wave icon — were left
+out of it, so both read "no filled twin" for the whole four days one shipped. **If you change the
+wave's fill state, those two are in the same diff.**
 
 **Filled/outline pairs are fine in general** — `Heart Filled`/`Heart Outline` and
 `Location Filled`/`Location Outline` both ship, and `currentColor` rewriting does not collapse

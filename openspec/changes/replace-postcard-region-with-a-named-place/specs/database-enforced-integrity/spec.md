@@ -16,8 +16,10 @@ is shipped and unarchived — and those are named where they apply.
 provenance. A provider's place id is a pointer that a place-details lookup resolves back to the
 picked feature's **exact geometry**, so stored beside a deliberately 2dp-rounded coordinate it
 returns the precision the rounding exists to remove — a row whose coordinate the CHECK calls coarse
-carrying a pointer that is not. Nothing renders a postcard's location, so it was bought for
-nothing. A future display that genuinely needs provenance SHALL argue for it on its own terms.
+carrying a pointer that is not. **That is the whole requirement and it does not depend on what is
+rendered** — an earlier revision added "and nothing renders a postcard's location, so it was bought
+for nothing", which PD-279 falsified on 2026-08-24 without weakening the rule by one word. A future
+display that genuinely needs provenance SHALL argue for it on its own terms.
 
 **No policy SHALL be added or changed by this capability.** The columns sit on `postcards`, RLS is
 row-level, and the postcard's existing SELECT policy is therefore the whole visibility answer.

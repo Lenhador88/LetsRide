@@ -775,10 +775,23 @@ export type Postcard = {
    * coordinate and a NULL name, so it draws nothing too. The precision marker
    * says how exact the *coordinate* is, and this card renders no coordinate.
    *
+   * **A non-null name is the rider's choice by CONSTRUCTION under `place` and
+   * by the COMPOSER under `precise`**, and the difference matters to anyone
+   * changing either. Arms 2 and 3 require the name; arm 4 leaves it optional
+   * and `073` calls it "cosmetic", so there the guarantee is only that
+   * `PlaceSearchField` stays mounted in every mode and the value is on screen
+   * at submit. Hide is arm 1 — every capture column NULL — so no path stores a
+   * name against a control reading Hide.
+   *
    * Vendor text stored verbatim (≤200, `postcards_taken_place_name_length`),
    * so it is truncated on display rather than trusted to be short.
+   *
+   * **Not optional**, unlike `comments_count` beside it: `POSTCARD_SELECT` is
+   * the only select that produces a `Postcard` and it always names this column.
+   * A `?` here would let a second read path forget it, type-check clean, and
+   * drop the caption on that screen with no error anywhere.
    */
-  taken_place_name?: string | null
+  taken_place_name: string | null
 }
 
 /**

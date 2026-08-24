@@ -84,7 +84,10 @@ export const FEED_PAGE_SIZE = 30
 // **`taken_place_name` does not exist on PROD yet, and reading it there would
 // take the whole feed down rather than degrade.** `072`/`073` are DEV-only, and
 // PostgREST answers an unknown column with an error that `unwrapList` throws —
-// so every screen built on this select lands on its error boundary. Promoting
+// so every screen built on this select shows a permanent "try again" panel.
+// **Five of them, not three**: `getFeed` backs `/postcards` AND `/profile` and
+// `/profile/detail`, where the gate is `combineQueries`, so a whole nav tab
+// becomes an error panel rather than losing a strip. Promoting
 // this file to `main` REQUIRES `072` and `073` applied to PROD first, which is
 // `docs/ENVIRONMENTS.md` §Migrations step 5 doing its ordinary job. Verify
 // rather than assume, per PD-279:

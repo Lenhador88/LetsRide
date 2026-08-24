@@ -119,26 +119,46 @@ function PostcardCardComponent({
           className="pointer-events-none absolute inset-x-0 bottom-0 h-10"
           style={{ background: 'linear-gradient(180deg, #00000000 0%, #000000B3 100%)' }}
         />
-        {/* Bottom left, against the date's bottom right, both over the one
-            scrim that already exists for exactly this (PD-279). Capped at half
-            the width so a 200-character vendor name truncates instead of
+        {/* Bottom left, against the date's bottom right (PD-279). Capped at
+            half the width so a 200-character vendor name truncates instead of
             running under the date — the column is bounded at 200, not at
             something that fits.
 
-            Drawn on a name alone: a non-null `taken_place_name` IS the rider
-            having chosen to publish one, so there is no second column to
-            consult and no state where this appears without their say-so. See
-            the type. */}
+            Drawn on a name alone, and what makes that safe differs by mode:
+            under `place` the CHECK requires one, so the name IS the rider's
+            choice by construction; under `precise` `073` leaves it optional
+            and explicitly "cosmetic", so what makes it theirs is that
+            `PlaceSearchField` stays mounted in every mode and the value is on
+            screen when they post. **The second half is a property of the
+            composer, not of the schema** — a change that hides that field puts
+            an auto-filled vendor locality on a card nobody read. Hide is the
+            arm where every capture column is NULL, so it draws nothing either
+            way.
+
+            `bg-scrim` rather than the 40px gradient behind it, and that is a
+            contrast fix rather than styling. The gradient reaches only
+            `#000000B3` at the very bottom edge: at this text's own height it is
+            ~0.37–0.54 alpha, so `White/100` measures **2.58:1 at the glyph top**
+            over a bright photo — below AA, and below even 3:1. `Grey/70%`
+            bounds the composite at `#4C4C4C` however bright the photo is, which
+            is 8.59:1, and it is the instrument `RideMap` already uses for the
+            one other place this app puts text over rider imagery. */}
         {postcard.taken_place_name && (
-          <span className="absolute bottom-1.5 left-2 flex max-w-[50%] items-center gap-1 text-2xs font-medium text-white">
+          <span className="absolute bottom-1.5 left-2 flex max-w-[50%] items-center gap-1 rounded bg-scrim px-1.5 py-0.5 text-2xs font-medium text-white">
             <LocationOutlineIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
+            {/* The icon is decorative, so without this a screen reader hears a
+                bare place name between the photo's alt text and the date, with
+                nothing saying what it is. */}
+            <span className="sr-only">Taken in</span>
             <span className="truncate">{postcard.taken_place_name}</span>
           </span>
         )}
 
+        {/* The same pill, for the same measurement: this text has always had
+            the caption's problem and shipped before anyone computed it. */}
         <time
           dateTime={postcard.created_at}
-          className="absolute right-2 bottom-1.5 text-2xs font-medium text-white"
+          className="absolute right-2 bottom-1.5 rounded bg-scrim px-1.5 py-0.5 text-2xs font-medium text-white"
         >
           {formatPostcardDate(postcard.created_at)}
         </time>
