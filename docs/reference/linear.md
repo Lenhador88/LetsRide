@@ -133,6 +133,25 @@ it does, permanently.
   got filed as a *peer* of it. Filing is the moment to catch it, because a split is far cheaper
   to avoid than to undo.
 
+  **It splits at CLOSING time too, and that half is easier to miss because the story was right.**
+  A session builds the tractable part of a correct story, moves it to `Deployed to DEV`, and puts
+  the rest in a comment or a new row. Every artifact then looks finished — green PR, closed issue,
+  a follow-up filed — and the feature the owner asked for does not exist. Product owner,
+  2026-08-24: *"New stories are created, but the main feature is not being developed in the main
+  story we discussed about."*
+
+  **So a story closes when the thing it names exists, not when the part you built does.** Re-read
+  its title before the status write; the title is the deliverable in one line and the only part of
+  the issue a board actually shows. Partly delivered means the issue **stays open** with a comment
+  saying what shipped and what remains.
+
+  **"The rest needs an owner action" is not a split.** PD-279 is the worked example — the story
+  read *"country flag and town"*, the town shipped, and the flag was written off because it needed
+  an Edge Function deploy. Deploying is an owner step on **every** change under
+  `supabase/functions/`; if that justified a split, half this repo's stories would be two.
+  `.claude/commands/queue-pickup.md` STEP 4b and STEP 5 bullet 4 are where a build session meets
+  this.
+
 - **A decision is never its own story.** When work stalls on a choice, write the choice into the
   story that needs it — what is being decided, the options, what each costs — and move **that**
   story to `Needs decision`. Do not open a second issue for the question. A decision issue cannot

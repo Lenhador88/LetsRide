@@ -1692,6 +1692,13 @@ triggers or the relay session it fires into** — those are CCR calls rather tha
   owner requests (PD-183, PD-182) and neither can have a gate, because an issue body is not a file.
   `docs/reference/linear.md` §What an issue body opens with carries the format, the one rating that
   changes name on a board, and why a total belongs in the table and never in the block.
+- **A story closes when the thing it names exists, not when the part you built does.** Partly
+  delivered means it **stays open** — the remainder is never a comment on a closed issue and never
+  a new row, because both read as handled on a board. Re-read the title before writing a status;
+  "the rest needs an owner action" is not a split, since deploying is an owner step on every
+  change under `supabase/functions/`. Product owner, 2026-08-24, after PD-279 shipped a town and
+  wrote off the flag it was named for: *"the main feature is not being developed in the main story
+  we discussed about."*
 - **An issue body is a pointer and a reason.** A Linear issue that grows a specification is a bug;
   that belongs in a proposal.
 
