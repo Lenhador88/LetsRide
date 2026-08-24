@@ -33,18 +33,24 @@ reachable only by the project owner's own dashboard connection.
   to `authenticated` and `service_role`**, and PostgREST publishes `public`, so the naive
   reading of "a SQL view queried from the dashboard" hands every signed-in rider every report
   and every reported postcard.
-- **A second view listing take-downs whose photo is still in the bucket**, because SQL cannot
-  delete a Storage object and the privacy page promises the photo goes.
+- **A runbook step for the photo**, because SQL cannot delete a Storage object. *(This bullet
+  originally specified a second view listing take-downs whose object still exists. It needs the
+  ledger below to have anything to list, so it went with it — `tasks.md` group 7.)*
 - **A narrow take-down** — one function, one postcard, by id, reachable by nobody but the table
   owner. `public.moderate_comment` (`011` §1b) is the precedent for the *narrowness*; this
   change deviates from it on `security definer` and says why (D4).
-- **An append-only take-down ledger**, so removing a postcard does not destroy the evidence
-  that justified removing it. The `ON DELETE CASCADE` on `postcard_reports.postcard_id` is
-  **kept** — that is a decision, not an inheritance (D5).
+- **The take-down returns the evidence it destroys.** The `ON DELETE CASCADE` on
+  `postcard_reports.postcard_id` is **kept** — a decision, not an inheritance (D5). *(This
+  bullet originally specified an append-only ledger. NOT BUILT: it would hold a caption, an
+  image path encoding a rider's uuid and an author id, surviving the account deletion `029`
+  performs and `/legal/account-deletion` promises erases all three — a retention decision with a
+  window and a lawful basis behind it, which Q3 and Q4 below are asking the owner for. The
+  reasoning is in `076`'s header and `tasks.md` group 7.)*
 - **A revoke of `service_role`'s standing privileges on `postcard_reports`** (D9), because the
   owner's stated constraint — never reachable by `service_role` — is already false for the base
   table today and this change is where that gets noticed.
-- **A runbook** in `docs/` for the two-step take-down, because step two is not SQL.
+- **A runbook** for the two-step take-down, because step two is not SQL. It shipped as `076`'s
+  §Operating it footer rather than a file under `docs/`, so it sits beside the objects it drives.
 - **No application code.** The client half of this story shipped in `f329089`. This change adds
   nothing to `src/` and no new Zod rule; every rule it states is a grant, a schema placement, a
   CHECK or a policy.
@@ -63,12 +69,16 @@ reachable only by the project owner's own dashboard connection.
 
 ## Impact
 
-- **Affected specs:** `content-moderation` (new capability, and it carries the retention
-  requirement rather than opening a third one) and `database-enforced-integrity` (ADDED
-  requirements only — see below).
-- **Affected code:** `supabase/migrations/076*` (re-derive the number), `supabase/tests/rls_test.sql`,
-  `supabase/tests/seed.sql`, `docs/reference/schema.md`, `docs/reference/migrations.md`, a new
-  runbook under `docs/`. **Nothing under `src/`.**
+- **Affected specs:** `content-moderation` (new capability) and `database-enforced-integrity`
+  (ADDED requirements only — see below). **The delta was trimmed to what shipped before this
+  change was committed**: its ledger, pending-photo and retention requirements are gone, because
+  archiving folds these deltas into the canonical spec and `content-moderation` is a new
+  capability — it would have become the only written record of how moderation works here, and it
+  would have asserted a ledger nothing writes.
+- **Affected code, as shipped:** `supabase/migrations/076_reports_have_a_reader.sql`,
+  `supabase/tests/rls_test.sql`, `docs/reference/schema.md`, `CLAUDE.md` and `docs/HANDOFF.md`.
+  `seed.sql` needed nothing — it already carries a report row. **Nothing under `src/`** was in this change; the two `src/` edits on the branch belong to `f329089` and to the review fix
+  that followed it.
 - **Deliberately ADDED-only against `database-enforced-integrity`.** Two active changes already
   collide on that spec's `Club membership role SHALL NOT be self-assignable` and each carries a
   coordination banner about it. Archiving replaces a requirement wholesale, so a MODIFIED delta
@@ -89,16 +99,15 @@ reachable only by the project owner's own dashboard connection.
 These are the contract. Each is stated as a role against a resource so it lands as an assertion
 in `supabase/tests/rls_test.sql`, and each is spelled out in the delta specs.
 
-**On the triage view and the ledger:**
+**On the triage view and the take-down's objects:**
 
-1. `anon` SHALL NOT read the triage view, the pending-photo view or the ledger — by three
-   independent barriers: no USAGE on `private`, no privilege on the object, and PostgREST does
-   not route to `private`.
-2. `authenticated` SHALL NOT read any of the three, by the same three barriers. **This is the
-   one that fails silently if the objects are built in `public`.**
-3. `service_role` SHALL NOT read any of the three. It *does* hold USAGE on `private` (`031`
-   granted it), so here the object-level privilege is the barrier that does the work, and it is
-   the one the local suite cannot assert (D8).
+1. `anon` SHALL NOT read the triage view — by three independent barriers: no USAGE on
+   `private`, no privilege on the object, and PostgREST does not route to `private`.
+2. `authenticated` SHALL NOT read it, by the same three barriers. **This is the one that fails
+   silently if the object is built in `public`.**
+3. `service_role` SHALL NOT read it. It *does* hold USAGE on `private` (`031` granted it), so
+   here the object-level privilege is the barrier that does the work, and it is the one the
+   local suite cannot assert (D8).
 4. The triage view SHALL NOT become a second way to read postcards. It runs as the table owner
    and therefore bypasses every block, club-membership and hide predicate in the system — that
    is what it is *for*, and it is exactly why no PostgREST role may reach it.
@@ -136,12 +145,13 @@ in `supabase/tests/rls_test.sql`, and each is spelled out in the delta specs.
 **On evidence and retention:**
 
 15. Removing a postcard SHALL NOT leave the take-down unaccounted for. The reports themselves
-    cascade away with the postcard — kept deliberately (D5) — and the ledger row written in the
-    same transaction is what survives.
-16. The ledger SHALL carry a stated retention window from the day it is created, because it
-    holds a caption, an image path and an author id, which are personal data (D6). **Nothing
-    enforces the window on a schedule today** — that is Q3, and the window is a documented
-    procedure until it has a mechanism.
+    cascade away with the postcard — kept deliberately (D5) — and what survives is whatever the
+    operator keeps from the take-down's return value, read before the delete. **As built, that
+    is the only artefact**: nothing in the database records that a take-down happened.
+16. Anything that DOES retain this data SHALL carry a stated window from the day it is
+    created, because a caption, an image path and an author id are personal data (D6). As built
+    nothing retains it, which is the strongest form of that requirement and the reason Q3 is
+    open rather than answered.
 
 **On the client:**
 
@@ -166,14 +176,14 @@ build.**
   monitored, the published contact route reaches nobody and a reviewer is the first to write to
   it. **Default: none — this one genuinely cannot be defaulted, only asked.** One line changes
   when it is answered.
-- **Q3 — product owner. How long is the take-down ledger kept?** **Default: 24 months**, long
-  enough to establish a repeat offender and short enough to be defensible. Nothing schedules
-  the deletion (this repo has taken no decision on `pg_cron`), so it is a documented window
-  until it has a mechanism.
-- **Q4 — product owner. Does the ledger keep the caption text?** **Default: yes.** It is the
-  evidence of what was removed and it is the rider's own words; without it the ledger records
-  that something was removed and not what. If the answer is no, the column comes out and the
-  ledger keeps the image path and the report reasons only.
+- **Q3 — product owner. If a take-down ledger is ever built, how long is it kept?**
+  **Default: 24 months**, long enough to establish a repeat offender and short enough to be
+  defensible. Nothing schedules the deletion (this repo has taken no decision on `pg_cron`), so
+  it would be a documented window until it has a mechanism. **Unanswered is why the ledger is
+  not in this change.**
+- **Q4 — product owner. If it is built, does the ledger keep the caption text?**
+  **Default: yes.** It is the evidence of what was removed and it is the rider's own words;
+  without it the ledger records that something was removed and not what. Same status as Q3.
 - **Q5 — build session, non-blocking. Revoke `service_role` on `postcard_reports`?**
   **Default: yes** (D9). It is two lines and it makes the owner's stated constraint true. It is
   isolated in its own task group and can be dropped without touching anything else.

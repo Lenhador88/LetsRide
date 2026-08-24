@@ -82,15 +82,21 @@ export default function PrivacyPage() {
         The address is `SUPPORT_EMAIL`, never a literal — see that file, which still carries
         an owner question about the mailbox itself.
 
-        "its photo stops being viewable immediately" is a MECHANISM and is why that clause can
-        be written in the present tense: `010` §2's read policy on `storage.objects` requires a
-        `postcards` row whose `image_path` is the object AND whose author owns the folder, and
-        the `media` bucket is private — so an object with no row pointing at it is unreadable by
-        everyone, the uploader included. `010` §2 states that consequence in those words.
+        THE PHOTO CLAUSE IS THE ONE TO GET RIGHT, and its first version was wrong in a way that
+        reads as measured. It said the photo "stops being viewable immediately — no account can
+        fetch an image whose postcard is gone", reasoning from `010` §2: the `media` bucket is
+        private and the Storage SELECT policy resolves through a `postcards` row, so an orphaned
+        object is unreadable. Both halves are true and the conclusion does not follow, **because
+        the app never does an RLS-mediated read of an image**. `src/lib/data/media.ts` hands the
+        browser a SIGNED URL, and Supabase validates the signature rather than re-running the
+        policy — so a rider whose feed rendered the postcard before the take-down keeps a working
+        URL until `SIGNED_URL_TTL_SECONDS` (one hour) expires, and so does anyone they forward it
+        to, signed out or with no account at all.
 
-        "We delete the stored file as well" is a PROCEDURE and is deliberately a separate
-        sentence. No cascade reaches Storage (`009` §3), so it is step two of `076`'s runbook,
-        done by a human. Do not merge the two clauses into one that reads as automatic.
+        So deleting the stored file is not the tidy-up it looked like: it is the only thing that
+        ends access, and until it runs the window is the TTL. That is why the copy now names the
+        hour instead of promising an instant, and why `076`'s runbook calls step two time-bounded
+        rather than optional. Do not restore a sentence that reads as automatic or immediate.
       */}
       <h2 className="text-base font-semibold pt-4">Reporting content, and how to reach us</h2>
       <p className="text-muted">
@@ -106,9 +112,9 @@ export default function PrivacyPage() {
         <Link href="/legal/terms" className="underline">
           Terms and Conditions
         </Link>
-        . Removing a postcard takes its comments and its likes with it, and its photo stops being
-        viewable immediately — no account can fetch an image whose postcard is gone. We delete the
-        stored file as well.
+        . Removing a postcard takes its comments, its likes and the notifications about it with
+        it, and we delete the stored photo as well. Photo links are signed and expire within an
+        hour, so a link somebody had already loaded can keep working until we delete the file.
       </p>
       <p className="text-muted">
         If something needs attention sooner, or you would rather write to a person than use the

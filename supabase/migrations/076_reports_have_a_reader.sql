@@ -66,20 +66,28 @@
 -- pane at the moment they act on it. That is a deliberately human answer to a
 -- retention question, and it is honest about being one.
 --
--- **The image is not deleted, because no cascade can do it — but it does stop
--- being viewable the instant the row goes, and the difference matters.** `009`
--- §3 records the first half: the row goes, the object at `image_path` stays.
--- The second half is `010` §2, measured rather than assumed — the `media`
--- bucket is `public = false`, and the read policy on `storage.objects` requires
--- a `postcards` row whose `image_path` IS the object and whose author owns the
--- folder. So an orphaned object is, in that file's own words, *"unreadable by
--- anyone at all, including whoever just uploaded it"*.
+-- **The image is not deleted, because no cascade can do it — and deleting it is
+-- the ONLY thing that ends access to it. This paragraph said the opposite on
+-- its first pass, from evidence that looked conclusive.** `009` §3 gives the
+-- first half: the row goes, the object at `image_path` stays. `010` §2 looks
+-- like it gives the second — the `media` bucket is `public = false` and the
+-- Storage SELECT policy resolves through a `postcards` row whose author owns
+-- the folder, so an orphaned object is *"unreadable by anyone at all,
+-- including whoever just uploaded it"*.
 --
--- What is left is therefore a stored file nobody can fetch: a billing line and
--- a copy of a rider's photo, not a live exposure. The function returns the path
--- so the operator can delete it in Storage — step two of the runbook, and the
--- reason `/legal/privacy` states the viewability in the present tense and the
--- deletion as a separate sentence. See the §Operating it footer.
+-- **That is true of an RLS-mediated read, and the app never does one.**
+-- `src/lib/data/media.ts` signs every postcard path with
+-- `createSignedUrls(..., SIGNED_URL_TTL_SECONDS)` — one hour — and Supabase
+-- serves a signed URL by validating its signature, not by re-running the
+-- policy. That file's own header says as much: *"the signature is the only
+-- thing protecting a private club's photo once it leaves RLS's reach"*.
+--
+-- So after a take-down, every rider whose feed had already rendered that
+-- postcard holds a URL that keeps working for the rest of the hour, as does
+-- anyone they forwarded it to — signed out, or with no account at all.
+-- Deleting the object is step two of the runbook and it is **time-bounded**:
+-- the exposure window is exactly the remaining TTL. `/legal/privacy` names the
+-- hour for the same reason.
 
 -- ---------------------------------------------------------------------------
 -- 1. The queue — one row per open report, with the context to judge it
@@ -91,6 +99,16 @@
 -- Leaving that implicit in a moderation surface would be a load-bearing default
 -- nobody could see. There is no caller but the owner — see the revokes in §3 —
 -- so nothing is being stepped past here that the reader could not already read.
+--
+-- **`reports_on_this_author` is a CURRENT count, not a lifetime one, and it is
+-- zeroed by the very action it informs.** Reports cascade with their postcard,
+-- so each take-down erases that author's history: a rider with five removals
+-- behind them shows `1` on the sixth report. It reads as a pattern signal and
+-- under-counts a repeat offender exactly in proportion to how well moderation
+-- has been working. Weigh it as "how many complaints are open about this rider
+-- right now", never as "how many they have ever had" — and note this is a
+-- second, independent argument for the take-down ledger this file declines to
+-- build for a retention reason.
 --
 -- It joins `profiles` for the AUTHOR only, and the reporter appears as a uuid.
 -- A photo is judged on the photo: the reported rider's name is context, and the
@@ -123,7 +141,7 @@ with (security_invoker = false) as
   order by r.created_at desc;
 
 comment on view private.postcard_report_queue is
-  'Triage queue for postcard reports, readable only by the table owner at the Supabase dashboard — private is not routed by PostgREST and no client role holds USAGE on it. Runs as its owner by design, so it sees rows RLS would hide from the caller; it is a pre-joined view of what the owner could already read, never a new reach for anyone else. See 076.';
+  'Triage queue for postcard reports. reports_on_this_author counts OPEN reports only — reports cascade with their postcard, so a take-down erases that author''s history. Readable only by the table owner at the Supabase dashboard — private is not routed by PostgREST and no client role holds USAGE on it. Runs as its owner by design, so it sees rows RLS would hide from the caller; it is a pre-joined view of what the owner could already read, never a new reach for anyone else. The reporter appears as a uuid only. See 076.';
 
 -- ---------------------------------------------------------------------------
 -- 2. The take-down
@@ -191,6 +209,14 @@ begin
     return jsonb_build_object('removed', false, 'reason', 'no such postcard');
   end if;
 
+  -- FIVE cascades hang off `postcards` and the header used to name one. Read
+  -- off `pg_constraint` on DEV rather than remembered: `postcard_likes`,
+  -- `postcard_comments`, `postcard_hides`, `postcard_reports` and
+  -- `notifications`, every one `ON DELETE CASCADE`. The blast radius is a
+  -- property of the schema, not of this body — there is no DELETE trigger on
+  -- `postcards` at all, and the one AFTER DELETE trigger reached transitively
+  -- (`private.retract_postcard_liked` on `postcard_likes`) only deletes
+  -- notifications and has no raise path, so a cascade cannot abort a take-down.
   delete from public.postcards where id = target;
   get diagnostics removed = row_count;
 
@@ -278,9 +304,10 @@ comment on table public.postcard_reports is
 -- Storage (`009` §3), and Supabase refuses a direct `delete from
 -- storage.objects` with `42501: Direct deletion from storage tables is not
 -- allowed`, which is why `scripts/storage/sweep-orphans.mjs` goes through the
--- Storage API. **It is not urgent and it is not optional**: nobody can fetch
--- the object once its row is gone (`010` §2), so what is left is a stored copy
--- of a rider's photo and a billing line.
+-- Storage API. **Do it in the same sitting.** Until it runs, the photo is still
+-- fetchable by anyone holding a signed URL the app already issued — see the
+-- header. The window closes on its own after an hour; deleting the object is
+-- what closes it now, and it is also what makes `/legal/privacy` true.
 --
 -- Leaving a report and taking no action needs no SQL at all — a report is not
 -- state, it is a row that stays. There is deliberately no `resolved_at`: that

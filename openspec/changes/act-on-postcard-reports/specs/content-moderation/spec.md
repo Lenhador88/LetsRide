@@ -85,12 +85,11 @@ therefore expose the minimum a triage decision needs.
 - **THEN** it SHALL expose the reported postcard's `image_path`, because that is the only way to
   locate the Storage object that a take-down cannot delete
 
-#### Scenario: Neither view is a write surface
-- **WHEN** any role attempts INSERT, UPDATE or DELETE against the triage surface or the
-  pending-photo surface
+#### Scenario: The triage surface is not a write surface
+- **WHEN** any role attempts INSERT, UPDATE or DELETE against the triage surface
 - **THEN** the attempt SHALL be refused for every role except the database owner
-- **AND** no INSERT, UPDATE or DELETE privilege SHALL exist on either object for `anon`,
-  `authenticated` or `service_role`
+- **AND** no INSERT, UPDATE or DELETE privilege SHALL exist on it for `anon`, `authenticated`
+  or `service_role`
 
 ### Requirement: A take-down SHALL remove exactly one postcard and SHALL be callable by nobody from the client
 
@@ -134,86 +133,69 @@ alone is load-bearing.
 - **THEN** the delete SHALL still affect zero rows, and the postcard SHALL survive
 - **AND** `009`'s `"Authors can delete their own postcards"` policy SHALL be unmodified
 
-### Requirement: A take-down SHALL leave evidence that outlives the content it removed
+### Requirement: A take-down SHALL hand back the evidence it destroys
 
 `postcard_reports.postcard_id` is `ON DELETE CASCADE`, so removing a reported postcard erases
-the reports about it. **That cascade is kept deliberately** — a report is a complaint about a
-piece of content, and retaining reports pointing at nothing means retaining a reporter's
-identity and free-text note indefinitely for no stated purpose.
+the reports about it. **That cascade is kept deliberately**, and so is the absence of any
+archive behind it: a store holding a caption, an `image_path` encoding a rider's uuid and an
+author id would outlive the account deletion `029` performs and `/legal/account-deletion`
+promises erases all three. That is a retention decision with a lawful basis and a window behind
+it, not a column a take-down function may add on its own.
 
-What SHALL survive instead is an append-only record of the **action**: an owner-only ledger in
-`private`, written in the same transaction as the delete and before it, so a failed delete
-rolls the ledger row back with it.
+So the evidence SHALL be returned to the operator **at the moment of acting**, by the take-down
+itself, read before the delete that destroys it. Nothing in the database keeps a second copy.
 
-The ledger SHALL record the postcard id, the author id, a snapshot of the caption and
-`image_path`, the report count and distinct reasons at the moment of removal, `acted_at`, and a
-free-text note. It SHALL NOT record `reporter_id`: it records what was removed and why, not who
-complained.
+**Two consequences SHALL be stated rather than discovered**, because both read as defects to
+anyone assuming an archive exists:
 
-#### Scenario: Removing a postcard leaves a ledger row and no reports
+- A per-author report count computed from live rows is an **open** count and never a lifetime
+  one — each take-down zeroes that author's history, so a repeat offender under-counts exactly
+  in proportion to how well moderation has been working.
+- Nothing records that a take-down happened at all. The only artefact is whatever the operator
+  keeps from the return value.
+
+#### Scenario: The take-down returns what it removed
 - **WHEN** the owner takes down a postcard that carries reports
-- **THEN** the reports against it SHALL be gone, by the existing cascade
-- **AND** exactly one ledger row SHALL exist naming that postcard, its author, its caption, its
-  image path, and the number and kinds of report it carried
+- **THEN** the call SHALL return the postcard's id, author, caption and `image_path`, and every
+  report against it with its reason, note, reporter identifier and timestamp
+- **AND** the reports themselves SHALL then be gone, by the existing cascade
 
-#### Scenario: The ledger is append-only for everyone
-- **WHEN** any role attempts to UPDATE or DELETE a ledger row
-- **THEN** the attempt SHALL be refused for every role except the database owner
-- **AND** no UPDATE or DELETE privilege SHALL exist on the ledger for `anon`, `authenticated` or
-  `service_role`
-
-#### Scenario: No client role can read the ledger
-- **WHEN** `anon`, `authenticated` or `service_role` selects from the ledger
-- **THEN** the read SHALL be refused, by the same three barriers that protect the triage surface
-
-#### Scenario: A failed take-down leaves no ledger row
+#### Scenario: A take-down that matches nothing is a clean answer
 - **WHEN** the take-down is called with an id that matches no postcard
-- **THEN** no ledger row SHALL be written
-- **AND** the function SHALL report that it removed nothing
+- **THEN** it SHALL report that it removed nothing, rather than raising
+- **AND** nothing SHALL be written anywhere
 
-### Requirement: A take-down SHALL make the un-removed photo findable
+#### Scenario: The per-author count is documented as open rather than lifetime
+- **WHEN** a session or an operator reads the triage surface's per-author count
+- **THEN** the surface's own comment SHALL say that the count covers open reports only and that
+  a take-down erases that author's history
+
+### Requirement: The photo SHALL be deleted in the same sitting, and the copy SHALL NOT promise more
 
 Deleting the `postcards` row does not delete the Storage object at `image_path` — Postgres and
 Storage are separate systems — and `delete from storage.objects` is refused outright by
 Supabase's own guard (`42501: Direct deletion from storage tables is not allowed`). So **no SQL
-this change can write is able to remove the photo**, while `/legal/privacy` already tells riders
-that removing a postcard removes its photo.
+this change can write is able to remove the photo.**
 
-A take-down SHALL therefore be a two-step procedure whose second step is discoverable rather
-than remembered: a surface SHALL list every take-down whose Storage object still exists, and the
-procedure SHALL be written down as a runbook.
+**And no policy hides it in the meantime.** It is tempting to reason that an orphaned object is
+unreachable, because the `media` bucket is private and `010`'s Storage SELECT policy resolves
+through a `postcards` row that no longer exists. That is true of an RLS-mediated read, and
+**the app never does one**: `src/lib/data/media.ts` hands the browser a signed URL with a
+one-hour TTL, and Supabase validates the signature rather than re-running the policy. A rider
+whose feed had already rendered the postcard keeps a working URL for the rest of that hour, and
+so does anyone they forward it to, signed out or with no account at all.
 
-#### Scenario: A take-down whose photo is still in the bucket is listed
-- **WHEN** the owner takes down a postcard and does not yet delete its Storage object
-- **THEN** the pending-photo surface SHALL list that take-down with its `image_path`
-- **AND** the entry SHALL disappear once the object is removed through the Storage API
+A take-down SHALL therefore be a two-step procedure whose second step is written down as a
+runbook and understood as **time-bounded rather than optional**, and the rider-facing copy SHALL
+NOT claim an immediacy the mechanism does not provide.
 
-#### Scenario: The pending-photo surface is owner-only
-- **WHEN** `anon`, `authenticated` or `service_role` selects from the pending-photo surface
-- **THEN** the read SHALL be refused, by the same three barriers as the triage surface
+#### Scenario: The runbook names the second step and its window
+- **WHEN** an operator follows the take-down runbook
+- **THEN** it SHALL name the bucket and the path to delete, and SHALL say that until the object
+  is deleted an already-issued signed URL keeps working for the remainder of its TTL
 
-#### Scenario: The removed photo is unreachable to riders in the meantime
-- **WHEN** a rider requests the Storage object of a taken-down postcard before step two runs
-- **THEN** the request SHALL be refused, because `010`'s Storage SELECT policy resolves
-  visibility through a `postcards` row that no longer exists
-
-### Requirement: The take-down ledger SHALL carry a stated retention window
-
-The ledger holds a caption, an image path encoding a rider's uuid, and an author id. That is
-personal data, and it SHALL have a stated window from the day the table is created rather than
-becoming a permanent record by default.
-
-The window SHALL be recorded in the table's own comment and in the runbook. **No mechanism
-enforces it on a schedule** — this project has taken no decision on scheduled jobs — so the
-window is a documented procedure until it has one, and that gap SHALL be stated rather than
-implied.
-
-#### Scenario: The window is discoverable from the database
-- **WHEN** a session reads the ledger's table comment
-- **THEN** it SHALL find the retention window and the fact that nothing enforces it
-  automatically
-
-#### Scenario: The window is not silently permanent
-- **WHEN** the retention window is chosen
-- **THEN** it SHALL be a stated number of months agreed by the product owner, defaulting to 24
-- **AND** a ledger with no window SHALL NOT ship
+#### Scenario: The published copy does not promise an instant
+- **WHEN** `/legal/privacy` describes what removing a postcard does
+- **THEN** it SHALL NOT state that the photo becomes unfetchable immediately
+- **AND** it SHALL name the signed-link window, so the claim stays true whether or not step two
+  has run yet
