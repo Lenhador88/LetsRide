@@ -610,10 +610,10 @@ never become a development convenience.
 relay itself cannot reach Supabase without it.
 
 **A clean run is `47/47 guard, navigation and sign-out checks correct` on a DEV where the walk
-account owns a ride and a club — DERIVED, not measured.** It was `48/48` and `077` (PD-293)
-dropped the `max_riders survives it` assertion with the field it read, so the total is one lower
-by construction; nothing has run the walk since. **Read the run, not this line**, and if it comes
-back 48 the field is back.
+account owns a ride and a club — MEASURED 2026-08-24 on PD-293's branch**, against a local
+`npm run dev` through the relay, `WALK_FIXTURES=1`, zero FAILs. It was `48/48` and `077` dropped
+the `max_riders survives it` assertion with the field it read. **If it comes back 48 the field is
+back.**
 
 The `48/48` it replaces was 47/47 measured 2026-08-12, plus the consent-box assertion PD-214
 added to the refused-signup phase, which has **not** been run against DEV. **The account that measures the full total
@@ -708,8 +708,22 @@ a failure here as a regression:
 select location from public.profiles where id = (select id from auth.users where email = '<WALK_EMAIL>');
 ```
 
-**Last run: 2026-08-24, `18/18` screens and `48/48` checks, against `development` at `92095e1`
-— which is BEFORE `077` removed one of those 48. A run on this branch should read `47/47`.**
+**Last run: 2026-08-24, `18/18` screens and `47/47` checks, on PD-293's branch at `fd7d146`.**
+That run is what answered the question `077` raised and nothing else could: `tsc`, ESLint,
+Vitest, `next build` and the RLS suite are all green against a DEV whose `rides` has no
+`max_riders`, and **only the walk can say whether the ride detail and the edit form still
+render**. They do — the edit form drew every control populated, with no `max_riders` field and no
+`42703`. The previous run was `18/18` and `48/48` against `development` at `92095e1`, before the
+column went.
+
+**Two things that run did NOT cover, and neither is a defect in that branch.** The edit-retention
+phase fell through to the **club** form — the walk's discovered ride belongs to another rider, so
+`/rides/detail/edit` drew the "not yours" screen — which skips the `club_id` `<select>` restore,
+the control `retain.ts` singles out as hardest to get right. And `LocationPrimingSheet`'s
+`blocked` copy (PD-170) has been rendered by nothing: `locationPrimingState` hides the row for
+any rider who has a position, and the walk account's profile city is `Amsterdam`, so neither the
+row nor the sheet can appear for it. **Exercising that branch needs a fixture with no
+`profiles.location` and a refused permission**, which is a walk phase nobody has written.
 — the first run since the client render migration, and the run that verified PD-279, PD-286,
 PD-284 and PD-285 render at all. `/onboarding/location -> /postcards` passed, which is the
 deleted route reaching the guard's catch-all through a real browser rather than through the
