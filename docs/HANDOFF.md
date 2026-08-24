@@ -288,6 +288,38 @@ stays load-bearing permanently**, and `resolve.browser.ts`'s tripwire keeps earn
   `icon.png` as a *Logo*, which generates white and `#111111` splash screens instead of icons —
   `resources/README.md` carries that and the rest. Platform sets are not committed; a Mac
   generates them after `cap add`. The splash PNG is untouched and still mint-on-`#3D996B`.
+- **The location permission strings — written 2026-08-24 (PD-170), and they are the ONE thing
+  in this list that is not yet in a file the platforms read.** `ios/` and `android/` do not
+  exist (see below), so there is no `Info.plist` and no `AndroidManifest.xml` to put them in.
+  They are recorded here because the first `cap add` on a Mac is where they have to be pasted,
+  and because Apple shows the iOS one *inside its own dialog* — a vague string is a routine
+  rejection. Both are **when-in-use only**; background location is a separate and much heavier
+  review conversation, and nothing in `src/` uses `watchPosition` or asks for `always`:
+
+  ```
+  <!-- ios/App/App/Info.plist -->
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>LetsRide uses your location to show which rides and clubs are happening around you,
+  and to start a meeting-point search where you are. It is only used while the app is open.</string>
+  ```
+  ```xml
+  <!-- android/app/src/main/AndroidManifest.xml -->
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+  ```
+
+  Do **not** add `NSLocationAlwaysAndWhenInUseUsageDescription`, `ACCESS_BACKGROUND_LOCATION`
+  or a `UIBackgroundModes` location entry: asking for what the app does not use is the
+  rejection this pair exists to avoid. The in-app rationale that has to agree with the iOS
+  string is `LocationPrimingSheet`'s copy, and that component's header names the two claims
+  ("only while the app is open", "never shown to other riders") that must stay true of the
+  code for either string to be honest.
+
+  **No Capacitor geolocation plugin is installed and none is needed.** The webview's own
+  `navigator.geolocation` works under both platforms' permission systems — the manifest entries
+  above are what the WebView's own permission request reads — so this stays on the web API and
+  the runtime dependency count stays at nine. Revisit only if a feature needs background
+  tracking, which the plugin would not give either.
 - Two plugin defaults overridden, both security-relevant: keychain access
   `afterFirstUnlockThisDeviceOnly` (the default `whenUnlocked` blocks background token refresh
   after a reboot **and** migrates the token to a replacement device through an encrypted

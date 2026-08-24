@@ -11,6 +11,7 @@ import { getExploreClubs, getYourClubs } from '@/lib/data/clubs'
 import { getMyLocationText } from '@/lib/data/profile'
 import { isNearby } from '@/lib/location/distance'
 import { nearLabel, type NearLabel } from '@/lib/location/near-label'
+import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
 import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { useQuery, type UseQueryResult } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
@@ -129,6 +130,13 @@ export default function ClubsPage() {
                 }
                 near={label}
               />
+              {/* Under the explore strip rather than beside it: the strip is
+                  this screen's one destination and must keep its place. The
+                  row only draws when the rider has no position at all, which
+                  is exactly when the strip's `near …` clause has dropped out
+                  and the sort below is arbitrary. `px-0` because this slot is
+                  already inside a padded block — see the prop's own comment. */}
+              <UseMyLocationRow position={near.data} className="px-0" />
             </div>
 
             {yours.error ? (

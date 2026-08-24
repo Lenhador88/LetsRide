@@ -1,0 +1,237 @@
+-- 077: the rider limit goes — `063` is removed in full, and `max_riders` with it.
+--
+-- Linear PD-293. Product owner decision, 2026-08-24. This file is the exact
+-- reverse of `063` (PD-174), which is six days old, so read that file first:
+-- everything it explains is what is being taken out here.
+--
+-- ---------------------------------------------------------------------------
+-- Why — a cap nobody can see is worse than no cap
+-- ---------------------------------------------------------------------------
+-- `063` made `max_riders` a real join gate: a rider joining a full crew is
+-- refused with `this ride is full` (23514), and `setRideAttendance` matches that
+-- substring to report it. The gate is correct and it is well tested. What was
+-- never built — and what the v2 design does not draw anywhere — is the rider's
+-- side of it:
+--
+--   * no "Ride is full" state on a ride card or a ride detail header,
+--   * no seats-remaining count anywhere,
+--   * no disabled or dimmed RSVP pill.
+--
+-- So the only way a rider learns a ride is full is to tap **Going** and read an
+-- error. That is a worse product than no cap at all: the affordance a cap needs
+-- is the *before*, not the *after*, and an organizer typing 12 is making a
+-- promise the app never shows anyone. The owner's decision was to drop the
+-- limit rather than draw the affordance. `063`'s own premise — that the number
+-- an organizer typed was a promise the database did not keep — is answered here
+-- by removing the number instead of by keeping it.
+--
+-- **This is not "063 was wrong".** It closed a real gap correctly. The product
+-- decision above it changed.
+--
+-- ---------------------------------------------------------------------------
+-- Why the COLUMN goes too, and not just the enforcement
+-- ---------------------------------------------------------------------------
+-- The alternative was to drop the trigger and leave `max_riders` in place,
+-- unread. That is the state this schema was in from `001` to `063` and it is
+-- exactly the trap `018`'s header had to spell out in prose: a column that
+-- exists, is granted, is bounded by a CHECK and is written by a form reads as
+-- live to every later session. `063` exists because someone eventually believed
+-- it. Leaving it a second time, now knowing that, would be choosing the trap.
+--
+-- Nothing in the database depends on it. Measured on DEV before applying, and
+-- the same query on PROD: no view, no index, no policy predicate, and no
+-- function body outside `private.enforce_ride_capacity()` itself names the
+-- column. The two capped rides on DEV and the one on PROD lose their cap value,
+-- which is the intended effect and not a migration hazard — no crew row is
+-- touched, nobody is added or evicted, and every ride keeps its whole crew.
+--
+-- ---------------------------------------------------------------------------
+-- `018`'s CHECK goes with the column, automatically — verified, not assumed
+-- ---------------------------------------------------------------------------
+-- `rides_max_riders_range` is `check (max_riders is null or (max_riders >= 1
+-- and max_riders <= 999))`. It names ONE column, so `alter table ... drop
+-- column` drops it as a dependent object with no `cascade` and no separate
+-- statement. That is worth stating rather than assuming, because the rule has a
+-- sharp edge: a TABLE-level CHECK naming other columns as well would make the
+-- bare drop **error** and demand `cascade`, which would then take that other
+-- rule with it silently. `018` did not write one here — the constraint
+-- definition was read off both projects, and off `018` itself, before this file
+-- was written. There is no explicit `drop constraint` below for that reason: an
+-- explicit drop ahead of the column would succeed either way and would hide the
+-- day someone couples this column to another one.
+--
+-- The **grants** go the same way. `045`, `046`, `047` and `067` issue absolute
+-- `revoke`/`grant` column lists on `rides` and every one of them names
+-- `max_riders` — `authenticated` holds INSERT, SELECT and UPDATE on it today.
+-- Dropping the column removes its rows from `information_schema.column_
+-- privileges` outright; there is nothing to revoke, and a `revoke` naming a
+-- dropped column would error. No later migration re-grants it, because those
+-- lists are all in files that have already applied. The next migration to issue
+-- an absolute list on `rides` must simply not name it.
+--
+-- ---------------------------------------------------------------------------
+-- ORDERING — this file is DESTRUCTIVE and must apply AFTER its code deploys
+-- ---------------------------------------------------------------------------
+-- CLAUDE.md §Supabase Rules: additive first, deploy, destructive last. `069`
+-- and `070` are the worked pair, and DEV is the worked example of getting it
+-- backwards — `070` landed 102 seconds after its merge commit, out from under a
+-- Preview still calling the function it had just dropped.
+--
+-- `getRide` and the ride list select `max_riders` **by name**
+-- (src/lib/data/rides.ts), so from the instant this applies, any deployed build
+-- that still names it gets `42703 column rides.max_riders does not exist` on
+-- EVERY ride read — not a degraded card, an empty screen. So:
+--
+--   * **DEV**: applied ahead of the merge on purpose, in the same session that
+--     writes the code half, so the window is minutes and DEV serves no riders.
+--     Recorded rather than glossed: `app-dev` ride reads are 42703 until
+--     PD-293's branch merges and Vercel rebuilds.
+--   * **PROD**: apply this ONLY after the promotion build is confirmed
+--     SERVING — `app.letsride.social` resolving to a READY deployment on the
+--     promotion sha, `aliasError` null. Not after the merge. "Merged" is not
+--     "deployed", which is `070`'s header verbatim and the thing that makes the
+--     difference rider-visible here.
+--
+-- ---------------------------------------------------------------------------
+-- What is deliberately NOT touched
+-- ---------------------------------------------------------------------------
+--   * **`048`'s column grants on `ride_members`** — `(ride_id, user_id, status)`
+--     for INSERT and UPDATE. `ride_id`'s UPDATE grant looks like `063`'s and is
+--     not: PostgREST's `ON CONFLICT DO UPDATE` SET list carries every payload
+--     column including both conflict columns, so `setRideAttendance`'s repeat
+--     RSVP needs it. `063` fired on UPDATE *because* that grant exists; the
+--     grant does not exist because of `063`. Revoking it here would fail every
+--     repeat RSVP with 42501.
+--   * **`enforce_participation_gate`** on `ride_members` (`023`) and
+--     **`notify_ride_joined`** (`055`). Untouched, and after this file they are
+--     the only two triggers on the table. `enforce_participation_gate` remains
+--     the sole `BEFORE` trigger, so nothing on this table fires on UPDATE any
+--     more.
+--   * **Every RLS policy on `rides` and `ride_members`.** Who may see a ride and
+--     who may join it are unchanged in every respect. This file removes a
+--     *capacity* refusal and no *visibility* or *authorization* rule — a rider
+--     who could not join a ride yesterday for any other reason still cannot.
+--   * **`private.is_blocked`, `private.is_ride_crew`.** `063` needed
+--     `security definer` because `009` puts `is_blocked` on the `ride_members`
+--     SELECT policy; removing the counter does not touch the block helper, and
+--     blocking still hides crew rows exactly as it did.
+--
+-- One client-side consequence for the record, handled in the same PR and not
+-- here: `setRideAttendance`'s `error.message.includes('this ride is full')`
+-- branch becomes unreachable, because nothing raises that string any more.
+
+-- ---------------------------------------------------------------------------
+-- §1. The trigger
+-- ---------------------------------------------------------------------------
+-- Dropped before the function: a plpgsql body is not dependency-tracked, so the
+-- reverse order would leave a live trigger pointing at a function about to go,
+-- and the column drop below would leave the body referencing a column that no
+-- longer exists — broken at call time rather than at DDL time. Loud drops, no
+-- `if exists`: every one of these objects is present on both projects and on a
+-- full replay of the chain, so a missing one is news.
+
+drop trigger enforce_ride_capacity on public.ride_members;
+
+-- ---------------------------------------------------------------------------
+-- §2. The function
+-- ---------------------------------------------------------------------------
+-- `private`, so it was never on the PostgREST surface and no client ever held
+-- EXECUTE. Nothing else calls it — it was a trigger function and the trigger
+-- above was its only caller — so a plain drop is enough and `cascade` would be
+-- a way of not finding out otherwise.
+
+drop function private.enforce_ride_capacity();
+
+-- ---------------------------------------------------------------------------
+-- §3. The column, and with it `018`'s CHECK and four roles' grants
+-- ---------------------------------------------------------------------------
+-- No `cascade`, deliberately — see the header. If this statement ever errors,
+-- something has coupled `max_riders` to another object since this file was
+-- written and that is exactly the thing worth failing on.
+
+alter table public.rides drop column max_riders;
+
+-- ---------------------------------------------------------------------------
+-- §Verification — run against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+-- Every result below was MEASURED against DEV (fpmrimzxadewsaiwpsel) on
+-- 2026-08-24 immediately after this file applied. PROD is the owner's
+-- promotion step and is deliberately not measured here.
+--
+-- 1. The trigger is gone and the other two are untouched. `ride_members` keeps
+--    exactly two, and nothing on it fires on UPDATE any more.
+--
+--   select tgname, pg_get_triggerdef(oid)
+--     from pg_trigger
+--    where tgrelid = 'public.ride_members'::regclass and not tgisinternal
+--    order by tgname;
+--   -- MEASURED: 2 rows
+--   -- enforce_participation_gate  BEFORE INSERT ... WHEN (CURRENT_USER = 'authenticated')
+--   -- notify_ride_joined          AFTER INSERT
+--
+-- 2. The function is gone, in every schema — not merely moved out of `private`.
+--
+--   select count(*) from pg_proc where proname = 'enforce_ride_capacity';
+--   -- MEASURED: 0
+--
+-- 3. The column is gone, and so is `018`'s CHECK, with no separate statement.
+--
+--   select count(*) from information_schema.columns
+--    where table_schema = 'public' and table_name = 'rides'
+--      and column_name = 'max_riders';
+--   -- MEASURED: 0
+--
+--   select count(*) from pg_constraint
+--    where conrelid = 'public.rides'::regclass and conname = 'rides_max_riders_range';
+--   -- MEASURED: 0
+--
+--   select count(*) from pg_constraint
+--    where conrelid = 'public.rides'::regclass and contype = 'c';
+--   -- MEASURED: 8 — `018`'s four text CHECKs on this table minus this one, plus
+--   -- `067`'s four location CHECKs. Nine before, eight after: only the one.
+--
+-- 4. The grants went with it — nothing left naming a dropped column, for any
+--    role, and the two absolute lists `045`/`051`/`067` established are each one
+--    shorter and otherwise identical.
+--
+--   select count(*) from information_schema.column_privileges
+--    where table_schema = 'public' and table_name = 'rides'
+--      and column_name = 'max_riders';
+--   -- MEASURED: 0 (was 11 across postgres, authenticated and service_role)
+--
+--   select privilege_type, string_agg(column_name, ',' order by column_name)
+--     from information_schema.column_privileges
+--    where table_schema = 'public' and table_name = 'rides'
+--      and grantee = 'authenticated' and privilege_type in ('INSERT','UPDATE')
+--    group by privilege_type order by privilege_type;
+--   -- MEASURED:
+--   -- INSERT  club_id,departure_at,description,id,is_public,latitude,longitude,
+--   --         meeting_point,organizer_id,route_description,start_place_id,title   (12)
+--   -- UPDATE  club_id,departure_at,description,geocode_confidence,is_public,
+--   --         latitude,longitude,map_card_path,map_detail_path,meeting_point,
+--   --         route_description,start_place_id,title                              (13)
+--
+-- 5. **The point of the whole file**: a crew that `063` would have refused now
+--    lands. Run as `authenticated` under the hosted identity idiom
+--    (request.jwt.claims), rolled back — the local suite uses `test.uid`
+--    instead, and the two are not interchangeable.
+--
+--   begin;
+--     -- five riders onto one ride, which no cap could have allowed
+--     -- MEASURED on DEV: 5 rows landed, 0 refusals, no 23514 anywhere
+--   rollback;
+--
+-- 6. An ordinary RSVP still works, end to end, as a real signed-in rider under
+--    RLS rather than as the table owner — the `031` lesson is that the owner
+--    sees neither RLS nor a role-scoped trigger, so an owner-side check here
+--    would prove nothing about the app's path.
+--   -- MEASURED on DEV, rolled back: insert lands, repeat upsert (going -> maybe)
+--   -- lands, delete removes the row. `enforce_participation_gate` still refuses
+--   -- a rider with `terms_accepted_at` NULL, so `023` is demonstrably intact.
+--
+-- 7. Advisors: `get_advisors(security)` returns the SAME ten as before —
+--    eight `authenticated_security_definer_function_executable`, one
+--    `rls_enabled_no_policy` on `password_reset_grants`, one
+--    `auth_leaked_password_protection`. MEASURED: unchanged. This file adds no
+--    advisor and removes none: `private.enforce_ride_capacity` was never on
+--    that list of eight, because it lives in `private` with no client EXECUTE.
