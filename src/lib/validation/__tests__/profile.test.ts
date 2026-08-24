@@ -278,8 +278,13 @@ describe('profileEditSchema', () => {
     expect(profileEditSchema.parse(valid)).toEqual(valid)
   })
 
-  it('still requires a location — it is the one field onboarding made mandatory', () => {
-    expect(profileEditSchema.safeParse({ ...valid, location: '' }).success).toBe(false)
+  it('location is optional (PD-286) — clearing it stores null rather than refusing the form', () => {
+    // Onboarding stopped requiring a location (075), so this form must not
+    // gate a rider carrying NULL on inventing one before they can save a bio.
+    expect(profileEditSchema.parse({ ...valid, location: '' })).toEqual({
+      ...valid,
+      location: null,
+    })
   })
 
   it('allows bio and bike to be cleared independently of location', () => {
@@ -288,6 +293,15 @@ describe('profileEditSchema', () => {
       bio: null,
       bike_model: null,
     })
+  })
+
+  it('rejects a location over 100 characters, same ceiling as before', () => {
+    expect(
+      profileEditSchema.safeParse({ ...valid, location: 'x'.repeat(101) }).success
+    ).toBe(false)
+    expect(
+      profileEditSchema.safeParse({ ...valid, location: 'x'.repeat(100) }).success
+    ).toBe(true)
   })
 
   it('does not accept a username, so the form cannot smuggle one past the action', () => {

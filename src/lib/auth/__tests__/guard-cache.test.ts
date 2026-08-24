@@ -539,10 +539,10 @@ describe('the onboarding writes', () => {
     rpc.mockClear()
 
     invalidateOnboardingState()
-    expect(peek('/onboarding/location')).toBeUndefined()
+    expect(peek('/onboarding/username')).toBeUndefined()
 
-    ensureGuardState('/onboarding/location')
-    ensureGuardState('/onboarding/location')
+    ensureGuardState('/onboarding/username')
+    ensureGuardState('/onboarding/username')
     await settle()
 
     expect(rpc).toHaveBeenCalledTimes(1)

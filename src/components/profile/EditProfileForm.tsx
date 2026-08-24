@@ -133,7 +133,6 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
         label="Where you ride from"
         defaultValue={state.retained.location ?? profile.location ?? ''}
         maxLength={100}
-        required
       />
       <Input
         name="bike_model"

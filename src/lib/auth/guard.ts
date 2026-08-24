@@ -183,23 +183,23 @@ export function resolveDestination(pathname: string, state: GuardState): string 
   }
 
   if (!state.onboarding_completed_at) {
-    // Resume position is derived from which fields are still empty; completion
-    // itself is stored, so editing your profile later never re-gates you.
-    const resume = state.has_username ? '/onboarding/location' : '/onboarding/username'
+    // Username is now the only step (PD-286 dropped location) — completion is
+    // stamped by `setUsername` itself, so there is no further field to resume
+    // into. Completion is stored, so editing your profile later never
+    // re-gates you.
+    const resume = '/onboarding/username'
 
     if (isOnboarding) {
-      // Step 2 cannot be reached before step 1 is done. The database refuses
-      // completion unless both fields are set, so without this a rider who
-      // deep-links to /onboarding/location submits, gets a check violation
-      // rendered as "Finish the earlier steps first", and has no way forward
-      // from a screen that can never succeed. Going backwards stays allowed —
-      // step 2 has a Back link, and editing a username you already chose is
-      // fine. /onboarding/terms is past for this rider, so it redirects on.
-      if (pathname === '/onboarding/location' && !state.has_username) {
-        return '/onboarding/username'
-      }
+      // /onboarding/terms is past for this rider, so it redirects on to the
+      // resume step; the resume path itself stays put. Everything else under
+      // /onboarding — including a deleted step's URL surviving in a bookmark,
+      // a stale tab, or a native shell restoring its last path — resolves to
+      // the resume step rather than rendering a 404 with the guard insisting
+      // the rider belongs there. `isOnboarding` is a prefix test, so this
+      // catch-all also covers whatever step this wizard gains or loses next.
       if (pathname === '/onboarding/terms') return resume
-      return null
+      if (pathname === resume) return null
+      return resume
     }
     return resume
   }

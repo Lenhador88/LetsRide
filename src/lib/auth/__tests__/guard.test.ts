@@ -173,7 +173,7 @@ describe('consent comes before the wizard', () => {
   const noConsent = rider({ terms_accepted_at: null, onboarding_completed_at: null })
 
   it('sends a rider with no consent stamp to the prompt from anywhere', () => {
-    for (const path of ['/postcards', '/onboarding/username', '/onboarding/location', '/profile']) {
+    for (const path of ['/postcards', '/onboarding/username', '/onboarding/whatever-comes-next', '/profile']) {
       expect(resolveDestination(path, noConsent)).toBe('/onboarding/terms')
     }
   })
@@ -193,28 +193,45 @@ describe('consent comes before the wizard', () => {
 })
 
 describe('an un-onboarded rider resumes where they left off', () => {
+  // PD-286 dropped the location step. `setUsername` now stamps completion
+  // itself, right after the username write, so `has_username: true` with no
+  // completion stamp is the two-round-trip window design.md §D3 describes —
+  // the completion RPC failed after the username landed — rather than a
+  // second step to move on to. Both states resume at the same place.
   const noUsername = rider({ onboarding_completed_at: null, has_username: false })
   const hasUsername = rider({ onboarding_completed_at: null, has_username: true })
 
-  it('goes to step 1 with no username, step 2 with one', () => {
+  it('resumes at /onboarding/username whether or not a username is already set', () => {
     expect(resolveDestination('/postcards', noUsername)).toBe('/onboarding/username')
-    expect(resolveDestination('/postcards', hasUsername)).toBe('/onboarding/location')
+    expect(resolveDestination('/postcards', hasUsername)).toBe('/onboarding/username')
   })
 
-  it('cannot deep-link past step 1', () => {
-    // Without this a rider submits step 2, the database refuses completion, and
-    // they get "Finish the earlier steps first" on a screen with no way forward.
-    expect(resolveDestination('/onboarding/location', noUsername)).toBe('/onboarding/username')
-  })
-
-  it('may still go backwards to step 1 once step 2 is reachable', () => {
+  it('stays on the resume step itself, for either state', () => {
+    expect(resolveDestination('/onboarding/username', noUsername)).toBeNull()
     expect(resolveDestination('/onboarding/username', hasUsername)).toBeNull()
-    expect(resolveDestination('/onboarding/location', hasUsername)).toBeNull()
   })
 
   it('is moved on from the consent prompt, which is behind them', () => {
     expect(resolveDestination('/onboarding/terms', noUsername)).toBe('/onboarding/username')
-    expect(resolveDestination('/onboarding/terms', hasUsername)).toBe('/onboarding/location')
+    expect(resolveDestination('/onboarding/terms', hasUsername)).toBe('/onboarding/username')
+  })
+
+  it('redirects a deleted step’s surviving URL rather than leaving the rider on a 404 the guard insists is correct', () => {
+    // /onboarding/location is gone (design.md §D6) — a bookmark, a stale tab,
+    // or a native shell restoring its last path can still request it, and
+    // without the catch-all below `resolveDestination` used to answer `null`
+    // — "stay here" — for exactly this path when `has_username` was true.
+    expect(resolveDestination('/onboarding/location', noUsername)).toBe('/onboarding/username')
+    expect(resolveDestination('/onboarding/location', hasUsername)).toBe('/onboarding/username')
+  })
+
+  it('resolves any other unknown path under /onboarding to the resume step — the catch-all', () => {
+    expect(resolveDestination('/onboarding/whatever-comes-next', noUsername)).toBe(
+      '/onboarding/username'
+    )
+    expect(resolveDestination('/onboarding/whatever-comes-next', hasUsername)).toBe(
+      '/onboarding/username'
+    )
   })
 })
 
@@ -225,7 +242,7 @@ describe('a fully onboarded rider', () => {
     }
   })
 
-  it('is bounced off the wizard', () => {
+  it('is bounced off the wizard, including a deleted step’s surviving URL', () => {
     for (const path of ['/onboarding/username', '/onboarding/location', '/onboarding/terms']) {
       expect(resolveDestination(path, rider())).toBe('/postcards')
     }

@@ -80,36 +80,33 @@ export const usernameSchema = z
       )
   )
 
-export const locationSchema = z
-  .string()
-  .trim()
-  .min(1, 'Tell us where you ride from.')
-  .max(100, 'Must be 100 characters or fewer.')
-
 export const BIO_MAX_LENGTH = 500
 export const BIKE_MODEL_MAX_LENGTH = 60
+const LOCATION_MAX_LENGTH = 100
 
 /**
- * Bio and bike are **optional**, so an empty field means "clear it" rather than
- * "you missed one" — hence the empty string maps to `null` instead of failing a
- * `min(1)`. Storing `''` would make a rider who cleared their bio
- * indistinguishable from one who never wrote one only by inspection, and every
- * render site already branches on null.
+ * Bio, bike and location are all **optional** on the profile editor, so an
+ * empty field means "clear it" rather than "you missed one" — hence the empty
+ * string maps to `null` instead of failing a `min(1)`. Storing `''` would make
+ * a rider who cleared a field indistinguishable from one who never filled it
+ * in only by inspection, and every render site already branches on null.
  *
- * **No CHECK constraint stands behind either** — `001` declares both columns as
- * bare `text`. The length limits are an application rule: enforced on the server
- * because the action parses `FormData`, but not by the database, so a direct
- * PostgREST call with a 10 MB bio would be accepted. Worth a constraint if it
- * ever matters; stated rather than silently assumed.
+ * **No CHECK constraint stands behind `bio` or `bike_model`** — `001`
+ * declares both columns as bare `text`. The length limits are an application
+ * rule: enforced on the server because the action parses `FormData`, but not
+ * by the database, so a direct PostgREST call with a 10 MB bio would be
+ * accepted. Worth a constraint if it ever matters; stated rather than
+ * silently assumed. `location` does carry one — `018`'s
+ * `profiles_location_length` bounds its length and refuses a trimmed-empty
+ * string, which is exactly what `|| null` here avoids ever sending.
  *
- * Only `usernameSchema` is genuinely doubled in the database — a format CHECK
- * and a reserved-name CHECK, added by `003` and both restated by `056`, which is
- * where the live definitions are. **`locationSchema` is not**, which an
- * earlier revision of this comment claimed by grouping the two together. The
- * only database rule touching `location` is `003`'s completion trigger, and it
- * guards the *stamp* — refusing `onboarding_completed_at` while `location` is
- * NULL — which says nothing about length or content, and stops applying at all
- * once onboarding is complete.
+ * **`location` used to be mandatory on this form**, because `003`'s
+ * completion trigger refused the onboarding stamp while `location` was
+ * NULL, so no rider could reach this form with one missing. `075` (PD-286)
+ * dropped that requirement from `complete_onboarding` — onboarding no longer
+ * collects a location at all — so a rider onboarded under it carries NULL
+ * here from the start, and the field has to accept that rather than refuse
+ * the whole form until they invent a city.
  */
 const optionalText = (max: number, message: string) =>
   z
@@ -137,9 +134,12 @@ export const bikeModelSchema = optionalText(
  * owns it today. `avatar_url` is absent because uploading is Storage work that
  * belongs with the `media` agent. Both are logged in
  * docs/FIGMA-FIDELITY-TODO.md §Profile rather than half-built.
+ *
+ * `location` is inlined here rather than its own export — this is its only
+ * caller since onboarding stopped collecting one (PD-286).
  */
 export const profileEditSchema = z.object({
-  location: locationSchema,
+  location: optionalText(LOCATION_MAX_LENGTH, 'Must be 100 characters or fewer.'),
   bio: bioSchema,
   bike_model: bikeModelSchema,
 })

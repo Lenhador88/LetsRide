@@ -12,7 +12,6 @@ import {
 } from '@/components/auth/username-verdict'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Pagination } from '@/components/ui/Pagination'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import {
@@ -34,9 +33,14 @@ type UsernameFormState = UsernameActionState & { refused: readonly string[] }
 const initialState: UsernameFormState = { ...emptyActionState, refused: [] }
 
 /**
- * Step 1 of 2 (decision #5, spec recommendation: the photo step is deferred
- * to a `media` follow-up). No back link — there is no previous step, and
- * "back" to signup is meaningless once the account already exists (Q12).
+ * The last step of onboarding (PD-286 dropped the location step, decision #5,
+ * spec recommendation: the photo step is deferred to a `media` follow-up). No
+ * back link — there is no previous step, and "back" to signup is meaningless
+ * once the account already exists (Q12). No `Pagination` either: a one-dot
+ * progress bar communicates nothing, and this is the whole wizard now.
+ *
+ * `setUsername` commits the completion stamp itself, immediately after the
+ * username write — see its own header for the ordering.
  *
  * The Figma screen this replaces is titled "What's your name?" over a plain
  * `Name` input — copy drawn before decision #7 moved this step to collecting
@@ -141,13 +145,12 @@ export default function OnboardingUsernamePage() {
         title="Choose a username"
         footer={
           <div className="flex flex-col gap-6">
-            <Pagination total={2} current={0} />
             <div className="flex flex-col gap-2">
               {/* A refusal is suppressed here whenever the field can draw one,
                   whether about this name or another — see `fieldSilent`. */}
               <FormError message={state.taken && !fieldSilent ? null : state.error} />
               <Button type="submit" size="lg" loading={pending}>
-                Next
+                Finish
               </Button>
             </div>
           </div>
