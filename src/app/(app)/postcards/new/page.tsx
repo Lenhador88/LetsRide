@@ -15,7 +15,7 @@ export default function NewPostcardPage() {
     <>
       <Header title="New postcard" backHref="/postcards" />
 
-      <div className="px-4 pt-4 pb-8">
+      <div className="px-4 pb-8">
         {/* The club picker is the only thing this screen reads, and a postcard
             with no club is the app-wide feed rather than an invalid one — so a
             rider could in principle compose while the list is still arriving. It
@@ -27,7 +27,11 @@ export default function NewPostcardPage() {
         ) : !clubs.data ? (
           <SkeletonForm fields={2} />
         ) : (
-          <div className="motion-safe:animate-fade-in">
+          // `pt-4` here rather than on the wrapper: `SkeletonForm` and
+        // `ErrorState` carry their own top padding, so a wrapper paying the
+        // 16px would stack it and the first skeleton field would sit twice as
+        // far down as the form that replaces it.
+        <div className="pt-4 motion-safe:animate-fade-in">
             <CreatePostcardForm clubs={clubs.data} />
           </div>
         )}

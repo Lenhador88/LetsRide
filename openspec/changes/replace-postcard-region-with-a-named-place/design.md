@@ -108,7 +108,9 @@ also cover the capture time.
 > Pyrenees names a mountain range, and *"maybe region is better?"* `Region` was rejected here as
 > "the word the owner asked to replace", which was true of `Region` **meaning a ~1 km cell** and is
 > not true of it meaning a place a rider names; the other four rejections stand. **This note is
-> scoped to the label** — D1, D2 and D3 carry their own supersession notes. The stored marker deliberately did NOT follow the label back: `'region'` is
+> scoped to the MODE SEGMENT's label** — the text input inside the block is labelled `Town or city`
+> (Q4, PD-281), and reading this note as covering it re-derives the exact collision PD-281 removed.
+> D1, D2 and D3 carry their own supersession notes. The stored marker deliberately did NOT follow the label back: `'region'` is
 > still live in `taken_location_precision` under `064`'s meaning (arm 5 of `073`'s coupling, one
 > DEV row), so reusing the string would give one word two meanings in one column. Label `Region`,
 > marker `place`, and `CreatePostcardForm`'s `LOCATION_MODES` carries the note.
@@ -542,7 +544,7 @@ and the difference is two strings and one optional request field.
 **Recommended default: yes, clear everything** (§D11). The alternative holds provenance state to
 treat typed and resolved names differently, for the sake of saving one retype.
 
-### Q4 — Non-blocking, designer. Two labels, or one?
+### Q4 — DECIDED 2026-08-24 (PD-281). Two labels, and the field's is `Town or city`.
 
 The block header says `Location`; the input inside it needs its own accessible label. Proposed
 `Town or city`, with placeholder *"Search for a town or city"*.
@@ -550,6 +552,14 @@ The block header says `Location`; the input inside it needs its own accessible l
 **Recommended default: two visible labels** — the section names the concept, the field names what
 to type. A visually-hidden field label is the alternative and reads as one label in a screen
 reader, which is arguably worse.
+
+> **Shipped as the recommended default.** `064`'s composer went out with the field labelled
+> `Region`, which collided with the mode segment of the same name a centimetre below it — the
+> owner reported it as *"Input just got 2 labels (region)"* and PD-281 fixed it to `Town or city`.
+> **Two visible labels stay**, for the screen-reader reason above; the report was about the *word*,
+> not the count. The placeholder proposed here was **not** taken: the field keeps
+> *"Search for a town, city or area"*, which `Region`'s own widening (D1's note) is the reason for
+> — a rider naming a mountain range is searching for neither a town nor a city.
 
 ### Q5 — Non-blocking, follow-up. Should anything display a postcard's location?
 

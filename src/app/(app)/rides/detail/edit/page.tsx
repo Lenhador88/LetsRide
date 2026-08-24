@@ -82,7 +82,7 @@ function EditRideScreen() {
   return (
     <>
       {header}
-      <div className="px-4 pb-8 motion-safe:animate-fade-in">
+      <div className="px-4 pt-4 pb-8 motion-safe:animate-fade-in">
         <EditRideForm ride={ride.data} clubs={clubs.error ? null : clubs.data} />
       </div>
     </>

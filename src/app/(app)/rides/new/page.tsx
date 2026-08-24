@@ -35,7 +35,7 @@ export default function NewRidePage() {
     <>
       <Header title="Create ride" backHref="/rides" />
 
-      <div className="px-4 pt-4 pb-8">
+      <div className="px-4 pb-8">
         {/* The club picker is the only thing this screen reads, and a ride with
             no club is an ordinary ride rather than an invalid one — so a rider
             could in principle start typing before the list arrives. It still
@@ -48,7 +48,11 @@ export default function NewRidePage() {
         ) : !clubs.data ? (
           <SkeletonForm />
         ) : (
-          <div className="motion-safe:animate-fade-in">
+          // `pt-4` here rather than on the wrapper: `SkeletonForm` and
+        // `ErrorState` carry their own top padding, so a wrapper paying the
+        // 16px would stack it and the first skeleton field would sit twice as
+        // far down as the form that replaces it.
+        <div className="pt-4 motion-safe:animate-fade-in">
             <CreateRideForm clubs={clubs.data} />
           </div>
         )}
