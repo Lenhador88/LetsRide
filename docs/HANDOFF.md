@@ -2476,10 +2476,33 @@ repo had to move. That matters because **no ordinary session can edit that promp
 a session that is not your own is not available via this tool"*. So a prompt edit is the relay
 session's own call or a Routines-UI edit. Do not spend another session rediscovering the refusal.
 
-**The relay session is where a firing's questions used to land, and one is still sitting there.**
-`session_01B2mxc642tG8vZ15wysQpqM` is `need_input` on *"queue dispatch: PD-255 blocked by
-`src/types/index.ts` overlap; proposing exemption"*. Under STEP -1 that question would have been
-asked by a fresh dispatcher instead; the one already asked still needs the owner.
+**The queue dispatched nothing between 2026-08-18 and 2026-08-24, and every health signal said it
+was fine.** The relay `session_01B2mxc642tG8vZ15wysQpqM` — titled `### Development ###` — was
+**archived** at 20:13Z on 2026-08-18. `trig_01WJkMVXGzUVGDcC1njNmaan` rebound *itself* to
+`session_014ncc5vBmsKG9fmfznUoZ48` 55 minutes later, connectors intact. But the relay's id is also
+**copied into `.claude/commands/queue-dispatch.md`**, and STEP -1 matches a session's own id
+against that copy — so every firing since arrived unrecognised, hit the **misroute** branch, and
+correctly stopped, into a transcript nobody reads.
+
+**The misroute rule worked; the copy it compared against did not.** Nothing was red at any point:
+`enabled: true`, `next_run_at` in the future, fired on the hour, every time.
+
+Measured 2026-08-24, and these are the two checks worth reusing:
+
+```
+mcp__Claude_Code_Remote__list_triggers    # persistent_session_id — the authority for the relay id
+mcp__Claude_Code_Remote__list_sessions    # a working queue leaves relay-spawned sessions behind
+```
+
+The second returned **no relay-spawned session at all** across the whole window, and the last
+story to enter `Development (AI)` did so on 2026-08-18 at 13:31Z — seven hours *before* the
+archive. Repointed on 2026-08-24; the four queued stories should drain on the next firing.
+
+**Not outstanding, contrary to what this section said until 2026-08-24:** the old relay's question
+*"queue dispatch: PD-255 blocked by `src/types/index.ts` overlap; proposing exemption"* needs
+nobody. PD-255 reached `Deployed to DEV` at 15:06Z on 2026-08-18 — again before the archive — and
+is `Done (in production)`. Check a story before recording a question about it as open:
+`get_issue PD-255`.
 
 **Two facts measured 2026-08-16 that the trigger list will not tell you, and both need re-reading
 rather than trusting:**

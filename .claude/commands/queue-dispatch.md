@@ -72,7 +72,7 @@ never the name.
 | Reads | STEP -1, and nothing else in this file | this file, from STEP 0 | [`queue-pickup.md`](queue-pickup.md) |
 | Holds | nothing — two state reads and one spawn | the board, the caps, the batch | its group's issue ids and its slot label |
 | Ends at | one session spawned, or a silent exit | children spawned | every issue it holds at `Deployed to DEV` |
-| Carries the tag | no — it **is** `session_01B2mxc642tG8vZ15wysQpqM` | **`queue-dispatch-run`** | **`queue-dispatch`** |
+| Carries the tag | no — it **is** `session_014ncc5vBmsKG9fmfznUoZ48` | **`queue-dispatch-run`** | **`queue-dispatch`** |
 
 **A child never dispatches.** One level, no chaining — a child that spawns a child has no view of
 the slot labels below and cannot enforce them, so the cap quietly stops holding while everything
@@ -80,9 +80,35 @@ still looks healthy. A child taking a *second story into its own slot* is not ch
 `queue-pickup.md` STEP 6 and it consumes no new slot.
 
 **Which of the three you are is decided by your own session id**, and STEP -1 is where you read
-it. The relay is `session_01B2mxc642tG8vZ15wysQpqM` — the session the Routine is bound to, and the
-only one this file names. The fallback if the Routine is ever rebound is that session's own
-`Claude-Session: https://claude.ai/code/<id>` line, the one used for commit trailers.
+it. The relay is `session_014ncc5vBmsKG9fmfznUoZ48` — the session the Routine is bound to, and the
+only one this file names.
+
+**That id is a COPY of the trigger's, and a stale copy stops the queue dead — silently, and
+looking exactly like a healthy one.** It happened: the previous relay (`session_01B2mxc642tG8vZ15wysQpqM`,
+titled `### Development ###`) was archived on 2026-08-18 at 20:13Z, `trig_01WJkMVXGzUVGDcC1njNmaan`
+came back bound to a new session 55 minutes later, and this file went on naming the archived one
+for six days. Every firing in that window arrived with an id matching nothing here, which is the
+**misroute** case below — so each one correctly stopped and said so, into a session transcript
+nobody reads. **Nothing dispatched for six days.** Measured 2026-08-24: `list_sessions` over the
+whole window returns no relay-spawned session at all, and the last story to enter
+`Development (AI)` did so on 2026-08-18 at 13:31Z, seven hours before the archive.
+
+**Read that as the misroute rule working, not failing.** It is what stands between a wrong id and
+a chained dispatch, and it fired every hour as designed. What was wrong was the thing it compared
+against — so the fix belongs here, in the copy, and the durable half is knowing the copy is not
+the authority:
+
+```
+mcp__Claude_Code_Remote__list_triggers    # persistent_session_id on …WJkMV — the authority
+mcp__Claude_Code_Remote__get_session      # session_id omitted = the caller's own id
+```
+
+When the two disagree, the trigger wins and this file is what needs editing. **Check it whenever
+the queue looks idle with a healthy-looking trigger**, because `enabled: true` and a future
+`next_run_at` are both true of a Routine firing into a session that will refuse every firing.
+
+The fallback if the id cannot be read at all is not a second id — it is STEP -1's prompt check
+below, which is deliberately independent of any id.
 
 ---
 
@@ -106,7 +132,7 @@ this step.** The Routine's prompt arriving in a session that is neither the rela
 
 ### The relay's pre-check — the only thing standing between an empty queue and a whole session
 
-**If you are `session_01B2mxc642tG8vZ15wysQpqM`, you are the relay: four small reads, then spawn
+**If you are `session_014ncc5vBmsKG9fmfznUoZ48`, you are the relay: four small reads, then spawn
 or exit.** **Read no code, run no other step of this file, and do not read `CLAUDE.md`** — the
 instruction at the top belongs to the dispatcher. The relay's entire value is that its transcript
 grows by a couple of thousand tokens a firing; reading 30k of process docs to make one call throws
@@ -648,7 +674,15 @@ session that is not reading this file:**
   27 triggers at `limit=100 include_completed=true`, and none is it. If it is gone the documented
   fallback is gone with it; STEP -1 is what makes that survivable, since a firing whose context is
   one hour old no longer needs a Routine to provide it.
-- **Never archive the relay session** (`session_01B2mxc642tG8vZ15wysQpqM`). `update_trigger` has no
-  `persistent_session_id` parameter, so recovery means a new trigger bound to a new session.
+- **Never archive the relay session** (`session_014ncc5vBmsKG9fmfznUoZ48`). `update_trigger` has no
+  `persistent_session_id` parameter, so a session cannot rebind the Routine itself.
+
+  **Measured 2026-08-24, and it is the half nobody had seen: the *binding* recovered on its own and
+  the *procedure* did not.** The relay was archived on 2026-08-18 and
+  `trig_01WJkMVXGzUVGDcC1njNmaan` — the same trigger, not a new one — came back bound to a fresh
+  session 55 minutes later, so no third trigger was needed and the connectors survived. What did
+  **not** recover was this id, written in three files, and the queue dispatched nothing for six days
+  because of it. So archiving the relay is still the thing not to do; just expect the damage to
+  land on the copies rather than on the trigger.
   **Everything the relay spawns is disposable** and archiving one is fine: a dispatcher carries
   `queue-dispatch-run` and a child carries `queue-dispatch`.

@@ -199,8 +199,16 @@ child still reports**, by push notification straight to the owner, because the d
 What has to be known outside those files:
 
 - **Do not archive or abandon the relay session.** Archiving it stops the queue silently,
-  with no error anywhere, and `update_trigger` has no `persistent_session_id` parameter — so
-  recovery means a *third* trigger bound to a new session. **A Routine firing arriving in any other
+  with no error anywhere, and `update_trigger` has no `persistent_session_id` parameter — so no
+  session can rebind the Routine itself.
+
+  **It happened on 2026-08-18, and the recovery was not the one written here.** The trigger rebound
+  *itself* to a fresh session 55 minutes later — same trigger, connectors intact, no third one
+  needed. The queue still stopped dead for six days, because the relay's id is also **copied into
+  `.claude/commands/queue-dispatch.md`**, and that copy is what STEP -1 matches against: every
+  firing arrived unrecognised, took the misroute branch, and stopped. **So the thing to check when
+  the queue looks idle is that copy against the trigger's `persistent_session_id`** — `enabled:
+  true` and a future `next_run_at` are both true of a Routine whose every firing refuses itself. **A Routine firing arriving in any other
   session is misrouted, not a work order**: check the session id before acting on one. What the
   relay itself spawns is disposable — a dispatcher tagged `queue-dispatch-run`, a child tagged
   `queue-dispatch` — and archiving either is fine.
