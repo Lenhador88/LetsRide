@@ -577,11 +577,12 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 75 files; DEV is at `075` and PROD at `075` — measured 2026-08-24, after
-`071`–`075` were applied to PROD in one sitting.** Level is the EXCEPTION rather than the resting
-state: DEV-ahead is where a migration normally lives between its merge and its promotion, and the
-two were last level for a few hours on 2026-08-20 at PD-273's promotion. **`074` and `075` went to
-PROD ahead of the build that reads them**, which is the additive-first order — the code for both
+**Applied state: 76 files; DEV is at `076` and PROD at `075` — measured 2026-08-24, after
+`076` (PD-297) went to DEV and `071`–`075` had gone to PROD in one sitting earlier the same day.**
+DEV-ahead is the resting state: it is where a migration lives between its merge and its promotion,
+and the two were last level for a few hours on 2026-08-20 at PD-273's promotion and again briefly
+on 2026-08-24. **`074` and `075` went to PROD ahead of the build that reads them**, which is the
+additive-first order — the code for both
 is merged to `development` and not promoted, so PROD's schema is deliberately ahead of PROD's app. **Do not read the
 count of unpromoted files off this sentence** — it named exactly one while two were waiting, which
 is the same defect as a stale number in a smaller place, and the promotion is the one job that
@@ -641,7 +642,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1734** assertions — re-derive rather than trust it:
+Suite **1754** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.

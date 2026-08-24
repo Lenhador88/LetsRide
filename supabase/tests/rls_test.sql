@@ -1554,6 +1554,100 @@ select assert_denied($$
   'nobody can withdraw a report, including its author');
 
 \echo ''
+\echo '# Reports have a reader, and it is outside the API (migration 076)'
+
+-- 076 closes 011's KNOWN GAP without inventing an admin role. Everything it
+-- adds lives in `private`, so the first three assertions are the ones that
+-- matter: the schema itself is the barrier for the two client roles, and the
+-- third names the one role for which it is not.
+reset role;
+
+select assert_eq(has_schema_privilege('anon', 'private', 'usage'),
+  false, 'anon holds no USAGE on private, so the report queue is unreachable before any grant');
+select assert_eq(has_schema_privilege('authenticated', 'private', 'usage'),
+  false, 'authenticated holds no USAGE on private either');
+-- service_role DOES hold USAGE (031 granted it so the deletion function could
+-- reach its worker), so for this role the schema proves nothing and the grant
+-- is the whole defence. Naming the role rather than calling the object is 031's
+-- own lesson: this suite runs as the table owner, for whom neither barrier
+-- exists, so a test that merely selected from the view would pass against a
+-- database that had granted it to everyone.
+select assert_eq(has_table_privilege('service_role', 'private.postcard_report_queue', 'select'),
+  false, 'service_role cannot read the report queue, though it holds USAGE on private');
+select assert_eq(has_function_privilege('service_role', 'private.remove_reported_postcard(uuid)', 'execute'),
+  false, 'service_role cannot call the take-down');
+select assert_eq(has_function_privilege('authenticated', 'private.remove_reported_postcard(uuid)', 'execute'),
+  false, 'authenticated cannot call the take-down');
+select assert_eq(has_function_privilege('anon', 'private.remove_reported_postcard(uuid)', 'execute'),
+  false, 'anon cannot call the take-down');
+
+-- The one that catches the whole thing being built in the wrong schema. A view
+-- of this name in `public` would be published by PostgREST and readable by
+-- every signed-in rider, which is the failure 076 exists to avoid rather than a
+-- style preference.
+select assert_eq((select to_regclass('public.postcard_report_queue') is null),
+  true, 'the report queue is not in public, where PostgREST would publish it');
+
+-- Not security definer, deliberately: the only caller is already the owner, and
+-- marking it definer would add an advisor for a function nothing can execute.
+select assert_eq((select p.prosecdef from pg_proc p
+                    join pg_namespace n on n.oid = p.pronamespace
+                   where n.nspname = 'private' and p.proname = 'remove_reported_postcard'),
+  false, 'the take-down is not security definer — its caller is the owner already');
+
+-- It answers for the owner, with the names a report cannot be judged without.
+-- Seeded: ff1, the outsider's spam report against clubowner's e1.
+select assert_eq((select count(*)::int from private.postcard_report_queue), 1,
+  'the owner reads the seeded report through the queue');
+select assert_eq((select reporter_username || ' -> ' || author_username
+                    from private.postcard_report_queue
+                   where report_id = '00000000-0000-0000-0000-000000000ff1'),
+  'outsider -> clubowner', 'the queue carries both usernames, so a report can be judged');
+-- An inner join drops the row rather than nulling a column, so a join written
+-- against the wrong key empties the queue silently. This is the assertion that
+-- notices.
+select assert_eq((select reports_on_this_postcard::int from private.postcard_report_queue
+                   where report_id = '00000000-0000-0000-0000-000000000ff1'),
+  1, 'the queue counts the reports on the postcard');
+
+-- The take-down removes exactly one postcard and returns what it destroyed.
+-- Rolled back, because e1 is load-bearing for most of this file.
+savepoint takedown;
+select assert_eq((private.remove_reported_postcard('00000000-0000-0000-0000-0000000000e1') ->> 'removed'),
+  'true', 'the take-down reports that it removed the postcard');
+select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000000e1'),
+  0, 'the reported postcard is gone');
+select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000000e2'),
+  1, 'and nothing else was removed with it');
+-- 011's second known gap, asserted as the decision 076 made rather than left to
+-- be discovered: the reports cascade away with their subject, which is why the
+-- function returns them to the operator before it deletes.
+select assert_eq((select count(*)::int from postcard_reports
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
+  0, 'the reports about it cascade away — the returned evidence is the only copy');
+rollback to savepoint takedown;
+
+select assert_eq((select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000000e1'),
+  1, 'the postcard is back after the rollback (this suite depends on it)');
+
+-- A queue row somebody already acted on is a clean false, not an error — the
+-- shape moderate_comment settled on in 011 §1b.
+select assert_eq((private.remove_reported_postcard('00000000-0000-0000-0000-0000000000dd') ->> 'removed'),
+  'false', 'taking down a postcard that does not exist is a clean false');
+
+-- Nothing above widened the table itself. 076 changes no policy and adds no
+-- grant to a client role, and these re-assert it from the other side.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+select assert_denied('select count(*) from private.postcard_report_queue',
+  'a signed-in rider cannot read the queue');
+select assert_denied($$select private.remove_reported_postcard('00000000-0000-0000-0000-0000000000e1')$$,
+  'a signed-in rider cannot call the take-down');
+select assert_eq((select count(*)::int from postcard_reports), 0,
+  'and the reported postcard''s author still reads no reports about it');
+select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+\echo ''
 \echo '# Hiding a postcard is per-viewer, and it happens in RLS (migration 011)'
 
 -- Unlike a block, a hide is one-directional and affects nobody but its owner.
