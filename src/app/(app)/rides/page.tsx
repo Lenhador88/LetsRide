@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense } from 'react'
+import type { ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
@@ -169,39 +170,40 @@ function RidesScreen() {
   // and its own read successful, so collapsing both into one `gate.error` puts
   // the reported symptom back on the very path where it is worst: the control
   // for choosing a different filter is the way out of a failing one.
-  const gate = combineQueries(rides, filters)
-  if (filters.error) return <ErrorState onRetry={gate.refetch} />
+  // **Everything the near-you strip needs is derived BEFORE the two early
+  // returns below, because the strip renders in those branches too.** The strip
+  // is the only control that removes the filter, so a load where the filter-bar
+  // read is failing or in flight must still offer the way back — the invariant
+  // `NearbyRidesStrip` states for itself only holds if the page never returns
+  // out from under it.
 
-  // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
-  // where `isLoading` is false and there is still nothing to draw.
-  if (!filters.data) return <RidesLoading />
-
-  // The name of the place the distances were measured FROM — never the profile
-  // city beside a device-measured distance. `nearLabel` owns that rule.
-  const label = nearLabel(position.data, city.data)
+  // **A failed position read is a DECIDED "no position", not "not yet".**
+  // `useQuery` leaves `data` undefined for ever on a query that errored, and
+  // with the filter on that parks the list in the skeleton branch below
+  // permanently. `resolveRiderLocation` catches its own chain and resolves
+  // `null`, so nothing can reach this today — which is exactly why it is worth
+  // one line here: the page's correctness would otherwise rest on a
+  // never-rejects guarantee living in another module, asserted nowhere.
+  const positionSettled = position.data !== undefined || !!position.error
+  const positionValue = position.data ?? null
 
   // Measured against the upcoming half only. "Rides happening around you" is a
   // thing a rider turns up to; a ride that already happened two towns over is
   // not one, however near it was. That is also why the Past section drops out
   // entirely while the filter is on rather than being filtered too.
-  const nearUpcoming = nearbyRides(rides.data?.upcoming, position.data)
+  const nearUpcoming = nearbyRides(rides.data?.upcoming, positionValue)
 
   // `undefined` until BOTH inputs are decided, and that is not tidiness: a zero
   // computed while the position is still resolving is indistinguishable from a
   // real "nothing near you", and `NearbyRidesStrip` draws those differently.
-  const nearCount =
-    position.data === undefined || !rides.data ? undefined : nearUpcoming.length
+  const nearCount = !positionSettled || !rides.data ? undefined : nearUpcoming.length
 
   // **With the filter on and the position still undecided, the answer is "not
   // yet", not "none".** `nearUpcoming` is `[]` in both states, so handing it
   // straight to the list would flash `No rides near you` on every load and then
   // fill in — the same `null`-vs-`undefined` confusion the detail screens make a
   // 404 out of. `undefined` falls to the skeleton branch below instead.
-  const upcoming = near
-    ? position.data === undefined
-      ? undefined
-      : nearUpcoming
-    : rides.data?.upcoming
+  const upcoming = near ? (positionSettled ? nearUpcoming : undefined) : rides.data?.upcoming
 
   // The Past section drops out entirely while the filter is on. A ride that has
   // already happened is not a ride happening around you, however near it was.
@@ -217,18 +219,37 @@ function RidesScreen() {
   const toggledQuery = toggled.toString()
   const nearHref = toggledQuery ? `/rides?${toggledQuery}` : '/rides'
 
+  // The name of the place the distances were measured FROM — never the profile
+  // city beside a device-measured distance. `nearLabel` owns that rule.
+  const label = nearLabel(positionValue, city.data)
+
+  // It carries its own padding, so an off strip renders nothing whatsoever —
+  // no wrapper, no 8px above an error state. See the component.
+  const strip = (
+    <NearbyRidesStrip count={nearCount} near={label} active={near} href={nearHref} />
+  )
+
+  const gate = combineQueries(rides, filters)
+  if (filters.error)
+    return (
+      <>
+        {strip}
+        <ErrorState onRetry={gate.refetch} />
+      </>
+    )
+
+  // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
+  // where `isLoading` is false and there is still nothing to draw.
+  if (!filters.data) return <RidesLoading strip={strip} />
+
   return (
     <>
       <RideFilterBar filters={filters.data} active={filter} />
 
       {/* Between the bar and the list, and OUTSIDE the list's gate — the strip
           is the only way to turn the filter back off, so a failed or pending
-          list read must not take it with them. Its own padded wrapper for
-          `ExploreClubsStrip`'s reason: the list is `px-4` and a shared wrapper
-          would lay this out 16px narrower. */}
-      <div className="px-4 pt-2">
-        <NearbyRidesStrip count={nearCount} near={label} active={near} href={nearHref} />
-      </div>
+          list read must not take it with them. */}
+      {strip}
 
       {rides.error ? (
         <ErrorState onRetry={rides.refetch} />
@@ -280,10 +301,15 @@ function RidesScreen() {
  * 8px are reserved at both, rather than each appearing at a different boundary
  * and moving every row down twice on the way to a settled screen.
  */
-function RidesLoading() {
+function RidesLoading({ strip }: { strip?: ReactNode } = {}) {
   return (
     <>
       <SkeletonFilterBar />
+      {/* In the same slot it occupies on the loaded screen. Absent from the
+          `<Suspense>` fallback, which stands in while `useSearchParams`
+          resolves — there is no `near` to read yet, so there is nothing
+          honest to draw. */}
+      {strip}
       {/* `py-2` on the wrapper, not the skeleton — same reason as the loaded
           branch: `SkeletonList`'s root is `px-4` only. */}
       <div className="py-2">

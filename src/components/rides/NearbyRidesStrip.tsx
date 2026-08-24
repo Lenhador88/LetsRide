@@ -87,6 +87,12 @@ export function NearbyRidesStrip({
       : `${count} rides near ${place}`
 
   return (
+    // The padded wrapper is the component's own, not the page's, and that is
+    // load-bearing rather than tidy: the page renders this in four places
+    // including two early returns, and a wrapper out there would leave 8px of
+    // padding above an error state in every case where the rules below draw
+    // nothing.
+    <div className="px-4 pt-2">
     <Link
       href={href}
       // `aria-pressed` is not available on a link, and this is genuinely a
@@ -106,5 +112,6 @@ export function NearbyRidesStrip({
       )}
       <span className="sr-only">{active ? 'Show all rides' : 'Show only these rides'}</span>
     </Link>
+    </div>
   )
 }
