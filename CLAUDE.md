@@ -451,18 +451,27 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and each one's
-`ezbr_sha256` is equal across the two projects — and NOT ONE of the three is current against its
-file**, measured 2026-08-19:
+**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and NOT ONE of the
+three is current against its file. Two of the three have an equal `ezbr_sha256` across the
+projects and `search-places` does NOT** — measured 2026-08-24: PROD runs **v7**
+(`9510589d…`, deployed 12:04Z) against DEV's **v3** (`dcc59ceb…`, 2026-08-20), so **DEV is behind
+PROD for that one function**, which is the opposite of this repo's usual direction and is worth
+knowing before debugging a DEV-only search failure. PROD's v7 is the redeploy that ended PD-276's
+four-day production outage; DEV never needed it, so DEV never got it. **Both are now stale against
+the file again** — PD-279 added `country_code` to `shape.ts`, so `taken_country_code` stores NULL
+on every postcard until each project is redeployed, and the flag falls back to the pin.
+The rest of this paragraph is measured 2026-08-19:
 `delete-account` deployed 2026-08-17 against a file that moved 2026-08-19 (comments only, so the
 behaviour is current — and that date moves with every header edit, which is why it is read off
 the command rather than trusted here); `resolve-ride-location` deployed 2026-08-16 against a file that moved
 2026-08-19 with `067` — real code, so a **picked** ride start renders no map tile on either
-project; and `search-places` deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) with
-**#274, #275 and #276 all undeployed on both projects** — real code, including `classifyLedgerError`, so the
-deployed build reports a `23514` participation-gate refusal to the rider as **502
-`unavailable`**: search is broken, not "you hit a limit". `isPolicyRefusal` matches `42501`
-only, and the gate raises `23514`, so it falls to the outage branch. **`git log -1` on the
+project; and `search-places` was deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) and
+that is the build **DEV still runs** — real code behind it, including `classifyLedgerError`, so
+DEV reports a `23514` participation-gate refusal to the rider as **502 `unavailable`**: search is
+broken, not "you hit a limit". `isPolicyRefusal` matches `42501` only, and the gate raises
+`23514`, so it falls to the outage branch. **Count the undeployed commits rather than reading a
+list here** — an enumeration goes stale on the next merge, and this one already has:
+`TZ=UTC git log --oneline --since=<deploy timestamp> -- supabase/functions/search-places/`. **`git log -1` on the
 directory tells you the file is newer than the deploy and never by how many commits** — list the
 directory's history against the deploy timestamp, or a three-commit gap reads as one.
 PD-267 is the first redeploy,

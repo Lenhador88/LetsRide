@@ -829,12 +829,13 @@ reads 2 members until someone new signs up.
 
 ## Migrations — the repo holds 74, DEV is at `074` and PROD at `073`
 
-**`list_migrations` prints 76 on DEV and 73 on PROD against 74 files, and neither of the two gaps
-is drift.** Two of the three surplus DEV rows are `063`, applied on DEV in three increments —
-`ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private` — while PROD holds it
-as the one consolidated file. The third is `074` (the postcard's country, PD-279, applied to DEV
-2026-08-24), simply unpromoted and going to PROD with the next promotion. Repo 74 files, PROD 73
-rows, DEV 76 rows, one chain.
+**`list_migrations` prints 76 on DEV and 73 on PROD against 74 files, and the two differences are
+different KINDS — do not add them together.** DEV's **two surplus rows** (76 against 74 files) are
+`063`, applied there in three increments — `ride_capacity_is_enforced`, `…_exemptions`,
+`ride_capacity_moves_to_private` — while PROD holds it as the one consolidated file; that is a
+recording difference and nothing is missing on either side. The **DEV-ahead gap** is one file,
+`074` (the postcard's country, PD-279, applied to DEV 2026-08-24), unpromoted and going to PROD
+with the next promotion. Repo 74 files, PROD 73 rows, DEV 76 rows, one chain.
 
 **`071`, `072` and `073` reached PROD on 2026-08-24**, ahead of the build that reads them, and
 were verified by comparing OBJECTS against DEV rather than by the recorded statement — `md5` over
@@ -850,6 +851,14 @@ is the ordinary one" right up until something read the column: `POSTCARD_SELECT`
 not exist, and `unwrapList` throws — so a production build promoted ahead of the migration puts a
 permanent "try again" panel on the home feed, the club feed, the postcard thread, `/profile` and
 `/profile/detail`. That is `069`'s shape, one paragraph below, rather than `070`'s.
+
+**`074` is necessary for the flag and not sufficient, and the missing half is a DEPLOY rather
+than a migration.** `taken_country_code` can only ever be filled from the country
+`search-places` returns, and neither project's deployed build returns one — PD-279 added
+`country_code` to `shape.ts` after both were deployed. So until the owner redeploys the function,
+every postcard written stores NULL there and `PostcardCard` falls back to the pin: the column is
+correct, applied and empty. DEV is the one that matters first, and DEV is also the project running
+the *older* build of the two (CLAUDE.md §Supabase Rules).
 
 **Nothing can catch this for you.** `db:drift` is not in `ci.yml` and needs two connection strings
 no session holds; `docs:check` cannot reach PROD; `columns.test.ts` reads migration *files*, so it
@@ -1993,7 +2002,7 @@ Two traps, both live:
 `CLAUDE.md` §Development Workflow has the commands and the refresh rules; the two traps above
 are the ones that only matter when choosing *what* to build.
 
-### A `figma:pull` today loses Chevron Down — check the icon export before you commit one
+### A `figma:pull` USED to lose Chevron Down — fixed by PD-261, and still check the export
 
 **Measured 2026-08-17, on the pull PD-248 ran.** `npm run figma:icons` came back
 `Exported 53/54` with `Missing: Chevron Down`, and `chevron-right.svg` changed its `fill` from
@@ -2018,14 +2027,24 @@ to notice it.
 
 PD-248 kept its own diff to `design/icons/wave.svg` and `design/components/element-icon-wave.json`
 and reverted the rest of the pull, so the committed snapshot still points both chevrons at their
-real components. **That is a hold, not a fix** — the next full pull re-breaks it. `PD-261` carries
-the fix and both routes to it.
+real components. **That was a hold; `PD-261` is the fix, landed 2026-08-24.** `extract.mjs` now
+ranks a COMPONENT/COMPONENT_SET above an INSTANCE on a name collision regardless of walk order,
+and prints every collision it resolved — so a full pull no longer loses Chevron Down, and no
+longer re-points Chevron Right silently. **The second route is still open and still needs the
+owner**: renaming the icon layers inside those two frame sets in Figma, which fixes today's
+instance rather than the class.
+
+**Read the collision print, not the diffstat.** The new rank covers every non-component type, not
+only instances, so a pull can now legitimately re-point an icon that had resolved to a scratch
+node — the eleven instance-resolved icons below are the population where that could happen. The
+print is the only thing that says so; `generated.tsx` can still come out byte-identical.
 
 **So `design/manifest.json` deliberately lags what `design/` contains.** It was reverted with the
 rest of the pull, and the wave came from a later Figma version, which nothing in `design/` records.
 `figma:check` decides staleness on `manifest.latestVersionId` alone, so it prints a flat `STALE`
-and cannot tell you that is on purpose — and the obvious response to `STALE` is the `figma:pull`
-that re-breaks the chevrons. Read a `STALE` here as "check `PD-261` first", until it lands.
+and cannot tell you that is on purpose. The `figma:pull` it invites is now safe for the chevrons —
+`PD-261` landed — so read a `STALE` here as ordinary staleness, and read the collision report the
+pull prints.
 
 **Check `git diff` before you spend a network call — it is free and it catches both halves.**
 
