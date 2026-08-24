@@ -32,19 +32,31 @@ import { shareAppLink } from '@/lib/share'
  * messages, so nothing here may keep generating it.
  */
 export function ShareButton({ postcardId }: { postcardId: string }) {
-  const [copied, setCopied] = useState(false)
+  const [notice, setNotice] = useState<'copied' | 'unavailable' | null>(null)
 
   async function share() {
     const outcome = await shareAppLink(routes.postcard(postcardId), 'A postcard on LetsRide')
-    if (outcome !== 'copied') return
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 2000)
+    // A native share is its own feedback and a dismissal is not a failure, so
+    // only the two outcomes the rider cannot see for themselves say anything.
+    // The menus raise a banner for these; this control has no banner to raise
+    // and its label is the affordance, so it says it there — the same two
+    // outcomes reported, in the idiom of the surface.
+    if (outcome === 'shared') return
+    setNotice(outcome)
+    window.setTimeout(() => setNotice(null), 2000)
   }
+
+  const label =
+    notice === 'copied'
+      ? 'Link copied'
+      : notice === 'unavailable'
+        ? 'Could not share the link'
+        : 'Share this postcard'
 
   return (
     <PostcardActionButton
       onClick={share}
-      label={copied ? 'Link copied' : 'Share this postcard'}
+      label={label}
       icon={<PaperPlaneIcon className="h-6 w-6" />}
     />
   )

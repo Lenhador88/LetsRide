@@ -82,7 +82,11 @@ export function ClubDetailHeader({
       }
       action={
         club ? (
-          <ClubOptionsMenu clubId={clubId} viewerRole={club.viewer_role} />
+          <ClubOptionsMenu
+            clubId={clubId}
+            viewerRole={club.viewer_role}
+            isOwner={club.viewer_is_owner}
+          />
         ) : undefined
       }
     />

@@ -14,16 +14,10 @@ import { queryKeys } from '@/lib/query/keys'
  * The destructive control at the foot of `/clubs/detail/edit` — PD-101,
  * `design.md` §D4, `club-lifecycle`'s delete requirement.
  *
- * **It is no longer the only way in, and that reverses a decision rather than
- * drifting from one (PD-280).** This used to argue that an irreversible action
- * does not belong one tap from `Edit club` or `Leave club`, so `ClubOptionsMenu`
- * deliberately omitted the `Delete club` row both approved mocks draw. The
- * product owner settled it the other way on 2026-08-24: the ride gains a ⋯ menu
- * carrying Edit, Share and Delete, and the club's menu offers the same rows, so
- * the two sibling screens answer "what can I do here" identically. What the old
- * argument bought is kept by the confirmation rather than by hiding the row —
- * the menu opens `DeleteClubSheet` below, which is this same panel and refuses
- * just as hard.
+ * **It is no longer the only way in (PD-280).** `ClubOptionsMenu` has a `Delete
+ * club` row now, opening `DeleteClubSheet` below — this same panel, refusing
+ * just as hard. `docs/FIGMA-FIDELITY-TODO.md` §Club detail carries why that
+ * reverses a deliberate omission rather than drifting from one.
  *
  * **This is the one confirmation in the app whose numbers are a specified
  * deliverable, not copy.** Deleting a club destroys other members' postcards

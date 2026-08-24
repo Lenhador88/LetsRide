@@ -129,6 +129,8 @@ don't substitute lookalikes. The three matches
 the importer count is
 `grep -rl "from 'lucide-react'" src/ | grep -v generated | wc -l` and it is **0**.
 
+### The ⋯ options menu
+
 **Every main screen answers "what can I do here" with the same control** — `OptionsIcon` in the
 header's action slot, opening `ContextMenu` with one `ContextMenuItem` per row, icon plus label,
 destructive rows `variant="warning"` in their own group behind a hairline. It is the app standard

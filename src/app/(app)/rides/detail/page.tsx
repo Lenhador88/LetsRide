@@ -234,14 +234,10 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
           anyone who can open this ride can already be shown its photos, and
           hiding the section was the UI inventing a rule the policy does not
           have. `canAdd` carries the half that IS a database rule: tagging wants
-          `private.is_ride_crew`, so only the crew is offered the tile.
-
-          `isCrew` is `undefined` while the ride is still arriving, which must
-          read as "no Add yet" rather than as "not crew" — the strict compare is
-          what keeps a tile from being drawn and then withdrawn. */}
+          `private.is_ride_crew`, so only the crew is offered the tile. */}
       <section className="flex flex-col gap-2">
         <SectionHeader title="Journal" className="py-0" />
-        <RideJournalEmpty canAdd={isCrew === true} />
+        <RideJournalEmpty canAdd={isCrew} />
       </section>
 
       {/* The count this rail draws is the one that was removed from this screen

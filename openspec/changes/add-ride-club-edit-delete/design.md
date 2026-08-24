@@ -81,6 +81,19 @@ stale" is a state the checklist asks about and the answer here is *deliberately,
 
 ## D4 — The affordances: Edit in the header, Delete at the foot of the edit screen
 
+> **AMENDED 2026-08-24 (PD-280) — the heading is no longer where Edit and Delete live, and the
+> reasoning below is still why they also live where it says.** Both sub-page switchers this
+> section argues about are deleted (PD-254, PD-262), and the product owner asked for one ⋯ menu
+> on every main screen: Edit, Share and Delete behind the dots on the ride and the club alike.
+> So Edit is no longer "in the header as a single affordance", and `Delete club` — which
+> `ClubOptionsMenu` omitted on this section's authority — is a row now.
+>
+> **What survives is the second paragraph, and it survives literally.** The destructive control
+> stays at the foot of both edit screens; nothing moved out. And the menu row does not delete on
+> a tap: it opens `DeleteRideSheet` / `DeleteClubSheet`, which are those same confirmations, so
+> the "second, deliberate tap" this section requires is still what an accidental tap reaches.
+> `docs/reference/design-system.md` §The ⋯ options menu is where the standard now lives.
+
 `RidePageMenu` and `ClubDetailPageMenu` are **sub-page switchers**, not overflow menus — they are
 the header's `Ride plan ⌄` / `Timeline ⌄` control, built on `ContextMenu`, and every row in them
 is navigation. Putting `Delete` in one places an irreversible action one tap from `Crew` on a

@@ -49,19 +49,11 @@ import type { ClubDetail } from '@/types'
  *   to: a two-state prop cannot tell a member from a stranger, and the false
  *   branch would have offered them Leave.
  *
- * **`Delete club` is BUILT, and the mock was right (PD-280).** This file used
- * to omit it on purpose — both approved frames draw it under `Edit club`, and
- * the argument against was that "siting one destructive control in two places
- * is how it gets tapped by accident", with `design.md` §D4 putting Delete at
- * the foot of the edit screen instead. The product owner settled it the other
- * way on 2026-08-24, so that this menu and the ride's offer the same rows.
- *
- * What the old argument bought is kept by the confirmation rather than by the
- * row's absence: the row opens `DeleteClubSheet`, which is `DeleteClubControl`'s
- * own panel — every count read under the owner's RLS, phrased as a floor, and
- * the confirm button disabled outright when they cannot be read. An accidental
- * tap reaches that, not a deletion. `DeleteClubControl` stays on the edit
- * screen unchanged.
+ * **`Delete club` is BUILT as of PD-280, reversing this file's own deliberate
+ * omission** — `docs/FIGMA-FIDELITY-TODO.md` §Club detail carries what was
+ * argued and what the owner decided. The row opens `DeleteClubSheet` rather
+ * than deleting, which is the general rule in
+ * `docs/reference/design-system.md` §The ⋯ options menu.
  *
  * **Join is not here either.** A non-member sees `ClubMembershipButton`
  * inline on the page instead — a constructive action stays visible, only the
@@ -70,12 +62,21 @@ import type { ClubDetail } from '@/types'
 export function ClubOptionsMenu({
   clubId,
   viewerRole,
+  isOwner,
 }: {
   clubId: string
   /** The viewer's own `club_members.role`, or null for a non-member. */
   viewerRole: ClubDetail['viewer_role']
+  /**
+   * `ClubDetail.viewer_is_owner` — `clubs.owner_id`, NOT `viewer_role ===
+   * 'owner'`. Two props for what looks like one question because the two
+   * answers can differ: `043`'s `delete_owned_club` gates on the column, and an
+   * owner who holds no roster row is a state `enforce-creator-membership` calls
+   * reachable on demand. Gating the destructive row on the role would hide it
+   * from the one owner who most needs it.
+   */
+  isOwner: boolean
 }) {
-  const isOwner = viewerRole === 'owner'
   const isMember = viewerRole !== null
   const [open, setOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
