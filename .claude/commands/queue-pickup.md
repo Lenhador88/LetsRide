@@ -364,6 +364,20 @@ adjacent fix to the board — on a branch already open over the very file it liv
 If you cannot say in one line how the item sits inside the same build, it does not travel.
 **That sentence goes in the PR body**, so the claim is on the record rather than in your head.
 
+**Neither answer is available to a part of the story you were given.** This gate sorts things the
+build *turned up*. The half of the picked issue you did not build is not one of them: it does not
+"travel" (it was never optional) and it must not be "filed" (that is the deliverable being split
+after the fact). It has one route, and it is STEP 5 bullet 4 — the issue does not move to
+`Deployed to DEV`.
+
+**The tell is that the item is named in the issue's own title or body.** Check that before rating
+anything: a rating block on the unbuilt half makes a split look like triage, which is exactly how
+it gets through. 2026-08-24, PD-279 — the story read *"country flag and town"*, the town shipped,
+and the flag was written off as a comment saying it "wants its own row"; the owner asked why the
+main feature was not in the main story. The excuse was that the flag needed an Edge Function
+deploy, which is an owner step on **every** change under `supabase/functions/` and is not a reason
+to cut a deliverable in half.
+
 ### Second: rate it, and let the block decide
 
 **Rate it with `CLAUDE.md` §Working Principles' five-rating block** — the vocabulary already
@@ -823,8 +837,19 @@ That is why they are numbered and cross-referenced by number.
 
 3. **Check the DEV deploy** — see below. `ERROR` on *your* commit stops the run here and goes to
    `Needs help`; anything else continues.
-4. **Move every issue in the group to `Deployed to DEV` — except any story parked into `Needs
-   help`, which stays parked** — each with its own comment: the PR link,
+4. **Re-read each issue's own title and body, and move it to `Deployed to DEV` only if the thing
+   it names now exists** — except any story parked into `Needs help`, which stays parked. A story
+   whose scope you delivered in part **stays open**: comment what shipped, say what remains and
+   why, and leave it in a column the owner can see. Do not file the remainder as a new row and do
+   not leave it in a comment on a closed issue — both read as "handled" on a board, which is the
+   whole failure.
+
+   **Read the title last and take it literally.** It is the shortest statement of the deliverable
+   and the thing the owner scans; `Deployed to DEV` on a title naming something that does not exist
+   is the board lying in the one place nobody re-checks. `docs/reference/linear.md` §Sequencing has
+   why these are one issue rather than two.
+
+   Then, on each issue that does move — its own comment: the PR link,
    one line on what landed **for that story**, what was folded into it, a link to each story filed
    **or updated**, and the deploy state from bullet 3. One shared comment pasted three times is
    worse than none — the owner reads an issue to find out what happened to *it*.
