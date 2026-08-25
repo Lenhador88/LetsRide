@@ -510,21 +510,25 @@ npx cap sync ios                                   # copies out/, rewrites Packa
 ```
 
 **What is left for a Mac needs those three commands FIRST, and then four things.** Do not read the
-four as a standalone list: `App/App/public` and `App/App/capacitor.config.json` are Copy Bundle
-Resources entries (`project.pbxproj`) and both are **gitignored**, and `Package.swift` resolves the
-secure-storage plugin out of `../../../node_modules`. So a fresh clone opened straight in Xcode
-builds against two missing inputs and an unresolvable dependency. `npm ci`, then the
+four as a standalone list: `App/App/public`, `App/App/capacitor.config.json` **and
+`App/App/config.xml`** are all three Copy Bundle Resources entries (`project.pbxproj`) and all
+three are **gitignored**, and `Package.swift` resolves the secure-storage plugin out of
+`../../../node_modules`. So a fresh clone opened straight in Xcode builds against **three** missing
+inputs and an unresolvable dependency, and a missing Copy Bundle Resources entry is a hard
+`Build input file cannot be found`, not a warning. `npm ci`, then the
 `build:native` above, then `cap sync ios` — *then* open the project, set the signing Team, build,
 and archive to TestFlight.
 
 **All three were re-run from a clean tree on 2026-08-25 and all three pass here**, so a failure on
 the Mac is a Mac-side difference rather than a repo one — which is the whole reason to run them in
 this container first. `cap sync ios` reports `Found 1 Capacitor plugin for ios` and writes both
-gitignored inputs; confirm by their absence from `git status`, not by their presence on disk:
+gitignored inputs; confirm by their absence from `git status`, not by their presence on disk.
+**`cap sync` logs only `capacitor.config.json` and silently writes `config.xml` too**, so read the
+directory rather than the log — deleting all three and re-syncing restores all three:
 
 ```bash
-ls ios/App/App/public/index.html ios/App/App/capacitor.config.json   # both exist after sync
-git status --short                                                   # and both stay invisible
+ls ios/App/App/public/index.html ios/App/App/capacitor.config.json ios/App/App/config.xml
+git status --short          # all three exist, and all three stay invisible
 ```
 
 **Pick a simulator, not a device, unless a device is registered.** Automatic signing provisions a
