@@ -219,15 +219,8 @@ export async function getFeed(
  * `clubs` directly would be a second visibility predicate to keep in step.
  */
 /**
- * How far the "All new" count scans before it saturates. The tile draws a
- * `Counter`, which shows `99+` past two digits — so counting past this is work
- * nobody reads, and it is the same bound `015`'s `club_unread_counts` applies
- * per club for the same reason.
- */
-export const UNSEEN_SCAN_LIMIT = 100
-
-/**
- * Postcards this rider has not seen, against their app-wide watermark (015).
+ * Postcards this rider has not seen, against their app-wide watermark and
+ * excluding their own — `public.count_unseen_postcards()` (079).
  *
  * This replaces `rows.length` — the number of postcards on page one of the
  * feed, presented as a total. That was the same defect review caught on
@@ -240,41 +233,23 @@ export const UNSEEN_SCAN_LIMIT = 100
  * old club should not badge it with five years of history; there is no
  * equivalent moment for the app-wide feed.
  *
- * The count runs under RLS, so blocks and hides are excluded by the same
- * policies the deck obeys — the reason this is a query rather than a
- * denormalised counter.
- *
- * **It still counts the rider's own postcards, and since `068` the club badge
- * does not. That divergence is recorded rather than fixed here.** `068` gave
- * `club_unread_counts()` an `author_id <> auth.uid()` arm, so posting into a
- * club no longer badges it — but a postcard is composed at `/postcards/new` and
- * the rider lands back on *this* screen, where "All new" still reads `+1` for
- * the thing they just wrote. Same shape, one screen apart.
- *
- * Not fixed in `068`'s change for a reason that is about evidence rather than
- * effort: `club_unread_counts()` is a database function, so the RLS suite can
- * pin its behaviour and did (`068.2`). This is a client-side query under the
- * caller's own session, which **no assertion in `supabase/tests/` can reach** —
- * so adding the arm here would change a rider-visible count with nothing able to
- * hold it. It wants its own change, with whatever test can actually see it.
+ * `count_unseen_postcards()` is `security invoker`, so it runs under the
+ * caller's own RLS — blocks, hides and club membership are excluded by the
+ * same policies the deck obeys, matching `club_unread_counts()` (068), and it
+ * excludes the reader's own postcards for the same reason that one does. The
+ * two used to disagree — composing a postcard into a club left the club
+ * badge-free while this tile still read `+1` for the thing just written —
+ * because this was a client-side query nothing in `supabase/tests/` could
+ * reach; `079` moved it beside its sibling, under the same gate, so the two
+ * cannot drift apart again.
  */
 async function countUnseenPostcards(supabase: DataClient): Promise<number> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return 0
 
-  const { data: watermark } = await supabase
-    .from('feed_reads')
-    .select('last_seen_at')
-    .eq('user_id', user.id)
-    .is('club_id', null)
-    .maybeSingle()
-
-  let query = supabase.from('postcards').select('id').limit(UNSEEN_SCAN_LIMIT)
-  if (watermark?.last_seen_at) query = query.gt('created_at', watermark.last_seen_at)
-
-  const { data, error } = await query
-  if (error || !data) return 0
-  return data.length
+  const { data, error } = await supabase.rpc('count_unseen_postcards')
+  if (error || data === null) return 0
+  return data
 }
 
 export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<PostcardFilters> {

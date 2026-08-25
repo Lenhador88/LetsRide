@@ -580,8 +580,8 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 78 files; DEV is at `078` and PROD at `077` — measured 2026-08-25, after `078`
-(PD-301) applied to DEV, so DEV is ONE AHEAD and `078` is owed to PROD.** `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
+**Applied state: 79 files; DEV is at `079` and PROD at `077` — measured 2026-08-25, so DEV is TWO
+AHEAD and BOTH `078` (PD-301) and `079` (PD-270) are owed to PROD, in that order.** `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
 after it was confirmed serving (destructive), which is the whole ordering rule in one sitting.
 **Level is the exception, not the resting state**: DEV-ahead is where a migration lives between its
 merge and its promotion, and the two were last level on 2026-08-20 at PD-273's promotion and
@@ -644,7 +644,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1801** assertions — re-derive rather than trust it:
+Suite **1816** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
