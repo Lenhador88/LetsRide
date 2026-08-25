@@ -105,8 +105,17 @@ npm run release:check                 # only before a store submission — see �
 - **`development` is the repo's default branch.** So a session clones `development` and reads
   `CLAUDE.md` and `.claude/` from it — an instruction merged there is now actually in force.
   `docs/ENVIRONMENTS.md` §The last piece has the reasoning and the ordered checklist.
-- **`main` is at `53409e3`** — promoted via #269 as a merge commit, back-merged by fast-forward,
-  so both branches sit on that sha. That promotion carried **44** commits — `p1..p2`, the same
+- **`main` is at `95602ca`** — promoted via **#304** as a merge commit on 2026-08-25,
+  back-merged by fast-forward, so both branches sit on that sha. That promotion carried **22**
+  commits (`git rev-list --count <prev main>..<new main>`), headlined by the location affordance
+  and its priming sheet (PD-170), the rider limit being dropped (PD-293), the near-you strip
+  (PD-260), the report reader (PD-297), onboarding becoming one step (PD-286), and a postcard's
+  town and flag (PD-275, PD-279). **`076` went to PROD before that build and `077` after it was
+  confirmed serving** — see §Migrations for why those are opposite orders.
+
+  The record of the promotion before it, kept because its commit-counting note is the reusable
+  part: `main` was at `53409e3`, promoted via #269 as a merge commit, and that promotion carried
+  **44** commits — `p1..p2`, the same
   rule the counts beside the earlier promotions use; the incl-merge number is 45. The headline
   items: a ride's start location and a club's home town both PICKED from `places` (PD-114,
   PD-259), `max_riders` finally capping a crew (PD-174), the ride chat unread watermark (PD-120),
@@ -925,26 +934,40 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — the repo holds 77, DEV is at `077` and PROD at `075`
+## Migrations — the repo holds 77 and BOTH projects are at `077`
 
-**`list_migrations` prints 79 on DEV and 75 on PROD against 77 files, and only TWO of the
-four-row difference are a real gap.** Two of them are a recording difference: DEV's **two surplus
-rows** are `063`, applied there in three increments — `ride_capacity_is_enforced`,
-`…_exemptions`, `ride_capacity_moves_to_private` — while PROD holds it as the one consolidated
-file. **DEV keeps all three rows even though `077` has now dropped everything they built**; a
-recorded row is a statement that a file ran, never a claim that its objects survive. The two real
-gaps are `076` (PD-297) and `077` (PD-293), both applied to DEV on 2026-08-24 and **not** to
-PROD, which is the ordinary DEV-ahead state a migration lives in between its merge and its
-promotion. Repo 77 files, PROD 75 rows, DEV 79 rows, one chain.
+**`list_migrations` prints 79 on DEV and 77 on PROD against 77 files, and NEITHER difference is a
+gap.** DEV's **two surplus rows** are `063`, applied there in three increments —
+`ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private` — while PROD holds
+it as the one consolidated file. **DEV keeps all three even though `077` has dropped everything
+they built**; a recorded row is a statement that a file ran, never a claim that its objects
+survive. Repo 77 files, PROD 77 rows, DEV 79 rows, one chain, no promotion owed.
 
-**`077` is DESTRUCTIVE — it drops a column — so it goes to PROD in `070`'s order, not `069`'s:
-after the promotion build is confirmed *serving*, never before.** PROD's app still selects
-`max_riders` in `getRide` and `getRideForEdit` — and in those two only — until the promotion
-deploys, and a PostgREST select naming a dropped column is a 400 that takes the ride detail and
-the edit screen down. **`RIDE_SELECT` never named it, so the rides LIST survives**; count the
-call sites rather than reasoning from "the ride reads", which is how an earlier draft of this
-line had the list going down too:
-`git grep -c max_riders origin/development -- src/lib/data/rides.ts`. Applying it first would be a rider-visible outage for the length of
+**`076` and `077` went to PROD on 2026-08-25 in OPPOSITE orders round the same build, which is
+the whole rule in one sitting** — `069`/`070`'s lesson repeated deliberately rather than
+rediscovered. `076` is additive and nothing reads it, so it went **before** the #304 promotion
+merged. `077` drops a column and went **after** `app.letsride.social` was confirmed resolving to
+a `READY` deployment on the promotion sha `95602ca` with `aliasError` null — not after the merge.
+PROD's app selected `max_riders` in `getRide` and `getRideForEdit`, and in those two only, so
+applying early would have 400'd the ride detail and the edit screen. **`RIDE_SELECT` never named
+it, so the rides LIST was never at risk**; count the call sites rather than reasoning from "the
+ride reads", which is how an earlier draft of this line had the list going down too:
+`git grep -c max_riders <sha> -- src/lib/data/rides.ts`.
+
+**Verified on PROD after `077`**: column 0, `enforce_ride_capacity` 0 rows in `pg_proc` in every
+schema, trigger 0, `rides_max_riders_range` 0, `rides` CHECKs 8, `ride_members` down to
+`enforce_participation_gate` and `notify_ride_joined`, `authenticated` grants 12 INSERT / 13
+UPDATE / 16 SELECT, `enforce_participation_gate` on 11 tables — every figure identical to DEV.
+Advisors re-read: **exactly ten**, unchanged.
+
+**`076`'s verification turned up drift on DEV and repaired it, and the lesson is the reusable
+part.** DEV's `private.remove_reported_postcard` body did not match the committed file: the
+session that applied `076` there had stripped the comments *inside* the `$$` body, which changes
+`prosrc`. PROD was applied from the file's body verbatim and matched first time. DEV was
+re-applied with `create or replace`; file, DEV and PROD now all read
+`b75fbeb68177de435038f8c69e883e45`. Comment-only, so no behaviour ever differed — but it is
+exactly what §Supabase Rules warns about when reducing a large migration to its executing
+statements, and it was invisible until somebody diffed the object. Applying it first would be a rider-visible outage for the length of
 a build, which is exactly the window `070`'s header exists to describe.
 
 **`076` (PD-297) is on DEV and not on PROD, and it is the one migration in this file whose
