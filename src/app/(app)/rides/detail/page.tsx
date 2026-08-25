@@ -18,7 +18,7 @@ import { RideMap } from '@/components/rides/RideMap'
 import { getRide } from '@/lib/data/rides'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
-import { DETAIL_ID_PARAM } from '@/lib/routes'
+import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 import {
   cn,
   formatRelativeTime,
@@ -174,7 +174,14 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
     // fires exactly once, on arrival.
     <div className="flex flex-col gap-4 motion-safe:animate-fade-in">
       {ride.club && (
-        <Link href={`/rides?club=${ride.club.id}`} className="flex items-center gap-1 px-6">
+        // The club, not the rides list filtered to it (PD-289). A club name on a
+        // ride names the club, and `PostcardCard`'s chip already resolves the
+        // same tap the same way. The filtered list is not wrong to exist — it is
+        // what `RideFilterBar`'s club tiles are for — it is just not what this
+        // link means. Through `routes.club` rather than a literal: a hand-written
+        // path skips `encodeURIComponent` and is invisible to a grep for the
+        // shape, which is the defect `lib/routes.ts` exists to remove.
+        <Link href={routes.club(ride.club.id)} className="flex items-center gap-1 px-6">
           <Avatar src={ride.club.avatar_url} name={ride.club.name} size="xs" className="h-5 w-5" />
           <span className="text-xs font-semibold text-foreground">{ride.club.name}</span>
         </Link>

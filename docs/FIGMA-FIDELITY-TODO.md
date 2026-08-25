@@ -1179,6 +1179,28 @@ around **2026-08-06T12:32Z** — so the thread screen was built the same way the
 the register below is what that cost. The *behaviour* is not a guess: `011` owns who may read,
 write and delete a comment, and the UI adds no rule of its own.
 
+**The frame is readable now, and the register below has not been reconciled against it.** The
+snapshot carries `Home - Postcards - Postcard details` (`1883:22772`, flow
+`Home / View postcard details`) — `npm run figma -- tree "Home - Postcards - Postcard details"`,
+offline. So every unticked line here is *checkable* rather than unanswerable, and each is still
+a separate correction with its own trade. What the frame draws, read 2026-08-25: header 390×96,
+back chevron at x8, centred Poppins/16/Semibold title reading **`Post`**; the card at an 8px
+inset with a 366×200 photo; a comment list at a 16px inset with **no heading over it**, each
+item a 32px avatar + name/relative-time header + body + a `Reply` control and a trailing
+heart; and a fixed 88px reply bar at the foot of the viewport — avatar plus a single-line
+input — rather than a composer at the end of the thread.
+
+- [x] ~~**No header on the thread screen**~~ — **fixed 2026-08-25 (PD-290), measured.** It was
+      the only detail screen in the app with no `Header`, opening instead on a `variant="link"`
+      *Back to postcards* button inside an `mx-auto max-w-lg px-4 py-6` column. It renders the
+      96px `Header` with a back chevron and a centred title now, and the column is `px-4`
+      full-width — the frame's own list inset, and what `/profile` and `/profile/detail` already
+      give this same card. **The title is the frame's own word, `Post`.** PD-290 parked it as an
+      open question with three candidates — the author's username, a literal `Postcard`, the
+      comment count — on the belief that the frame was unreadable. It reads, so the question was
+      already answered. `THREAD_TITLE` in the page is the one string.
+      → `src/app/(app)/postcards/detail/page.tsx`
+
 - [ ] **Where a thread lives** — *chose:* a dedicated route, `/postcards/detail`, holding the
       card and its comments; the feed card carries a comment control that links to it. The
       alternative — comments inline on the feed card, with a "view all N" expander — is what
