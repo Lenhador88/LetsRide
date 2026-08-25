@@ -4249,15 +4249,24 @@ select assert_eq(
 -- from `profiles`; it also cascades from `rides`, which is a second and
 -- independent path that this assertion cannot see, so the erasure story is
 -- asserted directly in the 061 section rather than inferred from this number.
+--
+-- **19 since 078 added push_devices.user_id**, and this is the count changed on
+-- purpose for a table nobody may read. A device row is a provider token plus an
+-- installation identifier plus a `last_seen_at` — personal data about an
+-- identified person, and the one kind whose survival past deletion would keep
+-- reaching their phone. The cascade is the ONLY mechanism 078 ships that can
+-- remove it without a session; the other three arrive with 079. So this number
+-- is the whole erasure story for push_devices today, which is why 078 is here
+-- rather than only in its own section.
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass),
-  18, '029/061/069: eighteen FKs reference public.profiles');
+  19, '029/061/069/078: nineteen FKs reference public.profiles');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
       and confdeltype = 'c'),
-  18, '029/061/069: ... and every one of them is ON DELETE CASCADE');
+  19, '029/061/069/078: ... and every one of them is ON DELETE CASCADE');
 
 -- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
 -- grounds that pinning the path to owner_id makes any transfer raise 23514;
@@ -4572,7 +4581,24 @@ select assert_eq(
   (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-00000000000a')),
   0, '029: a second transfer for the same rider is a no-op — retry is safe');
 
+-- 078, task 1.9h. Seeded HERE rather than in its own section because the sweep
+-- below counts leftover rows and passes vacuously against a table that has
+-- none — a cascade assertion with nothing to cascade is the shape this section
+-- already warns about. Inserted as the owner: the RPC that would create it is
+-- not the thing under test, the foreign key is.
+insert into public.push_devices (user_id, installation_id, token, platform) values
+  ('00000000-0000-0000-0000-00000000000a', 'pd301-029-cascade', 'TOKEN-029', 'ios');
+select assert_eq(
+  (select count(*)::int from public.push_devices
+    where user_id = '00000000-0000-0000-0000-00000000000a'),
+  1, '078: the departing rider has a registered device before the deletion runs — without this the cascade sweep below proves nothing about push_devices');
+
 delete from auth.users where id = '00000000-0000-0000-0000-00000000000a';
+
+select assert_eq(
+  (select count(*)::int from public.push_devices
+    where user_id = '00000000-0000-0000-0000-00000000000a'),
+  0, '078: ... and deleting the auth.users row takes every push_devices row with it — account deletion reaches a table nobody can read, through profiles, with nobody having to remember it exists');
 
 select assert_eq(
   (select count(*)::int from profiles where id = '00000000-0000-0000-0000-00000000000a'),
@@ -4617,8 +4643,9 @@ select assert_eq(
   + (select count(*)::int from postcard_hides where user_id = '00000000-0000-0000-0000-00000000000a')
   + (select count(*)::int from postcard_reports where reporter_id = '00000000-0000-0000-0000-00000000000a')
   + (select count(*)::int from profile_countries where user_id = '00000000-0000-0000-0000-00000000000a')
-  + (select count(*)::int from feed_reads where user_id = '00000000-0000-0000-0000-00000000000a'),
-  0, '029: no row anywhere still references the deleted rider');
+  + (select count(*)::int from feed_reads where user_id = '00000000-0000-0000-0000-00000000000a')
+  + (select count(*)::int from push_devices where user_id = '00000000-0000-0000-0000-00000000000a'),
+  0, '029/078: no row anywhere still references the deleted rider');
 
 -- **Derived rather than listed — task 6.1.** The sum immediately above names
 -- nine tables by hand, fixed when 029 was written against "the thirteen" FKs
@@ -4685,8 +4712,8 @@ begin
   end loop;
   -- A derivation that silently iterates zero times passes for the same
   -- reason a dropped assertion does — this is what tells the two apart.
-  if checked < 16 then
-    raise exception 'FAIL  6.1: only % FK column(s) into profiles were found — expected at least 16, so this derivation itself is broken rather than the cascade', checked;
+  if checked < 17 then
+    raise exception 'FAIL  6.1: only % FK column(s) into profiles were found — expected at least 17, so this derivation itself is broken rather than the cascade', checked;
   end if;
   raise notice 'ok    6.1: every FK into profiles (% columns, derived from pg_constraint) is clear of the deleted rider', checked;
 end $$;
@@ -15893,6 +15920,415 @@ select assert_eq(
 
 reset role;
 rollback to savepoint rider_limit_dropped_077;
+
+-- ===========================================================================
+-- 078: push_devices — a table nobody may read (PD-301, child A of PD-291)
+-- ===========================================================================
+--
+-- The whole contract of 078 is assertable here, which is why child A was cut
+-- out of the native plugin PR: nothing in it needs a device, a provider or a
+-- deploy. The cascade half (1.9h) is NOT in this section — it lives beside the
+-- existing 029 cascade assertions, because a table holding personal data that
+-- the deletion path does not reach is the thing that derivation exists to find.
+
+\echo ''
+\echo '# 078 — push devices: nobody may read the table, and the key is the installation'
+
+reset role;
+select set_config('test.uid', '', false);
+select set_config('request.jwt.claims', '', false);
+
+savepoint push_devices_078;
+
+-- Own fixtures, so no count asserted earlier in this file moves.
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000078001', 'pushrider1@example.com'),
+  ('00000000-0000-0000-0000-000000078002', 'pushrider2@example.com'),
+  ('00000000-0000-0000-0000-000000078003', 'pushrider3@example.com');
+update profiles set username = 'pushrider1', location = 'Utrecht',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000078001';
+update profiles set username = 'pushrider2', location = 'Breda',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000078002';
+-- 078003 is deliberately left with BOTH stamps NULL: the account created by
+-- calling GoTrue's /auth/v1/signup directly and never calling accept_terms().
+update profiles set username = 'pushrider3', location = 'Tilburg'
+  where id = '00000000-0000-0000-0000-000000078003';
+
+-- ---------------------------------------------------------------------------
+-- 078.1  No client role holds ANY privilege on the table (task 1.9a).
+--        Named by ROLE rather than attempted as a statement: this suite runs as
+--        the table owner, for whom neither the grant nor RLS applies, so an
+--        attempted SELECT would succeed here and prove nothing — 031's lesson.
+--        The harness reproduces Supabase's `grant all on tables to anon,
+--        authenticated` default privilege, so these read false only because
+--        078's explicit revoke ran.
+-- ---------------------------------------------------------------------------
+select assert_eq(has_table_privilege('authenticated', 'public.push_devices', 'select'),
+  false, '078.1a: authenticated cannot SELECT push_devices — a device token is a bearer credential for a channel that reaches a lock screen, so not even its owner may read it');
+select assert_eq(has_table_privilege('authenticated', 'public.push_devices', 'insert'),
+  false, '078.1b: authenticated cannot INSERT into push_devices — registration is an RPC, because a client upsert fails closed on the re-home');
+select assert_eq(has_table_privilege('authenticated', 'public.push_devices', 'update'),
+  false, '078.1c: authenticated cannot UPDATE push_devices');
+select assert_eq(has_table_privilege('authenticated', 'public.push_devices', 'delete'),
+  false, '078.1d: authenticated cannot DELETE from push_devices');
+select assert_eq(has_table_privilege('anon', 'public.push_devices', 'select'),
+  false, '078.1e: anon cannot SELECT push_devices');
+select assert_eq(has_table_privilege('anon', 'public.push_devices', 'insert'),
+  false, '078.1f: anon cannot INSERT into push_devices');
+select assert_eq(has_table_privilege('anon', 'public.push_devices', 'update'),
+  false, '078.1g: anon cannot UPDATE push_devices');
+select assert_eq(has_table_privilege('anon', 'public.push_devices', 'delete'),
+  false, '078.1h: anon cannot DELETE from push_devices');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'push_devices'
+      and grantee in ('anon', 'authenticated')),
+  0, '078.1i: ... and neither role holds a grant of ANY kind on it, including the three verbs 047 had to revoke separately elsewhere');
+
+-- ---------------------------------------------------------------------------
+-- 078.2  RLS on, and deliberately NO policy. Scoped to this table by name, so a
+--        policy landing here later goes red rather than being absorbed into a
+--        schema-wide count.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select relrowsecurity from pg_class where oid = 'public.push_devices'::regclass),
+  true, '078.2a: RLS is enabled on push_devices, so the absence of policies denies rather than allows');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'push_devices'),
+  0, '078.2b: ... and push_devices carries NO policy at all — 026''s password_reset_grants shape. A policy here would describe direct access that must not exist, and "add an own-row SELECT policy" is the repair this assertion exists to refuse');
+
+-- ---------------------------------------------------------------------------
+-- 078.3  The two RPCs are the whole write path (task 1.9b). Named by role.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  has_function_privilege('anon', 'public.register_push_device(text,text,text)', 'execute'),
+  false, '078.3a: anon cannot call register_push_device');
+select assert_eq(
+  has_function_privilege('anon', 'public.release_push_device(text)', 'execute'),
+  false, '078.3b: anon cannot call release_push_device');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.register_push_device(text,text,text)', 'execute'),
+  true, '078.3c: authenticated CAN call register_push_device — it is the only path by which a row is created');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.release_push_device(text)', 'execute'),
+  true, '078.3d: authenticated CAN call release_push_device — a rider must always be able to stop being sent push');
+
+-- Both must be DEFINER or they reach nothing, and both must pin search_path or
+-- they are the advisor finding 078 must not add.
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('register_push_device', 'release_push_device')
+      and p.prosecdef),
+  2, '078.3e: both push RPCs are security definer — nothing else can reach a table with no grants and no policies');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('register_push_device', 'release_push_device')
+      and p.proconfig @> array['search_path=""']),
+  2, '078.3f: ... and both pin search_path to empty. `proconfig` stores the pin as the literal search_path="" — matching on the unquoted form silently reads 0 and turns this into an assertion that both functions are UNPINNED');
+
+-- Neither may name a rider. Asserted against the signature rather than the body:
+-- a uuid parameter is how "we check the id matches the caller" gets added, and
+-- it is one refactor away from not doing that.
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('register_push_device', 'release_push_device')
+      and pg_get_function_identity_arguments(p.oid) ilike '%uuid%'),
+  0, '078.3g: neither RPC takes a uuid parameter — the subject is auth.uid() and cannot be named');
+
+-- ---------------------------------------------------------------------------
+-- 078.4  ** ROTATION IS AN UPDATE. ** (task 1.9d)
+--
+--        THIS IS THE ASSERTION THAT WOULD HAVE CAUGHT THE FIRST VERSION OF D3.
+--        The shared-phone case in 078.5 passes under a token-keyed table too;
+--        only this one fails. Under `unique (token)` the rotation below leaves
+--        TWO live rows for one device, the older one owned by the same rider
+--        and invisible to every later release.
+--
+--        Proved three ways, because "one row exists" alone is satisfiable by a
+--        delete-and-reinsert: the row COUNT, the row's `id`, and its
+--        `created_at`. Only an in-place UPDATE preserves the last two.
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078001', false);
+select public.register_push_device('pd301-rot', 'TOKEN-T1', 'ios');
+
+reset role;
+create temporary table push_rotation_probe as
+  select id, created_at from public.push_devices where installation_id = 'pd301-rot';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078001', false);
+select public.register_push_device('pd301-rot', 'TOKEN-T2', 'ios');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from public.push_devices where installation_id = 'pd301-rot'),
+  1, '078.4a: a rotated token leaves EXACTLY ONE row for the installation — under unique (token) this is 2, and the extra one is the leak');
+select assert_eq(
+  (select token from public.push_devices where installation_id = 'pd301-rot'),
+  'TOKEN-T2', '078.4b: ... carrying the NEW token');
+select assert_eq(
+  (select count(*)::int from public.push_devices where token = 'TOKEN-T1'),
+  0, '078.4c: ... and NO row anywhere still carries the old one');
+select assert_eq(
+  (select count(*)::int from public.push_devices d
+    join push_rotation_probe p on p.id = d.id and p.created_at = d.created_at
+   where d.installation_id = 'pd301-rot'),
+  1, '078.4d: ... and it is the SAME ROW — same id, same created_at — so the rotation was an UPDATE and not a delete-and-reinsert that happens to leave one row');
+
+drop table push_rotation_probe;
+
+-- ---------------------------------------------------------------------------
+-- 078.5  A shared device re-homes COMPLETELY (task 1.9c). The normal case for a
+--        motorcycle club, and the one a token-keyed table also passes — which is
+--        why 078.4 above and 078.6 below exist.
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078001', false);
+select public.register_push_device('pd301-shared', 'TOKEN-SHARED', 'android');
+select set_config('test.uid', '00000000-0000-0000-0000-000000078002', false);
+select public.register_push_device('pd301-shared', 'TOKEN-SHARED', 'android');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from public.push_devices where installation_id = 'pd301-shared'),
+  1, '078.5a: rider B registering rider A''s installation leaves exactly one row — the re-home is an UPDATE, not a second registration');
+select assert_eq(
+  (select user_id from public.push_devices where installation_id = 'pd301-shared'),
+  '00000000-0000-0000-0000-000000078002'::uuid,
+  '078.5b: ... and it belongs to B, so no delivery for A reaches that device by any token it has ever presented');
+
+-- ---------------------------------------------------------------------------
+-- 078.6  ** THE ROTATION-THEN-SIGN-OUT LEAK, END TO END. ** (task 1.9d2)
+--
+--        The regression test for the WHOLE of D3, in the order the failure
+--        actually happens: register, rotate, release. Under a token-keyed table
+--        the release names the token the device currently presents, the T1 row
+--        survives owned by the departing rider, and the next rider to hold that
+--        phone sees their notifications — until the 60-day idle sweep.
+--
+--        Its own savepoint, so "zero rows for this rider" means zero rather
+--        than zero-except-the-ones-earlier-assertions-left.
+-- ---------------------------------------------------------------------------
+savepoint push_leak_078;
+
+reset role;
+-- Cleared to zero first, explicitly, so the final count is a statement about
+-- this walk rather than about what earlier assertions happened to leave.
+delete from public.push_devices where user_id = '00000000-0000-0000-0000-000000078001';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078001', false);
+select public.register_push_device('pd301-leak', 'LEAK-T1', 'ios');
+select public.register_push_device('pd301-leak', 'LEAK-T2', 'ios');
+select public.release_push_device('pd301-leak');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from public.push_devices
+    where user_id = '00000000-0000-0000-0000-000000078001'),
+  0, '078.6a: register I with T1, rotate to T2, release I — ZERO rows survive for that rider. Under unique (token) the T1 row is still here, still theirs, and still deliverable to whoever holds the phone next');
+select assert_eq(
+  (select count(*)::int from public.push_devices
+    where token in ('LEAK-T1', 'LEAK-T2')),
+  0, '078.6b: ... and neither token survives anywhere, which is the property a token-keyed release cannot provide');
+
+rollback to savepoint push_leak_078;
+
+-- ---------------------------------------------------------------------------
+-- 078.7  One rider, several devices (task 1.9e), and the cap (task 1.9e2).
+--        A release that cleared every row for auth.uid() would pass 078.6 and
+--        fail here: it silently unsubscribes a rider's other phone.
+-- ---------------------------------------------------------------------------
+savepoint push_many_078;
+
+reset role;
+delete from public.push_devices where user_id = '00000000-0000-0000-0000-000000078002';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078002', false);
+select public.register_push_device('pd301-phone', 'TOKEN-PHONE', 'ios');
+select public.register_push_device('pd301-tablet', 'TOKEN-TABLET', 'ios');
+select public.register_push_device('pd301-spare', 'TOKEN-SPARE', 'android');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from public.push_devices
+    where user_id = '00000000-0000-0000-0000-000000078002'),
+  3, '078.7a: three installations for one rider are three rows — one rider on several devices is normal');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078002', false);
+select public.release_push_device('pd301-phone');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from public.push_devices
+    where user_id = '00000000-0000-0000-0000-000000078002'),
+  2, '078.7b: ... and signing out on one leaves the other two — release takes ONE installation, never every row for auth.uid()');
+select assert_eq(
+  (select count(*)::int from public.push_devices where installation_id = 'pd301-phone'),
+  0, '078.7c: ... and it is the right one that went');
+
+-- The cap. Ten registrations, then an eleventh.
+--
+-- `last_seen_at` is set by hand between the two halves and that is not a
+-- convenience: `now()` is TRANSACTION time, so all ten registrations inside this
+-- suite share one value and "the oldest" would be decided by the arbitrary id
+-- tiebreak. Spacing them is what makes the assertion about the intended rule.
+reset role;
+delete from public.push_devices where user_id = '00000000-0000-0000-0000-000000078002';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078002', false);
+select public.register_push_device('pd301-cap-01', 'CAP-01', 'ios');
+select public.register_push_device('pd301-cap-02', 'CAP-02', 'ios');
+select public.register_push_device('pd301-cap-03', 'CAP-03', 'ios');
+select public.register_push_device('pd301-cap-04', 'CAP-04', 'ios');
+select public.register_push_device('pd301-cap-05', 'CAP-05', 'ios');
+select public.register_push_device('pd301-cap-06', 'CAP-06', 'ios');
+select public.register_push_device('pd301-cap-07', 'CAP-07', 'ios');
+select public.register_push_device('pd301-cap-08', 'CAP-08', 'ios');
+select public.register_push_device('pd301-cap-09', 'CAP-09', 'ios');
+select public.register_push_device('pd301-cap-10', 'CAP-10', 'ios');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from public.push_devices
+    where user_id = '00000000-0000-0000-0000-000000078002'),
+  10, '078.7d: ten installations all survive — the cap is ten, not nine');
+update public.push_devices
+   set last_seen_at = timestamptz '2026-01-01 00:00:00+00'
+                      + (right(installation_id, 2)::int * interval '1 hour')
+ where user_id = '00000000-0000-0000-0000-000000078002';
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078002', false);
+select public.register_push_device('pd301-cap-11', 'CAP-11', 'ios');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from public.push_devices
+    where user_id = '00000000-0000-0000-0000-000000078002'),
+  10, '078.7e: an eleventh registration still leaves ten rows — an uncapped rider is an unbounded delivery multiplier, and a CHECK cannot count siblings');
+select assert_eq(
+  (select count(*)::int from public.push_devices where installation_id = 'pd301-cap-01'),
+  0, '078.7f: ... and the one dropped is the OLDEST by last_seen_at');
+select assert_eq(
+  (select count(*)::int from public.push_devices where installation_id = 'pd301-cap-11'),
+  1, '078.7g: ... while the registration that just happened is kept, which is the half a "delete the newest" bug would still pass 078.7e with');
+select assert_eq(
+  (select count(*)::int from public.push_devices where installation_id = 'pd301-cap-02'),
+  1, '078.7h: ... and the second-oldest is untouched, so the trim removed one row rather than a batch');
+
+-- The cap is the CALLER's, not the table's. A second rider is not trimmed by
+-- somebody else reaching ten.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078001', false);
+select public.register_push_device('pd301-other-rider', 'OTHER-1', 'android');
+reset role;
+select assert_eq(
+  (select count(*)::int from public.push_devices where installation_id = 'pd301-other-rider'),
+  1, '078.7i: another rider''s registration is unaffected by a capped rider — the trim is scoped to auth.uid()');
+
+rollback to savepoint push_many_078;
+
+-- ---------------------------------------------------------------------------
+-- 078.8  The gate (task 1.9f), and its deliberate absence on release (1.9g).
+-- ---------------------------------------------------------------------------
+savepoint push_gate_078;
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078003', false);
+select assert_rejected($$
+  select public.register_push_device('pd301-ungated', 'TOKEN-UNGATED', 'ios')$$,
+  '23514', '078.8a: a rider with a NULL consent stamp cannot register a device — 23514, the same code every gated write raises, restated INSIDE the RPC because a trigger carrying `when (current_user = ''authenticated'')` could never fire on a table written only by security definer functions');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from public.push_devices
+    where user_id = '00000000-0000-0000-0000-000000078003'),
+  0, '078.8b: ... and no row exists for them — the refusal is not a partial write');
+
+-- Release is NOT gated. Seeded as the owner, because the RPC that would create
+-- it is exactly the one that refuses this rider.
+insert into public.push_devices (user_id, installation_id, token, platform)
+  values ('00000000-0000-0000-0000-000000078003', 'pd301-stranded', 'TOKEN-STRANDED', 'ios');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078003', false);
+select public.release_push_device('pd301-stranded');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from public.push_devices where installation_id = 'pd301-stranded'),
+  0, '078.8c: ... but the SAME rider can still release a device — refusing a release is refusing to stop sending someone push, so release carries no gate');
+
+rollback to savepoint push_gate_078;
+
+-- ---------------------------------------------------------------------------
+-- 078.9  ** NO PARTICIPATION-GATE TRIGGER ON THIS TABLE. ** (task 1.9i)
+--
+--        Asserted so that adding one later is a RED TEST rather than a silent
+--        no-op. Every existing gate trigger carries
+--        `when (current_user = 'authenticated')`, and inside a security definer
+--        function current_user is the OWNER — so a trigger here would never fire
+--        on any write while still raising the coverage count to twelve and
+--        making the gate read complete when it is not. A gate that cannot fire
+--        is worse than an absent one, because an absent one is visible.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.push_devices'::regclass
+      and tgname = 'enforce_participation_gate' and not tgisinternal),
+  0, '078.9a: push_devices carries NO enforce_participation_gate trigger, deliberately — the gate is restated inside register_push_device instead (078.8a proves it fires)');
+
+-- Spelled out rather than counted, the shape 077.1 uses: no trigger of ANY name
+-- writes to this table, so a future fan-out landing here has to be a deliberate
+-- edit to this line.
+select assert_eq(
+  (select coalesce(array_agg(tgname order by tgname), array[]::text[])::text[]
+     from pg_trigger
+    where tgrelid = 'public.push_devices'::regclass and not tgisinternal),
+  array[]::text[],
+  '078.9b: ... and no trigger at all fires on push_devices');
+
+-- The other half, and it only means something next to 078.9a: the gate's
+-- coverage count is UNCHANGED by 078. If this ever reads 12, a trigger that
+-- cannot fire has been added here and the count above will still be honest.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgname = 'enforce_participation_gate' and not tgisinternal),
+  11, '078.9c: ... and the gate still covers exactly eleven tables — 078 adds a twelfth table and deliberately not a twelfth trigger');
+
+-- ---------------------------------------------------------------------------
+-- 078.10  The key is the installation, asserted against the catalogue.
+--         078.4 proves the behaviour; this proves nobody can quietly add the
+--         constraint that would take it away.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.push_devices'::regclass and contype = 'u'
+      and conname = 'push_devices_installation_id_key'),
+  1, '078.10a: unique (installation_id) exists by name');
+select assert_eq(
+  (select count(*)::int from pg_index i
+    join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any (i.indkey)
+   where i.indrelid = 'public.push_devices'::regclass
+     and i.indisunique and a.attname = 'token'),
+  0, '078.10b: ... and NOTHING unique covers `token` — the token is a mutable attribute, and a unique key on it forks a device into two rows on rotation');
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint push_devices_078;
 
 reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);

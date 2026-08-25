@@ -576,8 +576,8 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 77 files; DEV is at `077` and PROD at `077` — measured 2026-08-25, at the #304
-promotion, so the two are LEVEL.** `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
+**Applied state: 78 files; DEV is at `078` and PROD at `077` — measured 2026-08-25, after `078`
+(PD-301) applied to DEV, so DEV is ONE AHEAD and `078` is owed to PROD.** `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
 after it was confirmed serving (destructive), which is the whole ordering rule in one sitting.
 **Level is the exception, not the resting state**: DEV-ahead is where a migration lives between its
 merge and its promotion, and the two were last level on 2026-08-20 at PD-273's promotion and
@@ -640,7 +640,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1752** assertions — re-derive rather than trust it:
+Suite **1797** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -681,14 +681,14 @@ rider with a NULL stamp no way out of the wizard. Inside a `security definer` fu
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: ten, and only one is outstanding.** Re-derive rather than trust the number
+**Security advisors: thirteen, and only one is outstanding.** Re-derive rather than trust the number
 — `get_advisors(security)` — but the *shape* is durable, because nine of the ten are things
 this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 8 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders. Narrowness is the defence |
-| 1 | `rls_enabled_no_policy` on `password_reset_grants` (INFO) | Correct by design: `026` revokes everything on it from `anon` and `authenticated`, so a policy would be the thing that granted reach |
+| 10 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away), `register_push_device`, `release_push_device` (`078`, because no client role holds any grant on `push_devices`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders, and the two push RPCs each write or remove exactly one row for their caller, take no user id and return nothing. Narrowness is the defence. **This advisor fires once per such function, so a migration adding two adds two** — reading `078`'s sweep as "one new advisor" is what its own task list got wrong |
+| 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design in both cases: `026` and `078` revoke everything on their table from `anon` and `authenticated`, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
 An unexpected advisor is one **not** in that table.
