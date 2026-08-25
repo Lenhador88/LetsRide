@@ -25,6 +25,8 @@
 - [ ] 0.6 **Read `docs/reference/schema.md` before writing `078`**, and
   `docs/ENVIRONMENTS.md` §Scheduled jobs before writing the job in 3.24. The second is a standing
   instruction this change is the first to trip.
+  - [x] the `078` half: read before writing, and `push_devices` now has its own row in that file.
+  - [ ] the `3.24` half — child C's, still owed.
 - [ ] 0.7 **File the board shape before any PR opens.** A, B and C become **sub-issues of
   PD-291**, and PD-291 stays open until C lands. Not a new row for the remainder, not a comment on
   a closed issue.
@@ -39,69 +41,81 @@ child B calls it, and its entire contract is assertable by `supabase/tests/`. **
 cut out of the plugin PR the issue sketched** — bundling them would hold the one fully-gated
 migration in this epic behind a native change nothing here can exercise.
 
-- [ ] 1.1 `078_push_devices.sql` — the table. `id`, `user_id` (`references public.profiles(id) on
+- [x] 1.1 `078_push_devices.sql` — the table. `id`, `user_id` (`references public.profiles(id) on
   delete cascade not null`), `installation_id text not null`, `token text not null`, `platform
   text not null` with a CHECK for `('ios','android')`, `created_at` and `last_seen_at` both
   `timestamptz default now() not null`. **`unique (installation_id)`** — and **no** unique key on
   `token`, which is a mutable attribute. Design D3, and the header states both failures in D3's
   own words: `unique (user_id, token)` forks on a shared phone, `unique (token)` forks on a token
   **rotation** and then leaks past a sign-out until the idle sweep.
-- [ ] 1.2 In the same file: `alter table ... enable row level security` and **no policy at all**,
+- [x] 1.2 In the same file: `alter table ... enable row level security` and **no policy at all**,
   following `026`'s `password_reset_grants`. A `-- deliberately no policy` comment with the
   reason, so the next reader does not add one as a repair.
-- [ ] 1.3 In the same file: `revoke all on public.push_devices from anon, authenticated;` explicitly,
+- [x] 1.3 In the same file: `revoke all on public.push_devices from anon, authenticated;` explicitly,
   rather than relying on a default. The header states that the absent SELECT grant is what makes
   1.5 safe, so the two are one decision.
-- [ ] 1.4 Index on `user_id` — the cascade path from `profiles`. `add-account-deletion` §1 is the
+- [x] 1.4 Index on `user_id` — the cascade path from `profiles`. `add-account-deletion` §1 is the
   precedent for why an unindexed cascade FK is four sequential scans under a lock.
-- [ ] 1.5 `public.register_push_device(installation_id text, token text, platform text)` —
+- [x] 1.5 `public.register_push_device(installation_id text, token text, platform text)` —
   `security definer`, `search_path` pinned, schema-qualified names, **no user id parameter**,
   subject `auth.uid()`. Body: restate the participation gate (`private.may_participate()`, raising
   with `errcode = 'check_violation'`), upsert on `installation_id` — replacing `user_id`, `token`
   and `platform` — then trim the caller's rows to the ten most recent by `last_seen_at`. Revoked
   from `public` and `anon`, granted to `authenticated`.
-- [ ] 1.6 `public.release_push_device(installation_id text)` — `security definer`, deletes the
+- [x] 1.6 `public.release_push_device(installation_id text)` — `security definer`, deletes the
   caller's row for that installation. **Not** participation-gated; the header says why (refusing a
   release is refusing to stop sending someone push). Revoked from `public` and `anon`, granted to
   `authenticated`.
-- [ ] 1.7 **Do NOT add an `enforce_participation_gate` trigger to this table**, and add a comment
+- [x] 1.7 **Do NOT add an `enforce_participation_gate` trigger to this table**, and add a comment
   saying so with D13's reason: every existing one carries `when (current_user = 'authenticated')`,
   `current_user` inside a `security definer` function is the owner, so it would never fire while
   still raising the trigger count and making coverage read complete.
-- [ ] 1.8 Table and column comments, in the house style: what the table is, that nobody may read
+- [x] 1.8 Table and column comments, in the house style: what the table is, that nobody may read
   it including its owner, the four ways a row dies, and the 60-day window in the words the spec
   uses.
-- [ ] 1.9 **Assertions in `supabase/tests/rls_test.sql`** — paired with 1.1–1.7 per
+- [x] 1.9 **Assertions in `supabase/tests/rls_test.sql`** — paired with 1.1–1.7 per
   `openspec/config.yaml`. Minimum set, each naming a role rather than attempting a statement where
   the suite's owner-context would make the attempt meaningless:
-  - [ ] 1.9a `has_table_privilege` false for `authenticated` and `anon`, on each of SELECT,
+  - [x] 1.9a `has_table_privilege` false for `authenticated` and `anon`, on each of SELECT,
     INSERT, UPDATE, DELETE.
-  - [ ] 1.9b `has_function_privilege('anon', …)` false and `('authenticated', …)` true, for both
+  - [x] 1.9b `has_function_privilege('anon', …)` false and `('authenticated', …)` true, for both
     RPCs.
-  - [ ] 1.9c Two riders, one installation: B registering A's installation leaves exactly one row,
+  - [x] 1.9c Two riders, one installation: B registering A's installation leaves exactly one row,
     owned by B.
-  - [ ] 1.9d **Rotation is an UPDATE.** Registering the same installation with a new token leaves
+  - [x] 1.9d **Rotation is an UPDATE.** Registering the same installation with a new token leaves
     exactly one row carrying the new token, and no row carrying the old one. **This is the
     assertion that would have caught the first version of D3** — the shared-phone test passes
     under `unique (token)` too, and only this one fails.
-  - [ ] 1.9d2 **The rotation-then-sign-out leak, end to end.** A registers I with T1, rotates to
+  - [x] 1.9d2 **The rotation-then-sign-out leak, end to end.** A registers I with T1, rotates to
     T2, releases I; assert **zero** rows for A. Under a token-keyed table the T1 row survives, so
     this is the regression test for the whole decision.
-  - [ ] 1.9e One rider, three installations: three rows survive, and releasing one leaves two.
-  - [ ] 1.9e2 The cap: an eleventh registration leaves ten rows, and the one dropped is the oldest
+  - [x] 1.9e One rider, three installations: three rows survive, and releasing one leaves two.
+  - [x] 1.9e2 The cap: an eleventh registration leaves ten rows, and the one dropped is the oldest
     by `last_seen_at`.
-  - [ ] 1.9f The gate: a rider with `terms_accepted_at` NULL gets `23514` and no row.
-  - [ ] 1.9g `release_push_device` succeeds for a rider the gate would refuse.
-  - [ ] 1.9h Cascade: deleting the `auth.users` row removes every device row, asserted beside the
+  - [x] 1.9f The gate: a rider with `terms_accepted_at` NULL gets `23514` and no row.
+  - [x] 1.9g `release_push_device` succeeds for a rider the gate would refuse.
+  - [x] 1.9h Cascade: deleting the `auth.users` row removes every device row, asserted beside the
     existing cascade assertions rather than in a new section.
-  - [ ] 1.9i **No `enforce_participation_gate` trigger exists on this table** — asserted, so that
+  - [x] 1.9i **No `enforce_participation_gate` trigger exists on this table** — asserted, so that
     adding one later is a red test rather than a silent no-op.
-- [ ] 1.10 `npm test` green. Compare **label sets** against the previous run, not counts — a count
+- [x] 1.10 `npm test` green. Compare **label sets** against the previous run, not counts — a count
   cannot tell a rename from a loss, which is what `038` did to one of `036`'s assertions.
 - [ ] 1.11 Apply `078` to DEV, then check `get_advisors(security)`. **Expect exactly one new
   advisor**: `rls_enabled_no_policy` (INFO) on `push_devices`. Anything else is unexpected by
   definition. Add the new row to `CLAUDE.md`'s advisor table — **main thread only**, agents do not
   write that file.
+  - [x] applied to DEV (`fpmrimzxadewsaiwpsel`) and swept. ** THE EXPECTATION ABOVE IS WRONG AND
+    THIS IS THE CORRECTION: THREE advisors are new, not one. ** The INFO landed as written, and so
+    did two `authenticated_security_definer_function_executable` WARNs, one per new RPC — that
+    advisor fires once per `security definer` function `authenticated` may execute, and 1.5/1.6
+    specify exactly two of them. It was foreseeable from `CLAUDE.md`'s own table, where all eight
+    existing WARNs are that same shape. Read literally, "anything else is unexpected by
+    definition" would have had a reviewer treat two by-design entries as regressions.
+  - [x] the three `CLAUDE.md` rows — main thread's, not an agent's. Written by the main thread
+    on 2026-08-25 after the build agent reported them. The advisor row also gained the RULE
+    rather than only the count — this advisor fires once per `security definer` function
+    `authenticated` may execute — so the next migration adding two functions does not read
+    its own sweep as a regression, which is the defect this box's parent shipped.
 - [ ] 1.12 PR, `reviewer` before merge, merge to `development`, Linear to `Deployed to DEV`.
   **This PR does not close PD-291** and its body says so in one line.
 

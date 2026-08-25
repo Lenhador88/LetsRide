@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import { notFound, useSearchParams } from 'next/navigation'
-import { Button } from '@/components/ui/Button'
+import { Header } from '@/components/layout/Header'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { CommentForm } from '@/components/postcards/CommentForm'
 import { CommentList } from '@/components/postcards/CommentList'
@@ -17,6 +17,13 @@ import { DETAIL_ID_PARAM } from '@/lib/routes'
 import { postcardIdSchema } from '@/lib/validation/postcards'
 
 /**
+ * What the header says. A literal rather than the author's username or the
+ * comment count — see the screen's docstring for which of the three was chosen
+ * and why, and change it here if that answer changes.
+ */
+const THREAD_TITLE = 'Post'
+
+/**
  * One postcard and its thread — the screen `addComment` has been invalidating
  * since 011 shipped, before any route answered to the path.
  *
@@ -26,9 +33,32 @@ import { postcardIdSchema } from '@/lib/validation/postcards'
  * read" and "no such postcard" must look identical from outside, or the
  * response becomes an existence oracle for club-scoped photos.
  *
- * Composition is inferred — the design's thread screen is one of the 29 Home
- * frames the Figma rate limit has kept shut. See docs/FIGMA-FIDELITY-TODO.md
- * §Comments.
+ * ## The frame is in the committed snapshot after all
+ *
+ * This screen was built on 2026-08-04 while `/v1/files/*` was 429, and the note
+ * that stood here said its composition was inferred from a thread frame nobody
+ * could open. `Home - Postcards - Postcard details` (`1883:22772`, flow
+ * `Home / View postcard details`) reads offline today —
+ * `npm run figma -- tree "Home - Postcards - Postcard details"`.
+ *
+ * Two things below are **measured** from it (PD-290): the 390×96
+ * `v2 / Component / Header` with a back chevron at the left and a centred
+ * Poppins/16/Semibold title — which is what this screen was missing and every
+ * other detail screen already had — and the **16px inset** its comment list is
+ * drawn at, which is the column padding here.
+ *
+ * Everything else stays the inferred composition registered in
+ * docs/FIGMA-FIDELITY-TODO.md §Comments and is **not** what the frame draws: it
+ * puts the card at an 8px inset, no heading over the comments, and a fixed 88px
+ * reply bar at the foot of the viewport rather than a composer at the end of the
+ * thread. Those are separate corrections with their own trades; this change is
+ * the chrome and the column.
+ *
+ * **The title is measured, not chosen.** `THREAD_TITLE` is the frame's own title
+ * text. What is worth carrying here is the premise rather than the alternatives:
+ * this screen's frame is NOT one of the 29 the Figma rate limit kept shut,
+ * however often that is repeated nearby. `npm run figma -- tree "Home -
+ * Postcards - Postcard details"` (`1883:22772`) reads offline and says `Post`.
  *
  * ## The three-way answer this screen needs, and why `null` is not `undefined`
  *
@@ -77,46 +107,72 @@ function PostcardThread() {
 
   if (!valid) notFound()
 
+  // Hoisted and rendered in every branch below, the way `/profile/detail` does
+  // it: title and back are both constants here, so the chrome owes nothing to
+  // the three reads and must not disappear while they are in flight or after
+  // they have failed — an error state with no way back is a dead end.
+  const header = <Header title={THREAD_TITLE} backHref="/postcards" />
+
   const gate = combineQueries(postcard, comments, profile)
-  if (gate.error) return <ErrorState onRetry={gate.refetch} />
+  if (gate.error)
+    return (
+      <>
+        {header}
+        <div className="pt-4">
+          <ErrorState onRetry={gate.refetch} />
+        </div>
+      </>
+    )
 
   if (postcard.data === null) notFound()
   if (postcard.data === undefined || comments.data === undefined) {
     return (
-      <div className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-6">
-        <SkeletonDetail />
-      </div>
+      <>
+        {header}
+        <div className="flex flex-col gap-4 px-4 py-4">
+          <SkeletonDetail />
+        </div>
+      </>
     )
   }
 
   return (
-    <div className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-6 motion-safe:animate-fade-in">
-      <Button href="/postcards" variant="link">
-        Back to postcards
-      </Button>
+    <>
+      {header}
 
-      <PostcardCard postcard={postcard.data} linkToThread={false} />
+      {/* `px-4` and no `max-w`, replacing the `mx-auto max-w-lg px-4 py-6`
+          column this screen was the only one to use. 16px is the inset the
+          design draws its comment list at, and it is what `/profile` and
+          `/profile/detail` already give this exact card — both render
+          `PostcardCard` full-width in flow, so an uncapped column here is a
+          shape that ships rather than one being tried out. The rest of the app
+          has no width cap at all (`RideMap` says so in its own header), and
+          capping only this screen is what made a tap from a profile grid into
+          the thread change the card's width. */}
+      <div className="flex flex-col gap-4 px-4 py-4 motion-safe:animate-fade-in">
+        <PostcardCard postcard={postcard.data} linkToThread={false} />
 
-      <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-base font-semibold text-foreground">
-          {comments.data.length === 0
-            ? 'Comments'
-            : `${comments.data.length} ${comments.data.length === 1 ? 'comment' : 'comments'}`}
-        </h2>
+        <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4">
+          <h2 className="text-base font-semibold text-foreground">
+            {comments.data.length === 0
+              ? 'Comments'
+              : `${comments.data.length} ${comments.data.length === 1 ? 'comment' : 'comments'}`}
+          </h2>
 
-        {/* `profile` is in the error gate but not in the loading one. It only
-            decides which comments show a delete control, so holding the whole
-            thread behind the least important of the three reads would be the
-            wrong trade — a momentarily absent control is smaller than a
-            momentarily absent thread. */}
-        <CommentList
-          comments={comments.data}
-          viewerId={profile.data?.id}
-          postcardAuthorId={postcard.data.author_id}
-        />
+          {/* `profile` is in the error gate but not in the loading one. It only
+              decides which comments show a delete control, so holding the whole
+              thread behind the least important of the three reads would be the
+              wrong trade — a momentarily absent control is smaller than a
+              momentarily absent thread. */}
+          <CommentList
+            comments={comments.data}
+            viewerId={profile.data?.id}
+            postcardAuthorId={postcard.data.author_id}
+          />
 
-        <CommentForm postcardId={postcard.data.id} />
-      </section>
-    </div>
+          <CommentForm postcardId={postcard.data.id} />
+        </section>
+      </div>
+    </>
   )
 }
