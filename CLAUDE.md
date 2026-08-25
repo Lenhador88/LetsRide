@@ -580,8 +580,8 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 79 files; DEV is at `079` and PROD at `077` — measured 2026-08-25, so DEV is TWO
-AHEAD and BOTH `078` (PD-301) and `079` (PD-270) are owed to PROD, in that order.** `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
+**Applied state: 79 files; DEV is at `079` and PROD at `079` — measured 2026-08-25, at the #310
+promotion, so the two are LEVEL and nothing is owed.** `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
 after it was confirmed serving (destructive), which is the whole ordering rule in one sitting.
 **Level is the exception, not the resting state**: DEV-ahead is where a migration lives between its
 merge and its promotion, and the two were last level on 2026-08-20 at PD-273's promotion and

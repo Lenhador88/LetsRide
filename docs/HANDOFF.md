@@ -967,17 +967,27 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — the repo holds 79, DEV is at `079` and PROD at `077`
+## Migrations — the repo holds 79 and BOTH projects are at `079`
 
-**`list_migrations` prints 81 on DEV and 77 on PROD against 79 files, and only ONE of those two
-differences is a gap.** DEV's **two surplus rows** are `063`, applied there in three increments —
+**`list_migrations` prints 81 on DEV and 79 on PROD against 79 files, and NEITHER difference is a
+gap.** DEV's **two surplus rows** are `063`, applied there in three increments —
 `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private` — while PROD holds
 it as the one consolidated file. **DEV keeps all three even though `077` has dropped everything
 they built**; a recorded row is a statement that a file ran, never a claim that its objects
-survive. **The real gap is `078` and `079`**, both applied to DEV on 2026-08-25 and owed to PROD
-in that order — `078` (PD-301, `push_devices`) and `079` (PD-270, `count_unseen_postcards`). Both
-are additive, so both go to PROD *before* the promotion build serves.
-Repo 79 files, PROD 77 rows, DEV 81 rows, one chain, two files owed.
+survive. Repo 79 files, PROD 79 rows, DEV 81 rows, one chain, **no promotion owed**.
+
+**`078` and `079` both went to PROD on 2026-08-25 BEFORE the #310 promotion build served**, which
+is the additive half of the `069`/`070` rule applied twice in one sitting. `079` in particular had
+to: the client calls its RPC, so code deployed ahead of the function answers `PGRST202`, which
+`countUnseenPostcards` swallows to `0` — a tile reading zero with nothing red anywhere.
+
+**Verified by OBJECT rather than by the recorded statement**, per §Supabase Rules, and the check
+earned its place: `078` is 28.5 KB and was applied as a reduction, which trimmed two comments
+*inside* a `$$` body. The diff caught it — `register_push_device` was 1625 characters against DEV's
+2013, behaviour identical and text not — and it was re-applied verbatim. All five hashes now match
+DEV (`pg_get_functiondef`, `pg_get_constraintdef`, `pg_indexes`, `information_schema.columns`, the
+table comment), `079`'s `md5(prosrc)` is `880bf43d014570a72b734e232ac4a6cc` on both, and
+`get_advisors(security)` on PROD returns exactly 13.
 
 **`079`'s recorded statement on DEV is a 79-character stub and that is not drift** — it was applied
 with `execute_sql` by an agent whose toolset carries no `apply_migration`, so the row was written by
@@ -1615,7 +1625,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/ | wc -l          # 79 — DEV is at 079, PROD at 077
+ls supabase/migrations/ | wc -l          # 79 — both projects at 079
 ```
 
 **`055` is PD-129's and is now on both projects.** It replaces one function body —
