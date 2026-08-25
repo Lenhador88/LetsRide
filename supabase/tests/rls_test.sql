@@ -16382,6 +16382,230 @@ select set_config('test.uid', '', false);
 rollback to savepoint push_devices_078;
 
 reset role;
+
+\echo ''
+\echo '# The "All new" tile no longer counts a rider''s own postcard (079)'
+
+-- ===========================================================================
+-- 079. `count_unseen_postcards()` mirrors 068's `author_id <> auth.uid()` arm
+--      for the app-wide "All new" tile.
+-- ===========================================================================
+--
+-- **Every assertion here is a DELTA, never an absolute count.** `068`'s
+-- fixtures could use exact numbers because `club_unread_counts()` is scoped to
+-- one fixture club; `count_unseen_postcards()` is deliberately NOT
+-- club-scoped — it is the app-wide tile — so it also sees `seed.sql`'s
+-- globally-visible postcards (`...e1`, `...e3`, `...e4`) and anything any
+-- earlier section in this file left uncommitted-but-unrolled-back. An
+-- absolute expected value is a guess about that baseline; a delta captured
+-- immediately before each change is not, because it is measured, not assumed,
+-- against whatever is actually there the instant before the fixture postcard
+-- lands.
+--
+-- The riders, and what each one is for:
+--   79001  the reader. Authors the postcard that must NOT move their own
+--          count, and holds the watermark the last section is compared
+--          against
+--   79002  the other rider. Authors the postcard that MUST move 79001's
+--          count — the one that stops the exclusion assertion passing merely
+--          because nothing is unread — both app-wide and inside a club they
+--          share, and is also the "another rider" whose own count the same
+--          arm must exclude
+--   79003  owns a private club 79001 is NOT a member of, and authors a
+--          postcard there — the negative case: not merely unauthored-by-you,
+--          UNREADABLE, so the count must not move at all
+savepoint postcard_unread_079;
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000079001', 'unreadreader@example.com'),
+  ('00000000-0000-0000-0000-000000079002', 'unreadauthor@example.com'),
+  ('00000000-0000-0000-0000-000000079003', 'unreadstranger@example.com');
+reset role;
+
+update profiles set username = 'unreadreader', location = 'Haarlem',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000079001';
+update profiles set username = 'unreadauthor', location = 'Delft',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000079002';
+update profiles set username = 'unreadstranger', location = 'Leiden',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000079003';
+
+-- 790c1 — a club both the reader and the other rider belong to, so a
+-- club-scoped postcard is part of "All new" too, not only club_id-null ones.
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000000790c1', 'Unread Shared MC', false,
+   '00000000-0000-0000-0000-000000079001');
+insert into club_members (club_id, user_id, role, joined_at) values
+  ('00000000-0000-0000-0000-0000000790c1', '00000000-0000-0000-0000-000000079001',
+   'owner', now() - interval '2 days'),
+  ('00000000-0000-0000-0000-0000000790c1', '00000000-0000-0000-0000-000000079002',
+   'member', now() - interval '2 days');
+
+-- 790c2 — a private club the reader is NOT a member of. What it hides matters
+-- more here than what it holds.
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000000790c2', 'Unread Stranger MC', false,
+   '00000000-0000-0000-0000-000000079003');
+insert into club_members (club_id, user_id, role, joined_at) values
+  ('00000000-0000-0000-0000-0000000790c2', '00000000-0000-0000-0000-000000079003',
+   'owner', now() - interval '2 days');
+
+set role authenticated;
+select assert_eq(current_user::text, 'authenticated',
+  'the 079 assertions run as authenticated, or they prove nothing');
+
+-- ---------------------------------------------------------------------------
+-- 079.1  Your own postcard moves nobody's count but the badge still climbs
+--        for a readable one — app-wide, and inside a shared club
+-- ---------------------------------------------------------------------------
+-- No watermark yet, so every comparison below is against '-infinity' — the
+-- exclusion and the visibility policy are the only things doing any work.
+select set_config('test.uid', '00000000-0000-0000-0000-000000079001', false);
+create temp table pc079_base_a as select public.count_unseen_postcards() as n;
+
+reset role;
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-0000000790e1', '00000000-0000-0000-0000-000000079001',
+   null, 'postcards/00000000-0000-0000-0000-000000079001/790e1000-0000-4000-8000-0000000790e1.jpg',
+   'My own postcard');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000079001', false);
+select assert_eq(
+  public.count_unseen_postcards() - (select n from pc079_base_a),
+  0, '079: posting the reader''s own postcard moves the reader''s own "All new" count by exactly zero');
+
+reset role;
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-0000000790e2', '00000000-0000-0000-0000-000000079002',
+   null, 'postcards/00000000-0000-0000-0000-000000079002/790e2000-0000-4000-8000-0000000790e2.jpg',
+   'Somebody else''s postcard, app-wide');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000079001', false);
+select assert_eq(
+  public.count_unseen_postcards() - (select n from pc079_base_a),
+  1, '079: ... but another rider''s postcard moves it by exactly one');
+
+reset role;
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-0000000790e3', '00000000-0000-0000-0000-000000079002',
+   '00000000-0000-0000-0000-0000000790c1',
+   'postcards/00000000-0000-0000-0000-000000079002/790e3000-0000-4000-8000-0000000790e3.jpg',
+   'Somebody else''s postcard, in our shared club');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000079001', false);
+select assert_eq(
+  public.count_unseen_postcards() - (select n from pc079_base_a),
+  2, '079: ... and one posted inside a club they share moves it by one more — "All new" is not only club_id-null postcards');
+
+-- ---------------------------------------------------------------------------
+-- 079.2  A postcard the caller may not read moves nobody's count
+-- ---------------------------------------------------------------------------
+-- 79003's postcard sits in 790c2, which 79001 is not a member of. Unlike the
+-- other two positive cases above, this one must move the delta by zero — and
+-- the direct SELECT below proves that is RLS hiding the row, not the author
+-- exclusion, which has nothing to do with 79003.
+reset role;
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-0000000790e4', '00000000-0000-0000-0000-000000079003',
+   '00000000-0000-0000-0000-0000000790c2',
+   'postcards/00000000-0000-0000-0000-000000079003/790e4000-0000-4000-8000-0000000790e4.jpg',
+   'A postcard the reader cannot even read');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000079001', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000000790e4'),
+  0, '079: the reader''s own SELECT of the unreadable postcard by id returns nothing');
+select assert_eq(
+  public.count_unseen_postcards() - (select n from pc079_base_a),
+  2, '079: ... and posting it moved the reader''s "All new" count by exactly zero — still the two from 079.1, nothing more');
+
+-- ---------------------------------------------------------------------------
+-- 079.3  The exclusion is not vacuous: the same postcard DOES move the other
+--        rider's count, and their own postcards move it by zero
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000079002', false);
+create temp table pc079_base_b as select public.count_unseen_postcards() as n;
+
+reset role;
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-0000000790e5', '00000000-0000-0000-0000-000000079001',
+   null, 'postcards/00000000-0000-0000-0000-000000079001/790e5000-0000-4000-8000-0000000790e5.jpg',
+   'The reader posts again');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000079002', false);
+select assert_eq(
+  public.count_unseen_postcards() - (select n from pc079_base_b),
+  1, '079: the reader''s postcard DOES move the other rider''s count, so the exclusion in 079.1 is not vacuous');
+
+reset role;
+insert into postcards (id, author_id, club_id, image_path, caption) values
+  ('00000000-0000-0000-0000-0000000790e6', '00000000-0000-0000-0000-000000079002',
+   null, 'postcards/00000000-0000-0000-0000-000000079002/790e6000-0000-4000-8000-0000000790e6.jpg',
+   'The other rider posts again, to themselves');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000079002', false);
+select assert_eq(
+  public.count_unseen_postcards() - (select n from pc079_base_b),
+  1, '079: ... while posting to THEMSELVES moves it by zero more — the same exclusion arm, from the other side');
+
+-- ---------------------------------------------------------------------------
+-- 079.4  The watermark still cuts — this is a comparison, not just a filter
+-- ---------------------------------------------------------------------------
+-- Writing the watermark now, with no explicit value, lands `last_seen_at` at
+-- this transaction's `now()` (068's trigger) — after every postcard inserted
+-- above with no explicit `created_at`, all of which default to that same
+-- `now()`... except this comparison is strict (`>`), so a postcard stamped at
+-- exactly the watermark's instant does not count either. A fresh baseline
+-- taken right after the watermark exists absorbs that for free; what this
+-- section isolates is a postcard EXPLICITLY placed on each side of it.
+select set_config('test.uid', '00000000-0000-0000-0000-000000079001', false);
+insert into feed_reads (user_id, club_id) values
+  ('00000000-0000-0000-0000-000000079001', null);
+create temp table pc079_base_c as select public.count_unseen_postcards() as n;
+
+reset role;
+insert into postcards (id, author_id, club_id, image_path, caption, created_at) values
+  ('00000000-0000-0000-0000-0000000790e7', '00000000-0000-0000-0000-000000079002',
+   null, 'postcards/00000000-0000-0000-0000-000000079002/790e7000-0000-4000-8000-0000000790e7.jpg',
+   'Just before the watermark', now() - interval '1 minute');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000079001', false);
+select assert_eq(
+  public.count_unseen_postcards() - (select n from pc079_base_c),
+  0, '079: a readable, not-own postcard dated BEFORE the watermark moves the count by zero');
+
+reset role;
+insert into postcards (id, author_id, club_id, image_path, caption, created_at) values
+  ('00000000-0000-0000-0000-0000000790e8', '00000000-0000-0000-0000-000000079002',
+   null, 'postcards/00000000-0000-0000-0000-000000079002/790e8000-0000-4000-8000-0000000790e8.jpg',
+   'Just after the watermark', now() + interval '1 minute');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000079001', false);
+select assert_eq(
+  public.count_unseen_postcards() - (select n from pc079_base_c),
+  1, '079: ... and the SAME rider''s postcard dated one minute later moves it by exactly one — the timestamp comparison, not only the author exclusion, is doing real work');
+
+-- ---------------------------------------------------------------------------
+-- 079.5  Shape: security invoker, and the grants 068''s siblings carry
+-- ---------------------------------------------------------------------------
+select assert_eq((select prosecdef from pg_proc where proname = 'count_unseen_postcards'),
+  false, '079: count_unseen_postcards is SECURITY INVOKER, so RLS decides what it counts — a definer count would need the read policy''s branches re-implemented inside it');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.count_unseen_postcards()', 'execute'),
+  true, '079: authenticated can call it ...');
+select assert_eq(
+  has_function_privilege('anon', 'public.count_unseen_postcards()', 'execute'),
+  false, '079: ... and anon cannot — decision #1');
+
+rollback to savepoint postcard_unread_079;
+
+reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 
 rollback;
