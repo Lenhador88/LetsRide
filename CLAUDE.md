@@ -149,12 +149,11 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **eleven** tables on DEV and
-   **ten** on PROD — `postcards`,
+   gets inherited as covered.** `enforce_participation_gate` is on **eleven** tables on BOTH
+   projects — measured 2026-08-25; it was ten on PROD until `069` promoted on 2026-08-19 — `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
    `postcard_reports`, `ride_messages`, `ride_map_render_attempts`, plus `place_search_attempts`,
-   which `069` added and which is DEV-only until PD-273 promotes, exactly as `051`'s was until
-   PD-201 levelled the projects — and **not** on `profiles` UPDATE, `profile_countries`,
+   which `069` added — and **not** on `profiles` UPDATE, `profile_countries`,
    `blocks`, `postcard_hides`, `feed_reads` or any `storage.objects` policy, which check the path
    prefix only. So an account created by calling GoTrue's `/auth/v1/signup` directly, never
    calling `accept_terms()`, **can still set a username, write a bio and upload an avatar with
@@ -577,18 +576,16 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 77 files; DEV is at `077` and PROD at `075` — measured 2026-08-24, after
-`076` (PD-297) and `077` (PD-293) went to DEV and `071`–`075` had gone to PROD in one sitting
-earlier the same day.**
-DEV-ahead is the resting state: it is where a migration lives between its merge and its promotion,
-and the two were last level for a few hours on 2026-08-20 at PD-273's promotion and again briefly
-on 2026-08-24. **`074` and `075` went to PROD ahead of the build that reads them**, which is the
-additive-first order — the code for both
-is merged to `development` and not promoted, so PROD's schema is deliberately ahead of PROD's app. **Do not read the
-count of unpromoted files off this sentence** — it named exactly one while two were waiting, which
-is the same defect as a stale number in a smaller place, and the promotion is the one job that
-reads it. Run `list_migrations` against `ls supabase/migrations/` and promote everything the gap
-contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md` §Migrations.
+**Applied state: 77 files; DEV is at `077` and PROD at `077` — measured 2026-08-25, at the #304
+promotion, so the two are LEVEL.** `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
+after it was confirmed serving (destructive), which is the whole ordering rule in one sitting.
+**Level is the exception, not the resting state**: DEV-ahead is where a migration lives between its
+merge and its promotion, and the two were last level on 2026-08-20 at PD-273's promotion and
+briefly on 2026-08-24. **Do not read the count of unpromoted files off this sentence** — it named
+exactly one while two were waiting, which is the same defect as a stale number in a smaller place,
+and the promotion is the one job that reads it. Run `list_migrations` against
+`ls supabase/migrations/` and promote everything the gap contains, in filename order, per step 5 of
+`docs/ENVIRONMENTS.md` §Migrations.
 
 **`069` and `070` went opposite ways round the same event, and that is the reusable part.** `069`
 is additive and applied to PROD **before** the promotion build served; `070` is destructive and
