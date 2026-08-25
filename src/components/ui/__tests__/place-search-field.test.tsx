@@ -5,14 +5,18 @@ import {
   PlaceSearchField,
   boundName,
   placeLabel,
+  resolveComboboxKey,
+  wrapIndex,
 } from '@/components/ui/PlaceSearchField'
 import type { PlaceSearchResult } from '@/types'
 
 /**
  * What a picked place is STORED as (PD-259). Only the pure half is covered —
- * the sheet itself needs a layout and an event loop, and this repo's Vitest
+ * the list needs a layout and an event loop, and this repo's Vitest
  * environment is `node` (see `CLAUDE.md`'s test table: jsdom is the answer only
- * when something needs a layout, and one label function does not).
+ * when something needs a layout, and one label function does not). PD-274's
+ * answer to that is `resolveComboboxKey`: the two keyboard rules that would
+ * otherwise have no gate are a pure decision, tested below.
  */
 const place = (over: Partial<PlaceSearchResult> = {}): PlaceSearchResult => ({
   id: 'gers-1',
@@ -20,6 +24,7 @@ const place = (over: Partial<PlaceSearchResult> = {}): PlaceSearchResult => ({
   meta: 'Petroleumweg, Vondelingenplaat',
   lat: 51.88,
   lon: 4.36,
+  countryCode: null,
   ...over,
 })
 
@@ -88,10 +93,10 @@ describe('boundName', () => {
  *
  * Rendered through `renderToStaticMarkup` rather than jsdom, the same way
  * `PostcardAction` is: this asserts what markup the field produces, and needs
- * no layout and no event loop. The sheet is deliberately out of reach — it
- * renders through a portal and only when opened — so what is covered here is
- * the field at rest, plus the credit, which is its own component for exactly
- * that reason.
+ * no layout and no event loop. The list is deliberately out of reach — it
+ * renders only once the field has focus — so what is covered here is the field
+ * at rest, plus the credit, which is its own component for exactly that
+ * reason.
  */
 describe('PlaceSearchField form shape', () => {
   const names = {
@@ -108,11 +113,10 @@ describe('PlaceSearchField form shape', () => {
   }
   const noop = () => {}
 
-  it('place mode writes FOUR hidden inputs — clubs are untouched by PD-114', () => {
+  it('place mode writes FOUR hidden inputs, and its visible input is nameless', () => {
     const html = renderToStaticMarkup(
       <PlaceSearchField
         label="Location"
-        sheetTitle="Set club location"
         value={null}
         onChange={noop}
         names={clubNames}
@@ -120,15 +124,35 @@ describe('PlaceSearchField form shape', () => {
     )
     expect(html.match(/type="hidden"/g)).toHaveLength(4)
     expect(html).toContain('name="location_name"')
-    // No editable input, and therefore nothing for a rider to type into.
-    expect(html).not.toContain('type="text"')
+    // PD-274 made this a search box the rider types in, which is exactly why
+    // it carries no `name`: `location_name` stays the HIDDEN input, so typed
+    // text that was never picked cannot be submitted as a stored location.
+    // The whole club-mode safety case is this one attribute.
+    expect(html).toContain('type="text"')
+    expect(html.match(/name="location_name"/g)).toHaveLength(1)
+    expect(html).not.toContain('type="text" name=')
+  })
+
+  it('writes NO form fields at all when the caller passes no names', () => {
+    // The postcard composer's case: the pick is an input to a decision made by
+    // the buttons under this field, not a value to submit. A hidden input
+    // carrying the town would travel under `Hide`, whose whole promise is that
+    // nothing does.
+    const html = renderToStaticMarkup(
+      <PlaceSearchField
+        label="Location"
+        value={{ name: 'Amsterdam', placeId: 'geoapify:x', lat: 52.37, lon: 4.9 }}
+        onChange={noop}
+      />
+    )
+    expect(html).not.toContain('type="hidden"')
+    expect(html).not.toContain('name=')
   })
 
   it('free-text mode makes the NAME field editable and keeps the other three hidden', () => {
     const html = renderToStaticMarkup(
       <PlaceSearchField
         label="Starting location"
-        sheetTitle="Set start location"
         value={null}
         onChange={noop}
         names={names}
@@ -148,7 +172,6 @@ describe('PlaceSearchField form shape', () => {
     const html = renderToStaticMarkup(
       <PlaceSearchField
         label="Starting location"
-        sheetTitle="Set start location"
         value={{ name: 'Shell Pernis Werk', placeId: 'gers-1', lat: 51.88, lon: 4.36 }}
         onChange={noop}
         names={names}
@@ -167,7 +190,6 @@ describe('PlaceSearchField form shape', () => {
     const html = renderToStaticMarkup(
       <PlaceSearchField
         label="Starting location"
-        sheetTitle="Set start location"
         value={null}
         onChange={noop}
         names={names}
@@ -191,5 +213,80 @@ describe('PlaceDataCredit', () => {
     expect(html).toContain('Geoapify')
     expect(html).toContain('OpenStreetMap')
     expect(html).not.toContain('Overture')
+  })
+})
+
+/**
+ * The two keyboard rules a rider notices only when they are wrong — PD-274.
+ *
+ * Pure, and tested here rather than through jsdom, for the reason
+ * `src/lib/auth/guard.ts` is: the decision is the part worth asserting, and an
+ * event-capable environment would be a devDependency bought for two rules that
+ * do not need one.
+ */
+describe('resolveComboboxKey', () => {
+  const open = { open: true, optionCount: 3, activeIndex: -1 }
+
+  it('selects on Enter when an option is active, so the form is NOT submitted', () => {
+    // The defect this prevents: a rider picks a suggestion on CreateRideForm,
+    // the form submits half-filled, the submit is refused, and they blame the
+    // field. The caller only calls preventDefault for a non-`none` action.
+    expect(resolveComboboxKey('Enter', { ...open, activeIndex: 1 })).toEqual({ type: 'select' })
+  })
+
+  it('leaves Enter alone when nothing is active, so the form submits as it always did', () => {
+    expect(resolveComboboxKey('Enter', open)).toEqual({ type: 'none' })
+    expect(resolveComboboxKey('Enter', { ...open, open: false, activeIndex: 1 })).toEqual({
+      type: 'none',
+    })
+    // An active index left over from a longer list must not select a row that
+    // is no longer there.
+    expect(resolveComboboxKey('Enter', { ...open, optionCount: 1, activeIndex: 2 })).toEqual({
+      type: 'none',
+    })
+  })
+
+  it('closes on Escape and does nothing else — never clears, never submits', () => {
+    expect(resolveComboboxKey('Escape', open)).toEqual({ type: 'close' })
+  })
+
+  it('leaves Escape alone when the list is already closed', () => {
+    // So it can reach whatever a rider expects Escape to do on the form.
+    expect(resolveComboboxKey('Escape', { ...open, open: false })).toEqual({ type: 'none' })
+  })
+
+  it('opens a closed list on an arrow key rather than moving an invisible cursor', () => {
+    expect(resolveComboboxKey('ArrowDown', { ...open, open: false })).toEqual({ type: 'open' })
+  })
+
+  it('moves in both directions while the list is open', () => {
+    expect(resolveComboboxKey('ArrowDown', open)).toEqual({ type: 'move', delta: 1 })
+    expect(resolveComboboxKey('ArrowUp', open)).toEqual({ type: 'move', delta: -1 })
+  })
+
+  it('does nothing with arrows when there is nothing to move through', () => {
+    expect(resolveComboboxKey('ArrowDown', { ...open, optionCount: 0 })).toEqual({ type: 'none' })
+  })
+
+  it('ignores every other key, including the ones that type', () => {
+    for (const key of ['a', ' ', 'Tab', 'Home', 'End', 'Backspace']) {
+      expect(resolveComboboxKey(key, open)).toEqual({ type: 'none' })
+    }
+  })
+})
+
+describe('wrapIndex', () => {
+  it('starts at the first row going down and the last going up', () => {
+    expect(wrapIndex(-1, 1, 3)).toBe(0)
+    expect(wrapIndex(-1, -1, 3)).toBe(2)
+  })
+
+  it('wraps at both ends', () => {
+    expect(wrapIndex(2, 1, 3)).toBe(0)
+    expect(wrapIndex(0, -1, 3)).toBe(2)
+  })
+
+  it('has nothing to point at in an empty list', () => {
+    expect(wrapIndex(0, 1, 0)).toBe(-1)
   })
 })

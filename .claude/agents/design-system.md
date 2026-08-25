@@ -111,7 +111,16 @@ stale one here fails silently in the exact way this check exists to prevent.
 `text-like` instead. The reason is legibility, not tooling: a solid hand silhouette loses the
 folded fingers and thumb the glyph depends on at 24px, and the bolder copy that was tried instead
 was indistinguishable from the outline. The product owner chose colour-only on that basis. A
-filled variant was authored and deleted — do not helpfully add one back.
+filled variant was authored and deleted **twice** — most recently PD-266 on 2026-08-20, reverted by
+PD-287 four days later — so do not helpfully add one back on your own initiative.
+
+**An owner request for one is a different thing and you build it.** `CLAUDE.md`'s standing rule on
+disagreement is one hold per issue: raise the legibility cost once, and if it is reaffirmed, build
+the full request as asked.
+What PD-266 actually got wrong was not the decision, it was the diff: the code changed and the two
+documents asserting the opposite — this paragraph and `docs/HANDOFF.md` §The wave icon — were left
+out of it, so both read "no filled twin" for the whole four days one shipped. **If you change the
+wave's fill state, those two are in the same diff.**
 
 **Filled/outline pairs are fine in general** — `Heart Filled`/`Heart Outline` and
 `Location Filled`/`Location Outline` both ship, and `currentColor` rewriting does not collapse
@@ -136,9 +145,12 @@ fill. So the 24×24 single-vector convention is a convention you have to hold yo
 node with three children exports and generates just as happily, and a clean export is **not**
 evidence the node was authored correctly. Two consequences that bite:
 
-- **Duplicates resolve silently, and the last one walked wins** — `new Map(icons.map(…))` keyed
-  on the name. A scratch node left behind under a real icon's name displaces the real component
-  depending on walk order, with nothing printed.
+- **A duplicate no longer resolves silently, and a real component now wins** — `PD-261` replaced
+  the name-keyed `new Map(icons.map(…))` with `resolveIconCollisions`, which ranks a
+  COMPONENT/COMPONENT_SET above an INSTANCE regardless of walk order and makes `figma:extract`
+  print every collision it resolved. **Two same-rank nodes still resolve last-walked-wins with no
+  error** — two real components, or two scratch instances, sharing a name — so the discipline
+  below is unchanged: name it exactly, and delete every scratch node.
 - **A genuinely missing icon is loud, not silent.** `figma:icons` prints `Missing: <names>` and
   the decision-#4 line. Do not read silence as a skip; read it as an export that happened.
 

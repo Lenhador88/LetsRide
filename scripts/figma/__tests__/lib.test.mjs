@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   collectGeometry, collectTokens, dominant, formatDuration, isLegacy, pruneNode, readRateLimit,
-  resolvePaint, slug, toHex, total, walk,
+  resolveIconCollisions, resolvePaint, slug, toHex, total, walk,
 } from '../lib.mjs'
 
 describe('formatDuration', () => {
@@ -301,6 +301,67 @@ describe('walk', () => {
   it('visits every node depth-first', () => {
     const root = { id: '0', children: [{ id: '1', children: [{ id: '2' }] }, { id: '3' }] }
     expect([...walk(root)].map((n) => n.id)).toEqual(['0', '1', '2', '3'])
+  })
+})
+
+describe('resolveIconCollisions', () => {
+  // PD-261: a full pull picked up a `Chevron Down`/`Chevron Right` INSTANCE
+  // dropped into `AI / Clubs one screen / 2026-08-17` and `AI / Ride detail
+  // merged / 2026-08-17`, walked after the real COMPONENT, and the old
+  // `new Map(icons.map(...))` let whichever was walked last win outright.
+
+  it('keeps the COMPONENT even when the colliding INSTANCE is walked after it', () => {
+    const icons = [
+      { id: '1:1', name: 'Chevron Down', type: 'COMPONENT' },
+      { id: '99:9', name: 'Chevron Down', type: 'INSTANCE' }, // walked later, e.g. a scratch frame
+    ]
+    const { resolved, collisions } = resolveIconCollisions(icons)
+
+    expect(resolved).toHaveLength(1)
+    expect(resolved[0]).toMatchObject({ id: '1:1', type: 'COMPONENT' })
+    expect(collisions).toHaveLength(1)
+    expect(collisions[0]).toMatchObject({ name: 'Chevron Down', chosen: { id: '1:1' } })
+  })
+
+  it('keeps the COMPONENT even when the colliding INSTANCE is walked *before* it', () => {
+    // Order must not matter — the fix is a rank, not "first one wins" reversed.
+    const icons = [
+      { id: '99:9', name: 'Chevron Right', type: 'INSTANCE' },
+      { id: '1:2', name: 'Chevron Right', type: 'COMPONENT' },
+    ]
+    const { resolved } = resolveIconCollisions(icons)
+
+    expect(resolved).toEqual([{ id: '1:2', name: 'Chevron Right', type: 'COMPONENT' }])
+  })
+
+  it('prefers a COMPONENT_SET over an INSTANCE too', () => {
+    const icons = [
+      { id: '2:1', name: 'Wave', type: 'INSTANCE' },
+      { id: '2:2', name: 'Wave', type: 'COMPONENT_SET' },
+    ]
+    expect(resolveIconCollisions(icons).resolved).toEqual([
+      { id: '2:2', name: 'Wave', type: 'COMPONENT_SET' },
+    ])
+  })
+
+  it('still lets the last one walked win between two same-rank candidates', () => {
+    // Two real components sharing a name, or two stray instances sharing a
+    // name — the tie-break this repo already had is untouched.
+    const icons = [
+      { id: 'a', name: 'Bike', type: 'COMPONENT' },
+      { id: 'b', name: 'Bike', type: 'COMPONENT' },
+    ]
+    expect(resolveIconCollisions(icons).resolved).toEqual([{ id: 'b', name: 'Bike', type: 'COMPONENT' }])
+  })
+
+  it('reports no collisions when every name is unique', () => {
+    const icons = [
+      { id: '1', name: 'Bike', type: 'COMPONENT' },
+      { id: '2', name: 'Wrench', type: 'COMPONENT' },
+    ]
+    const { resolved, collisions } = resolveIconCollisions(icons)
+    expect(resolved).toHaveLength(2)
+    expect(collisions).toEqual([])
   })
 })
 

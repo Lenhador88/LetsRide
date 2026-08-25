@@ -3,6 +3,7 @@ import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
 import { OWN_PROFILE_COLUMNS, VIEWED_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { profileIdSchema } from '@/lib/validation/profile'
+import { rideDayStartUtc } from '@/lib/utils'
 import type { AccountDeletionImpact, Profile, ViewedProfile } from '@/types'
 
 export async function getCurrentProfile(): Promise<Profile | null> {
@@ -170,12 +171,11 @@ export const ACCOUNT_DELETION_RIDES_LIMIT = 200
  * `count: 'exact', head: true` form this replaced put no rows on the wire at
  * any volume; reading actual rows to dedupe by person needs a bound the old
  * form did not, because — per `RIDE_CREW_LIMIT`'s own comment in
- * `lib/data/rides.ts` — `ride_members` was "unbounded by construction":
- * `max_riders` was enforced by nothing until `063`, and a cap enforced from
- * now on bounds no ride that already exists, every one of which carries
- * `max_riders` NULL. Both other `ride_members` reads in
- * that file are bounded (`RIDE_FILTER_SCAN_LIMIT` and `RIDE_CREW_LIMIT`);
- * this is the one in `lib/data/` that was not, until now. Set well
+ * `lib/data/rides.ts` — `ride_members` is unbounded by construction. `063`
+ * capped a crew at `rides.max_riders` for six days and `077` (PD-293) dropped
+ * both, so nothing in the database bounds one at all. Both other
+ * `ride_members` reads in that file are bounded (`RIDE_FILTER_SCAN_LIMIT` and
+ * `RIDE_CREW_LIMIT`); this is the one in `lib/data/` that was not, until now. Set well
  * above `ACCOUNT_DELETION_RIDES_LIMIT` × a realistic crew size rather than
  * derived from it, because the two bound different things (rides vs. total
  * crew rows) and a product of the two would be a cap nobody chose on
@@ -227,7 +227,12 @@ export async function getAccountDeletionImpact(): Promise<AccountDeletionImpact>
         .from('rides')
         .select('id')
         .eq('organizer_id', user.id)
-        .gte('departure_at', new Date().toISOString())
+        // The same boundary `/rides` cuts its two sections at, not the clock.
+        // Against `now` this count disagreed with the list for the rest of the
+        // day: a ride the app still calls upcoming, and still draws a `Going`
+        // pill on, went missing from the sheet warning the rider what deleting
+        // their account destroys. The cascade takes it either way.
+        .gte('departure_at', rideDayStartUtc())
         .limit(ACCOUNT_DELETION_RIDES_LIMIT),
       'your upcoming rides',
     ) as unknown as { id: string }[],

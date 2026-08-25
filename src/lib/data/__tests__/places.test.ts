@@ -42,6 +42,7 @@ const {
   PlaceSearchUnavailableError,
   searchPlaces,
   getLocalityCentroid,
+  reverseGeocodePlace,
 } = await import('@/lib/data/places')
 
 /** A `FunctionsHttpError` whose `.context` is a real `Response`-shaped object
@@ -346,5 +347,95 @@ describe('getLocalityCentroid', () => {
 
     invoke.mockResolvedValue({ data: { centroid: { lat: NaN, lon: 5.12 } }, error: null })
     await expect(getLocalityCentroid('Nowhereville')).resolves.toBeNull()
+  })
+})
+
+/**
+ * `reverseGeocodePlace` — the town lookup the composer fires when a rider taps
+ * `Town`.
+ *
+ * **The first test here is the one this file exists for.** The rounding on the
+ * outbound coordinate is the branch's central privacy claim, and until it was
+ * written, deleting `roundToCoarseGrid` from that call left every gate in this
+ * repo green: `tsc`, ESLint, all the other unit tests, the RLS suite and
+ * `docs:check`. The composer hands this function the raw EXIF pair, so this is
+ * the sole boundary between a rider's driveway and a third party — and it fires
+ * while the control still reads `Hide`.
+ */
+describe('reverseGeocodePlace', () => {
+  const feature = { id: 'geoapify:x', label: 'Amsterdam', meta: 'Netherlands', lat: 52.37, lon: 4.9 }
+
+  it('sends the ROUNDED coordinate, never the photo fix', async () => {
+    invoke.mockResolvedValue({ data: { results: [feature] }, error: null })
+    await reverseGeocodePlace(52.370216, 4.895168)
+
+    const body = invoke.mock.calls[0][1].body
+    expect(body).toEqual({ mode: 'reverse', lat: 52.37, lon: 4.9 })
+    // Stated twice on purpose: the shape assertion above would still pass if a
+    // future edit rounded to three places, which is ~110m and still a street.
+    expect(body.lat).not.toBe(52.370216)
+    expect(body.lon).not.toBe(4.895168)
+  })
+
+  it('carries no term, and nothing that could identify the rider', async () => {
+    invoke.mockResolvedValue({ data: { results: [feature] }, error: null })
+    await reverseGeocodePlace(52.370216, 4.895168)
+    const body = invoke.mock.calls[0][1].body as Record<string, unknown>
+    expect(Object.keys(body).sort()).toEqual(['lat', 'lon', 'mode'])
+  })
+
+  it('never calls the vendor for a coordinate that is not finite', async () => {
+    await expect(reverseGeocodePlace(NaN, 4.9)).resolves.toBeNull()
+    await expect(reverseGeocodePlace(52.37, Infinity)).resolves.toBeNull()
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('returns the place when the proxy answers with one', async () => {
+    invoke.mockResolvedValue({ data: { results: [feature] }, error: null })
+    await expect(reverseGeocodePlace(52.370216, 4.895168)).resolves.toEqual(feature)
+  })
+
+  it('degrades to null on an empty answer, a malformed one, and an outage alike', async () => {
+    // Unlike `searchPlaces`, which throws four distinguishable errors: this
+    // fills a field the rider can fill themselves, so every failure has the
+    // same answer and none of them is an error they have to read.
+    invoke.mockResolvedValue({ data: { results: [] }, error: null })
+    await expect(reverseGeocodePlace(52.37, 4.9)).resolves.toBeNull()
+
+    invoke.mockResolvedValue({ data: { results: [{ ...feature, lat: NaN }] }, error: null })
+    await expect(reverseGeocodePlace(52.37, 4.9)).resolves.toBeNull()
+
+    invoke.mockResolvedValue({ data: { results: [{ ...feature, label: '  ' }] }, error: null })
+    await expect(reverseGeocodePlace(52.37, 4.9)).resolves.toBeNull()
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      invoke.mockResolvedValue({ data: null, error: httpError(429, { error: 'ceiling' }) })
+      await expect(reverseGeocodePlace(52.37, 4.9)).resolves.toBeNull()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  // LAST in this file, deliberately: the latch is module state and does not
+  // reset between tests, so every case above has to run while the mode is still
+  // believed supported.
+  it('latches on bad_request and stops asking for the rest of the page load', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    try {
+      invoke.mockResolvedValue({ data: null, error: httpError(400, { error: 'bad_request' }) })
+      await expect(reverseGeocodePlace(52.37, 4.9)).resolves.toBeNull()
+      expect(invoke).toHaveBeenCalledTimes(1)
+
+      // A build with no reverse mode cannot grow one between two keystrokes, so
+      // re-asking is a request guaranteed to fail. `bad_coordinate` is a
+      // separate code for exactly this reason — one malformed value must not be
+      // able to disable a working feature.
+      invoke.mockResolvedValue({ data: { results: [feature] }, error: null })
+      await expect(reverseGeocodePlace(52.37, 4.9)).resolves.toBeNull()
+      expect(invoke).toHaveBeenCalledTimes(1)
+    } finally {
+      info.mockRestore()
+    }
   })
 })

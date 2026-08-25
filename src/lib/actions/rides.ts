@@ -164,7 +164,6 @@ export async function createRide(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const rawMax = (formData.get('max_riders') as string)?.trim()
   const rawClub = (formData.get('club_id') as string)?.trim()
 
   const parsed = rideSchema.safeParse({
@@ -173,7 +172,6 @@ export async function createRide(
     meeting_point: formData.get('meeting_point'),
     route_description: formData.get('route_description'),
     departure_at: formData.get('departure_at'),
-    max_riders: rawMax ? Number(rawMax) : null,
     is_public: formData.get('is_public') === 'on',
     club_id: rawClub || null,
     location: readRideLocation(formData),
@@ -279,30 +277,20 @@ export async function createRide(
  * policy delegates both to the rides SELECT policy via EXISTS, so restating
  * them would be a second copy free to drift.
  *
- * **`max_riders` is enforced, and not here.** `063` hangs
- * `enforce_ride_capacity` on `ride_members`, so the refusal arrives as a
- * `23514` from the database rather than from a check in front of this upsert —
- * which is the point: a check-then-insert races two riders taking the last
- * seat, and that race *is* the defect PD-174 named. What this function owns is
- * the message, per CLAUDE.md's rule that Zod and the client own wording and
- * never the guarantee.
+ * **There is no capacity check here, and no cap anywhere** — `077` (PD-293)
+ * dropped `rides.max_riders` and `063`'s `enforce_ride_capacity` together.
+ * `063` was right about the race it fixed: a check-then-insert loses two
+ * riders taking the last seat at once, which is why it was a trigger rather
+ * than a branch in front of this upsert. What it could not fix is that the
+ * design draws no capacity affordance ANYWHERE — no "Ride is full" state, no
+ * seats-remaining count, no disabled pill — so the only way a rider learned a
+ * ride was full was to tap Going and read an error. Product owner decision,
+ * 2026-08-24: an enforced cap the rider cannot see coming is worse than no cap.
  *
- * Matched on the message as well as the code, exactly as `createRide` matches
- * `022`'s audience raise: `018` bounds four text columns on `rides` with
- * CHECKs that raise the same SQLSTATE, and a title-too-long must never be
- * reported to a rider as a full ride.
- *
- * **The rule is a join gate, not an invariant** — an organizer may lower the
- * cap below the current crew and nobody is evicted — so this action never has
- * to reconcile anything. And a rider already on a full, or over-subscribed,
- * ride is not refused: `063` exempts anyone who already holds a row, because
- * the upsert below fires a BEFORE INSERT trigger even when it resolves to an
- * UPDATE. So the only call this can ever lose is a genuine new join.
- *
- * **The design draws no capacity affordance at all** — no "Ride is full" state,
- * no seats-remaining count, no disabled pill — so a rider learns a ride is full
- * by trying to join it. That is honest rather than good, and it needs a frame
- * that does not exist; recorded in docs/HANDOFF.md §Known issues.
+ * **What that leaves unbounded is `ride_members`**, since nothing caps a crew
+ * in the database any more. `RIDE_CREW_LIMIT` still caps what the crew rail
+ * renders, so no screen breaks. Fine at this scale, and the thing to reopen if
+ * one ride ever attracts thousands.
  */
 export async function setRideAttendance(
   rideId: string,
@@ -327,21 +315,6 @@ export async function setRideAttendance(
             { ride_id: rideId, user_id: user.id, status: attendance },
             { onConflict: 'ride_id,user_id' }
           )
-
-  // 063's capacity trigger. The substring is the contract — see the migration,
-  // which says so on the `raise` itself — and it is matched alongside the code
-  // rather than instead of it, because 018's four text CHECKs on `rides` raise
-  // 23514 too.
-  if (error?.code === '23514' && error.message.includes('this ride is full')) {
-    // Invalidated on this refusal and on no other. Every other error here is
-    // "we could not tell" — a network failure, or RLS deciding the ride is not
-    // visible — and re-reading proves nothing. A capacity refusal is different:
-    // it is positive evidence that the crew this client is holding is stale,
-    // and since no screen draws capacity the client had every reason to think
-    // there was room.
-    invalidateRide()
-    return { error: 'This ride is full.' }
-  }
 
   // A refusal is usually RLS deciding the ride is not visible, which from the
   // rider's side looks like the ride being gone rather than a permission
@@ -387,7 +360,6 @@ export async function updateRide(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const rawMax = (formData.get('max_riders') as string)?.trim()
   const rawClub = (formData.get('club_id') as string)?.trim()
 
   const parsed = rideSchema.safeParse({
@@ -396,7 +368,6 @@ export async function updateRide(
     meeting_point: formData.get('meeting_point'),
     route_description: formData.get('route_description'),
     departure_at: formData.get('departure_at'),
-    max_riders: rawMax ? Number(rawMax) : null,
     is_public: formData.get('is_public') === 'on',
     club_id: rawClub || null,
     location: readRideLocation(formData),
@@ -421,7 +392,7 @@ export async function updateRide(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to edit a ride.' }
 
-  const { departure_at, title, description, route_description, meeting_point, max_riders, is_public, club_id, location } =
+  const { departure_at, title, description, route_description, meeting_point, is_public, club_id, location } =
     parsed.data
 
   // PD-104 §5.1a. Read fresh rather than taking the paths off `getRideForEdit`'s
@@ -509,7 +480,6 @@ export async function updateRide(
       route_description,
       meeting_point,
       departure_at: wallClockToUtc(departure_at),
-      max_riders,
       is_public,
       club_id,
       // In the SAME statement as `meeting_point` on purpose: `067`'s

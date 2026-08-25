@@ -1,12 +1,14 @@
 'use client'
 
 import { useActionState, useEffect, useRef, useState } from 'react'
+import { seedClubId } from '@/lib/clubs/seed-club-id'
 import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
 import { PlaceSearchField, type PlaceValue } from '@/components/ui/PlaceSearchField'
 import { Textarea } from '@/components/ui/Textarea'
 import { createRide } from '@/lib/actions/rides'
+import { RECENT_STARTS } from '@/components/rides/recentStarts'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { retaining, seedRetained, useRestoreSelection, wasChecked } from '@/lib/actions/retain'
@@ -40,9 +42,10 @@ const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') 
  * - **An end time.** The frame draws a second date and time; `rides` has
  *   `departure_at` and nothing else. The ride detail draws only a start too.
  * - **Distance in km** and **"Includes offroad"**, neither of which exists.
- * - **"Public seats"** as a number distinct from `max_riders`. `max_riders`
- *   itself is real and, since `063`, enforced — what has no column is a
- *   *second* number beside it.
+ * - **"Public seats"**, and a rider limit of any kind. `max_riders` was real
+ *   and enforced until `077` (PD-293) dropped both the column and `063`'s
+ *   join gate: a cap the design never draws anywhere is a refusal a rider
+ *   cannot see coming, which is worse than no cap.
  * - **A cover photo** ("Add photo"). `rides` has no image column; the list's
  *   80-wide strip is empty for the same reason.
  * - **Rider invitations** with an Admin role, the same unbuilt feature the
@@ -52,7 +55,7 @@ const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') 
  * and no screen has ever set it, so a club's Rides sub-page could only ever be
  * empty — a hole the club detail made visible.
  */
-// Every field on the form. This is the screen with the most to lose: seven
+// Every field on the form. This is the screen with the most to lose: six
 // answers and two defaults, all of which React's post-action `form.reset()`
 // used to erase on any refusal. See lib/actions/retain.ts.
 const RIDE_FIELDS = [
@@ -61,14 +64,20 @@ const RIDE_FIELDS = [
   'meeting_point',
   'departure_at',
   'route_description',
-  'max_riders',
   'is_public',
 ] as const
 
 const retainRide = retaining(createRide, RIDE_FIELDS)
 const initialState = seedRetained(emptyActionState)
 
-export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[] }) {
+export function CreateRideForm({
+  clubs,
+  initialClubId,
+}: {
+  clubs: { id: string; name: string }[]
+  /** See `clubId` below. */
+  initialClubId?: string | null
+}) {
   const [state, formAction, pending] = useActionState(retainRide, initialState)
   // **A `<select>` is the one control `retaining` cannot serve, and it is
   // controlled for that reason rather than by preference.** `defaultValue` on a
@@ -82,7 +91,18 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
   // makes a controlled *text* input the wrong fix (see lib/actions/retain.ts):
   // the reset touches the DOM, not React, and no password manager fills a club
   // picker.
-  const [clubId, setClubId] = useState('')
+  /**
+   * The club this composer was opened from, or null (PD-283).
+   *
+   * **Seeded only when the id is one of this rider's own clubs**, which is not
+   * a security check — `017`'s INSERT policy and the audience rule decide, and
+   * a select is a hint — but it is what keeps the control honest: a `<select>`
+   * whose `value` matches no `<option>` renders as the first option while
+   * reporting the unmatched id, so an unknown id in the URL would show one club
+   * and submit another. Unmatched falls back to no club, which is the same
+   * state as arriving here from the tab.
+   */
+  const [clubId, setClubId] = useState(() => seedClubId(clubs, initialClubId))
   // The meeting point is controlled now that it shares a field with the place
   // picker, so it survives a refused submit the way `CreateClubForm`'s name and
   // location do — component state, not `retaining`. `retaining` restores a
@@ -135,7 +155,6 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
     const data = submittedData.current
     const form = formRef.current
     if (!data || !form) return
-    const rawMax = (data.get('max_riders') as string)?.trim()
     const rawClub = (data.get('club_id') as string)?.trim()
     const parsed = rideSchema.safeParse({
       title: data.get('title'),
@@ -143,7 +162,6 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
       meeting_point: data.get('meeting_point'),
       route_description: data.get('route_description'),
       departure_at: data.get('departure_at'),
-      max_riders: rawMax ? Number(rawMax) : null,
       is_public: data.get('is_public') === 'on',
       club_id: rawClub || null,
       location: readRideLocation(data),
@@ -188,12 +206,12 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
       <div className="flex flex-col gap-1.5">
         <PlaceSearchField
           label="Starting location"
-          sheetTitle="Set start location"
           value={startPlace}
           onChange={setStartPlace}
           names={RIDE_LOCATION_FIELD_NAMES}
           maxNameLength={RIDE_MEETING_POINT_MAX}
           freeText={{ text: meetingPoint, onTextChange: setMeetingPoint, required: true }}
+          recents={RECENT_STARTS}
           disabled={pending}
         />
         {/* place-search's own requirement: a ride SHALL remain creatable while
@@ -237,17 +255,6 @@ export function CreateRideForm({ clubs }: { clubs: { id: string; name: string }[
         rows={2}
         maxLength={RIDE_ROUTE_MAX}
         defaultValue={state.retained.route_description}
-      />
-
-      <Input
-        name="max_riders"
-        type="number"
-        inputMode="numeric"
-        min={1}
-        max={999}
-        label="Maximum riders"
-        placeholder="Leave blank for no limit"
-        defaultValue={state.retained.max_riders}
       />
 
       {clubs.length > 0 && (

@@ -410,9 +410,9 @@ async function checkRefusedSignup(targetPage) {
  * `fixturesPermitted()` gates fixture writes behind — review finding on
  * PD-203's first pass.
  *
- * **Unlike `checkFormRetention`'s ride** (`max_riders = 0`, refused by both
- * `rideSchema`'s `.positive()` and `018`'s CHECK, so it cannot write at
- * either layer and needs no gate), nothing makes `signUp`'s refusal
+ * **Unlike `checkFormRetention`'s ride** (a whitespace-only `meeting_point`,
+ * refused by both `rideSchema`'s `.trim().min(1)` and `018`'s CHECK, so it
+ * cannot write at either layer and needs no gate), nothing makes `signUp`'s refusal
  * unconditional. "The walk's own address is already registered" is a fact
  * about the environment this session measured, not a schema or database
  * guarantee — so pointed at a project where that address is *not*
@@ -581,7 +581,11 @@ async function discoverDetailPaths({ quiet = false } = {}) {
           '/clubs/detail',
           '/clubs/detail/rides',
           '/clubs/detail/members',
-          '/clubs/detail/about',
+          // `/clubs/detail/about` is NOT here: the club-detail merge deleted
+          // that route outright (its page's own docstring says so) and nothing
+          // links to it. The walk kept visiting it and reporting a 404, which
+          // reads as a broken screen rather than a stale line in this list —
+          // one permanent red mark in the only gate that renders anything.
           '/clubs/detail/edit',
         ].map((p) => detail(p, club))
       : []),
@@ -724,10 +728,17 @@ function fixturesPermitted(ref) {
 
 async function provision({ ride, club }) {
   if (!ride) {
-    // A year out, not ten days. `getRides` filters `.gte('departure_at', now)`,
-    // so a short-dated fixture ages off /rides and the next run creates another
-    // that nothing lists and nothing cleans up — idempotence with an expiry
-    // date is not idempotence.
+    // A year out, not ten days, and the reason changed shape rather than going
+    // away. `getRides` used to drop a departed ride entirely, so a short-dated
+    // fixture aged off /rides and the next run created another that nothing
+    // listed and nothing cleaned up. It now files it under Past rides
+    // instead, which fixes the leak and introduces a quieter one:
+    // `discoverDetailPaths` takes the first `?id=` link in DOM order, and on a
+    // DEV where every ride has departed that is a *past* ride — so the walk
+    // would check the detail screen's past variants (no Directions, "Rode")
+    // believing it had an upcoming ride, and provision nothing. Dating the
+    // fixture a year out keeps it at the top of the upcoming section, which is
+    // what the phases after this one assume.
     const departure = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 16)
     await page.goto(`${BASE}/rides/new`, { waitUntil: 'networkidle' })
     await page.fill('input[name="title"]', 'Walk fixture ride')
@@ -962,6 +973,17 @@ const GUARD_CASES_SIGNED_IN = [
   ['/auth/signup', '/postcards'],
   ['/onboarding/username', '/postcards'],
   ['/onboarding/terms', '/postcards'],
+  // PD-286 (`075`) deleted this route. For a fully onboarded rider it is just
+  // another path under `/onboarding`, so `resolveDestination`'s existing
+  // `isOnboarding` branch sends it to /postcards with no code of its own —
+  // but that branch is what the guard's new catch-all for an *incomplete*
+  // rider also leans on (unknown /onboarding/* -> the resume step, rather
+  // than a 404 with the guard insisting they belong there). `guard.test.ts`
+  // covers the decision as a pure function; this line is the one gate that
+  // renders anything, so it is what would have caught a deleted route
+  // 404ing while the guard still claims it — PD-125's shape exactly, a
+  // screen nobody can reach with every other gate green.
+  ['/onboarding/location', '/postcards'],
   // Q1, and it broke recovery once: a recovery link establishes an ordinary
   // session before landing here, so a signed-in rider must NOT be bounced.
   ['/auth/reset-password', '/auth/reset-password'],
@@ -1062,11 +1084,22 @@ async function checkSignOut() {
  * them work is indistinguishable from a correct one until a rider meets the
  * fourth.
  *
- * **The submit cannot create a ride, at either layer.** `max_riders = 0` fails
- * `rideSchema`'s `.positive()` before any network call, and `018` bounds the
- * column at 1–999 in the database — so even a regression that dropped the
- * client parse could not turn this phase into a writer. That is why it runs on
- * every full walk rather than behind `WALK_FIXTURES`.
+ * **The submit cannot create a ride, at either layer.** A whitespace-only
+ * `meeting_point` fails `rideSchema`'s `.trim().min(1)` before any network
+ * call, and `018`'s `rides_meeting_point_length` (`length(btrim(...)) >= 1`)
+ * refuses the same whitespace at the database — so even a regression that
+ * dropped the client parse could not turn this phase into a writer. That is
+ * why it runs on every full walk rather than behind `WALK_FIXTURES`.
+ *
+ * **The refusal used to be `max_riders = 0` and that field no longer exists**
+ * — `077` (PD-293) dropped the column and `063`'s join gate with it. The
+ * replacement is deliberately the same two-layer shape the club phase below
+ * already uses, and it costs this phase exactly one assertion: the separate
+ * `max_riders survives it` check is gone, while `meeting_point` keeps its
+ * place in the retention loop and now carries the refusal as well. A
+ * whitespace value exercises `retaining` through identical code — what it
+ * would fail on is a build that trims or drops it, which is the defect the
+ * assertion is for.
  *
  * The club `<select>` only exists when the rider belongs to a club, so its
  * assertion is counted only when it runs — `ran` rather than a fixed constant.
@@ -1087,7 +1120,11 @@ async function checkFormRetention() {
   const filled = {
     title: 'Retention probe',
     description: 'Two lines\nof description',
-    meeting_point: 'Kanaalweg 1',
+    // **This one is the refusal**, not just a field to retain — see the
+    // header. HTML `required` is satisfied by a non-empty string, and the form
+    // carries `noValidate` besides, so it reaches the action and is refused
+    // there and at the database.
+    meeting_point: '   ',
     departure_at: '2027-03-14T09:15',
     route_description: 'Along the dyke, back over the bridge',
   }
@@ -1103,8 +1140,6 @@ async function checkFormRetention() {
   for (const [name, value] of Object.entries(filled)) {
     await page.fill(field(name), value)
   }
-  // The refusal, and the reason nothing can be written — see above.
-  await page.fill(field('max_riders'), '0')
   // Ticked by default, so unticking is what proves the restore reads the
   // submission rather than reinstating the literal default.
   //
@@ -1154,9 +1189,6 @@ async function checkFormRetention() {
     report(actual === value, `${name} survives it`, `read ${JSON.stringify(actual)}`)
   }
 
-  const max = await page.inputValue(field('max_riders')).catch(() => null)
-  report(max === '0', 'max_riders survives it', `read ${JSON.stringify(max)}`)
-
   const stillPublic = await page.isChecked(field('is_public')).catch(() => null)
   report(stillPublic === false, 'the cleared "public" box stays cleared', 'it was re-ticked')
 
@@ -1190,7 +1222,7 @@ async function checkFormRetention() {
  * reaches `createClub`'s action, and `clubSchema`'s `.trim().min(1)` refuses
  * it before any query runs; `018`'s `clubs_name_length` CHECK
  * (`length(btrim(name)) >= 1`) refuses the same whitespace at the database,
- * exactly as `018` bounds `rides.max_riders`. (`clubSchema`'s own header
+ * exactly as `018` bounds `rides.meeting_point`. (`clubSchema`'s own header
  * comment still says `clubs.name` carries no CHECK — that predates `018` and
  * is stale; tracked separately, not by this phase.)
  */
@@ -1277,8 +1309,8 @@ async function checkCreateClubRetention() {
  * behind: a ride detached from its club, and a club made public again. Both
  * succeed, and neither says anything.
  *
- * Refused by `max_riders = 0` exactly as the create phase is, and unable to
- * write for the same two reasons.
+ * Refused by a whitespace-only required field exactly as the create phase is,
+ * and unable to write for the same two reasons.
  */
 async function checkEditRetention(candidates) {
   let bad = 0
@@ -1352,12 +1384,11 @@ async function checkEditRetention(candidates) {
   await page.click('form label:has(input[name="is_public"])')
   const publicWanted = !publicBefore
 
-  // **The refusal is whitespace, and the reason is worth keeping.** The create
-  // form carries `noValidate`, so `max_riders = 0` reaches its action; neither
-  // edit form does, so the browser's own constraint validation blocks an
-  // out-of-range number, no action runs, no reset happens — and every
-  // assertion below then passes without exercising anything. The refusal
-  // assertion is what caught that.
+  // **The refusal is whitespace, and the reason is worth keeping.** Neither
+  // edit form carries `noValidate`, so anything the browser's own constraint
+  // validation can catch never reaches the action: no action runs, no reset
+  // happens, and every assertion below then passes without exercising
+  // anything. The refusal assertion is what catches that.
   //
   // A whitespace-only required field satisfies HTML `required` (it checks for a
   // non-empty string) and is refused by `.trim().min(1)` in both `rideSchema`
@@ -1415,9 +1446,12 @@ async function checkEditRetention(candidates) {
  * **The first assertion is the `??` chain's read of the stored value, before
  * anything is submitted** — `state.retained.location` is `{}` on first
  * render, so a non-empty field on load can only have come from `profile`.
- * The walk account is fully onboarded, and `023`'s completion trigger refuses
- * the onboarding stamp while `location` is NULL, so a non-empty value here is
- * guaranteed rather than assumed for this account.
+ * PD-286 (`075`) dropped `location` from the onboarding gate, so this is no
+ * longer a rule `023`'s trigger enforces for every rider — it is a fact about
+ * the walk account specifically, which carries a location from before that
+ * change. 7.4d in that proposal's tasks is what keeps the walk account
+ * carrying one; if this assertion ever starts failing, that is the first
+ * place to look rather than a regression in the retention logic below.
  *
  * **The error region is `role="alert"` (`FormError`), not `role="status"`
  * like the ride/club forms above** — this form draws no live alert while
@@ -1425,9 +1459,15 @@ async function checkEditRetention(candidates) {
  * false-positive trap to guard against and alert text is safe to wait on
  * directly.
  *
- * Refused the same way as the create phase: `noValidate` lets a
- * whitespace-only `location` reach `updateProfile`, and `profileEditSchema`'s
- * `.trim().min(1)` refuses it before any query runs.
+ * Refused the same way as the create phase, but not on whitespace any more:
+ * `location` is optional since PD-286, so a whitespace-only value trims to
+ * `''` and `updateProfile` accepts it — filling it that way would both fail
+ * to trigger a refusal and clear the account's stored location, poisoning
+ * the first assertion on every later run. The trigger is a 101-character
+ * location instead: `profileEditSchema`'s `optionalText` still carries
+ * `max(100)`, so `noValidate` still lets it reach `updateProfile` and Zod
+ * still refuses it before any query runs — same field, same refusal
+ * mechanism, no data loss.
  */
 async function checkEditProfileRetention() {
   let bad = 0
@@ -1452,7 +1492,31 @@ async function checkEditProfileRetention() {
   )
 
   const bikeModel = `Walk probe bike ${Date.now()}`
-  await page.fill(field('location'), '   ')
+  const tooLongLocation = 'A'.repeat(101)
+  // `page.fill()` CANNOT deliver this, and finding that out cost a red run:
+  // every field on this form carries `maxLength`, and fill() honours it — so
+  // the 101 characters arrived as 100, the action accepted them, and the phase
+  // failed while ALSO writing a 100-character location over the walk account's
+  // stored one. Since PD-286 made all three fields optional, there is no value
+  // this form's own DOM will let a typist submit that the action refuses.
+  //
+  // So the refusal is driven the way a patched client would drive it: the
+  // native value setter past `maxLength`, plus the `input` event React listens
+  // for. That is not a contrivance — it is the case the action's parse exists
+  // for, since `maxLength` is an editing constraint and not a guarantee, and
+  // `018`'s `profiles_location_length` is what actually holds the line.
+  await page.$eval(
+    field('location'),
+    (el, value) => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value'
+      ).set
+      setter.call(el, value)
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    },
+    tooLongLocation
+  )
   await page.fill(field('bike_model'), bikeModel)
 
   await page.click('button[type="submit"]')
@@ -1475,7 +1539,11 @@ async function checkEditProfileRetention() {
   report(Boolean(refusal), 'the refusal is reported', 'no alert text on screen')
 
   const locationAfter = await page.inputValue(field('location')).catch(() => null)
-  report(locationAfter === '   ', 'location survives it', `read ${JSON.stringify(locationAfter)}`)
+  report(
+    locationAfter === tooLongLocation,
+    'location survives it',
+    `read ${JSON.stringify(locationAfter)}`
+  )
 
   const bikeAfter = await page.inputValue(field('bike_model')).catch(() => null)
   report(bikeAfter === bikeModel, 'bike_model survives it', `read ${JSON.stringify(bikeAfter)}`)

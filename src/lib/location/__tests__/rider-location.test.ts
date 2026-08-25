@@ -21,6 +21,7 @@ vi.mock('@/lib/data/places', () => ({ getLocalityCentroid: (...args: unknown[]) 
 const {
   resolveRiderLocation,
   requestDeviceLocation,
+  deviceLocationPermission,
   clearRiderLocation,
   resetRiderLocationCacheForTests,
 } = await import('@/lib/location/rider-location')
@@ -585,5 +586,48 @@ describe('requestDeviceLocation — the explicit "use my location" affordance', 
     await vi.advanceTimersByTimeAsync(10_000)
 
     await expect(pending).resolves.toBeNull()
+  })
+})
+
+describe('deviceLocationPermission — what a priming sheet reads before it draws (PD-170)', () => {
+  it('answers `unavailable` when the platform has no geolocation at all', async () => {
+    // Not `denied`: nothing was refused, there is simply nothing to ask. The
+    // row draws for one of those and not the other.
+    installNavigator(nav({ permission: 'granted' })) // permission API present, geolocation absent
+    await expect(deviceLocationPermission()).resolves.toBe('unavailable')
+  })
+
+  it('passes `granted` through', async () => {
+    installNavigator(nav({ geolocation: fakeGeolocation({ kind: 'success', lat: 1, lon: 1 }), permission: 'granted' }))
+    await expect(deviceLocationPermission()).resolves.toBe('granted')
+  })
+
+  it('passes `denied` through', async () => {
+    installNavigator(nav({ geolocation: fakeGeolocation({ kind: 'error' }), permission: 'denied' }))
+    await expect(deviceLocationPermission()).resolves.toBe('denied')
+  })
+
+  it('reads a missing Permissions API as `prompt`, never as granted or denied', async () => {
+    // This module's standing rule — never assume consent from an API's
+    // absence — read in the one direction that is safe for a control the
+    // rider taps. Reading it as `denied` would hide the only affordance on a
+    // WebView whose Permissions API does not know the descriptor.
+    installNavigator(nav({ geolocation: fakeGeolocation({ kind: 'success', lat: 1, lon: 1 }), permission: 'unsupported' }))
+    await expect(deviceLocationPermission()).resolves.toBe('prompt')
+  })
+
+  it('reads a THROWING Permissions API as `prompt` too', async () => {
+    installNavigator(nav({ geolocation: fakeGeolocation({ kind: 'success', lat: 1, lon: 1 }), permission: 'throws' }))
+    await expect(deviceLocationPermission()).resolves.toBe('prompt')
+  })
+
+  it('never prompts — reading the state calls no geolocation API', async () => {
+    // The whole point: this runs from an effect on every screen that draws a
+    // location affordance, so it must not be able to raise a dialog.
+    const geolocation = fakeGeolocation({ kind: 'success', lat: 1, lon: 1 })
+    installNavigator(nav({ geolocation, permission: 'prompt' }))
+
+    await expect(deviceLocationPermission()).resolves.toBe('prompt')
+    expect(geolocation.getCurrentPosition).not.toHaveBeenCalled()
   })
 })

@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 
+import { SUPPORT_EMAIL } from '@/lib/support'
+
 /**
  * The web-accessible deletion route Google Play's User Data policy requires:
  * a rider must be able to find out how to delete their account without
@@ -19,8 +21,10 @@ import Link from 'next/link'
  *
  * Unlike `terms/` and `privacy/`, this is NOT placeholder copy. Everything
  * below describes what the cascade actually does, which `029` made true and
- * `supabase/tests/rls_test.sql` asserts. The one time-sensitive sentence is
- * flagged in the markup and comes out when the in-app flow ships.
+ * `supabase/tests/rls_test.sql` asserts. **Nothing on it is time-sensitive any
+ * more** — the one sentence that was, "the in-app control is not in the current
+ * build", outlived its truth on a live page and is gone; a claim that flips on
+ * a merge nobody re-reads is the shape to keep off this page.
  */
 export default function AccountDeletionPage() {
   return (
@@ -35,24 +39,21 @@ export default function AccountDeletionPage() {
       </p>
 
       {/*
-        THE ONE PARAGRAPH THAT IS NOT YET TRUE, and it is deliberately the most prominent
-        thing on the page rather than a footnote. `main` auto-deploys, so this page is live
-        the moment it merges — telling a rider to tap a control that does not exist is worse
-        than not having the page. Delete this block when the Profile flow ships; the section
-        below it is already written in the present tense for that day.
+        The paragraph that used to sit here said the in-app control "is not in the current
+        build". It shipped with PD-102 and `ProfileMenu` renders `Delete account`
+        unconditionally, so the sentence became false on a page `main` auto-deploys — the
+        exact failure its own comment predicted and asked the next session to delete.
 
-        It names a real address, because "contact us at the address you signed up through"
-        named none and was ambiguous about whose address it meant. Play's User Data policy
-        wants a web-accessible route to REQUEST deletion, and this paragraph is the only
-        thing on the page that has to work for a reviewer.
-
-        OWNER: replace this with a mailbox you actually monitor. `hello@` is a guess.
+        What is kept is the emailed route, in the present tense, because it answers a
+        different rider: one who cannot sign in at all. Play's User Data policy wants a
+        web-accessible way to REQUEST deletion, and "open the app and tap it" is not one for
+        somebody locked out of the account. The address is `SUPPORT_EMAIL` — see that file
+        for why it still needs an owner.
       */}
-      <p className="font-medium text-foreground">
-        The in-app control is not in the current build — it ships with the rest of the
-        account-deletion release. Until then, email{' '}
-        <a href="mailto:hello@letsride.app" className="underline">
-          hello@letsride.app
+      <p className="text-muted">
+        If you cannot sign in — a lost password, an email address you no longer have — email{' '}
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
+          {SUPPORT_EMAIL}
         </a>{' '}
         from the address on your account and ask for it to be deleted.
       </p>

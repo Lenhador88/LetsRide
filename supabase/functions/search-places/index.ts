@@ -3,24 +3,25 @@
  * key and the vendor hostname never reach a rider's device.
  *
  * ===========================================================================
- * NOT DEPLOYED. Read the state before assuming this runs.
+ * DEPLOYED, AND THE DEPLOYED BUILD IS NOT THIS ONE. Check before assuming.
  * ===========================================================================
- * New in PD-273. Deploying is an OWNER action — there is no `supabase` CLI in
- * the build container and `deploy_edge_function` is on `.claude/settings.json`'s
- * `deny` list — and it is **on the critical path**, unlike `delete-account`'s
- * and `resolve-ride-location`'s stale deploys, which are drift. Check rather
- * than trust this paragraph:
+ * First deployed 2026-08-19 at `71053cd` — v1 on both projects. Everything
+ * since is undeployed, which for this directory is the ordinary state rather
+ * than a defect: deploying is an OWNER action (no `supabase` CLI in the build
+ * container, `deploy_edge_function` on `.claude/settings.json`'s `deny` list),
+ * merging is not, and CI has no path that would notice the gap.
  *
  *   mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
  *   mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
+ *   TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/search-places/
  *
- * **Deploying this changes nothing on its own, deliberately.** Nothing calls it
- * until PR 2 switches `src/lib/data/places.ts`; until then the client still
- * reads `search_places()` and every rider-visible behaviour is unchanged. The
- * metering table it writes to does not exist until `069`, which is also PR 2 —
- * so a call made between this deploy and that migration fails closed at the
- * insert, before anything billable. That ordering is the design, not an
- * oversight: `design.md` §D7.
+ * **Two things the deployed v1 does not have, and one of them is rider-visible
+ * today** (PD-276): `classifyLedgerError`, without which `069`'s participation
+ * gate — a trigger, so `23514` rather than `42501` — falls to the outage branch
+ * and tells a rider search is broken when they hit their own limit; and the
+ * `reverse` mode, which PD-275's composer uses to name the town a photo was
+ * taken in. The composer treats the mode's absence as "no prefill" and latches
+ * after one refusal, so the missing half is dark rather than broken.
  *
  * Verify a deploy **by content**, never by a moved `ezbr_sha256` — a moved
  * digest proves a deploy happened, never which build (PD-249).
@@ -113,6 +114,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   buildAutocompleteUrl,
   buildLocalityUrl,
+  buildReverseUrl,
   classifyLedgerError,
   isSearchable,
   parseRequest,
@@ -231,7 +233,10 @@ Deno.serve(async (req: Request) => {
   }
 
   const request = parseRequest(body)
-  if (!request) return json({ error: 'bad_request' }, 400)
+  // Both refusals are pre-ledger and therefore free, and they are told apart on
+  // purpose: the client latches on `bad_request` to mean "this build has no
+  // reverse mode", so a malformed coordinate must not be able to say that.
+  if (typeof request === 'string') return json({ error: request }, 400)
 
   // Below the floor is not an error and not a refusal — it is "keep typing",
   // and it costs nothing to answer here rather than at the vendor. The floor is
@@ -267,7 +272,12 @@ Deno.serve(async (req: Request) => {
   const url =
     request.mode === 'locality'
       ? buildLocalityUrl(request.text, GEOAPIFY_API_KEY)
-      : buildAutocompleteUrl(request.text, request.near, GEOAPIFY_API_KEY)
+      : request.mode === 'reverse'
+        // Non-null by construction: `parseRequest` refuses a `reverse` request
+        // whose coordinate is missing or out of range, so this branch cannot be
+        // reached without one.
+        ? buildReverseUrl(request.at!, GEOAPIFY_API_KEY)
+        : buildAutocompleteUrl(request.text, request.near, GEOAPIFY_API_KEY)
 
   // BILLABLE from here.
   const payload = await fetchJson(url)
@@ -278,5 +288,9 @@ Deno.serve(async (req: Request) => {
   if (request.mode === 'locality') {
     return json({ centroid: toLocalityResult(payload as never) }, 200)
   }
+  // `reverse` answers in the same envelope as `search` — a `results` array,
+  // zero or one long — so the client shares one parser and a coordinate that
+  // names no town is an empty list rather than a distinct failure. There is
+  // nothing for a rider to do differently about the two.
   return json({ results: toPlaceResults(payload as never) }, 200)
 })

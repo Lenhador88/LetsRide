@@ -133,6 +133,8 @@ describe('PostcardCard — the action row', () => {
       likes_count: 0,
       comments_count: 0,
       is_liked: false,
+      taken_place_name: null,
+      taken_country_code: null,
       ...overrides,
     }
 
@@ -179,6 +181,56 @@ describe('PostcardCard — the action row', () => {
     const controls = actionControls(card({ likes_count: 12, comments_count: 3 }))
     expect(controls.filter((c) => c.includes('pl-2') && c.includes('pr-3'))).toHaveLength(2)
     expect(controls.filter((c) => c.includes('px-1.5'))).toHaveLength(1)
+  })
+
+  /**
+   * The location caption (PD-279). Two cases, because the interesting half is
+   * the ABSENCE: the columns are readable by exactly the postcard's audience,
+   * so a caption drawn on a NULL name would be the card inventing a location,
+   * and `Hide` is indistinguishable from "this photo carried none" on purpose.
+   *
+   * Asserted on the rendered text rather than on a class, so a restyle does not
+   * fail it and a dropped `postcard.taken_place_name &&` does.
+   */
+  it('draws the place a postcard names', () => {
+    const html = card({ taken_place_name: 'Berkhout' })
+    expect(html).toContain('Berkhout')
+    // The screen-reader context, without which this is a bare noun between the
+    // photo's alt text and the date.
+    expect(html).toContain('Taken in')
+  })
+
+  it('draws no caption when the postcard names no place', () => {
+    const html = card({ taken_place_name: null })
+    expect(html).not.toContain('Taken in')
+  })
+
+  /**
+   * The flag half (`074`, PD-279). Same absence rule as the name above, plus
+   * the one this card owns on its own: a country with no name never reaches
+   * it at all — `postcards_taken_country_code_needs_a_place` refuses that row
+   * at the database — so the fallback case here is a NAMED place with no
+   * country, which is the typed-and-never-picked shape.
+   */
+  it('draws the flag before the town when the postcard names a country', () => {
+    const html = card({ taken_place_name: 'Berkhout', taken_country_code: 'NL' })
+    expect(html).toContain('🇳🇱')
+    expect(html).toContain('Berkhout')
+  })
+
+  it('falls back to the location pin, not a flag, for a place with no country', () => {
+    const html = card({ taken_place_name: 'Berkhout', taken_country_code: null })
+    expect(html).not.toContain('🇳🇱')
+    expect(html).toContain('Berkhout')
+  })
+
+  // `Grey/70%` bounds the composite at `#4C4C4C` whatever the photo is —
+  // 8.59:1 for white text. The 40px gradient underneath reaches ~0.37 alpha at
+  // this text's height, which is 2.58:1 at the glyph top, so the pill is the
+  // contrast fix rather than decoration and both captions owe it.
+  it('backs both captions with a bounded scrim rather than the gradient alone', () => {
+    const html = card({ taken_place_name: 'Berkhout' })
+    expect(classLists(html).filter((c) => c.includes('bg-scrim'))).toHaveLength(2)
   })
 
   it('leaves all three symmetric on a card with no likes and no comments', () => {

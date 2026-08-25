@@ -8,6 +8,7 @@ import { PlaceSearchField, type PlaceValue } from '@/components/ui/PlaceSearchFi
 import { Textarea } from '@/components/ui/Textarea'
 import { DeleteRideControl } from '@/components/rides/DeleteRideControl'
 import { updateRide } from '@/lib/actions/rides'
+import { RECENT_STARTS } from '@/components/rides/recentStarts'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState, type ActionState } from '@/lib/actions/state'
 import { useRestoreChecked, useRestoreSelection } from '@/lib/actions/retain'
@@ -73,14 +74,13 @@ export function EditRideForm({
           placeId: ride.start_place_id,
           lat: ride.latitude,
           lon: ride.longitude,
+          // Never stored on a ride — see `PlaceValue.countryCode`'s own note.
+          countryCode: null,
         }
       : null
   )
   const [routeDescription, setRouteDescription] = useState(ride.route_description ?? '')
   const [departureAt, setDepartureAt] = useState(formatRideDepartureInput(ride.departure_at))
-  const [maxRiders, setMaxRiders] = useState(
-    ride.max_riders !== null ? String(ride.max_riders) : ''
-  )
   const [isPublic, setIsPublic] = useState(ride.is_public)
   const [clubId, setClubId] = useState(ride.club_id ?? '')
   // **Controlled is not enough for either of these, and here it costs data
@@ -102,14 +102,12 @@ export function EditRideForm({
   // one does not because nothing here resets out from under it.
   useEffect(() => {
     if (!state.error) return
-    const rawMax = maxRiders.trim()
     const parsed = rideSchema.safeParse({
       title,
       description,
       meeting_point: meetingPoint,
       route_description: routeDescription,
       departure_at: departureAt,
-      max_riders: rawMax ? Number(rawMax) : null,
       is_public: isPublic,
       club_id: clubId || null,
       location: startPlace
@@ -171,12 +169,12 @@ export function EditRideForm({
         <div className="flex flex-col gap-1.5">
           <PlaceSearchField
             label="Starting location"
-            sheetTitle="Set start location"
             value={startPlace}
             onChange={setStartPlace}
             names={RIDE_LOCATION_FIELD_NAMES}
             maxNameLength={RIDE_MEETING_POINT_MAX}
             freeText={{ text: meetingPoint, onTextChange: setMeetingPoint, required: true }}
+            recents={RECENT_STARTS}
             disabled={pending}
           />
           <p className="px-1 text-xs text-muted">
@@ -205,18 +203,6 @@ export function EditRideForm({
           maxLength={RIDE_ROUTE_MAX}
           value={routeDescription}
           onChange={(event) => setRouteDescription(event.target.value)}
-        />
-
-        <Input
-          name="max_riders"
-          type="number"
-          inputMode="numeric"
-          min={1}
-          max={999}
-          label="Maximum riders"
-          placeholder="Leave blank for no limit"
-          value={maxRiders}
-          onChange={(event) => setMaxRiders(event.target.value)}
         />
 
         {clubsUnavailable ? (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseExifCapture } from '../exif'
+import { locateHeifExif, parseExifCapture, parseHeifExifPayload } from '../exif'
 
 /**
  * The fixtures are **built**, not committed as binaries.
@@ -509,5 +509,262 @@ describe('parseExifCapture — files it must not choke on', () => {
     full[14] = 0x00
     full[15] = 0x00
     expect(parseExifCapture(full.buffer)).toEqual(NOTHING)
+  })
+})
+
+/* -------------------------------------------------------------------------- */
+/* HEIC / HEIF                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A minimal but **structurally real** HEIC: `ftyp`, a `meta` carrying `iinf`
+ * and `iloc`, and an `mdat` holding the EXIF payload the `iloc` extent points
+ * at. The same argument as the JPEG builder above — the cases that matter are
+ * the malformed ones, and no camera produces those.
+ *
+ * The extent offset is COMPUTED from the box sizes rather than written by hand,
+ * because an offset that happens to be right for one fixture and wrong for the
+ * next is precisely the bug this whole path can have.
+ */
+function box(type: string, body: number[]): number[] {
+  const size = 8 + body.length
+  return [
+    (size >>> 24) & 0xff, (size >>> 16) & 0xff, (size >>> 8) & 0xff, size & 0xff,
+    ...[...type].map((c) => c.charCodeAt(0)),
+    ...body,
+  ]
+}
+
+const u16 = (n: number) => [(n >> 8) & 0xff, n & 0xff]
+const u32 = (n: number) => [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]
+const ascii = (s: string) => [...s].map((c) => c.charCodeAt(0))
+
+type HeicOptions = {
+  /** Omit the 4-byte `exif_tiff_header_offset`, as some encoders do. */
+  noTiffHeaderOffset?: boolean
+  /** `construction_method` 1 — the bytes are in an `idat`, not at a file offset. */
+  idatConstruction?: boolean
+  /** Declare an item type this parser is not looking for. */
+  itemType?: string
+  /** A brand outside the HEIF set. */
+  majorBrand?: string
+  /** `iloc` FullBox version. 0 has NO `construction_method` and NO `index_size`. */
+  ilocVersion?: 0 | 1 | 2
+  /** `infe` FullBox version. 2 gives a u16 item id, 3 a u32 one. */
+  infeVersion?: 2 | 3
+  /**
+   * Set the low nibble of `iloc`'s second byte, which is `index_size` in
+   * versions 1 and 2 and RESERVED in version 0. A parser that reads it in
+   * version 0 shifts every extent that follows.
+   */
+  reservedNibble?: number
+  /** `offset_size` and `length_size` both 0 — an extent that describes nothing. */
+  zeroSizes?: boolean
+}
+
+function buildHeic(fixture: ExifFixture, options: HeicOptions = {}): ArrayBuffer {
+  const ilocVersion = options.ilocVersion ?? 1
+  const infeVersion = options.infeVersion ?? 2
+  const tiff = buildTiff(fixture)
+  const payload = options.noTiffHeaderOffset
+    ? [...ascii('Exif'), 0, 0, ...tiff]
+    : [...u32(6), ...ascii('Exif'), 0, 0, ...tiff]
+
+  // A non-HEIF major brand takes the compatible list with it: the parser accepts
+  // a match anywhere in either, deliberately, so a fixture that overrode only
+  // the major brand would still be a HEIF file and would prove nothing.
+  const heif = options.majorBrand === undefined
+  const ftyp = box('ftyp', [
+    ...ascii(options.majorBrand ?? 'heic'),
+    ...u32(0),
+    ...ascii(heif ? 'mif1' : 'qt  '),
+    ...ascii(heif ? 'heic' : 'isom'),
+  ])
+
+  const itemId = infeVersion === 2 ? u16(1) : u32(1)
+  const infe = box('infe', [
+    infeVersion, 0, 0, 0,
+    ...itemId,
+    ...u16(0),
+    ...ascii(options.itemType ?? 'Exif'),
+    0,
+  ])
+  const iinf = box('iinf', [0, 0, 0, 0, ...u16(1), ...infe])
+
+  // offset_size 4, length_size 4, base_offset_size 0.
+  const ilocItemId = ilocVersion < 2 ? u16(1) : u32(1)
+  const construction = ilocVersion === 0 ? [] : u16(options.idatConstruction ? 1 : 0)
+  const ilocCount = ilocVersion < 2 ? u16(1) : u32(1)
+  const ilocBody = [
+    ilocVersion, 0, 0, 0,
+    options.zeroSizes ? 0x00 : 0x44,
+    options.reservedNibble ?? 0x00,
+    ...ilocCount,
+    ...ilocItemId,
+    ...construction,
+    ...u16(0),
+    ...u16(1),
+    // The extent offset is patched below, once the box sizes are known.
+    ...u32(0),
+    ...u32(payload.length),
+  ]
+  const ilocSize = 8 + ilocBody.length
+  const metaSize = 8 + 4 + iinf.length + ilocSize
+  const payloadOffset = ftyp.length + metaSize + 8
+
+  // Patched rather than computed inline so an offset that happens to be right
+  // for one fixture cannot be wrong for the next — which is the whole bug this
+  // path can have.
+  const offsetAt = ilocBody.length - 8
+  ilocBody.splice(offsetAt, 4, ...u32(payloadOffset))
+
+  const iloc = box('iloc', ilocBody)
+  expect(iloc.length).toBe(ilocSize)
+  const meta = box('meta', [0, 0, 0, 0, ...iinf, ...iloc])
+  expect(meta.length).toBe(metaSize)
+
+  return new Uint8Array([...ftyp, ...meta, ...box('mdat', payload)]).buffer
+}
+
+/** What `readExifCapture` does across its two slices, without a `File`. */
+function readHeic(buffer: ArrayBuffer): ReturnType<typeof parseExifCapture> {
+  const extent = locateHeifExif(buffer)
+  if (!extent) return NOTHING
+  return parseHeifExifPayload(buffer.slice(extent.offset, extent.offset + extent.length))
+}
+
+describe('locateHeifExif', () => {
+  it('points at the EXIF payload inside mdat, not at the box that describes it', () => {
+    const heic = buildHeic({ dateTimeOriginal: AUGUST_NOON })
+    const extent = locateHeifExif(heic)!
+    expect(extent).not.toBeNull()
+
+    // The four bytes at the extent are the ExifDataBlock's header offset, and
+    // the six after them are the signature — proof it landed on the payload
+    // rather than a plausible-looking offset elsewhere in the file.
+    const view = new DataView(heic, extent.offset, extent.length)
+    expect(view.getUint32(0, false)).toBe(6)
+    expect(String.fromCharCode(view.getUint8(4), view.getUint8(5), view.getUint8(6), view.getUint8(7))).toBe('Exif')
+  })
+
+  it('returns null for a JPEG, so it is safe to try before the JPEG path', () => {
+    expect(locateHeifExif(buildJpeg({ dateTimeOriginal: AUGUST_NOON }))).toBeNull()
+  })
+
+  it('returns null for an ISOBMFF file that is not a HEIF still image', () => {
+    // A .mov is the same box structure; it must not be walked for image items.
+    expect(locateHeifExif(buildHeic({}, { majorBrand: 'qt  ' }))).toBeNull()
+  })
+
+  it('accepts a HEIF brand found only in the COMPATIBLE list, not just the major one', () => {
+    // Encoders disagree about which brand goes first, so a match anywhere in
+    // `ftyp` counts. This is the positive case for the negative above.
+    const heic = buildHeic({ dateTimeOriginal: AUGUST_NOON })
+    const bytes = new Uint8Array(heic)
+    bytes.set([...'mp41'].map((c) => c.charCodeAt(0)), 8) // major_brand -> mp41
+    expect(locateHeifExif(bytes.buffer)).not.toBeNull()
+  })
+
+  it('returns null when no item is of type Exif', () => {
+    expect(locateHeifExif(buildHeic({}, { itemType: 'hvc1' }))).toBeNull()
+  })
+
+  it('refuses a construction method other than a file offset rather than guessing one', () => {
+    expect(locateHeifExif(buildHeic({}, { idatConstruction: true }))).toBeNull()
+  })
+
+  it('reads an iloc version 0, which has no construction_method field at all', () => {
+    // The version this parser is most likely to get wrong and least likely to
+    // meet from Apple: v0 omits `construction_method`, so a reader that expects
+    // it consumes two bytes of `data_reference_index` and every extent after
+    // that is shifted. Common outside Apple's encoder.
+    const extent = locateHeifExif(buildHeic({ dateTimeOriginal: AUGUST_NOON }, { ilocVersion: 0 }))
+    expect(extent).not.toBeNull()
+    expect(readHeic(buildHeic({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '+02:00' }, { ilocVersion: 0 })).takenAt)
+      .toBe('2026-08-10T10:15:30.000Z')
+  })
+
+  it('ignores the RESERVED low nibble in an iloc version 0 rather than reading it as index_size', () => {
+    // The same byte is `index_size` in v1/v2 and reserved in v0. Reading it in
+    // v0 would advance past four bytes that are not there. A non-zero reserved
+    // nibble must change nothing.
+    const clean = locateHeifExif(buildHeic({}, { ilocVersion: 0 }))
+    const dirty = locateHeifExif(buildHeic({}, { ilocVersion: 0, reservedNibble: 0x04 }))
+    expect(dirty).toEqual(clean)
+    expect(dirty).not.toBeNull()
+  })
+
+  it('reads an iloc version 2, whose item ids are 32-bit', () => {
+    expect(readHeic(buildHeic({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '+02:00' }, { ilocVersion: 2 })).takenAt)
+      .toBe('2026-08-10T10:15:30.000Z')
+    // And the construction-method refusal still fires on v2, where the field exists.
+    expect(locateHeifExif(buildHeic({}, { ilocVersion: 2, idatConstruction: true }))).toBeNull()
+  })
+
+  it('reads an infe version 3, whose item ids are 32-bit', () => {
+    expect(readHeic(buildHeic({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '+02:00' }, { infeVersion: 3 })).takenAt)
+      .toBe('2026-08-10T10:15:30.000Z')
+  })
+
+  it('refuses an extent with no offset and no length rather than spinning on it', () => {
+    // **This pins the REFUSAL, not the timing.** A zero-width extent already
+    // resolved to null through the `length <= 0` check, so the early guard in
+    // `readItemExtent` is not what makes this pass — its job is that a file
+    // with many non-matching items does not spin `extent_count` times over
+    // each of them before reaching the same answer, which is a cost no
+    // assertion here measures. Both are correct; only one is tested.
+    expect(locateHeifExif(buildHeic({ dateTimeOriginal: AUGUST_NOON }, { zeroSizes: true }))).toBeNull()
+  })
+
+  it('returns null for an empty buffer and for truncated boxes instead of throwing', () => {
+    expect(locateHeifExif(new ArrayBuffer(0))).toBeNull()
+    const heic = buildHeic({ dateTimeOriginal: AUGUST_NOON })
+    expect(locateHeifExif(heic.slice(0, 20))).toBeNull()
+    expect(locateHeifExif(heic.slice(0, 60))).toBeNull()
+  })
+})
+
+describe('readExifCapture — HEIC, the format an iPad shoots', () => {
+  it('reads a capture time out of a HEIC exactly as it does out of a JPEG', () => {
+    const heic = readHeic(buildHeic({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '+02:00' }))
+    const jpeg = parseExifCapture(buildJpeg({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '+02:00' }))
+    expect(heic).toEqual(jpeg)
+    expect(heic.takenAt).toBe('2026-08-10T10:15:30.000Z')
+    expect(heic.takenAtOffsetMinutes).toBe(120)
+  })
+
+  it('reads coordinates out of a HEIC — the half that brings Precise back', () => {
+    const { latitude, longitude } = readHeic(buildHeic({ gps: AMSTERDAM }))
+    expect(latitude).toBeCloseTo(52.37, 5)
+    expect(longitude).toBeCloseTo(4.895, 5)
+  })
+
+  it('reads a big-endian TIFF inside a HEIC', () => {
+    const { takenAt } = readHeic(buildHeic({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '+02:00', bigEndian: true }))
+    expect(takenAt).toBe('2026-08-10T10:15:30.000Z')
+  })
+
+  it('reads a payload written with no header offset, straight from the signature', () => {
+    const { takenAt } = readHeic(
+      buildHeic({ dateTimeOriginal: AUGUST_NOON, offsetTimeOriginal: '+02:00' }, { noTiffHeaderOffset: true })
+    )
+    expect(takenAt).toBe('2026-08-10T10:15:30.000Z')
+  })
+})
+
+describe('parseHeifExifPayload — payloads it must not choke on', () => {
+  it('returns nothing for a payload shorter than its own header', () => {
+    expect(parseHeifExifPayload(new ArrayBuffer(0))).toEqual(NOTHING)
+    expect(parseHeifExifPayload(new ArrayBuffer(3))).toEqual(NOTHING)
+  })
+
+  it('returns nothing for a header offset that points past the payload', () => {
+    const payload = new Uint8Array([...u32(0xffffff), ...ascii('Exif'), 0, 0, 0x49, 0x49, 0x2a, 0x00])
+    expect(parseHeifExifPayload(payload.buffer)).toEqual(NOTHING)
+  })
+
+  it('returns nothing when the TIFF magic behind a valid offset is wrong', () => {
+    const payload = new Uint8Array([...u32(6), ...ascii('Exif'), 0, 0, 0x00, 0x00, 0x00, 0x00])
+    expect(parseHeifExifPayload(payload.buffer)).toEqual(NOTHING)
   })
 })

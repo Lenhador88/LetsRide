@@ -135,7 +135,6 @@ export type Ride = {
   route_description: string | null
   meeting_point: string
   departure_at: string
-  max_riders: number | null
   is_public: boolean
   club_id: string | null
   organizer_id: string
@@ -169,8 +168,10 @@ export type RideAttendance = 'going' | 'maybe' | null
 /**
  * One card in the rides list — `v2 / Component / List / Ride`, whose five
  * variants are the product of `is Upcoming` and `Are you going?`. Both are
- * derived here rather than stored: upcoming is `departure_at` against now, and
- * `attendance` is this viewer's row in `ride_members`.
+ * derived here rather than stored: upcoming is `departure_at` against the start
+ * of today in `APP_TIME_ZONE` (see `is_upcoming` below, which is where that
+ * boundary is spelled out), and `attendance` is this viewer's row in
+ * `ride_members`.
  */
 export type RideListItem = {
   id: string
@@ -184,6 +185,20 @@ export type RideListItem = {
    * screen draws an avatar and takes the full `EmbeddedClub`.
    */
   club: Pick<EmbeddedClub, 'id' | 'name'> | null
+  /**
+   * Where the ride starts — `051`'s pair, filled by `resolve-ride-location`.
+   *
+   * **Carried on the card even though no card draws it** (PD-260). The near-you
+   * strip filters the list the rider already has rather than issuing a second,
+   * position-keyed read, so the coordinate has to travel with the row; the
+   * alternative re-keys the whole list on the rider's position and refetches it
+   * the moment that lands, which is the double-fetch the clubs screen documents.
+   *
+   * **Null is ordinary.** Any ride created before the geocoder deployed, and any
+   * whose geocode failed, has no pair — such a ride is never near anything.
+   */
+  latitude: number | null
+  longitude: number | null
   /** Drawn first in the avatar row, with the brand ring. */
   organizer: PublicProfile | null
   /** Organizer first, then the crew — capped at RIDE_AVATAR_LIMIT. */
@@ -210,18 +225,38 @@ export type RideListItem = {
   map_card_url: string | null
   /**
    * Read once per list in the data layer rather than per card at render, so
-   * every card in one response agrees about what "now" is — and so the card
-   * stays a pure function of its props.
+   * every card in one response agrees about where the boundary is — and so the
+   * card stays a pure function of its props.
    *
-   * **Always true for anything `/rides` returns**, because that route filters
-   * on the same cutoff this is computed from. It is not vestigial: `RideCard`
-   * renders the design's two past variants (`Went`) from it, and the screens
-   * that will reach them — ride detail, and whatever history ends up being —
-   * reuse the same card. An earlier comment here claimed a ride could "pass
-   * while the page is open"; it cannot, since this is stamped server-side at
-   * fetch time on a component that will not re-render.
+   * **The boundary is midnight in `APP_TIME_ZONE`, not the current instant**
+   * (`rideDayStartUtc`). A ride that departed at 15:00 is still upcoming at
+   * 23:00, so `RideCard` keeps drawing "Going" on it for the rest of its day
+   * and flips to the design's past variant ("Went") at the same moment the ride
+   * moves under the "Past rides" header. The two have to be computed from
+   * one cutoff or a card reads "Went" while sitting above that header.
+   *
+   * It is exactly `false` for every ride in `RideList.past` and `true` for
+   * every ride in `RideList.upcoming`, which is what makes it safe for
+   * `/rides/detail` to gate RSVP on the same field: a rider can still answer
+   * for a ride that left this morning.
    */
   is_upcoming: boolean
+}
+
+/**
+ * The rides list, in the two sections `/rides` draws.
+ *
+ * One type rather than two calls, because the split is a property of one
+ * answer: both halves are cut at the same `rideDayStartUtc` instant, and a
+ * screen holding two independently-fetched halves can show a ride in neither
+ * section (or in both) across midnight. One query key, one gate, one clock.
+ *
+ * `past` is newest-first and `upcoming` soonest-first — both order *away* from
+ * today, which is the order each section is read in.
+ */
+export type RideList = {
+  upcoming: RideListItem[]
+  past: RideListItem[]
 }
 
 /**
@@ -239,7 +274,6 @@ export type RideDetail = {
   route_description: string | null
   meeting_point: string
   departure_at: string
-  max_riders: number | null
   club_id: string | null
   organizer_id: string
   organizer: PublicProfile | null
@@ -302,7 +336,6 @@ export type RideForEdit = {
   route_description: string | null
   meeting_point: string
   departure_at: string
-  max_riders: number | null
   is_public: boolean
   club_id: string | null
   /**
@@ -336,6 +369,28 @@ export type RideForEdit = {
    * without a second, separate `auth.getUser()` round trip.
    */
   is_organizer: boolean
+}
+
+/**
+ * One of the rider's own recent start locations, as the place field offers them
+ * back — PD-274.
+ *
+ * **Only a PICKED start is one of these**, which is what makes the shape total:
+ * `067`'s `rides_location_coupling` says a non-null `start_place_id` implies a
+ * non-null coordinate pair, so every field here is present or the row is not a
+ * recent at all. A meeting point the rider merely typed carries no place id and
+ * is deliberately not offered — a suggestion that restores no pin looks
+ * identical to one that does and behaves differently, and there is nothing a
+ * pick-less row could write that the rider's own typing does not already.
+ *
+ * `name` rather than `meeting_point`: it is what `PlaceValue` calls the same
+ * quantity, and this is fed straight into that field.
+ */
+export type RecentRideStart = {
+  name: string
+  placeId: string
+  lat: number
+  lon: number
 }
 
 export type RideCrewMember = {
@@ -423,11 +478,17 @@ export type RideChatMessage = RideMessage & {
   pending?: boolean
 }
 
-/** One club tile in the rides filter bar. */
+/**
+ * One club tile in the rides filter bar. `coverUrl` is the club's cover for
+ * `FilterClubImage`'s banner-behind-avatar treatment (PD-284) — see
+ * `PostcardFilterOption.coverUrl`, which carries the same field for the same
+ * reason.
+ */
 export type RideFilterOption = {
   id: string
   name: string
   imageUrl: string | null
+  coverUrl: string | null
   count: number
 }
 
@@ -453,21 +514,37 @@ export type RideFilters = {
 }
 
 /**
- * A club as it appears *embedded on something else* — the chip above a ride, a
- * tile on a filter bar. `CLUB_EMBED_COLUMNS` in lib/data/columns.ts is the query
- * half of this type; keep the two together.
+ * A club as it appears *embedded on something else* — the ride-detail chip, the
+ * notifications trailing thumbnail. `CLUB_EMBED_COLUMNS` in lib/data/columns.ts
+ * is the query half of this type; keep the two together.
  *
  * `avatar_path` is what the query selects. `avatar_url` is the signed URL
  * `resolveAvatarUrls` writes over it at read time — **not** a column: `024`
  * dropped `clubs.avatar_url`. Both fields are present for the same reason
  * `ClubListItem` carries both, and reading the wrong one is now a rendering bug
  * rather than a silent NULL.
+ *
+ * **Not what a filter-bar tile embeds any more** — see `ClubFilterEmbed` below.
  */
 export type EmbeddedClub = {
   id: string
   name: string
   avatar_path: string | null
   avatar_url: string | null
+}
+
+/**
+ * A club as a **filter-bar tile** embeds it — `EmbeddedClub` plus the cover,
+ * for the banner-behind-avatar treatment `FilterClubImage` draws (PD-284).
+ * `CLUB_FILTER_EMBED_COLUMNS` in lib/data/columns.ts is the query half.
+ *
+ * `cover_image_url` is signed by `resolveClubImageUrls`
+ * (`lib/data/media.ts`), not `resolveAvatarUrls` — that helper only ever
+ * touches `avatar_path`.
+ */
+export type ClubFilterEmbed = EmbeddedClub & {
+  cover_image_path: string | null
+  cover_image_url: string | null
 }
 
 export type Club = {
@@ -592,6 +669,22 @@ export type ClubDetail = {
   members_count: number
   viewer_role: 'owner' | 'admin' | 'member' | null
   /**
+   * Whether the viewer is `clubs.owner_id` — which is **not** the same question
+   * as `viewer_role === 'owner'`, and the difference is load-bearing (PD-280).
+   *
+   * `viewer_role` is a `club_members` row; ownership is a column on `clubs`, and
+   * `043`'s `delete_owned_club` gates on the column alone. The two diverge for
+   * an owner holding no roster row — `createClub` does two un-transacted
+   * inserts, so a lost tab between them leaves exactly that, and
+   * `enforce-creator-membership` calls the state "reachable on demand" and is
+   * unbuilt. Gating `Delete club` on the role would hide it from precisely the
+   * owner the database would let delete.
+   *
+   * Costs nothing: `getClub` already holds the user for the membership read.
+   * Still a display hint rather than authorization — `043` decides.
+   */
+  viewer_is_owner: boolean
+  /**
    * Where the club is based — `066`, PD-259. All four columns move together
    * (`clubs_location_coupling`), so a non-null `location_name` guarantees a
    * non-null coordinate pair and vice versa. **NULL is the normal state**: the
@@ -704,11 +797,52 @@ export type Postcard = {
   // Counted under RLS per viewer, never stored. A comment from a rider you
   // blocked must not be counted for you — see 011 §1.
   comments_count?: number
+  /**
+   * Where the author said the photo was taken — `073`, rendered by
+   * `PostcardCard` since PD-279.
+   *
+   * **A non-null name IS the rider's decision to publish one**, which is why
+   * the card needs no other column to decide whether to draw the caption.
+   * `073`'s coupling admits exactly five shapes, and `Hide` is the one where
+   * everything including this is NULL; a legacy `'region'` row carries a
+   * coordinate and a NULL name, so it draws nothing too. The precision marker
+   * says how exact the *coordinate* is, and this card renders no coordinate.
+   *
+   * **A non-null name is the rider's choice by CONSTRUCTION under `place` and
+   * by the COMPOSER under `precise`**, and the difference matters to anyone
+   * changing either. Arms 2 and 3 require the name; arm 4 leaves it optional
+   * and `073` calls it "cosmetic", so there the guarantee is only that
+   * `PlaceSearchField` stays mounted in every mode and the value is on screen
+   * at submit. Hide is arm 1 — every capture column NULL — so no path stores a
+   * name against a control reading Hide.
+   *
+   * Vendor text stored verbatim (≤200, `postcards_taken_place_name_length`),
+   * so it is truncated on display rather than trusted to be short.
+   *
+   * **Not optional**, unlike `comments_count` beside it: `POSTCARD_SELECT` is
+   * the only select that produces a `Postcard` and it always names this column.
+   * A `?` here would let a second read path forget it, type-check clean, and
+   * drop the caption on that screen with no error anywhere.
+   */
+  taken_place_name: string | null
+  /**
+   * The ISO-3166-1 alpha-2 country of `taken_place_name`, uppercase — `074`,
+   * PD-279's flag half. `PostcardCard` draws it as a flag emoji immediately
+   * before the town and never on its own, which is what
+   * `postcards_taken_country_code_needs_a_place` enforces at the database:
+   * this is `null` whenever `taken_place_name` is, and may also be `null`
+   * beside a real name — a typed-and-never-picked town carries no vendor data
+   * and therefore no country. Vendor text stored verbatim, never parsed out
+   * of the name. **Not optional**, for the same reason `taken_place_name`
+   * above is not.
+   */
+  taken_country_code: string | null
 }
 
 /**
  * How exactly a postcard's stored coordinate describes where the photo was
- * taken — the composer's `Region` and `Precise` buttons, and nothing else.
+ * taken — the composer's `Town` and `Precise` buttons, plus `'region'`, which
+ * the client no longer writes.
  *
  * There is deliberately no `'hide'` member. Hide is the ABSENCE of a
  * coordinate, not a third kind of one: nothing is uploaded, so there is nothing
@@ -717,7 +851,14 @@ export type Postcard = {
  * one — indistinguishable on purpose, because a marker saying "this rider chose
  * to hide it" would itself be the disclosure the choice exists to avoid.
  */
-export type PhotoLocationPrecision = 'region' | 'precise'
+/**
+ * **`'region'` is LEGACY and the client never writes it again.** It marked the
+ * photo's own coordinate rounded to a ~1 km cell, which `072` replaced with
+ * `'place'` — a town the rider named. It stays in the type because it stays in
+ * the column: one row on DEV carries it, nothing backfills it, and a reader that
+ * cannot represent it would crash on that row rather than draw it.
+ */
+export type PhotoLocationPrecision = 'region' | 'place' | 'precise'
 
 /**
  * What the composer sends about where and when a photo was taken.
@@ -735,6 +876,12 @@ export type PostcardCaptureInput = {
   takenLatitude: number | null
   takenLongitude: number | null
   takenLocationPrecision: PhotoLocationPrecision | null
+  /** The place the rider named. Present without a coordinate when they typed a
+   *  town rather than picking one — `072`'s arm 2, and a first-class state.
+   *
+   *  There is deliberately no provider id beside it; see `NamedPlace` in
+   *  `src/lib/media/location.ts` for why storing one would undo the rounding. */
+  takenPlaceName: string | null
 }
 
 export type PostcardComment = {
@@ -782,8 +929,14 @@ export type FeedPage = {
 /**
  * One item in the home screen's filter bar (`v2 / Component / Filter Bar / Item`).
  * `kind` is what the design draws as a shape: a rider is a circle, a club a
- * rounded square. That is the *only* thing distinguishing them visually, which is
- * a deliberate design choice recorded rather than second-guessed.
+ * rounded square. That used to be the *only* thing distinguishing them — flagged
+ * in docs/FIGMA-FIDELITY-TODO.md as invisible at 56px — until PD-284 gave a club
+ * tile the club-list treatment (`FilterClubImage`, `ui/FilterTile.tsx`): its
+ * `coverUrl` behind the avatar `imageUrl` already carries.
+ *
+ * `coverUrl` is club-only — a rider tile has no cover to draw, so it is always
+ * null for `kind: 'rider'`. Kept on the shared type rather than split per-kind,
+ * matching `imageUrl` and `count` above it.
  *
  * `count` is how many postcards in the current feed window come from this rider or
  * club. The design's badge means "new", which needs a seen/unseen model the schema
@@ -795,6 +948,8 @@ export type PostcardFilterOption = {
   id: string
   name: string
   imageUrl: string | null
+  /** The club's cover, for `FilterClubImage`. Always null for a rider tile. */
+  coverUrl: string | null
   count: number
 }
 
@@ -947,6 +1102,13 @@ export type PlaceSearchResult = {
   /** `lon`, not `lng` — one name for one quantity, `037` §5bb's rule, kept
    *  after `070` because the columns and the proxy both still spell it that way. */
   lon: number
+  /**
+   * ISO-3166-1 alpha-2, uppercase, or `null` when the vendor sent none —
+   * `search-places/shape.ts`'s `toPlaceResult` (PD-279). The postcard composer
+   * is the only reader today, storing it verbatim beside `taken_place_name`;
+   * clubs and rides ignore it, and it costs them nothing to carry.
+   */
+  countryCode: string | null
 }
 
 /**

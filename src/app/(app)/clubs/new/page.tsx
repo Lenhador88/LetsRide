@@ -26,7 +26,7 @@ export default function NewClubPage() {
     <>
       <Header title="Create club" backHref="/clubs" />
 
-      <div className="px-4 pb-8">
+      <div className="px-4 pt-4 pb-8">
         <CreateClubForm />
       </div>
     </>

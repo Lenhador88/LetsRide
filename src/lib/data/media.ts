@@ -104,6 +104,45 @@ export async function resolveAvatarUrls(
   }
 }
 
+type ClubImageRow = {
+  avatar_path?: string | null
+  avatar_url?: string | null
+  cover_image_path?: string | null
+  cover_image_url?: string | null
+}
+
+/**
+ * Resolves a club's `avatar_path` **and** `cover_image_path` into signed URLs
+ * in one request — the pair a filter tile needs for the banner-behind-avatar
+ * treatment (PD-284, `ui/FilterTile.tsx`'s `FilterClubImage`).
+ *
+ * Not `resolveAvatarUrls`: that helper only ever reads `avatar_path`, by
+ * design (its own header — one field, one promise). Mirrors
+ * `lib/data/clubs.ts`'s private `signClubImages`, which signs the identical
+ * pair for `ClubListItem`; this is the same idea exported for the two filter
+ * queries (`getPostcardFilters`, `getRideFilters`), which embed a club through
+ * `CLUB_FILTER_EMBED_COLUMNS` rather than reading a `ClubListItem`.
+ *
+ * A path that will not sign lands as null and the tile falls back accordingly
+ * — signing is not the check, `016`'s Storage SELECT policy is.
+ */
+export async function resolveClubImageUrls(
+  rows: (ClubImageRow | null | undefined)[],
+  supabase?: DataClient
+): Promise<void> {
+  const present = rows.filter((row): row is ClubImageRow => !!row)
+  const paths = present
+    .flatMap((row) => [row.avatar_path, row.cover_image_path])
+    .filter((path): path is string => !!path)
+  if (paths.length === 0) return
+
+  const urls = await signImagePaths(paths, supabase)
+  for (const row of present) {
+    if (row.avatar_path) row.avatar_url = urls.get(row.avatar_path) ?? null
+    if (row.cover_image_path) row.cover_image_url = urls.get(row.cover_image_path) ?? null
+  }
+}
+
 type RideMapRow = {
   map_card_path?: string | null
   map_card_url?: string | null

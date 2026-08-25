@@ -40,7 +40,7 @@ remain are real gaps, and three of them are schema gaps rather than design ones.
 | Gap | What the design shows | What is missing |
 |---|---|---|
 | **Unread counts** | Filter tiles carry a badge; the deck is "all *new*"; the empty state is "no *new* postcards, yet!" | No seen/unseen model anywhere. The badge currently counts postcards in the feed window, which is the same number while nothing is marked seen. Needs a `postcard_views` table or a last-seen stamp — a migration, and `012`/`013` are still unapplied ahead of it. |
-| **Photo location** | Every card overlays `flag · City, Country` | `postcards` has no location columns. The date renders; the location does not. The author's `profiles.location` is where they live, not where the photo was taken, so it is not a substitute. |
+| **Photo location** — *half live* | Every card overlays `flag · City, Country` | **The town is live on DEV; the FLAG is not, and will not be until `search-places` is redeployed (owner action).** `taken_country_code` can only ever be populated from the country the Edge Function returns, and the deployed build does not return one — so every postcard written after `074` stores NULL there and the card falls back to the pin. Built 2026-08-24 (`072`–`074`, PD-279): `taken_place_name` is vendor text stored as ONE string, not a city/country pair, so there is no comma to draw — the card shows `flag · name` rather than `flag · City, Country`. The flag is a regional-indicator emoji from `taken_country_code`, not the design's traced `Element / Flag` SVG — same trade `lib/countries.ts` already made for the profile picker, and it degrades to the pre-existing location pin for a typed-and-never-picked town, which carries no vendor country at all. The author's `profiles.location` is still never the substitute — it is where they live, not where the photo was taken. |
 | **Share count** | The share action shows a count | Nothing is recorded to count. The button shares a link (Web Share API, clipboard fallback) and shows no number. |
 
 ## Why the design was unreadable — historical, resolved 2026-08-04
@@ -214,10 +214,15 @@ being called done.
       as the same optical size. Selected is a 2px `Accent Brand/100` ring sitting 4px outside
       the image (72 for a circle, 68 at radius 12 for a square) plus an accent-filled badge.
       "All new" is a 2×2 collage of the four newest photos.
-- [ ] **Shape is the only differentiator** — the design gives riders and clubs no label,
-      grouping or badge to tell them apart, only a 4px difference in corner radius at 60px.
-      Built as drawn. Worth a second look on a real device before it ships to riders; the
-      product owner has already flagged it as a possible readability problem.
+- [x] ~~**Shape is the only differentiator**~~ **Fixed for clubs 2026-08-24 (PD-284).** The
+      design gave riders and clubs no label, grouping or badge — only a 4px difference in
+      corner radius at 60px, which is what the product owner flagged as a readability
+      problem. A club tile now draws `ClubCard`'s composition instead: cover behind, avatar
+      in front, degrading to the old full-tile avatar when there is no cover. **The residual
+      is the rider tile**, which is still shape-only — that is now a difference against a
+      thing that looks unmistakably like a club rather than against a 4px radius, so it is
+      recorded rather than open. Figma still draws the flat single image; this composition
+      exists only in code.
 - [ ] **Badge semantics** — see the unread-count gap above. The tile currently badges how many
       postcards in the feed window come from that rider or club.
 
@@ -230,8 +235,8 @@ Expect to move things when the designer draws it.
 
 - [ ] **Five drawn fields have no column**, and none is built: an **end time** (the frame draws
       a second date and time; `rides` has only `departure_at`), **distance in km**, **"Includes
-      offroad"**, **"Public seats"** as a number separate from `max_riders`, and a **cover
-      photo**. The last is the same missing column that leaves the rides list's 80-wide image
+      offroad"**, **"Public seats"** — a rider limit of any kind, now that `077` (PD-293) has
+      dropped `max_riders` — and a **cover photo**. The last is the same missing column that leaves the rides list's 80-wide image
       strip empty.
 
 - [ ] **Rider invitations with an Admin role** are drawn here as well as on Create club. Same
@@ -247,9 +252,11 @@ Expect to move things when the designer draws it.
       and the design does not draw one, so it borrows the `Input` treatment rather than
       inventing a component. Replace it when a real one is designed.
 
-- [x] ~~**`max_riders` is unenforced**~~ — still true, and still not this form's job. The
-      schema has carried the column since `001` with no policy, trigger or check behind it.
-      The form bounds what can be *typed*, which is not the same thing.
+- [x] ~~**`max_riders` is unenforced**~~ — **closed as DROPPED rather than done.** `063`
+      (PD-174) enforced it for six days; `077` (PD-293) removed the column, the trigger and
+      the form field together, because the design draws no capacity affordance anywhere and an
+      enforced cap a rider cannot see coming is worse than no cap. There is no rider limit on
+      this form to bound.
 
 ### Create club, and the original club detail — built 2026-08-05
 
@@ -342,20 +349,23 @@ is a drawn value this repo no longer builds:
       token choices. **Its time is a single instant** — `14:00`, not the drawn `14:00 -
       18:00` — the same `rides` has-no-end-time gap already logged against the ride detail's
       own date row; not repeated in full here.
-- [ ] **The header's `Options` control is built, and one row the mock draws is not.** Both
-      Options frames (`4181:6897` owner, `4181:6930` member) draw three rows under a
-      hairline: `Edit club` (owner) or nothing (member) above the line, then `Delete club`
-      below it for the owner. `ClubOptionsMenu` builds `Edit club` and `Leave club` and
-      **deliberately omits `Delete club`** — `ClubDetailHeader`'s own docstring and
-      `openspec/changes/add-ride-club-edit-delete/design.md` §D4 (PD-101) already put
-      deletion at the foot of the edit screen behind a second tap, in `DeleteClubControl`,
-      and siting the same destructive control in two places is how it gets tapped by
-      accident. The product owner settles which frame is right; until then
-      `DeleteClubControl` stays the one place it lives.
+- [x] ~~**The header's `Options` control is built, and one row the mock draws is not.**~~
+      **Closed 2026-08-24 (PD-280): the mock was right.** Both Options frames (`4181:6897`
+      owner, `4181:6930` member) draw `Delete club` under a hairline below `Edit club`, and
+      `ClubOptionsMenu` deliberately omitted it —
+      `openspec/changes/add-ride-club-edit-delete/design.md` §D4 (PD-101) put deletion at
+      the foot of the edit screen, and siting one destructive control in two places is how it
+      gets tapped by accident. The product owner settled it the other way, so that the club
+      menu and the new `RideOptionsMenu` offer the same rows. The old argument is kept by the
+      confirmation rather than by the omission: the row opens `DeleteClubSheet`, which is
+      `DeleteClubControl`'s own panel, counts and all. **One row the frames do not draw is
+      built anyway** — `Share club`, the app-wide row PD-280 adds to every surface.
 - [ ] **Join is not in the menu either**, though neither approved frame draws a non-member's
       Options sheet to compare against. `ClubMembershipButton` stays inline on the page
       instead, visible only to a non-member — a constructive action stays visible, only the
-      destructive one (Leave) is tucked away.
+      destructive one (Leave) is tucked away. **A non-member does now get the sheet**, since
+      PD-280: it holds `Share club` and nothing else, where before the whole control was
+      hidden from them.
 - [ ] **`ClubMemberRail`'s avatar stack draws no admin distinction.** The members page marks
       `role = 'admin'` with a trailing label and no ring; the rail's collapsed state shows
       only the host ring, on the owner, matching what `RideCrewRail` draws for the ride
@@ -379,13 +389,18 @@ is a drawn value this repo no longer builds:
       same PD-176 designer question rather than logged again as new.
 
       **PD-259 DEVIATED rather than adding a fifth, and that is the precedent worth having.**
-      `PlaceSearchField`'s sheet header has a `Cancel` text button, which
+      `PlaceSearchField`'s sheet header had a `Cancel` text button, which
       `Rides / Add starting location - Filled` (`1918:15967`) draws in `Accent (OLD)/100` —
-      the same pairing at the same 3.00:1. It ships as `text-foreground` instead. The reason
-      to break the tie this way rather than wait: this control is new, so nothing regresses,
+      the same pairing at the same 3.00:1. It shipped as `text-foreground` instead. The reason
+      to break the tie that way rather than wait: the control was new, so nothing regressed,
       and a fifth instance would have made the eventual fix five edits instead of four. The
       **existing four are untouched** — changing those is the designer's call, not a
       side effect of an unrelated story.
+
+      **The instance itself is gone with PD-274** — the sheet, its header and its `Cancel`
+      went with the move to an inline suggestion list, so there is nothing left here to fix.
+      The precedent is what the entry is kept for: a new control breaks this tie by
+      deviating, an existing one waits for the designer.
 
 - [ ] **A SECOND failing pairing arrived with the same commit and is a different one:
       `text-muted` on `bg-track`.** `#666666` on `#E5DACF` measures **4.17:1** against a 4.5:1
@@ -593,11 +608,18 @@ heading that claims nothing was guessed is exactly where a guess goes unnoticed.
       what `Home - Rides - No rides` draws — no club tiles at all when there are no rides — but
       it means a club you belong to that has scheduled nothing has no tile. Consistent with
       the design; flagged because it is a rule nobody stated in words.
-- [ ] **The list is upcoming-only, and ride history has no screen.** All four frames draw
-      upcoming rides, and the empty state says "no *upcoming* rides". But the component set
-      carries two past variants (`Went`), which nothing in this flow can reach. Either a past
-      section belongs on "Your rides" or history lives on the profile — the design does not
-      say.
+- [x] ~~**The list is upcoming-only, and ride history has no screen.**~~ **Closed 2026-08-19**
+      — the product owner answered the question the design left open: a past section, on the
+      list, under every filter. `getRides` returns two windows and `/rides` draws a
+      **Past rides** header between them, so the component set's `Went` variants are
+      reachable at last.
+      **One deviation registered rather than hidden.** The four `Home - Rides` frames draw no
+      such section at all, so the header is borrowed from `Private club - Rides`, which draws
+      exactly this pair of `Section / Header` instances — its component, its geometry and its
+      string, so the borrowing is total and there is no new wording to justify.
+      The boundary is **midnight in `APP_TIME_ZONE`**, not the departure instant, which is a
+      product rule the design does not speak to either: a ride at 15:00 is still today's ride
+      at 23:00.
 - [x] ~~**Timezone.**~~ **Fixed 2026-08-05** — see §Ride detail, where the same bug was found
       from a real device and fixed once for both screens. `RideCard` calls
       `formatRideDate`/`formatRideTime`, which are now pinned to `APP_TIME_ZONE`. The `en-US`
@@ -734,11 +756,14 @@ measurement as current.
       this route — note that is *replacing* the bar, where `RideAttendanceBar` on the ride plan
       *stacks on top of* it. Which of the two a screen does is a per-screen fact the design
       states, not a rule about bars.
-- [ ] **The header's Options button is omitted, and this one is a question, not a task.**
-      The flow never draws what the sheet contains. Ride overflow is presumably
-      edit / cancel / leave, and "No edit or delete UI anywhere" is a standing known issue —
-      inventing three rows for a destructive menu is the kind of guess that gets trusted
-      later. **Ask the designer what belongs in it.**
+- [x] ~~**The header's Options button is omitted, and this one is a question, not a task.**~~
+      **Built 2026-08-24 (PD-280)** — `RideOptionsMenu`, in `secondaryAction` rather than the
+      drawn x342, which the organizer's chat button occupies. The flow still draws no sheet
+      for this screen, so the rows are not read off a frame; they are the product owner's,
+      asked for by name: *"the 3 dots sliding menu should apply for rides and clubs… the app
+      standard for these main pages"*. `Share ride`, then `Edit ride` and `Delete ride` for
+      the organizer, matching `ClubOptionsMenu` row for row. That is what closes this — the
+      entry asked the designer what belongs in it, and the owner answered.
 - [ ] **Crew's sticky "Bring a rider" action is omitted.** Inviting is its own flow
       (`Invite riders`, `Invite riders - Filled`) with no schema behind it.
 
@@ -805,11 +830,13 @@ Blocked on schema, in the same shape as the rides list's image strip:
 - [ ] **The location row draws a place name over a street address.** `meeting_point` is one
       free-text column, so the primary line carries it and the secondary stays empty. Two
       columns, or a parse nobody should write.
-- [ ] **`max_riders` is not enforced anywhere.** The column has existed since `001` and
-      nothing has ever checked it — not the RSVP action, not a policy, not a trigger — so a
-      ride can be over-subscribed. Out of scope here because the ride plan does not draw
-      capacity at all, and because the correct fix is a constraint the database owns rather
-      than a check-then-insert that races.
+- [x] ~~**`max_riders` is not enforced anywhere.**~~ **Closed as DROPPED — `077` (PD-293).**
+      `063` did enforce it, correctly and in the database (a `security definer` trigger taking
+      a row lock, not the check-then-insert this item warned against). What could not be fixed
+      is the reason this item put it out of scope in the first place: *the ride plan does not
+      draw capacity at all*. So the cap surfaced only as an unexplained refusal, and the
+      product owner dropped the limit rather than commission the frame. Nothing caps a crew
+      now, by decision.
 
 Accessibility — **measured, and both fail**. This is the same palette-wide problem the rides
 list surfaced with its two RSVP pills, arriving on a second screen:
@@ -872,8 +899,8 @@ Deviations that are ours, not the design's:
       by `reviewer` catching a comment that claimed "24/36, measured" over a `text-2xl` that
       was not.
 - [ ] **The crew list is bounded at 200 and does not paginate.** `RIDE_CREW_LIMIT` exists
-      because nothing caps `ride_members` — see `max_riders` above — not because 200 is a
-      real crew. Beyond it the roster truncates silently. The design has no pagination for
+      because nothing caps `ride_members` — true again since `077` dropped the cap, see
+      above — not because 200 is a real crew. Beyond it the roster truncates silently. The design has no pagination for
       this list, so the honest fix needs a design before it needs code.
 
 ### Profile — built from the measurements 2026-08-05
@@ -948,8 +975,16 @@ Blocked on schema, same shape as the ride detail's banner:
 
       The signing fan-out is the part worth knowing about: **nine components render an
       avatar and all nine read `avatar_url`**, so `resolveAvatarUrls` writes the signed URL
-      *into that field* rather than adding a second one. **Nine call sites**, counted with
-      `git grep -c "await resolveAvatarUrls(" -- src/` rather than by hand — the first draft
+      *into that field* rather than adding a second one. **Twelve call sites**, counted with
+      `git grep -c "resolveAvatarUrls(" -- src/ ':!src/**/__tests__/**' | awk -F: '{s+=$2} END {print s}'`
+      minus the one definition. **Two things that number gets wrong if either is dropped.**
+      The pathspec exclusion: without it `media.test.ts` alone contributes five and the
+      answer is 17. And the pattern must NOT be anchored on `await ` — three call sites sit
+      inside a `Promise.all` and carry no `await`, so the awaited-only version answered
+      **nine** while twelve existed, and read as verified because nine was also the number
+      written down. That is the comment trap's shape arriving through a grep anchor instead
+      of a comment: a measured-looking command, blind in exactly one direction. The first
+      draft
       of this line said "five", and the two it overlooked (`collageAvatars` on the rides
       filter bar, and the v1 club page) were precisely the two that had been left unsigned.
       Miss one and avatars fall back to initials on that screen alone, which reads as a
@@ -1084,19 +1119,21 @@ rider's identity in this change.
       children at all, just the photo as the fill. Making the whole box tappable is ours —
       defensible on the 44px glove-target floor, and the owner asked for it — but it is a
       deviation, not a measured match, and belongs here rather than only in the docstring.
-- [ ] **Photo box styling deviates from the frame on six counts — found 2026-08-08,
-      deliberately not adopted.** Same status as §Rides list's RSVP-pill contrast finding: a
-      design question on record, not a bug to silently patch. The frame's box is a 358×224
-      landscape rectangle (~1.6:1) at radius 8, 1px solid `Grey/20%`, with a `Grey/60` icon and
-      "Add photo" set as an `Accent Brand/100` 14/Semibold link button. The shipped box
-      (`aspect-4/5`, `rounded-xl`, `border-2 border-dashed border-border-strong`, icon and
-      label both `text-muted` via `currentColor`, label `text-xs`) deviates on all six, and
-      none are adopted here:
-      - **Aspect ratio** — `aspect-4/5` (0.8:1, portrait) vs. the frame's ~1.6:1 landscape box.
-        PD-112 specified `aspect-4/5` directly; silently reversing an explicit instruction
-        would be worse than logging the gap.
-      - **Radius** — `rounded-xl` (12px) vs. the frame's 8px (`rounded-lg`). No product reason
-        is on record for the difference; logged rather than guessed at.
+- [ ] **Photo box styling deviated from the frame on six counts — found 2026-08-08. TWO are
+      now adopted (2026-08-20, PD-275) and four are still deliberately not.** Same status as
+      §Rides list's RSVP-pill contrast finding: a design question on record, not a bug to
+      silently patch. The frame's box is a 358×224 landscape rectangle (~1.6:1) at radius 8,
+      1px solid `Grey/20%`, with a `Grey/60` icon and "Add photo" set as an
+      `Accent Brand/100` 14/Semibold link button.
+      - **Aspect ratio — ADOPTED.** The box is `358 / 224` now, not `aspect-4/5`. PD-112 had
+        specified `aspect-4/5` directly, which is why the gap was logged rather than closed;
+        the product owner reopened it on 2026-08-20 ("takes too much space") and the design's
+        own ratio is the answer. It also made the preview honest: the FEED renders `334 / 200`,
+        so a portrait preview was showing the rider a tall crop of a photo that posts
+        landscape.
+      - **Radius — ADOPTED.** `rounded-lg` (8px), matching the frame. It was logged rather than
+        guessed at because no product reason was on record for `rounded-xl`; none appeared, and
+        it changed with the ratio.
       - **Stroke** — `border-2 border-dashed` vs. the frame's 1px solid. The colour already
         matches (`border-border-strong` **is** `Grey/20%`); only weight and dash differ.
       - **Icon colour** — `Grey/80` (via `currentColor`) vs. the frame's `Grey/60`. `CLAUDE.md`
@@ -1108,6 +1145,14 @@ rider's identity in this change.
         14/Semibold link style. Kept on purpose: the frame's green measures **3.52:1** on
         `White/100`, under the 4.5:1 bar for 14px text, while `text-muted` measures **5.74:1**.
         Adopting the design's colour here would trade a passing label for a failing one.
+- [x] ~~**Header and back control**~~ — **closed 2026-08-20 (PD-275).** The screen drew its own
+      `Back` link button and an `<h1>` *inside* the shell's `pt-header` padding, so a 96px band
+      of nothing sat above a second, smaller title — the "unused space on the top" the product
+      owner reported. It renders `<Header title backHref />` now, the same primitive
+      `/rides/new` and `/clubs/new` use. That is closer to the frame in placement (a header row
+      with a control at the left) and still differs from it in kind: the frame's header carries
+      `Cancel` and a small primary `Post`, where this one carries a back arrow and leaves `Post`
+      inline at the bottom. That half stays open, in the frame entry above.
 - [ ] **Upload progress** — *chose:* a 6px `Accent Brand/100` bar plus "Uploading… N%".
       Unread entirely.
 - [ ] **Failure states** — *chose:* upload failure inline under the picker; the insert's own
@@ -1440,6 +1485,22 @@ cost of a tagline there is paid on every sign-in. If shared links ever become a 
 channel the fix is more likely routing than copy — send an un-authed deep link to `/auth/signup`,
 and carry the target — which is a change to `src/lib/auth/guard.ts` and its suite, not a fidelity
 item.
+
+### The location permission sheet and its row — built 2026-08-24 (PD-170), from no frame at all
+
+- [ ] **`LocationPrimingSheet` has no Figma frame, and neither does the row that opens it.**
+      `npm run figma -- ls` returns no permission, priming or explainer frame of any kind, so
+      the copy and the vertical rhythm are **written, not measured**. Everything they are built
+      *from* is measured: `ContextMenu` is `v2 / Component / Context Menu` (390 wide, flush to
+      the bottom edge, 16px radius on the top corners, padding 16/24/32/24), the buttons are
+      `Button / Regular / *` at `lg`, and `UseMyLocationRow` is `ExploreClubsStrip`'s row
+      verbatim — 56px on `White/100` at radius 8, 16px padding, 12px gap, a 24px `Location
+      Filled` in `Accent Brand/100`, label at Poppins/14/Semibold, chevron trailing.
+- [ ] **Two claims in that copy are a store-review surface, not decoration.** Apple reads the
+      in-app rationale alongside `NSLocationWhenInUseUsageDescription`. *"Only while the app is
+      open"* and *"we never show other riders where you are"* must both stay true of the code —
+      nothing in `src/` uses `watchPosition`, and a device fix leaves the device only as a
+      ~1 km-rounded proximity bias. A designer rewording this needs to keep both.
 
 ## Rule for anyone building against this
 

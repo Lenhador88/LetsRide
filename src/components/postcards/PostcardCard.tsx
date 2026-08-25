@@ -1,12 +1,13 @@
 import { memo } from 'react'
 import Link from 'next/link'
+import { LocationOutlineIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { LikeButton } from '@/components/postcards/LikeButton'
 import { CommentsLink } from '@/components/postcards/CommentsLink'
 import { ShareButton } from '@/components/postcards/ShareButton'
 import { PostcardMenu } from '@/components/postcards/PostcardMenu'
 import { routes } from '@/lib/routes'
-import { cn, formatPostcardDate } from '@/lib/utils'
+import { cn, countryFlagEmoji, formatPostcardDate } from '@/lib/utils'
 import type { Postcard } from '@/types'
 
 type PostcardCardProps = {
@@ -43,9 +44,13 @@ type PostcardCardProps = {
  * wins; the 2px white inner stroke is invisible against it for the same reason
  * and is not reproduced.
  *
- * **The design's photo overlay carries city and country and the schema has
- * neither** — `postcards` has no location columns. The date is real and renders;
- * the location does not, rather than borrowing the author's profile location,
+ * **The design's photo overlay draws `flag · City, Country`; this draws
+ * `flag · name`.** `taken_place_name` (`072`, PD-279's town half) is vendor
+ * text stored as one string rather than a city/country pair, so there is no
+ * comma to draw — the flag comes from `taken_country_code` (`074`, PD-279's
+ * flag half) instead of the design's traced `Element / Flag` SVG, built as a
+ * regional-indicator emoji the same way `lib/countries.ts` already does for
+ * the profile picker. Neither ever borrows the author's profile location,
  * which is where they live and not where the photo was taken. Registered in
  * docs/FIGMA-FIDELITY-TODO.md.
  *
@@ -72,6 +77,10 @@ function PostcardCardComponent({
   fill = false,
 }: PostcardCardProps) {
   const username = postcard.author?.username ?? 'Rider'
+  // `null` for a typed-and-never-picked town, which has no vendor country
+  // behind it at all — the pin icon below is what that state falls back to,
+  // matching what this card drew before PD-279's flag half existed.
+  const flag = countryFlagEmoji(postcard.taken_country_code)
 
   return (
     <article
@@ -118,9 +127,59 @@ function PostcardCardComponent({
           className="pointer-events-none absolute inset-x-0 bottom-0 h-10"
           style={{ background: 'linear-gradient(180deg, #00000000 0%, #000000B3 100%)' }}
         />
+        {/* Bottom left, against the date's bottom right (PD-279). Capped at
+            half the width so a 200-character vendor name truncates instead of
+            running under the date — the column is bounded at 200, not at
+            something that fits.
+
+            Drawn on a name alone, and what makes that safe differs by mode:
+            under `place` the CHECK requires one, so the name IS the rider's
+            choice by construction; under `precise` `073` leaves it optional
+            and explicitly "cosmetic", so what makes it theirs is that
+            `PlaceSearchField` stays mounted in every mode and the value is on
+            screen when they post. **The second half is a property of the
+            composer, not of the schema** — a change that hides that field puts
+            an auto-filled vendor locality on a card nobody read. Hide is the
+            arm where every capture column is NULL, so it draws nothing either
+            way.
+
+            `bg-scrim` rather than the 40px gradient behind it, and that is a
+            contrast fix rather than styling. The gradient reaches only
+            `#000000B3` at the very bottom edge: at this text's own height it is
+            ~0.37–0.54 alpha, so `White/100` measures **2.58:1 at the glyph top**
+            over a bright photo — below AA, and below even 3:1. `Grey/70%`
+            bounds the composite at `#4C4C4C` however bright the photo is, which
+            is 8.59:1, and it is the instrument `RideMap` already uses for the
+            one other place this app puts text over rider imagery. */}
+        {postcard.taken_place_name && (
+          <span className="absolute bottom-1.5 left-2 flex max-w-[50%] items-center gap-1 rounded bg-scrim px-1.5 py-0.5 text-2xs font-medium text-white">
+            {/* The design's `Element / Flag` — a country flag ahead of the town,
+                never the location pin (`v2 / Component / Postcard`'s `Location`
+                frame). Built as the regional-indicator pair `lib/countries.ts`
+                already uses for the profile picker rather than as ~40 traced
+                SVGs — same trade, same doc note (docs/FIGMA-FIDELITY-TODO.md
+                §Countries). Falls back to the pin for a typed-and-never-picked
+                town, which has no vendor country behind it to draw a flag for. */}
+            {flag ? (
+              <span aria-hidden="true" className="shrink-0 leading-none">
+                {flag}
+              </span>
+            ) : (
+              <LocationOutlineIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
+            )}
+            {/* The icon (or flag) is decorative, so without this a screen reader
+                hears a bare place name between the photo's alt text and the
+                date, with nothing saying what it is. */}
+            <span className="sr-only">Taken in</span>
+            <span className="truncate">{postcard.taken_place_name}</span>
+          </span>
+        )}
+
+        {/* The same pill, for the same measurement: this text has always had
+            the caption's problem and shipped before anyone computed it. */}
         <time
           dateTime={postcard.created_at}
-          className="absolute right-2 bottom-1.5 text-2xs font-medium text-white"
+          className="absolute right-2 bottom-1.5 rounded bg-scrim px-1.5 py-0.5 text-2xs font-medium text-white"
         >
           {formatPostcardDate(postcard.created_at)}
         </time>

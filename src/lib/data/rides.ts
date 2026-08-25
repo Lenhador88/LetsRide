@@ -1,11 +1,14 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
-import { CLUB_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { CLUB_EMBED_COLUMNS, CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { rideIdSchema } from '@/lib/validation/rides'
-import { resolveAvatarUrls, resolveRideMapUrls } from '@/lib/data/media'
+import { resolveAvatarUrls, resolveClubImageUrls, resolveRideMapUrls } from '@/lib/data/media'
+import { rideDayStartUtc } from '@/lib/utils'
 import type {
+  ClubFilterEmbed,
   EmbeddedClub,
   PublicProfile,
+  RecentRideStart,
   RideAttendance,
   RideCrew,
   RideCrewMember,
@@ -14,6 +17,7 @@ import type {
   RideFilterOption,
   RideFilters,
   RideForEdit,
+  RideList,
   RideListItem,
 } from '@/types'
 
@@ -25,6 +29,24 @@ import type {
  * postcards.
  */
 export const RIDES_PAGE_SIZE = 30
+
+/**
+ * How many **previous** rides `/rides` carries under its own header, and
+ * deliberately smaller than a page of upcoming ones.
+ *
+ * The two windows are not symmetrical. Upcoming rides are a plan and there are
+ * only ever as many as riders have scheduled; past rides accumulate for
+ * ever, so an unbounded read grows without limit on a screen whose purpose is
+ * still "what am I riding next". Twenty is roughly a season of Sundays — enough
+ * to answer "where did we go last month" from the list itself, and short enough
+ * that the section stays a footnote to the list rather than becoming it.
+ *
+ * Beyond this the section truncates rather than misleads, which is the same
+ * saturating trade `RIDE_FILTER_SCAN_LIMIT` and `RIDE_CREW_LIMIT` make. Real
+ * history wants a screen of its own with pagination; this is the label the
+ * design asks for, not that screen.
+ */
+export const PAST_RIDES_PAGE_SIZE = 20
 
 /** How many faces the design's avatar row shows before it becomes `+N`. */
 export const RIDE_AVATAR_LIMIT = 5
@@ -53,17 +75,14 @@ export const RIDE_FILTER_SCAN_LIMIT = 500
  * How much of a crew `/rides/detail/crew` will read, and **not** because a
  * motorcycle ride has 200 riders.
  *
- * `063` caps `ride_members` at `max_riders`, and **that does not make this
- * bound redundant** — which is the trap worth stating, because the cap looks
- * like it retires the limit. `max_riders` is NULLABLE and NULL means no cap,
- * which is what most rides carry — 4 of DEV's 6 and 1 of PROD's 2 on
- * 2026-08-18 — and what every organizer who leaves the box empty still creates.
- * So an uncapped ride's
- * roster is exactly as unbounded as it was; what changed is that a *capped*
- * one is now bounded at 1000 — `018`'s ceiling of 999, plus the one row the
- * organizer exemption may add — which is still five times this.
- * Unbounded, the crew read selects every row plus a joined profile each and
- * renders one list item per row with no virtualisation, on a 390px screen.
+ * **Nothing bounds `ride_members` in the database, and since `077` (PD-293)
+ * nothing ever did for long.** `063` capped a crew at `rides.max_riders` for
+ * six days; `077` dropped both the column and the trigger, because a cap the
+ * design never draws is a refusal a rider cannot see coming. So this constant
+ * is the ONLY ceiling on what this screen reads, which is the thing worth
+ * stating: unbounded, the crew read selects every row plus a joined profile
+ * each and renders one list item per row with no virtualisation, on a 390px
+ * screen.
  *
  * Beyond this the list truncates rather than misleads — the same saturating
  * trade `RIDE_FILTER_SCAN_LIMIT` makes above, and the honest one until
@@ -84,15 +103,26 @@ export const RIDE_CREW_LIMIT = 200
  * so it does not have to be rediscovered.
  */
 /**
- * `map_card_path` only, and the other four columns `051` added are deliberately
- * absent. `latitude`, `longitude` and `geocode_confidence` are the render
- * function's inputs and no screen draws them — decision #3 is a static
- * thumbnail, so there is no client-side map to hand a coordinate to — and
- * `map_detail_path` belongs to a panel this query's consumer does not render.
- * Selecting a column nothing reads is a column the next rename has to find.
+ * `map_card_path`, plus the coordinate pair — and `geocode_confidence` and
+ * `map_detail_path` are still deliberately absent.
+ *
+ * **`latitude` and `longitude` are selected now because something finally reads
+ * them** (PD-260). Nothing draws them — decision #3 is a static thumbnail, so
+ * there is still no client-side map to hand a coordinate to — but the near-you
+ * strip measures against them, so they are the query's outputs rather than only
+ * the render function's inputs. The other two remain out under the rule that
+ * survives this change unaltered: selecting a column nothing reads is a column
+ * the next rename has to find.
+ *
+ * **A NULL pair is the ordinary case, not a fault.** Every ride created before
+ * `resolve-ride-location` deployed carries one, and so does any ride whose
+ * geocode failed. `distanceKm` answers `null` for it and `nearbyRides` drops
+ * it — a ride with no coordinate is never near anything, and must never be
+ * counted as though it were.
  */
 const RIDE_SELECT = `
   id, title, meeting_point, departure_at, organizer_id, map_card_path,
+  latitude, longitude,
   organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
   club:clubs(id, name),
   riders:ride_members(user_id, status, profile:profiles(${PUBLIC_PROFILE_COLUMNS}))
@@ -105,6 +135,9 @@ export type RideRow = {
   departure_at: string
   organizer_id: string
   map_card_path: string | null
+  /** `051`'s pair, null on any ride the geocoder never resolved. */
+  latitude: number | null
+  longitude: number | null
   /** Synthesised by `resolveRideMapUrls`, never selected — see `avatar_url`. */
   map_card_url?: string | null
   organizer: PublicProfile | null
@@ -126,7 +159,7 @@ export type RideRow = {
 export function toRideListItem(
   row: RideRow,
   viewerId: string | undefined,
-  now: number
+  dayStartMs: number
 ): RideListItem {
   const crew = row.riders ?? []
   const others = crew.filter((member) => member.user_id !== row.organizer_id)
@@ -146,6 +179,8 @@ export function toRideListItem(
     meeting_point: row.meeting_point,
     departure_at: row.departure_at,
     club: row.club,
+    latitude: row.latitude,
+    longitude: row.longitude,
     organizer: row.organizer,
     riders: riders.slice(0, RIDE_AVATAR_LIMIT),
     // The organizer counts even when their profile is not readable, which is
@@ -157,20 +192,26 @@ export function toRideListItem(
     // same way it copies `organizer.avatar_url`.
     map_card_url: row.map_card_url ?? null,
     attendance,
-    is_upcoming: new Date(row.departure_at).getTime() >= now,
+    // Against the start of today in APP_TIME_ZONE, never against the clock —
+    // see `rideDayStartUtc`, and `RideListItem.is_upcoming` for why the pill
+    // and the section header have to be cut at the same instant.
+    is_upcoming: new Date(row.departure_at).getTime() >= dayStartMs,
   }
 }
 
 /**
- * The **upcoming** ride ids this viewer has RSVP'd to.
+ * The **upcoming** ride ids this viewer has RSVP'd to, for the filter bar's
+ * "Yours" count.
  *
- * The `departure_at` bound is not cosmetic. These ids go into an `id.in.(...)`
- * predicate, so an unbounded read puts every ride the rider has ever joined
- * into the query string: at ~37 bytes a UUID, a few hundred joined rides
- * crosses the usual 8 KB request-line limit and `/rides?filter=mine` starts
- * returning 414 — the rider's most-used filter, failing hard, only for the
- * riders who use the app most. `rides!inner` makes it a join so the cutoff can
- * apply to the parent, and it is the *same* cutoff the outer query uses.
+ * The list itself no longer reads this — `readRides` joins instead, for the
+ * reason `mergeMine` gives — and the bound is why this one still can. These ids
+ * go into an `id.in.(...)` predicate, so an unbounded read puts every ride the
+ * rider has ever joined into the query string: at ~37 bytes a UUID, a few
+ * hundred joined rides crosses the usual 8 KB request-line limit and the filter
+ * bar starts returning 414. The cutoff keeps it to rides that have not happened
+ * yet, which is bounded by what riders actually have planned. `rides!inner`
+ * makes it a join so the cutoff can apply to the parent, and it is the *same*
+ * cutoff the tile scan uses.
  *
  * Filtering on `user_id` is business logic, not a re-filter of RLS: the
  * ride_members SELECT policy scopes *visibility* (rosters of rides you can
@@ -180,7 +221,7 @@ export function toRideListItem(
 async function myUpcomingRideIds(
   supabase: DataClient,
   viewerId: string | undefined,
-  nowIso: string
+  fromIso: string
 ): Promise<string[]> {
   if (!viewerId) return []
 
@@ -189,15 +230,83 @@ async function myUpcomingRideIds(
       .from('ride_members')
       .select('ride_id, rides!inner(departure_at)')
       .eq('user_id', viewerId)
-      .gte('rides.departure_at', nowIso)
+      .gte('rides.departure_at', fromIso)
       .limit(RIDE_FILTER_SCAN_LIMIT),
     'your rides',
   )
   return rows.map((row) => row.ride_id)
 }
 
+/** Which side of today a read wants, and how it therefore sorts. */
+export type RideWindow = { from: string } | { before: string }
+
 /**
- * Upcoming rides, soonest first.
+ * A rides read before its window is applied.
+ *
+ * Named through the client rather than by importing PostgREST's builder types,
+ * which are five generic parameters wide and would mean importing from
+ * `@supabase/supabase-js` in a file whose whole job is to go through
+ * `resolveSupabase`.
+ */
+function ridesQuery(supabase: DataClient, select: string) {
+  return supabase.from('rides').select(select)
+}
+
+type RidesQuery = ReturnType<typeof ridesQuery>
+
+/**
+ * Applies the day boundary and the ordering that goes with it.
+ *
+ * The two windows sort in opposite directions, and both sort *away from today*:
+ * upcoming is soonest-first because the next ride is the one being looked for,
+ * past is newest-first because the last ride is. Sorting past rides
+ * ascending would put the oldest ride the list is allowed to carry at the top
+ * and truncate the recent ones, which is the wrong end of the history.
+ *
+ * Filters go on before this: `.order()` returns a transform builder, so a
+ * `.eq()` chained after it does not type-check.
+ */
+function inWindow(query: RidesQuery, window: RideWindow, limit: number) {
+  return 'from' in window
+    ? query.gte('departure_at', window.from).order('departure_at', { ascending: true }).limit(limit)
+    : query.lt('departure_at', window.before).order('departure_at', { ascending: false }).limit(limit)
+}
+
+/**
+ * The two arms of the `mine` filter, merged.
+ *
+ * A rider's rides are the ones they organise plus the ones they hold a
+ * `ride_members` row on, and those are two different queries. Each arm is
+ * ordered and bounded by Postgres, so the union of two correctly-ordered
+ * `limit`-length lists contains the true first `limit` of the whole — which is
+ * what makes merging in JS honest rather than a sample.
+ *
+ * **This replaced an id list, and the reason is the past-rides window.** The
+ * old shape read the viewer's joined ride ids and put them in an `id.in.(...)`
+ * predicate, which is bounded only by how many rides they have joined: at ~37
+ * bytes a UUID a few hundred crosses the usual 8 KB request-line limit and the
+ * filter starts answering 414. Upcoming rides kept that small by accident —
+ * there are only so many rides ahead of you — and past rides have no such
+ * ceiling, they are every ride the rider has ever been on. Two joins instead of
+ * one predicate removes the hazard from both windows rather than working around
+ * it in one.
+ */
+export function mergeMine(rows: RideRow[], window: RideWindow, limit: number): RideRow[] {
+  // An organizer who also RSVP'd is on both arms, and is one ride.
+  const byId = new Map<string, RideRow>()
+  for (const row of rows) if (!byId.has(row.id)) byId.set(row.id, row)
+
+  const ascending = 'from' in window
+  return [...byId.values()]
+    .sort((a, b) => {
+      const delta = new Date(a.departure_at).getTime() - new Date(b.departure_at).getTime()
+      return ascending ? delta : -delta
+    })
+    .slice(0, limit)
+}
+
+/**
+ * One window of the rides list, under whichever filter is active.
  *
  * Deliberately has no `is_public` filter. The v1 page carried one, and it was a
  * bug rather than a safeguard: the rides SELECT policy already unions public
@@ -207,43 +316,85 @@ async function myUpcomingRideIds(
  * you had created. Restating a policy predicate in application code is the
  * exact drift 009 warns about; the only correct place for it is the policy.
  */
+async function readRides(
+  supabase: DataClient,
+  filter: RideFilter | undefined,
+  viewerId: string | undefined,
+  window: RideWindow,
+  limit: number
+): Promise<RideRow[]> {
+  const rides = () => ridesQuery(supabase, RIDE_SELECT)
+
+  if (filter?.kind === 'club') {
+    return unwrapList(
+      await inWindow(rides().eq('club_id', filter.id), window, limit),
+      'the rides list',
+    ) as unknown as RideRow[]
+  }
+
+  if (filter?.kind === 'mine') {
+    if (!viewerId) return []
+
+    const [organized, joined] = await Promise.all([
+      inWindow(rides().eq('organizer_id', viewerId), window, limit),
+      // A second embed of `ride_members`, aliased and `!inner`, so the join
+      // filters the rides rather than the crew. `riders:` above still embeds the
+      // whole roster — two aliases of one relation, which resolves unambiguously
+      // because `ride_members` has exactly one FK to `rides`.
+      inWindow(
+        ridesQuery(supabase, `${RIDE_SELECT}, mine:ride_members!inner(user_id)`)
+          .eq('mine.user_id', viewerId),
+        window,
+        limit,
+      ),
+    ])
+
+    const rows = [
+      ...unwrapList(organized, 'the rides you organise'),
+      ...unwrapList(joined, 'your rides'),
+    ] as unknown as RideRow[]
+
+    return mergeMine(rows, window, limit)
+  }
+
+  return unwrapList(await inWindow(rides(), window, limit), 'the rides list') as unknown as RideRow[]
+}
+
+/**
+ * The rides list, in the two sections `/rides` draws: upcoming, then previous.
+ *
+ * **One clock reading for the whole response.** The cutoff both queries apply
+ * and the `is_upcoming` every card carries are the same instant, so a ride
+ * cannot arrive in the upcoming half already flagged as past — and, since the
+ * cutoff is midnight rather than now, cannot cross it while the two queries are
+ * in flight either.
+ */
 export async function getRides(
   filter?: RideFilter,
   limit = RIDES_PAGE_SIZE
-): Promise<RideListItem[]> {
+): Promise<RideList> {
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // One clock reading for the whole response: the cutoff the query applies and
-  // the `is_upcoming` each card carries must be the same instant, or a ride
-  // departing this second can arrive already flagged as past.
-  const now = Date.now()
+  const dayStart = rideDayStartUtc()
+  const dayStartMs = new Date(dayStart).getTime()
 
-  let query = supabase
-    .from('rides')
-    .select(RIDE_SELECT)
-    .gte('departure_at', new Date(now).toISOString())
-    .order('departure_at', { ascending: true })
-    .limit(limit)
+  const [upcomingRows, pastRows] = await Promise.all([
+    readRides(supabase, filter, user?.id, { from: dayStart }, limit),
+    readRides(supabase, filter, user?.id, { before: dayStart }, PAST_RIDES_PAGE_SIZE),
+  ])
 
-  if (filter?.kind === 'club') {
-    query = query.eq('club_id', filter.id)
-  } else if (filter?.kind === 'mine') {
-    if (!user) return []
-    const joined = await myUpcomingRideIds(supabase, user.id, new Date(now).toISOString())
-    // `id.in.()` with an empty list is a syntax error, so a rider who has
-    // joined nothing asks only about the rides they organise.
-    query = joined.length
-      ? query.or(`organizer_id.eq.${user.id},id.in.(${joined.join(',')})`)
-      : query.eq('organizer_id', user.id)
-  }
-
-  const rows = unwrapList(await query, 'the rides list') as unknown as RideRow[]
+  const rows = [...upcomingRows, ...pastRows]
 
   // Before mapping, not after: `toRideListItem` copies profile objects into
   // `riders`, and resolving afterwards would sign the originals while the card
   // rendered the copies. Same object identity either way here — the copies are
   // references — but relying on that is a trap the next edit springs.
+  //
+  // Both windows in one pass rather than one pass each: `createSignedUrls`
+  // takes a list, so signing them together is one round trip instead of two,
+  // and the rows are the same objects the two arrays hold.
+  //
   // The club is deliberately absent here. `RideCard` draws it as a text chip,
   // not an avatar, so selecting and signing a club image for every row in the
   // list would be a round trip for something nothing renders — the same reason
@@ -251,9 +402,7 @@ export async function getRides(
   // club image are the ride detail chip and the two filter bars.
   //
   // Concurrent, because the two are independent and each is its own
-  // `createSignedUrls` call. Today the tile pass costs nothing at all: every
-  // `map_card_path` is NULL until the render function ships, so it returns
-  // without issuing a request.
+  // `createSignedUrls` call.
   await Promise.all([
     resolveAvatarUrls(
       rows.flatMap((row) => [row.organizer, ...(row.riders ?? []).map((member) => member.profile)]),
@@ -262,7 +411,10 @@ export async function getRides(
     resolveRideMapUrls(rows, supabase),
   ])
 
-  return rows.map((row) => toRideListItem(row, user?.id, now))
+  return {
+    upcoming: upcomingRows.map((row) => toRideListItem(row, user?.id, dayStartMs)),
+    past: pastRows.map((row) => toRideListItem(row, user?.id, dayStartMs)),
+  }
 }
 
 /**
@@ -307,7 +459,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
       // draws the 358×160 panel and nothing else `051` added.
       .select(`
         id, title, description, route_description, meeting_point, departure_at,
-        max_riders, club_id, organizer_id, map_detail_path,
+        club_id, organizer_id, map_detail_path,
         organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
         club:clubs(${CLUB_EMBED_COLUMNS})
       `)
@@ -356,7 +508,6 @@ export async function getRide(id: string): Promise<RideDetail | null> {
     route_description: row.route_description,
     meeting_point: row.meeting_point,
     departure_at: row.departure_at,
-    max_riders: row.max_riders,
     club_id: row.club_id,
     organizer_id: row.organizer_id,
     organizer: row.organizer,
@@ -366,7 +517,11 @@ export async function getRide(id: string): Promise<RideDetail | null> {
     attendance: ownRow?.status ?? (isOrganizer ? 'going' : null),
     map_detail_url: row.map_detail_url ?? null,
     is_organizer: isOrganizer,
-    is_upcoming: new Date(row.departure_at).getTime() >= Date.now(),
+    // The day boundary, not the clock — the same cutoff the list cuts its two
+    // sections at, so a ride cannot read "Going" on the list and "Rode" here.
+    // It also means a rider can still answer for a ride that left this
+    // morning, which no policy refuses.
+    is_upcoming: new Date(row.departure_at).getTime() >= new Date(rideDayStartUtc()).getTime(),
     is_crew: isRideCrew(isOrganizer, ownRow?.status ?? null),
   }
 }
@@ -399,7 +554,7 @@ export async function getRideForEdit(id: string): Promise<RideForEdit | null> {
     .from('rides')
     .select(`
       id, title, description, route_description, meeting_point, departure_at,
-      max_riders, is_public, club_id, organizer_id,
+      is_public, club_id, organizer_id,
       start_place_id, latitude, longitude,
       club:clubs(id, name)
     `)
@@ -527,7 +682,7 @@ export function withOrganizer(
 type FilterRow = {
   id: string
   organizer_id: string
-  club: EmbeddedClub | null
+  club: ClubFilterEmbed | null
 }
 
 /**
@@ -546,26 +701,32 @@ export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<Ri
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const nowIso = new Date().toISOString()
+  // The same boundary the list's upcoming section uses, not `now`: a tile
+  // reading "2" above a section showing 3 rides is the mismatch that made
+  // RIDE_FILTER_SCAN_LIMIT its own constant, arrived at from the time axis
+  // instead of the row-count one.
+  const dayStart = rideDayStartUtc()
 
   const [rows, joined] = await Promise.all([
     (async () =>
       unwrapList(
         await supabase
           .from('rides')
-          .select(`id, organizer_id, club:clubs(${CLUB_EMBED_COLUMNS})`)
-          .gte('departure_at', nowIso)
+          .select(`id, organizer_id, club:clubs(${CLUB_FILTER_EMBED_COLUMNS})`)
+          .gte('departure_at', dayStart)
           .order('departure_at', { ascending: true })
           .limit(limit),
         'your ride filters',
       ) as unknown as FilterRow[])(),
-    myUpcomingRideIds(supabase, user?.id, nowIso),
+    myUpcomingRideIds(supabase, user?.id, dayStart),
   ])
 
-  // The club tiles draw the club's avatar, so they need the same signing pass
-  // the cards get. Before the loop, because the loop copies `avatar_url` into
+  // The club tiles draw the club's avatar and, since PD-284, its cover behind
+  // it — `resolveClubImageUrls` signs both in one pass, unlike
+  // `resolveAvatarUrls`, which only ever touches `avatar_path` (see its own
+  // header). Before the loop, because the loop copies the signed URLs into
   // each tile and a pass afterwards would sign rows nothing reads again.
-  await resolveAvatarUrls(rows.map((row) => row.club), supabase)
+  await resolveClubImageUrls(rows.map((row) => row.club), supabase)
 
   const joinedIds = new Set(joined)
   const clubs = new Map<string, RideFilterOption>()
@@ -584,6 +745,7 @@ export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<Ri
           id: row.club.id,
           name: row.club.name,
           imageUrl: row.club.avatar_url,
+          coverUrl: row.club.cover_image_url,
           count: 1,
         })
     }
@@ -633,4 +795,108 @@ async function collageAvatars(
   return organizerIds
     .map((id) => byId.get(id))
     .filter((url): url is string => !!url)
+}
+
+/**
+ * How many of the rider's own rides the recents read scans before it dedupes.
+ *
+ * **The bound is on the SCAN, not on the answer** — `RECENT_STARTS_LIMIT` below
+ * is what a rider sees. The two differ because the same start is the common
+ * case rather than the exception: an organizer who meets their crew at the same
+ * café every Sunday has twenty rides and one distinct place, and a read bounded
+ * at three would then offer one row and call it "your last three". Twenty is
+ * the smallest window that still answers with three distinct places for a rider
+ * who alternates between a handful of regular starts, and it is a fixed,
+ * index-supported read (`rides_organizer_id_idx`) rather than a growing one.
+ *
+ * Beyond it the list saturates rather than misleads — the same trade
+ * `RIDE_FILTER_SCAN_LIMIT` makes above.
+ */
+export const RECENT_STARTS_SCAN_LIMIT = 20
+
+/** How many recent starts the field offers. Three — the product owner's. */
+export const RECENT_STARTS_LIMIT = 3
+
+/**
+ * The rider's own recent start locations, newest first — PD-274, the list the
+ * place field shows the moment it is focused with an empty input.
+ *
+ * **The `organizer_id` filter is the rule, not a redundant belt.** RLS admits
+ * every ride this rider may *read* — rides they joined, and their clubs' rides —
+ * and offering one of those back as "your recent start" would be offering
+ * somebody else's choice. The policy is what stops another rider's rows being
+ * readable; this filter is what stops a readable row being treated as a
+ * recent.
+ *
+ * **Only picked starts, which is what makes the shape total.** `067`'s
+ * `rides_location_coupling` makes `start_place_id IS NOT NULL` imply a complete
+ * coordinate, so the null checks below narrow a nullable column rather than
+ * defending against a row the database can produce. A ride whose free text a
+ * geocoder resolved carries a confidence and no place id and is not a recent:
+ * re-offering a *guess* as the rider's own pick is the same relabelling
+ * `getRideForEdit` refuses to do.
+ *
+ * **Ordered by `created_at`, deliberately, and it is a trade.** That is when
+ * the rider *chose* the place; `departure_at` is when the ride happens and can
+ * be a year out, so ordering by it would float next summer's plan above this
+ * morning's. The accepted cost is that editing an old ride's start does not
+ * move it up the list — the row is old even though the choice is fresh.
+ *
+ * Deduped here rather than in SQL because PostgREST cannot express
+ * `DISTINCT ON`, and an RPC for three rows would be a migration this change
+ * exists to avoid.
+ */
+export async function getRecentRideStarts(): Promise<RecentRideStart[]> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const rows = unwrapList(
+    await supabase
+      .from('rides')
+      .select('meeting_point, start_place_id, latitude, longitude')
+      .eq('organizer_id', user.id)
+      .not('start_place_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(RECENT_STARTS_SCAN_LIMIT),
+    'your recent start locations',
+  ) as RecentStartRow[]
+
+  return dedupeRecentStarts(rows)
+}
+
+type RecentStartRow = {
+  meeting_point: string
+  start_place_id: string | null
+  latitude: number | null
+  longitude: number | null
+}
+
+/**
+ * Newest-first rows in, at most `RECENT_STARTS_LIMIT` distinct places out.
+ *
+ * Pure and exported for the reason `isRideCrew` and `toRideListItem` are: the
+ * dedupe is the rule, the query is only how the rows arrive. Keeping the first
+ * occurrence is what makes "newest first" survive the dedupe — the last one
+ * would answer with the oldest ride that used each place.
+ */
+export function dedupeRecentStarts(rows: RecentStartRow[]): RecentRideStart[] {
+  const seen = new Set<string>()
+  const starts: RecentRideStart[] = []
+
+  for (const row of rows) {
+    if (starts.length === RECENT_STARTS_LIMIT) break
+    if (!row.start_place_id || row.latitude === null || row.longitude === null) continue
+    if (seen.has(row.start_place_id)) continue
+
+    seen.add(row.start_place_id)
+    starts.push({
+      name: row.meeting_point,
+      placeId: row.start_place_id,
+      lat: row.latitude,
+      lon: row.longitude,
+    })
+  }
+
+  return starts
 }

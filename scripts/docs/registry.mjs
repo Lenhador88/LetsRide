@@ -236,8 +236,14 @@ export const claims = [
     // 2026-08-19: `069` (PD-273) applied to DEV alone and this went red on cue,
     // for the reason the paragraph above predicts. Prose and pattern edited
     // together, as it says — pinned back to DEV AHEAD, and naming BOTH refs so
-    // the direction cannot be inferred from the count alone.
-    pattern: /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD at `\d+` — DEV-ahead/,
+    // the direction cannot be inferred from the count alone. Later the same day
+    // PD-273 promoted and `069`/`070` both reached PROD, so it went red again on
+    // cue and is pinned back to LEVEL. Twice in one day is not the tripwire
+    // misbehaving; it is what "budget for it" meant. Three times, as it turned
+    // out: `071` (the rides `departure_at` index) went on DEV that evening and
+    // this went red a third time. Pinned back to DEV AHEAD, naming both refs.
+    pattern:
+      /\*\*Applied state: (\d+) files; DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
@@ -293,6 +299,19 @@ export const claims = [
     kind: 'shell',
     cmd: `sed -n '/Riders record their own place searches/,/);/p' supabase/migrations/069_place_search_metering.sql | grep -oE '< [0-9]+' | sed -n '1p' | grep -oE '[0-9]+'`,
     about: "the hourly ceiling: places.ts's client copy against 069's INSERT policy",
+  },
+
+  // ---- the ⋯ options-menu convention (PD-280) ----------------------------
+  {
+    id: 'options-menu-surfaces',
+    file: 'docs/reference/design-system.md',
+    pattern:
+      /grep -rln "OptionsIcon" src\/components\/ \| grep -v icons\/\s+# (\d+): account, rider, postcard, club, ride/,
+    extractStated: (m) => Number(m[1]),
+    kind: 'shell',
+    cmd: `grep -rln "OptionsIcon" src/components/ | grep -v icons/ | wc -l`,
+    about:
+      'docs/reference/design-system.md §the ⋯ convention: how many surfaces carry the menu. The section exists so new detail screens adopt it, so this number is EXPECTED to grow — a failure here means update the doc, not the code.',
   },
 
   // ---- lucide-react retirement (comment trap, both directions) -----------

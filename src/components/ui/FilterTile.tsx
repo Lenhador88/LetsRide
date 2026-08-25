@@ -1,4 +1,8 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
+import { Avatar } from '@/components/ui/Avatar'
 import { cn } from '@/lib/utils'
 
 /**
@@ -15,12 +19,14 @@ import { cn } from '@/lib/utils'
  * is the part that must not drift, since the ring geometry is the only thing
  * telling a selected tile from an unselected one.
  *
- * **Riders are circles, clubs are rounded squares, and that shape is the only
- * thing telling them apart.** The design carries no label, badge or grouping to
- * reinforce it — left as drawn rather than "improved", and flagged in
- * docs/FIGMA-FIDELITY-TODO.md as the one composition choice worth a second look,
- * because it is invisible to anyone who cannot distinguish a 4px corner radius
- * at 60px.
+ * **Riders are circles, clubs are rounded squares — the shape used to be the
+ * only thing telling them apart, and PD-284 is the product owner asking for
+ * more:** *"Apply same styling as in club list? Banner + pic?"* A club tile now
+ * draws `FilterClubImage` below, which borrows `ClubCard`'s cover-behind,
+ * avatar-in-front composition rather than a single flat image — so the two
+ * kinds now differ in composition as well as outline, which is legible at 56px
+ * in a way a 4px corner radius is not. The shape distinction itself is
+ * untouched: still a deliberate, recorded choice, not something this changes.
  */
 export function FilterBar({
   label,
@@ -109,6 +115,71 @@ export function FilterTile({
 
       <span className="w-16 truncate text-center text-2xs font-medium text-foreground">{label}</span>
     </Link>
+  )
+}
+
+/**
+ * A club tile's image (PD-284) — `ClubCard`'s cover-behind, avatar-in-front
+ * composition, scaled into the 60px square `FilterTile` gives a club.
+ *
+ * **The degrade for "no cover" is deliberate, not a blank banner.** A club
+ * without a cover has nothing to put *behind* the avatar, so the composite is
+ * skipped entirely and the avatar (or its initials) fills the whole tile —
+ * exactly what this tile drew before PD-284. That is also why a cover that
+ * fails to load falls back the same way rather than leaving an empty square:
+ * `brokenCover` mirrors `ClubCard`'s own pattern for a signed URL whose object
+ * a since-nulled `cover_image_path` or a 404 leaves stale.
+ *
+ * **`bg-surface` on the `Avatar` override is load-bearing, not decorative.**
+ * `Avatar`'s own fallback background is `bg-foreground/10` — translucent, so
+ * over the cover photo behind it the initials chip would let the photo bleed
+ * through and "read as a smudge" (`ClubCard`'s own words for the identical bug
+ * it already shipped once). `border-surface` for the same reason: a white ring
+ * that reads against any cover colour, matching `ClubCard`'s avatar exactly.
+ *
+ * Initials over that opaque white — `text-foreground` `#1A1A1A` on
+ * `bg-surface` `#FFFFFF` — measure **17.4:1**, the same pairing `ClubCard` and
+ * every other initials fallback in this app already carries.
+ */
+export function FilterClubImage({
+  name,
+  avatarUrl,
+  coverUrl,
+}: {
+  name: string
+  avatarUrl: string | null
+  coverUrl: string | null
+}) {
+  const [brokenCover, setBrokenCover] = useState<string | null>(null)
+  const showCover = !!coverUrl && coverUrl !== brokenCover
+
+  if (!showCover) {
+    // Through `Avatar` rather than a bare `<img>` so a dead signed URL degrades
+    // to initials here too. A club transfer nulls both image paths and deletes
+    // the objects while a cached filter row still holds the URL — the same case
+    // the cover branch below handles, and without this the identical club draws
+    // the browser's broken-image glyph when it happens to have no cover.
+    return (
+      <Avatar src={avatarUrl} name={name} size="lg" className="h-full w-full rounded-none" />
+    )
+  }
+
+  return (
+    <div className="relative h-full w-full">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={coverUrl}
+        alt=""
+        onError={() => setBrokenCover(coverUrl)}
+        className="h-full w-full object-cover"
+      />
+      <Avatar
+        src={avatarUrl}
+        name={name}
+        size="xs"
+        className="absolute right-1 bottom-1 border-surface bg-surface"
+      />
+    </div>
   )
 }
 

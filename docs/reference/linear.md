@@ -133,6 +133,25 @@ it does, permanently.
   got filed as a *peer* of it. Filing is the moment to catch it, because a split is far cheaper
   to avoid than to undo.
 
+  **It splits at CLOSING time too, and that half is easier to miss because the story was right.**
+  A session builds the tractable part of a correct story, moves it to `Deployed to DEV`, and puts
+  the rest in a comment or a new row. Every artifact then looks finished — green PR, closed issue,
+  a follow-up filed — and the feature the owner asked for does not exist. Product owner,
+  2026-08-24: *"New stories are created, but the main feature is not being developed in the main
+  story we discussed about."*
+
+  **So a story closes when the thing it names exists, not when the part you built does.** Re-read
+  its title before the status write; the title is the deliverable in one line and the only part of
+  the issue a board actually shows. Partly delivered means the issue **stays open** with a comment
+  saying what shipped and what remains.
+
+  **"The rest needs an owner action" is not a split.** PD-279 is the worked example — the story
+  read *"country flag and town"*, the town shipped, and the flag was written off because it needed
+  an Edge Function deploy. Deploying is an owner step on **every** change under
+  `supabase/functions/`; if that justified a split, half this repo's stories would be two.
+  `.claude/commands/queue-pickup.md` STEP 4b and STEP 5 bullet 4 are where a build session meets
+  this.
+
 - **A decision is never its own story.** When work stalls on a choice, write the choice into the
   story that needs it — what is being decided, the options, what each costs — and move **that**
   story to `Needs decision`. Do not open a second issue for the question. A decision issue cannot
@@ -180,8 +199,16 @@ child still reports**, by push notification straight to the owner, because the d
 What has to be known outside those files:
 
 - **Do not archive or abandon the relay session.** Archiving it stops the queue silently,
-  with no error anywhere, and `update_trigger` has no `persistent_session_id` parameter — so
-  recovery means a *third* trigger bound to a new session. **A Routine firing arriving in any other
+  with no error anywhere, and `update_trigger` has no `persistent_session_id` parameter — so no
+  session can rebind the Routine itself.
+
+  **It happened on 2026-08-18, and the recovery was not the one written here.** The trigger rebound
+  *itself* to a fresh session 55 minutes later — same trigger, connectors intact, no third one
+  needed. The queue still stopped dead for six days, because the relay's id is also **copied into
+  `.claude/commands/queue-dispatch.md`**, and that copy is what STEP -1 matches against: every
+  firing arrived unrecognised, took the misroute branch, and stopped. **So the thing to check when
+  the queue looks idle is that copy against the trigger's `persistent_session_id`** — `enabled:
+  true` and a future `next_run_at` are both true of a Routine whose every firing refuses itself. **A Routine firing arriving in any other
   session is misrouted, not a work order**: check the session id before acting on one. What the
   relay itself spawns is disposable — a dispatcher tagged `queue-dispatch-run`, a child tagged
   `queue-dispatch` — and archiving either is fine.

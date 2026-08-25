@@ -66,6 +66,8 @@ export function EditClubForm({ club }: { club: ClubForEdit }) {
           placeId: club.location_place_id,
           lat: club.latitude,
           lon: club.longitude,
+          // Never stored on a club — see `PlaceValue.countryCode`'s own note.
+          countryCode: null,
         }
       : null
   )
@@ -238,8 +240,7 @@ export function EditClubForm({ club }: { club: ClubForEdit }) {
           <div className="flex flex-col gap-1">
             <PlaceSearchField
               label="Where the club is based (optional)"
-              sheetTitle="Set club location"
-              placeholder="Search for a town or place"
+                placeholder="Search for a town or place"
               value={location}
               onChange={setLocation}
               names={CLUB_LOCATION_FIELD_NAMES}

@@ -145,23 +145,6 @@ export const rideSchema = z.object({
     .string()
     .min(1, 'Pick a departure date and time.')
     .refine((value) => !Number.isNaN(Date.parse(value)), 'That is not a valid date and time.'),
-  /**
-   * These bounds mirror `018`'s `rides_max_riders_range`, and since `063` the
-   * number they bound is one the database keeps: `enforce_ride_capacity` counts
-   * `ride_members` against it. So this is the ordinary split — the schema owns
-   * the message, `018` owns what can be stored, and `063` owns what the cap
-   * means.
-   *
-   * `.positive()` rather than `.min(1)` is load-bearing for the walk, which
-   * submits `max_riders = 0` in two phases precisely because it is refused here
-   * *and* by `018` and so cannot write a ride at either layer.
-   */
-  max_riders: z
-    .number()
-    .int()
-    .positive('A ride needs room for at least one rider.')
-    .max(999, 'That is more riders than a ride can hold.')
-    .nullable(),
   is_public: z.boolean(),
   /** NULL is a ride with no club, exactly as `postcards.club_id` NULL is the app-wide feed. */
   club_id: z.string().uuid('Pick a club from the list.').nullable(),
@@ -179,7 +162,31 @@ export type RideInput = z.infer<typeof rideSchema>
 export const rideSearchParamsSchema = z.object({
   filter: z.literal('mine').optional().catch(undefined),
   club: z.string().uuid().optional().catch(undefined),
+  /**
+   * The near-you toggle (PD-260). A separate axis from `filter`/`club` rather
+   * than a third `RideFilter` kind, because it composes with both — "my rides,
+   * near me" and "this club's rides, near me" are the states a rider asks for,
+   * and a discriminated union cannot hold them at once.
+   *
+   * It is also why it stays out of `parseRideFilter`: `RideFilter` is what the
+   * list *query* is keyed on, and this predicate is applied to the rows that
+   * query already returned. Folding it in would give the same rows two cache
+   * entries and refetch on every toggle.
+   */
+  near: z.literal('1').optional().catch(undefined),
 })
+
+/**
+ * Is the near-you filter on?
+ *
+ * A single literal rather than a boolean coercion: `?near=0` and `?near=false`
+ * both read as *on* under `Boolean(param)`, which is the trap that makes "turn
+ * it off" links silently no-ops. Only the value this app's own strip writes
+ * counts, and anything else is off.
+ */
+export function parseRideNear(params: { near?: string }): boolean {
+  return rideSearchParamsSchema.pick({ near: true }).parse(params).near === '1'
+}
 
 /**
  * `undefined` is the "All rides" tile.

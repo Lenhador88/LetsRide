@@ -288,7 +288,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (45 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests. **Two** component tests exist — `PostcardAction` (asserting the class list rather than any measured size) and `PlaceSearchField` (asserting which inputs each of its two modes writes, which is the contract its callers' actions read back off `FormData`). Both render through `renderToStaticMarkup`; the environment is still `node`, and jsdom is the answer only when something needs a layout or an event |
+| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (46 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests. **Three** component tests exist — `PostcardAction` (asserting the class list rather than any measured size) and `PlaceSearchField` (asserting which inputs each of its three modes writes — the contract its callers' actions read back off `FormData`, and for the composer's nameless mode the contract that it writes *nothing* — plus `resolveComboboxKey`, the pure half of its keyboard, split out for exactly the reason `guard.ts` was), and `NearbyRidesStrip` (asserting which states the near-you row draws in and which it stays silent for — including the one where it must render *despite* having nothing to count, because it is then the only control that turns the filter back off). A fourth, `WaveFilledIcon`, went with the filled glyph when PD-287 reverted it. All three render through `renderToStaticMarkup`; the environment is still `node`, and jsdom is the answer only when something needs a layout or an event |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Refuses a sign-in and checks the email survives it, signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. It then refuses a create and an edit and checks every field and choice of each survives. With `WALK_FIXTURES=1` it **creates** the ride and club the detail routes need, through the app's own forms; a shrunken `N/N` is a skip, not a pass. Writes are refused unless the session's own project is on the allowlist |
 | End-to-end | Playwright | Still deferred as a full suite. **The walk is not the gap being filled**: it asks one question per route — did this render — and asserts behaviour only in its six named phases, each covering a defect no other gate here can see (PD-196's cleared email, PD-199's cleared create form and its silently-rewritten edit form, PD-111's navigation cost, the guard's redirects, what sign-out leaves behind). Adding a phase means adding a reason, not broadening a remit |
 
@@ -364,7 +364,7 @@ the exported function must be named `proxy`, and do not add a `middleware.ts`.
 Routing decisions live in **three** places, split so the decision can be tested:
 
 - **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
-  `null` means stay; a string is where to go. 45 cases in `__tests__/guard.test.ts`.
+  `null` means stay; a string is where to go. 46 cases in `__tests__/guard.test.ts`.
 - **`src/lib/auth/guard-cache.ts`** — what the decision reads: the session and the onboarding
   stamps, **held for the page load rather than fetched per route**, with `onAuthStateChange` as
   the single writer for the session half. This is where the reads live now, and the reason it
@@ -378,11 +378,18 @@ Routing decisions live in **three** places, split so the decision can be tested:
 Replacing it on every navigation is what unmounted `(app)/layout.tsx` — bottom bar and
 background gradient included — and made a tab tap read as a page reload.
 
-**Any new writer of a stamp the decision reads must invalidate the cache.** There are four
-(`signUp`, `setUsername`, `acceptTerms`, `setLocation`), and each calls
+**Any new writer of a stamp the decision reads must invalidate the cache.** There are three
+(`signUp`, `setUsername`, `acceptTerms`), and each calls
 `invalidateOnboardingState()`; `signOut` calls `clearGuardCache()`. Miss one and the rider
 finishes a step and is sent straight back into it. `npm run walk` has a phase that measures this
 — see `docs/HANDOFF.md` §The walk.
+
+**An unmatched URL still reaches it, and that is measured rather than assumed.** `not-found.tsx`
+sits at `(app)/`, so a path outside that group — `/onboarding/*`, say — falls to Next's built-in
+404, and the guard only redirects if the ROOT layout renders for it. It does: `next start`, then
+`curl -s localhost:3000/onboarding/location` returns 404 **with** the root `<body>` class and
+`RouteGuard`'s `logo-splash`, identical to a real route. So a deleted step's URL in a bookmark
+redirects rather than dead-ending.
 
 **It is not a security boundary and must never be treated as one.** RLS is. Every rule the
 guard enforces has a database counterpart — `023` refuses content writes without a consent
@@ -451,18 +458,27 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and each one's
-`ezbr_sha256` is equal across the two projects — and NOT ONE of the three is current against its
-file**, measured 2026-08-19:
+**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and NOT ONE of the
+three is current against its file. Two of the three have an equal `ezbr_sha256` across the
+projects and `search-places` does NOT** — measured 2026-08-24: PROD runs **v7**
+(`9510589d…`, deployed 12:04Z) against DEV's **v3** (`dcc59ceb…`, 2026-08-20), so **DEV is behind
+PROD for that one function**, which is the opposite of this repo's usual direction and is worth
+knowing before debugging a DEV-only search failure. PROD's v7 is the redeploy that ended PD-276's
+four-day production outage; DEV never needed it, so DEV never got it. **Both are now stale against
+the file again** — PD-279 added `country_code` to `shape.ts`, so `taken_country_code` stores NULL
+on every postcard until each project is redeployed, and the flag falls back to the pin.
+The rest of this paragraph is measured 2026-08-19:
 `delete-account` deployed 2026-08-17 against a file that moved 2026-08-19 (comments only, so the
 behaviour is current — and that date moves with every header edit, which is why it is read off
 the command rather than trusted here); `resolve-ride-location` deployed 2026-08-16 against a file that moved
 2026-08-19 with `067` — real code, so a **picked** ride start renders no map tile on either
-project; and `search-places` deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) with
-**#274, #275 and #276 all undeployed** — real code, including `classifyLedgerError`, so the
-deployed build reports a `23514` participation-gate refusal to the rider as **502
-`unavailable`**: search is broken, not "you hit a limit". `isPolicyRefusal` matches `42501`
-only, and the gate raises `23514`, so it falls to the outage branch. **`git log -1` on the
+project; and `search-places` was deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) and
+that is the build **DEV still runs** — real code behind it, including `classifyLedgerError`, so
+DEV reports a `23514` participation-gate refusal to the rider as **502 `unavailable`**: search is
+broken, not "you hit a limit". `isPolicyRefusal` matches `42501` only, and the gate raises
+`23514`, so it falls to the outage branch. **Count the undeployed commits rather than reading a
+list here** — an enumeration goes stale on the next merge, and this one already has:
+`TZ=UTC git log --oneline --since=<deploy timestamp> -- supabase/functions/search-places/`. **`git log -1` on the
 directory tells you the file is newer than the deploy and never by how many commits** — list the
 directory's history against the deploy timestamp, or a three-commit gap reads as one.
 PD-267 is the first redeploy,
@@ -525,7 +541,8 @@ grants, the cascade behaviour and the audience predicate for each, and several a
 `ride_messages`' audience is an intersection and neither half alone is it).
 
 **`places` — the self-hosted Overture Maps index the place typeahead used to search — is RETIRED
-(`070`, PD-273).** The typeahead is now a geocoder reached through the `search-places` Edge
+(`070`, PD-273), and gone from BOTH projects as of 2026-08-19.** It was 96% of everything this app
+stored: DEV went 350 MB → 14 MB and PROD 350 MB → 13 MB, against a 500 MB free-tier ceiling. The typeahead is now a geocoder reached through the `search-places` Edge
 Function proxy, and `docs/reference/schema.md`'s `places` row carries the retirement rather than a
 live table description. The Overture attribution paragraph that used to live here left with the
 data: `/legal/attributions` credits Geoapify and OpenStreetMap now, an unconditional credit
@@ -560,22 +577,28 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 70 files. DEV is at `070`, PROD at `068` — DEV-ahead by two since 2026-08-19,
-which is the ordinary state rather than drift.** `069` and `070` (both PD-273) are what the gap
-holds. `070` drops `public.places`, `search_places()` and `locality_centroid()`, and per its own
-header it may only apply to a project once the `search-places`-backed client is **serving
-traffic** there. **"Merged" is not that**, and DEV is the worked example of getting it wrong:
-`070` was applied 102 seconds after #279's commit, which no Vercel build of this app finishes
-in, so it almost certainly dropped `search_places()` out from under a Preview still serving the
-bundle that called it. Nothing red — the typeahead simply returned its unavailable state until
-the build landed. PROD does not reach the gate until the promotion build is live, so PROD still
-carries the 337 MB index and both retired functions and that is correct rather than drift. Level is the *exception* rather
-than the steady state: DEV-ahead is the ordinary state of a migration between its merge and its
-promotion, and it is not drift. **Do not read the count of unpromoted files off this sentence** —
-it named exactly one while two were waiting, which is the same defect as a stale number in a
-smaller place, and the promotion is the one job that reads it. Run `list_migrations` against
-`ls supabase/migrations/` and promote everything the gap contains, in filename order, per step 5 of
-`docs/ENVIRONMENTS.md` §Migrations.
+**Applied state: 77 files; DEV is at `077` and PROD at `075` — measured 2026-08-24, after
+`076` (PD-297) and `077` (PD-293) went to DEV and `071`–`075` had gone to PROD in one sitting
+earlier the same day.**
+DEV-ahead is the resting state: it is where a migration lives between its merge and its promotion,
+and the two were last level for a few hours on 2026-08-20 at PD-273's promotion and again briefly
+on 2026-08-24. **`074` and `075` went to PROD ahead of the build that reads them**, which is the
+additive-first order — the code for both
+is merged to `development` and not promoted, so PROD's schema is deliberately ahead of PROD's app. **Do not read the
+count of unpromoted files off this sentence** — it named exactly one while two were waiting, which
+is the same defect as a stale number in a smaller place, and the promotion is the one job that
+reads it. Run `list_migrations` against `ls supabase/migrations/` and promote everything the gap
+contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md` §Migrations.
+
+**`069` and `070` went opposite ways round the same event, and that is the reusable part.** `069`
+is additive and applied to PROD **before** the promotion build served; `070` is destructive and
+applied **after** it was confirmed serving — `app.letsride.social` resolving to a `READY`
+deployment on the promotion sha, `aliasError` null. Not "after the merge": `070`'s header is
+explicit that *"'Merged' is not 'deployed'"*, and DEV is the worked example of getting it
+backwards, its `070` having landed 102 seconds after the merge commit, out from under a Preview
+still calling the function it had just dropped. On PROD that window is rider-visible, and the
+deployed proxy **fails closed** on its ledger insert — so had `069` gone after instead, every
+production search would have returned 502 for the length of a build.
 
 **`041 → 044 → 046` is a required chain and one of its links fails silently.** It is satisfied by
 filename order, so a full in-order apply is always correct — the chain matters only to a *partial*
@@ -620,7 +643,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1617** assertions — re-derive rather than trust it:
+Suite **1752** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -1689,6 +1712,13 @@ triggers or the relay session it fires into** — those are CCR calls rather tha
   owner requests (PD-183, PD-182) and neither can have a gate, because an issue body is not a file.
   `docs/reference/linear.md` §What an issue body opens with carries the format, the one rating that
   changes name on a board, and why a total belongs in the table and never in the block.
+- **A story closes when the thing it names exists, not when the part you built does.** Partly
+  delivered means it **stays open** — the remainder is never a comment on a closed issue and never
+  a new row, because both read as handled on a board. Re-read the title before writing a status;
+  "the rest needs an owner action" is not a split, since deploying is an owner step on every
+  change under `supabase/functions/`. Product owner, 2026-08-24, after PD-279 shipped a town and
+  wrote off the flag it was named for: *"the main feature is not being developed in the main story
+  we discussed about."*
 - **An issue body is a pointer and a reason.** A Linear issue that grows a specification is a bug;
   that belongs in a proposal.
 
@@ -1859,10 +1889,13 @@ cheapest to get green. The one case that needs no PR is a session that changed n
   whole. `…WJkMV` is the cheap hourly one, `…Gzy8e` is the irreplaceable one — keep them straight
   in both directions. Detail in [`docs/reference/linear.md`](docs/reference/linear.md).
 - **Don't archive or abandon the relay session** — the one
-  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to, currently
-  `session_01B2mxc642tG8vZ15wysQpqM`. Archiving it stops the queue silently with no error
-  anywhere, and `update_trigger` has no `persistent_session_id` parameter, so recovery needs a
-  third trigger bound to a new session. **It is the only session in the queue that is reused, and
+  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to, **currently
+  `session_014ncc5vBmsKG9fmfznUoZ48`, and read it off the trigger rather than off this line**:
+  `list_triggers` carries the authoritative `persistent_session_id`, and this id is also copied
+  into `.claude/commands/queue-dispatch.md`, where a stale one silently stops the queue while
+  every health signal stays green. Archiving the relay stops the queue with no error
+  anywhere, and `update_trigger` has no `persistent_session_id` parameter, so no session can
+  rebind the Routine itself. **It is the only session in the queue that is reused, and
   since 2026-08-18 it decides nothing**: a firing spawns a fresh dispatcher and exits, so
   everything it spawns is disposable and archiving one is fine — a dispatcher carries
   `queue-dispatch-run` and a child carries `queue-dispatch`, which is how the three are told

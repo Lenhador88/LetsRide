@@ -4,6 +4,7 @@ import {
   boundTerm,
   buildAutocompleteUrl,
   buildLocalityUrl,
+  buildReverseUrl,
   CANDIDATE_LIMIT,
   classifyLedgerError,
   ID_NAMESPACE,
@@ -109,6 +110,36 @@ describe('the outbound request', () => {
     expect(url.searchParams.get('apiKey')).toBe(KEY)
   })
 
+  it('asks the reverse mode for one CITY at the photo coordinate', () => {
+    const url = new URL(buildReverseUrl({ lat: 52.63, lon: 4.99 }, KEY))
+    expect(url.origin + url.pathname).toBe('https://api.geoapify.com/v1/geocode/reverse')
+    // `type=city` is the privacy rule at the source: the composer offers this
+    // as the setting BETWEEN hiding a location and publishing an exact one, so
+    // a street coming back would defeat the whole middle option, and nothing
+    // downstream could re-coarsen it.
+    expect(url.searchParams.get('type')).toBe('city')
+    expect(url.searchParams.get('limit')).toBe('1')
+    expect(url.searchParams.get('apiKey')).toBe(KEY)
+    expect(url.searchParams.get('format')).toBe('geojson')
+  })
+
+  it('sends the reverse coordinate as two parameters, in the obvious order', () => {
+    // The reverse endpoint takes `lat` and `lon` separately, so the `lon,lat`
+    // trap `bias` carries does not apply here — copying that idiom across is
+    // how it would be introduced.
+    const url = new URL(buildReverseUrl({ lat: 52.63, lon: 4.99 }, KEY))
+    expect(url.searchParams.get('lat')).toBe('52.63')
+    expect(url.searchParams.get('lon')).toBe('4.99')
+    expect(url.searchParams.has('text')).toBe(false)
+  })
+
+  it('sends no rider identity in a reverse lookup either', () => {
+    const url = buildReverseUrl({ lat: 52.63, lon: 4.99 }, KEY)
+    for (const forbidden of ['user', 'uid', 'session', 'token', 'authorization', 'email']) {
+      expect(url.toLowerCase()).not.toContain(forbidden)
+    }
+  })
+
   it('escapes a term rather than letting it build the query', () => {
     const url = new URL(buildAutocompleteUrl('Kerk&apiKey=stolen straat', null, KEY))
     expect(url.searchParams.get('apiKey')).toBe(KEY)
@@ -164,6 +195,13 @@ describe('the term bound', () => {
     expect(isSearchable('   ', 'locality')).toBe(false)
   })
 
+  it('has no floor at all in reverse mode, because there is no term', () => {
+    // The subject is a coordinate `parseRequest` has already range-checked, so
+    // the term is always '' and a floor measured against it would refuse every
+    // reverse lookup there is.
+    expect(isSearchable('', 'reverse')).toBe(true)
+  })
+
   it('defaults to the stricter mode when none is named', () => {
     // A caller that forgets the argument must get the floor, not lose it.
     expect(isSearchable('Ede')).toBe(false)
@@ -196,6 +234,7 @@ describe('mapping a vendor feature to this repo own shape', () => {
       meta: 'Stationsweg 40, Maastricht',
       lat: 50.85,
       lon: 5.69,
+      countryCode: null,
     })
   })
 
@@ -220,6 +259,34 @@ describe('mapping a vendor feature to this repo own shape', () => {
       lon: 2,
     })
     expect(toPlaceResult(line1)!.label).toBe('Willem Claijstraat 22')
+  })
+
+  it('uppercases the country code — PD-279, matching profile_countries', () => {
+    // The vendor's documented casing is lowercase. `profile_countries_code_is_
+    // iso_alpha2` (014/020) is the one other country column this schema has and
+    // it is uppercase-only, so a lowercase value stored here would be the one
+    // place "country code" meant something different.
+    const nl = feature({ place_id: 'x', name: 'Berkhout', lat: 1, lon: 2, country_code: 'nl' })
+    expect(toPlaceResult(nl)!.countryCode).toBe('NL')
+  })
+
+  it('accepts an already-uppercase country code unchanged', () => {
+    const nl = feature({ place_id: 'x', name: 'Berkhout', lat: 1, lon: 2, country_code: 'NL' })
+    expect(toPlaceResult(nl)!.countryCode).toBe('NL')
+  })
+
+  it('drops a country code that is not two letters, degrading to no flag rather than no result', () => {
+    for (const bad of ['nld', 'n', '', '  ', 123, null]) {
+      const withBad = feature({ place_id: 'x', name: 'Berkhout', lat: 1, lon: 2, country_code: bad })
+      const mapped = toPlaceResult(withBad)
+      expect(mapped).not.toBeNull()
+      expect(mapped!.countryCode).toBeNull()
+    }
+  })
+
+  it('answers null when the vendor sends no country at all', () => {
+    const none = feature({ place_id: 'x', name: 'Berkhout', lat: 1, lon: 2 })
+    expect(toPlaceResult(none)!.countryCode).toBeNull()
   })
 
   it('returns a null meta rather than repeating the label as its own second line', () => {
@@ -316,15 +383,18 @@ describe('the request this function accepts', () => {
     // Rule 2. The subject comes from the verified JWT and nowhere else, so a
     // body naming a user must not be able to move it.
     const parsed = parseRequest({ mode: 'search', text: 'Berkhout', user_id: 'someone-else' })
-    expect(parsed).toEqual({ mode: 'search', text: 'Berkhout', near: null })
-    expect(Object.keys(parsed!)).toEqual(['mode', 'text', 'near'])
+    expect(parsed).toEqual({ mode: 'search', text: 'Berkhout', near: null, at: null })
+    expect(Object.keys(parsed as object)).toEqual(['mode', 'text', 'near', 'at'])
   })
 
-  it('refuses a body that names no valid mode', () => {
-    expect(parseRequest({ text: 'Berkhout' })).toBeNull()
-    expect(parseRequest({ mode: 'delete', text: 'Berkhout' })).toBeNull()
-    expect(parseRequest(null)).toBeNull()
-    expect(parseRequest('search')).toBeNull()
+  it('refuses a body that names no valid mode, as a BAD REQUEST', () => {
+    // The code matters: the client latches on `bad_request` to mean "this
+    // deployed build does not know the reverse mode", which is sound only
+    // because an unknown mode is the thing that produces it.
+    expect(parseRequest({ text: 'Berkhout' })).toBe('bad_request')
+    expect(parseRequest({ mode: 'delete', text: 'Berkhout' })).toBe('bad_request')
+    expect(parseRequest(null)).toBe('bad_request')
+    expect(parseRequest('search')).toBe('bad_request')
   })
 
   it('collapses an out-of-range bias to no bias rather than refusing', () => {
@@ -339,15 +409,49 @@ describe('the request this function accepts', () => {
       { lat: '52', lon: 4 },
       'nearby',
     ]) {
-      expect(parseRequest({ mode: 'search', text: 'Berkhout', near })?.near).toBeNull()
+      const parsed = parseRequest({ mode: 'search', text: 'Berkhout', near })
+      expect(typeof parsed === 'string' ? null : parsed.near).toBeNull()
     }
   })
 
   it('accepts a bias at the range boundaries', () => {
-    expect(parseRequest({ mode: 'search', text: 'x', near: { lat: -90, lon: 180 } })?.near).toEqual({
-      lat: -90,
-      lon: 180,
+    const parsed = parseRequest({ mode: 'search', text: 'x', near: { lat: -90, lon: 180 } })
+    expect(typeof parsed === 'string' ? null : parsed.near).toEqual({ lat: -90, lon: 180 })
+  })
+
+  it('takes a coordinate and no term in reverse mode', () => {
+    expect(parseRequest({ mode: 'reverse', lat: 52.37, lon: 4.9 })).toEqual({
+      mode: 'reverse',
+      text: '',
+      near: null,
+      at: { lat: 52.37, lon: 4.9 },
     })
+  })
+
+  it('REFUSES a reverse request whose coordinate is missing or out of range', () => {
+    // Unlike the bias, which collapses to "no bias" and still answers: there is
+    // nothing left to ask the vendor here, and a dropped coordinate would reach
+    // the rider as "this photo has no town" — a real answer's exact shape.
+    for (const body of [
+      { mode: 'reverse' },
+      { mode: 'reverse', lat: 52.37 },
+      { mode: 'reverse', lat: 91, lon: 4 },
+      { mode: 'reverse', lat: 52, lon: 181 },
+      { mode: 'reverse', lat: NaN, lon: 4 },
+      { mode: 'reverse', lat: '52.37', lon: 4.9 },
+    ]) {
+      // Its OWN code, never `bad_request`: one malformed coordinate must not be
+      // able to convince the client that a build supporting reverse does not.
+      expect(parseRequest(body)).toBe('bad_coordinate')
+    }
+  })
+
+  it('ignores a term sent alongside a reverse coordinate', () => {
+    // A reverse lookup is billable and its whole subject is the coordinate. A
+    // term riding along would be a second, unmetered search term reaching the
+    // vendor under a mode that never sends one.
+    const parsed = parseRequest({ mode: 'reverse', lat: 52.37, lon: 4.9, text: 'Berkhout' })
+    expect(typeof parsed === 'string' ? null : parsed.text).toBe('')
   })
 })
 

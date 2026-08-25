@@ -5,12 +5,14 @@ import { notFound, useSearchParams } from 'next/navigation'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { RideCard } from '@/components/rides/RideCard'
 import { ErrorState } from '@/components/ui/ErrorState'
+import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getClub } from '@/lib/data/clubs'
 import { getRides } from '@/lib/data/rides'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM } from '@/lib/routes'
+import type { RideListItem } from '@/types'
 
 /**
  * `Private club - Rides` (`2059:6390`) — reached only from the merged club
@@ -21,9 +23,17 @@ import { DETAIL_ID_PARAM } from '@/lib/routes'
  * card here belongs to the club already named in the header, and the design's
  * card is 128 tall rather than 156 when the chip is absent.
  *
- * Past rides are not shown, because `getRides` filters to upcoming and the
- * design draws no past section here. `RideCard` can render the `Went` variants,
- * so the day a history screen is designed it needs a query, not a component.
+ * Past rides sit under their own header, which is what `Private club - Rides`
+ * draws — two `Section / Header` instances, "Upcoming rides" over "Past rides".
+ * `/rides` borrows the same string rather than wording a club's history and a
+ * rider's own differently, which would be the same string decided twice.
+ *
+ * The upcoming section keeps the design's header off. On `/rides` the list has
+ * a filter bar over it and on the club page a `See all`, but here the header
+ * already names the club and the tab, so a second "Upcoming rides" line
+ * restates it. The Past rides header earns its place by separating two
+ * lists; a header over the first one would only label what is already the
+ * screen.
  *
  * The rides read shares `rides.list('club:<id>')` with the club page's own
  * `RideChip` strip and with `/rides?club=<id>`: one club's upcoming rides is
@@ -80,23 +90,50 @@ function ClubRidesScreen() {
         ) : !club.data || !rides.data ? (
           <SkeletonList rows={3} />
         ) : (
-          <div className="px-4 motion-safe:animate-fade-in">
-            {rides.data.length === 0 ? (
+          <div className="motion-safe:animate-fade-in px-4">
+            {rides.data.upcoming.length === 0 && rides.data.past.length === 0 ? (
               <p className="py-8 text-center text-sm font-medium text-muted">
                 No rides are planned, yet!
               </p>
             ) : (
-              <ul className="flex flex-col gap-2">
-                {rides.data.map((ride) => (
-                  <li key={ride.id}>
-                    <RideCard ride={ride} showClub={false} />
-                  </li>
-                ))}
-              </ul>
+              <>
+                {rides.data.upcoming.length === 0 ? (
+                  // Not the same sentence as the branch above, which claims the
+                  // club has no rides at all: there are rides right under this
+                  // one. Only the upcoming half is empty, and it has to say so.
+                  <p className="py-8 text-center text-sm font-medium text-muted">
+                    No upcoming rides are planned, yet!
+                  </p>
+                ) : (
+                  <RideList rides={rides.data.upcoming} />
+                )}
+
+                {rides.data.past.length > 0 && (
+                  <>
+                    {/* `px-0`: this screen's own wrapper already carries the
+                        `px-4` the header would otherwise double. */}
+                    <SectionHeader title="Past rides" className="px-0 pb-2 pt-4" />
+                    <RideList rides={rides.data.past} />
+                  </>
+                )}
+              </>
             )}
           </div>
         )}
       </div>
     </>
+  )
+}
+
+/** One section of the screen. Both draw the same card, with the club chip off. */
+function RideList({ rides }: { rides: RideListItem[] }) {
+  return (
+    <ul className="flex flex-col gap-2">
+      {rides.map((ride) => (
+        <li key={ride.id}>
+          <RideCard ride={ride} showClub={false} />
+        </li>
+      ))}
+    </ul>
   )
 }

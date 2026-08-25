@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 
+import { SUPPORT_EMAIL } from '@/lib/support'
+
 /**
  * Static copy, and one of the three pages a rider can reach without a session
  * (decision #1's deliberate exception, and `/legal/*` in the guard's public
@@ -69,6 +71,60 @@ export default function PrivacyPage() {
           session or IP address to Geoapify.
         </li>
       </ul>
+      {/*
+        App Store Review Guideline 1.2 asks a user-generated-content app for four things: a
+        way to report, a way to block, a way to hide, and a route to a human who acts on what
+        is reported. The first three were built and this page said nothing about any of them,
+        which made the fourth unreachable — a rider had nowhere to write and a reviewer had
+        nothing to check. PD-297 built the read path behind it; this section is where a rider
+        finds out it exists.
+
+        The address is `SUPPORT_EMAIL`, never a literal — see that file, which still carries
+        an owner question about the mailbox itself.
+
+        THE PHOTO CLAUSE IS THE ONE TO GET RIGHT, and its first version was wrong in a way that
+        reads as measured. It said the photo "stops being viewable immediately — no account can
+        fetch an image whose postcard is gone", reasoning from `010` §2: the `media` bucket is
+        private and the Storage SELECT policy resolves through a `postcards` row, so an orphaned
+        object is unreadable. Both halves are true and the conclusion does not follow, **because
+        the app never does an RLS-mediated read of an image**. `src/lib/data/media.ts` hands the
+        browser a SIGNED URL, and Supabase validates the signature rather than re-running the
+        policy — so a rider whose feed rendered the postcard before the take-down keeps a working
+        URL until `SIGNED_URL_TTL_SECONDS` (one hour) expires, and so does anyone they forward it
+        to, signed out or with no account at all.
+
+        So deleting the stored file is not the tidy-up it looked like: it is the only thing that
+        ends access, and until it runs the window is the TTL. That is why the copy now names the
+        hour instead of promising an instant, and why `076`'s runbook calls step two time-bounded
+        rather than optional. Do not restore a sentence that reads as automatic or immediate.
+      */}
+      <h2 className="text-base font-semibold pt-4">Reporting content, and how to reach us</h2>
+      <p className="text-muted">
+        Every postcard carries a <span className="font-medium">Report</span> control, and you
+        can also <span className="font-medium">hide</span> a single postcard or{' '}
+        <span className="font-medium">block</span> a rider outright. Hiding affects only what
+        you see. Blocking is mutual: you and the rider you block disappear from each
+        other&rsquo;s feeds, clubs, ride crews and chats.
+      </p>
+      <p className="text-muted">
+        Reports are read by us, not by other riders — nobody else can see that you filed one.
+        We aim to review each report within 24 hours and to remove anything that breaks our{' '}
+        <Link href="/legal/terms" className="underline">
+          Terms and Conditions
+        </Link>
+        . Removing a postcard takes its comments, its likes and the notifications about it with
+        it, and we delete the stored photo as well. Photo links are signed and expire within an
+        hour, so a link somebody had already loaded can keep working until we delete the file.
+      </p>
+      <p className="text-muted">
+        If something needs attention sooner, or you would rather write to a person than use the
+        in-app control, email{' '}
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
+          {SUPPORT_EMAIL}
+        </a>
+        .
+      </p>
+
       <p className="text-muted">
         <Link href="/legal/account-deletion" className="underline">
           How to delete your account

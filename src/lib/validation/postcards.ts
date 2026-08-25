@@ -111,9 +111,46 @@ export const postcardTakenAtOffsetSchema = numericField(
 export const postcardLatitudeSchema = numericField(z.number().min(-90).max(90))
 export const postcardLongitudeSchema = numericField(z.number().min(-180).max(180))
 
+/**
+ * `'region'` is accepted and never produced. It is what one grandfathered row
+ * carries; a schema that refused it would refuse to parse a postcard the
+ * database is perfectly happy to hold. `072` keeps it legal for the same
+ * reason.
+ */
 export const postcardLocationPrecisionSchema = z.preprocess(
   emptyToNull,
-  z.enum(['region', 'precise']).nullable()
+  z.enum(['region', 'place', 'precise']).nullable()
+)
+
+/** Mirrors `postcards_taken_place_name_length` (`072`), which mirrors
+ *  `clubs_location_name_length` against the same producer: the provider's label
+ *  falls back through a chain ending in a whole address on one line. */
+export const POSTCARD_PLACE_NAME_MAX_LENGTH = 200
+
+export const postcardPlaceNameSchema = z.preprocess(
+  emptyToNull,
+  z
+    .string()
+    .trim()
+    .max(POSTCARD_PLACE_NAME_MAX_LENGTH, `Must be ${POSTCARD_PLACE_NAME_MAX_LENGTH} characters or fewer.`)
+    .nullable()
+    .transform((value) => (value === null || value === '' ? null : value))
+)
+
+/**
+ * The flag half of PD-279 — vendor text stored verbatim, never parsed out of
+ * the place name. Mirrors `postcards_taken_country_code_is_iso_alpha2` (`074`):
+ * uppercase, two letters, matching `profile_countries_code_is_iso_alpha2`
+ * (`014`/`020`) rather than the vendor's own lowercase — the composer
+ * uppercases before this ever runs, so this is the client checking its own
+ * work, exactly as the rounding refine below does for the coordinate.
+ */
+export const postcardCountryCodeSchema = z.preprocess(
+  emptyToNull,
+  z
+    .string()
+    .regex(/^[A-Z]{2}$/, 'Not a valid country code.')
+    .nullable()
 )
 
 export const createPostcardSchema = z
@@ -126,6 +163,8 @@ export const createPostcardSchema = z
     takenLatitude: postcardLatitudeSchema,
     takenLongitude: postcardLongitudeSchema,
     takenLocationPrecision: postcardLocationPrecisionSchema,
+    takenPlaceName: postcardPlaceNameSchema,
+    takenCountryCode: postcardCountryCodeSchema,
   })
   // The two couplings `064` enforces, restated so an honest client fails
   // readably instead of meeting a constraint violation it cannot explain.
@@ -135,24 +174,61 @@ export const createPostcardSchema = z
     { message: 'A capture time needs the zone it was read in.', path: ['takenAt'] }
   )
   .refine(
-    (value) =>
-      (value.takenLatitude === null) === (value.takenLongitude === null) &&
-      (value.takenLatitude === null) === (value.takenLocationPrecision === null),
-    { message: 'A location needs both coordinates and how precise it is.', path: ['takenLatitude'] }
+    (value) => (value.takenLatitude === null) === (value.takenLongitude === null),
+    { message: 'A location needs both coordinates.', path: ['takenLatitude'] }
   )
-  // Not a duplicate of the coupling above: this is the one rule that says a
-  // rider who chose `Region` actually GOT a region. The rounding happens in the
-  // browser, so this is the client checking its own work — `064`'s
-  // postcards_region_location_is_rounded is what makes it true for a client
-  // that skips this file entirely.
+  // **The five arms `072`'s coupling constraint allows, restated.** The old
+  // version of this rule said a coordinate and a marker imply each other, which
+  // `072` no longer means: a rider who TYPES a town and never picks one gets a
+  // name and a marker with no coordinate at all, and that is a first-class
+  // state rather than a partial row. Zod carries the message; the constraint
+  // carries the guarantee.
+  .refine(
+    (value) => {
+      const hasPin = value.takenLatitude !== null && value.takenLongitude !== null
+      switch (value.takenLocationPrecision) {
+        case null:
+          // Arm 1 — nothing. A name or a pin with no marker is not a shape the
+          // database will take.
+          return !hasPin && value.takenPlaceName === null
+        case 'place':
+          // Arms 2 and 3 — a named place, with or without a pin.
+          return value.takenPlaceName !== null
+        case 'precise':
+          // Arm 4 — the photo's own fix. The name may ride along as a label.
+          return hasPin
+        case 'region':
+          // Arm 5 — legacy, and the client never writes it.
+          return hasPin && value.takenPlaceName === null
+      }
+    },
+    {
+      message: 'That location is not a shape a postcard can hold.',
+      path: ['takenLocationPrecision'],
+    }
+  )
+  // Not a duplicate of the arms above: this is the one rule that says a rider
+  // whose coordinate is marked COARSE actually got a coarse one. The rounding
+  // happens in the browser, so this is the client checking its own work —
+  // `072`'s postcards_coarse_location_is_rounded is what makes it true for a
+  // client that skips this file entirely, and it is the only thing standing
+  // between a patched client and a house published wearing a city's name.
   .refine(
     (value) =>
-      value.takenLocationPrecision !== 'region' ||
-      (value.takenLatitude !== null &&
-        value.takenLongitude !== null &&
-        value.takenLatitude === Math.round(value.takenLatitude * 100) / 100 &&
+      (value.takenLocationPrecision !== 'place' && value.takenLocationPrecision !== 'region') ||
+      value.takenLatitude === null ||
+      value.takenLongitude === null ||
+      (value.takenLatitude === Math.round(value.takenLatitude * 100) / 100 &&
         value.takenLongitude === Math.round(value.takenLongitude * 100) / 100),
     { message: 'That location is not rounded.', path: ['takenLatitude'] }
   )
+  // Mirrors `postcards_taken_country_code_needs_a_place` (`074`): a country
+  // with nothing for `PostcardCard` to draw it beside is not a shape the
+  // database will take either. Never the other direction — a name with no
+  // country is arm 2's typed-and-never-picked case, which is legal.
+  .refine((value) => value.takenCountryCode === null || value.takenPlaceName !== null, {
+    message: 'A country needs a place to describe.',
+    path: ['takenCountryCode'],
+  })
 
 export type CreatePostcardInput = z.output<typeof createPostcardSchema>

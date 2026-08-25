@@ -77,8 +77,9 @@ export function distanceKm(a: Coordinates | null, b: Coordinates | null): number
 }
 
 /**
- * How far a club can be and still count as "near you" — the radius behind the
- * Explore strip's `near <town>` wording and behind which clubs sort first.
+ * How far a club **or a ride** can be and still count as "near you" — the
+ * radius behind the Explore strip's `near <town>` wording and behind which
+ * clubs sort first, and since PD-260 behind the rides list's near-you filter.
  *
  * **100 km is a decision, not a measurement, and it is a MOTORCYCLE number.**
  * A rider will happily ride an hour and a half to meet a club; the same radius
@@ -86,12 +87,34 @@ export function distanceKm(a: Coordinates | null, b: Coordinates | null): number
  * the failure this bounds is a club in another country reading as local, not a
  * club two towns over being excluded.
  *
+ * ## One radius for two questions, and the asymmetry is real
+ *
+ * PD-260 gave this constant a second caller, and the case is genuinely weaker
+ * there: you *join* a club once and ride to it when you feel like it, whereas
+ * a ride is somewhere you have to physically be at a stated time. 95 km is a
+ * different proposition for the two.
+ *
+ * It stays one number anyway, for two reasons rather than by inheritance.
+ * **There is one "near you" in this app**, said in the same words on two tabs
+ * by the same-looking row, and a rider who learns what it means on Clubs must
+ * not have to relearn it on Rides. And on Rides the number does not stand
+ * alone: every card under the filter draws its own `meeting_point`, so a ride
+ * in the wrong direction announces itself by name, where a club in the Explore
+ * list does not.
+ *
+ * **Splitting it is a product decision, not a refactor** — it needs a second
+ * number chosen against something, and the honest trigger is a rider saying a
+ * result was too far, or a ride card gaining a rendered distance that makes the
+ * boundary visible. Neither has happened.
+ *
  * Nothing hard-fails at the boundary — a club just past it still appears on
- * Explore, lower down. That is what makes the number safe to change later.
+ * Explore, lower down, and a ride just past it is still on the unfiltered list
+ * the strip toggles back to. That is what makes the number safe to change
+ * later.
  */
 export const NEARBY_RADIUS_KM = 100
 
-/** Is this club close enough to be worth calling "near you"? */
+/** Is this club or ride close enough to be worth calling "near you"? */
 export function isNearby(distance: number | null | undefined): boolean {
   return distance !== null && distance !== undefined && distance <= NEARBY_RADIUS_KM
 }

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   CLUB_EMBED_COLUMNS,
+  CLUB_FILTER_EMBED_COLUMNS,
   OWN_PROFILE_COLUMNS,
   PUBLIC_PROFILE_COLUMNS,
   VIEWED_PROFILE_COLUMNS,
@@ -83,6 +84,13 @@ describe('the column allowlists', () => {
     expect(CLUB_EMBED_COLUMNS).not.toContain('avatar_url')
     expect(PUBLIC_PROFILE_COLUMNS).toContain('avatar_path')
     expect(CLUB_EMBED_COLUMNS).toContain('avatar_path')
+  })
+
+  it('CLUB_FILTER_EMBED_COLUMNS carries the cover that CLUB_EMBED_COLUMNS deliberately withholds (PD-284)', () => {
+    expect(CLUB_FILTER_EMBED_COLUMNS).not.toContain('avatar_url')
+    expect(CLUB_FILTER_EMBED_COLUMNS).toContain('avatar_path')
+    expect(CLUB_FILTER_EMBED_COLUMNS).toContain('cover_image_path')
+    expect(CLUB_EMBED_COLUMNS).not.toContain('cover_image_path')
   })
 })
 

@@ -103,7 +103,7 @@ export async function unlikePostcard(postcardId: string): Promise<ActionState> {
  * what fails.
  *
  * Signature matches the FormData + useActionState shape every other
- * multi-field write in this app uses (see setUsername/setLocation) — the
+ * multi-field write in this app uses (see setUsername/updateProfile) — the
  * form a future create-postcard screen renders would carry `imagePath` in a
  * hidden input, set once uploadPostcardImage resolves, alongside a caption
  * textarea and a club selector.
@@ -132,6 +132,8 @@ export async function createPostcard(
     takenLatitude: formData.get('takenLatitude'),
     takenLongitude: formData.get('takenLongitude'),
     takenLocationPrecision: formData.get('takenLocationPrecision'),
+    takenPlaceName: formData.get('takenPlaceName'),
+    takenCountryCode: formData.get('takenCountryCode'),
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
@@ -144,17 +146,20 @@ export async function createPostcard(
     takenLatitude,
     takenLongitude,
     takenLocationPrecision,
+    takenPlaceName,
+    takenCountryCode,
   } = parsed.data
 
   // `.select('id').single()` with the row discarded: the id was only ever used
   // to build `` revalidatePath(`/postcards/${id}`) ``, which a cache key does
   // not need. `single()` stays because it is what turns a zero-row insert into
   // an error rather than a silent success.
-  // **The five capture columns are written here and nowhere else, ever.** `064`
-  // grants INSERT on them and no UPDATE at all, so this statement is the only
-  // moment in a postcard's life at which its capture time or its location can be
-  // set — which is what makes the composer's Hide / Region / Precise choice
-  // final rather than a default somebody can revise later.
+  // **The seven capture columns are written here and nowhere else, ever.**
+  // `064`, `072` and `074` grant INSERT on them and no UPDATE at all, so this
+  // statement is the only moment in a postcard's life at which its capture time
+  // or its location can be set — which is what makes the composer's
+  // Hide / Town / Precise choice final rather than a default somebody can
+  // revise later.
   //
   // What arrives here has ALREADY been reduced on the device by
   // `resolvePhotoLocation`. A precise coordinate the rider chose to hide never
@@ -171,6 +176,8 @@ export async function createPostcard(
       taken_latitude: takenLatitude,
       taken_longitude: takenLongitude,
       taken_location_precision: takenLocationPrecision,
+      taken_place_name: takenPlaceName,
+      taken_country_code: takenCountryCode,
     })
     .select('id')
     .single()

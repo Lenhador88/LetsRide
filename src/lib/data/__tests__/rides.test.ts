@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  RECENT_STARTS_LIMIT,
   RIDE_AVATAR_LIMIT,
+  dedupeRecentStarts,
   isRideCrew,
+  mergeMine,
   toRideListItem,
   withOrganizer,
   type RideRow,
@@ -35,6 +38,10 @@ function row(overrides: Partial<RideRow> = {}): RideRow {
     organizer_id: ORGANIZER.id,
     // NULL on every ride in both databases until the render function ships.
     map_card_path: null,
+    // NULL is the ordinary case: every ride predating `resolve-ride-location`
+    // has no pair, and `nearbyRides` drops such a ride rather than counting it.
+    latitude: null,
+    longitude: null,
     organizer: ORGANIZER,
     club: null,
     riders: [],
@@ -142,6 +149,19 @@ describe('toRideListItem', () => {
     expect(item.is_upcoming).toBe(true)
   })
 
+  it('keeps a ride that departed earlier today on the upcoming side', () => {
+    // The cutoff it is handed is the start of the day, not the clock, so a
+    // ride at 15:00 still reads as upcoming to a rider looking at 23:00 —
+    // which is what keeps the pill and the "Past rides" header agreeing.
+    const dayStart = new Date('2026-08-15T22:00:00.000Z').getTime()
+    expect(
+      toRideListItem(row({ departure_at: '2026-08-16T13:00:00Z' }), undefined, dayStart).is_upcoming
+    ).toBe(true)
+    expect(
+      toRideListItem(row({ departure_at: '2026-08-15T13:00:00Z' }), undefined, dayStart).is_upcoming
+    ).toBe(false)
+  })
+
   it('tolerates a null crew embed', () => {
     const item = toRideListItem(row({ riders: null }), ORGANIZER.id, NOW)
 
@@ -177,6 +197,59 @@ describe('toRideListItem', () => {
 })
 
 const crewMember = (n: number) => ({ user_id: `rider-${n}`, profile: rider(n) })
+
+/**
+ * The merge behind the `mine` filter's two arms. Its correctness argument lives
+ * on the function; these are the four properties that argument rests on, and
+ * the last one is the one a naive implementation gets wrong.
+ */
+describe('mergeMine', () => {
+  const at = (id: string, departure_at: string) => row({ id, departure_at })
+
+  it('is one ride for an organizer who also holds a member row', () => {
+    // The two arms overlap by construction — organising a ride and RSVPing to
+    // it are not exclusive — and the card would otherwise draw twice.
+    const merged = mergeMine(
+      [at('ride-1', '2026-08-16T10:00:00Z'), at('ride-1', '2026-08-16T10:00:00Z')],
+      { from: '2026-08-04T22:00:00.000Z' },
+      10
+    )
+    expect(merged.map((r) => r.id)).toEqual(['ride-1'])
+  })
+
+  it('sorts an upcoming window soonest first', () => {
+    const merged = mergeMine(
+      [at('c', '2026-08-20T10:00:00Z'), at('a', '2026-08-16T10:00:00Z'), at('b', '2026-08-18T10:00:00Z')],
+      { from: '2026-08-04T22:00:00.000Z' },
+      10
+    )
+    expect(merged.map((r) => r.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('sorts a previous window newest first', () => {
+    // The opposite direction, and the reason the window carries it: ascending
+    // here would show the oldest rides the section is allowed to carry and
+    // truncate last weekend's.
+    const merged = mergeMine(
+      [at('a', '2026-07-01T10:00:00Z'), at('c', '2026-08-01T10:00:00Z'), at('b', '2026-07-15T10:00:00Z')],
+      { before: '2026-08-04T22:00:00.000Z' },
+      10
+    )
+    expect(merged.map((r) => r.id)).toEqual(['c', 'b', 'a'])
+  })
+
+  it('takes the true first N of the union, not the first N of one arm', () => {
+    // Each arm arrives ordered and bounded, so the merge has to re-sort before
+    // it slices — otherwise a rider whose organised rides all sort later than
+    // their joined ones loses the joined ones at the cut.
+    const merged = mergeMine(
+      [at('organised', '2026-08-30T10:00:00Z'), at('joined', '2026-08-05T10:00:00Z')],
+      { from: '2026-08-04T22:00:00.000Z' },
+      1
+    )
+    expect(merged.map((r) => r.id)).toEqual(['joined'])
+  })
+})
 
 /**
  * The client's mirror of `private.is_ride_crew` (034), which gates both entry
@@ -265,5 +338,72 @@ describe('withOrganizer', () => {
     const crew = withOrganizer({ going: [], maybe: [] }, ORGANIZER.id, null)
 
     expect(crew.going[0]).toMatchObject({ user_id: ORGANIZER.id, profile: null })
+  })
+})
+
+describe('dedupeRecentStarts', () => {
+  const start = (placeId: string, name = placeId) => ({
+    meeting_point: name,
+    start_place_id: placeId,
+    latitude: 52.1,
+    longitude: 4.5,
+  })
+
+  it('keeps the newest ride for each place and drops the repeats', () => {
+    // Rows arrive newest-first, so the FIRST occurrence is the recent one.
+    // Keeping the last would answer with the oldest ride that used each place
+    // and quietly invert the ordering the query paid for.
+    const starts = dedupeRecentStarts([
+      start('geoapify:cafe', 'Cafe de Pomp'),
+      start('geoapify:layby'),
+      start('geoapify:cafe', 'Cafe de Pomp, Utrecht'),
+      start('geoapify:shell'),
+    ])
+
+    expect(starts.map((s) => s.placeId)).toEqual([
+      'geoapify:cafe',
+      'geoapify:layby',
+      'geoapify:shell',
+    ])
+    expect(starts[0].name).toBe('Cafe de Pomp')
+  })
+
+  it('answers with at most RECENT_STARTS_LIMIT places', () => {
+    const starts = dedupeRecentStarts(
+      Array.from({ length: 10 }, (_, i) => start(`geoapify:${i}`))
+    )
+
+    expect(starts).toHaveLength(RECENT_STARTS_LIMIT)
+    expect(RECENT_STARTS_LIMIT).toBe(3)
+  })
+
+  it('drops a row with no place id, and one missing half its coordinate', () => {
+    // 067's rides_location_coupling makes both of these unreachable from the
+    // database — this narrows the nullable columns rather than defending
+    // against a row Postgres can produce. A geocoded ride carries a
+    // confidence and no place id, and offering that back would relabel a
+    // vendor's guess as the rider's own pick.
+    const starts = dedupeRecentStarts([
+      { meeting_point: 'The layby past the second roundabout', start_place_id: null, latitude: 52.0, longitude: 4.0 },
+      { meeting_point: 'Half a pin', start_place_id: 'geoapify:half', latitude: 52.0, longitude: null },
+      start('geoapify:whole'),
+    ])
+
+    expect(starts.map((s) => s.placeId)).toEqual(['geoapify:whole'])
+  })
+
+  it('carries the meeting point through as the name the field writes back', () => {
+    const [only] = dedupeRecentStarts([start('geoapify:cafe', 'Cafe de Pomp, Utrecht')])
+
+    expect(only).toEqual({
+      name: 'Cafe de Pomp, Utrecht',
+      placeId: 'geoapify:cafe',
+      lat: 52.1,
+      lon: 4.5,
+    })
+  })
+
+  it('answers with nothing when the rider has no picked start at all', () => {
+    expect(dedupeRecentStarts([])).toEqual([])
   })
 })

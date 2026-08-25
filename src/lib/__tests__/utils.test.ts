@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  countryFlagEmoji,
   defaultRideDepartureInput,
   formatNotificationStamp,
   formatPostcardDate,
@@ -11,6 +12,7 @@ import {
   formatRideMessageDay,
   formatRideTime,
   notificationSection,
+  rideDayStartUtc,
   rideZoneDayKey,
   wallClockToUtc,
   getInitials,
@@ -320,6 +322,33 @@ describe('formatPostcardDate', () => {
   })
 })
 
+describe('countryFlagEmoji', () => {
+  it('turns an uppercase alpha-2 code into its regional-indicator pair', () => {
+    expect(countryFlagEmoji('NL')).toBe('🇳🇱')
+  })
+
+  it('accepts a lowercase code too — the vendor documents lowercase', () => {
+    expect(countryFlagEmoji('nl')).toBe('🇳🇱')
+  })
+
+  it('accepts a mixed-case code', () => {
+    expect(countryFlagEmoji('Nl')).toBe('🇳🇱')
+  })
+
+  it('returns null for anything that is not two letters, rather than mojibake', () => {
+    // `String.fromCodePoint` on a non-letter offset is what "mojibake" means
+    // here — a printable but meaningless glyph, not a thrown error.
+    for (const bad of ['N', 'NLD', '12', 'N1', '', '  ']) {
+      expect(countryFlagEmoji(bad)).toBeNull()
+    }
+  })
+
+  it('returns null for null and undefined, never the empty string', () => {
+    expect(countryFlagEmoji(null)).toBeNull()
+    expect(countryFlagEmoji(undefined)).toBeNull()
+  })
+})
+
 /**
  * The write-side counterpart to the `formatRide*` timezone tests below.
  *
@@ -432,6 +461,55 @@ describe('rideZoneDayKey', () => {
     // in August it would have rolled over.
     expect(rideZoneDayKey('2026-01-07T22:30:00Z')).toBe('2026-01-07')
     expect(rideZoneDayKey('2026-01-07T23:30:00Z')).toBe('2026-01-08')
+  })
+})
+
+describe('rideDayStartUtc', () => {
+  it('is midnight in APP_TIME_ZONE, not midnight UTC', () => {
+    // CEST, UTC+2 — so the day that starts on 16 August in Amsterdam starts at
+    // 22:00Z on the 15th. TZ is pinned to UTC on the runner, so a helper that
+    // read the process zone would answer `2026-08-16T00:00:00.000Z` here and
+    // file nothing under Past rides for two hours a day.
+    expect(rideDayStartUtc(Date.parse('2026-08-16T09:00:00Z'))).toBe('2026-08-15T22:00:00.000Z')
+  })
+
+  it('follows the winter offset — the zone is not a fixed +2', () => {
+    // CET, UTC+1.
+    expect(rideDayStartUtc(Date.parse('2026-01-16T09:00:00Z'))).toBe('2026-01-15T23:00:00.000Z')
+  })
+
+  it('does not move for an instant later the same day', () => {
+    // The whole point of the boundary: a ride at 15:00 and a rider looking at
+    // 23:00 are cut against the same instant, so nothing crosses into Previous
+    // rides during the day it happened.
+    const afternoon = rideDayStartUtc(Date.parse('2026-08-16T13:00:00Z'))
+    const lateEvening = rideDayStartUtc(Date.parse('2026-08-16T21:00:00Z'))
+    expect(afternoon).toBe(lateEvening)
+  })
+
+  it('rolls over at local midnight, not at 00:00Z', () => {
+    // 21:59Z on the 16th is 23:59 in Amsterdam — still the 16th. Two minutes
+    // later it is the 17th there, and the ride that departed that afternoon
+    // becomes a previous ride.
+    expect(rideDayStartUtc(Date.parse('2026-08-16T21:59:00Z'))).toBe('2026-08-15T22:00:00.000Z')
+    expect(rideDayStartUtc(Date.parse('2026-08-16T22:01:00Z'))).toBe('2026-08-16T22:00:00.000Z')
+  })
+
+  it('is right on both DST days, where midnight itself is not the transition', () => {
+    // Spring forward is 02:00 -> 03:00 on 29 March; midnight exists and is CET.
+    expect(rideDayStartUtc(Date.parse('2026-03-29T12:00:00Z'))).toBe('2026-03-28T23:00:00.000Z')
+    // Autumn back is 03:00 -> 02:00 on 25 October; midnight exists and is CEST.
+    expect(rideDayStartUtc(Date.parse('2026-10-25T12:00:00Z'))).toBe('2026-10-24T22:00:00.000Z')
+  })
+
+  it('puts a ride earlier today on the upcoming side of the cut', () => {
+    // The comparison every card and both queries make.
+    const now = Date.parse('2026-08-16T21:00:00Z') // 23:00 Amsterdam
+    const departed = Date.parse('2026-08-16T13:00:00Z') // 15:00 Amsterdam
+    expect(departed >= Date.parse(rideDayStartUtc(now))).toBe(true)
+
+    const yesterday = Date.parse('2026-08-15T13:00:00Z')
+    expect(yesterday >= Date.parse(rideDayStartUtc(now))).toBe(false)
   })
 })
 

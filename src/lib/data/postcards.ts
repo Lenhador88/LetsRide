@@ -1,9 +1,9 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
-import { CLUB_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
-import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
+import { CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { resolveAvatarUrls, resolveClubImageUrls, signImagePaths } from '@/lib/data/media'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import type {
-  EmbeddedClub,
+  ClubFilterEmbed,
   FeedPage,
   Postcard,
   PostcardFilterOption,
@@ -18,7 +18,7 @@ export type FeedFilter = { kind: 'rider' | 'club'; id: string }
 type FilterRow = {
   image_path: string
   author: PublicProfile | null
-  club: EmbeddedClub | null
+  club: ClubFilterEmbed | null
 }
 
 // The raw shape PostgREST returns before the like state is folded in:
@@ -81,8 +81,29 @@ export const FEED_PAGE_SIZE = 30
 // check that would otherwise catch it. `columns.test.ts` pins both halves: this
 // file's select literals never name `ride_id`, and this list never names a
 // column `062` does not grant.
+// **`taken_place_name` and `taken_country_code` do not exist on PROD yet, and
+// reading either there would take the whole feed down rather than degrade.**
+// `072`/`073`/`074` are DEV-only, and PostgREST answers an unknown column with
+// an error that `unwrapList` throws — so every screen built on this select
+// shows a permanent "try again" panel.
+// **Five of them, not three**: `getFeed` backs `/postcards` AND `/profile` and
+// `/profile/detail`, where the gate is `combineQueries`, so a whole nav tab
+// becomes an error panel rather than losing a strip. Promoting
+// this file to `main` REQUIRES `072`, `073` and `074` applied to PROD first,
+// which is `docs/ENVIRONMENTS.md` §Migrations step 5 doing its ordinary job.
+// Verify rather than assume, per PD-279:
+//
+//   information_schema.column_privileges, grantee 'authenticated',
+//   table 'postcards' — both columns must be on PROD's SELECT list.
+//
+// None of the other four capture columns are selected: the caption draws a
+// name, and a coordinate this app does not render is a coordinate it should not
+// ship to the browser. `taken_country_code` (`074`) follows `taken_place_name`
+// here for the same reason it follows it in the grant list — `PostcardCard`
+// draws the flag immediately before the town, never on its own.
 const POSTCARD_SELECT = `
   id, author_id, club_id, image_path, caption, created_at, updated_at,
+  taken_place_name, taken_country_code,
   author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}),
   club:clubs(id, name),
   likes_count:postcard_likes(count),
@@ -263,7 +284,7 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
     await supabase
       .from('postcards')
       .select(
-        `image_path, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}), club:clubs(${CLUB_EMBED_COLUMNS})`
+        `image_path, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}), club:clubs(${CLUB_FILTER_EMBED_COLUMNS})`
       )
       .order('created_at', { ascending: false })
       .limit(limit),
@@ -278,10 +299,15 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
   // `clubs.avatar_url`, which parsed, typed and rendered — and was NULL on every
   // row, so the tile showed initials and looked settled. `024` dropped the
   // column; this pass is what actually draws the club's avatar.
-  await resolveAvatarUrls(
-    rows.flatMap((row) => [row.author, row.club]),
-    supabase
-  )
+  //
+  // Two signing passes, run concurrently: a rider embeds only `avatar_path`,
+  // a club also carries `cover_image_path` for PD-284's banner-behind-avatar
+  // tile, and `resolveAvatarUrls` deliberately never touches that second
+  // column (see its own header) — `resolveClubImageUrls` is the pass that does.
+  await Promise.all([
+    resolveAvatarUrls(rows.map((row) => row.author), supabase),
+    resolveClubImageUrls(rows.map((row) => row.club), supabase),
+  ])
 
   const riders = new Map<string, PostcardFilterOption>()
   const clubs = new Map<string, PostcardFilterOption>()
@@ -296,6 +322,7 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
           id: row.author.id,
           name: row.author.username ?? 'Rider',
           imageUrl: row.author.avatar_url,
+          coverUrl: null,
           count: 1,
         })
     }
@@ -309,6 +336,7 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
           id: row.club.id,
           name: row.club.name,
           imageUrl: row.club.avatar_url,
+          coverUrl: row.club.cover_image_url,
           count: 1,
         })
     }

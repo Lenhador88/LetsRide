@@ -41,6 +41,7 @@ import type { Postcard } from '@/types'
 export function ClubPostcardCarousel({
   postcards,
   isMember,
+  clubId,
 }: {
   postcards: Postcard[]
   /**
@@ -50,6 +51,12 @@ export function ClubPostcardCarousel({
    * be a claim this screen cannot make.
    */
   isMember: boolean
+  /**
+   * Only so `Add` can carry it (PD-283) — the composer opens with this club
+   * already chosen as the audience and returns here rather than to Home. Not
+   * used to read anything: the postcards arrive as a prop.
+   */
+  clubId: string
 }) {
   if (postcards.length === 0 && !isMember)
     return (
@@ -103,7 +110,7 @@ export function ClubPostcardCarousel({
 
       {isMember && (
         <Link
-          href="/postcards/new"
+          href={routes.newPostcardInClub(clubId)}
           className="flex aspect-square w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
         >
           <PlusIcon className="h-6 w-6" aria-hidden="true" />

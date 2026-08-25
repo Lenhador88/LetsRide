@@ -2,9 +2,17 @@ import { getLocalityCentroid } from '@/lib/data/places'
 import { getMyLocationText } from '@/lib/data/profile'
 
 /**
- * Best-available coordinates for biasing `search_places()` — the highest
- * -leverage performance fix that file has, per its own doc block (17-152 ms
- * with a bias, 171-2,957 ms without).
+ * Best-available coordinates for biasing the place typeahead — the `near` on a
+ * `search` request, which `buildAutocompleteUrl` turns into the vendor's
+ * `bias=proximity:`.
+ *
+ * **The bias REORDERS, it does not filter** (`search-places/shape.ts` §D8), so
+ * nothing findable without one stops being findable with it — which is what
+ * makes a best-effort chain the right shape here rather than a hard
+ * requirement. An earlier version of this block justified the bias by a
+ * latency figure quoted from `search_places()`, the self-hosted Postgres
+ * search `070` retired; there is no query plan to speed up any more, and the
+ * numbers were synthetic besides (PD-200).
  *
  * ## Why this is not a domain type in `src/types/index.ts`
  *
@@ -159,6 +167,38 @@ async function permissionState(): Promise<PermissionState | 'unsupported'> {
 }
 
 /**
+ * What the device will do if something asks for a position right now — the
+ * question a priming sheet has to answer BEFORE it draws anything (PD-170).
+ *
+ * Four answers rather than the Permissions API's three, because "this platform
+ * has no geolocation at all" and "it will ask" are different products: the
+ * first has nothing to offer the rider and must draw no affordance, the second
+ * is exactly the state worth priming.
+ *
+ * **`'unsupported'` from `permissionState()` is folded into `'prompt'`, never
+ * into `'granted'` or `'denied'`.** That is this module's existing rule —
+ * *never assume consent from an API's absence* — read in the one direction
+ * that is safe for a control the rider taps: offering to ask costs nothing if
+ * the answer turns out to be a silent refusal, whereas reading it as `denied`
+ * would hide the only affordance on a WebView whose Permissions API simply
+ * does not recognise the descriptor.
+ */
+export type DeviceLocationPermission = 'granted' | 'prompt' | 'denied' | 'unavailable'
+
+/**
+ * Reads that state without ever prompting. Safe to call from an effect on
+ * every screen that draws a location affordance.
+ */
+export async function deviceLocationPermission(): Promise<DeviceLocationPermission> {
+  if (!hasGeolocation()) return 'unavailable'
+
+  const state = await permissionState()
+  if (state === 'granted') return 'granted'
+  if (state === 'denied') return 'denied'
+  return 'prompt' // 'prompt' and 'unsupported' alike — see the type's comment
+}
+
+/**
  * `arm` decides whether the JS-level backstop timer starts counting from
  * THIS call. It must only be `true` when the caller already knows, before
  * calling, that no OS permission dialog can appear for this request — see
@@ -211,7 +251,7 @@ function getPositionOnce(arm: boolean): Promise<GeolocationPosition | null> {
  * repeatedly (the silent path on every load where permission is already
  * granted, the explicit tap on demand), so a sequence of ~1 km-rounded fixes
  * still traces where a rider lives and rides. This constant blurs the single
- * value that reaches `search_places()` as a proximity bias; it is not the
+ * value that leaves the device as a proximity bias; it is not the
  * privacy answer, and persisting an approximate rider location anywhere
  * needs its own decision, not an inference from this one.
  *
@@ -223,11 +263,17 @@ function getPositionOnce(arm: boolean): Promise<GeolocationPosition | null> {
  * latitude's ~1.11 km at the equator. "Roughly a kilometre" is the honest
  * claim this constant supports — never "exactly 1 km on both axes."
  *
- * Well inside `search_places()`'s own ~0.25° × 0.40° proximity box (`037`,
- * `039`): the largest shift rounding can introduce is half of 10^-2°, i.e.
- * 0.005°, which is at most 2% of the box's narrower (latitude) half-width. It
- * cannot move a candidate place from inside the box to outside it except
- * right at the box's own edge.
+ * **What makes 2dp safe is now a different argument, and the old one went with
+ * the table it described.** It used to be that 0.005° — the largest shift
+ * rounding can introduce — was at most 2% of `search_places()`'s ~0.25° × 0.40°
+ * proximity box, so a candidate could only cross that boundary right at its
+ * edge. `070` dropped that function and its box with it. The bias is now the
+ * geocoder's `bias=proximity:`, which **reorders results rather than filtering
+ * them** (`search-places/shape.ts` §D8) — so there is no boundary left for
+ * rounding to push a place across, and the worst a blunted bias can do is rank
+ * a near result slightly lower. That is a weaker consequence than the old one,
+ * which is why this constant survives the change of mechanism unaltered: it was
+ * chosen to bound what is disclosed, and what it costs in return went DOWN.
  */
 const LOCATION_PRECISION_DP = 2
 
@@ -264,8 +310,9 @@ async function resolveFromDeviceSilently(): Promise<RiderLocation | null> {
 
 /**
  * Source 2 — the rider's onboarding city, geocoded. Two reads:
- * `profiles.location` (free text), then `locality_centroid()` (`040`) to turn
- * it into coordinates. Either one coming back EMPTY degrades to the next
+ * `profiles.location` (free text), then the `search-places` proxy's `locality`
+ * mode to turn it into coordinates — `locality_centroid()` (`040`) did this
+ * until `070` retired it with the `places` index. Either one coming back EMPTY degrades to the next
  * source rather than throwing — a rider with no onboarding location, or a
  * locality the geocoder does not recognise, is an ordinary case here, not a
  * fault.
