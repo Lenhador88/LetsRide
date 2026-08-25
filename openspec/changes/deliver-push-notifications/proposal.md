@@ -26,12 +26,13 @@ Add the Edge Function deploy, which is an owner action on every change under
 `supabase/functions/`. Writing the design now means the day those arrive the build starts from a
 decided shape rather than from a design question.
 
-**And the sharpest risk here is not delivery, it is misdelivery.** A device token is a
-per-device secret that outlives a sign-out unless something removes it. A stale one means rider
-B's phone shows rider A's notifications — the only failure in this app where one rider's data
-lands on another rider's lock screen without any policy having been wrong. That is a schema
-decision (`unique (token)`, not `unique (user_id, token)`) and a sign-out decision, both taken
-below, both cheap now and unfixable after the first thousand devices have registered.
+**And the sharpest risk here is not delivery, it is misdelivery.** A push registration outlives a
+sign-out unless something removes it, and a stale one means rider B's phone shows rider A's
+notifications — the only failure in this app where one rider's data lands on another rider's lock
+screen without any policy having been wrong. That is a schema decision and a sign-out decision,
+both taken below, both cheap now and unfixable after the first thousand devices have registered.
+**The key is the installation, not the token**: a token rotates, so keying on one forks a device
+into two live rows and makes every release partial (design D3).
 
 ## What Changes
 
@@ -50,8 +51,10 @@ below, both cheap now and unfixable after the first thousand devices have regist
   | **B** | *Register the device, and spend the one prompt deliberately* | a Mac, an Apple Developer provisioning profile, an FCM project | nothing that runs here |
   | **C** | *Deliver a notification to a phone* | the APNs `.p8`, the FCM service account, a scheduler extension, an owner deploy | nothing that runs here |
 
-  **PD-291 closes on C.** A and B stay open under it, or are filed as children and PD-291 stays
-  open until all three land — either is fine, and closing PD-291 on A is not.
+  **PD-291 closes on C**, and the board shape is decided rather than offered: **A, B and C are
+  filed as sub-issues of PD-291, and PD-291 itself stays open until C lands.** Not a new row for
+  the remainder and not a comment on a closed issue — both read as handled on a board, which is
+  the complaint PD-279 produced.
 
   This is a **three**-way split rather than the two the issue sketches (*"the plugin + token table
   is one PR, delivery is another"*), and the reason is concrete rather than a preference: the
@@ -59,25 +62,47 @@ below, both cheap now and unfixable after the first thousand devices have regist
   this container. Bundling them holds the one landable, fully-asserted migration hostage to a
   native change nothing here can exercise.
 
-- **A new table, `public.push_tokens`, that no client role may read — including its owner.**
-  One row per device. `authenticated` holds **no** SELECT, INSERT, UPDATE or DELETE grant of any
-  kind; every write goes through two own-row `security definer` RPCs, and the only reader is the
-  delivery function through a third RPC granted to `service_role` by name. This is stricter than
-  `notifications` — which at least its recipient can read — and the reason is that a device token
-  is a bearer credential for a push channel, not a record about a rider.
+- **A new table, `public.push_devices`, that no client role may read — including its owner.**
+  One row per installation. `authenticated` holds **no** SELECT, INSERT, UPDATE or DELETE grant of
+  any kind; every write goes through two own-row `security definer` RPCs —
+  `register_push_device(installation_id, token, platform)` and
+  `release_push_device(installation_id)` — and the only reader is the delivery function through
+  RPCs granted to `service_role` by name. This is stricter than `notifications` — which at least
+  its recipient can read — and the reason is that a device token is a bearer credential for a push
+  channel, not a record about a rider.
 
-- **`unique (token)`, and re-registration *moves* the row rather than adding one.** A device
-  belongs to exactly one rider at a time. Two riders sharing a phone is the normal case for a
-  motorcycle club, and `unique (user_id, token)` leaves both rows alive and pushes rider A's
-  notifications onto rider B's screen for ever.
+- **`unique (installation_id)`, with the provider token a mutable attribute of that row.** A
+  device belongs to exactly one rider at a time, and a token is not a stable name for a device.
+  `unique (user_id, token)` leaves two live rows the moment a phone is shared; `unique (token)`
+  leaves two the moment a token **rotates**, and a sign-out then releases only the one the device
+  currently presents — so the orphan keeps delivering the previous rider's notifications until the
+  idle sweep. Keyed on the installation, rotation is an UPDATE, a release names a device, and
+  cold-start re-homing is total. The installation id is generated once into the secure store that
+  already holds the refresh token, so **no second native plugin** (design D3).
 
 - **A per-notification outbox and a scheduled sender.** An `AFTER INSERT` trigger on
   `notifications` writes one `push_deliveries` row — a local insert, no network, inside the
-  rider's transaction. A scheduled Edge Function claims a batch, re-checks that the notification
-  is still readable *by its recipient*, renders the copy, sends to every live token, and records
-  the outcome. **The enqueue is trigger-driven and the delivery is scheduled**, which is the
-  answer to that question rather than a dodge: the two halves have opposite failure requirements
-  and putting both on one mechanism gets one of them wrong.
+  rider's transaction. A scheduled Edge Function claims a batch, skips anything already read,
+  re-checks that the notification is still readable *by its recipient*, renders the copy, sends to
+  every live device, and records the outcome. **The enqueue is trigger-driven and the delivery is
+  scheduled**, which is the answer to that question rather than a dodge: the two halves have
+  opposite failure requirements and putting both on one mechanism gets one of them wrong. The
+  batch is bounded by size **and by age**, because a free-tier project resuming from a pause would
+  otherwise deliver a week of notifications in installments.
+
+- **The visibility re-check is written per COLUMN, mirroring `036`'s own SELECT policy, never per
+  type.** `036` fixed its subject shapes precisely so the policy could be written per column *"and
+  the two cannot drift apart"*. A type-keyed gate reads as equivalent and diverges on the exact
+  event this proposal files: a sixth type changes the type CHECK and **not** the SELECT qual, so a
+  pin on the policy stays green while the gate has no branch for it (design D5).
+
+- **The scheduler is `pg_cron` *and* `pg_net`, and the job is gated on Vault.** `pg_cron` cannot
+  make an HTTPS request, so it cannot invoke the function on its own. The objection to `pg_net` is
+  specific to running it inside a rider's transaction and does not travel to a cron job outside
+  every rider's write. And `docs/ENVIRONMENTS.md` §Scheduled jobs is a standing instruction aimed
+  directly at this change — a `pg_cron` job written in a migration replicates to DEV **and fires
+  there** — so the job reads a per-project key from `supabase_vault`, which is already installed
+  on both projects and, unlike scheduling outside the chain, stays reviewable (design D14).
 
 - **`@capacitor/push-notifications`** — one native plugin, and its one-sentence justification:
   *Apple and Google hand a device token only to native code, so there is no route from the webview
@@ -107,8 +132,8 @@ below, both cheap now and unfixable after the first thousand devices have regist
   would plausibly want off on its own is ride chat, so if chat push ships, preferences ship with
   it.
 
-- **The retention window for a token is stated *and implemented*: 60 days without a successful
-  delivery or a re-registration.** `036` refused to state a number because nothing in this
+- **The retention window for a device row is stated *and implemented*: 60 days without a
+  successful delivery or a re-registration.** `036` refused to state a number because nothing in this
   project could implement one. This change builds the scheduler, so the sweep runs in the same
   job as the sender and the number is enforced rather than asserted — which is the way that
   earlier refusal is discharged rather than contradicted.
@@ -127,14 +152,15 @@ received while the app is foregrounded beyond invalidating the cache.
 
 - `push-registration`: the device token as a per-device secret — who may hold one, who may read
   one (nobody), what happens when it moves, rotates, is refused by APNs, outlives a sign-out, or
-  is one of five on the same rider's account. Owns `unique (token)`, the absent grants, the two
-  own-row RPCs, the participation gate that is deliberately *not* a trigger, and the retention
-  window.
+  is one of five on the same rider's account. Owns `unique (installation_id)`, the absent grants,
+  the two own-row RPCs, the participation gate that is deliberately *not* a trigger, and the
+  retention window.
 - `push-delivery`: the outbox, the schedule, the recipient re-check and the payload. Owns the
   rule that the delivered text is exactly what the recipient could have read for themselves at
-  the moment it was sent, the handling of a token APNs or FCM reports unregistered, and the
-  boundary between a fan-out failure (must be loud) and a push failure (must be silent to the
-  rider whose write caused it).
+  the moment it was sent — gated per column, with an `else`-raising copy dispatch — the handling
+  of a token APNs or FCM reports unregistered, the two bounds on a batch, the boundary between a
+  fan-out failure (must be loud) and a push failure (must be silent to the rider whose write
+  caused it), and the naming of Apple and Google as sub-processors.
 - `push-permission-priming`: the one-shot OS prompt — when it is spent, what is read first, and
   every state the row and the sheet can be in, including the two the location precedent has no
   analogue for.
@@ -144,8 +170,14 @@ received while the app is foregrounded beyond invalidating the cache.
 **Five of the eight standing capabilities are modified, and three are read and deliberately
 untouched.** Every one was read requirement by requirement before this list was written.
 
-- **`notifications`** — MODIFIED `The surfaces this change does not build SHALL be named rather
-  than half-built`. That requirement names push delivery and per-type preferences in one breath as
+- **`notifications`** — MODIFIED two requirements. `A rider SHALL NOT learn a private club's name,
+  or a private ride's title, from a notification` requires every rendered string to be read *under
+  the reader's own row security at the moment of rendering* — which a device cannot do, having no
+  session and no ability to execute a policy. Left unmodified, the spec set would assert both that
+  and the payload function at once. The delta states the exception with its scope: no column ever
+  holds text, the in-app render is untouched, and what is substituted is *who executes the check*,
+  never *what the check is*. Also MODIFIED `The surfaces this change does not build SHALL be named
+  rather than half-built`. That requirement names push delivery and per-type preferences in one breath as
   absent-not-disabled. Push delivery ships; per-type preferences stay absent but for a *different*
   reason, which has to be restated or the requirement reads as satisfied by inertia. Plus one
   ADDED requirement: a notification is pushed **at most once**, and a delivered push is a copy of
@@ -221,6 +253,13 @@ been generated here.
 so *"it takes no user id"* is replaced by *"it takes no arguments from anyone and refuses every
 caller whose verified JWT is not `role: service_role`"*. A signed-in rider's own access token
 passes `verify_jwt`; that is what the check exists for.
+
+**Legal.** `/legal/privacy`'s *"Who processes your data today"* section must name **Apple and
+Google**, with what each receives. This is the first time RLS-governed content leaves Supabase for
+a third party at all — every prior outbound call sends a query string or a coordinate, while a push
+sends another rider's username, a club's name, a ride's title and a persistent per-device
+identifier, in cleartext, from an `eu-west-1` project. It ships in the same child as delivery, not
+as a follow-up.
 
 **Secrets.** Three more, all in the function's own secret store and nowhere else: the APNs auth
 key (`.p8`, a PEM private key), its key id and team id, and the FCM service-account JSON.

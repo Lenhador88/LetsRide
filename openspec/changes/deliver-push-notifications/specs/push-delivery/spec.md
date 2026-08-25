@@ -48,14 +48,40 @@ re-checked immediately before sending, which a write-time trigger cannot do by c
 ### Requirement: A push SHALL carry only what its recipient could have read for themselves at the moment it was sent
 
 Before any send, the delivery path SHALL re-evaluate **every** conjunct the `notifications` SELECT
-policy requires, for that recipient: the recipient scope, `private.is_blocked` in both directions,
-the actor resolving, and the per-type subject conjuncts — **both** of them for
-`ride_created_in_club`. If any conjunct fails, no push SHALL be sent.
+policy requires, for that recipient. If any conjunct fails, no push SHALL be sent.
+
+**The gate SHALL be written per COLUMN, mirroring the policy's own shape, and SHALL NOT be
+dispatched on `type`.** `036` states the subject shapes once so that its SELECT policy *"can be
+written per COLUMN rather than per type and the two cannot drift apart"*, and the live qual is four
+independent `<column> is null or exists (…)` conjuncts evaluated on every row whatever its type.
+A type-keyed gate reads as equivalent and is not, and the divergence has an exact trigger: **adding
+a sixth type changes `notifications_type_check` and `notifications_subject_shape` and does not
+change the SELECT qual at all**, so a pin on the policy stays green while the type-keyed gate has
+no branch for the new type.
+
+The conjunct set is therefore:
+
+| Conjunct | Predicate | Applied |
+|---|---|---|
+| recipient scope | the row's own `user_id` | always |
+| block, both directions | `private.is_blocked(user_id, actor_id)` | always |
+| actor resolves | `private.can_read_profile(user_id, actor_id)` | always — the actor is a rendered resource on every row |
+| `postcard_id` | `postcard_id is null or private.can_read_postcard(user_id, postcard_id)` | per column |
+| `comment_id` | `comment_id is null or private.can_read_comment(user_id, comment_id)` | per column |
+| `ride_id` | `ride_id is null or private.can_read_ride(user_id, ride_id)` | per column |
+| `club_id` | `club_id is null or private.can_read_club(user_id, club_id)` | per column |
+
+**The copy dispatch is a separate half and irreducibly per type**, because the sentence a rider
+reads differs by type. That half SHALL carry an explicit `else` arm that **raises**, for the reason
+`036`'s `notifications_subject_shape` carries `else false`: a bare `CASE` with no `ELSE` returns
+NULL for an unmatched type, and a NULL-copy push is either a crash in the sender or an empty
+notification on a lock screen.
 
 This SHALL be implemented as **one** `security definer` function in `public`, granted to
 `service_role` by name and revoked from `public`, `anon` and `authenticated`. That function SHALL
 be the only place the policy is restated, and its restatement SHALL be pinned textually in
-`supabase/tests/rls_test.sql` in the manner `060` pinned `clubs` SELECT.
+`supabase/tests/rls_test.sql` in the manner `060` pinned `clubs` SELECT — pinning **both** the
+SELECT qual **and** `notifications_type_check`, since the type list is the half that moves.
 
 **A restatement that can go stale is accepted here for the reason `060` accepted it**, and the pin
 is what makes it acceptable. Without the pin this is a leak behind a policy set that reads clean.
@@ -71,13 +97,28 @@ is what makes it acceptable. Without the pin this is a leak behind a policy set 
   **private** club leaves that club before the send
 - **THEN** no push SHALL be sent
 
-#### Scenario: Both conjuncts are required and ride-implies-club is refused
+#### Scenario: Both conjuncts are required, and the per-column shape is what guarantees it
 - **WHEN** a `ride_created_in_club` notification is considered for sending
 - **THEN** the ride **and** the club SHALL both resolve for the recipient
 - **AND** the leak this closes SHALL be asserted directly: a public club, a ride whose `is_public`
   is false, and a recipient who has left that club
 - **AND** the derivation "ride visibility implies club visibility" SHALL NOT be used to collapse
   it, because that is a property of today's `rides` policy and `036` §3 already refuses it
+- **AND** no implementer SHALL have to remember this: both conjuncts fire because the row sets both
+  columns, which is the property the per-column shape buys
+
+#### Scenario: An unknown type suppresses loudly rather than sending empty copy
+- **WHEN** the copy dispatch meets a `type` it has no arm for
+- **THEN** it SHALL raise, and the outbox row SHALL be marked failed
+- **AND** it SHALL NOT return NULL, an empty string or a generic fallback string
+- **AND** the visibility gate SHALL already have passed in that case, which is exactly why the
+  copy half needs its own `else`: the two halves fail on different inputs
+
+#### Scenario: The pin covers the type list, not only the policy
+- **WHEN** a sixth notification type is added
+- **THEN** the RLS suite SHALL fail on the pinned `notifications_type_check` text
+- **AND** a pin on the SELECT qual alone SHALL NOT be accepted as covering this, because that qual
+  does not change when a type is added
 
 #### Scenario: An unresolvable actor suppresses the push
 - **WHEN** the actor's profile does not resolve for the recipient
@@ -122,6 +163,39 @@ withdrawal mechanism exists.
 - **AND** the platform's own per-app hide-previews control SHALL be treated as the rider's control
 - **AND** no second, in-app preference SHALL be built for it, because this change deliberately has
   no preferences
+
+### Requirement: Apple and Google SHALL be named as sub-processors, because this is the first RLS-governed content to leave Supabase
+
+A push transmits, in cleartext to a third party, another rider's username, a club's name, a ride's
+title and a persistent per-device identifier — for every notification, for every rider who grants.
+`/legal/privacy` SHALL name Apple and Google in its *"Who processes your data today"* section,
+alongside Supabase, Vercel and Geoapify, with what each receives, **in the change that ships
+delivery**.
+
+**This is the first time content governed by an RLS policy leaves Supabase for a third party at
+all.** Every prior outbound call in this repo sends something a rider typed or a coordinate:
+`search-places` sends a query string, `resolve-ride-location` sends a place. Neither sends another
+rider's identity or a private club's name, and neither did so from an `eu-west-1` project holding
+EU riders' data.
+
+#### Scenario: The privacy page is updated in the same change, not later
+- **WHEN** delivery ships
+- **THEN** `/legal/privacy` SHALL already name both providers and what each receives
+- **AND** this SHALL NOT be filed as a follow-up, because the disclosure obligation begins with the
+  first delivered push rather than with the first complaint
+
+#### Scenario: The question put to the product owner names the sub-processor
+- **WHEN** the owner is asked whether a push may carry a private club's name or a private ride's
+  title
+- **THEN** the question SHALL say that doing so also transmits it to Apple or Google
+- **AND** a question framed only around the lock screen SHALL be treated as materially the wrong
+  question, because that surface is the rider's own device and this one is not
+
+#### Scenario: The device identifier counts as personal data too
+- **WHEN** the disclosure is written
+- **THEN** it SHALL include the provider token and the installation identifier, not only the copy
+- **AND** the retention window for those SHALL be the one this change already states, so the page
+  and the migration header agree in the same words
 
 ### Requirement: The delivery function SHALL hold a service-role key and SHALL reach nothing but three named functions
 
@@ -196,16 +270,30 @@ rider on the platform having the outage, and nothing reports it.
 - **AND** nothing SHALL be logged as an error, because most riders will have no token for most of
   this feature's life
 
-#### Scenario: A notification is pushed at most once
+#### Scenario: A notification is pushed at most once, and never after it has been read
 - **WHEN** the same outbox row is claimed twice — a retried batch, an overlapping schedule run, a
   function timing out after sending
 - **THEN** at most one push SHALL reach a device for it
 - **AND** the claim SHALL be the thing that guarantees it, rather than a check the sender performs
   after the fact
 
-#### Scenario: A batch is bounded
-- **WHEN** a backlog exists — the scheduler was paused, the project auto-paused, a deploy was
-  late
+#### Scenario: A notification the rider has already read is not pushed
+- **WHEN** `notifications.read_at` is non-NULL at the moment the batch is claimed
+- **THEN** the row SHALL be suppressed rather than sent
+- **AND** the reason SHALL be recorded: with a one-minute interval this is the ordinary case, not
+  an edge one — a rider who is in the app when the row lands, sees it and taps it would otherwise
+  get a push about it forty seconds later
+
+#### Scenario: A batch is bounded by size **and** by age
+- **WHEN** a backlog exists — the scheduler was paused, the free-tier project auto-paused after
+  ~7 days idle, a deploy was late
 - **THEN** each run SHALL claim a bounded number of rows and SHALL NOT attempt the whole backlog
+- **AND** any row older than a stated age SHALL be **suppressed rather than sent**, classified
+  alongside the visibility refusal rather than as a failure
+- **AND** the reason SHALL be recorded: the entire value of this feature is timeliness, so a
+  resumed project delivering a week of notifications in installments is worse than delivering
+  none of them — and a size bound alone produces exactly that, one batch at a time
+- **AND** the age SHALL be a few hours rather than a day, and SHALL be stated in the migration
+  header beside the schedule interval it is paired with
 - **AND** this SHALL follow `event-fanout-integrity`'s rule that a fan-out is bounded and SHALL
   NOT be assumed small, applied one table further down

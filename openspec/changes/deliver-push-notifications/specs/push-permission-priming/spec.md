@@ -25,7 +25,7 @@ notification this app will ever send to that rider.
 #### Scenario: The prompt is never spent during onboarding
 - **WHEN** a rider has not completed onboarding
 - **THEN** the row SHALL NOT draw and the sheet SHALL NOT open
-- **AND** two reasons SHALL be recorded: `register_push_token` refuses a caller for whom
+- **AND** two reasons SHALL be recorded: `register_push_device` refuses a caller for whom
   `private.may_participate()` is false, so registration would fail anyway; and spending a
   once-per-install prompt on a rider who has not yet seen what the app does is the worst available
   moment for it
@@ -48,8 +48,8 @@ test. `undefined` is "not settled" and a decided value is a decided value — a 
 unread permission is drawn against a guess, and the guess flashes onto the screen and vanishes for
 exactly the rider who already granted.
 
-#### Scenario: Nothing renders before both inputs are decided
-- **WHEN** the platform check or the permission read has not answered
+#### Scenario: Nothing renders while any of the three inputs is undecided
+- **WHEN** the platform check, the permission read or the registration state has not answered
 - **THEN** the state SHALL be `hidden`
 - **AND** no row SHALL appear and later disappear
 
@@ -133,6 +133,7 @@ not, and `blocked` carries far more weight here than it does there.
 
 #### Scenario: A permission revoked outside the app is detected
 - **WHEN** a rider turns notifications off in the OS settings and returns to the app
-- **THEN** the app SHALL detect it on its next permission read and SHALL release its token rows
+- **THEN** the app SHALL detect it on its next permission read and SHALL release **this
+  installation's** registration, by the same `release_push_device(installation_id)` sign-out uses
 - **AND** the reason SHALL be recorded: providers continue to accept sends for a token whose app
   permission was revoked and silently drop them, so nothing else would ever notice

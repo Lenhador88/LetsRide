@@ -39,10 +39,14 @@ re-evaluating every delivered message against every rider's current visibility.
 - **AND** it SHALL NOT carry a name, title, caption, username or body copied from them
 
 #### Scenario: The reader's own policy decides what resolves
-- **WHEN** a derived row is read
+- **WHEN** a derived row is **read** — by a client, under a session
 - **THEN** the resources it references SHALL be read under the reader's own row security at that
   moment
 - **AND** a row whose references do not resolve SHALL NOT be returned
+- **AND** the **transmission** case carved out by conditions 1–4 above is not this case and does
+  not weaken it: there the reader is a device with no session and no ability to execute a policy,
+  so the check is executed *on their behalf* by a function that applies the same conjuncts with the
+  recipient as an argument. Any path that has a session SHALL use the session
 
 #### Scenario: A count is not a copy either
 - **WHEN** a count over a policy-governed table is needed
@@ -80,8 +84,9 @@ none of the roles that can read the rest of their identity.
 
 - **WHEN** a rider reads or writes their own `profiles` row
 - **THEN** they SHALL read every column their grants permit, SHALL set `username` while it is
-  NULL, SHALL change it to another valid value while Q1 remains unanswered, and SHALL NOT return
-  it to NULL
+  NULL, SHALL change it to another valid value while **the username-mutability question carried
+  forward from `view-rider-profile` (its Q1, not this change's)** remains unanswered, and SHALL
+  NOT return it to NULL
 
 #### Scenario: Any other signed-in rider
 

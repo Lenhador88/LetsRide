@@ -64,19 +64,22 @@ unmergeable until somebody has a Mac.
 
 | Child | Deliverable | Waiting on | What proves it |
 |---|---|---|---|
-| **A** — *Push tokens — a table nobody may read* | `078`: `push_tokens`, its absent grants, `register_push_token`, `release_push_token`, the retention column, the FK index | nothing | the RLS suite, in full |
+| **A** — *Push devices — a table nobody may read* | `078`: `push_devices`, its absent grants, `register_push_device`, `release_push_device`, the retention column, the FK index | nothing | the RLS suite, in full |
 | **B** — *Register the device, and spend the one prompt deliberately* | the plugin, `src/lib/push/`, `pushPrimingState` + tests, the sheet and row, `signOut`'s fifth clear | a Mac, an Apple provisioning profile with the Push capability, an FCM project + `google-services.json` | `test:unit` covers the pure half; the rest is **[device]** |
 | **C** — *Deliver a notification to a phone* | `079`: the outbox, its trigger, the three `can_read_*` predicates, `claim_push_batch`, `push_payload_for`; the `push-notify` Edge Function; the schedule | the APNs `.p8` + key id + team id, the FCM service account, a scheduler extension on both projects, an owner deploy | the RLS suite covers the SQL; delivery is **[device]** + **[owner]** |
 
-**PD-291 names delivery to a phone, so it closes on C and on nothing earlier.** A and B are its
-children and stay open beneath it. `CLAUDE.md` §The roadmap lives in Linear is explicit that
+**PD-291 names delivery to a phone, so it closes on C and on nothing earlier.** The board shape is
+decided rather than offered, because "either is fine" is exactly the ambiguity that produced the
+PD-279 complaint: **A, B and C are filed as sub-issues of PD-291, and PD-291 itself stays open
+until C lands and closes on C.** Not a new row for the remainder, not a comment on a closed issue
+— both read as handled on a board. `CLAUDE.md` §The roadmap lives in Linear is explicit that
 partly delivered means the story stays open, and the failure it warns about — *"the main feature is
 not being developed in the main story we discussed about"* — is exactly what closing PD-291 on a
 token table would be.
 
 **B and C are independent of each other and both depend on A.** They can run in parallel once the
 credentials land; C can be built and merged against zero registered devices, because an empty
-`push_tokens` makes every claim a no-op.
+`push_devices` makes every claim a no-op.
 
 ### D2 — The enqueue is a trigger; the delivery is a schedule. Both, and each where it belongs
 
@@ -119,52 +122,108 @@ leaving"*, which is `rider-ux`'s named real-time case; that case does not exist 
 does it is the trigger that reopens this decision. Say so in the migration header rather than
 leaving the next session to rediscover the trade.
 
-**The scheduler itself is an owner action and a named blocker.** Nothing in this repo creates
-`pg_cron` and no session can enable it. The obvious substitute — a scheduled GitHub Actions
+**Two things the sweep must also do, because a batch is not just "the unsent rows".** It skips
+any notification the rider has **already read** — with a one-minute interval, a rider who is in
+the app when the row lands, sees it, and taps it would otherwise get a push about it forty seconds
+later — and it **suppresses rows older than a few hours**, because the value proposition here is
+timeliness and a project resuming from a free-tier pause would otherwise deliver a week of
+notifications in installments. Both are stated in `push-delivery`; both are suppressions, not
+failures.
+
+**The scheduler itself is two extensions and an owner action — see D14, which also draws the
+distinction between `pg_net` inside a rider's transaction and `pg_net` from a cron job.** Nothing
+in this repo creates either and no session can enable them. The obvious substitute — a scheduled GitHub Actions
 workflow calling the function — is rejected, and not on latency: it needs a credential that
 authorises the call, which puts a secret outside the function's own secret store and breaks the
 first of `delete-account`'s four rules for a scheduling convenience.
 
-### D3 — `unique (token)`, and re-registration moves the row. This is the change's centre of gravity
+### D3 — The unique key is the INSTALLATION, not the token. This is the change's centre of gravity
 
-A device token identifies a **device**, not a rider. APNs and FCM hand the same token to the app
-regardless of who is signed in.
+A push token identifies a **device**, not a rider — APNs and FCM hand the same token to the app
+whoever is signed in. That much drove the first version of this decision, which keyed the table
+`unique (token)`. **That was wrong, and the way it was wrong is the reusable part: a token is not
+a stable name for a device, because it rotates.**
+
+Walked out, with `unique (token)` in place and rotation handled as "register the new one, do not
+assume the old one is dead":
+
+> Rider A's device rotates T1 → T2. Both rows are live and owned by A. A signs out;
+> `release_push_token` takes only the token the device currently presents — **T2** — and **T1
+> survives, owned by A**. Rider B signs in; cold-start registration re-homes T2 and cannot see
+> T1. A's next like renders on B's lock screen, and the window is not "until the next cold start"
+> but **up to the 60-day idle sweep**.
+
+The requirement titled *"a token identifies a device"* and the rotation scenario saying *"the old
+row is not assumed dead"* cannot both hold. Once a device carries two live rows, a token is not a
+device.
+
+**There is a second limb, and it is the one that breaks the safety argument rather than the
+mechanism.** `unique (token)` makes `register_push_token(token)` a re-homing primitive keyed on a
+string, and the previous holder of a device legitimately *knew* that string while they held it.
+So A, from any other device, can re-home B's phone back to themselves — no SELECT grant needed.
+The first version's defence, *"a high-entropy value the device holds and nothing exposes"*, covers
+an outsider and does not cover the possessor of record.
+
+**So the key is a device identity that does not rotate**, with the token demoted to a mutable
+attribute of it:
 
 ```
-unique (user_id, token)   -- two riders, two rows, both live, both delivered to
-unique (token)            -- one device, one row, one rider
+unique (token)             -- rotation forks the device into two rows; sign-out releases one
+unique (installation_id)   -- rotation is an UPDATE; sign-out releases the device
 ```
 
-The first shape is the natural one — it is what every other membership-ish table in this schema
-looks like — and it is wrong. Under it, rider A signs out on a club-shared phone, rider B signs
-in, B's app registers, and both rows exist. Every notification A receives thereafter renders on
-B's lock screen: A's actor usernames, A's ride titles, A's private club names. **No policy is
-violated; the delivery function did exactly what the table told it.** It is the only failure in
-this app where one rider's data reaches another rider's screen with the entire RLS layer working
-correctly, and it costs one word in a migration to prevent.
+Three properties follow, and each closes one limb of the failure above:
 
-**A client upsert cannot express the second shape, and it fails closed and silent.** With a
-`token`-keyed upsert and a `using (user_id = auth.uid())` policy, rider B's `ON CONFLICT DO UPDATE`
-hits a row it may not see — so the update matches nothing, and depending on the path either
-raises `23505` or writes nothing at all. Either way B's device is not re-homed and A's pushes keep
-arriving. **Failing closed is the wrong direction here**, which is why registration is not a
-client write.
+- **Rotation is an UPDATE, not an INSERT.** One row per install, for the life of the install, so a
+  device can never be two rows and a release can never be partial.
+- **Sign-out and cold-start re-homing are total.** Both address the installation, so whatever
+  tokens that install has ever presented go with it.
+- **Re-homing needs the installation id, which never leaves the device it names.** Unlike a token,
+  it is not handed to the app by an outside party and not carried anywhere by a departing rider —
+  it is generated on the device and stays there. The residual is stated rather than claimed
+  closed: a party who *exfiltrated* an installation id could re-home that device once, and what
+  they gain is their own notifications being delivered to a phone they do not hold, plus denial of
+  push to whoever does. That is self-harm plus a nuisance, not a disclosure — which is a
+  materially different residual from `unique (token)`'s, where the value was routinely known to
+  the previous holder rather than needing to be stolen.
 
-**So: no write grants at all, and an own-row `security definer` RPC.** `register_push_token(token
-text, platform text)` deletes every row carrying that token, whoever owns it, then inserts one for
-`auth.uid()`. It takes no user id — the subject is `auth.uid()` and nothing else — which is
-`delete-account`'s second rule and `moderate_comment`'s shape.
+**Where the installation id comes from: generated once into the existing secure store. No new
+plugin.** `@aparajita/capacitor-secure-storage` is already a runtime dependency and already holds
+the refresh token, so its lifecycle is exactly *this install on this device*. The alternative,
+`@capacitor/device`'s `getId()`, is rejected on two counts: it is **a second native plugin**, and
+`CLAUDE.md`'s dependency rule asks whether a thirty-line helper does the job — here it is nearer
+three lines, `crypto.randomUUID()` into a key that already exists; and its value carries platform
+semantics this design would then have to reason about (`identifierForVendor` is vendor-scoped and
+resets when the last app from that vendor is removed, and Android's is app-scoped and differs
+again). A value we generate has one semantic and it is the one we want.
 
-**The delete-by-token is safe for a reason, and the reason must be stated because it is the thing
-that stops being true if anyone adds a SELECT grant.** The token is a high-entropy value the
-device holds and nothing exposes. If a client role could *read* the table, this RPC would become a
-push-denial vector: read another rider's token, call the RPC, silently steal their device
-registration. It is safe **because** D4 grants nobody SELECT, so the two decisions are one
-decision and a future "just a small read for a devices screen" reopens both.
+**A reinstall produces a new installation id, and that is correct rather than a gap.** The old row
+survives briefly, and its token is dead in the same moment for the same reason — a reinstall gets
+a new provider token — so the first delivery attempt takes a `410`/`UNREGISTERED` and D7's rule
+deletes it. The idle sweep is the backstop, not the mechanism.
+
+**Registration is still not a client write, and the reason survives the key change unchanged.**
+With an `installation_id` conflict target and an own-row policy, rider B's `ON CONFLICT DO UPDATE`
+meets a row their policy does not return, so it writes nothing or raises `23505`; either way B's
+device is not re-homed and A's pushes keep arriving. **Failing closed is the wrong direction for
+this one write**, which is why it is a `security definer` RPC that takes no user id and derives
+its subject from `auth.uid()` — `moderate_comment`'s shape and `delete-account`'s second rule.
+
+**The two RPCs are therefore named for devices, not for tokens**, and the singular/plural
+confusion that the first version's naming produced goes with them:
+
+- `register_push_device(installation_id text, token text, platform text)` — upsert on
+  `installation_id`, restating the participation gate, then trim the caller to ten installs.
+- `release_push_device(installation_id text)` — one device, one row.
+
+**The option not taken, stated with its cost.** Keeping `unique (token)` is survivable only if
+`release_push_token` takes **no argument** and clears every row for `auth.uid()`. That closes the
+orphan-T1 leak and breaks a real case: a rider with a phone and a tablet who signs out of one is
+silently unsubscribed on the other. That trade is refused rather than inherited.
 
 ### D4 — Nobody reads a device token. Not the owner, not the app, not a club owner, not `service_role` through PostgREST
 
-`authenticated` and `anon` hold **no** SELECT, INSERT, UPDATE or DELETE on `push_tokens`. RLS is
+`authenticated` and `anon` hold **no** SELECT, INSERT, UPDATE or DELETE on `push_devices`. RLS is
 enabled with **no policy at all**, which is `026`'s `password_reset_grants` shape — the INFO
 advisor `rls_enabled_no_policy` it produces is correct by design and belongs in `CLAUDE.md`'s
 advisor table as an eleventh expected entry.
@@ -182,7 +241,7 @@ migration so the screen does not arrive as a grant.
 narrowing of the service-role blast radius from "the whole database" to three function names, and
 it is checkable: a grep of the function for `.from(` returns zero.
 
-### D5 — The payload restates the read policy, under a textual pin, reusing `060`'s primitives
+### D5 — The payload restates the read policy PER COLUMN, under a textual pin, reusing `060`'s primitives
 
 The payload has to be exactly what the recipient could read. Three ways to get it, and the repo
 has already chosen one for this class of problem.
@@ -208,29 +267,64 @@ POLICY AND CAN GO STALE: clubs SELECT's qual is pinned textually in supabase/tes
 §060.1b"* — and `align-fanout-recipients-with-readability` predicted this exact caller:
 *"comes next: ride reminders, 'ride updated', push delivery and the Inbox epic all need the same"*.
 
-So `public.push_payload_for(notification_id uuid)` — granted to `service_role` alone — returns
-either a payload or nothing, having required **every** conjunct `036` §3 requires:
+#### The gate is per COLUMN, not per type, and getting that backwards is a live leak
 
-| Conjunct | Predicate |
-|---|---|
-| recipient scope | the row's own `user_id` |
-| block, both directions | `private.is_blocked(user_id, actor_id)` — already takes both parties |
-| actor resolves *(every type)* | `private.can_read_profile(user_id, actor_id)` — **new** |
-| `postcard_liked` | `private.can_read_postcard(user_id, postcard_id)` — **new** |
-| `postcard_commented` | `can_read_postcard` **AND** `private.can_read_comment(user_id, comment_id)` — **new** |
-| `ride_joined` | `private.can_read_ride` — `060` |
-| `club_joined` | `private.can_read_club` — `060` |
-| `ride_created_in_club` | `can_read_ride` **AND** `can_read_club` — both, `060` |
+**`036` §3 is deliberately written per column, and says so.** From the file at `036:147-149`, the
+subject shapes are stated once *"so the SELECT policy in §3 can be written per COLUMN rather than
+per type and the two cannot drift apart"*, and the live qual is four independent
+`<column> is null or exists (…)` conjuncts evaluated on **every** row regardless of its type.
 
-The three new predicates complete the family `060` started and take the same shape: candidate as
-an argument, `security definer`, `search_path` pinned, revoked from `public`/`anon`/
-`authenticated`, and a comment saying which policy they restate and where that policy's qual is
-pinned. **`ride_created_in_club` takes both conjuncts and the derivation "ride implies club" is
-refused here for the reason `036` §3 already gives** — it holds against today's `rides` policy,
-that policy has been rewritten twice, and nothing constrains it to keep the property.
+An earlier revision of this decision wrote the gate as a per-type table, which reads as equivalent
+and is not. The divergence has an exact trigger, and **this proposal files it**: a sixth type
+changes `notifications_type_check` and `notifications_subject_shape` and **does not change the
+SELECT policy's qual at all** — the four column conjuncts already cover any new type that reuses
+the existing columns. So the textual pin on the policy stays green while a type-keyed
+`push_payload_for` has no branch for `ride_upcoming` and falls through to whatever its `else`
+does. Child D adds exactly that type.
+
+So `public.push_payload_for(notification_id uuid)` — granted to `service_role` alone — has **two
+separable halves**, and only one of them is per type:
+
+**The visibility gate, per column, mirroring the policy's own shape:**
+
+| Conjunct | Predicate | Applied |
+|---|---|---|
+| recipient scope | the row's own `user_id` | always |
+| block, both directions | `private.is_blocked(user_id, actor_id)` — already takes both parties | always |
+| actor resolves | `private.can_read_profile(user_id, actor_id)` — **new** | always; the actor is a rendered resource on every row |
+| `postcard_id` | `postcard_id is null or private.can_read_postcard(user_id, postcard_id)` — **new** | per column |
+| `comment_id` | `comment_id is null or private.can_read_comment(user_id, comment_id)` — **new** | per column |
+| `ride_id` | `ride_id is null or private.can_read_ride(user_id, ride_id)` — `060` | per column |
+| `club_id` | `club_id is null or private.can_read_club(user_id, club_id)` — `060` | per column |
+
+Because it is per column, `ride_created_in_club` requires **both** the ride and the club without
+anyone having to remember that it does — the two conjuncts simply both fire on a row that sets
+both columns. That is the property `036` §3 bought with this shape, and it is also why the
+derivation *"ride implies club"* need not be argued about again: there is no place to collapse it
+into.
+
+**The copy dispatch, per type, because it irreducibly is** — the sentence a rider reads differs by
+type and there is no column-shaped way to write it. That half gets the treatment `036:151-155` gave
+the CHECK constraint:
+
+> **An unknown type SHALL suppress, loudly.** `036`'s `notifications_subject_shape` carries an
+> explicit `else false` because *"a bare CASE with no ELSE returns NULL for an unmatched type, and
+> a CHECK passes on NULL"*. The same hazard, one function along: a `case type … end` with no
+> `else` returns NULL copy for a type it does not know, and a NULL-copy push is either a crash in
+> the sender or an empty notification on a lock screen. The `else` arm raises.
+
+**And the pin extends to the type list**, which is now the thing that moves. Task 3.10f pins the
+`notifications` SELECT qual **and** `notifications_type_check`'s text, so adding a sixth type turns
+the suite red until the copy dispatch has an arm for it. Pinning only the policy would have been
+pinning the half that this change proved does not move.
 
 **Returning nothing is a suppression, not a failure.** The outbox row is marked `suppressed` and
 never retried, because the answer will not improve.
+
+**The three new predicates** complete the family `060` started and take the same shape: candidate
+as an argument, `security definer`, `search_path` pinned, revoked from `public`/`anon`/
+`authenticated`, and a comment naming which policy they restate and where that policy's qual is
+pinned.
 
 ### D6 — A delivered push cannot be withdrawn, and that is stated rather than mitigated
 
@@ -252,13 +346,27 @@ of a visibility decision"* is modified for the same reason — a push payload is
 copy, this is the one place the schema has to permit one, and an unstated exception becomes an
 unbounded one.
 
+#### The actual third party is Apple and Google, and this change is where they arrive
+
+**This is the first time RLS-governed content leaves Supabase for a third party at all.** Every
+prior outbound call in this repo sends something a rider typed or a coordinate — `search-places`
+sends a query string, `resolve-ride-location` sends a place. A push sends **another rider's
+username, a private club's name, a private ride's title and a persistent per-device identifier**,
+in cleartext to APNs and FCM, for every notification, for every rider who grants. On an
+`eu-west-1` project.
+
+That makes Apple and Google sub-processors, and `/legal/privacy` already carries a *"Who processes
+your data today"* section enumerating Supabase, Vercel and Geoapify with what each receives. It
+must name these two and what they receive, in the same shape, **in the child that ships delivery**
+— not later. Task 3.19a.
+
 **The lock screen is a second surface and it is deliberately not treated as a third audience.**
 A private club's name reaches the lock screen of a rider entitled to read it. Both platforms ship
 a per-app *hide previews when locked* setting, that setting is the rider's own control, and
 building a second one in-app would be a preference this change has otherwise decided not to have
 (D9). Recorded as a decision so it is not rediscovered as an oversight.
 
-### D7 — The token's retention window is 60 days, and it is implemented rather than asserted
+### D7 — The device's retention window is 60 days, and it is implemented rather than asserted
 
 `036` refused to write a number: *"nothing implements it, no `pg_cron` and no scheduled Edge
 Function exist in this project, so a 90-day claim would be an unlabelled guess promoted to a fact
@@ -266,9 +374,9 @@ in the one artifact a future session reads as authoritative."* That reasoning wa
 change discharges it rather than contradicting it — **the scheduler is being built here**, so the
 sweep runs in the same job as the sender and the number is enforced.
 
-A token row dies in four ways, three of them event-driven:
+A device row dies in four ways, three of them event-driven:
 
-1. **Sign-out** — `release_push_token(token)` before the revocation (D8).
+1. **Sign-out** — `release_push_device(installation_id)` before the revocation (D8).
 2. **Account deletion** — `on delete cascade` from `profiles`, joining the eleven FKs
    `add-account-deletion` enumerated. Asserted in the suite alongside them.
 3. **APNs 410 `Unregistered` / 403 `BadDeviceToken`, FCM `UNREGISTERED` / `INVALID_ARGUMENT`** —
@@ -281,20 +389,20 @@ A token row dies in four ways, three of them event-driven:
 `database-enforced-integrity`'s standing rule about a column the server owns; here it is trivially
 satisfied, because no client role can write the table at all.
 
-**And a cap: ten tokens per rider, most recent kept.** Enforced in `register_push_token`, not by a
+**And a cap: ten installs per rider, most recent kept.** Enforced in `register_push_device`, not by a
 CHECK, because a CHECK cannot count siblings. Without it a rider is an unbounded fan-out
 multiplier and the delivery job's per-notification cost is unbounded — `event-fanout-integrity`'s
 *"A fan-out SHALL be bounded and SHALL NOT be assumed small"* applied one table further down.
 
-### D8 — Sign-out releases the token first, and the residual window is closed by the next boot rather than claimed closed
+### D8 — Sign-out releases the device first, and the residual window is closed by the next boot rather than claimed closed
 
 `signOut()` today does four clears, all local, all protecting the rider who just left.
-`release_push_token` is a fifth and the first that is a **server** write, and the first whose
+`release_push_device` is a fifth and the first that is a **server** write, and the first whose
 failure harms somebody else.
 
 **Order matters and the existing function already teaches it.** `clearSessionStore()` runs *after*
 the revocation because clearing first would take the refresh token away from the call that needs
-it. `release_push_token` is an authenticated RPC, so it runs **before** `supabase.auth.signOut()`
+it. `release_push_device` is an authenticated RPC, so it runs **before** `supabase.auth.signOut()`
 for the same reason.
 
 **When it fails — offline, which is the normal case for a rider walking away from a bike — the
@@ -302,13 +410,19 @@ rider still signs out.** That is the existing requirement's answer and it stands
 pressed Sign out and is still signed in is the worse outcome by far."* But it leaves the exact
 hazard D3 exists to prevent, so the window is closed at the other end:
 
-> **The app calls `register_push_token` on every cold start while a session exists**, not only on
-> first grant. Because `register_push_token` deletes any row carrying that token first, the next
+> **The app calls `register_push_device` on every cold start while a session exists**, not only on
+> first grant. Because `register_push_device` upserts on the installation id, the next
 > rider's first launch re-homes the device unconditionally.
 
 That makes the window *"until this device is next opened by whoever holds it"* rather than
-*"for ever"*. It is not zero and the spec says so. Making it zero would need the token released
+*"for ever"*. It is not zero and the spec says so. Making it zero would need the device released
 without a session, which nothing can authorise.
+
+**The window is only that short because D3 keys on the installation.** Under `unique (token)` the
+same sentence would have been false: a release that names one token leaves any other row for that
+device untouched, and cold-start re-homing addresses one token too — so the real bound would have
+been the 60-day idle sweep. That is the second reason D3 is the decision this design rests on, and
+it is worth stating here because this is the requirement that reads as satisfied either way.
 
 **A second, cheaper closure is deliberately not taken:** having the delivery function verify the
 token still belongs to the notification's recipient. It does, by construction — the claim reads
@@ -366,6 +480,12 @@ that change does not decide them from scratch:**
    for all five existing types to serve a sixth.
 3. **Idempotence.** A reminder must fire once per (ride, rider) however many times the sweep runs,
    which is a uniqueness partial index in `036` §9's shape, not a `delivered` flag on a job row.
+4. **`push_payload_for` needs a copy arm for it, and nothing else about the payload function
+   changes.** This is the concrete pay-off of D5's per-column gate: the visibility half already
+   covers `ride_upcoming`, because that type reuses `ride_id` and the column conjunct fires
+   regardless of type. Only the per-type copy dispatch has to grow an arm — and if it is
+   forgotten, D5's `else` raises and task 3.10f's pin on `notifications_type_check` has already
+   turned the suite red. A type-keyed gate would instead have fallen through silently.
 
 Filed as **child D — *"Your ride is tomorrow" — the first scheduled notification*** — depending on
 C for the scheduler and on nothing else.
@@ -443,18 +563,18 @@ The alternative — a one-time sheet after onboarding completes — converts bet
 one-shot prompt on a rider who has seen nothing the app does yet. Open question **Q3**; the row is
 the recommended default.
 
-**Never during onboarding.** `register_push_token` restates `private.may_participate()` (D13), so
+**Never during onboarding.** `register_push_device` restates `private.may_participate()` (D13), so
 a pre-completion registration would be refused; and spending iOS's single lifetime prompt on a
 rider who has not finished signing up is the worst possible moment for it.
 
 ### D13 — The participation gate is restated inside the RPC, and the trigger is deliberately absent
 
 `enforce_participation_gate` is on eleven tables and not on six. The instinct is to make
-`push_tokens` the twelfth. **It must not be, and putting it there would be worse than leaving it
+`push_devices` the twelfth. **It must not be, and putting it there would be worse than leaving it
 off**, for a mechanical reason:
 
 > Every one of those eleven triggers carries `for each row when (current_user = 'authenticated')`.
-> Inside a `security definer` function `current_user` is the **owner**. `push_tokens` is written
+> Inside a `security definer` function `current_user` is the **owner**. `push_devices` is written
 > **only** by `security definer` RPCs. So the trigger would never fire, on any write, ever — and
 > it would appear in `select count(*) from pg_trigger where tgname =
 > 'enforce_participation_gate'`, making the count read twelve and the coverage read complete.
@@ -463,30 +583,81 @@ That is precisely the failure `CLAUDE.md` warns about in the same paragraph — 
 without one looks exactly like this list being right"* — arriving from the opposite direction: a
 table added **with** one that does nothing.
 
-**So the gate is restated inside `register_push_token`**, as `CLAUDE.md` requires of the three
+**So the gate is restated inside `register_push_device`**, as `CLAUDE.md` requires of the three
 own-row RPCs that own the profile stamps: *"Each restates the invariants its triggers carry, and
 must."* `if not private.may_participate() then raise ... using errcode = 'check_violation'`, so
 the error code a client sees is the `23514` the gate already raises and no caller needs a second
 branch.
 
-`release_push_token` is **not** gated. A rider must always be able to release a device, including
+`release_push_device` is **not** gated. A rider must always be able to release a device, including
 one whose account is in whatever state; refusing a release is refusing to stop sending them push.
+
+### D14 — The scheduler: `pg_cron` **and** `pg_net`, and the job is gated on Vault
+
+**Two extensions, not one, and the second one needs its objection un-confused.** `pg_cron`
+schedules SQL. It cannot make an HTTPS request, so it cannot invoke an Edge Function on its own —
+the outbound hop needs `pg_net` (or `http`). Installing only `pg_cron` leaves child C with a
+scheduler that cannot reach the thing it is scheduling.
+
+**D2 rejects `pg_net` *inside a rider's transaction*. It does not reject `pg_net`.** The objection
+there is specific and does not travel: a trigger on `notifications` firing `pg_net.http_post` runs
+inside the rider's own write, cannot raise, and therefore parks its failures in
+`net._http_response` where nothing in this repo reads them — a swallowed fan-out failure wearing
+the shape of an improvement. **A `pg_cron` job calling `pg_net` from outside every rider's write
+has none of those properties**: it is nobody's transaction, its failure takes down no rider's
+like, and it has a job row and an outbox row to record itself in. Reading D2 as a blanket
+prohibition stalls child C on a self-imposed contradiction, which is why this is written down
+rather than left to inference.
+
+**And the standing instruction this change is the first to trip: `docs/ENVIRONMENTS.md`
+§Scheduled jobs.** It says in as many words that a `pg_cron` job written in a migration
+**replicates to DEV and fires there**, that `pg_net` carries the same hazard for outbound HTTP,
+and that the mitigation *"has to be something the chain cannot replicate"* — a per-project value
+in Vault, or scheduling outside the chain — **decided before the first scheduled job is written**.
+This proposal is that first job.
+
+It compounds with the secrets: those are per project, so the good case is a DEV job holding DEV
+credentials pushing to a test device. Getting them backwards sends test notifications to real
+riders' phones, which is the one failure in this epic that is visible to people who did not
+consent to being test subjects.
+
+**Decision: gate on Vault.** The job's SQL reads a per-project key from `supabase_vault` —
+already installed on both projects — and returns without doing anything when it is absent or does
+not name the project it is running on. The alternative, scheduling outside the migration chain
+entirely, is rejected on reviewability rather than on effort: a job that lives outside the chain
+is invisible to `db:drift`, to the RLS suite, to `reviewer`, and to every gate this repo has, so
+the next session cannot find out that it exists. **In-chain and gated is worse only in that it
+requires the gate to be right; out-of-chain is worse in that nothing can ever check it.**
+
+Three consequences for the tasks list:
+
+- `create extension pg_cron` **and** `create extension pg_net`, on both projects, both owner
+  actions.
+- The scheduled job's migration reads its Vault key before it does anything, and the migration
+  header states the DEV-replication hazard in `docs/ENVIRONMENTS.md`'s own words rather than
+  paraphrasing it.
+- The DEV secret set points at the APNs sandbox host (Q2), so that even a gate failure sends to
+  sandbox rather than to production devices. Two independent things have to be wrong before a real
+  rider's phone rings from DEV.
 
 ## Risks / Trade-offs
 
-- **The token table is the one thing here that is unfixable later.** Ten thousand devices
-  registered under `unique (user_id, token)` cannot be de-duplicated after the fact — nothing
-  records which pairing is current. This is why child A is cut to land first and alone, and why
-  D3 is the longest decision in this file.
+- **The device table's key is the one thing here that is unfixable later.** Ten thousand devices
+  registered under `unique (user_id, token)` — or under `unique (token)`, which forks a device in
+  two on every rotation — cannot be reconciled after the fact, because nothing records which row
+  is the current pairing. This is why child A is cut to land first and alone, why D3 is the
+  longest decision in this file, and why it was worth rewriting once the rotation case was walked
+  through.
 - **The payload function restates a policy and can go stale.** `060` accepted the same risk with
-  the same mitigation, and the mitigation is a textual pin in `supabase/tests/rls_test.sql` that
-  fails the moment `notifications` SELECT's qual changes. Without the pin this is a leak with a
-  clean-looking policy set.
+  the same mitigation, and the mitigation is a textual pin in `supabase/tests/rls_test.sql`. Note
+  what the pin has to cover: **the SELECT qual *and* `notifications_type_check`**, because D5
+  showed the qual is the half that does not move when a type is added. A pin on the policy alone
+  looks complete and is the exact hole child D would have fallen into.
 - **Everything that actually delivers is unverifiable here.** No Mac, no device, no APNs sandbox,
   no FCM, no `supabase` CLI, and `tsconfig.json` does not even type-check the function. The
   honest reading is that child C merges *verified to compile and not verified to work*, which is
-  the lower-fidelity artifact `CLAUDE.md` §Working Principles requires be labelled rather than
-  passed silently. The tasks list marks each such box.
+  the lower-fidelity artifact `CLAUDE.md`'s *fix the tool, don't route around it* rule requires be
+  labelled rather than passed silently. The tasks list marks each such box.
 - **A scheduled job on a free-tier project that auto-pauses after ~7 days idle.** A paused project
   runs no schedule, so push stops with no alert — one more reason on the pile for Pro before
   launch.
@@ -507,59 +678,47 @@ can answer it. **Blocking** means the build cannot proceed correctly without it.
 
 | # | Question | Who | Blocking | Recommended default |
 |---|---|---|---|---|
-| **Q1** | Sub-minute scheduling: is the scheduler extension available on both projects, and does it support intervals below one minute? | owner | **yes, for child C** | 30s where supported, 1 min otherwise; build against 1 min so the shorter interval is a tuning change |
+| **Q1** | Sub-minute scheduling. **Availability is settled** — `pg_cron` 1.6.4 and `pg_net` 0.20.4 are available on both projects and installed on neither (measured 2026-08-25). What is open is the interval and the `create extension`. | owner | **yes, for child C** — the install, not the answer | 1 minute, which is inside `pg_cron`'s documented range; a shorter interval is then a tuning change rather than a redesign |
 | **Q2** | The APNs environment for `app-dev` — a separate sandbox key, or the same key against the sandbox host? | owner | **yes, for child C** | one `.p8` per team works for both; the *host* differs, so make it a function secret rather than a build constant |
 | **Q3** | Where the priming row draws: the top of `/notifications`, or a one-time sheet after onboarding? | product owner | no | the row (D12) — it never interrupts, and a rider on that screen is self-selected |
-| **Q4** | Does a push carry the private club's name / private ride's title, given it renders on a lock screen? | product owner | no | yes. The recipient is entitled to it and both platforms ship a per-app hide-previews control; building a second one contradicts D9 |
+| **Q4** | Does a push carry the private club's name / private ride's title — given that doing so shows it on a lock screen **and transmits it in cleartext to Apple or Google**, who become sub-processors of it? | product owner | no | yes, and `/legal/privacy` says so. The recipient is entitled to the content, both platforms ship a per-app hide-previews control, and the alternative is (b)'s generic string, which D5 rejects on its own merits. **Asking only about the lock screen would be materially the wrong question** — that surface is the rider's own device, the sub-processor is not |
 | **Q5** | Retention: is 60 days the right idle window for a token? | product owner | no | 60 days. Long enough that a rider on holiday is not silently unsubscribed, short enough that a sold phone stops receiving |
 | **Q6** | The per-rider token cap — ten? | product owner | no | ten. A rider with more than ten live devices is a bug or an abuse case, not a rider |
 | **Q7** | Does a foreground push draw anything, or only invalidate the cache? | product owner | no | invalidate only. An in-app banner duplicating a row the rider is looking at is noise, and the badge already moves |
 | **Q8** | Is a delivered push acceptable as permanently un-withdrawable (D6)? | product owner | no | yes, and written into the spec rather than left implicit. There is no mechanism that would make it otherwise without an unbounded standing sweep |
 
-## Unverified
+## Unverified, and what the measurements returned
 
-Recorded per `CLAUDE.md` §Working Principles: an inferred value must never pass silently as a
-measured one.
+Recorded per `CLAUDE.md`'s standing rule that an inferred value must never pass silently as a
+measured one. The first two entries were measured on 2026-08-25 by a session where both connectors
+resolved; what is kept is the answer, not the narration of what was feared.
 
-**Three of these were closed by the main thread on 2026-08-25, immediately after this file was
-written**, from a session where both connectors resolved. What is recorded below is what each one
-turned out to be, not what it was feared to be — the entries stay because the *reason* they were
-unverified outlives the answers.
+**PD-291 has no comments.** The body is the whole issue, and nothing in it contradicts a decision
+here. **Two decisions deliberately depart from its wording**, flagged so the next reader does not
+"correct" them back:
 
-- ~~**The Linear issue PD-291 was not read.**~~ **CLOSED — read, and it has NO comments.** The
-  body is the whole issue, and it says what the spawning brief attributed to it: an epic, a
-  two-PR split, `@capacitor/push-notifications`, a device-token table, an Edge Function that
-  delivers, fan-out from the six `private` triggers plus a scheduled reminder, priming in PD-170's
-  pattern, and the two owner-held credentials. **Nothing in it contradicts a decision here.**
+1. The issue says the table holds *"one row per device per rider"*. Read literally that is
+   `unique (user_id, token)`, which keeps two live rows for a shared phone — D3's failure. This
+   proposal keys on `unique (installation_id)`, which is the issue's own phrase *"per device"*
+   taken at its word rather than at its column list.
+2. The issue says *"own-row RLS"*. This proposal grants **no** SELECT at all, not even own-row
+   (`026`'s shape: RLS on, no policy). Own-row SELECT is what would make a re-homing RPC unsafe.
 
-  **Two decisions above deliberately DEPART from the issue's wording, and both are departures
-  rather than oversights** — flagged here so the next reader does not "correct" them back:
+**Extensions, both projects, `list_extensions`:**
 
-  1. The issue says the token table holds *"one row per device per rider"*. This proposal makes
-     the uniqueness **`unique (token)`**, not `unique (user_id, token)`. Read literally, the
-     issue's phrasing keeps two live rows for a shared phone, and rider A's notifications then
-     render on rider B's lock screen with every RLS policy working exactly as designed.
-  2. The issue says *"own-row RLS"*. This proposal grants **no SELECT at all**, not even own-row
-     (`026`'s shape: RLS on, no policy). Own-row SELECT is what would make
-     `register_push_token`'s delete-by-token unsafe.
+| | PROD `zwprydcyryvudhurbnye` | DEV `fpmrimzxadewsaiwpsel` |
+|---|---|---|
+| `pg_cron` | available `1.6.4`, **not installed** | available `1.6.4`, **not installed** |
+| `pg_net` | available `0.20.4`, **not installed** | available `0.20.4`, **not installed** |
+| `supabase_vault` | **installed** | **installed** |
 
-- ~~**The live database was not queried.**~~ **CLOSED, and the answer changes Q1.** Measured
-  2026-08-25 against **both** projects with `list_extensions`:
+So Q1 is not "does a scheduler exist" — it does, one `create extension` away on the free tier as
+it stands — but only the interval and the install itself. D14 needs both `pg_cron` and `pg_net`,
+and gates the job on the Vault entry that is already there.
 
-  | | PROD `zwprydcyryvudhurbnye` | DEV `fpmrimzxadewsaiwpsel` |
-  |---|---|---|
-  | `pg_cron` | available `1.6.4`, **not installed** | available `1.6.4`, **not installed** |
-  | `pg_net` | available `0.20.4`, **not installed** | available `0.20.4`, **not installed** |
+**Migration numbers:** the repo holds 77 files and both projects are at `077`, so `078`/`079` are
+free and correct as written.
 
-  So the inference was right that neither is *installed*, and wrong about what that implies:
-  **both are available on this project and are one `create extension` away**, on the free tier as
-  it stands. Q1 is therefore not "does a scheduler exist" — it does — but only "does it support
-  the interval child C wants", and the 1-minute default this proposal already builds to is inside
-  `pg_cron`'s documented range. **Installing either is still a decision, not a formality**: an
-  extension is a new surface, and `pg_net` in particular is the mechanism D-whichever rejects for
-  the enqueue path.
-
-  Migration numbers re-derived at the same time: the repo holds **77** files and **both** projects
-  are at `077`, so `078`/`079` are free and correct as written.
-- **The advisor count.** D4 predicts an eleventh expected security advisor
-  (`rls_enabled_no_policy` on `push_tokens`). Not measured — `get_advisors` was unreachable.
+**Still unmeasured — the advisor count.** D4 predicts an eleventh expected security advisor
+(`rls_enabled_no_policy` on `push_devices`) and a twelfth for `push_deliveries`. Not measured;
+`get_advisors` was not reached, and task 1.11 is where it gets checked.

@@ -11,9 +11,9 @@ Today sign-out clears a cookie and the server holds nothing else. The client-ren
 a query cache, signed image URLs, and — later — an offline store. A shared device is the normal
 case for a motorcycle club, not an edge case.
 
-**The push token is the first item on this list whose survival harms the *next* rider rather than
-the last one.** Everything else sign-out destroys protects the person walking away: their cache,
-their images, their session. A surviving device token does them no harm at all — it delivers their
+**The push registration is the first item on this list whose survival harms the *next* rider
+rather than the last one.** Everything else sign-out destroys protects the person walking away: their cache,
+their images, their session. A surviving device registration does them no harm at all — it delivers their
 notifications, correctly addressed, to a phone that now belongs to somebody else. It is the only
 route in this app by which one rider's content reaches another rider's screen with every RLS
 policy working as designed, which is why it belongs in this requirement rather than in a
@@ -54,13 +54,16 @@ refresh token the revocation needs.
 - **AND** the resulting exposure SHALL be stated as *until this device is next opened with a
   session* rather than described as closed
 - **AND** it SHALL be closed at that other end by an unconditional re-registration on cold start,
-  which re-homes the device to whoever is signed in — because nothing can release a token without
+  which re-homes the device to whoever is signed in — because nothing can release a device without
   a session, and no amount of client retry changes that
+- **AND** that bound SHALL depend on the registration row being keyed on the **installation**: a
+  token-keyed row is released and re-homed one token at a time, so a device that has rotated its
+  token keeps an orphan row and the real bound becomes the idle sweep
 
 #### Scenario: A stale registration is not treated as a per-notification problem
 - **WHEN** a mitigation is proposed inside the delivery path — checking that the token still
   belongs to the notification's recipient
 - **THEN** it SHALL be refused as a mitigation for this case
-- **AND** the reason SHALL be that the delivery path selects tokens *by* recipient, so the check
+- **AND** the reason SHALL be that the delivery path selects devices *by* recipient, so the check
   passes in exactly the case that is broken: the row's `user_id` is the previous rider, and it is
   the *device* that has changed hands
