@@ -295,14 +295,18 @@ stays load-bearing permanently**, and `resolve.browser.ts`'s tripwire keeps earn
   the motorcycle already inside `public/brand/logo-splash.png` on `Accent Brand/100` `#3D996B`.
   **The filename is load-bearing**: `@capacitor/assets` matches exact basenames and treats
   `icon.png` as a *Logo*, which generates white and `#111111` splash screens instead of icons —
-  `resources/README.md` carries that and the rest. Platform sets are not committed; a Mac
-  generates them after `cap add`. The splash PNG is untouched and still mint-on-`#3D996B`.
-- **The location permission strings — written 2026-08-24 (PD-170), and they are the ONE thing
-  in this list that is not yet in a file the platforms read.** `ios/` and `android/` do not
-  exist (see below), so there is no `Info.plist` and no `AndroidManifest.xml` to put them in.
-  They are recorded here because the first `cap add` on a Mac is where they have to be pasted,
-  and because Apple shows the iOS one *inside its own dialog* — a vague string is a routine
-  rejection. Both are **when-in-use only**; background location is a separate and much heavier
+  `resources/README.md` carries that and the rest. **The iOS set IS now committed**, generated in
+  this container on 2026-08-25 by `npx --yes @capacitor/assets generate --ios --assetPath
+  resources`; a Mac is not needed for it. Both master and output measure 1024×1024, 8-bit, colour
+  type 2 (RGB) — **no alpha**, which is the property App Store Connect refuses at upload rather
+  than at review, so it is worth reading off the file rather than trusting this line:
+  `python3 -c "import struct;b=open('resources/icon-only.png','rb').read();print(struct.unpack('>II',b[16:24]), b[25])"` — colour type 4 or 6 means alpha.
+  The splash PNG is untouched and still mint-on-`#3D996B`.
+- **The location permission strings — written 2026-08-24 (PD-170). The iOS one is IN
+  `ios/App/App/Info.plist` as of 2026-08-25** and no longer parked; the Android one still is,
+  because `android/` is not generated. Apple shows the iOS string *inside its own dialog*, so a
+  vague one is a routine rejection — check it survived rather than trusting this line:
+  `python3 -c "import plistlib;print(plistlib.load(open('ios/App/App/Info.plist','rb'))['NSLocationWhenInUseUsageDescription'])"`. Both are **when-in-use only**; background location is a separate and much heavier
   review conversation, and nothing in `src/` uses `watchPosition` or asks for `always`:
 
   ```
@@ -433,12 +437,36 @@ the Capacitor claims above (root-`index.html` routing, the cold-start restore in
 `src/lib/native/boot-restore.ts`) are read out of the vendors' source and are **written and
 unverified**, not verified-on-device. `npx cap add` is still the Mac step.
 
-**`ios/` and `android/` were deliberately not generated.** This container has no Android SDK
-(`ANDROID_HOME` unset, no `sdkmanager`), no Xcode and no CocoaPods, so `npx cap add ios` cannot
-finish its `pod install` and the Android scaffold would be unbuildable. JDK 21 and Gradle 8.14.3
-*are* here, which is not enough. Generating hundreds of unreviewable files that a Mac would
-regenerate anyway is worse than not having them. `@capacitor/ios` and `@capacitor/android` are
-installed so the Mac step is just `npx cap add ios` / `npx cap add android`.
+**`ios/` IS generated and committed — 2026-08-25, from this container.** The passage here used
+to say that was impossible, and the reason it gave was `pod install`: no CocoaPods, so `cap add
+ios` could not finish. **Capacitor 8 does not use CocoaPods.** It wires plugins through Swift
+Package Manager — `ios/App/CapApp-SPM/Package.swift`, which `cap sync` rewrites — so `cap add
+ios` needs neither Xcode nor a `pod` binary and completed here in 37ms. The check that tells the
+two apart, rather than either sentence: `ls ios/App/CapApp-SPM` exists, `ls ios/App/Pods` does
+not. It is 20 tracked files, not the "hundreds of unreviewable" ones this passage feared — the
+copied web bundle (`App/App/public`) and the generated config are gitignored by the template.
+
+**`android/` is still not generated**, and now by choice rather than by obstacle: the same
+`cap add` would scaffold it, but nobody has asked for the Android half and an unbuilt platform is
+review surface for no current gain. **So PD-95 stays open** — it names both platforms.
+
+**What this container still cannot do is COMPILE.** No Xcode, no `xcodebuild`, no simulator, no
+signing identity, so nothing here has ever been built or run. The project is real and its
+structure is measured; the first successful Xcode build is still the only thing that proves it,
+and until then every Swift file in `ios/` is **written and unverified**.
+
+What a session CAN now do, all of it exercised on 2026-08-25:
+
+```bash
+npx cap add ios                                    # 37ms, no CocoaPods, no Xcode
+npx --yes @capacitor/assets generate --ios --assetPath resources
+NEXT_PUBLIC_SUPABASE_URL=... NEXT_PUBLIC_SUPABASE_ANON_KEY=... \
+  NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native
+npx cap sync ios                                   # copies out/, rewrites Package.swift
+```
+
+**What is left for a Mac is now four things**: open the project, set the signing Team, build, and
+archive to TestFlight.
 
 ### Store readiness — assessed 2026-08-06
 

@@ -57,8 +57,15 @@ npm run build 2>&1 | grep -cE '^[┌├└│ ]*[ƒ●] /'    # dynamic + preren
 export — the failure it catches is `CAPACITOR_BUILD` leaking into a Vercel target, which
 produces a green deploy of a serverless static bundle with every redirect silently dropped.
 
-**What is left is the shell itself**: `cap add ios`, `cap add android`, `cap sync`, and a device
-check that a cold start at a non-root URL lands on its screen. `src/lib/native/boot-restore.ts`
+**`ios/` is generated and committed** (2026-08-25) and `cap sync` has run against it. Do not
+repeat the retired claim that this needs a Mac: **Capacitor 8 wires plugins through Swift Package
+Manager rather than CocoaPods**, so `cap add ios`, `@capacitor/assets generate --ios` and
+`cap sync ios` all complete in this container. `ls ios/App/CapApp-SPM` against `ls ios/App/Pods`
+is the check that distinguishes them.
+
+**What is left is what needs a compiler**: signing, a build, a simulator or device run, and the
+archive. Plus `cap add android`, which is unblocked and simply not asked for.
+A device check that a cold start at a non-root URL lands on its screen is still owed. `src/lib/native/boot-restore.ts`
 is the client half of that and is unit-tested; the premise underneath it — that Capacitor
 answers every extensionless path with the root `index.html` — is read from `Router.swift` and
 `WebViewLocalServer.java` at the pinned 8.5.0 and is **written and unverified** until a platform
