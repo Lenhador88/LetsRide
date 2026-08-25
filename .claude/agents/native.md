@@ -65,19 +65,24 @@ is the check that distinguishes them.
 
 **What is left is what needs a compiler**: signing, a build, a simulator or device run, and the
 archive. Plus `cap add android`, which is unblocked and simply not asked for.
-A device check that a cold start at a non-root URL lands on its screen is still owed, and stays
-owed: `src/lib/native/boot-restore.ts` is the client half of that, it is unit-tested, and whether
-the restore actually puts the rider on the screen is **written and unverified** until a platform
-runs.
+A device check that a cold start at a non-root URL lands on its screen is still owed, and
+`src/lib/native/boot-restore.ts` is the client half of it — unit-tested, and **written and
+unverified** until a platform runs.
 
-**The premise underneath it is split, and only the Android half is still unverified.** That
-Capacitor answers every extensionless path with the root `index.html` is **verified in this
-container** on iOS as of 2026-08-25 — disassembled out of 8.5.0's shipped `Capacitor.xcframework`,
-which is the binary SPM resolves by checksum, so it is better evidence than the source
-(`capacitor-swift-pm` ships no Swift at all — a grep of that repo finds nothing and means
-nothing). `docs/HANDOFF.md` §The shell carries the commands. The Android half is still read from
-`WebViewLocalServer.java` and is **written and unverified**; `android/` is not generated, so
-nothing there can be checked yet either way.
+**Read Capacitor's Swift from `node_modules/@capacitor/ios`** — all 46 files, at the version the
+build links, offline. Do not go to the network for `capacitor-swift-pm`: it ships binary
+xcframeworks, so a grep of *that repo* finds nothing, but the source is already in the tree and a
+session has burned a download and a disassembly rediscovering that.
+
+**The premise underneath `boot-restore.ts` splits, and one half is now known WRONG for deep links**
+(measured 2026-08-25; `docs/HANDOFF.md` §The shell carries the commands). `CapacitorRouter.route(for:)`
+does map every extensionless path to the root `index.html` — but a deep-link cold start never
+reaches it: `loadWebView()` loads `appStartServerURL`, so the webview boots at `/`, and a universal
+link is posted to `NotificationCenter` with nothing in Capacitor's core observing it to navigate.
+So the restore fires on a **webview process restore**, not on a deep link. Deep links need app-side
+work either way (PD-205) — no Associated Domains entitlement, and nothing in `src/` listens.
+The Android half is still read from `WebViewLocalServer.java` and is **written and unverified**;
+`android/` is not generated, so nothing there can be checked yet either way.
 
 **The *read in an effect, never during render* rule does not go away, and this brief used to
 say it would.** It said "when it is gone, say so plainly, because that rule can then be

@@ -431,28 +431,39 @@ that the bundle actually submitted was built from `main` is the release procedur
 gate only helps if it is run.
 
 **What is still unverified, and it is most of the shell:** nothing here has run on a device or a
-simulator, so the cold-start restore in `src/lib/native/boot-restore.ts` — that a launch at a deep
-link actually *lands the rider on that screen* — is **written and unverified**.
+simulator, so the cold-start restore in `src/lib/native/boot-restore.ts` is **written and
+unverified**.
 
-**Its premise is not, as of 2026-08-25.** That Capacitor answers every extensionless path with the
-root `index.html` used to be read out of `Router.swift`; it is now **verified in this container**
-against the binary the build actually links — a stronger artifact than the source, because it is
-the one SPM resolves and it is pinned by checksum. `capacitor-swift-pm` ships **binary**
-xcframeworks, not Swift, so grepping that repo for the routing code finds nothing and proves
-nothing — which is the trap this paragraph exists to stop. Unzip the framework instead:
+**Its premise splits in two, and the half that matters is WRONG for deep links — measured
+2026-08-25.** Read the Swift from `node_modules/@capacitor/ios`, which carries all 46 of 8.5.0's
+source files offline at the version the build links; `boot-restore.ts` already quotes it, and going
+to the network for a binary instead is the mistake this paragraph replaces:
 
 ```bash
-# sha256 357220fe… — the value capacitor-swift-pm's own Package.swift declares for 8.5.0
-curl -sSL -o cap.zip https://github.com/ionic-team/capacitor-swift-pm/releases/download/8.5.0/Capacitor.xcframework.zip
-llvm-objdump --macho --disassemble --arch=arm64 \
-  Capacitor.xcframework/ios-arm64_x86_64-simulator/Capacitor.framework/Capacitor \
-  | sed -n '/^_\$s9Capacitor0A6RouterV5route3forS2S_tF:/,/^_\$s9Capacitor0A6RouterVAA/p'
+cat node_modules/@capacitor/ios/Capacitor/Capacitor/Router.swift
+cd node_modules/@capacitor/ios/Capacitor/Capacitor
+grep -n "appStartServerURL" CAPBridgeViewController.swift && grep -rn "webView?.load" *.swift
 ```
 
-`CapacitorRouter.route(for:)` calls `URL.pathExtension`, then `String.isEmpty`, then branches on
-it (`tbz`) and on the empty side concatenates a literal `llvm-objdump` annotates for you:
-`literal pool for: "/index.html"`. That is `bootRestoreTarget`'s premise, instruction for
-instruction.
+- **`CapacitorRouter.route(for:)` maps every extensionless path to the root `index.html`** — true,
+  and now verified twice: the source says so, and disassembling the shipped `Capacitor.xcframework`
+  shows `pathExtension` → `isEmpty` → a literal `/index.html`.
+- **A deep-link cold start never reaches it.** `loadWebView()` loads `bridge.config.appStartServerURL`
+  — the server URL plus `server.appStartPath`, and `capacitor.config.ts` sets no `appStartPath` — so
+  the webview boots at **`/`**, always. A universal link arriving cold is posted to
+  `NotificationCenter` as `capacitorSceneOpenUniversalLink` and **nothing in Capacitor's core
+  observes it to navigate**: the only `webView.load` calls in those 46 files are the root start URL,
+  a reload at the root, and two error pages.
+
+So on a deep link `bootRestoreTarget` sees `pathname === '/'`, answers `null`, and the restore does
+not fire. What it *does* serve is the other case its header names — a **webview process restore**,
+where WKWebView reloads at its last URL and `route(for:)` is the mechanism that answers it. That
+distinction is the whole finding, and the module is correct for the case that remains.
+
+**Deep links cannot reach the shell at all yet, independently of any of this** — there is no
+Associated Domains entitlement in `project.pbxproj`, no `.entitlements` file, and nothing in `src/`
+listens for an open-URL event. PD-205 is where that work lives, and it now has a second half: even
+once a link opens the app, something must navigate the webview, because Capacitor will not.
 
 **`ios/` IS generated and committed — 2026-08-25, from this container.** The passage here used
 to say that was impossible, and the reason it gave was `pod install`: no CocoaPods, so `cap add
@@ -472,32 +483,32 @@ signing identity, so nothing here has ever been built or run. The first successf
 still the only thing that proves it, and until then every Swift file in `ios/` is **written and
 unverified**.
 
-**What that label does NOT mean here is hand-written Swift, and reading it that way overstates the
-risk — measured 2026-08-25.** Every file in `ios/` is byte-identical to `@capacitor/cli`'s own
-`ios-spm-template`, with **no** extra files and a delta of four *data* edits: the display name,
-the location permission string, the bundle id (in both configurations), and `cap sync`'s own
-rewrite of `Package.swift`. `AppDelegate.swift`, `SceneDelegate.swift` and both storyboards are
-untouched vendor code. Re-derive it rather than trusting this line, because the value is in
-knowing which files are yours to suspect:
+**The label does not mean hand-written Swift — measured 2026-08-25.** Exactly **five** files in
+`ios/` differ from `@capacitor/cli`'s own `ios-spm-template`, and there are **no** extra tracked
+files. Four are data edits — the display name and the location string (`Info.plist`), the bundle id
+in both configurations (`project.pbxproj`), and `cap sync`'s own rewrite of `Package.swift`. The
+fifth is the icon set: both `AppIcon` files, regenerated from `resources/`. `AppDelegate.swift`,
+`SceneDelegate.swift` and both storyboards are untouched vendor code. Re-derive it, because the
+value is knowing which files are yours to suspect:
 
 ```bash
 t=$(mktemp -d) && tar xzf node_modules/@capacitor/cli/assets/ios-spm-template.tar.gz -C "$t"
 (cd "$t" && find . -type f | sed 's|^\./||') | while read f; do
-  cmp -s "$t/$f" "ios/$f" || echo "DIFFERS: $f"; done
-# expect exactly 5: project.pbxproj, CapApp-SPM/Package.swift, App/Info.plist,
-# and the two AppIcon files (the icon set, regenerated from resources/)
+  cmp -s "$t/$f" "ios/$f" || echo "DIFFERS: $f"; done   # exactly 5 lines
 ```
 
-Three more first-build inputs are checked and sound. `IPHONEOS_DEPLOYMENT_TARGET` is `15.0`,
-matching `Package.swift`'s `.iOS(.v15)` — a mismatch there is an SPM resolution refusal, not a
-compile error, so it reads as a dependency problem. `CODE_SIGN_STYLE` is `Automatic` with **no**
-`DEVELOPMENT_TEAM`, which is why setting the Team in Xcode is a step and not a merge conflict.
-And `SWIFT_VERSION` is `5.0`, so the template's `@UIApplicationMain` is a deprecation **warning**;
-under Swift 6 it would be an error, which is worth knowing before anyone raises that setting.
-The plugin resolves too: `@aparajita/capacitor-secure-storage@8.0.0` ships its
-`ios/Sources/SecureStoragePlugin` in the npm tarball (`Plugin.swift`, `KeychainError.swift`), and
-its `from: "8.0.0"` constraint on `capacitor-swift-pm` is satisfied by CapApp-SPM's `exact:
-"8.5.0"` — so there is no version conflict to resolve on the first open.
+Four more first-build inputs are sound, and they move with a file, so read them rather than this
+line — `grep -nE "IPHONEOS_DEPLOYMENT_TARGET|CODE_SIGN_STYLE|DEVELOPMENT_TEAM|SWIFT_VERSION"
+ios/App/App.xcodeproj/project.pbxproj`. `IPHONEOS_DEPLOYMENT_TARGET` is `15.0`, matching
+`Package.swift`'s `.iOS(.v15)` — a mismatch there is an SPM **resolution refusal**, so it surfaces
+as a dependency problem rather than a compile error. `CODE_SIGN_STYLE` is `Automatic` with **no**
+`DEVELOPMENT_TEAM`, which is why setting the Team is a step and not a merge conflict. `SWIFT_VERSION`
+is `5.0`, so the template's `@UIApplicationMain` is a deprecation **warning** — under Swift 6 it is
+an error, worth knowing before anyone raises that setting. And the plugin resolves:
+`@aparajita/capacitor-secure-storage@8.0.0` ships its `ios/Sources/SecureStoragePlugin` in the npm
+tarball, and its `from: "8.0.0"` on `capacitor-swift-pm` is satisfied by CapApp-SPM's `exact:
+"8.5.0"`. **The first open resolves two remote packages, not one** — the plugin also pulls
+`keychain-swift from: "21.0.0"` — so Xcode needs network on that first build.
 
 What a session CAN now do, all of it exercised on 2026-08-25:
 
@@ -531,11 +542,12 @@ ls ios/App/App/public/index.html ios/App/App/capacitor.config.json ios/App/App/c
 git status --short          # all three exist, and all three stay invisible
 ```
 
-**Pick a simulator, not a device, unless a device is registered.** Automatic signing provisions a
-simulator build with no profile at all; a device build needs the UDID registered to the team
-first, and the failure it gives instead is a provisioning error that reads like a signing
-misconfiguration. The framework carries the simulator slice
-(`Capacitor.xcframework/ios-arm64_x86_64-simulator`), so nothing about the shell requires one.
+**Pick a simulator, not a device, unless a device is registered.** The framework carries the
+simulator slice — `unzip -l` the xcframework for `ios-arm64_x86_64-simulator`, it is there — so
+nothing about the shell requires a device. The rest of this is **written and unverified**, inferred
+from how Xcode signing works and run by nothing in this container: that automatic signing provisions
+a simulator build with no profile at all, and that a device build without a registered UDID fails
+with a provisioning error reading like a signing misconfiguration.
 
 ### Store readiness — assessed 2026-08-06
 

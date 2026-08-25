@@ -24,8 +24,10 @@ import type { CapacitorConfig } from '@capacitor/cli'
  *
  * Capacitor serves a **static** bundle from the filesystem, so `out/` has to be
  * produced by `next build` with `output: 'export'`. `npm run build:native` does
- * that and then checks what it produced: 33 documents and 274 RSC segment
- * payloads, plus the static assets.
+ * that and then checks what it produced. Read the count off that check's own
+ * closing line rather than from here — it moves with every route added or
+ * deleted, and this comment has already been stale once (34 documents and 281
+ * RSC segment payloads, plus the static assets, measured 2026-08-25).
  *
  * What unblocked it was a **routing** change rather than a config one. The
  * export refuses a dynamic segment without `generateStaticParams()`, and none of
