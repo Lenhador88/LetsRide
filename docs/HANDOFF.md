@@ -375,10 +375,8 @@ NEXT_PUBLIC_CANONICAL_ORIGIN=https://app.letsride.social npm run build:native
 ls out/index.html             # exists; .next-capacitor/ does not
 ```
 
-35 documents (the payload and total figures are carried over from the build that measured 34 —
-only the document count was re-derived when `/legal/attributions` was added), 291 `__next.*.txt`
-RSC segment payloads, and the static assets — around 410 files
-in all. **Documents is one MORE than the static-route count**, which reads like the near-miss
+34 documents and 281 `__next.*.txt` RSC segment payloads, plus the static assets — 391 files in
+all, measured 2026-08-25 off `check-export.mjs`'s own closing line rather than counted by hand. **Documents is one MORE than the static-route count**, which reads like the near-miss
 warned about 70 lines above and is not one: `check-export.mjs` walks `out/` and counts every
 emitted `.html`, and `next build`'s route table omits `/_not-found`. So documents tracks the
 `Generating static pages (N/N)` line, not the `33 static` one, and it moved by exactly +1 when
@@ -432,10 +430,29 @@ passes, a DEV-ref bundle is refused by name. **What no container can check is th
 that the bundle actually submitted was built from `main` is the release procedure's job, and the
 gate only helps if it is run.
 
-**What is still unverified, and it is most of the shell:** nothing here has run on a device, so
-the Capacitor claims above (root-`index.html` routing, the cold-start restore in
-`src/lib/native/boot-restore.ts`) are read out of the vendors' source and are **written and
-unverified**, not verified-on-device. `npx cap add` is still the Mac step.
+**What is still unverified, and it is most of the shell:** nothing here has run on a device or a
+simulator, so the cold-start restore in `src/lib/native/boot-restore.ts` — that a launch at a deep
+link actually *lands the rider on that screen* — is **written and unverified**.
+
+**Its premise is not, as of 2026-08-25.** That Capacitor answers every extensionless path with the
+root `index.html` used to be read out of `Router.swift`; it is now **verified in this container**
+against the binary the build actually links — a stronger artifact than the source, because it is
+the one SPM resolves and it is pinned by checksum. `capacitor-swift-pm` ships **binary**
+xcframeworks, not Swift, so grepping that repo for the routing code finds nothing and proves
+nothing — which is the trap this paragraph exists to stop. Unzip the framework instead:
+
+```bash
+# sha256 357220fe… — the value capacitor-swift-pm's own Package.swift declares for 8.5.0
+curl -sSL -o cap.zip https://github.com/ionic-team/capacitor-swift-pm/releases/download/8.5.0/Capacitor.xcframework.zip
+llvm-objdump --macho --disassemble --arch=arm64 \
+  Capacitor.xcframework/ios-arm64_x86_64-simulator/Capacitor.framework/Capacitor \
+  | sed -n '/^_\$s9Capacitor0A6RouterV5route3forS2S_tF:/,/^_\$s9Capacitor0A6RouterVAA/p'
+```
+
+`CapacitorRouter.route(for:)` calls `URL.pathExtension`, then `String.isEmpty`, then branches on
+it (`tbz`) and on the empty side concatenates a literal `llvm-objdump` annotates for you:
+`literal pool for: "/index.html"`. That is `bootRestoreTarget`'s premise, instruction for
+instruction.
 
 **`ios/` IS generated and committed — 2026-08-25, from this container.** The passage here used
 to say that was impossible, and the reason it gave was `pod install`: no CocoaPods, so `cap add
@@ -451,9 +468,36 @@ copied web bundle (`App/App/public`) and the generated config are gitignored by 
 review surface for no current gain. **So PD-95 stays open** — it names both platforms.
 
 **What this container still cannot do is COMPILE.** No Xcode, no `xcodebuild`, no simulator, no
-signing identity, so nothing here has ever been built or run. The project is real and its
-structure is measured; the first successful Xcode build is still the only thing that proves it,
-and until then every Swift file in `ios/` is **written and unverified**.
+signing identity, so nothing here has ever been built or run. The first successful Xcode build is
+still the only thing that proves it, and until then every Swift file in `ios/` is **written and
+unverified**.
+
+**What that label does NOT mean here is hand-written Swift, and reading it that way overstates the
+risk — measured 2026-08-25.** Every file in `ios/` is byte-identical to `@capacitor/cli`'s own
+`ios-spm-template`, with **no** extra files and a delta of four *data* edits: the display name,
+the location permission string, the bundle id (in both configurations), and `cap sync`'s own
+rewrite of `Package.swift`. `AppDelegate.swift`, `SceneDelegate.swift` and both storyboards are
+untouched vendor code. Re-derive it rather than trusting this line, because the value is in
+knowing which files are yours to suspect:
+
+```bash
+t=$(mktemp -d) && tar xzf node_modules/@capacitor/cli/assets/ios-spm-template.tar.gz -C "$t"
+(cd "$t" && find . -type f | sed 's|^\./||') | while read f; do
+  cmp -s "$t/$f" "ios/$f" || echo "DIFFERS: $f"; done
+# expect exactly 5: project.pbxproj, CapApp-SPM/Package.swift, App/Info.plist,
+# and the two AppIcon files (the icon set, regenerated from resources/)
+```
+
+Three more first-build inputs are checked and sound. `IPHONEOS_DEPLOYMENT_TARGET` is `15.0`,
+matching `Package.swift`'s `.iOS(.v15)` — a mismatch there is an SPM resolution refusal, not a
+compile error, so it reads as a dependency problem. `CODE_SIGN_STYLE` is `Automatic` with **no**
+`DEVELOPMENT_TEAM`, which is why setting the Team in Xcode is a step and not a merge conflict.
+And `SWIFT_VERSION` is `5.0`, so the template's `@UIApplicationMain` is a deprecation **warning**;
+under Swift 6 it would be an error, which is worth knowing before anyone raises that setting.
+The plugin resolves too: `@aparajita/capacitor-secure-storage@8.0.0` ships its
+`ios/Sources/SecureStoragePlugin` in the npm tarball (`Plugin.swift`, `KeychainError.swift`), and
+its `from: "8.0.0"` constraint on `capacitor-swift-pm` is satisfied by CapApp-SPM's `exact:
+"8.5.0"` — so there is no version conflict to resolve on the first open.
 
 What a session CAN now do, all of it exercised on 2026-08-25:
 
@@ -472,6 +516,22 @@ secure-storage plugin out of `../../../node_modules`. So a fresh clone opened st
 builds against two missing inputs and an unresolvable dependency. `npm ci`, then the
 `build:native` above, then `cap sync ios` — *then* open the project, set the signing Team, build,
 and archive to TestFlight.
+
+**All three were re-run from a clean tree on 2026-08-25 and all three pass here**, so a failure on
+the Mac is a Mac-side difference rather than a repo one — which is the whole reason to run them in
+this container first. `cap sync ios` reports `Found 1 Capacitor plugin for ios` and writes both
+gitignored inputs; confirm by their absence from `git status`, not by their presence on disk:
+
+```bash
+ls ios/App/App/public/index.html ios/App/App/capacitor.config.json   # both exist after sync
+git status --short                                                   # and both stay invisible
+```
+
+**Pick a simulator, not a device, unless a device is registered.** Automatic signing provisions a
+simulator build with no profile at all; a device build needs the UDID registered to the team
+first, and the failure it gives instead is a provisioning error that reads like a signing
+misconfiguration. The framework carries the simulator slice
+(`Capacitor.xcframework/ios-arm64_x86_64-simulator`), so nothing about the shell requires one.
 
 ### Store readiness — assessed 2026-08-06
 

@@ -65,11 +65,19 @@ is the check that distinguishes them.
 
 **What is left is what needs a compiler**: signing, a build, a simulator or device run, and the
 archive. Plus `cap add android`, which is unblocked and simply not asked for.
-A device check that a cold start at a non-root URL lands on its screen is still owed. `src/lib/native/boot-restore.ts`
-is the client half of that and is unit-tested; the premise underneath it — that Capacitor
-answers every extensionless path with the root `index.html` — is read from `Router.swift` and
-`WebViewLocalServer.java` at the pinned 8.5.0 and is **written and unverified** until a platform
+A device check that a cold start at a non-root URL lands on its screen is still owed, and stays
+owed: `src/lib/native/boot-restore.ts` is the client half of that, it is unit-tested, and whether
+the restore actually puts the rider on the screen is **written and unverified** until a platform
 runs.
+
+**The premise underneath it is split, and only the Android half is still unverified.** That
+Capacitor answers every extensionless path with the root `index.html` is **verified in this
+container** on iOS as of 2026-08-25 — disassembled out of 8.5.0's shipped `Capacitor.xcframework`,
+which is the binary SPM resolves by checksum, so it is better evidence than the source
+(`capacitor-swift-pm` ships no Swift at all — a grep of that repo finds nothing and means
+nothing). `docs/HANDOFF.md` §The shell carries the commands. The Android half is still read from
+`WebViewLocalServer.java` and is **written and unverified**; `android/` is not generated, so
+nothing there can be checked yet either way.
 
 **The *read in an effect, never during render* rule does not go away, and this brief used to
 say it would.** It said "when it is gone, say so plainly, because that rule can then be
