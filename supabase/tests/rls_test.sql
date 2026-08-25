@@ -16420,7 +16420,8 @@ set role auth_admin;
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-000000079001', 'unreadreader@example.com'),
   ('00000000-0000-0000-0000-000000079002', 'unreadauthor@example.com'),
-  ('00000000-0000-0000-0000-000000079003', 'unreadstranger@example.com');
+  ('00000000-0000-0000-0000-000000079003', 'unreadstranger@example.com'),
+  ('00000000-0000-0000-0000-000000079004', 'unreadtwoclubs@example.com');
 reset role;
 
 update profiles set username = 'unreadreader', location = 'Haarlem',
@@ -16435,6 +16436,10 @@ update profiles set username = 'unreadstranger', location = 'Leiden',
                     onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
                     terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000079003';
+update profiles set username = 'unreadtwoclubs', location = 'Rotterdam',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000079004';
 
 -- 790c1 — a club both the reader and the other rider belong to, so a
 -- club-scoped postcard is part of "All new" too, not only club_id-null ones.
@@ -16456,18 +16461,53 @@ insert into club_members (club_id, user_id, role, joined_at) values
   ('00000000-0000-0000-0000-0000000790c2', '00000000-0000-0000-0000-000000079003',
    'owner', now() - interval '2 days');
 
+-- 79004 belongs to BOTH clubs and to neither audience 79001 or 79002 are
+-- being tested against — its only role is 079.6's two-club-watermark case.
+insert into club_members (club_id, user_id, role, joined_at) values
+  ('00000000-0000-0000-0000-0000000790c1', '00000000-0000-0000-0000-000000079004',
+   'member', now() - interval '2 days'),
+  ('00000000-0000-0000-0000-0000000790c2', '00000000-0000-0000-0000-000000079004',
+   'member', now() - interval '2 days');
+
 set role authenticated;
 select assert_eq(current_user::text, 'authenticated',
   'the 079 assertions run as authenticated, or they prove nothing');
 
 -- ---------------------------------------------------------------------------
+-- 079.0  A CLUB watermark must never answer the APP-WIDE question
+-- ---------------------------------------------------------------------------
+-- The reader gets a watermark on 790c1 before anything else in this section
+-- runs. `068`'s `stamp_feed_read` trigger stamps EVERY feed_reads row —
+-- club-scoped or not — at this transaction's frozen `now()`, the exact same
+-- instant every postcard below defaults to when inserted with no explicit
+-- `created_at`. That is what makes this fixture a real test rather than a
+-- decoration: `count_unseen_postcards()`'s own `r.club_id is null` arm is the
+-- ONLY thing stopping this row from being read as the app-wide watermark, and
+-- if it were dropped, the comparison becomes `created_at > now()` against
+-- postcards stamped at exactly `now()` — a STRICT inequality that excludes
+-- every one of them. So a version of this function with `r.club_id is null`
+-- deleted would fail 079.1's next two assertions outright, not quietly.
+select set_config('test.uid', '00000000-0000-0000-0000-000000079001', false);
+insert into feed_reads (user_id, club_id) values
+  ('00000000-0000-0000-0000-000000079001', '00000000-0000-0000-0000-0000000790c1');
+
+-- ---------------------------------------------------------------------------
 -- 079.1  Your own postcard moves nobody's count but the badge still climbs
 --        for a readable one — app-wide, and inside a shared club
 -- ---------------------------------------------------------------------------
--- No watermark yet, so every comparison below is against '-infinity' — the
--- exclusion and the visibility policy are the only things doing any work.
+-- No APP-WIDE watermark yet, so every comparison below is against
+-- '-infinity' — the exclusion and the visibility policy are the only things
+-- meant to be doing any work, with 079.0's club watermark sitting there as a
+-- trap for a version of the function that reads the wrong row.
 select set_config('test.uid', '00000000-0000-0000-0000-000000079001', false);
 create temp table pc079_base_a as select public.count_unseen_postcards() as n;
+
+-- The delta assertions below only test the RULE if this baseline has real
+-- headroom under the function's own `limit 100` — otherwise a saturated cap
+-- would fail them for a reason that has nothing to do with either predicate.
+select assert_eq(
+  (select n < 90 from pc079_base_a),
+  true, '079: the delta baseline has headroom under the 100-row cap, so the assertions below test the rule rather than saturation');
 
 reset role;
 insert into postcards (id, author_id, club_id, image_path, caption) values
@@ -16602,6 +16642,30 @@ select assert_eq(
 select assert_eq(
   has_function_privilege('anon', 'public.count_unseen_postcards()', 'execute'),
   false, '079: ... and anon cannot — decision #1');
+
+-- ---------------------------------------------------------------------------
+-- 079.6  Two club watermarks and no app-wide row must not raise 21000
+-- ---------------------------------------------------------------------------
+-- The scalar subquery `(select r.last_seen_at from feed_reads r where
+-- r.user_id = auth.uid() and r.club_id is null)` can only ever match the ONE
+-- row `feed_reads_user_audience_key` (015, `unique nulls not distinct`)
+-- allows per (user, NULL) pair — so under the correct predicate it is
+-- structurally impossible for this to return more than one row, however many
+-- CLUB watermarks the rider also holds. That guarantee is exactly what a
+-- dropped `r.club_id is null` throws away: 79004 holds a watermark on BOTH
+-- 790c1 and 790c2 and none app-wide, so an unscoped version of this subquery
+-- finds two rows for `user_id = auth.uid()` and Postgres raises `21000 more
+-- than one row returned by a subquery used as an expression` — which
+-- `countUnseenPostcards` (src/lib/data/postcards.ts) swallows to a silent
+-- `0`, forever, for any rider who has opened two club feeds. `assert_allowed`
+-- is the right tool because the failure mode is an ERROR, not a wrong number.
+select set_config('test.uid', '00000000-0000-0000-0000-000000079004', false);
+insert into feed_reads (user_id, club_id) values
+  ('00000000-0000-0000-0000-000000079004', '00000000-0000-0000-0000-0000000790c1'),
+  ('00000000-0000-0000-0000-000000079004', '00000000-0000-0000-0000-0000000790c2');
+select assert_allowed(
+  $$select public.count_unseen_postcards()$$,
+  '079.6: a rider with two club watermarks and no app-wide one still gets a number back from "All new" rather than a 21000 error');
 
 rollback to savepoint postcard_unread_079;
 
