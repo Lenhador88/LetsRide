@@ -99,10 +99,23 @@ disagrees with the colour the native splash shows a moment earlier.
 
 ## Generating the platform sets
 
-Deliberately not committed and not generated in this container. `ios/` and `android/` are absent
-because **nothing here can produce them** — no Android SDK, no Xcode, no CocoaPods
-(`capacitor.config.ts`'s header) — rather than because a decision was taken to exclude them;
-Capacitor's own convention is to commit platform projects, and that choice is still open.
+**The iOS set IS committed, and it was generated in this container** — 2026-08-25, by
+`npx --yes @capacitor/assets generate --ios --assetPath resources`, writing
+`ios/App/App/Assets.xcassets/AppIcon.appiconset/`. This passage used to say nothing here could
+produce it, citing no Xcode and no CocoaPods; **Capacitor 8 uses Swift Package Manager**, so
+`cap add ios` needs neither and the generator is plain Node. Capacitor's own convention is to
+commit platform projects and this repo now follows it.
+
+`android/` is still absent — nothing technical blocks it, nobody has asked for the Android half.
+
+**The alpha rule below is what to keep checking**, and it is checkable on the output as well as
+the master: both are 1024x1024, 8-bit, PNG colour type 2 (RGB), with no `tRNS` chunk. App Store
+Connect refuses alpha at upload rather than at review, so read it off the file:
+
+```bash
+python3 -c "import struct;b=open('resources/icon-only.png','rb').read();print(struct.unpack('>II',b[16:24]),'colour type',b[25])"
+# colour type 2 = RGB. 4 or 6 means an alpha channel and a refused upload.
+```
 
 ```bash
 npx @capacitor/assets generate \

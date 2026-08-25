@@ -1,13 +1,24 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 /**
- * The native shell's configuration. Written 2026-08-07; **no native project has
- * been generated from it and none can be here** — this container has no Android
- * SDK (`ANDROID_HOME` unset, no `sdkmanager`), no Xcode and no CocoaPods, so
- * `npx cap add ios` cannot finish its `pod install` and `npx cap add android`
- * would scaffold something nothing can build. Both belong on a Mac. Per
- * `.claude/agents/native.md`, this file is **written and unverified**, not
- * verified-in-container and not verified-on-device.
+ * The native shell's configuration, written 2026-08-07. **`ios/` was generated
+ * from it in this container on 2026-08-25 and is committed** — the header used
+ * to say that was impossible, on the reasoning that `cap add ios` could not
+ * finish its `pod install` without CocoaPods. **Capacitor 8 does not use
+ * CocoaPods**: it wires plugins through Swift Package Manager, so `cap add ios`
+ * needs no Xcode and no `pod` binary and completes on Linux in about 40ms.
+ * Re-derive rather than trusting either sentence — `ls ios/App/CapApp-SPM`
+ * (Swift Package Manager) against `ls ios/App/Pods` (CocoaPods, absent).
+ *
+ * `android/` is still not generated. Nothing blocks it technically — the same
+ * `cap add` would scaffold it — but nobody has asked for the Android half yet
+ * and an unbuilt platform is surface to review for no current gain.
+ *
+ * **What the container still cannot do is COMPILE.** No Xcode, no `xcodebuild`,
+ * no simulator, no signing identity. So per `.claude/agents/native.md` every
+ * Swift file here is **written and unverified** — the project is real and its
+ * structure is checked, and the first successful build on a Mac is still the
+ * only thing that proves it.
  *
  * ## `webDir` exists — PD-142, 2026-08-10
  *
@@ -97,10 +108,12 @@ const config: CapacitorConfig = {
    * must not be changed.** It was a placeholder awaiting that confirmation
    * until then, for the reason worth keeping: the App Store Connect and Play
    * Console records are created from it and neither can be renamed afterwards.
-   * `cap add` has still never run (see the header), so nothing has baked it in
-   * yet — but the decision is made, and the next person to touch this line
-   * should treat it as a one-way door that is already closed rather than one
-   * still standing open.
+   * `cap add ios` HAS now run (2026-08-25) and baked this value into
+   * `ios/App/App.xcodeproj/project.pbxproj` as `PRODUCT_BUNDLE_IDENTIFIER`.
+   * Changing this line alone would no longer be enough, and changing both
+   * would still not help after the first submission — the door this comment
+   * called closed is now also bolted. Verify with
+   * `grep -o 'PRODUCT_BUNDLE_IDENTIFIER = [^;]*' ios/App/App.xcodeproj/project.pbxproj | sort -u`.
    *
    * Valid on both platforms as written: three segments, each starting with a
    * letter, no reserved words. The trailing `app` is an ordinary segment here,
