@@ -230,8 +230,18 @@ create table public.push_devices (
   -- registration token has no documented maximum and observed lengths run past
   -- 300 characters, so 4096 is a sanity ceiling on an unbounded client string
   -- and not a format claim.
+  -- The installation id is NOT a bound like the token's — it is a shape, and it
+  -- is load-bearing. §1's residual argument and the column comment both rest on
+  -- the id being unguessable: whoever presents one re-homes that device. A bare
+  -- length bound lets any authenticated rider call
+  -- `register_push_device('1', …)` and, if some device ever registered that id,
+  -- silently take its registration over — the holder stops receiving push, with
+  -- no error on either side. The client that generates the id is child B and is
+  -- not in this migration, so nothing else pins the shape. Lowercase hex UUID,
+  -- which is what `crypto.randomUUID()` emits: 122 bits, required rather than
+  -- assumed.
   constraint push_devices_installation_id_shape
-    check (length(installation_id) between 1 and 100),
+    check (installation_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'),
   constraint push_devices_token_shape
     check (length(token) between 1 and 4096)
 );
@@ -256,6 +266,22 @@ alter table public.push_devices enable row level security;
 -- authenticated`, which the test harness reproduces, so a new table arrives
 -- fully granted and this line is what takes it away.
 revoke all on public.push_devices from anon, authenticated;
+
+-- `service_role` too, and for the same reason `076` gave six days ago on
+-- `postcard_reports` — a strictly weaker secret than this one. Supabase's
+-- project default grants it everything, so without this line the one credential
+-- that bypasses RLS can enumerate every rider's push token, while §2 and the
+-- table comment both say NOBODY may read it. That is not a live leak; the key
+-- exists only in an Edge Function's secret store. It is a standing one, and the
+-- absolute wording above is only true with this line present.
+--
+-- It costs the delivery path nothing: child C reaches these rows through RPCs
+-- granted to `service_role` BY NAME, never through a table grant (the proposal
+-- §Impact, and `031`'s lesson about what `service_role` actually holds). And it
+-- does not touch the cascade from `profiles` — a referential action runs as the
+-- constraint's system trigger and does not consult privileges at all, which
+-- `076` measured in a rolled-back transaction rather than reasoned about.
+revoke all on public.push_devices from service_role;
 
 -- ---------------------------------------------------------------------------
 -- §9  The index

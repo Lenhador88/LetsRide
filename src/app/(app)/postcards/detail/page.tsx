@@ -55,12 +55,10 @@ const THREAD_TITLE = 'Post'
  * the chrome and the column.
  *
  * **The title is measured, not chosen.** `THREAD_TITLE` is the frame's own title
- * text. PD-290 parked the word as an open question with three candidates — the
- * author's username, a literal `Postcard`, and the comment count — on the belief
- * that the frame was one of the 29 the Figma rate limit had kept shut. It is not:
- * `Home - Postcards - Postcard details` (`1883:22772`) reads offline, and it says
- * `Post`. The candidates were an answer to a question the snapshot already
- * answers, which is why none of them is here.
+ * text. What is worth carrying here is the premise rather than the alternatives:
+ * this screen's frame is NOT one of the 29 the Figma rate limit kept shut,
+ * however often that is repeated nearby. `npm run figma -- tree "Home -
+ * Postcards - Postcard details"` (`1883:22772`) reads offline and says `Post`.
  *
  * ## The three-way answer this screen needs, and why `null` is not `undefined`
  *

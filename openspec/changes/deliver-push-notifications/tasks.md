@@ -111,7 +111,11 @@ migration in this epic behind a native change nothing here can exercise.
     specify exactly two of them. It was foreseeable from `CLAUDE.md`'s own table, where all eight
     existing WARNs are that same shape. Read literally, "anything else is unexpected by
     definition" would have had a reviewer treat two by-design entries as regressions.
-  - [ ] the three `CLAUDE.md` rows — main thread's, not an agent's.
+  - [x] the three `CLAUDE.md` rows — main thread's, not an agent's. Written by the main thread
+    on 2026-08-25 after the build agent reported them. The advisor row also gained the RULE
+    rather than only the count — this advisor fires once per `security definer` function
+    `authenticated` may execute — so the next migration adding two functions does not read
+    its own sweep as a regression, which is the defect this box's parent shipped.
 - [ ] 1.12 PR, `reviewer` before merge, merge to `development`, Linear to `Deployed to DEV`.
   **This PR does not close PD-291** and its body says so in one line.
 

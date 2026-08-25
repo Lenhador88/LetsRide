@@ -154,8 +154,12 @@ first is why it must never be dissolved back into components:
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
    `postcard_reports`, `ride_messages`, `ride_map_render_attempts`, plus `place_search_attempts`,
    which `069` added — and **not** on `profiles` UPDATE, `profile_countries`,
-   `blocks`, `postcard_hides`, `feed_reads` or any `storage.objects` policy, which check the path
-   prefix only. So an account created by calling GoTrue's `/auth/v1/signup` directly, never
+   `blocks`, `postcard_hides`, `feed_reads`, `push_devices` or any `storage.objects` policy, which
+   check the path prefix only. **`push_devices` is the one omission whose safety depends on the
+   gate being restated INSIDE its RPC** (`078`): a trigger there could never fire, because every
+   gate trigger carries `when (current_user = 'authenticated')` and `current_user` inside a
+   `security definer` function is the owner — so adding one would raise the count to twelve and
+   make coverage read complete while gating nothing. `078.9` asserts the absence for that reason. So an account created by calling GoTrue's `/auth/v1/signup` directly, never
    calling `accept_terms()`, **can still set a username, write a bio and upload an avatar with
    `terms_accepted_at` NULL**. Count it rather than read it, because a table added without one
    looks exactly like this list being right:
@@ -533,8 +537,8 @@ mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
 **Schema:** **the per-table contract is [`docs/reference/schema.md`](docs/reference/schema.md)** —
 `profiles`, `rides`, `ride_members`, `clubs`, `club_members`, `postcards`, `postcard_likes`,
 `postcard_comments`, `postcard_hides`, `postcard_reports`, `blocks`, `profile_countries`,
-`feed_reads`, `ride_reads`, `place_search_attempts`, `ride_messages`, `clubs` (media), and the
-dropped `friendships` and `places`. Read it before touching any of them: it carries the per-column
+`feed_reads`, `ride_reads`, `place_search_attempts`, `ride_messages`, `push_devices`,
+`clubs` (media), and the dropped `friendships` and `places`. Read it before touching any of them: it carries the per-column
 grants, the cascade behaviour and the audience predicate for each, and several are counter-intuitive
 (a club outlives its owner; `postcards.ride_id` is a tag rather than a second audience;
 `ride_messages`' audience is an intersection and neither half alone is it).
@@ -640,7 +644,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1797** assertions — re-derive rather than trust it:
+Suite **1801** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -682,8 +686,8 @@ and `012`'s guards — which begin `if current_user <> 'authenticated' then retu
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
 **Security advisors: thirteen, and only one is outstanding.** Re-derive rather than trust the number
-— `get_advisors(security)` — but the *shape* is durable, because nine of the ten are things
-this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
+— `get_advisors(security)` — but the *shape* is durable, because twelve of the thirteen are
+things this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|

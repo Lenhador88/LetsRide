@@ -4587,7 +4587,7 @@ select assert_eq(
 -- already warns about. Inserted as the owner: the RPC that would create it is
 -- not the thing under test, the foreign key is.
 insert into public.push_devices (user_id, installation_id, token, platform) values
-  ('00000000-0000-0000-0000-00000000000a', 'pd301-029-cascade', 'TOKEN-029', 'ios');
+  ('00000000-0000-0000-0000-00000000000a', '00000078-0000-4000-8000-00000000000a', 'TOKEN-029', 'ios');
 select assert_eq(
   (select count(*)::int from public.push_devices
     where user_id = '00000000-0000-0000-0000-00000000000a'),
@@ -15989,6 +15989,18 @@ select assert_eq(
       and grantee in ('anon', 'authenticated')),
   0, '078.1i: ... and neither role holds a grant of ANY kind on it, including the three verbs 047 had to revoke separately elsewhere');
 
+-- service_role too. It is not a client role, so this is not §2's claim — it is
+-- what makes §2's claim true of the whole database rather than of the browser.
+-- Supabase's project default grants it everything, so a table that merely omits
+-- the revoke reads exactly like this assertion passing. 076 closed the same gap
+-- on postcard_reports; scoped to the grantee per CLAUDE.md, because a
+-- table-wide count reads 2 against a correct database.
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and table_name = 'push_devices'
+      and grantee = 'service_role'),
+  0, '078.1j: ... and service_role holds nothing either — the delivery function reaches these rows through RPCs granted by name, never a table grant');
+
 -- ---------------------------------------------------------------------------
 -- 078.2  RLS on, and deliberately NO policy. Scoped to this table by name, so a
 --        policy landing here later goes red rather than being absorbed into a
@@ -16058,22 +16070,22 @@ select assert_eq(
 -- ---------------------------------------------------------------------------
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000078001', false);
-select public.register_push_device('pd301-rot', 'TOKEN-T1', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000005', 'TOKEN-T1', 'ios');
 
 reset role;
 create temporary table push_rotation_probe as
-  select id, created_at from public.push_devices where installation_id = 'pd301-rot';
+  select id, created_at from public.push_devices where installation_id = '00000078-0000-4000-8000-000000000005';
 
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000078001', false);
-select public.register_push_device('pd301-rot', 'TOKEN-T2', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000005', 'TOKEN-T2', 'ios');
 
 reset role;
 select assert_eq(
-  (select count(*)::int from public.push_devices where installation_id = 'pd301-rot'),
+  (select count(*)::int from public.push_devices where installation_id = '00000078-0000-4000-8000-000000000005'),
   1, '078.4a: a rotated token leaves EXACTLY ONE row for the installation — under unique (token) this is 2, and the extra one is the leak');
 select assert_eq(
-  (select token from public.push_devices where installation_id = 'pd301-rot'),
+  (select token from public.push_devices where installation_id = '00000078-0000-4000-8000-000000000005'),
   'TOKEN-T2', '078.4b: ... carrying the NEW token');
 select assert_eq(
   (select count(*)::int from public.push_devices where token = 'TOKEN-T1'),
@@ -16081,7 +16093,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from public.push_devices d
     join push_rotation_probe p on p.id = d.id and p.created_at = d.created_at
-   where d.installation_id = 'pd301-rot'),
+   where d.installation_id = '00000078-0000-4000-8000-000000000005'),
   1, '078.4d: ... and it is the SAME ROW — same id, same created_at — so the rotation was an UPDATE and not a delete-and-reinsert that happens to leave one row');
 
 drop table push_rotation_probe;
@@ -16093,16 +16105,16 @@ drop table push_rotation_probe;
 -- ---------------------------------------------------------------------------
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000078001', false);
-select public.register_push_device('pd301-shared', 'TOKEN-SHARED', 'android');
+select public.register_push_device('00000078-0000-4000-8000-000000000004', 'TOKEN-SHARED', 'android');
 select set_config('test.uid', '00000000-0000-0000-0000-000000078002', false);
-select public.register_push_device('pd301-shared', 'TOKEN-SHARED', 'android');
+select public.register_push_device('00000078-0000-4000-8000-000000000004', 'TOKEN-SHARED', 'android');
 
 reset role;
 select assert_eq(
-  (select count(*)::int from public.push_devices where installation_id = 'pd301-shared'),
+  (select count(*)::int from public.push_devices where installation_id = '00000078-0000-4000-8000-000000000004'),
   1, '078.5a: rider B registering rider A''s installation leaves exactly one row — the re-home is an UPDATE, not a second registration');
 select assert_eq(
-  (select user_id from public.push_devices where installation_id = 'pd301-shared'),
+  (select user_id from public.push_devices where installation_id = '00000078-0000-4000-8000-000000000004'),
   '00000000-0000-0000-0000-000000078002'::uuid,
   '078.5b: ... and it belongs to B, so no delivery for A reaches that device by any token it has ever presented');
 
@@ -16127,9 +16139,9 @@ delete from public.push_devices where user_id = '00000000-0000-0000-0000-0000000
 
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000078001', false);
-select public.register_push_device('pd301-leak', 'LEAK-T1', 'ios');
-select public.register_push_device('pd301-leak', 'LEAK-T2', 'ios');
-select public.release_push_device('pd301-leak');
+select public.register_push_device('00000078-0000-4000-8000-000000000006', 'LEAK-T1', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000006', 'LEAK-T2', 'ios');
+select public.release_push_device('00000078-0000-4000-8000-000000000006');
 
 reset role;
 select assert_eq(
@@ -16155,9 +16167,9 @@ delete from public.push_devices where user_id = '00000000-0000-0000-0000-0000000
 
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000078002', false);
-select public.register_push_device('pd301-phone', 'TOKEN-PHONE', 'ios');
-select public.register_push_device('pd301-tablet', 'TOKEN-TABLET', 'ios');
-select public.register_push_device('pd301-spare', 'TOKEN-SPARE', 'android');
+select public.register_push_device('00000078-0000-4000-8000-000000000001', 'TOKEN-PHONE', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000002', 'TOKEN-TABLET', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000003', 'TOKEN-SPARE', 'android');
 
 reset role;
 select assert_eq(
@@ -16167,7 +16179,7 @@ select assert_eq(
 
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000078002', false);
-select public.release_push_device('pd301-phone');
+select public.release_push_device('00000078-0000-4000-8000-000000000001');
 
 reset role;
 select assert_eq(
@@ -16175,7 +16187,7 @@ select assert_eq(
     where user_id = '00000000-0000-0000-0000-000000078002'),
   2, '078.7b: ... and signing out on one leaves the other two — release takes ONE installation, never every row for auth.uid()');
 select assert_eq(
-  (select count(*)::int from public.push_devices where installation_id = 'pd301-phone'),
+  (select count(*)::int from public.push_devices where installation_id = '00000078-0000-4000-8000-000000000001'),
   0, '078.7c: ... and it is the right one that went');
 
 -- The cap. Ten registrations, then an eleventh.
@@ -16189,16 +16201,16 @@ delete from public.push_devices where user_id = '00000000-0000-0000-0000-0000000
 
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000078002', false);
-select public.register_push_device('pd301-cap-01', 'CAP-01', 'ios');
-select public.register_push_device('pd301-cap-02', 'CAP-02', 'ios');
-select public.register_push_device('pd301-cap-03', 'CAP-03', 'ios');
-select public.register_push_device('pd301-cap-04', 'CAP-04', 'ios');
-select public.register_push_device('pd301-cap-05', 'CAP-05', 'ios');
-select public.register_push_device('pd301-cap-06', 'CAP-06', 'ios');
-select public.register_push_device('pd301-cap-07', 'CAP-07', 'ios');
-select public.register_push_device('pd301-cap-08', 'CAP-08', 'ios');
-select public.register_push_device('pd301-cap-09', 'CAP-09', 'ios');
-select public.register_push_device('pd301-cap-10', 'CAP-10', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000021', 'CAP-01', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000022', 'CAP-02', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000023', 'CAP-03', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000024', 'CAP-04', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000025', 'CAP-05', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000026', 'CAP-06', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000027', 'CAP-07', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000028', 'CAP-08', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000029', 'CAP-09', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000030', 'CAP-10', 'ios');
 
 reset role;
 select assert_eq(
@@ -16212,7 +16224,7 @@ update public.push_devices
 
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000078002', false);
-select public.register_push_device('pd301-cap-11', 'CAP-11', 'ios');
+select public.register_push_device('00000078-0000-4000-8000-000000000031', 'CAP-11', 'ios');
 
 reset role;
 select assert_eq(
@@ -16220,23 +16232,23 @@ select assert_eq(
     where user_id = '00000000-0000-0000-0000-000000078002'),
   10, '078.7e: an eleventh registration still leaves ten rows — an uncapped rider is an unbounded delivery multiplier, and a CHECK cannot count siblings');
 select assert_eq(
-  (select count(*)::int from public.push_devices where installation_id = 'pd301-cap-01'),
+  (select count(*)::int from public.push_devices where installation_id = '00000078-0000-4000-8000-000000000021'),
   0, '078.7f: ... and the one dropped is the OLDEST by last_seen_at');
 select assert_eq(
-  (select count(*)::int from public.push_devices where installation_id = 'pd301-cap-11'),
+  (select count(*)::int from public.push_devices where installation_id = '00000078-0000-4000-8000-000000000031'),
   1, '078.7g: ... while the registration that just happened is kept, which is the half a "delete the newest" bug would still pass 078.7e with');
 select assert_eq(
-  (select count(*)::int from public.push_devices where installation_id = 'pd301-cap-02'),
+  (select count(*)::int from public.push_devices where installation_id = '00000078-0000-4000-8000-000000000022'),
   1, '078.7h: ... and the second-oldest is untouched, so the trim removed one row rather than a batch');
 
 -- The cap is the CALLER's, not the table's. A second rider is not trimmed by
 -- somebody else reaching ten.
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000078001', false);
-select public.register_push_device('pd301-other-rider', 'OTHER-1', 'android');
+select public.register_push_device('00000078-0000-4000-8000-000000000007', 'OTHER-1', 'android');
 reset role;
 select assert_eq(
-  (select count(*)::int from public.push_devices where installation_id = 'pd301-other-rider'),
+  (select count(*)::int from public.push_devices where installation_id = '00000078-0000-4000-8000-000000000007'),
   1, '078.7i: another rider''s registration is unaffected by a capped rider — the trim is scoped to auth.uid()');
 
 rollback to savepoint push_many_078;
@@ -16249,7 +16261,7 @@ savepoint push_gate_078;
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000078003', false);
 select assert_rejected($$
-  select public.register_push_device('pd301-ungated', 'TOKEN-UNGATED', 'ios')$$,
+  select public.register_push_device('00000078-0000-4000-8000-000000000008', 'TOKEN-UNGATED', 'ios')$$,
   '23514', '078.8a: a rider with a NULL consent stamp cannot register a device — 23514, the same code every gated write raises, restated INSIDE the RPC because a trigger carrying `when (current_user = ''authenticated'')` could never fire on a table written only by security definer functions');
 
 reset role;
@@ -16261,15 +16273,15 @@ select assert_eq(
 -- Release is NOT gated. Seeded as the owner, because the RPC that would create
 -- it is exactly the one that refuses this rider.
 insert into public.push_devices (user_id, installation_id, token, platform)
-  values ('00000000-0000-0000-0000-000000078003', 'pd301-stranded', 'TOKEN-STRANDED', 'ios');
+  values ('00000000-0000-0000-0000-000000078003', '00000078-0000-4000-8000-000000000009', 'TOKEN-STRANDED', 'ios');
 
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000078003', false);
-select public.release_push_device('pd301-stranded');
+select public.release_push_device('00000078-0000-4000-8000-000000000009');
 
 reset role;
 select assert_eq(
-  (select count(*)::int from public.push_devices where installation_id = 'pd301-stranded'),
+  (select count(*)::int from public.push_devices where installation_id = '00000078-0000-4000-8000-000000000009'),
   0, '078.8c: ... but the SAME rider can still release a device — refusing a release is refusing to stop sending someone push, so release carries no gate');
 
 rollback to savepoint push_gate_078;
@@ -16325,6 +16337,45 @@ select assert_eq(
    where i.indrelid = 'public.push_devices'::regclass
      and i.indisunique and a.attname = 'token'),
   0, '078.10b: ... and NOTHING unique covers `token` — the token is a mutable attribute, and a unique key on it forks a device into two rows on rotation');
+
+-- The installation ids in this section are real lowercase UUIDs rather than
+-- readable slugs, and they have to be: 078.11 pins the shape in the database,
+-- so a slug fixture is refused by the CHECK before it reaches the behaviour
+-- under test. They are allocated 00000078-0000-4000-8000-0000000000{01..09,0a}
+-- for the lifecycle cases and ...{21..31} for the eleven cap registrations, so
+-- (decimal-only tails there, because 078.7's fixture derives an ordering from
+-- `right(installation_id, 2)::int` and a hex tail is not an integer), so
+-- a failing row names its own case.
+
+-- 078.11 — the installation id's unguessability is a CONSTRAINT, not a comment.
+-- Whoever presents an installation id re-homes that device, so a guessable one
+-- is a silent takeover: the holder stops receiving push and neither side sees
+-- an error. The client that generates it is child B and is not in this
+-- migration, so the database is the only thing that can pin the shape. Both
+-- directions, because a rejection test alone passes against a database where
+-- the constraint was never tightened.
+savepoint push_shape_078;
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000078001', false);
+
+select assert_rejected(
+  $$select public.register_push_device('1', 'tok-guessable', 'ios')$$,
+  '23514',
+  '078.11a: a guessable installation id is REFUSED — the id is a bearer name for a device, and a short one lets any rider take over whichever device holds it');
+
+select assert_rejected(
+  $$select public.register_push_device('AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA', 'tok-upper', 'ios')$$,
+  '23514',
+  '078.11b: ... and so is an uppercase UUID — crypto.randomUUID() emits lowercase, and accepting both would make one device two ids');
+
+select assert_allowed(
+  $$select public.register_push_device('3f2504e0-4f89-41d3-9a0c-0305e82c3301', 'tok-uuid', 'ios')$$,
+  '078.11c: ... while a real crypto.randomUUID() value is accepted — the POSITIVE, because the two rejections above pass unchanged against a database where the shape was never pinned');
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint push_shape_078;
 
 reset role;
 select set_config('test.uid', '', false);
