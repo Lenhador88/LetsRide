@@ -25,8 +25,10 @@ type CommentItemProps = {
  * has no UPDATE policy and no UPDATE grant — editing is deliberately not
  * designed), so deleting is the only way to take words back and it is
  * irreversible. An inline confirm is the smallest affordance that prevents a
- * mis-tap on a phone; the design's own treatment is unread, so this is a
- * registered guess rather than a measurement.
+ * mis-tap on a phone. The frame reads offline as of 2026-08-25 and draws no
+ * delete affordance on a comment at all — it gives each item a `Reply` control
+ * and a trailing heart — so this remains a registered guess, now against a read
+ * frame rather than an unread one.
  * See docs/FIGMA-FIDELITY-TODO.md §Comments.
  */
 export function CommentItem({ comment, canDelete }: CommentItemProps) {

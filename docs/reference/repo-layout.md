@@ -53,8 +53,12 @@ src/
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRideMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
-capacitor.config.ts         # The native shell's config. No ios/ or android/ yet — see docs/HANDOFF.md §The shell
-resources/                  # Native SOURCE artwork the platform icon sets are generated from — not the sets
+capacitor.config.ts         # The native shell's config. See docs/HANDOFF.md §The shell
+ios/                        # The generated Xcode project, committed 2026-08-25. SPM, not CocoaPods.
+                            #   App/App/public and the generated config are gitignored by the template.
+                            #   android/ is NOT generated — nobody has asked for it yet (PD-95)
+resources/                  # Native SOURCE artwork the icon sets are generated FROM — the iOS set is
+                            #   committed under ios/, generated headlessly by @capacitor/assets
 ├── icon-only.png           # The 1024 app icon master. RGB, no alpha. The name matters — README.md says why
 ├── logo-mark.png           # The bike mark alone, white on transparency; what icon-only.png was composed from
 └── README.md               # The naming trap, the three store constraints, and the generate command

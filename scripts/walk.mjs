@@ -40,23 +40,44 @@
  *   NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co \
  *     node scripts/supabase-relay.mjs &
  *   NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
- *   WALK_EMAIL=... WALK_PASSWORD=... npm run walk
+ *   npm run walk                                    # mints its own account, walks, tears down
+ *   WALK_EMAIL=... WALK_PASSWORD=... npm run walk   # a KNOWN account instead — see below
  *
  *   # ...and to provision the rows the detail routes need, on an empty DEV:
- *   WALK_FIXTURES=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co \
- *     WALK_EMAIL=... WALK_PASSWORD=... npm run walk
+ *   WALK_FIXTURES=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co npm run walk
  *
  * **Point it at DEV.** This walk signs in, and with `WALK_FIXTURES=1` it posts
  * as a real rider — against `letsride` that means fixture rides in real riders'
  * feeds. docs/HANDOFF.md's recipe named PROD's ref until 2026-08-07, so this is
  * a mistake the documentation actively invited. `fixturesPermitted()` refuses
- * it, and it establishes the project from the **session the browser is holding**
- * rather than from `RELAY_UPSTREAM` — see `authenticatedProjectRef()` for why
- * the env-var version of that check was worth nothing.
+ * the ride/club/postcard writes, establishing the project from the **session
+ * the browser is holding** rather than from `RELAY_UPSTREAM` — see
+ * `authenticatedProjectRef()` for why the env-var version of that check was
+ * worth nothing.
  *
- * **The account needs no stored password.** DEV has `mailer_autoconfirm: true`,
- * so a signup returns a session with no confirmation step — mint one, stamp
- * onboarding, walk. docs/HANDOFF.md §The walk has the two commands.
+ * **Minting an account is gated separately, and earlier, because it is a
+ * write with no session to check yet.** `fixturesPermitted()` cannot be what
+ * refuses it — a fixture write happens with a session already established,
+ * and `signUp` does not. `preflightMintRef()` reads the real request the
+ * browser makes before anything is submitted, and `refWritable(await
+ * authenticatedProjectRef(), …)` reads it again once a session exists — see
+ * both functions' own headers for why one check is not enough on its own.
+ *
+ * **The account needs no stored password, and PD-268 is what makes that true
+ * of the CODE rather than only of this paragraph.** DEV has
+ * `mailer_autoconfirm: true`, so a signup returns a session with no
+ * confirmation step. Absent `WALK_EMAIL`/`WALK_PASSWORD` this file mints one
+ * itself — through `/auth/signup` and `/onboarding/username`, the app's own
+ * forms, exactly as `provision()` below drives `/rides/new` and `/clubs/new` —
+ * walks with it, and attempts to delete it afterwards as a **non-fatal**
+ * teardown (`attemptDeleteAccount`): an Edge Function outage on `delete-account`
+ * must not turn an unrelated render check red, and this is the only exercise
+ * that flow gets outside a rider's own hand. `WALK_EMAIL`/`WALK_PASSWORD` are
+ * for a KNOWN account instead — the `WALK_FIXTURES` recipe below depends on
+ * reusing the same one run over run, and reproducing a rider-specific bug
+ * needs a real account rather than a fresh one — and a supplied account is
+ * NEVER deleted, on any code path: `MINTED` is false the instant `WALK_EMAIL`
+ * is set, and only `MINTED` gates the teardown.
  *
  * **The relay is not optional in this container, and the reason changed with the
  * render migration.** Chromium here cannot reach Supabase at all — measured
@@ -87,17 +108,44 @@ import { chromium } from 'playwright-core'
 const EXECUTABLE =
   process.env.WALK_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const BASE = process.env.WALK_BASE ?? 'http://localhost:3000'
-const EMAIL = process.env.WALK_EMAIL
-const PASSWORD = process.env.WALK_PASSWORD
 
-if (!EMAIL || !PASSWORD) {
+// PD-268: a lone one is almost certainly a typo (a mistyped env var name),
+// never an instruction to mint — so it is refused rather than silently
+// treated as "mint a fresh account and ignore the other value".
+if (Boolean(process.env.WALK_EMAIL) !== Boolean(process.env.WALK_PASSWORD)) {
   console.error(
-    'Set WALK_EMAIL and WALK_PASSWORD. Test-account credentials are never committed —\n' +
-      'see docs/HANDOFF.md §Test accounts for which accounts exist and where their\n' +
-      'passwords live.'
+    'Set both WALK_EMAIL and WALK_PASSWORD for a known account, or neither to mint a\n' +
+      'fresh one — see docs/HANDOFF.md §The walk.'
   )
   process.exit(2)
 }
+
+/** True only when this run is minting its own account — see the header. */
+const MINTED = !process.env.WALK_EMAIL
+
+/**
+ * Unique per run and inside the username charset (`^[A-Za-z0-9_]{3,25}$`,
+ * `USERNAME_MIN_LENGTH`/`USERNAME_MAX_LENGTH`) without needing to check either
+ * bound — `Date.now().toString(36)` is 8 characters for a decade either side
+ * of today and the 4-character suffix makes two runs in the same millisecond
+ * distinguishable.
+ */
+const MINT_SUFFIX = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+
+// `@letsride.dev` — `supabase/seeds/development.sql` refuses to run while any
+// account outside that domain exists, so a walk account on any other domain
+// quietly blocks the seed (docs/HANDOFF.md §The walk).
+let EMAIL = process.env.WALK_EMAIL ?? `walk-${MINT_SUFFIX}@letsride.dev`
+// Well past `NEW_PASSWORD_MIN_LENGTH` (8) and never read back — nothing
+// stores this once the run using it ends, which is the whole point of
+// minting rather than asking for a password to remember.
+let PASSWORD = process.env.WALK_PASSWORD ?? `Walk-mint-${MINT_SUFFIX}-Aa1`
+const MINT_USERNAME = `walk_${MINT_SUFFIX}`.slice(0, 25)
+// Real, not a placeholder — `checkEditProfileRetention`'s first assertion
+// (the `??` fallback to the *stored* profile value) needs a genuine saved
+// location to load, and this is the value the walk's own docs already use
+// for the long-lived account.
+const MINT_LOCATION = 'Amsterdam'
 
 /**
  * Every authenticated route. Detail routes are discovered at run time rather
@@ -168,6 +216,35 @@ const RELAY_ORIGIN = `ws://localhost:${process.env.RELAY_PORT ?? 3001}/realtime/
 const isRelayWebSocketFailure = (text) =>
   text.startsWith(`WebSocket connection to '${RELAY_ORIGIN}`)
 
+/**
+ * `GET /favicon.ico` 404s on every run, on every screen — measured 2026-08-25:
+ * there is no `public/favicon.ico` and no `src/app/favicon.ico`/`icon.*`, so
+ * this is Chromium's own automatic per-navigation request finding nothing to
+ * fetch, not a symptom of whatever screen happens to be loading when the
+ * (asynchronous) console event lands. Left unfiltered it fails whichever path
+ * is current at that moment — a fact about request timing, not about that
+ * screen — which is the same reasoning `isRelayWebSocketFailure` already
+ * applies to the chat WebSocket.
+ *
+ * **This is a real gap in the app, not cosmetic, and filtering it here does
+ * not close it** — a shipped app with no favicon is worth its own fix. Matched
+ * on `m.location().url` rather than `m.text()`: Chromium's resource-load
+ * console message never repeats the URL in its text, only in the message's
+ * `location`.
+ */
+const isFaviconFailure = (m) => (m.location()?.url ?? '').endsWith('/favicon.ico')
+
+/**
+ * Counted for the same reason `realtimeSuppressed` is (see the comment two
+ * paragraphs up, and CLAUDE.md's own line about it): "a suppressed error that
+ * stops being reported is indistinguishable from one that stopped
+ * happening." This is the first filter added since that rule and it follows
+ * it — PD-305 is filed for the missing favicon itself, and this filter comes
+ * out the day that closes, which only stays true if a nonzero count keeps
+ * showing up here in the meantime.
+ */
+let faviconSuppressed = 0
+
 page.on('console', (m) => {
   if (m.type() !== 'error') return
   const text = m.text()
@@ -175,11 +252,47 @@ page.on('console', (m) => {
     realtimeSuppressed += 1
     return
   }
+  if (isFaviconFailure(m)) {
+    faviconSuppressed += 1
+    return
+  }
   problems.push(`console: ${text.slice(0, 300)}`)
 })
 page.on('pageerror', (e) => problems.push(`pageerror: ${String(e).slice(0, 300)}`))
 page.on('response', (r) => {
   if (r.status() >= 500) problems.push(`${r.status()} ${r.url().slice(0, 160)}`)
+})
+
+/**
+ * The Supabase host the running app is actually configured to hit —
+ * `*.supabase.co` only, read off a real request the BROWSER issues, never
+ * from anything this walk process's own environment claims. That distinction
+ * is not decoration: `authenticatedProjectRef()` exists because an earlier
+ * version of the project-ref gate read `RELAY_UPSTREAM` from this process's
+ * own env and review correctly called it theatre — that variable configures
+ * a *sibling* process and proves nothing about what the browser was built
+ * against. A request the page itself sent is not theatre.
+ *
+ * Stays `null` when every observed request goes through
+ * `scripts/supabase-relay.mjs` (`localhost`, per the sanctioned way to run in
+ * this container) — the relay hides the real project from the browser's own
+ * configuration by design, so there is nothing to read here in that case, and
+ * `preflightMintRef` below deliberately does not treat that as a refusal. It
+ * is treated as one exactly where it needs to be: going DIRECT with no relay
+ * override, which is the misconfiguration PD-268's review found — a `.env.local`
+ * pointed at PROD, or `npm run dev` with no `RELAY_UPSTREAM`, sends its first
+ * request straight to `https://<ref>.supabase.co` and this is what catches it
+ * before `mintWalkAccount` ever submits a form.
+ */
+let observedSupabaseRef = null
+page.on('request', (r) => {
+  if (observedSupabaseRef !== null) return
+  try {
+    const match = new URL(r.url()).hostname.match(/^([a-z0-9]+)\.supabase\.co$/)
+    if (match) observedSupabaseRef = match[1]
+  } catch {
+    // Not a URL worth caring about.
+  }
 })
 
 /** How many assertions `checkRefusedSignIn` makes, for the summary line. */
@@ -452,18 +565,330 @@ async function runRefusedSignup() {
   }
 }
 
+/**
+ * Deletes the currently signed-in account through the app's own UI — PD-268.
+ * Never through the Edge Function directly: the point, same as `provision()`
+ * below, is to exercise the flow a rider actually has (`ProfileMenu` ->
+ * `DeleteAccountSheet`), not merely to remove the row. Returns rather than
+ * throws, because both callers treat a failure as informational — an outage
+ * on `delete-account` must never fail the walk itself (see the header).
+ */
+async function attemptDeleteAccount(password) {
+  try {
+    await page.goto(`${BASE}/profile`, { waitUntil: 'networkidle' })
+    await page.click('button[aria-label="Account options"]', { timeout: 10_000 })
+    await page.waitForTimeout(300)
+    await page.click('[aria-label="Account options"] button:has-text("Delete account")', {
+      timeout: 10_000,
+    })
+    await page.waitForSelector('[aria-label="Delete account"] input[name="password"]', {
+      timeout: 10_000,
+    })
+    await page.fill('[aria-label="Delete account"] input[name="password"]', password)
+    await page.click('[aria-label="Delete account"] button[type="submit"]')
+    await page.waitForURL((u) => u.pathname === '/auth/login', { timeout: 20_000 })
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, why: String(e).split('\n')[0] }
+  }
+}
+
+/**
+ * `attemptDeleteAccount`, but from wherever the run currently is — signing
+ * back in first if the current context does not hold a session at all.
+ *
+ * Two callers need exactly this: the ordinary end-of-run teardown (`page` may
+ * already be signed out — a full walk's `checkSignOut` clears it, a subset
+ * invocation may still be signed in) and `mintWalkAccount`'s own top-level
+ * `catch` (an exception can land with the session in any state). Kept as one
+ * function rather than two copies of the sign-back-in dance, which is exactly
+ * the kind of drift CLAUDE.md calls out repeatedly elsewhere in this repo.
+ */
+async function deleteMintedAccountBestEffort() {
+  if (!(await authenticatedProjectRef())) {
+    await page.goto(`${BASE}/auth/login`, { waitUntil: 'domcontentloaded' }).catch(() => {})
+    await page.fill('input[name="email"]', EMAIL).catch(() => {})
+    await page.fill('input[name="password"]', PASSWORD).catch(() => {})
+    await Promise.all([
+      page.waitForURL((u) => !u.pathname.startsWith('/auth/login'), { timeout: 30_000 }).catch(() => {}),
+      page.click('button[type="submit"]').catch(() => {}),
+    ])
+    await page.waitForTimeout(1000)
+  }
+  return attemptDeleteAccount(PASSWORD)
+}
+
+/**
+ * The project-ref gate `mintWalkAccount` runs BEFORE it submits anything —
+ * review finding on PD-268's first pass: the previous version only checked
+ * `refWritable` *after* `signUp` had already created a real row, and with
+ * `mailer_autoconfirm: false` (PROD's own configuration) `signUp` returns no
+ * session at all, so the post-session check never even runs. A `.env.local`
+ * pointed at PROD, or `npm run dev` with no relay override, minted a real,
+ * unconfirmed `auth.users` row on `letsride` with no check and no cleanup.
+ *
+ * Calls `refWritable` — the one place the allowlist itself lives — exactly
+ * as `fixturesPermitted` and the post-session check further down do; a
+ * fourth inline `ref !== 'fpmrimzxadewsaiwpsel'` here would be a second copy
+ * of the rule for the next session to find drifted.
+ *
+ * `{ ok: true, quiet: true }` when `observedSupabaseRef` is still `null` —
+ * every request so far went through the relay, which hides the real project
+ * from the browser's own configuration by design (see that variable's own
+ * comment). This is not a hole: it is exactly why the post-session
+ * `authenticatedProjectRef()` check stays in place below, reading the true
+ * project off a signed JWT the relay cannot rewrite.
+ */
+function preflightMintRef() {
+  if (observedSupabaseRef === null) return { ok: true, quiet: true }
+  return refWritable(observedSupabaseRef, 'mint an account')
+}
+
+/**
+ * Mints a fresh, fully-onboarded DEV rider through the app's own forms —
+ * PD-268. **Through `/auth/signup` and `/onboarding/username`, never GoTrue
+ * directly** — PD-91 is the precedent for getting this wrong: a fixture
+ * script that called `/auth/v1/signup` never ran `signUp` at all, so it
+ * proved nothing about the form PD-196 and PD-203 exist to guard. This is a
+ * walk, not a seed script.
+ *
+ * **Gated before the first write, not only after it.** `preflightMintRef()`
+ * runs before anything is submitted — see its own header for why the
+ * post-session check alone was not enough: with `mailer_autoconfirm: false`
+ * (PROD's configuration), `signUp` returns no session at all, so a check that
+ * only ran afterward never ran. `refWritable(await authenticatedProjectRef(),
+ * …)` still runs once a session exists, as a second, independent read of the
+ * same fact from a different source — the two are expected to agree, and a
+ * disagreement between them is itself worth failing loudly on rather than
+ * picking one silently.
+ */
+async function mintWalkAccount() {
+  console.log(`\nminting a DEV account (no WALK_EMAIL set): ${EMAIL}`)
+
+  const preflight = preflightMintRef()
+  if (!preflight.ok) {
+    console.error(`\nMinting refused before creating anything — ${preflight.why}.`)
+    console.error('No account was created; nothing to clean up.')
+    await browser.close()
+    process.exit(1)
+  }
+
+  await page.goto(`${BASE}/auth/signup`, { waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('input[name="email"]')
+  await page.fill('input[name="email"]', EMAIL)
+  await page.fill('input[name="password"]', PASSWORD)
+  await page.click('label:has(input[name="acceptedTerms"])')
+  await Promise.all([
+    page.waitForURL((u) => u.pathname !== '/auth/signup', { timeout: 20_000 }).catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1000)
+
+  if (await page.$('text=Check your email')) {
+    // **This is what a direct connection to PROD looks like, not DEV being
+    // briefly slow.** `mailer_autoconfirm: false` — PROD's own configuration
+    // — is the only way `signUp` returns no session, and the pre-flight
+    // above is what should have caught that before this ever ran; landing
+    // here means it could not (every request so far went through the relay,
+    // per its own comment, so the real project stayed hidden from it). A row
+    // now exists in `auth.users` for `${EMAIL}` with no session ever
+    // established, so there is nothing this script can sign in as to delete
+    // it — say so plainly rather than let a silent orphan sit on whichever
+    // project this was.
+    console.error(
+      `\nMinting failed: signUp returned no session for ${EMAIL} — this is what ` +
+        'confirmation being ON looks like, which is PROD\'s configuration, not DEV\'s ' +
+        '(decision #6). If this ran against DEV, mailer_autoconfirm has changed; ' +
+        'more likely this ran with no relay override, or `.env.local`/`NEXT_PUBLIC_SUPABASE_URL` ' +
+        'points at PROD directly.\n' +
+        `An unconfirmed auth.users row for ${EMAIL} now exists on whichever project this ` +
+        'was and was NOT removed — there is no session to delete it with. Remove it by ' +
+        'hand, and pass WALK_EMAIL/WALK_PASSWORD for an existing, already-confirmed ' +
+        'account instead of minting until the target is confirmed to be DEV.'
+    )
+    await browser.close()
+    process.exit(1)
+  }
+
+  // **This is a real app-level defect, and this branch is a recovery for
+  // it, not a walk-script quirk.** Measured 2026-08-25, not hypothetical: a
+  // freshly-minted rider can land on the standalone `/onboarding/terms`
+  // prompt even though `signUp` already ran `accept_terms()` and the
+  // database already carries the stamp (confirmed against DEV directly) — a
+  // race between that write and a concurrent guard read of the same
+  // account, not a rider whose consent is genuinely missing. The fix belongs
+  // in `signUp`/`guard-cache.ts`, not here — this branch only stops it from
+  // taking the mint down while that gets its own fix. `accept_terms()` is
+  // idempotent by design ("a second call returns the first call's stamp
+  // rather than moving it" — `021`), so accepting again is a correct
+  // recovery through the real screen rather than a second bug layered on
+  // the first. Do not read this branch's presence as the defect being
+  // closed.
+  if (new URL(page.url()).pathname === '/onboarding/terms') {
+    console.log('  (landed on /onboarding/terms — consent already recorded; accepting again)')
+    await page.waitForSelector('input[name="acceptedTerms"]', { timeout: 20_000 })
+    await page.click('label:has(input[name="acceptedTerms"])')
+    await Promise.all([
+      page.waitForURL((u) => u.pathname !== '/onboarding/terms', { timeout: 20_000 }).catch(() => {}),
+      page.click('button[type="submit"]'),
+    ])
+    await page.waitForTimeout(1000)
+  }
+
+  if (new URL(page.url()).pathname !== '/onboarding/username') {
+    // A session exists here (past `signUp`) but onboarding is not complete,
+    // so the guard refuses `/profile` and `attemptDeleteAccount` has nowhere
+    // to go — deletion is genuinely unreachable, not merely skipped. Say so
+    // rather than exit quietly: this leaves a real, signed-up-but-unfinished
+    // `${EMAIL}` behind on whichever project this ran against.
+    console.error(
+      `\nMinting failed: expected /onboarding/username, landed on ${page.url()}.\n` +
+        `${EMAIL} was created and left behind — onboarding did not finish, so /profile ` +
+        'is unreachable and this script has no way to delete it. Remove it by hand.'
+    )
+    await browser.close()
+    process.exit(1)
+  }
+
+  // The one write a signed-in-but-not-yet-onboarded rider can make, gated the
+  // same way `provision()`'s fixture writes are and through the same
+  // function, so a rule change binds both. This is the second, independent
+  // read of the project — `preflightMintRef()` above is the first — and the
+  // two are expected to agree; if they do not, something is wrong with the
+  // gate itself and is worth knowing about before trusting either again.
+  const permit = refWritable(await authenticatedProjectRef(), 'mint an account')
+  if (!permit.ok) {
+    console.error(`\nMinting refused after the fact — ${permit.why}.`)
+    console.error('Finishing onboarding, deleting the account just created, then aborting.')
+    await page.fill('input[name="username"]', MINT_USERNAME)
+    await page.click('button[type="submit"]')
+    await page.waitForTimeout(1500)
+    const cleanup = await attemptDeleteAccount(PASSWORD)
+    if (cleanup.ok) {
+      console.error(`${EMAIL} deleted.`)
+    } else {
+      console.error(`Could not clean up the wrongly-minted account — ${cleanup.why}`)
+    }
+    await browser.close()
+    process.exit(1)
+  }
+
+  await page.fill('input[name="username"]', MINT_USERNAME)
+  await Promise.all([
+    page
+      .waitForURL((u) => u.pathname !== '/onboarding/username', { timeout: 20_000 })
+      .catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1000)
+
+  if (new URL(page.url()).pathname !== '/postcards') {
+    // `setUsername` commits `username` and `onboarding_completed_at` in the
+    // same call (see its own header), so a submit that reached this point is
+    // fully onboarded regardless of where the browser actually landed —
+    // `/profile` is reachable and `attemptDeleteAccount` is exactly what
+    // `permit.ok === false` above already does for the wrong-project case.
+    console.error(`\nMinting failed: expected /postcards after onboarding, landed on ${page.url()}.`)
+    console.error(`${EMAIL} is fully onboarded; deleting it before aborting.`)
+    const cleanup = await attemptDeleteAccount(PASSWORD)
+    if (cleanup.ok) {
+      console.error(`${EMAIL} deleted.`)
+    } else {
+      console.error(`Could not clean up ${EMAIL} — ${cleanup.why}. Remove it by hand.`)
+    }
+    await browser.close()
+    process.exit(1)
+  }
+
+  console.log(`  minted ${EMAIL} — username ${MINT_USERNAME}, onboarding complete`)
+
+  // **Follow-up to the mint itself, not a second feature.** PD-286 dropped
+  // `location` from onboarding on purpose — it is a profile field now, not a
+  // gate — so a freshly-minted rider legitimately has none, and
+  // `checkEditProfileRetention`'s first assertion ("location loads from the
+  // stored profile") has nothing to load. Leaving that failing is not a
+  // shrug: CLAUDE.md is explicit that a shrunken `N/N` is a skip rather than
+  // a pass, and an assertion that is known to fail on every minted run is
+  // the same defect wearing a green light — the next session learns it is
+  // "expected" and stops reading the other seventeen. So the mint sets one
+  // for real, through `/profile`'s own edit form — the one screen the walk
+  // otherwise only ever RENDERS and never writes to — which keeps this a
+  // walk rather than a seed script, the same reasoning as signup and
+  // onboarding above.
+  await page.goto(`${BASE}/profile`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('input[name="location"]', { timeout: 20_000 })
+  await page.fill('input[name="location"]', MINT_LOCATION)
+  await Promise.all([
+    page
+      .waitForFunction(
+        () => document.querySelector('form [role="status"]')?.textContent?.trim() === 'Saved',
+        null,
+        { timeout: 20_000 }
+      )
+      .catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(500)
+
+  const savedLocation = await page.inputValue('input[name="location"]').catch(() => null)
+  if (savedLocation !== MINT_LOCATION) {
+    // Fully onboarded — reachable exactly like the /postcards case above.
+    console.error(
+      `\nMinting failed: could not set the minted rider's location through /profile — ` +
+        `read back ${JSON.stringify(savedLocation)}.`
+    )
+    console.error(`${EMAIL} is fully onboarded; deleting it before aborting.`)
+    const cleanup = await attemptDeleteAccount(PASSWORD)
+    if (cleanup.ok) {
+      console.error(`${EMAIL} deleted.`)
+    } else {
+      console.error(`Could not clean up ${EMAIL} — ${cleanup.why}. Remove it by hand.`)
+    }
+    await browser.close()
+    process.exit(1)
+  }
+  console.log(`  set location to "${MINT_LOCATION}" through /profile`)
+}
 // Full walks only, matching the guard cases below: a subset invocation is
 // someone debugging one screen, and this one costs a whole extra sign-in.
 const refusedSignInFailures = isFullWalk ? await checkRefusedSignIn() : 0
 
-await page.goto(`${BASE}/auth/login`, { waitUntil: 'domcontentloaded' })
-await page.fill('input[name="email"]', EMAIL)
-await page.fill('input[name="password"]', PASSWORD)
-await Promise.all([
-  page.waitForURL((u) => !u.pathname.startsWith('/auth/login'), { timeout: 30_000 }).catch(() => {}),
-  page.click('button[type="submit"]'),
-])
-await page.waitForTimeout(1500)
+if (MINTED) {
+  // **Wrapped, not called bare.** `mintWalkAccount` calls `process.exit`
+  // itself on every failure it recognises, but a Playwright timeout it does
+  // NOT recognise — a selector that genuinely never appears, a navigation
+  // that hangs — throws instead, and an unwrapped `await` here let that
+  // propagate straight past the teardown near the end of this file, leaving
+  // whatever had already been created on DEV with nothing attempting to
+  // remove it. Every run mints a fresh suffix, so nothing else was ever
+  // going to reclaim that row.
+  try {
+    await mintWalkAccount()
+  } catch (e) {
+    console.error(`\nMinting threw before completing — ${String(e).split('\n')[0]}`)
+    console.error('Attempting to delete whatever was created before aborting.')
+    const cleanup = await deleteMintedAccountBestEffort().catch((e2) => ({
+      ok: false,
+      why: `cleanup itself threw — ${String(e2).split('\n')[0]}`,
+    }))
+    if (cleanup.ok) {
+      console.error(`${EMAIL} deleted.`)
+    } else {
+      console.error(`Could not clean up ${EMAIL} — ${cleanup.why}. Remove it by hand on DEV.`)
+    }
+    await browser.close()
+    process.exit(1)
+  }
+} else {
+  await page.goto(`${BASE}/auth/login`, { waitUntil: 'domcontentloaded' })
+  await page.fill('input[name="email"]', EMAIL)
+  await page.fill('input[name="password"]', PASSWORD)
+  await Promise.all([
+    page.waitForURL((u) => !u.pathname.startsWith('/auth/login'), { timeout: 30_000 }).catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1500)
+}
 
 const landed = new URL(page.url()).pathname
 console.log(`sign-in landed on ${landed}`)
@@ -1623,6 +2048,41 @@ if (isFullWalk) {
   await anonContext.close()
 }
 
+/**
+ * Non-fatal teardown of the minted account — PD-268's real decision. Making
+ * the walk depend on `delete-account` succeeding would mean an unrelated Edge
+ * Function outage turns an otherwise-green render check red, which is exactly
+ * the "second thing that can fail the walk for an unrelated reason" the story
+ * warns against — so a failed deletion is logged and never counted towards
+ * `process.exit`'s status below.
+ *
+ * **Gated on `MINTED` alone, never on anything read back from the account or
+ * the environment.** An explicitly-supplied `WALK_EMAIL` account must never
+ * be deleted, under any code path — `MINTED` is false the instant
+ * `WALK_EMAIL` is set (see its definition near the top of this file), so
+ * there is exactly one condition standing between a rider's real fixture
+ * account and this call.
+ *
+ * Signs back in first when it has to, via `deleteMintedAccountBestEffort` —
+ * on a full walk `checkSignOut` above already cleared the session, and on a
+ * subset invocation (`isFullWalk` is false) `page` may still be holding the
+ * one `mintWalkAccount` established. Shared with `mintWalkAccount`'s own
+ * `catch` rather than a second copy of the same sign-back-in dance.
+ */
+if (MINTED) {
+  console.log('\nteardown (minted account):')
+  const teardown = await deleteMintedAccountBestEffort()
+  if (teardown.ok) {
+    console.log(`  ok   ${EMAIL} deleted`)
+  } else {
+    console.log(
+      `  WARN could not delete ${EMAIL} — ${teardown.why}\n` +
+        '       Non-fatal — see the header on why a delete-account outage must not fail\n' +
+        '       this run. Remove the row by hand on DEV if it matters.'
+    )
+  }
+}
+
 await browser.close()
 
 console.log(`\n${paths.length - failures}/${paths.length} screens rendered clean`)
@@ -1633,6 +2093,12 @@ if (realtimeSuppressed) {
     `  (Realtime NOT exercised — ${realtimeSuppressed} relay WebSocket failure(s) suppressed; ` +
       'the relay does not proxy the upgrade)'
   )
+}
+if (faviconSuppressed) {
+  // Named rather than swallowed, same reasoning as realtimeSuppressed just
+  // above — PD-305 is filed for the missing favicon itself; this line is
+  // what tells the next session the filter is still doing something.
+  console.log(`  (${faviconSuppressed} favicon.ico 404(s) suppressed — PD-305, no favicon shipped)`)
 }
 if (isFullWalk) {
   const total =

@@ -21,8 +21,11 @@ import { COMMENT_BODY_MAX_LENGTH } from '@/lib/validation/comments'
  * something first." is unreachable from here — it stays the server's guard
  * against everything that is not this form.
  *
- * Composition is inferred: the design's comment composer is one of the frames
- * the Figma rate limit has kept shut. See docs/FIGMA-FIDELITY-TODO.md §Comments.
+ * Composition is inferred, and now checkable: the frame reads offline as of
+ * 2026-08-25 and draws a fixed 88px reply bar at the foot of the viewport —
+ * avatar plus a single-line input — rather than this composer at the end of the
+ * thread. That is a separate correction with its own trade, registered in
+ * docs/FIGMA-FIDELITY-TODO.md §Comments.
  */
 export function CommentForm({ postcardId }: { postcardId: string }) {
   const [state, formAction, pending] = useActionState(addComment, emptyActionState)
