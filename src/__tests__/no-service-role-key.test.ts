@@ -40,12 +40,37 @@ const repoRoot = path.resolve(here, '..', '..')
 /** This file legitimately contains every pattern it hunts for. */
 const SELF = path.resolve(here, 'no-service-role-key.test.ts')
 
-const SCANNED_DIRS = ['src', 'scripts']
+// `ios` joined this list on 2026-08-25, when the native project was first
+// committed. It is the strongest case on the list rather than the weakest: a
+// bundle is a file on thousands of devices and cannot be revoked, and
+// `cap sync` WRITES into that tree without asking — it emits
+// `App/App/capacitor.config.json`, which carries the whole config and is
+// gitignored today by the template alone. Nothing else re-checks that.
+const SCANNED_DIRS = ['src', 'scripts', 'ios']
 const SCANNED_FILES = ['.env.local.example', 'vercel.json', 'next.config.ts']
 const SKIP_DIRS = new Set(['node_modules', '.next', 'dist', 'coverage'])
 
+/**
+ * The web bundle `cap sync` copies into the native project.
+ *
+ * Skipped for two reasons, and the second is the one that bites. It is
+ * **derived** from `src/`, which this file already walks, so scanning it again
+ * checks the same source twice. And it exists only on a machine that has run
+ * `cap sync` — it is gitignored, so CI never sees it — which made the suite's
+ * total jump by 418 locally and stay put on the runner. A test count that
+ * depends on whether someone has built the app is one `docs:check` cannot pin,
+ * and `docs/HANDOFF.md`'s Unit tests row already carries the smaller version of
+ * this trap for a leftover scratch script.
+ *
+ * The tracked files under `ios/` are the point of scanning it at all — a
+ * hand-added `.plist` or `.xcconfig` carrying a key — and those are all outside
+ * this directory.
+ */
+const SKIP_PATHS = [path.resolve(repoRoot, 'ios', 'App', 'App', 'public')]
+
 function walk(dir: string, out: string[] = []): string[] {
   if (!existsSync(dir)) return out
+  if (SKIP_PATHS.some((skip) => dir === skip || dir.startsWith(skip + path.sep))) return out
   for (const entry of readdirSync(dir)) {
     if (SKIP_DIRS.has(entry)) continue
     const full = path.join(dir, entry)
