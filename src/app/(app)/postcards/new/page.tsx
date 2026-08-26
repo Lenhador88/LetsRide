@@ -28,17 +28,21 @@ export default function NewPostcardPage() {
 }
 
 function NewPostcardScreen() {
-  const clubs = useQuery(queryKeys.clubs.mine(), getMyClubs)
-  const rides = useQuery(queryKeys.rides.crewOptions(), getCrewRides)
-  const gate = combineQueries(clubs, rides)
-
   // Opened from a club, or from the Home tab's create button (PD-283); or from
   // a ride's Journal `Add` tile (PD-256) — only one of the two is ever present.
   // Both ids seed their selector and decide where back goes; neither
   // authorizes anything — see `CreatePostcardForm`'s `initialClubId` and
   // `initialRideId`.
-  const fromClub = useSearchParams().get(CREATE_CLUB_PARAM)
-  const fromRide = useSearchParams().get(CREATE_RIDE_PARAM)
+  const params = useSearchParams()
+  const fromClub = params.get(CREATE_CLUB_PARAM)
+  const fromRide = params.get(CREATE_RIDE_PARAM)
+
+  const clubs = useQuery(queryKeys.clubs.mine(), getMyClubs)
+  // `fromRide` travels into the read, not just into the seed: a rider crew of
+  // more than the scan window would otherwise get a composer reading "No ride"
+  // on the one path that named a ride explicitly. See `getCrewRides`.
+  const rides = useQuery(queryKeys.rides.crewOptions(fromRide), () => getCrewRides(fromRide))
+  const gate = combineQueries(clubs, rides)
 
   return (
     <>

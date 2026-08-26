@@ -256,9 +256,14 @@
 - [ ] 5.1 `CLAUDE.md` §Supabase Rules: the `postcards` row gains `ride_id` — *a tag, never the
   audience; `club_id` is still the audience* — and the applied-state line moves to 41 with its
   verification command intact.
-- [x] 5.2 `docs/reference/product-scope.md`: the Rides row loses "Journal needs `postcards.ride_id`"; the
-  Inbox row's excluded notification keeps its entry with an updated reason (the column now exists; the
-  fan-out helper does not).
+- [x] 5.2 `docs/reference/product-scope.md`: the Rides row loses "Journal needs `postcards.ride_id`".
+  ~~the Inbox row's excluded notification keeps its entry with an updated reason~~ — **void as
+  written, 2026-08-26, same shape as 4.10.** The Inbox row carries no per-notification entry to
+  update: `grep -in 'excluded\|fan-out helper' docs/reference/product-scope.md` returns 0, and the
+  row describes the epic rather than enumerating the fan-out set. The `postcard_on_ride`
+  notification is 5.6's Linear issue and has no home in this file. Recorded rather than silently
+  dropped, because a ticked box over an unapplied clause is the construction error 4.10 was
+  rewritten to avoid.
 - [ ] 5.3 `docs/HANDOFF.md`: position, each claim beside the command that verifies it.
 - [x] 5.4 `npm run docs:check` — the numeric doc-claims registry.
 - [ ] 5.5 File the two defects from `proposal.md` §Two defects as Linear issues, labelled

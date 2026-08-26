@@ -390,8 +390,17 @@ export async function getPostcard(id: string): Promise<Postcard | null> {
  * Journal the viewer cannot resolve look identical from here, matching
  * `getClubFeed`'s convention: there is no "no such ride" case for this
  * function to report, because `getRide` already turned that into `null` for
- * the page to act on. Unpaginated, like `getClubFeed`'s single window — the
- * Journal's own scroll is PD-257's.
+ * the page to act on.
+ *
+ * **Bounded at `FEED_PAGE_SIZE`, and the cap is applied to the IDS rather than
+ * only to the second query.** `getClubFeed` is bounded the same way and the
+ * first draft of this function described itself as matching it while carrying
+ * no `.limit()` at all. Two things go wrong unbounded, and the second is the
+ * one a limit on the query alone would not fix: every render of the ride plan
+ * selects every postcard ever tagged to that ride, and `.in('id', ids)`
+ * serialises each id into the PostgREST query string — so a long-running ride
+ * eventually meets a URL-length wall rather than degrading. The Journal's own
+ * paging is PD-257's; this is a preview strip and this is its window.
  */
 export async function getRideJournal(rideId: string): Promise<Postcard[]> {
   if (!rideIdSchema.safeParse(rideId).success) return []
@@ -409,9 +418,14 @@ export async function getRideJournal(rideId: string): Promise<Postcard[]> {
     await supabase
       .from('postcards')
       .select(POSTCARD_SELECT)
-      .in('id', ids)
+      // The accessor answers `created_at desc, id desc`, so the slice is the
+      // newest window rather than an arbitrary one — and the `.order` below is
+      // still what orders the result, because `.in()` carries no ordering
+      // guarantee of its own.
+      .in('id', ids.slice(0, FEED_PAGE_SIZE))
       .order('created_at', { ascending: false })
-      .order('id', { ascending: false }),
+      .order('id', { ascending: false })
+      .limit(FEED_PAGE_SIZE),
     "this ride's journal",
   )
   return attachLikeState(supabase, rows as unknown as PostcardRow[], user?.id)

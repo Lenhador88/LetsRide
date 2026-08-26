@@ -201,15 +201,14 @@ export async function createPostcard(
     return { error: 'Could not post that. Try again.' }
   }
 
-  // clubId and rideId are already in hand from the parsed form, so this skips
-  // the lookup invalidatePostcard would otherwise do to find them.
+  // clubId is already in hand from the parsed form, so this skips the lookup
+  // invalidatePostcard would otherwise do to find it.
   invalidate(queryKeys.postcards.all())
   if (clubId) invalidate(queryKeys.clubs.detail(clubId))
-  // PD-256. A photo tagged from a ride's Journal must appear there on the same
-  // navigation that lands the rider back in it — `postcards.all()` does not
-  // reach `postcards.journal(rideId)`, since the latter is keyed by a ride id
-  // rather than nested under it.
-  if (rideId) invalidate(queryKeys.postcards.journal(rideId))
+  // PD-256 needs no call of its own: `postcards.journal(rideId)` sits under the
+  // `postcards` prefix, and `invalidate` matches structurally — see that key's
+  // own note, which records the extra call this used to make and why it was
+  // dead.
 
   return { error: null, redirectTo: '/postcards' }
 }

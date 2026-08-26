@@ -41,18 +41,26 @@ import { formatPostcardDate } from '@/lib/utils'
  * requires `private.is_ride_crew` (`041`), so the tile would be a promise the
  * insert refuses.
  *
- * ## The three read states, and why loading and a failure both fall to empty
+ * ## The three read states, and why a failure is not one of the other two
  *
  * `undefined` draws two skeleton tiles at the loaded layout's own size, so
- * nothing jumps when the read lands. A **failed** read falls back to
- * `RideJournalEmpty` rather than an `ErrorState` — the same call
- * `RideCrewRail` makes for its own roster, and for the same reason: this is a
- * secondary strip on a screen whose own `ErrorState` already owns the case
- * where the *ride* could not be read, and a red panel where a handful of
- * photos should be is worse than the placeholder this section already drew
- * for its whole life until today. The Journal's own seven-state screen
- * (loading/error/offline/etc, told apart properly) is PD-257's dedicated
- * route, not this preview.
+ * nothing jumps when the read lands.
+ *
+ * A **failed** read draws its own tile and must. Falling back to
+ * `RideJournalEmpty` was the first draft's answer, on the stated precedent of
+ * `RideCrewRail` — and that precedent says the opposite: `RideCrewRail` falls
+ * back to a **link** reading "See who's riding", which asserts nothing about
+ * content and hands the rider a route to the real answer. `RideJournalEmpty`
+ * draws the words *"Nothing yet"*, which is a claim about the world, and to
+ * crew it adds *"Prep shots count"* and an `Add` tile — so a rider whose read
+ * failed would be told this ride has no photos and invited to upload one on
+ * that premise. Degrading to navigation and degrading to a false fact are
+ * different things.
+ *
+ * This section has no standalone route to fall back to yet (that is PD-257's),
+ * so the honest degradation is a tile that makes no count claim and offers the
+ * retry — task 4.9's "error with retry", at preview scale rather than the
+ * seven-state screen PD-257 owns.
  */
 export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolean }) {
   const journal = useQuery(queryKeys.postcards.journal(rideId), () => getRideJournal(rideId))
@@ -60,7 +68,7 @@ export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolea
   // Checked ahead of `!journal.data`, which a failed read leaves `undefined`
   // forever — without this branch the skeleton below would never resolve to
   // anything for a rider whose read keeps failing.
-  if (journal.error) return <RideJournalEmpty canAdd={canAdd} rideId={rideId} />
+  if (journal.error) return <RideJournalUnavailable onRetry={journal.refetch} />
 
   if (!journal.data) {
     return (
@@ -112,6 +120,33 @@ export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolea
           <span className="text-xs font-semibold">Add</span>
         </Link>
       )}
+    </div>
+  )
+}
+
+/**
+ * What the strip draws when its own read failed — never `RideJournalEmpty`, for
+ * the reason the component header gives: "Nothing yet" is a claim about the
+ * ride, and this state knows nothing about the ride.
+ *
+ * One tile rather than two, and no `Add`: offering the crew tile here would
+ * invite an upload on the same false premise, and the postcard would land
+ * correctly but against a Journal the rider still cannot see.
+ */
+function RideJournalUnavailable({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex gap-2 px-4">
+      <div className="flex aspect-square min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-border px-3 text-center">
+        <ImageIcon className="h-6 w-6 text-muted opacity-60" aria-hidden="true" />
+        <span className="text-xs font-semibold text-foreground">Photos didn&apos;t load</span>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="text-2xs font-semibold text-accent underline underline-offset-2"
+        >
+          Try again
+        </button>
+      </div>
     </div>
   )
 }
