@@ -179,7 +179,7 @@ export function readRideLocation(formData: FormData): RideLocationInput {
   // Deliberately NOT part of the all-or-nothing test above: a pick with no zone
   // is a place whose provider sent none, which is ordinary, and dropping the
   // whole pick for it would lose the coordinate too.
-  const zone = (formData.get('start_timezone') as string | null)?.trim() ?? ''
+  const zone = (formData.get(RIDE_TIMEZONE_FIELD_NAME) as string | null)?.trim() ?? ''
 
   return { start_place_id: placeId, latitude, longitude, timezone: zone || null }
 }

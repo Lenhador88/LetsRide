@@ -976,10 +976,24 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
  * How many "mine" candidates `discoverOwned` probes per kind before giving up
  * — PD-306. Each probe is a full page load plus up to a 20s wait (see
  * `probeOwnsEditable`), so an unbounded scan of every ride a rider has
- * organized or joined could cost minutes on a rider with a long history. The
- * "mine" surfaces put the likeliest candidate first in the common case (an
- * account's own fixture ride sorts before ones it merely joined), so a small
- * bound rarely costs more than the first probe.
+ * organized or joined could cost minutes on a rider with a long history.
+ *
+ * **The fixture ride sorts LAST, not first, and the bound is chosen knowing
+ * that.** `/rides?filter=mine` orders by `departure_at` ascending
+ * (`src/lib/data/rides.ts`), and `provision()` dates its fixture a year out on
+ * purpose — so among upcoming rides it is the furthest from the end this bound
+ * keeps. An earlier version of this comment claimed the opposite and was the
+ * kind of measured-sounding wrong that survives review.
+ *
+ * **What that costs, stated rather than left to be discovered:** a rider who
+ * owns a fixture buried past this bound — or one probe that times out over the
+ * relay — reads as owning nothing, and with `WALK_FIXTURES=1` a second
+ * "Walk fixture ride" is created on shared DEV, which there is deliberately no
+ * cleanup pass for. The default minted account cannot hit it (it owns nothing
+ * and organizes nothing, so `mine` is empty and the first run provisions), so
+ * this is bounded to a reused `WALK_EMAIL` account with a long ride history.
+ * Raise this rather than adding a cleanup pass if it ever bites: deleting rows
+ * on a shared database is what PD-306 explicitly rejected.
  */
 const MAX_OWNERSHIP_PROBES = 3
 

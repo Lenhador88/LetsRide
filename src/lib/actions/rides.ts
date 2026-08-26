@@ -462,10 +462,14 @@ export async function updateRide(
             latitude: null,
             longitude: null,
             geocode_confidence: null,
-            // The zone came with the pick, so it goes with it. `080`'s trigger
-            // then holds the rider's wall-clock against `APP_TIME_ZONE` — the
-            // same instant they are looking at as they save.
-            timezone: null,
+            // **`timezone` is deliberately NOT cleared here** (`080` §3). The
+            // four columns above are provenance for a POINT; the ride still
+            // meets at the place the TEXT names, and that place still has a
+            // clock. Clearing it would also pull the zone out from under the
+            // `departure_at` this same statement resolved against it — the
+            // defect measured on DEV before `080` merged, where a save that
+            // changed both the address and the time rendered an hour the rider
+            // never typed.
           }
         : {}
 

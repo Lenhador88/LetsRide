@@ -16833,45 +16833,67 @@ select assert_eq(
 rollback to savepoint wall_clock_080;
 
 -- ---------------------------------------------------------------------------
--- 080.5  The zone belongs to the LOCATION GROUP, so it clears with it
+-- 080.5  The zone is NOT part of the location group, and this is the assertion
+--        that caught it being put there
 --
--- `067`'s `clear_ride_map_tiles` already treats a ride's location as one group.
--- A zone left behind would keep a ride in Lisbon time after its start moved to
--- Amsterdam, until a geocode happened to land.
+-- `067`'s `clear_ride_map_tiles` clears the coordinate, the vendor score and
+-- both tiles when the meeting point moves, and putting `timezone` in that group
+-- is the obvious next step. It is wrong, it was written that way first, and the
+-- defect is the exact one this whole file exists to prevent — arriving through
+-- the one path 080.4's guard cannot see.
+--
+-- `updateRide` resolves `departure_at` against `resolveDepartureZone(location,
+-- previous.timezone)` — the zone the edit form was RENDERING in, the only zone
+-- that reproduces the digits the rider is looking at. So a save that changes the
+-- meeting point AND the departure time carries an instant expressed in a zone
+-- the clearing trigger is about to drop, and 080.4 correctly declines to shift
+-- it because the statement did move the instant.
+--
+-- Measured on DEV before this file merged: 09:00 Lisbon, saved with a new
+-- address and 09:30 typed, stored 08:30Z with a NULL zone and rendered 10:30.
+-- The control case — address changed, time untouched — was right throughout,
+-- which is what made it asymmetric rather than obvious.
 -- ---------------------------------------------------------------------------
-savepoint zone_clears_080;
+savepoint zone_survives_080;
 insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
                    start_place_id, latitude, longitude, timezone)
 values ('00000000-0000-0000-0000-000000080005', 'Picked in Lisbon', 'Rua Augusta, Lisboa',
-        timestamptz '2026-08-16T08:00:00Z', true, '00000000-0000-0000-0000-00000000000a',
+        timestamptz '2026-09-10T08:00:00Z', true, '00000000-0000-0000-0000-00000000000a',
         'geoapify:augusta', 38.71, -9.14, 'Europe/Lisbon');
 select assert_eq(
   (select timezone from rides where id = '00000000-0000-0000-0000-000000080005'),
   'Europe/Lisbon', '080: a PICKED ride stores its zone in the same INSERT as departure_at — which is why a picked ride never needs a correction at all');
 
-update rides set meeting_point = 'Dam 1, Amsterdam'
- where id = '00000000-0000-0000-0000-000000080005';
-select assert_eq(
-  (select (timezone is null and start_place_id is null and latitude is null)
-     from rides where id = '00000000-0000-0000-0000-000000080005'),
-  true, '080: the meeting point changing clears the zone with the rest of the location group — it is a fact about the place the ride is no longer at');
-select assert_eq(
-  (select to_char(departure_at at time zone 'Europe/Amsterdam', 'HH24:MI')
-     from rides where id = '00000000-0000-0000-0000-000000080005'),
-  '09:00', '080: ... and the rider still reads back 09:00, because the zone falling back to APP_TIME_ZONE is a zone MOVE like any other');
-
--- The newly-picked arm keeps what the statement supplied, exactly as it already
--- keeps the coordinate — otherwise the pick and its zone would be cleared by the
--- same statement that supplied them.
+-- ** THE REGRESSION. ** Exactly what `updateRide` sends when the organizer edits
+-- the address and the time together: a new meeting point, a new instant resolved
+-- against the zone the form was rendering in, and no `timezone` key at all.
 update rides
-   set meeting_point = 'Praça do Comércio, Lisboa', start_place_id = 'geoapify:comercio',
-       latitude = 38.707, longitude = -9.136, timezone = 'Europe/Lisbon'
+   set meeting_point = 'Alexanderplatz, Berlin',
+       departure_at  = timestamptz '2026-09-10T08:30:00Z'   -- 09:30 in Lisbon
  where id = '00000000-0000-0000-0000-000000080005';
 select assert_eq(
-  (select (timezone = 'Europe/Lisbon' and start_place_id = 'geoapify:comercio')
+  (select to_char(departure_at at time zone coalesce(timezone, 'Europe/Amsterdam'), 'HH24:MI')
      from rides where id = '00000000-0000-0000-0000-000000080005'),
-  true, '080: a NEWLY PICKED place keeps the zone the same statement supplied, exactly as 067 keeps its coordinate — "supplied by this statement" is not decidable from a BEFORE trigger, so the test is OLD vs NEW');
-rollback to savepoint zone_clears_080;
+  '09:30', '080: changing the meeting point AND the departure time in one save still shows the rider the time they TYPED — the zone must not be cleared out from under the instant updateRide just resolved against it, which rendered 10:30 when timezone was in clear_ride_map_tiles'' group');
+select assert_eq(
+  (select timezone from rides where id = '00000000-0000-0000-0000-000000080005'),
+  'Europe/Lisbon', '080: ... because the zone SURVIVES a location change. A stale zone is the better interim — it is the previous meeting point''s, never worse than APP_TIME_ZONE for a ride that was abroad — and resolve-ride-location overwrites it when the geocode lands');
+
+-- The coordinate and the tiles DO still clear, so this is a narrowing of `067`'s
+-- group rather than a removal of it.
+select assert_eq(
+  (select (start_place_id is null and latitude is null and geocode_confidence is null)
+     from rides where id = '00000000-0000-0000-0000-000000080005'),
+  true, '080: (067''s clearing still fires on that same statement, so the assertion above is about timezone being excluded from the group and not about the trigger having stopped running)');
+
+-- And the late geocode then corrects the zone, holding the wall-clock — which is
+-- what makes carrying a stale one safe rather than merely cheaper.
+update rides set timezone = 'Europe/Berlin' where id = '00000000-0000-0000-0000-000000080005';
+select assert_eq(
+  (select to_char(departure_at at time zone 'Europe/Berlin', 'HH24:MI')
+     from rides where id = '00000000-0000-0000-0000-000000080005'),
+  '09:30', '080: ... and when the geocode finally lands the real zone, 080.3 shifts the instant so the rider STILL reads the 09:30 they typed');
+rollback to savepoint zone_survives_080;
 
 -- ---------------------------------------------------------------------------
 -- 080.6  The grants — named by ROLE, because this suite runs as the owner
@@ -16910,21 +16932,32 @@ select assert_eq(
   -- matching on `search_path=` alone answers false against a correct function.
   (select proconfig @> array['search_path=""'] from pg_proc where proname = 'enforce_ride_timezone'),
   true, '080: ... and it carries the pinned empty search_path every function in this repo does');
-select assert_eq(
-  (select count(*)::int from pg_trigger
-    where tgrelid = 'public.rides'::regclass and not tgisinternal),
-  6, '080: rides carries six non-internal triggers — 051 took it from three to four, 067 added the precedence one, and this is the sixth');
 
--- **The one thing the ORDER buys, and it is not luck.** Postgres fires BEFORE
--- row triggers in NAME order. `clear_ride_map_tiles` NULLs `new.timezone` when
--- the meeting point moves, and `enforce_ride_timezone` has to see that as the
--- zone moving — which it only does if it runs afterwards. `c` < `e` < `p`.
+-- **Every BEFORE row trigger on `rides`, in the order Postgres fires them.**
+--
+-- Not the three location ones filtered out of the set: `array_agg(... order by
+-- tgname)` returns whatever it is given in name order, so a three-name `in` list
+-- compared against those same three names sorted is a TAUTOLOGY with respect to
+-- ordering — it catches a rename and nothing else, while reading like an
+-- ordering assertion. Two triggers already sort between `clear_ride_map_tiles`
+-- and `enforce_ride_timezone` (`enforce_participation_gate`,
+-- `enforce_ride_club_audience`), and a filtered assertion is blind to a third
+-- landing there.
+--
+-- Asserting the WHOLE list is what actually pins it: any new trigger, any
+-- rename, and any change of relative position turns this red and makes whoever
+-- added it reason about `080` §2 and `067` §4 before moving on.
 select assert_eq(
   (select array_agg(tgname::text order by tgname) from pg_trigger
     where tgrelid = 'public.rides'::regclass and not tgisinternal
-      and tgname in ('clear_ride_map_tiles', 'enforce_ride_timezone', 'protect_picked_ride_location')),
-  array['clear_ride_map_tiles', 'enforce_ride_timezone', 'protect_picked_ride_location'],
-  '080: the three location triggers sort so that the zone-clearing one runs BEFORE the zone-shifting one — 080.5''s last two assertions are what that ordering buys, and a rename would break them silently');
+      and tgtype & 2 = 2),
+  array['clear_ride_map_tiles', 'enforce_participation_gate', 'enforce_ride_club_audience',
+        'enforce_ride_timezone', 'protect_picked_ride_location'],
+  '080: every BEFORE row trigger on rides, in the NAME order Postgres fires them — enforce_ride_timezone must sort AFTER clear_ride_map_tiles, because 067 clears the coordinate this ride is no longer at and 080 §2 has to read the resulting row rather than the supplied one');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.rides'::regclass and not tgisinternal),
+  6, '080: ... and six non-internal triggers in total — 051 took it from three to four, 067 added the precedence one, 080 the zone one, and the sixth is the AFTER trigger the list above deliberately excludes');
 
 rollback to savepoint ride_timezone_080;
 

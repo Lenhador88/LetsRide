@@ -92,10 +92,22 @@ export function EditRideForm({
   const [routeDescription, setRouteDescription] = useState(ride.route_description ?? '')
   // **The zone this form is TYPING IN, which follows the pick and falls back to
   // the ride's stored one** (`080`, PD-193). `updateRide` reconstructs the same
-  // answer server-side — `location?.timezone ?? previous.timezone` — so an
-  // untouched departure field resolves back to the instant already stored and
+  // answer server-side, through the same `resolveDepartureZone`, so an untouched
+  // departure field resolves back to the instant already stored and
   // `enforce_ride_timezone` is left to hold the wall-clock. Read that action's
   // comment before changing either half; they have to agree.
+  //
+  // **One window where the LABEL goes stale, and it is a label rather than a
+  // wrong write.** This reads `ride.timezone` off the cached `getRideForEdit`
+  // row; the action re-reads it fresh. If `resolve-ride-location` lands a zone
+  // while the form is open, the hint still names the old one — so a rider who
+  // then changes the time is shown "Amsterdam" while the instant is stored
+  // against the real zone. The STORED value is the correct one (wall-clock at
+  // the meeting point), and the untouched-time case is unaffected because the
+  // trigger moved `departure_at` with the zone, so the same digits still
+  // reproduce the same instant. Closing it means re-reading the ride on submit
+  // and re-labelling under the rider mid-edit, which is a worse trade than a
+  // hint that is briefly one zone behind.
   const departureZone = resolveDepartureZone(startPlace, ride.timezone)
 
   // Seeded ONCE, from the ride's own zone. It is deliberately not re-derived

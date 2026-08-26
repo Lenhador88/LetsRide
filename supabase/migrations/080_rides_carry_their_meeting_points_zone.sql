@@ -218,62 +218,51 @@ create trigger enforce_ride_timezone
   execute function public.enforce_ride_timezone();
 
 -- ---------------------------------------------------------------------------
--- §3. The zone belongs to the location group, so it clears with it
+-- §3. The zone is NOT part of the location group, and that is a decision
 -- ---------------------------------------------------------------------------
--- `067`'s `clear_ride_map_tiles` already treats a ride's location as one group
--- that moves together: change the meeting point and the coordinate, the vendor
--- score and both tiles go, because they all describe a place the ride is no
--- longer at. The zone is the same kind of fact about the same place, and leaving
--- it behind would keep a ride in Lisbon time after its start moved to Berlin,
--- until a geocode happened to land.
+-- `067`'s `clear_ride_map_tiles` treats a ride's location as one group that
+-- moves together: change the meeting point and the coordinate, the vendor score
+-- and both tiles go, because they all describe a place the ride is no longer at.
+-- The obvious next step is to put `timezone` in that group. **It was, and it was
+-- wrong — measured on DEV before this file merged, so the reasoning is worth
+-- keeping rather than the code.**
 --
--- The two arms are the ones that file already draws, for its reasons:
---   * a NEWLY PICKED place — the statement supplied a zone with the pick, so it
---     is kept exactly as the coordinate is kept.
---   * anything else — the location is being cleared, so the zone goes with it.
---     §2 then shifts `departure_at` back to `APP_TIME_ZONE` wall-clock, which is
---     the same instant the rider is looking at.
+-- ** Clearing the zone pulls it out from under the writer that just resolved
+--    against it. ** `updateRide` builds `departure_at` with
+--    `wallClockToUtc(typed, resolveDepartureZone(location, previous.timezone))`
+--    — the zone the edit form was RENDERING in, which is the only zone that
+--    reproduces the digits the rider is looking at. A statement that changes the
+--    meeting point *and* the departure time therefore carries an instant
+--    expressed in a zone that `clear_ride_map_tiles` is about to drop, and §2's
+--    guard correctly declines to shift it, because the statement did move the
+--    instant. Measured: a ride at 09:00 Lisbon, saved with a new address and
+--    09:30 typed, stored 08:30Z with a NULL zone and rendered **10:30**. The
+--    rider is shown an hour they did not type, on their own screen, on save.
 --
--- Replaced whole rather than patched: this is a function body, so the last
--- definition wins and filename order settles it. That is NOT the `044`/`046`
--- hazard, which is about absolute GRANT lists reinstating a revoked column.
-
-create or replace function public.clear_ride_map_tiles()
-returns trigger
-language plpgsql
-security invoker
-set search_path = ''
-as $$
-begin
-  if new.start_place_id is not null
-     and new.start_place_id is distinct from old.start_place_id then
-    -- A newly picked place. Keep its coordinate AND its zone; a pick carries no
-    -- vendor score, and both tiles were rendered for the PREVIOUS point.
-    new.geocode_confidence := null;
-    new.map_card_path      := null;
-    new.map_detail_path    := null;
-  else
-    new.start_place_id     := null;
-    new.latitude           := null;
-    new.longitude          := null;
-    new.geocode_confidence := null;
-    new.map_card_path      := null;
-    new.map_detail_path    := null;
-    new.timezone           := null;
-  end if;
-  return new;
-end;
-$$;
-
-comment on function public.clear_ride_map_tiles() is
-  'Clears a ride''s location, its zone and both tile paths when meeting_point or start_place_id changes (051, rewritten by 067, extended by 080). The one exception is a NEWLY PICKED place — start_place_id non-NULL and distinct from OLD — whose coordinate and timezone are kept while the confidence and both tiles are cleared, because 051''s BEFORE trigger otherwise discards a pick supplied by the same statement as the text (measured on DEV 2026-08-18). "Supplied by this statement" is not decidable from a BEFORE trigger, so the test is a difference between OLD and NEW and it fails in the clearing direction. timezone joins the group in 080 for the same reason the coordinate is in it: it is a fact about the place the ride is no longer at, and enforce_ride_timezone then shifts departure_at back to APP_TIME_ZONE wall-clock. Scoped by the trigger''s WHEN to an actual meeting_point or start_place_id change: propagate_club_privacy_to_rides bulk-updates is_public across a club and touches neither, so no ride there loses its location — an unscoped version would wipe every tile in that club the moment it turned private.';
-
--- `protect_picked_ride_location` is deliberately NOT extended. It fires only
--- when a statement moves a picked ride's latitude, longitude or confidence, and
+-- That is the precise defect this whole file exists to prevent, arriving through
+-- the one path §2 cannot see. The control case — address changed, time
+-- untouched — was correct throughout, which is what made it asymmetric rather
+-- than obvious.
+--
+-- ** So the zone survives a location change, and a stale zone is the better
+--    interim. ** Until the geocode lands it is the zone of the previous meeting
+--    point, which for a ride being moved within a region is usually right and is
+--    never worse than `APP_TIME_ZONE` for a ride that was abroad. `067`'s
+--    trigger is left exactly as it was; nothing in this file replaces it.
+--
+-- ** `updateRide` does not clear it either, on the same reasoning. ** Its
+--    `pickCleared` branch NULLs `start_place_id`, the coordinate and the vendor
+--    score — all provenance for a POINT — and leaves `timezone` alone, because
+--    the ride still meets at the place the TEXT names and that place still has a
+--    clock.
+--
+-- What remains true: the only writers of this column are ones that know a better
+-- answer, and §2 holds the wall-clock whenever one of them moves it.
+--
+-- `protect_picked_ride_location` is likewise untouched. It fires only when a
+-- statement moves a picked ride's latitude, longitude or confidence, and
 -- `resolve-ride-location` writes none of those — nor a timezone — for a picked
 -- ride: its coordinate is the rider's own and its zone came with the pick.
--- Adding `timezone` to that trigger's WHEN would make it fire on statements it
--- does not fire on today, to guard a write nothing issues.
 
 -- ---------------------------------------------------------------------------
 -- §4. Grants — ADDITIVE, per operation, never a re-stated list
