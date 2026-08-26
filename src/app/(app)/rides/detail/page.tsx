@@ -9,7 +9,7 @@ import { RideAttendanceBar } from '@/components/rides/RideAttendanceBar'
 import { RideChatRow } from '@/components/rides/RideChatRow'
 import { RideCrewRail } from '@/components/rides/RideCrewRail'
 import { RideHeader } from '@/components/rides/RideHeader'
-import { RideJournalEmpty } from '@/components/rides/RideJournal'
+import { RideJournal } from '@/components/rides/RideJournal'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { ExpandableText } from '@/components/ui/ExpandableText'
 import { SectionHeader } from '@/components/ui/SectionHeader'
@@ -244,7 +244,7 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
           `private.is_ride_crew`, so only the crew is offered the tile. */}
       <section className="flex flex-col gap-2">
         <SectionHeader title="Journal" className="py-0" />
-        <RideJournalEmpty canAdd={isCrew} />
+        <RideJournal rideId={ride.id} canAdd={isCrew} />
       </section>
 
       {/* The count this rail draws is the one that was removed from this screen

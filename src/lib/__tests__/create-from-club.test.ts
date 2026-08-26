@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { seedClubId } from '@/lib/clubs/seed-club-id'
-import { CREATE_CLUB_PARAM, backFromCreateScreen, routes } from '@/lib/routes'
+import { seedRideId } from '@/lib/rides/seed-ride-id'
+import { CREATE_CLUB_PARAM, CREATE_RIDE_PARAM, backFromCreateScreen, routes } from '@/lib/routes'
 
 /**
  * The two pure halves of "creating from a club stays in the club" (PD-283) —
@@ -16,6 +17,7 @@ import { CREATE_CLUB_PARAM, backFromCreateScreen, routes } from '@/lib/routes'
  */
 const CLUB = '11111111-2222-4333-8444-555555555555'
 const OTHER = '99999999-8888-4777-8666-555555555555'
+const RIDE = '22222222-3333-4444-8555-666666666666'
 
 describe('seedClubId', () => {
   const clubs = [{ id: CLUB }, { id: OTHER }]
@@ -42,32 +44,70 @@ describe('seedClubId', () => {
   })
 })
 
-describe('backFromCreateScreen', () => {
-  it('returns the club when the id is a well-formed uuid', () => {
-    expect(backFromCreateScreen(CLUB, '/rides')).toBe(routes.club(CLUB))
+describe('seedRideId', () => {
+  const rides = [{ id: RIDE }, { id: OTHER }]
+
+  it('seeds a ride the rider is actually crew of', () => {
+    expect(seedRideId(rides, RIDE)).toBe(RIDE)
   })
 
-  it('falls back to the screen’s own tab root when there is no club', () => {
-    expect(backFromCreateScreen(null, '/rides')).toBe('/rides')
-    expect(backFromCreateScreen(undefined, '/postcards')).toBe('/postcards')
-    expect(backFromCreateScreen('', '/postcards')).toBe('/postcards')
+  it('falls back to no ride when the id is not one of theirs', () => {
+    // Same failure `seedClubId` prevents: a controlled `<select>` whose value
+    // matches no option renders as the FIRST option while reporting the
+    // unmatched value, so the composer would show one ride and submit another.
+    expect(seedRideId(rides, '00000000-0000-4000-8000-000000000000')).toBe('')
+  })
+
+  it('falls back when the parameter is absent, empty or null', () => {
+    expect(seedRideId(rides, null)).toBe('')
+    expect(seedRideId(rides, undefined)).toBe('')
+    expect(seedRideId(rides, '')).toBe('')
+  })
+
+  it('falls back when the rider is crew of no rides at all', () => {
+    expect(seedRideId([], RIDE)).toBe('')
+  })
+})
+
+describe('backFromCreateScreen', () => {
+  it('returns the club when the id is a well-formed uuid', () => {
+    expect(backFromCreateScreen({ club: CLUB }, '/rides')).toBe(routes.club(CLUB))
+  })
+
+  it('returns the ride when the id is a well-formed uuid', () => {
+    expect(backFromCreateScreen({ ride: RIDE }, '/postcards')).toBe(routes.ride(RIDE))
+  })
+
+  it('prefers the ride when both are present (PD-256)', () => {
+    // Only the postcard composer can ever carry both — the ride's own club is
+    // a prefill, not a second "opened from".
+    expect(backFromCreateScreen({ club: CLUB, ride: RIDE }, '/postcards')).toBe(routes.ride(RIDE))
+  })
+
+  it('falls back to the screen’s own tab root when there is neither', () => {
+    expect(backFromCreateScreen({ club: null }, '/rides')).toBe('/rides')
+    expect(backFromCreateScreen({ club: undefined }, '/postcards')).toBe('/postcards')
+    expect(backFromCreateScreen({ club: '' }, '/postcards')).toBe('/postcards')
+    expect(backFromCreateScreen({}, '/postcards')).toBe('/postcards')
   })
 
   it('falls back rather than building a link to a 404', () => {
     // A malformed id would produce `/clubs/detail?id=not-a-uuid`, whose read
     // answers null and whose page calls `notFound()`. A blunt back destination
     // beats a back button that lands on Not Found.
-    expect(backFromCreateScreen('not-a-uuid', '/rides')).toBe('/rides')
-    expect(backFromCreateScreen('../../etc/passwd', '/rides')).toBe('/rides')
-    expect(backFromCreateScreen('https://example.com', '/rides')).toBe('/rides')
+    expect(backFromCreateScreen({ club: 'not-a-uuid' }, '/rides')).toBe('/rides')
+    expect(backFromCreateScreen({ club: '../../etc/passwd' }, '/rides')).toBe('/rides')
+    expect(backFromCreateScreen({ club: 'https://example.com' }, '/rides')).toBe('/rides')
+    expect(backFromCreateScreen({ ride: 'not-a-uuid' }, '/postcards')).toBe('/postcards')
   })
 
-  it('can only ever produce a club route, whatever it is handed', () => {
+  it('can only ever produce a club or ride route, whatever it is handed', () => {
     // The property that makes this safe without `back-navigation.ts`'s
     // BACK_ORIGINS allowlist: the input is an id, not a path, so there is no
-    // open redirect to close. Every accepted value goes through routes.club.
+    // open redirect to close. Every accepted value goes through routes.club
+    // or routes.ride.
     for (const candidate of [CLUB, OTHER]) {
-      expect(backFromCreateScreen(candidate, '/rides')).toBe(routes.club(candidate))
+      expect(backFromCreateScreen({ club: candidate }, '/rides')).toBe(routes.club(candidate))
     }
   })
 })
@@ -83,7 +123,19 @@ describe('the club-carrying links', () => {
     for (const link of [rideLink, postcardLink]) {
       const carried = new URLSearchParams(link.split('?')[1]).get(CREATE_CLUB_PARAM)
       expect(carried).toBe(CLUB)
-      expect(backFromCreateScreen(carried, '/rides')).toBe(routes.club(CLUB))
+      expect(backFromCreateScreen({ club: carried }, '/rides')).toBe(routes.club(CLUB))
     }
+  })
+})
+
+describe('the ride-carrying link (PD-256)', () => {
+  it('round-trips through the parameter the postcard composer reads', () => {
+    const postcardLink = routes.newPostcardInRide(RIDE)
+
+    expect(postcardLink).toBe(`/postcards/new?${CREATE_RIDE_PARAM}=${RIDE}`)
+
+    const carried = new URLSearchParams(postcardLink.split('?')[1]).get(CREATE_RIDE_PARAM)
+    expect(carried).toBe(RIDE)
+    expect(backFromCreateScreen({ ride: carried }, '/postcards')).toBe(routes.ride(RIDE))
   })
 })

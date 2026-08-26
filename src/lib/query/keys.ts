@@ -60,7 +60,7 @@
  * | `addComment` / `deleteComment` — `/postcards`, `` `/postcards/${id}` `` | `postcards.all()`. **`deleteComment`'s is now unconditional**, which closes a recorded KNOWN GAP for free: the path needed an id the caller could not always read |
  * | `hidePostcard` / `unhidePostcard` — `/postcards` | `postcards.all()` |
  * | `likePostcard` / `unlikePostcard` — `/postcards`, `` `/postcards/${id}` ``, `` `/clubs/${club}` `` | `postcards.all()` + `clubs.detail(club)` |
- * | `createPostcard` — same three | same |
+ * | `createPostcard` — same three | same, **plus** `postcards.journal(ride_id)` when tagged (PD-256) — widened rather than translated, so a photo tagged from a ride's Journal appears there on the navigation that lands the rider back in it |
  * | `deletePostcard` — same three | same |
  * | `updateProfile`, `setProfileImage`, `addCountry`, `removeCountry` — `/profile` ×4 | `profile.all()` ×4 |
  * | `setRideAttendance` — `/rides`, `` `/rides/${id}` ``, `` `/rides/${id}/crew` `` | `rides.all()` — **wider**: it also reaches `rides.filters()`, whose attendee collage an RSVP moves and which `revalidatePath('/rides')` only covered by accident of rendering on that route |
@@ -227,6 +227,20 @@ export const queryKeys = {
     filters: (): QueryKey => ['postcards', 'filters'],
     detail: (postcardId: string): QueryKey => ['postcards', 'detail', postcardId],
     comments: (postcardId: string): QueryKey => ['postcards', 'detail', postcardId, 'comments'],
+    /**
+     * A ride's Journal (`041`, PD-256) — the postcards tagged to one ride,
+     * read by `getRideJournal` through `ride_journal_postcard_ids`.
+     *
+     * **Under `postcards`, not nested in `rides.detail` beside `crew` and
+     * `messages`.** Those are ride-owned resources reached by a ride's own
+     * mutations; a Journal entry is a `postcards` row a ride id merely filters,
+     * and its only writer is `createPostcard` — which already invalidates
+     * `postcards.all()` on every insert, tagged or not. Keeping this key under
+     * the same prefix is what let that one call site widen by a single extra
+     * `invalidate()` rather than reaching across into a different top-level
+     * group it does not otherwise touch.
+     */
+    journal: (rideId: string): QueryKey => ['postcards', 'journal', rideId],
   },
 
   /**
@@ -262,6 +276,20 @@ export const queryKeys = {
      * device from being shown these.
      */
     recentStarts: (): QueryKey => ['rides', 'recentStarts'],
+    /**
+     * The postcard composer's Ride select (PD-256), `getCrewRides` — the same
+     * role `clubs.mine()` plays for the Club select, kept a separate leaf
+     * rather than reusing `list(filterSegment.mine())`: that key answers a
+     * different question (the paginated upcoming/past `/rides?mine` screen)
+     * in a different shape, and sharing one cache entry between the two is
+     * exactly the collision this file's header warns about.
+     *
+     * **No call site is added for it, matching `recentStarts` above.** Under
+     * `rides` because `rides.all()` is what can actually move the set — a
+     * ride created, joined or left — and `createRide`/`setRideAttendance`
+     * already invalidate that prefix.
+     */
+    crewOptions: (): QueryKey => ['rides', 'crewOptions'],
     detail: (rideId: string): QueryKey => ['rides', 'detail', rideId],
     crew: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'crew'],
     /**

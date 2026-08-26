@@ -9,6 +9,7 @@ import type {
   EmbeddedClub,
   PublicProfile,
   RecentRideStart,
+  Ride,
   RideAttendance,
   RideCrew,
   RideCrewMember,
@@ -899,4 +900,62 @@ export function dedupeRecentStarts(rows: RecentStartRow[]): RecentRideStart[] {
   }
 
   return starts
+}
+
+/** The postcard composer's Ride select — narrower than `RideListItem`, the
+ * same shape `getMyClubs`' `ClubOption` gives the audience selector. */
+export type RideOption = Pick<Ride, 'id' | 'title' | 'club_id'>
+
+/** Bounds each of `getCrewRides`' two queries — see `RIDES_PAGE_SIZE`'s
+ * own note on why an unbounded read here is the trap `FEED_PAGE_SIZE` closes
+ * for postcards. */
+const CREW_RIDES_SCAN_LIMIT = 30
+
+/**
+ * The rides this rider is crew of, for the postcard composer's Ride select
+ * (PD-256) — exactly the set `041`'s INSERT policy admits (`private
+ * .is_ride_crew`), so the picker can never offer an option the write gate will
+ * refuse.
+ *
+ * Two queries and a merge, mirroring `readRides`'s `mine` filter: an organizer
+ * who has also RSVP'd is on both arms and must appear once. `club_id` travels
+ * with each row so the composer can prefill its Club select from whichever
+ * ride the rider picks (`seedRideId`'s caller) — a read the postcard's own
+ * audience rule never sees, since `041`'s tag and `club_id` are orthogonal
+ * (design.md §D4).
+ */
+export async function getCrewRides(): Promise<RideOption[]> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const [organized, joined] = await Promise.all([
+    supabase
+      .from('rides')
+      .select('id, title, club_id, created_at')
+      .eq('organizer_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(CREW_RIDES_SCAN_LIMIT),
+    // Aliased `!inner` embed, same shape `readRides` uses for `mine`: the join
+    // filters the rides rather than widening the columns selected.
+    supabase
+      .from('rides')
+      .select('id, title, club_id, created_at, mine:ride_members!inner(user_id)')
+      .eq('mine.user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(CREW_RIDES_SCAN_LIMIT),
+  ])
+
+  const rows = [
+    ...unwrapList(organized, 'the rides you organise'),
+    ...unwrapList(joined, 'your rides'),
+  ] as unknown as (RideOption & { created_at: string })[]
+
+  const byId = new Map<string, RideOption & { created_at: string }>()
+  for (const row of rows) if (!byId.has(row.id)) byId.set(row.id, row)
+
+  return [...byId.values()]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, CREW_RIDES_SCAN_LIMIT)
+    .map(({ id, title, club_id }) => ({ id, title, club_id }))
 }

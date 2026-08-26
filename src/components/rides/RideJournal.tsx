@@ -1,43 +1,134 @@
+'use client'
+
 import Link from 'next/link'
 import { ImageIcon, PlusIcon } from '@/components/icons/generated'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { getRideJournal } from '@/lib/data/postcards'
+import { useQuery } from '@/lib/query'
+import { queryKeys } from '@/lib/query/keys'
+import { routes } from '@/lib/routes'
+import { formatPostcardDate } from '@/lib/utils'
 
 /**
- * The ride Journal's **empty state, and only that** (PD-254).
+ * The ride Journal section on the ride plan (PD-254, PD-256) — a horizontal
+ * strip of square tiles, the ride-side twin of `ClubPostcardCarousel`. That
+ * component's own header records it was modelled on this one's carousel look
+ * while `postcards.ride_id` had no writer and every ride's Journal was
+ * therefore always empty; now that PD-256 closes the write half, the two are
+ * close to literal twins — same tile size, same `bg-track` recessed fill,
+ * same tap-through to the postcard's own thread. They stay two components
+ * rather than one shared one because their empty states differ (crew-gated
+ * `Add` here, membership-gated messaging there) and because a club's feed is
+ * never actually empty, so `ClubPostcardCarousel` never had to draw a
+ * placeholder tile at all until this file's decision to draw rather than hide
+ * gave it one to copy.
  *
- * Nothing in the app writes `postcards.ride_id` yet — `041` added the column and
- * the grant, `tag-postcards-to-rides` group 4 is the half that fills it — so
- * every ride's journal is empty and this is the whole of what can be drawn
- * truthfully today. The photo tiles, the sequence line and the journal route are
- * PD-257's.
- *
- * **The section is drawn rather than hidden**, which is the decision worth
- * recording: a section nobody has seen is a feature nobody knows exists, and
- * empty is the state every ride starts in. So it says what it is waiting for.
+ * **Reads its own data — `queryKeys.postcards.journal(rideId)` through
+ * `getRideJournal`** — the same shape `RideCrewRail` reads `rides.crew(id)`,
+ * rather than the ride plan page fetching it and passing rows down. One fewer
+ * thing the page's own gate has to know about, and the same reasoning: this
+ * section's own read failing must not take the whole plan down.
  *
  * **The SECTION is shown to anyone who can see the ride; only `Add` is crew
  * only** (PD-282). This used to be gated whole, on the argument that a
- * non-member "has no `Add` to be offered and no photos to be shown" — the first
- * half is true and the second was not.
+ * non-member "has no `Add` to be offered and no photos to be shown" — the
+ * first half is true and the second was not.
  * `public.ride_journal_postcard_ids` (`062`) gates on `private.can_read_ride`
- * plus `011`'s postcard SELECT qual and **says nothing about crew membership**,
- * so the database has always been willing to show a ride's photos to anyone who
- * can open the ride. The gate was the UI inventing a rule the policy does not
- * have, on the screen a rider reads while deciding whether to join.
+ * plus `011`'s postcard SELECT qual and **says nothing about crew
+ * membership**, so the database has always been willing to show a ride's
+ * photos to anyone who can open the ride. `Add` stays crew-only for the
+ * opposite reason — it is the database's rule rather than the UI's: tagging
+ * requires `private.is_ride_crew` (`041`), so the tile would be a promise the
+ * insert refuses.
  *
- * `Add` stays crew-only for the opposite reason — it is the database's rule
- * rather than the UI's. Tagging requires `private.is_ride_crew` (`041`), so the
- * tile would be a promise the insert refuses.
+ * ## The three read states, and why loading and a failure both fall to empty
  *
- * ## `Add` posts a postcard; it does not yet tag one to this ride
- *
- * The composer takes no ride, so a photo added from here lands in the rider's
- * feed and not in this journal — which is why the tile below is honest about
- * being empty rather than promising the photo will appear. PD-256 is the write
- * half that closes it, and it is blocked on this screen existing to put the
- * `Add` on. Recorded here rather than inferred later: this link is complete only
- * once the composer carries the ride.
+ * `undefined` draws two skeleton tiles at the loaded layout's own size, so
+ * nothing jumps when the read lands. A **failed** read falls back to
+ * `RideJournalEmpty` rather than an `ErrorState` — the same call
+ * `RideCrewRail` makes for its own roster, and for the same reason: this is a
+ * secondary strip on a screen whose own `ErrorState` already owns the case
+ * where the *ride* could not be read, and a red panel where a handful of
+ * photos should be is worse than the placeholder this section already drew
+ * for its whole life until today. The Journal's own seven-state screen
+ * (loading/error/offline/etc, told apart properly) is PD-257's dedicated
+ * route, not this preview.
  */
-export function RideJournalEmpty({ canAdd }: { canAdd: boolean }) {
+export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolean }) {
+  const journal = useQuery(queryKeys.postcards.journal(rideId), () => getRideJournal(rideId))
+
+  // Checked ahead of `!journal.data`, which a failed read leaves `undefined`
+  // forever — without this branch the skeleton below would never resolve to
+  // anything for a rider whose read keeps failing.
+  if (journal.error) return <RideJournalEmpty canAdd={canAdd} rideId={rideId} />
+
+  if (!journal.data) {
+    return (
+      <div className="flex gap-2 px-4">
+        <Skeleton className="aspect-square min-w-0 flex-1 rounded-lg" />
+        <Skeleton className="aspect-square min-w-0 flex-1 rounded-lg" />
+      </div>
+    )
+  }
+
+  if (journal.data.length === 0) return <RideJournalEmpty canAdd={canAdd} rideId={rideId} />
+
+  return (
+    <div className="flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {journal.data.map((postcard) => (
+        <Link
+          key={postcard.id}
+          href={routes.postcard(postcard.id)}
+          aria-label={
+            postcard.caption?.trim() || `Postcard from ${formatPostcardDate(postcard.created_at)}`
+          }
+          className="aspect-square w-28 shrink-0 overflow-hidden rounded-lg bg-track"
+        >
+          {postcard.image_url ? (
+            // A signed URL that expires hourly — see `PostcardCard`'s identical
+            // note on why next/image is the wrong tool for it.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={postcard.image_url}
+              alt={postcard.caption ?? ''}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              draggable={false}
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-muted">
+              <ImageIcon className="h-6 w-6 opacity-60" aria-hidden="true" />
+            </div>
+          )}
+        </Link>
+      ))}
+
+      {canAdd && (
+        <Link
+          href={routes.newPostcardInRide(rideId)}
+          className="flex aspect-square w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
+        >
+          <PlusIcon className="h-6 w-6" aria-hidden="true" />
+          <span className="text-xs font-semibold">Add</span>
+        </Link>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The ride Journal's empty state (PD-254) — drawn rather than hidden, which is
+ * the decision worth recording: a section nobody has seen is a feature nobody
+ * knows exists, and empty is the state every ride starts in. So it says what
+ * it is waiting for.
+ *
+ * **`Add` now tags the postcard it creates to this ride** (PD-256) —
+ * `routes.newPostcardInRide`, not a bare `/postcards/new`. Until this change
+ * the tile was honest about being empty because the composer took no ride and
+ * a photo added from here could never appear here; that gap is what this
+ * closes, so the tile's promise is now one the write path keeps.
+ */
+export function RideJournalEmpty({ canAdd, rideId }: { canAdd: boolean; rideId: string }) {
   return (
     <div className="flex gap-2 px-4">
       {/* `min-w-0` on both, and it is the difference between a matched pair and
@@ -70,7 +161,7 @@ export function RideJournalEmpty({ canAdd }: { canAdd: boolean }) {
           which is what the mock's relationship actually looks like here. */}
       {canAdd && (
         <Link
-          href="/postcards/new"
+          href={routes.newPostcardInRide(rideId)}
           className="flex aspect-square min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
         >
           <PlusIcon className="h-6 w-6" aria-hidden="true" />

@@ -181,7 +181,7 @@
 
 ## 4. Code — reads, writes, screens
 
-- [ ] 4.1 `src/types/index.ts`: `Postcard` gains **neither** `ride_id` **nor the embedded ride**, and
+- [x] 4.1 `src/types/index.ts`: `Postcard` gains **neither** `ride_id` **nor the embedded ride**, and
   the second half is the one that will surprise whoever picks this up. `062` revoked the client's
   SELECT on the column, so `POSTCARD_SELECT` cannot name it — and a PostgREST embed
   `rides(…)` on a postcard read is a join whose predicate references `postcards.ride_id`, which
@@ -189,7 +189,7 @@
   takes 4.3 with it. See the note under 4.3 before designing around it.
   (This task read *"gains `ride_id: string | null`… `POSTCARD_SELECT` is `*`, so the raw id arrives
   everywhere"*; PD-165 ended the `*` and PD-166 ended the grant.)
-- [ ] 4.2 `src/lib/data/postcards.ts`: `getRideJournal(rideId)` — two steps, because `062` moved the
+- [x] 4.2 `src/lib/data/postcards.ts`: `getRideJournal(rideId)` — two steps, because `062` moved the
   filter: `supabase.rpc('ride_journal_postcard_ids', { ride: rideId })` for the ids, then
   `POSTCARD_SELECT` with `.in('id', ids)`. **Order it in the second query** —
   `.order('created_at', { ascending: false }).order('id', { ascending: false })`. **Both keys, and
@@ -219,13 +219,13 @@
   PD-166 closed. That is the owner's call and it belongs in PD-257's proposal, not in a task list.
   What survives unchanged either way: **no second lookup on a raw id, ever** — there is no longer a
   raw id to look up.
-- [ ] 4.4 `src/lib/data/rides.ts`: the crew-rides list backing the composer's select — exactly the set
+- [x] 4.4 `src/lib/data/rides.ts`: the crew-rides list backing the composer's select — exactly the set
   the write gate admits, so the picker cannot offer an option the database refuses.
-- [ ] 4.5 `src/lib/validation/`: `postcardRideIdSchema`, `''` → `null`, mirroring
+- [x] 4.5 `src/lib/validation/`: `postcardRideIdSchema`, `''` → `null`, mirroring
   `postcardClubIdSchema`. Message only — the guarantee is `041`'s.
-- [ ] 4.6 `src/lib/actions/postcards.ts`: `createPostcard` carries `rideId`. **No `updatePostcard`,
+- [x] 4.6 `src/lib/actions/postcards.ts`: `createPostcard` carries `rideId`. **No `updatePostcard`,
   and no retag action** — the column has no UPDATE grant.
-- [ ] 4.7 `src/lib/query/keys.ts`: a `journal(rideId)` key under the `postcards` group, plus its row
+- [x] 4.7 `src/lib/query/keys.ts`: a `journal(rideId)` key under the `postcards` group, plus its row
   in the header table. `createPostcard` widens its existing invalidation to reach it. **No
   `feed_reads` key or watermark is touched** — the Journal has no unread concept, so `markFeedSeen`
   and `club_unread_counts()` are unchanged and the Journal writes no watermark on open.
@@ -235,7 +235,7 @@
 - [ ] 4.9 All seven states from `ride-journal`: empty (crew and non-crew variants), loading, error with
   retry, offline (cached-with-marker / `OfflineState`), permission-denied collapsed into empty with the
   decision written down, partial, stale.
-- [ ] 4.10 ~~`RidePageMenu` gains the Journal row~~ — **void as written, 2026-08-17: `RidePageMenu`
+- [x] 4.10 ~~`RidePageMenu` gains the Journal row~~ — **void as written, 2026-08-17: `RidePageMenu`
   is deleted (PD-254).** The sub-page switcher it was is gone, and with it the sheet a Journal row
   would have been added to. What replaces this task: the ride plan already renders a `Journal`
   section (`RideJournalEmpty`, crew only), so there is no row to add and no absence to explain —
@@ -243,9 +243,9 @@
   component: **the doc comment recording why the Journal has no content must go in the same change
   that gives it content**, because a comment describing a state that has ended is the next
   session's wrong fact. It currently lives in `src/components/rides/RideJournal.tsx`.
-- [ ] 4.11 `CreatePostcardForm` gains the Ride select (Q2's default until answered), and the Journal's
+- [x] 4.11 `CreatePostcardForm` gains the Ride select (Q2's default until answered), and the Journal's
   sticky action deep-links to `/postcards/new?ride=<id>` — pre-filled, never hidden.
-- [ ] 4.12 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
+- [x] 4.12 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
 - [ ] 4.13 `npm run walk` against DEV — the only gate that renders anything. The Journal is a new
   detail route and the walk discovers detail routes from lists; confirm it reaches this one and does
   not silently skip it (a shrunken `N/N` is a skip, not a pass). Read
@@ -256,11 +256,11 @@
 - [ ] 5.1 `CLAUDE.md` §Supabase Rules: the `postcards` row gains `ride_id` — *a tag, never the
   audience; `club_id` is still the audience* — and the applied-state line moves to 41 with its
   verification command intact.
-- [ ] 5.2 `docs/reference/product-scope.md`: the Rides row loses "Journal needs `postcards.ride_id`"; the
+- [x] 5.2 `docs/reference/product-scope.md`: the Rides row loses "Journal needs `postcards.ride_id`"; the
   Inbox row's excluded notification keeps its entry with an updated reason (the column now exists; the
   fan-out helper does not).
 - [ ] 5.3 `docs/HANDOFF.md`: position, each claim beside the command that verifies it.
-- [ ] 5.4 `npm run docs:check` — the numeric doc-claims registry.
+- [x] 5.4 `npm run docs:check` — the numeric doc-claims registry.
 - [ ] 5.5 File the two defects from `proposal.md` §Two defects as Linear issues, labelled
   `Database`: the client-writable `postcards.created_at`, and the note that `is_ride_crew` is one RSVP
   away on a public ride so nothing anti-spam may be built on it.

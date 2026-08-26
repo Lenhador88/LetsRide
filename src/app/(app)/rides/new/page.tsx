@@ -53,7 +53,7 @@ function NewRideScreen() {
 
   return (
     <>
-      <Header title="Create ride" backHref={backFromCreateScreen(fromClub, '/rides')} />
+      <Header title="Create ride" backHref={backFromCreateScreen({ club: fromClub }, '/rides')} />
 
       <div className="px-4 pb-8">
         {/* The club picker is the only thing this screen reads, and a ride with

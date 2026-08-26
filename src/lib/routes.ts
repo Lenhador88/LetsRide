@@ -50,6 +50,7 @@
  */
 
 import { clubIdSchema } from '@/lib/validation/clubs'
+import { rideIdSchema } from '@/lib/validation/rides'
 
 /** The query parameter every detail route reads its id from. */
 export const DETAIL_ID_PARAM = 'id'
@@ -95,6 +96,8 @@ export const routes = {
   newRideInClub: (clubId: string) => inClub(createPaths.ride, clubId),
   /** `Add a postcard` from a club — see `CREATE_CLUB_PARAM`. */
   newPostcardInClub: (clubId: string) => inClub(createPaths.postcard, clubId),
+  /** `Add` from a ride's Journal — see `CREATE_RIDE_PARAM`. PD-256. */
+  newPostcardInRide: (rideId: string) => inRide(createPaths.postcard, rideId),
 } as const
 
 /**
@@ -117,6 +120,18 @@ export const routes = {
  */
 export const CREATE_CLUB_PARAM = 'club'
 
+/**
+ * Which ride a create screen was opened from — the same job as
+ * `CREATE_CLUB_PARAM`, one param later (PD-256). Only the postcard composer
+ * reads it: `RideJournal`'s `Add` tile — drawn by it or by `RideJournalEmpty`,
+ * whichever the ride's postcards currently render — is the one place a
+ * create screen is reached from a ride rather than a club, and it seeds the
+ * composer's Ride `<select>` and the club that ride belongs to
+ * (`seedRideId`), plus the header's back destination through
+ * `backFromCreateScreen` below.
+ */
+export const CREATE_RIDE_PARAM = 'ride'
+
 const createPaths = {
   ride: '/rides/new',
   postcard: '/postcards/new',
@@ -126,20 +141,33 @@ function inClub(path: string, clubId: string): string {
   return `${path}?${new URLSearchParams({ [CREATE_CLUB_PARAM]: clubId })}`
 }
 
+function inRide(path: string, rideId: string): string {
+  return `${path}?${new URLSearchParams({ [CREATE_RIDE_PARAM]: rideId })}`
+}
+
 /**
  * The pure half: whatever the URL carried in, an app pathname out, always.
  *
  * A malformed or absent id falls back to the tab root the screen belongs to,
  * because the alternative is a back button that lands on a 404 — worse than the
- * blunt answer it replaces. The parse is `clubIdSchema` rather than a regex of
- * this file's own, so there is one definition of "a club id" and it is the one
- * `getClub` already refuses on.
+ * blunt answer it replaces. The parse is `clubIdSchema`/`rideIdSchema` rather
+ * than a regex of this file's own, so there is one definition of each kind of
+ * id and it is the one `getClub`/`getRide` already refuse on.
  *
- * It never asks whether the club EXISTS or is VISIBLE, and it does not need to:
- * a rider sent to a club they cannot read gets that route's ordinary
+ * It never asks whether the club or ride EXISTS or is VISIBLE, and it does not
+ * need to: a rider sent to one they cannot read gets that route's ordinary
  * `notFound()`, which is the same answer they would get by typing the URL.
+ *
+ * **`ride` wins when both are present.** Only the postcard composer can ever
+ * carry both — a ride's own club is a prefill (`seedRideId`), never a second
+ * "opened from", so a rider who tagged a photo from a ride's Journal goes back
+ * to that ride rather than to the club it happens to belong to.
  */
-export function backFromCreateScreen(club: string | null | undefined, fallback: string): string {
-  if (!club || !clubIdSchema.safeParse(club).success) return fallback
-  return routes.club(club)
+export function backFromCreateScreen(
+  ids: { club?: string | null | undefined; ride?: string | null | undefined },
+  fallback: string
+): string {
+  if (ids.ride && rideIdSchema.safeParse(ids.ride).success) return routes.ride(ids.ride)
+  if (ids.club && clubIdSchema.safeParse(ids.club).success) return routes.club(ids.club)
+  return fallback
 }

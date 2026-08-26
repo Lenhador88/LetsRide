@@ -2,6 +2,7 @@ import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { resolveAvatarUrls, resolveClubImageUrls, signImagePaths } from '@/lib/data/media'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
+import { rideIdSchema } from '@/lib/validation/rides'
 import type {
   ClubFilterEmbed,
   FeedPage,
@@ -365,4 +366,53 @@ export async function getPostcard(id: string): Promise<Postcard | null> {
 
   const [postcard] = await attachLikeState(supabase, [data as unknown as PostcardRow], user?.id)
   return postcard
+}
+
+/**
+ * A ride's Journal — the postcards tagged to it, newest first (`041`,
+ * PD-256). Two steps, because `062` moved the filter off the column:
+ * `public.ride_journal_postcard_ids` (`security definer`, ids only) says which
+ * postcards belong to this ride, and this then reads those rows through the
+ * ordinary `POSTCARD_SELECT` path, under the caller's own RLS — so the
+ * `postcards` SELECT policy still decides every row that renders, exactly as
+ * it does for the feed. **No second filter by club, membership or block is
+ * applied here**: both the accessor and this read have already applied the
+ * audience rule, and a third copy is a third place for it to drift.
+ *
+ * **Both keys in the second query's order, not one.** `044` made `created_at`
+ * server-owned at transaction time, so a rider posting several tagged
+ * postcards in one transaction ties on it exactly — `id desc` is what keeps
+ * that page deterministic, matching the accessor's own `created_at desc, id
+ * desc`. `.in(…)` does not preserve the order the accessor returned its ids
+ * in, so this is the only thing that actually orders the result.
+ *
+ * `[]`, never `null` — a ride with nothing tagged to it and a ride whose
+ * Journal the viewer cannot resolve look identical from here, matching
+ * `getClubFeed`'s convention: there is no "no such ride" case for this
+ * function to report, because `getRide` already turned that into `null` for
+ * the page to act on. Unpaginated, like `getClubFeed`'s single window — the
+ * Journal's own scroll is PD-257's.
+ */
+export async function getRideJournal(rideId: string): Promise<Postcard[]> {
+  if (!rideIdSchema.safeParse(rideId).success) return []
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const ids = unwrap(
+    await supabase.rpc('ride_journal_postcard_ids', { ride: rideId }),
+    "this ride's journal",
+  )
+  if (!ids || ids.length === 0) return []
+
+  const rows = unwrapList(
+    await supabase
+      .from('postcards')
+      .select(POSTCARD_SELECT)
+      .in('id', ids)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false }),
+    "this ride's journal",
+  )
+  return attachLikeState(supabase, rows as unknown as PostcardRow[], user?.id)
 }

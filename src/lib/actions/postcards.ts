@@ -127,6 +127,7 @@ export async function createPostcard(
     imagePath: formData.get('imagePath'),
     caption: formData.get('caption'),
     clubId: formData.get('clubId'),
+    rideId: formData.get('rideId'),
     takenAt: formData.get('takenAt'),
     takenAtOffsetMinutes: formData.get('takenAtOffsetMinutes'),
     takenLatitude: formData.get('takenLatitude'),
@@ -141,6 +142,7 @@ export async function createPostcard(
     imagePath,
     caption,
     clubId,
+    rideId,
     takenAt,
     takenAtOffsetMinutes,
     takenLatitude,
@@ -171,6 +173,7 @@ export async function createPostcard(
       image_path: imagePath,
       caption,
       club_id: clubId,
+      ride_id: rideId,
       taken_at: takenAt,
       taken_at_offset_minutes: takenAtOffsetMinutes,
       taken_latitude: takenLatitude,
@@ -198,10 +201,15 @@ export async function createPostcard(
     return { error: 'Could not post that. Try again.' }
   }
 
-  // clubId is already in hand from the parsed form, so this skips the lookup
-  // invalidatePostcard would otherwise do to find it.
+  // clubId and rideId are already in hand from the parsed form, so this skips
+  // the lookup invalidatePostcard would otherwise do to find them.
   invalidate(queryKeys.postcards.all())
   if (clubId) invalidate(queryKeys.clubs.detail(clubId))
+  // PD-256. A photo tagged from a ride's Journal must appear there on the same
+  // navigation that lands the rider back in it — `postcards.all()` does not
+  // reach `postcards.journal(rideId)`, since the latter is keyed by a ride id
+  // rather than nested under it.
+  if (rideId) invalidate(queryKeys.postcards.journal(rideId))
 
   return { error: null, redirectTo: '/postcards' }
 }
