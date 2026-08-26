@@ -33,10 +33,15 @@
  * `scripts/native/__tests__/release-guards.test.mjs`.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { PROD_PROJECT_REF, RELEASE_ORIGIN, scanReleaseBundle } from './release-guards.mjs'
+import {
+  PROD_PROJECT_REF,
+  RELEASE_ORIGIN,
+  releaseVersionProblems,
+  scanReleaseBundle,
+} from './release-guards.mjs'
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const OUT = path.join(ROOT, 'out')
@@ -50,6 +55,17 @@ if (!existsSync(OUT)) {
 }
 
 const { files, refs, originFiles, problems } = scanReleaseBundle(OUT)
+
+// The update gate eating its own fix — see `releaseVersionProblems`. Read from
+// the SOURCE files rather than from `out/`: `package.json`'s version is what
+// `src/lib/version.ts` reports (its test pins them together), and
+// `public/app-version.json` is the copy about to be deployed alongside this
+// submission.
+const bundleVersion = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version
+const publishedMinimum = JSON.parse(
+  readFileSync(path.join(ROOT, 'public', 'app-version.json'), 'utf8')
+).minimum
+problems.push(...releaseVersionProblems(bundleVersion, publishedMinimum))
 
 if (problems.length > 0) {
   console.error('This bundle must not be submitted:\n')
@@ -66,6 +82,7 @@ console.log(
   `release bundle ok — ${files.length} files walked; ` +
     `Supabase ref ${PROD_PROJECT_REF} (letsride) and no other; ` +
     `canonical origin ${RELEASE_ORIGIN} in ${originFiles} ${originFiles === 1 ? 'file' : 'files'}; ` +
+    `version ${bundleVersion} at or above the published minimum ${publishedMinimum}; ` +
     `no localhost origin.\n` +
     `Refs found: ${[...refs.keys()].join(', ')}`
 )

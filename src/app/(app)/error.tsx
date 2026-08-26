@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { Button } from '@/components/ui/Button'
+import { BoundaryError } from '@/components/ui/BoundaryError'
 
 /**
  * Catches a failed read anywhere in the authenticated tree.
@@ -29,19 +29,5 @@ export default function AppError({
     console.error('Unhandled error in the app tree:', error)
   }, [error])
 
-  return (
-    <div className="mx-auto flex max-w-lg flex-col items-center gap-4 px-4 py-16 text-center">
-      <h1 className="text-2xl font-semibold text-foreground">Something went wrong</h1>
-      <p className="text-sm text-muted">
-        We could not load this screen. It is usually temporary — try again in a moment.
-      </p>
-      <Button onClick={reset} size="md" className="mt-2 w-auto">
-        Try again
-      </Button>
-      {/* The digest is Next's server-side correlation id. It is the one piece of
-          detail worth showing: it is meaningless to an attacker and it is what
-          makes a bug report findable in the logs. */}
-      {error.digest && <p className="text-2xs text-muted">Reference: {error.digest}</p>}
-    </div>
-  )
+  return <BoundaryError onRetry={reset} digest={error.digest} />
 }

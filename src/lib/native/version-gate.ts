@@ -125,14 +125,24 @@ export function readMinimumVersion(payload: unknown): string | null {
 }
 
 /**
- * One check per app launch, held here rather than re-run per navigation.
+ * One check per **document load**, held here rather than re-run per navigation.
  *
- * Same reasoning as `guard-cache.ts`'s: the answer cannot change while the app
- * is open, and PD-111 is what a boot-time read costs once it becomes a
- * per-route one. **A failed check caches its answer too**, deliberately unlike
- * `secure-store.ts`'s `configured` slot — there the retry is the point, here
- * retrying is precisely the per-navigation fetch this avoids, and the answer it
- * would be retrying for is "do not block".
+ * Same reasoning as `guard-cache.ts`'s: PD-111 is what a boot-time read costs
+ * once it becomes a per-route one. **A failed check caches its answer too**,
+ * deliberately unlike `secure-store.ts`'s `configured` slot — there the retry
+ * is the point, here retrying is precisely the per-navigation fetch this
+ * avoids, and the answer it would be retrying for is "do not block".
+ *
+ * **"Document load" is weaker than "launch" and the difference is days.** A
+ * Capacitor app resumed from the background does not reload its webview on
+ * either platform, so a rider who cold-started on Tuesday and has only
+ * backgrounded since never re-runs this — a newly published minimum reaches
+ * them when the OS evicts the process, not when it is published. There is
+ * deliberately no `resume` or `visibilitychange` listener: re-checking would
+ * mean blocking a rider **mid-use**, on a screen they were already reading, and
+ * the builds this exists to stop are the ones that fail badly enough to be
+ * cold-started soon anyway. Said plainly rather than left as an implied
+ * guarantee, because "once per launch" reads like a promise this does not make.
  */
 let launchCheck: Promise<boolean> | null = null
 
@@ -153,6 +163,15 @@ async function runCheck(): Promise<boolean> {
     // nothing and adds a way to lock everyone out of a working deployment.
     if (!Capacitor.isNativePlatform()) return false
 
+    // **This cannot bootstrap off an origin it does not trust, and that bounds
+    // what the gate can stop.** `canonicalOrigin()` inside a bundle is the baked
+    // `NEXT_PUBLIC_CANONICAL_ORIGIN` — the very value PD-188 §2 calls unfixable
+    // after shipping. So a bundle built against the *wrong backend* is
+    // stoppable (the origin is still production, the fetch succeeds, the
+    // comparison runs), and a bundle built against the *wrong origin* is not:
+    // it asks a host that answers an SSO page or nothing, and fails open for
+    // ever. `scripts/native/assert-release-bundle.mjs` is what catches that one,
+    // before submission, which is the only place it can be caught.
     const response = await fetch(`${canonicalOrigin()}${MINIMUM_VERSION_PATH}`, {
       // A cached copy is a stale copy, and the one moment this file matters is
       // the moment it has just changed.

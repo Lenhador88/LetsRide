@@ -87,15 +87,27 @@ function UpdateRequired() {
         version to carry on riding.
       </p>
       {affordance.kind === 'store-link' ? (
-        <Button
-          onClick={() => {
-            window.location.href = affordance.url
-          }}
-          size="md"
-          className="mt-2 w-auto"
-        >
-          {affordance.label}
-        </Button>
+        <>
+          <Button
+            onClick={() => {
+              window.location.href = affordance.url
+            }}
+            size="md"
+            className="mt-2 w-auto"
+          >
+            {affordance.label}
+          </Button>
+          {/* `Bridge.launchIntent` hands `market://` to `ACTION_VIEW` and then
+              swallows `ActivityNotFoundException`, returning true either way —
+              so on a device with no Play Store, which is exactly how a
+              sideloaded pre-store build reaches a tester, the button above does
+              nothing at all and says nothing. One line covers the case the code
+              cannot detect, and it is the same argument that left iOS without a
+              button. */}
+          <p className="text-2xs text-muted">
+            If nothing opens, search for LetsRide in your app store.
+          </p>
+        </>
       ) : (
         // No button, because there is no URL to put behind one until PD-232
         // creates the App Store listing — see `APPLE_APP_ID` in
