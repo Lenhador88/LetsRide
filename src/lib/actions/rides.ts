@@ -3,7 +3,7 @@ import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
 import { routes } from '@/lib/routes'
-import { readRideLocation, rideSchema } from '@/lib/validation/rides'
+import { readRideLocation, resolveDepartureZone, rideSchema } from '@/lib/validation/rides'
 import { wallClockToUtc } from '@/lib/utils'
 import type { ActionState } from '@/lib/actions/state'
 import type { RideAttendance } from '@/types'
@@ -195,7 +195,17 @@ export async function createRide(
     .insert({
       ...rest,
       ...(location ?? {}),
-      departure_at: wallClockToUtc(departure_at),
+      // **The zone is known here for a PICKED start and not for a typed one,
+      // and that asymmetry is the whole design** (`080`, PD-193). The client
+      // holds the picked place's zone at submit, so the instant is resolved
+      // against it at the only moment that matters and no correction is ever
+      // needed. A typed start has no zone yet — it comes from the geocode, and
+      // `resolve-ride-location` is fire-and-forget below — so it resolves
+      // against `APP_TIME_ZONE` and `enforce_ride_timezone` shifts it to
+      // preserve this wall-clock when the real zone lands.
+      //
+      // `null` as the stored zone because there is no ride yet to have one.
+      departure_at: wallClockToUtc(departure_at, resolveDepartureZone(location, null)),
       organizer_id: user.id,
     })
     .select('id')
@@ -401,7 +411,7 @@ export async function updateRide(
   // its previous image paths the same way and for the same reason.
   const { data: previous } = await supabase
     .from('rides')
-    .select('meeting_point, start_place_id, map_card_path, map_detail_path')
+    .select('meeting_point, start_place_id, map_card_path, map_detail_path, timezone')
     .eq('id', rideId)
     .maybeSingle()
 
@@ -444,6 +454,7 @@ export async function updateRide(
           // a confidence beside one. NULLing it is what makes "the rider chose
           // this" and "a geocoder guessed it" different rows.
           geocode_confidence: null,
+          timezone: location.timezone,
         }
       : pickCleared
         ? {
@@ -451,6 +462,10 @@ export async function updateRide(
             latitude: null,
             longitude: null,
             geocode_confidence: null,
+            // The zone came with the pick, so it goes with it. `080`'s trigger
+            // then holds the rider's wall-clock against `APP_TIME_ZONE` — the
+            // same instant they are looking at as they save.
+            timezone: null,
           }
         : {}
 
@@ -479,7 +494,26 @@ export async function updateRide(
       description,
       route_description,
       meeting_point,
-      departure_at: wallClockToUtc(departure_at),
+      // **The zone the rider was LOOKING at, which is the stored one unless
+      // this save carries a new pick** (`080`, PD-193). The edit form renders
+      // the departure input as wall-clock in `ride.timezone`, so resolving the
+      // string back against that same zone is what makes an untouched field
+      // mean an unchanged instant.
+      //
+      // Read fresh above rather than taken from the form, and the race that
+      // looks like a problem is not one: if `resolve-ride-location` landed a
+      // zone mid-edit, `enforce_ride_timezone` shifted `departure_at` with it,
+      // so the "09:00" on the rider's screen is still 09:00 in the NEW zone and
+      // the fresh read is the one that reproduces it.
+      //
+      // Through `resolveDepartureZone` rather than inline, because
+      // `EditRideForm` has to reach the same answer to LABEL the field and a
+      // second copy of the rule is how the two drift. Read that function's
+      // header before touching either side.
+      departure_at: wallClockToUtc(
+        departure_at,
+        resolveDepartureZone(location, previous?.timezone ?? null)
+      ),
       is_public,
       club_id,
       // In the SAME statement as `meeting_point` on purpose: `067`'s

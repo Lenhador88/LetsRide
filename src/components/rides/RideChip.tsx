@@ -35,7 +35,7 @@ import type { RideListItem } from '@/types'
  * design draws.
  */
 export function RideChip({ ride }: { ride: RideListItem }) {
-  const { day, month } = formatRideChipDate(ride.departure_at)
+  const { day, month } = formatRideChipDate(ride.departure_at, ride.timezone)
 
   return (
     <Link
@@ -48,7 +48,7 @@ export function RideChip({ ride }: { ride: RideListItem }) {
       </span>
       <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
         <span className="truncate text-sm font-semibold text-white">
-          {formatRideTime(ride.departure_at)}
+          {formatRideTime(ride.departure_at, ride.timezone)}
         </span>
         <span className="truncate text-sm font-medium text-background">{ride.meeting_point}</span>
       </span>

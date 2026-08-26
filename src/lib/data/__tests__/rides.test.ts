@@ -35,6 +35,7 @@ function row(overrides: Partial<RideRow> = {}): RideRow {
     title: 'Weekend cruise',
     meeting_point: 'Leiderdorp',
     departure_at: '2026-08-16T10:00:00Z',
+    timezone: null,
     organizer_id: ORGANIZER.id,
     // NULL on every ride in both databases until the render function ships.
     map_card_path: null,
@@ -347,6 +348,7 @@ describe('dedupeRecentStarts', () => {
     start_place_id: placeId,
     latitude: 52.1,
     longitude: 4.5,
+    timezone: null,
   })
 
   it('keeps the newest ride for each place and drops the repeats', () => {
@@ -384,8 +386,8 @@ describe('dedupeRecentStarts', () => {
     // confidence and no place id, and offering that back would relabel a
     // vendor's guess as the rider's own pick.
     const starts = dedupeRecentStarts([
-      { meeting_point: 'The layby past the second roundabout', start_place_id: null, latitude: 52.0, longitude: 4.0 },
-      { meeting_point: 'Half a pin', start_place_id: 'geoapify:half', latitude: 52.0, longitude: null },
+      { meeting_point: 'The layby past the second roundabout', start_place_id: null, latitude: 52.0, longitude: 4.0, timezone: null },
+      { meeting_point: 'Half a pin', start_place_id: 'geoapify:half', latitude: 52.0, longitude: null, timezone: null },
       start('geoapify:whole'),
     ])
 
@@ -400,6 +402,7 @@ describe('dedupeRecentStarts', () => {
       placeId: 'geoapify:cafe',
       lat: 52.1,
       lon: 4.5,
+      timezone: null,
     })
   })
 

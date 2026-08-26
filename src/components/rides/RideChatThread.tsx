@@ -139,10 +139,17 @@ export function RideChatThread({
               )}
             >
               {/* Reuses the ride's own time formatter rather than getting a
-                  twin: both draw `HH:mm` in `APP_TIME_ZONE`, and this file's
-                  rule about per-screen formatters exists for designs that
-                  genuinely differ. See `formatRideMessageDay`. */}
-              {formatRideTime(message.created_at)}
+                  twin: both draw `HH:mm`, and this file's rule about per-screen
+                  formatters exists for designs that genuinely differ. See
+                  `formatRideMessageDay`.
+
+                  **`null`, not `ride.timezone`, and the thread does not have it
+                  to give.** A message stamp is when it was SENT, not when the
+                  ride leaves, so it belongs on the same clock as the day
+                  separators above it — which `rideZoneDayKey` pins to
+                  `APP_TIME_ZONE` so every rider sees one thread split the same
+                  way (`080`, PD-193). */}
+              {formatRideTime(message.created_at, null)}
             </p>
           </div>
         </li>

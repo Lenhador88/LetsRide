@@ -167,10 +167,10 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
           <p className="truncate text-base font-semibold text-foreground">{ride.title}</p>
 
           <p className="flex items-center gap-2 text-sm font-medium text-muted">
-            <span>{formatRideDate(ride.departure_at)}</span>
+            <span>{formatRideDate(ride.departure_at, ride.timezone)}</span>
             {/* A 3×3 rounded rectangle in the design, i.e. a dot. */}
             <span aria-hidden className="h-[3px] w-[3px] shrink-0 rounded-full bg-muted" />
-            <span>{formatRideTime(ride.departure_at)}</span>
+            <span>{formatRideTime(ride.departure_at, ride.timezone)}</span>
           </p>
 
           <p className="truncate text-sm font-medium text-muted">{ride.meeting_point}</p>

@@ -873,7 +873,7 @@ if (isFullWalk) {
  * A list with no rows yields no path and the route is skipped rather than
  * guessed at, and it says so — a silent skip here reads as a pass.
  */
-async function discoverDetailPaths({ quiet = false } = {}) {
+async function discoverDetailPaths({ quiet = false, preferRide = null, preferClub = null } = {}) {
   const say = (m) => !quiet && console.log(m)
 
   /**
@@ -898,10 +898,20 @@ async function discoverDetailPaths({ quiet = false } = {}) {
     )
   }
 
-  const ride = await firstDetailId('/rides', '/rides/detail')
+  // **`preferRide`/`preferClub` win over the scan below, when set** (PD-306).
+  // This scan answers "is there a ride to open, at all" — the first one in
+  // DOM order, owned by nobody in particular — which is a different question
+  // from "does the signed-in rider own one", the one `discoverOwned` answers.
+  // The two were conflated here once: `provision()` used to be gated on THIS
+  // scan finding nothing, so the moment DEV held a real rider's public ride,
+  // this found it, the fixture never got created, and the walk rider ended up
+  // owning nothing to edit. Falling back to the scan when nothing is owned
+  // keeps every other detail route walked exactly as before this changed —
+  // only which id wins when both exist is different.
+  const ride = preferRide ?? (await firstDetailId('/rides', '/rides/detail'))
   if (!ride) say('  (no rides to open — /rides/detail and its crew unwalked)')
 
-  const club = await firstDetailId('/clubs', '/clubs/detail')
+  const club = preferClub ?? (await firstDetailId('/clubs', '/clubs/detail'))
   if (!club) say('  (no clubs to open — /clubs/detail and its sub-pages unwalked)')
 
   const postcard = await firstDetailId('/postcards', '/postcards/detail')
@@ -963,6 +973,101 @@ async function discoverDetailPaths({ quiet = false } = {}) {
 }
 
 /**
+ * How many "mine" candidates `discoverOwned` probes per kind before giving up
+ * — PD-306. Each probe is a full page load plus up to a 20s wait (see
+ * `probeOwnsEditable`), so an unbounded scan of every ride a rider has
+ * organized or joined could cost minutes on a rider with a long history. The
+ * "mine" surfaces put the likeliest candidate first in the common case (an
+ * account's own fixture ride sorts before ones it merely joined), so a small
+ * bound rarely costs more than the first probe.
+ */
+const MAX_OWNERSHIP_PROBES = 3
+
+/**
+ * Does the signed-in rider own the ride/club at `id` — i.e. does
+ * `/{kind}s/detail/edit?id=<id>` render the owner-only `is_public` control.
+ * PD-101: both edit routes answer 200 for a non-owner too, drawing a "not
+ * yours" message rather than 404ing, so the response status proves nothing —
+ * the control's presence is the only signal available from outside.
+ *
+ * Factored out of `checkEditRetention`, which used to run this probe inline
+ * against whichever candidate `discoverDetailPaths` had already found.
+ * `discoverOwned` below is its other caller, and the reason there is now two:
+ * discovery answers "is there a row to open", never "does this rider own it".
+ *
+ * **`state: 'attached'`, not the default `'visible'`.** `Checkbox`'s real
+ * input is `className="peer sr-only"` — visually hidden, not absent — and
+ * requiring visibility would make this agree with an `attached` check only by
+ * accident, on the current CSS: a future move to `hidden`/zero-size would
+ * make an OWNED form read as "not yours" everywhere this is called.
+ *
+ * **`waitForSelector`, `.catch()`ed rather than left to reject.** An uncaught
+ * rejection on a genuine "not yours" candidate would take the whole calling
+ * phase down with it. A fixed sleep short enough to be cheap can read the
+ * field before an owned form's data — fetched through the relay, one round
+ * trip slower than a direct connection — has actually arrived, misreading an
+ * owned candidate as "not yours" and skipping it.
+ */
+async function probeOwnsEditable(kind, id) {
+  await page.goto(`${BASE}/${kind}s/detail/edit?id=${id}`, { waitUntil: 'networkidle' }).catch(() => {})
+  return page
+    .waitForSelector('form [name="is_public"]', { state: 'attached', timeout: 20_000 })
+    .then(() => true)
+    .catch(() => false)
+}
+
+/**
+ * What the signed-in rider actually owns, probed rather than merely
+ * discovered — PD-306. `discoverDetailPaths` finds *a* ride and *a* club to
+ * open; this finds one this rider can edit, which is a narrower question and
+ * the one `provision()` needs answered before deciding whether to create
+ * anything.
+ *
+ * Candidates come from the cheapest correct surface for each kind:
+ * `/rides?filter=mine` (organizer ∪ `ride_members` — `readRides`'s `mine`
+ * arm, per `src/lib/data/rides.ts` — so a joined-but-not-organized candidate
+ * still has to be probed, it is not assumed owned) and `/clubs` (the rider's
+ * own club list — `getYourClubs`, joined ∪ owned the same way). Each list is
+ * scanned for `?id=` links in DOM order and probed with `probeOwnsEditable`,
+ * up to `MAX_OWNERSHIP_PROBES`; the first that renders `is_public` wins.
+ */
+async function discoverOwned() {
+  const candidateIds = async (listPath, detailPath) => {
+    await page.goto(`${BASE}${listPath}`, { waitUntil: 'networkidle' }).catch(() => {})
+    await page.waitForTimeout(800)
+    return page.evaluate(
+      ([p]) => [
+        ...new Set(
+          [...document.querySelectorAll('a[href]')]
+            .map((a) => new URL(a.href, location.origin))
+            .filter((u) => u.pathname === p)
+            .map((u) => u.searchParams.get('id'))
+            .filter((id) => id && /^[0-9a-f-]{36}$/.test(id))
+        ),
+      ],
+      [detailPath]
+    )
+  }
+
+  const findOwned = async (kind, ids) => {
+    for (const id of ids.slice(0, MAX_OWNERSHIP_PROBES)) {
+      if (await probeOwnsEditable(kind, id)) return id
+    }
+    return null
+  }
+
+  // Sequential, not `Promise.all` — both calls drive the one shared `page`,
+  // and two concurrent `page.goto`s on it would race each other's navigation.
+  const rideIds = await candidateIds('/rides?filter=mine', '/rides/detail')
+  const clubIds = await candidateIds('/clubs', '/clubs/detail')
+
+  return {
+    ride: await findOwned('ride', rideIds),
+    club: await findOwned('club', clubIds),
+  }
+}
+
+/**
  * ## Fixtures — because a skip reads exactly like a pass
  *
  * `9/9 screens rendered clean` against an empty database is not a green run, it
@@ -972,10 +1077,12 @@ async function discoverDetailPaths({ quiet = false } = {}) {
  * therefore skipped every time.
  *
  * So the walk provisions what it needs — but only what is *missing*, which is
- * what keeps it idempotent. A DEV that already has a ride gets nothing new, so
- * repeated runs cannot silt the database up, and no cleanup pass is needed
- * (there is nothing to distinguish "mine" from "the owner's" afterwards, which
- * is exactly the kind of deletion nobody should be writing).
+ * what keeps it idempotent. **"Missing" is ownership, never mere existence**
+ * (PD-306) — `discoverOwned` above is what decides it, so a rider who already
+ * owns a ride and a club gets nothing new even on a DEV full of other riders'
+ * public rows, and repeated runs cannot silt the database up. There is still
+ * no cleanup pass: an owned fixture is never deleted, on a shared database
+ * that is not this harness's to clean.
  *
  * **It creates them through the UI rather than through SQL, and that is the
  * point rather than a shortcut.** Submitting `/rides/new` and `/clubs/new`
@@ -1093,8 +1200,18 @@ function fixturesPermitted(ref) {
   return refWritable(ref, 'create fixtures')
 }
 
-async function provision({ ride, club }) {
-  if (!ride) {
+/**
+ * Creates whatever `wanted` asks for through the app's own forms, and returns
+ * the id of each row actually created — read straight off `page.url()` after
+ * the redirect, rather than re-discovered through a list (PD-306). Both
+ * actions redirect to `routes.ride(id)`/`routes.club(id)` on success, and a
+ * row reached that way is owned by construction: no probe needed, unlike
+ * every other id this file has to establish ownership of.
+ */
+async function provision(wanted) {
+  const created = { ride: null, club: null }
+
+  if (wanted.ride) {
     // A year out, not ten days, and the reason changed shape rather than going
     // away. `getRides` used to drop a departed ride entirely, so a short-dated
     // fixture aged off /rides and the next run created another that nothing
@@ -1116,9 +1233,10 @@ async function provision({ ride, club }) {
       page.click('button[type="submit"]'),
     ])
     await page.waitForTimeout(1200)
+    created.ride = new URL(page.url()).searchParams.get('id')
   }
 
-  if (!club) {
+  if (wanted.club) {
     await page.goto(`${BASE}/clubs/new`, { waitUntil: 'networkidle' })
     await page.fill('input[name="name"]', 'Walk fixture club')
     await Promise.all([
@@ -1126,48 +1244,69 @@ async function provision({ ride, club }) {
       page.click('button[type="submit"]'),
     ])
     await page.waitForTimeout(1200)
+    created.club = new URL(page.url()).searchParams.get('id')
   }
+
+  return created
 }
 
 let fixtureFailures = 0
 
-if (isFullWalk) {
-  let detail = await discoverDetailPaths()
+/**
+ * What the signed-in rider owns, and — when neither a ride nor a club is
+ * owned by the time the block below finishes — why not. Declared here rather
+ * than inside the `isFullWalk` block below because `checkEditRetention`'s
+ * call site, much further down, needs both: the ids to build its candidates
+ * from, and the reason for its skip message when there is nothing to build.
+ */
+let owned = { ride: null, club: null }
+let ownershipUnavailableReason = null
+// True only for the one case CLAUDE.md's "a shrunken N/N is a skip, not a
+// pass" is about: fixtures were permitted, asked for, and still did not
+// yield anything owned. Every other reason nothing is owned (fixtures off,
+// or the project is not writable) is a legitimate skip.
+let ownershipGapIsFailure = false
 
-  if (!detail.ride || !detail.club) {
+if (isFullWalk) {
+  owned = await discoverOwned()
+
+  if (!owned.ride || !owned.club) {
     const permit = fixturesPermitted(await authenticatedProjectRef())
     if (permit.ok) {
-      const wanted = { ride: !detail.ride, club: !detail.club }
-      await provision(detail)
+      const wanted = { ride: !owned.ride, club: !owned.club }
+      const created = await provision(wanted)
 
       /**
        * **Report what landed, never what was attempted.** The first version
-       * printed `+ created a ride` unconditionally, straight after the click,
-       * and re-read the lists with the skip notices silenced. A create refused
-       * by validation or RLS therefore produced
-       * `(no rides to open)` → `+ created a ride` → `9/9 screens rendered
-       * clean` → exit 0 — the precise skip-reads-as-pass failure this whole
-       * change exists to close, reintroduced inside the fix for it.
-       *
-       * So the re-read is loud, the report comes from it, and a fixture that
-       * was asked for and did not arrive fails the run. Silence about a
-       * missing fixture is the bug.
+       * printed `+ created a ride` unconditionally, straight after the click.
+       * A create refused by validation or RLS therefore produced
+       * `+ created a ride` → `9/9 screens rendered clean` → exit 0 — the
+       * precise skip-reads-as-pass failure this whole change exists to
+       * close, reintroduced inside the fix for it. So the report comes from
+       * what `provision()` actually read off the redirect, and a fixture
+       * that was asked for and did not arrive fails the run.
        */
-      detail = await discoverDetailPaths()
       for (const kind of ['ride', 'club']) {
         if (!wanted[kind]) continue
-        if (detail[kind]) {
+        if (created[kind]) {
+          owned[kind] = created[kind]
           console.log(`  + created a ${kind} through /${kind}s/new`)
         } else {
           console.log(`  ! FIXTURE FAILED — asked for a ${kind} and none appeared`)
           fixtureFailures += 1
         }
       }
-    } else if (permit.why) {
-      console.log(`  (fixtures not created — ${permit.why})`)
+      if (!owned.ride && !owned.club) {
+        ownershipUnavailableReason = 'a fixture was asked for and refused — see FIXTURE FAILED above'
+        ownershipGapIsFailure = true
+      }
+    } else {
+      ownershipUnavailableReason = permit.why ?? 'WALK_FIXTURES is not set, so nothing was provisioned'
+      if (permit.why) console.log(`  (fixtures not created — ${permit.why})`)
     }
   }
 
+  const detail = await discoverDetailPaths({ preferRide: owned.ride, preferClub: owned.club })
   paths = [...paths, ...detail.paths]
 }
 
@@ -1678,8 +1817,16 @@ async function checkCreateClubRetention() {
  *
  * Refused by a whitespace-only required field exactly as the create phase is,
  * and unable to write for the same two reasons.
+ *
+ * `candidates` arrive already believed-owned — the caller ran the same
+ * ownership probe this function used to run inline (`discoverOwned`, via
+ * `probeOwnsEditable`) before ever getting here, so the loop below is a
+ * confirmation rather than a search in the common case. `unavailable`
+ * carries why nothing is owned, for when the loop finds nothing: `{ failed,
+ * reason }`, where `failed` is true only when fixtures were permitted and
+ * asked for and still did not produce anything — see PD-306 at the caller.
  */
-async function checkEditRetention(candidates) {
+async function checkEditRetention(candidates, unavailable) {
   let bad = 0
   let ran = 0
   const report = (ok, label, detail) => {
@@ -1697,48 +1844,38 @@ async function checkEditRetention(candidates) {
   // assertion below then passed against a form nothing had submitted. The
   // action's own error is the `role="status"` one.
 
-  // **The first candidate whose form actually renders.** `/rides/detail/edit`
+  // **The first candidate whose form actually renders — confirmed via
+  // `probeOwnsEditable`, the same probe `discoverOwned` already ran on each
+  // of these before this function was ever called.** `/rides/detail/edit`
   // and `/clubs/detail/edit` both answer 200 for a rider who does not own the
-  // row — they draw a "not yours" message rather than 404ing (PD-101) — and the
-  // walk discovers ids from lists that include other riders' rows. So a missing
-  // `is_public` here means "not this rider's", not "the control is gone".
-  //
-  // **A `waitForSelector` here, uncaught, is how an earlier draft of this loop
-  // once read a "not yours" candidate as a harness failure rather than a
-  // skip** — a rejected wait with nothing catching it took the whole phase
-  // down. The flat `waitForTimeout` that replaced it fixed that, but a fixed
-  // 1500ms can read the `is_public` field before an owned form's data —
-  // fetched through the relay, one round trip slower than a direct
-  // connection — has actually arrived, silently reading an owned candidate
-  // as "not yours" and falling through to the next one, skipping the
-  // `club_id` restore assertion below (the control type `retain.ts` singles
-  // out as hardest to get right). `waitForSelector` **with** a `.catch()`
-  // removes that risk without reintroducing the harness failure: it settles
-  // the moment the form is actually there, and a genuine "not yours"
-  // candidate degrades to a bounded wait instead of an uncaught rejection.
+  // row — they draw a "not yours" message rather than 404ing (PD-101) — so a
+  // re-check here rather than trusting the earlier answer outright is
+  // deliberate: it is the same bounded, `.catch()`ed wait either way (see
+  // that function's own header for why an uncaught reject or a fixed sleep
+  // both misread this), and it is what leaves `page` sitting on the chosen
+  // form afterwards, ready for the reads and the submit below.
   let chosen = null
   for (const candidate of candidates) {
-    await page.goto(`${BASE}${candidate.path}`, { waitUntil: 'networkidle' })
-    // `state: 'attached'`, not the default `'visible'` — `Checkbox`'s real
-    // input is `className="peer sr-only"` (visually hidden, not absent), and
-    // the old `isChecked(...).catch(() => null)` this replaced resolved on
-    // attachment too. Requiring visibility would make this probe agree with
-    // the old one only by accident, on the current CSS: a future move to
-    // `hidden`/zero-size would make an *owned* form read as "not yours" on
-    // both candidates, and the phase returns `{bad: 0, ran: 0}` — a skip
-    // that reads as a pass, on the one thing this file's own conventions
-    // exist to catch.
-    const rendered = await page
-      .waitForSelector(field('is_public'), { state: 'attached', timeout: 20_000 })
-      .then(() => true)
-      .catch(() => false)
-    if (rendered) {
+    if (await probeOwnsEditable(candidate.kind, candidate.id)) {
       chosen = candidate
       break
     }
   }
   if (!chosen) {
-    console.log('  (no ride or club this rider owns — not exercised)')
+    if (unavailable?.failed) {
+      // Fixtures were permitted and asked for, and still nothing came out of
+      // it — a `! FIXTURE FAILED` line already printed at the caller, and
+      // CLAUDE.md is explicit that a shrunken N/N is a skip, not a pass. So
+      // this counts as a failed assertion (`ran` and `bad` both move) rather
+      // than dropping silently out of the phase's own total, on top of the
+      // exit code the FIXTURE FAILED line already sets.
+      report(false, 'a ride or club to edit was available', unavailable.reason)
+    } else {
+      console.log(
+        `  (no ride or club this rider owns — not exercised` +
+          `${unavailable?.reason ? `: ${unavailable.reason}` : ''})`
+      )
+    }
     return { bad, ran }
   }
   console.log(`  (on ${chosen.label})`)
@@ -1939,30 +2076,19 @@ if (isFullWalk) {
   guardFailures += clubRetention.bad
   retentionRan += clubRetention.ran
 
-  // Discovered, like the screens above — with no ride to edit there is no form,
-  // and the phase says so rather than passing on an empty page.
-  const discovered = await discoverDetailPaths({ quiet: true })
+  // Built from `owned` — computed once, well above, by `discoverOwned` and
+  // (if fixtures were needed and permitted) `provision()` — never from a
+  // fresh `discoverDetailPaths()` here. That used to be a second discovery
+  // asking "is there a ride to open", the same question PD-306 is about;
+  // this phase needs "does this rider own one", which `owned` already is.
   const editCandidates = [
-    ...(discovered.ride
-      ? [
-          {
-            path: `/rides/detail/edit?id=${discovered.ride}`,
-            label: 'the ride edit form',
-            refuse: 'title',
-          },
-        ]
-      : []),
-    ...(discovered.club
-      ? [
-          {
-            path: `/clubs/detail/edit?id=${discovered.club}`,
-            label: 'the club edit form',
-            refuse: 'name',
-          },
-        ]
-      : []),
+    ...(owned.ride ? [{ kind: 'ride', id: owned.ride, label: 'the ride edit form', refuse: 'title' }] : []),
+    ...(owned.club ? [{ kind: 'club', id: owned.club, label: 'the club edit form', refuse: 'name' }] : []),
   ]
-  const edit = await checkEditRetention(editCandidates).catch((e) => {
+  const edit = await checkEditRetention(editCandidates, {
+    failed: ownershipGapIsFailure,
+    reason: ownershipUnavailableReason,
+  }).catch((e) => {
     console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
     return { bad: 1, ran: 1 }
   })

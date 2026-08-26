@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  APP_TIME_ZONE,
   countryFlagEmoji,
   defaultRideDepartureInput,
   formatNotificationStamp,
@@ -13,6 +14,7 @@ import {
   formatRideTime,
   notificationSection,
   rideDayStartUtc,
+  rideZone,
   rideZoneDayKey,
   wallClockToUtc,
   getInitials,
@@ -29,51 +31,51 @@ import {
 // exactly how the UTC bug hid here — see the timezone block further down.
 describe('formatRideDate', () => {
   it('reads as the design draws it — uppercase, weekday first, no year', () => {
-    expect(formatRideDate('2024-11-16T10:00:00Z')).toBe('SAT, 16 NOV')
-    expect(formatRideDate('2024-11-17T13:30:00Z')).toBe('SUN, 17 NOV')
+    expect(formatRideDate('2024-11-16T10:00:00Z', null)).toBe('SAT, 16 NOV')
+    expect(formatRideDate('2024-11-17T13:30:00Z', null)).toBe('SUN, 17 NOV')
   })
 
   it('puts the day before the month, as en-GB does', () => {
     // For a European rider app. An en-US ordering would read "NOV 16".
-    expect(formatRideDate('2026-01-02T09:00:00Z')).toBe('FRI, 2 JAN')
+    expect(formatRideDate('2026-01-02T09:00:00Z', null)).toBe('FRI, 2 JAN')
   })
 })
 
 describe('formatRideDateLong', () => {
   it('reads as the ride detail draws it — long weekday, sentence case, no year', () => {
-    expect(formatRideDateLong('2024-11-16T10:00:00Z')).toBe('Saturday, 16 Nov')
-    expect(formatRideDateLong('2026-01-02T09:00:00Z')).toBe('Friday, 2 Jan')
+    expect(formatRideDateLong('2024-11-16T10:00:00Z', null)).toBe('Saturday, 16 Nov')
+    expect(formatRideDateLong('2026-01-02T09:00:00Z', null)).toBe('Friday, 2 Jan')
   })
 
   it('differs from the list card only in weekday length and case', () => {
     // The two are separate functions rather than one with a flag, so this is
     // the assertion that keeps them from quietly converging.
-    expect(formatRideDate('2024-11-16T10:00:00Z')).toBe('SAT, 16 NOV')
-    expect(formatRideDateLong('2024-11-16T10:00:00Z')).toBe('Saturday, 16 Nov')
+    expect(formatRideDate('2024-11-16T10:00:00Z', null)).toBe('SAT, 16 NOV')
+    expect(formatRideDateLong('2024-11-16T10:00:00Z', null)).toBe('Saturday, 16 Nov')
   })
 
   it('keeps the comma after the weekday that en-GB omits on its own', () => {
-    expect(formatRideDateLong('2024-11-16T10:00:00Z')).toContain(', ')
+    expect(formatRideDateLong('2024-11-16T10:00:00Z', null)).toContain(', ')
   })
 })
 
 describe('formatRideChipDate', () => {
   it('splits day and month into two uppercase parts, Amsterdam wall clock', () => {
-    expect(formatRideChipDate('2024-11-16T23:30:00Z')).toEqual({ day: '17', month: 'NOV' })
-    expect(formatRideChipDate('2026-01-02T09:00:00Z')).toEqual({ day: '2', month: 'JAN' })
+    expect(formatRideChipDate('2024-11-16T23:30:00Z', null)).toEqual({ day: '17', month: 'NOV' })
+    expect(formatRideChipDate('2026-01-02T09:00:00Z', null)).toEqual({ day: '2', month: 'JAN' })
   })
 })
 
 describe('formatRideTime', () => {
   it('is a 24-hour clock, zero-padded', () => {
     // CET in November, so these are the UTC instants plus one hour.
-    expect(formatRideTime('2024-11-16T10:00:00Z')).toBe('11:00')
-    expect(formatRideTime('2024-11-17T13:30:00Z')).toBe('14:30')
-    expect(formatRideTime('2024-11-17T08:05:00Z')).toBe('09:05')
+    expect(formatRideTime('2024-11-16T10:00:00Z', null)).toBe('11:00')
+    expect(formatRideTime('2024-11-17T13:30:00Z', null)).toBe('14:30')
+    expect(formatRideTime('2024-11-17T08:05:00Z', null)).toBe('09:05')
   })
 
   it('does not roll midnight over to 24:00', () => {
-    expect(formatRideTime('2024-11-16T23:00:00Z')).toBe('00:00')
+    expect(formatRideTime('2024-11-16T23:00:00Z', null)).toBe('00:00')
   })
 })
 
@@ -89,20 +91,20 @@ describe('formatRideTime', () => {
  */
 describe('ride times are Amsterdam wall clock, not the server’s', () => {
   it('applies the +2 summer offset (CEST)', () => {
-    expect(formatRideTime('2024-07-16T10:00:00Z')).toBe('12:00')
+    expect(formatRideTime('2024-07-16T10:00:00Z', null)).toBe('12:00')
   })
 
   it('applies the +1 winter offset (CET), so DST is handled rather than fixed', () => {
-    expect(formatRideTime('2024-11-16T10:00:00Z')).toBe('11:00')
+    expect(formatRideTime('2024-11-16T10:00:00Z', null)).toBe('11:00')
   })
 
   it('rolls the date with the time, so the two helpers cannot disagree', () => {
     // 23:30 UTC is already the next day in Amsterdam. The date helpers have to
     // move with the clock or a ride reads "Saturday" over "00:30 Sunday".
     const lateUtc = '2024-11-16T23:30:00Z'
-    expect(formatRideTime(lateUtc)).toBe('00:30')
-    expect(formatRideDate(lateUtc)).toBe('SUN, 17 NOV')
-    expect(formatRideDateLong(lateUtc)).toBe('Sunday, 17 Nov')
+    expect(formatRideTime(lateUtc, null)).toBe('00:30')
+    expect(formatRideDate(lateUtc, null)).toBe('SUN, 17 NOV')
+    expect(formatRideDateLong(lateUtc, null)).toBe('Sunday, 17 Nov')
   })
 })
 
@@ -349,6 +351,139 @@ describe('countryFlagEmoji', () => {
   })
 })
 
+
+/**
+ * `080` (PD-193) — a ride carries the zone its meeting point is in, and every
+ * `formatRide*` helper reads it.
+ *
+ * **The same trap governs this whole block as governs the two above it.**
+ * `vitest.config.ts` pins `TZ=UTC`, so an implementation that ignored its `zone`
+ * argument entirely would still pass any assertion whose expected value happens
+ * to be the UTC one. Every assertion here therefore asserts an OFFSET the runner
+ * does not have — and the summer/winter pairs assert that the offset is looked
+ * up per instant rather than fixed, which is the half a constant cannot fake.
+ */
+describe('rideZone', () => {
+  it('answers with the ride’s own zone when the runtime can format in it', () => {
+    expect(rideZone('Europe/Lisbon')).toBe('Europe/Lisbon')
+    expect(rideZone('America/New_York')).toBe('America/New_York')
+  })
+
+  it('falls back for "we do not know", which is what NULL means on the column', () => {
+    expect(rideZone(null)).toBe(APP_TIME_ZONE)
+    expect(rideZone(undefined)).toBe(APP_TIME_ZONE)
+    expect(rideZone('')).toBe(APP_TIME_ZONE)
+  })
+
+  /**
+   * The reason this function exists rather than the formatters reading the
+   * column directly. `080`'s trigger validates against `pg_timezone_names`,
+   * which is the SERVER's table; ICU's is a different one, so a name can be
+   * stored legitimately and still be unknown here. `Intl.DateTimeFormat` throws
+   * a RangeError on an unknown `timeZone`, and from inside a ride card that
+   * takes down every screen the ride appears on.
+   */
+  it('falls back rather than throwing on a zone this runtime cannot format in', () => {
+    expect(rideZone('Mars/Olympus_Mons')).toBe(APP_TIME_ZONE)
+    expect(rideZone('not a zone at all')).toBe(APP_TIME_ZONE)
+  })
+
+  it('is what the formatters go through, so an unusable zone degrades everywhere', () => {
+    // The assertion that matters is that none of these throw. Falling back to
+    // APP_TIME_ZONE is exactly what the ride did before it had a column.
+    expect(formatRideTime('2024-11-16T10:00:00Z', 'Mars/Olympus_Mons')).toBe('11:00')
+    expect(formatRideDate('2024-11-16T10:00:00Z', 'Mars/Olympus_Mons')).toBe('SAT, 16 NOV')
+    expect(formatRideDateLong('2024-11-16T10:00:00Z', 'Mars/Olympus_Mons')).toBe('Saturday, 16 Nov')
+    expect(formatRideChipDate('2024-11-16T23:30:00Z', 'Mars/Olympus_Mons')).toEqual({
+      day: '17',
+      month: 'NOV',
+    })
+    expect(formatRideDepartureInput('2024-11-16T10:00:00Z', 'Mars/Olympus_Mons')).toBe(
+      '2024-11-16T11:00'
+    )
+    expect(wallClockToUtc('2024-11-16T11:00', 'Mars/Olympus_Mons')).toBe('2024-11-16T10:00:00.000Z')
+  })
+
+  it('answers the same on the second call, because the answer is memoised', () => {
+    // The cache is keyed on the string, so a repeat must not be a different
+    // answer — which a `Map` that stored a falsy value would produce.
+    expect(rideZone('Europe/Lisbon')).toBe(rideZone('Europe/Lisbon'))
+    expect(rideZone('Mars/Olympus_Mons')).toBe(rideZone('Mars/Olympus_Mons'))
+  })
+})
+
+describe('a ride reads in its own zone, not the app’s', () => {
+  // 10:00 UTC. Amsterdam is CEST (+2) in July; Lisbon is WEST (+1); New York is
+  // EDT (-4). Three different wall-clocks for one instant.
+  const summer = '2024-07-16T10:00:00Z'
+
+  it('draws the clock at the MEETING POINT, which is the whole story', () => {
+    expect(formatRideTime(summer, null)).toBe('12:00')
+    expect(formatRideTime(summer, 'Europe/Lisbon')).toBe('11:00')
+    expect(formatRideTime(summer, 'America/New_York')).toBe('06:00')
+  })
+
+  it('looks the offset up per instant, so DST is handled rather than fixed', () => {
+    // Lisbon is +1 in July and +0 in January. A fixed per-zone offset passes the
+    // line above and fails this one.
+    expect(formatRideTime('2024-07-16T10:00:00Z', 'Europe/Lisbon')).toBe('11:00')
+    expect(formatRideTime('2024-01-16T10:00:00Z', 'Europe/Lisbon')).toBe('10:00')
+  })
+
+  it('rolls the date with the time in the ride’s zone, not the app’s', () => {
+    // 02:30 UTC is already the 17th in Amsterdam and still the 16th in New York.
+    const lateUtc = '2024-11-17T02:30:00Z'
+    expect(formatRideDate(lateUtc, null)).toBe('SUN, 17 NOV')
+    expect(formatRideDate(lateUtc, 'America/New_York')).toBe('SAT, 16 NOV')
+    expect(formatRideDateLong(lateUtc, 'America/New_York')).toBe('Saturday, 16 Nov')
+    expect(formatRideChipDate(lateUtc, 'America/New_York')).toEqual({ day: '16', month: 'NOV' })
+  })
+})
+
+describe('a ride WRITES in its own zone, which is the half the read side cannot fix', () => {
+  /**
+   * PD-193's worked example, end to end. An organizer in Lisbon types 09:00 and
+   * every rider — including the one standing at the meeting point — must read
+   * 09:00 back. Before the zone column they read 08:00.
+   */
+  it('round-trips the organizer’s typed wall-clock through storage', () => {
+    const stored = wallClockToUtc('2026-08-16T09:00', 'Europe/Lisbon')
+    expect(stored).toBe('2026-08-16T08:00:00.000Z')
+    expect(formatRideTime(stored, 'Europe/Lisbon')).toBe('09:00')
+  })
+
+  it('means a DIFFERENT instant per zone for the same typed string', () => {
+    // The defect this closes: one string, one instant, wherever the ride was.
+    expect(wallClockToUtc('2026-08-16T09:00', null)).toBe('2026-08-16T07:00:00.000Z')
+    expect(wallClockToUtc('2026-08-16T09:00', 'Europe/Lisbon')).toBe('2026-08-16T08:00:00.000Z')
+    expect(wallClockToUtc('2026-08-16T09:00', 'America/New_York')).toBe('2026-08-16T13:00:00.000Z')
+  })
+
+  it('keeps the two-pass DST correction per zone rather than per app', () => {
+    // New York springs forward at 02:00 on 2026-03-08 and Amsterdam does not
+    // move that day at all, so the two disagree about this exact input. A single
+    // -5 offset would answer 07:30Z for both lines.
+    expect(wallClockToUtc('2026-03-08T02:30', 'America/New_York')).toBe('2026-03-08T06:30:00.000Z')
+    expect(wallClockToUtc('2026-03-08T02:30', null)).toBe('2026-03-08T01:30:00.000Z')
+  })
+
+  it('round-trips through the edit form’s input, in a zone that is not the app’s', () => {
+    // `formatRideDepartureInput` -> `wallClockToUtc` is the edit screen's whole
+    // loop: an untouched departure field must reproduce the stored instant, or
+    // saving a renamed ride moves it. `080`'s trigger relies on exactly this.
+    const stored = '2026-08-16T08:00:00.000Z'
+    expect(formatRideDepartureInput(stored, 'Europe/Lisbon')).toBe('2026-08-16T09:00')
+    expect(wallClockToUtc(formatRideDepartureInput(stored, 'Europe/Lisbon'), 'Europe/Lisbon')).toBe(
+      stored
+    )
+
+    const winter = '2026-01-05T09:00:00.000Z'
+    expect(wallClockToUtc(formatRideDepartureInput(winter, 'Europe/Lisbon'), 'Europe/Lisbon')).toBe(
+      winter
+    )
+  })
+})
+
 /**
  * The write-side counterpart to the `formatRide*` timezone tests below.
  *
@@ -359,11 +494,11 @@ describe('countryFlagEmoji', () => {
  */
 describe('wallClockToUtc', () => {
   it('reads a summer wall clock as CEST (UTC+2)', () => {
-    expect(wallClockToUtc('2026-08-16T10:00')).toBe('2026-08-16T08:00:00.000Z')
+    expect(wallClockToUtc('2026-08-16T10:00', null)).toBe('2026-08-16T08:00:00.000Z')
   })
 
   it('reads a winter wall clock as CET (UTC+1)', () => {
-    expect(wallClockToUtc('2026-11-16T10:00')).toBe('2026-11-16T09:00:00.000Z')
+    expect(wallClockToUtc('2026-11-16T10:00', null)).toBe('2026-11-16T09:00:00.000Z')
   })
 
   /**
@@ -373,19 +508,19 @@ describe('wallClockToUtc', () => {
    */
   it('is correct on both sides of the DST transition', () => {
     // 2026-03-29 02:00 CET -> 03:00 CEST.
-    expect(wallClockToUtc('2026-03-29T01:00')).toBe('2026-03-29T00:00:00.000Z')
-    expect(wallClockToUtc('2026-03-29T04:00')).toBe('2026-03-29T02:00:00.000Z')
+    expect(wallClockToUtc('2026-03-29T01:00', null)).toBe('2026-03-29T00:00:00.000Z')
+    expect(wallClockToUtc('2026-03-29T04:00', null)).toBe('2026-03-29T02:00:00.000Z')
     // 2026-10-25 03:00 CEST -> 02:00 CET.
-    expect(wallClockToUtc('2026-10-25T04:00')).toBe('2026-10-25T03:00:00.000Z')
+    expect(wallClockToUtc('2026-10-25T04:00', null)).toBe('2026-10-25T03:00:00.000Z')
   })
 
   it('round-trips through the reader it exists to agree with', () => {
-    expect(formatRideTime(wallClockToUtc('2026-08-16T20:00'))).toBe('20:00')
-    expect(formatRideTime(wallClockToUtc('2026-01-05T07:45'))).toBe('07:45')
+    expect(formatRideTime(wallClockToUtc('2026-08-16T20:00', null), null)).toBe('20:00')
+    expect(formatRideTime(wallClockToUtc('2026-01-05T07:45', null), null)).toBe('07:45')
   })
 
   it('accepts a value that already carries seconds', () => {
-    expect(wallClockToUtc('2026-08-16T10:00:30')).toBe('2026-08-16T08:00:30.000Z')
+    expect(wallClockToUtc('2026-08-16T10:00:30', null)).toBe('2026-08-16T08:00:30.000Z')
   })
 
   /**
@@ -397,16 +532,16 @@ describe('wallClockToUtc', () => {
   it('resolves the ambiguous autumn hour to its second occurrence, so it round-trips', () => {
     // 02:30 happens twice on 2026-10-25. Picking CET (+1) means formatRideTime
     // draws back exactly what the organizer typed.
-    expect(wallClockToUtc('2026-10-25T02:30')).toBe('2026-10-25T01:30:00.000Z')
-    expect(formatRideTime(wallClockToUtc('2026-10-25T02:30'))).toBe('02:30')
+    expect(wallClockToUtc('2026-10-25T02:30', null)).toBe('2026-10-25T01:30:00.000Z')
+    expect(formatRideTime(wallClockToUtc('2026-10-25T02:30', null), null)).toBe('02:30')
   })
 
   it('lands the nonexistent spring hour on the following hour', () => {
     // 02:30 does not exist on 2026-03-29 — the clock jumps 02:00 to 03:00. There
     // is no instant to return, so this is the conventional choice and the only
     // input in the year that does not round-trip.
-    expect(wallClockToUtc('2026-03-29T02:30')).toBe('2026-03-29T01:30:00.000Z')
-    expect(formatRideTime(wallClockToUtc('2026-03-29T02:30'))).toBe('03:30')
+    expect(wallClockToUtc('2026-03-29T02:30', null)).toBe('2026-03-29T01:30:00.000Z')
+    expect(formatRideTime(wallClockToUtc('2026-03-29T02:30', null), null)).toBe('03:30')
   })
 })
 
@@ -418,26 +553,26 @@ describe('wallClockToUtc', () => {
  */
 describe('formatRideDepartureInput', () => {
   it('renders a summer instant as CEST (UTC+2) wall-clock', () => {
-    expect(formatRideDepartureInput('2026-08-16T08:00:00.000Z')).toBe('2026-08-16T10:00')
+    expect(formatRideDepartureInput('2026-08-16T08:00:00.000Z', null)).toBe('2026-08-16T10:00')
   })
 
   it('renders a winter instant as CET (UTC+1) wall-clock', () => {
-    expect(formatRideDepartureInput('2026-11-16T09:00:00.000Z')).toBe('2026-11-16T10:00')
+    expect(formatRideDepartureInput('2026-11-16T09:00:00.000Z', null)).toBe('2026-11-16T10:00')
   })
 
   it('round-trips through wallClockToUtc, which is the whole reason it exists', () => {
     // A rider re-opening the edit form must see back exactly what a save
     // wrote — the round trip an edit screen has and a create screen cannot.
     const stored = '2026-08-16T18:00:00.000Z'
-    expect(wallClockToUtc(formatRideDepartureInput(stored))).toBe(stored)
+    expect(wallClockToUtc(formatRideDepartureInput(stored, null), null)).toBe(stored)
 
     const winterStored = '2026-01-05T06:45:00.000Z'
-    expect(wallClockToUtc(formatRideDepartureInput(winterStored))).toBe(winterStored)
+    expect(wallClockToUtc(formatRideDepartureInput(winterStored, null), null)).toBe(winterStored)
   })
 
   it('renders midnight as 00:00, not 24:00', () => {
     // 2026-08-16T00:00 CEST is 2026-08-15T22:00Z.
-    expect(formatRideDepartureInput('2026-08-15T22:00:00.000Z')).toBe('2026-08-16T00:00')
+    expect(formatRideDepartureInput('2026-08-15T22:00:00.000Z', null)).toBe('2026-08-16T00:00')
   })
 })
 
@@ -582,9 +717,9 @@ describe('defaultRideDepartureInput', () => {
   // hour out — 09:00Z in summer, 08:00Z... the other way round in winter.
   it('seeds a value that resolves to 10:00 Amsterdam in summer and in winter', () => {
     at('2026-07-01T09:00:00Z')
-    expect(wallClockToUtc(defaultRideDepartureInput())).toBe('2026-07-02T08:00:00.000Z')
+    expect(wallClockToUtc(defaultRideDepartureInput(), null)).toBe('2026-07-02T08:00:00.000Z')
 
     at('2026-12-01T09:00:00Z')
-    expect(wallClockToUtc(defaultRideDepartureInput())).toBe('2026-12-02T09:00:00.000Z')
+    expect(wallClockToUtc(defaultRideDepartureInput(), null)).toBe('2026-12-02T09:00:00.000Z')
   })
 })

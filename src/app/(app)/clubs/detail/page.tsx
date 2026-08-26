@@ -280,7 +280,11 @@ function ClubScreen() {
           <p className="flex items-center gap-1.5 px-4 text-sm font-medium text-muted">
             <TypeIcon className="h-5 w-5 shrink-0" aria-hidden="true" />
             {club.data.is_public ? 'Public club' : 'Private club'} · Started{' '}
-            {formatRideDateLong(club.data.created_at)}
+            {/* `null` is the zone: a club's founding date is not a ride's
+                departure, so there is no meeting point whose clock it should
+                follow — it renders in `APP_TIME_ZONE` like every non-ride stamp
+                (`080`, PD-193). */}
+            {formatRideDateLong(club.data.created_at, null)}
           </p>
 
           {/* Its own line rather than a third clause on the one above: that

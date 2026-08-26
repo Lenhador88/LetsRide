@@ -179,6 +179,16 @@ export type RideListItem = {
   meeting_point: string
   departure_at: string
   /**
+   * The IANA zone the meeting point is in (`080`, PD-193), or `null` when the
+   * ride does not carry one — every ride created before that column, and any
+   * place whose provider sent no zone.
+   *
+   * **Every `formatRide*` call on this row takes it.** `null` is not an omission
+   * there: it resolves to `APP_TIME_ZONE`, which is what these times meant
+   * before the column existed.
+   */
+  timezone: string | null
+  /**
    * The chip above the title. Null for a ride that belongs to no club.
    *
    * Name only, no image: `RideCard` draws this as a text chip. The ride *detail*
@@ -274,6 +284,16 @@ export type RideDetail = {
   route_description: string | null
   meeting_point: string
   departure_at: string
+  /**
+   * The IANA zone the meeting point is in (`080`, PD-193), or `null` when the
+   * ride does not carry one — every ride created before that column, and any
+   * place whose provider sent no zone.
+   *
+   * **Every `formatRide*` call on this row takes it.** `null` is not an omission
+   * there: it resolves to `APP_TIME_ZONE`, which is what these times meant
+   * before the column existed.
+   */
+  timezone: string | null
   club_id: string | null
   organizer_id: string
   organizer: PublicProfile | null
@@ -336,6 +356,16 @@ export type RideForEdit = {
   route_description: string | null
   meeting_point: string
   departure_at: string
+  /**
+   * The IANA zone the meeting point is in (`080`, PD-193), or `null` when the
+   * ride does not carry one — every ride created before that column, and any
+   * place whose provider sent no zone.
+   *
+   * **Every `formatRide*` call on this row takes it.** `null` is not an omission
+   * there: it resolves to `APP_TIME_ZONE`, which is what these times meant
+   * before the column existed.
+   */
+  timezone: string | null
   is_public: boolean
   club_id: string | null
   /**
@@ -391,6 +421,15 @@ export type RecentRideStart = {
   placeId: string
   lat: number
   lon: number
+  /**
+   * The zone that place was in on the ride it is remembered from (`080`,
+   * PD-193), or `null` for a start remembered before the column existed.
+   *
+   * Carried so re-picking a recent start is the same write as picking it fresh
+   * out of the search sheet. Without it a rider's most-used meeting point would
+   * be the one place that never learns its own clock.
+   */
+  timezone: string | null
 }
 
 export type RideCrewMember = {
@@ -1109,6 +1148,22 @@ export type PlaceSearchResult = {
    * clubs and rides ignore it, and it costs them nothing to carry.
    */
   countryCode: string | null
+  /**
+   * The IANA zone the place is in, or `null` when the vendor sent none —
+   * `search-places/shape.ts`'s `toPlaceResult` (`080`, PD-193).
+   *
+   * **The whole reason a PICKED ride never needs its clock corrected.** The
+   * client holds this at submit, so it goes into the same INSERT as
+   * `departure_at` and `wallClockToUtc` resolves against it at the one moment
+   * the rider is looking at the number. A typed start has no zone until
+   * `resolve-ride-location` geocodes it, which is after the insert by
+   * requirement — hence `080`'s wall-clock-preserving trigger.
+   *
+   * Null on every result until `search-places` is REDEPLOYED: the repo's copy
+   * reads this field, and neither project runs the repo's copy. A picked ride
+   * falls back to `APP_TIME_ZONE` until then, which is what it did before.
+   */
+  timezone: string | null
 }
 
 /**
