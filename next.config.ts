@@ -197,6 +197,49 @@ const webConfig: NextConfig = {
   async redirects() {
     return LEGACY_DETAIL_REDIRECTS
   },
+  /**
+   * The one file the native shell reads from the web origin, and the one that
+   * therefore needs a CORS header.
+   *
+   * `src/lib/native/version-gate.ts` fetches `app-version.json` from
+   * `canonicalOrigin()` so a build already on a phone can be told it is too old.
+   * The webview's own origin is `https://localhost` (`capacitor.config.ts`'s
+   * `androidScheme`) or `capacitor://localhost` on iOS, so that is a
+   * **cross-origin** read, and this app has never made one to its own web host
+   * before — every other cross-origin call goes to Supabase or an Edge Function,
+   * both of which answer with their own CORS headers.
+   *
+   * Nothing here answered with one: this config declared no `headers()` at all,
+   * and files under `public/` are served as plain static assets. So the fetch
+   * would have been blocked, the gate would have failed open — which is its
+   * correct behaviour on any failure — and it would have done nothing, for ever,
+   * with nothing red anywhere. A feature that silently no-ops is worse than an
+   * absent one, because it reads as covered.
+   *
+   * **Scoped to the one path, and `*` is right for it.** The file holds a single
+   * version string, it is already world-readable at that URL, and the shell's
+   * origin is not a value this can enumerate — `capacitor://localhost` and
+   * `https://localhost` differ by platform and by Capacitor version, so naming
+   * them is a list that goes stale into a lockout rather than an error.
+   *
+   * **`webConfig` only, deliberately.** `headers()` is inert under
+   * `output: 'export'` — there is no server in a bundle to send them — and the
+   * bundle carries its own copy of this file anyway. It is the *deployed* copy
+   * that matters, which is what an absolute origin fetches.
+   *
+   * Not measured against the live host: `app.letsride.social` is outside this
+   * container's network policy (`connect_rejected`, 403 at CONNECT). What is
+   * measured is this repo — no `headers()` existed — and the fix costs nothing
+   * if the platform were somehow already sending one.
+   */
+  async headers() {
+    return [
+      {
+        source: '/app-version.json',
+        headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }],
+      },
+    ]
+  },
 }
 
 const capacitorConfig: NextConfig = {
