@@ -28,6 +28,39 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkRedirects } from './export-guards.mjs'
 
+/**
+ * The one header rule the native shell depends on, asserted for the same reason
+ * the redirects above are: it is invisible when it breaks.
+ *
+ * `src/lib/native/version-gate.ts` fetches `app-version.json` from the web
+ * origin, and the webview's own origin (`https://localhost`, or
+ * `capacitor://localhost` on iOS) makes that cross-origin. Without
+ * `Access-Control-Allow-Origin` the read is blocked, the gate fails open — its
+ * correct behaviour on any failure — and the whole mechanism silently does
+ * nothing, with nothing red anywhere. That is the failure `next.config.ts`'s own
+ * comment argues against, and until this check existed a config edit could
+ * reintroduce it without a single gate noticing.
+ */
+function checkVersionCors(headers) {
+  const rule = headers.find((entry) => entry.source === '/app-version.json')
+  if (!rule) {
+    return [
+      'no headers rule for /app-version.json — the native update gate reads that file ' +
+        'cross-origin from the webview, so without Access-Control-Allow-Origin the fetch is ' +
+        'blocked and the gate silently never fires. See next.config.ts.',
+    ]
+  }
+  const allows = (rule.headers ?? []).some(
+    (header) => header.key?.toLowerCase() === 'access-control-allow-origin'
+  )
+  return allows
+    ? []
+    : [
+        'the headers rule for /app-version.json carries no Access-Control-Allow-Origin — ' +
+          'the native update gate cannot read the file without it.',
+      ]
+}
+
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const problems = []
 
@@ -55,6 +88,7 @@ if (!existsSync(manifestPath)) {
 } else {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
   problems.push(...checkRedirects(manifest.redirects ?? []))
+  problems.push(...checkVersionCors(manifest.headers ?? []))
 }
 
 if (problems.length > 0) {
@@ -64,4 +98,7 @@ if (problems.length > 0) {
   process.exit(1)
 }
 
-console.log('web build ok — server build, no out/, and all 10 legacy detail links still resolve')
+console.log(
+  'web build ok — server build, no out/, all 10 legacy detail links still resolve, ' +
+    'and app-version.json is readable cross-origin'
+)

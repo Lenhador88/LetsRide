@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Poppins } from 'next/font/google'
 import { RouteGuard } from '@/components/auth/RouteGuard'
+import { UpdateGate } from '@/components/native/UpdateGate'
 import './globals.css'
 
 const poppins = Poppins({
@@ -143,11 +144,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`h-full ${poppins.variable}`}>
       <body className="min-h-full bg-background text-foreground font-sans antialiased">
-        {/* The root layout and not `(app)`'s, because three of the rules the
-            guard enforces are about paths outside that group: bouncing a
-            signed-in rider off /auth/login, sending an un-onboarded one into
-            the wizard, and resolving /. */}
-        <RouteGuard>{children}</RouteGuard>
+        {/* Outside the guard, because a build too old to run is too old
+            whoever is holding it — signed out, mid-onboarding or ten clubs
+            deep. It renders `children` untouched until it knows otherwise, so
+            it costs nothing on the web, where it never even asks. */}
+        <UpdateGate>
+          {/* The root layout and not `(app)`'s, because three of the rules the
+              guard enforces are about paths outside that group: bouncing a
+              signed-in rider off /auth/login, sending an un-onboarded one into
+              the wizard, and resolving /. */}
+          <RouteGuard>{children}</RouteGuard>
+        </UpdateGate>
       </body>
     </html>
   )
