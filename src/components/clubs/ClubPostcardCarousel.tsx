@@ -8,10 +8,12 @@ import type { Postcard } from '@/types'
  * The `Postcards` section on the merged club detail — a horizontal strip of
  * square tiles, replacing the stacked `PostcardCard` list this section drew
  * before the club detail merge. Product owner, 2026-08-18: *"like that
- * carousel"*, pointing at the ride detail's `RideJournal` — this is that
- * carousel's real-tile counterpart, since the club feed is never empty the
- * way a ride's journal always is today (nothing writes `postcards.ride_id`
- * yet; every club's feed is real rows from day one).
+ * carousel"*, pointing at the ride detail's `RideJournal` — which drew only a
+ * placeholder tile then, because nothing wrote `postcards.ride_id` and every
+ * ride's Journal was therefore always empty. **PD-256 closed that**, so the two
+ * are near-twins now and this is no longer the only one of the pair with real
+ * rows in it. What still differs is the empty state, which a club feed reaches
+ * far less often than a ride's Journal does on its first day.
  *
  * **This is a deliberate trade the product owner accepted knowingly**: the
  * byline, caption, likes and comments that `PostcardCard` drew in place are

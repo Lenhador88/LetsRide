@@ -9,6 +9,7 @@ import type {
   EmbeddedClub,
   PublicProfile,
   RecentRideStart,
+  Ride,
   RideAttendance,
   RideCrew,
   RideCrewMember,
@@ -899,4 +900,115 @@ export function dedupeRecentStarts(rows: RecentStartRow[]): RecentRideStart[] {
   }
 
   return starts
+}
+
+/** The postcard composer's Ride select — narrower than `RideListItem`, the
+ * same shape `getMyClubs`' `ClubOption` gives the audience selector. */
+export type RideOption = Pick<Ride, 'id' | 'title' | 'club_id'>
+
+/**
+ * Bounds each of `getCrewRides`' arms.
+ *
+ * **A cap on a picker misleads where a cap on a feed only truncates**, which is
+ * why this one is paired with the `only` escape below rather than justified by
+ * `RIDES_PAGE_SIZE`'s "saturates rather than misleads". A ride missing from a
+ * `<select>` is indistinguishable from a ride the rider is not crew of, and
+ * there is no "load more" on a dropdown to correct it.
+ */
+const CREW_RIDES_SCAN_LIMIT = 30
+
+/** `departure_at` is read for ordering only and never reaches `RideOption` —
+ * the composer's `<select>` shows a title. */
+const CREW_RIDE_COLUMNS = 'id, title, club_id, departure_at'
+
+type CrewRideRow = RideOption & { departure_at: string }
+
+/**
+ * The rides this rider is crew of, for the postcard composer's Ride select
+ * (PD-256) — exactly the set `041`'s INSERT policy admits, so the picker can
+ * never offer an option the write gate will refuse.
+ *
+ * **The equality is exact in both directions, and `private.is_ride_crew` alone
+ * is not what makes it so.** That helper is `security definer`, so it will
+ * confirm the crew row of a rider who can no longer see the ride. The INSERT
+ * `with_check` is `is_ride_crew(ride_id)` **AND** an `EXISTS` on `rides` that
+ * *is* RLS-checked — so the gate is *visible AND crew*, which is precisely what
+ * these two arms read: `rides` under the caller's own RLS, filtered to organizer
+ * or any `ride_members` row of either status (`034:108` has no status
+ * predicate, and neither does the embed).
+ *
+ * Two queries and a merge, mirroring `readRides`'s `mine` filter: an organizer
+ * who has also RSVP'd is on both arms and must appear once. `club_id` travels
+ * with each row so the composer can prefill its Club select from whichever ride
+ * the rider picks — a read the postcard's own audience rule never sees, since
+ * `041`'s tag and `club_id` are orthogonal (design.md §D4).
+ *
+ * **`only` is what stops the cap re-creating the defect this story exists to
+ * fix.** `RideJournal`'s `Add` deep-links to a specific ride, and `seedRideId`
+ * falls back to no-ride for any id the list does not carry — so without this, a
+ * rider crew of more than `CREW_RIDES_SCAN_LIMIT` rides taps `Add` inside ride
+ * X, gets a composer reading "No ride", posts, and the photo never appears in
+ * the Journal they added it from. Silently, which is PD-256's own framing of
+ * the bug. The extra pair of point lookups runs only when the named ride missed
+ * the window, and goes through the same two arms — so an id the rider is not
+ * crew of is still absent, exactly as the write gate requires.
+ *
+ * Ordered by `departure_at`, the column every other ride list in this file
+ * orders on (`readRides`, `getRecentRideStarts`) and the one that means
+ * something to the question the select asks. Row-creation order does not: a
+ * ride planned this morning for next spring is not a better answer to "which
+ * ride was this photo from" than the one that departed last weekend.
+ */
+export async function getCrewRides(only?: string | null): Promise<RideOption[]> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const organized = supabase
+    .from('rides')
+    .select(CREW_RIDE_COLUMNS)
+    .eq('organizer_id', user.id)
+  // Aliased `!inner` embed, same shape `readRides` uses for `mine`: the join
+  // filters the rides rather than widening the columns selected.
+  const joined = supabase
+    .from('rides')
+    .select(`${CREW_RIDE_COLUMNS}, mine:ride_members!inner(user_id)`)
+    .eq('mine.user_id', user.id)
+
+  const [organizedRows, joinedRows] = await Promise.all([
+    organized.order('departure_at', { ascending: false }).limit(CREW_RIDES_SCAN_LIMIT),
+    joined.order('departure_at', { ascending: false }).limit(CREW_RIDES_SCAN_LIMIT),
+  ])
+
+  const rows = [
+    ...unwrapList(organizedRows, 'the rides you organise'),
+    ...unwrapList(joinedRows, 'your rides'),
+  ] as unknown as CrewRideRow[]
+
+  const byId = new Map<string, CrewRideRow>()
+  for (const row of rows) if (!byId.has(row.id)) byId.set(row.id, row)
+
+  if (only && !byId.has(only)) {
+    const [organizedOne, joinedOne] = await Promise.all([
+      supabase
+        .from('rides')
+        .select(CREW_RIDE_COLUMNS)
+        .eq('organizer_id', user.id)
+        .eq('id', only)
+        .maybeSingle(),
+      supabase
+        .from('rides')
+        .select(`${CREW_RIDE_COLUMNS}, mine:ride_members!inner(user_id)`)
+        .eq('mine.user_id', user.id)
+        .eq('id', only)
+        .maybeSingle(),
+    ])
+    const named = (unwrap(organizedOne, 'that ride') ??
+      unwrap(joinedOne, 'that ride')) as unknown as CrewRideRow | null
+    if (named) byId.set(named.id, named)
+  }
+
+  return [...byId.values()]
+    .sort((a, b) => new Date(b.departure_at).getTime() - new Date(a.departure_at).getTime())
+    .map(({ id, title, club_id }) => ({ id, title, club_id }))
 }

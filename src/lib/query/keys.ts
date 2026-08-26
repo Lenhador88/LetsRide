@@ -60,7 +60,7 @@
  * | `addComment` / `deleteComment` — `/postcards`, `` `/postcards/${id}` `` | `postcards.all()`. **`deleteComment`'s is now unconditional**, which closes a recorded KNOWN GAP for free: the path needed an id the caller could not always read |
  * | `hidePostcard` / `unhidePostcard` — `/postcards` | `postcards.all()` |
  * | `likePostcard` / `unlikePostcard` — `/postcards`, `` `/postcards/${id}` ``, `` `/clubs/${club}` `` | `postcards.all()` + `clubs.detail(club)` |
- * | `createPostcard` — same three | same |
+ * | `createPostcard` — same three | same. `postcards.journal(ride_id)` (PD-256) needs **no** extra call: `invalidate` matches by prefix, and the journal key sits under `postcards`, so `postcards.all()` already reaches it — as it does for `deletePostcard`, `hidePostcard` and `likePostcard` |
  * | `deletePostcard` — same three | same |
  * | `updateProfile`, `setProfileImage`, `addCountry`, `removeCountry` — `/profile` ×4 | `profile.all()` ×4 |
  * | `setRideAttendance` — `/rides`, `` `/rides/${id}` ``, `` `/rides/${id}/crew` `` | `rides.all()` — **wider**: it also reaches `rides.filters()`, whose attendee collage an RSVP moves and which `revalidatePath('/rides')` only covered by accident of rendering on that route |
@@ -227,6 +227,28 @@ export const queryKeys = {
     filters: (): QueryKey => ['postcards', 'filters'],
     detail: (postcardId: string): QueryKey => ['postcards', 'detail', postcardId],
     comments: (postcardId: string): QueryKey => ['postcards', 'detail', postcardId, 'comments'],
+    /**
+     * A ride's Journal (`041`, PD-256) — the postcards tagged to one ride,
+     * read by `getRideJournal` through `ride_journal_postcard_ids`.
+     *
+     * **Under `postcards`, not nested in `rides.detail` beside `crew` and
+     * `messages`.** Those are ride-owned resources reached by a ride's own
+     * mutations; a Journal entry is a `postcards` row a ride id merely filters,
+     * and its only writer is `createPostcard` — which already invalidates
+     * `postcards.all()` on every insert, tagged or not.
+     *
+     * **So this key needs no call site of its own, and adding one would be
+     * dead code.** `invalidate` matches structurally by prefix
+     * (`queryClient.ts`'s `keyStartsWith`), so `['postcards']` reaches
+     * `['postcards', 'journal', rideId]` — which is also why `deletePostcard`,
+     * `hidePostcard` and `likePostcard` keep a ride's Journal honest for free.
+     * The first draft of PD-256 added an explicit `invalidate(journal(rideId))`
+     * on the reasoning that a key "keyed by a ride id rather than nested under
+     * it" was out of reach. It is not, and that sentence is worth contradicting
+     * here rather than deleting quietly: it is the wrong model of this cache,
+     * and the next author to hold it will add a call site too.
+     */
+    journal: (rideId: string): QueryKey => ['postcards', 'journal', rideId],
   },
 
   /**
@@ -262,6 +284,27 @@ export const queryKeys = {
      * device from being shown these.
      */
     recentStarts: (): QueryKey => ['rides', 'recentStarts'],
+    /**
+     * The postcard composer's Ride select (PD-256), `getCrewRides` — the same
+     * role `clubs.mine()` plays for the Club select, kept a separate leaf
+     * rather than reusing `list(filterSegment.mine())`: that key answers a
+     * different question (the paginated upcoming/past `/rides?mine` screen)
+     * in a different shape, and sharing one cache entry between the two is
+     * exactly the collision this file's header warns about.
+     *
+     * **No call site is added for it, matching `recentStarts` above.** Under
+     * `rides` because `rides.all()` is what can actually move the set — a
+     * ride created, joined or left — and `createRide`/`setRideAttendance`
+     * already invalidate that prefix.
+     *
+     * **`only` is part of the key because it is part of the answer.**
+     * `getCrewRides(only)` unions in the deep-linked ride when the scan window
+     * missed it, so two calls with different `only` return different sets and
+     * must not share a cache entry — the collision this file's header warns
+     * about, in the one shape that would look like a stale list rather than a
+     * wrong one.
+     */
+    crewOptions: (only: string | null): QueryKey => ['rides', 'crewOptions', only],
     detail: (rideId: string): QueryKey => ['rides', 'detail', rideId],
     crew: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'crew'],
     /**

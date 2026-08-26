@@ -1079,9 +1079,20 @@ agents on unrelated stories barely touch the same source, but they share:
   agent's server slides to the next free one while its walk still calls `:3000` — it signs in,
   walks the **first** agent's tree, and reports **green**.
 
-Both are overridable — `TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=`, `next dev -p`. Set them per agent
-or serialise the verification step. The database half fails loudly; the port half passes, which is
-why it is the dangerous one.
+- **One working tree, and the main thread is a writer too.** Measured 2026-08-26: a `test` agent was
+  driving the app against DEV while this thread applied `reviewer`'s findings to the same checkout.
+  It reported files changing underneath it and `next build` processes it had not started — correctly,
+  and it could not tell a colliding writer from a compromised machine. **This one is not
+  agent-versus-agent**: the two rules above are about a second *build*, and this fires with one agent
+  and a main thread that never stopped editing. The verifying agent is reading the tree, so anything
+  that writes it while a run is in flight makes the report describe a commit that no longer exists.
+  Commit and stand still for the length of a verification run, or hand the agent
+  `isolation: "worktree"`.
+
+The first two are overridable — `TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=`, `next dev -p`. Set them per
+agent or serialise the verification step. The database half fails loudly; the port half passes, which
+is why it is the dangerous one. The tree half is the one that wastes an agent's whole run rather than
+returning a wrong answer.
 
 **The docs spine collides even when the code does not** — §Working Principles already carries the
 measurement and the command, so re-derive it there rather than trusting a second copy. What

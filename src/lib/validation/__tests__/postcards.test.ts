@@ -5,6 +5,7 @@ import {
   postcardCaptionSchema,
   postcardClubIdSchema,
   postcardImagePathSchema,
+  postcardRideIdSchema,
 } from '@/lib/validation/postcards'
 
 const VALID_PATH = 'postcards/11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222.jpg'
@@ -84,9 +85,38 @@ describe('postcardClubIdSchema', () => {
   })
 })
 
+describe('postcardRideIdSchema', () => {
+  it('turns an empty string ("no ride") into null', () => {
+    const result = postcardRideIdSchema.safeParse('')
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data).toBeNull()
+  })
+
+  it('turns null into null', () => {
+    const result = postcardRideIdSchema.safeParse(null)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data).toBeNull()
+  })
+
+  it('accepts a real uuid', () => {
+    const result = postcardRideIdSchema.safeParse(VALID_CLUB_ID)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data).toBe(VALID_CLUB_ID)
+  })
+
+  it("rejects a non-uuid, non-empty value — shape only, crew membership is 041's job", () => {
+    expect(postcardRideIdSchema.safeParse('not-a-uuid').success).toBe(false)
+  })
+})
+
 describe('createPostcardSchema', () => {
-  it('accepts a well-formed submission with no caption and no club (app-wide feed)', () => {
-    const result = createPostcardSchema.safeParse({ imagePath: VALID_PATH, caption: null, clubId: '' })
+  it('accepts a well-formed submission with no caption, no club and no ride', () => {
+    const result = createPostcardSchema.safeParse({
+      imagePath: VALID_PATH,
+      caption: null,
+      clubId: '',
+      rideId: '',
+    })
     expect(result.success).toBe(true)
     if (result.success) {
       // Exact rather than a subset, and it stays exact: this is the assertion
@@ -98,6 +128,7 @@ describe('createPostcardSchema', () => {
         imagePath: VALID_PATH,
         caption: null,
         clubId: null,
+        rideId: null,
         takenAt: null,
         takenAtOffsetMinutes: null,
         takenLatitude: null,
@@ -109,20 +140,22 @@ describe('createPostcardSchema', () => {
     }
   })
 
-  it('accepts a caption and a club id together', () => {
+  it('accepts a caption, a club id and a ride id together', () => {
     const result = createPostcardSchema.safeParse({
       imagePath: VALID_PATH,
       caption: 'Club ride!',
       clubId: VALID_CLUB_ID,
+      rideId: VALID_CLUB_ID,
     })
     expect(result.success).toBe(true)
   })
 
-  it('rejects a malformed imagePath even when caption/clubId are fine', () => {
+  it('rejects a malformed imagePath even when caption/clubId/rideId are fine', () => {
     const result = createPostcardSchema.safeParse({
       imagePath: 'not/a/valid/path.jpg',
       caption: null,
       clubId: '',
+      rideId: '',
     })
     expect(result.success).toBe(false)
   })
@@ -140,7 +173,7 @@ describe('createPostcardSchema', () => {
  * against something a rider cannot skip.
  */
 describe('createPostcardSchema — capture time and place', () => {
-  const base = { imagePath: VALID_PATH, caption: null, clubId: '' }
+  const base = { imagePath: VALID_PATH, caption: null, clubId: '', rideId: '' }
   const anHourAgo = new Date(Date.now() - 3600_000).toISOString()
 
   it('accepts a postcard with no capture metadata at all — the common case', () => {
@@ -262,7 +295,7 @@ describe('createPostcardSchema — capture time and place', () => {
  * way the block above mirrors `064`'s.
  */
 describe('createPostcardSchema — the country code', () => {
-  const base = { imagePath: VALID_PATH, caption: null, clubId: '' }
+  const base = { imagePath: VALID_PATH, caption: null, clubId: '', rideId: '' }
 
   it('accepts a country beside a named place', () => {
     const result = createPostcardSchema.safeParse({

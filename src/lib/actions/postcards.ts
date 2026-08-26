@@ -127,6 +127,7 @@ export async function createPostcard(
     imagePath: formData.get('imagePath'),
     caption: formData.get('caption'),
     clubId: formData.get('clubId'),
+    rideId: formData.get('rideId'),
     takenAt: formData.get('takenAt'),
     takenAtOffsetMinutes: formData.get('takenAtOffsetMinutes'),
     takenLatitude: formData.get('takenLatitude'),
@@ -141,6 +142,7 @@ export async function createPostcard(
     imagePath,
     caption,
     clubId,
+    rideId,
     takenAt,
     takenAtOffsetMinutes,
     takenLatitude,
@@ -171,6 +173,7 @@ export async function createPostcard(
       image_path: imagePath,
       caption,
       club_id: clubId,
+      ride_id: rideId,
       taken_at: takenAt,
       taken_at_offset_minutes: takenAtOffsetMinutes,
       taken_latitude: takenLatitude,
@@ -202,6 +205,10 @@ export async function createPostcard(
   // invalidatePostcard would otherwise do to find it.
   invalidate(queryKeys.postcards.all())
   if (clubId) invalidate(queryKeys.clubs.detail(clubId))
+  // PD-256 needs no call of its own: `postcards.journal(rideId)` sits under the
+  // `postcards` prefix, and `invalidate` matches structurally — see that key's
+  // own note, which records the extra call this used to make and why it was
+  // dead.
 
   return { error: null, redirectTo: '/postcards' }
 }
