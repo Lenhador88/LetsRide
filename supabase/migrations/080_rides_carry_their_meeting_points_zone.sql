@@ -207,11 +207,18 @@ drop trigger if exists enforce_ride_timezone on public.rides;
 
 -- ** No WHEN clause, unlike its two neighbours on this table. ** Step 1 has to
 -- see every INSERT, and step 2's own condition is `tg_op`-dependent, so a WHEN
--- covering both would restate the body. Postgres fires BEFORE row triggers in
--- NAME order, which puts this after `clear_ride_map_tiles` (c < e) and before
--- `protect_picked_ride_location` (e < p) — and the first of those matters: §3
--- below NULLs `new.timezone` when the meeting point changes, and step 2 must see
--- that as the zone moving.
+-- covering both would restate the body.
+--
+-- ** Its position in the NAME order is asserted rather than reasoned about. **
+-- Postgres fires BEFORE row triggers in name order, and `rides` now carries five
+-- of them — `clear_ride_map_tiles`, `enforce_participation_gate`,
+-- `enforce_ride_club_audience`, this one, `protect_picked_ride_location`. Only
+-- one relationship is load-bearing today: `clear_ride_map_tiles` rewrites the
+-- location columns, so step 2 must read the row as that trigger left it rather
+-- than as the statement supplied it. `080.7` in the suite asserts the WHOLE
+-- list in order, because a three-name check compared against those same three
+-- names sorted is a tautology with respect to ordering and would not notice a
+-- sixth trigger landing in the middle.
 create trigger enforce_ride_timezone
   before insert or update on public.rides
   for each row
