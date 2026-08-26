@@ -146,6 +146,31 @@ let failed = false
  * retry looped. Caught by `guard-cache.test.ts`, not by review.
  */
 let attemptedPath: string | null = null
+
+/**
+ * How many times the stamps have been thrown away (PD-304).
+ *
+ * **A read is only allowed to write what it learned if nothing moved
+ * underneath it**, and this counter is how a read that started before a write
+ * finds that out after the fact. `invalidateOnboardingState` and
+ * `clearGuardCache` each bump it; `attemptRead` captures it before its first
+ * await and discards its answer if it has changed.
+ *
+ * The defect without it: `signUp` establishes the session, then calls
+ * `accept_terms()`, then invalidates. The session landing wakes the guard's
+ * effect, which issues a read — and that read asks `my_onboarding_state()`
+ * *before* the consent stamp is written. The invalidation clears the cache
+ * correctly, and then the older read resolves and refills it with
+ * `terms_accepted_at: null`. The rider who ticked the box ten seconds ago is
+ * sent to `/onboarding/terms`, and `021`'s idempotence is the only reason that
+ * is a papercut rather than a lockout.
+ *
+ * So the hazard CLAUDE.md names — "any new writer of a stamp the decision reads
+ * must invalidate the cache" — is necessary and was never sufficient: all four
+ * writers do invalidate, and an invalidation cannot reach a round trip that has
+ * already left.
+ */
+let generation = 0
 let inFlight: Promise<void> | null = null
 let subscribed = false
 
@@ -345,8 +370,24 @@ export function ensureGuardState(pathname: string): void {
   if (inFlight) return
 
   attemptedPath = pathname
-  inFlight = read(pathname).finally(() => {
-    inFlight = null
+  const readAt = generation
+  const attempt = read(pathname, readAt)
+  inFlight = attempt
+  void attempt.finally(() => {
+    // Only when the slot is still this read's. `clearGuardCache` nulls
+    // `inFlight` outright, so a later read can already have taken it by the
+    // time this one lands, and clearing it unconditionally would strand that
+    // one's caller behind a slot nobody holds.
+    if (inFlight === attempt) inFlight = null
+    if (generation === readAt) return
+    // PD-304 — a stamp was written while this read was in flight, so
+    // `attemptRead` discarded what it came back with and the cache is empty.
+    // Nothing else will ask for another: the invalidation's own `notify` woke
+    // the guard's effect while this promise still held `inFlight`, so it
+    // returned without issuing one. This is what wakes it again, now that the
+    // slot is free.
+    attemptedPath = null
+    notify()
   })
 
   // A read is in flight again, so the retry screen is no longer the truth —
@@ -387,9 +428,9 @@ export function retryGuardRead(pathname: string): void {
  * mismatch and bounce every signed-in rider out of every screen. The function
  * returns the three things this needs in one round trip.
  */
-async function read(pathname: string): Promise<void> {
+async function read(pathname: string, readAt: number): Promise<void> {
   try {
-    await attemptRead(pathname)
+    await attemptRead(pathname, readAt)
   } catch (error) {
     // PD-122. Neither `getSession()` nor the accessor is *supposed* to reject —
     // `session-store.ts`'s `getItem` resolves to `null` on a storage failure,
@@ -407,12 +448,18 @@ async function read(pathname: string): Promise<void> {
   }
 }
 
-async function attemptRead(pathname: string): Promise<void> {
+async function attemptRead(pathname: string, readAt: number): Promise<void> {
   const supabase = createClient()
 
   const {
     data: { session },
   } = await supabase.auth.getSession()
+
+  // PD-304. Everything past here writes the module state this read was sent to
+  // fill, and a bumped generation means something else has written it since —
+  // so what came back describes the world before that write. Dropping it is the
+  // whole fix; `ensureGuardState`'s `finally` issues a fresh read in its place.
+  if (generation !== readAt) return
 
   if (!session) {
     writeSession(null)
@@ -432,6 +479,11 @@ async function attemptRead(pathname: string): Promise<void> {
   const state = onboardingStateFrom(
     await supabase.rpc('my_onboarding_state').maybeSingle<OnboardingState>()
   )
+
+  // Checked again after the round trip, and this is the check that catches the
+  // defect: the window between asking for the stamps and getting them back is
+  // exactly where `accept_terms()` lands.
+  if (generation !== readAt) return
 
   if (state.kind === 'rider') {
     onboarding = {
@@ -577,6 +629,7 @@ export function attachGuardAuthListener(): void {
  */
 export function invalidateOnboardingState(): void {
   if (typeof document === 'undefined') return
+  generation += 1
   onboarding = undefined
   unavailable = false
   gone = false
@@ -601,6 +654,7 @@ export function invalidateOnboardingState(): void {
  */
 export function clearGuardCache(): void {
   if (typeof document === 'undefined') return
+  generation += 1
   userId = undefined
   onboarding = undefined
   unavailable = false
@@ -619,6 +673,7 @@ export function clearGuardCache(): void {
  * happens to be installed is a seam that fails in the one test that removes it.
  */
 export function resetGuardCacheForTests(): void {
+  generation = 0
   userId = undefined
   onboarding = undefined
   unavailable = false

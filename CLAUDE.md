@@ -387,6 +387,13 @@ background gradient included — and made a tab tap read as a page reload.
 finishes a step and is sent straight back into it. `npm run walk` has a phase that measures this
 — see `docs/HANDOFF.md` §The walk.
 
+**Necessary, and never sufficient — an invalidation cannot reach a round trip that has already
+left.** All four writers do call it, and PD-304 still happened: `signUp` establishes the session,
+the guard's effect wakes and asks `my_onboarding_state()`, `accept_terms()` commits *while that
+read is out*, and the read then refills the cache it had just cleared with `terms_accepted_at:
+NULL`. `guard-cache.ts` carries a generation counter for this — a read discards its own answer if
+the stamps moved underneath it — so a **new** writer owes the invalidation and nothing more.
+
 **An unmatched URL still reaches it, and that is measured rather than assumed.** `not-found.tsx`
 sits at `(app)/`, so a path outside that group — `/onboarding/*`, say — falls to Next's built-in
 404, and the guard only redirects if the ROOT layout renders for it. It does: `next start`, then

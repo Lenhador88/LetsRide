@@ -559,6 +559,127 @@ describe('the onboarding writes', () => {
   })
 })
 
+describe('a write that lands while a read is in flight — PD-304', () => {
+  /** What `my_onboarding_state()` answers for a rider who has signed up but
+   * whose `accept_terms()` has not committed yet — the answer the racing read
+   * comes back with, and the one that must never reach the cache. */
+  const BEFORE_CONSENT: OnboardingState = {
+    terms_accepted_at: null,
+    onboarding_completed_at: null,
+    has_username: false,
+  }
+
+  /** A round trip that does not answer until the test says so, which is the
+   * only way to put a write *inside* one. `stamps` resolves in a microtask, so
+   * with it there is no window to write into. */
+  function pendingStamps() {
+    let release: (data: OnboardingState) => void = () => {}
+    const answered = new Promise<OnboardingState>((resolve) => {
+      release = resolve
+    })
+    return {
+      release,
+      value: { maybeSingle: async () => ({ data: await answered, error: null }) },
+    }
+  }
+
+  it('discards the pre-write answer instead of refilling the cache with it', async () => {
+    const pending = pendingStamps()
+    rpc.mockReturnValueOnce(pending.value)
+
+    // The session lands and the guard asks for the stamps.
+    ensureGuardState('/onboarding/username')
+    await settle()
+
+    // `accept_terms()` commits and the action invalidates — while that read is
+    // still out. This is the whole defect: the invalidation cannot reach a
+    // round trip that has already left.
+    invalidateOnboardingState()
+
+    const notified = vi.fn()
+    const unsubscribe = subscribeGuardCache(notified)
+
+    pending.release(BEFORE_CONSENT)
+    await settle()
+    await settle()
+
+    // Not `{ kind: 'rider', terms_accepted_at: null }`, which is what
+    // `resolveDestination` turns into a bounce back to `/onboarding/terms`.
+    expect(peek('/onboarding/username')).toBeUndefined()
+    // And the guard is woken, because nothing else would ask again: the
+    // invalidation's own notify arrived while this read still held the slot.
+    expect(notified).toHaveBeenCalled()
+
+    unsubscribe()
+  })
+
+  it('asks again, and the second answer is the one the rider gets', async () => {
+    const pending = pendingStamps()
+    rpc.mockReturnValueOnce(pending.value)
+
+    ensureGuardState('/onboarding/username')
+    await settle()
+    invalidateOnboardingState()
+    pending.release(BEFORE_CONSENT)
+    await settle()
+    await settle()
+
+    // What `RouteGuard`'s effect does when the notify above wakes it. The
+    // discarded read must have released the slot, or this is a no-op and the
+    // rider sits on the splash for ever.
+    ensureGuardState('/onboarding/username')
+    await settle()
+
+    expect(peek('/onboarding/username')).toEqual({ kind: 'rider', ...ONBOARDED })
+  })
+
+  it('leaves a read that raced nothing alone — the discard is not blanket', async () => {
+    const pending = pendingStamps()
+    rpc.mockReturnValueOnce(pending.value)
+
+    ensureGuardState('/onboarding/username')
+    await settle()
+    pending.release(ONBOARDED)
+    await settle()
+    await settle()
+
+    expect(peek('/onboarding/username')).toEqual({ kind: 'rider', ...ONBOARDED })
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not hand back a slot it no longer holds when it lands', async () => {
+    const first = pendingStamps()
+    rpc.mockReturnValueOnce(first.value)
+    ensureGuardState('/postcards')
+    await settle()
+
+    // Sign-out takes the slot away outright, so the read still out there is no
+    // longer the one holding it.
+    clearGuardCache()
+
+    const second = pendingStamps()
+    rpc.mockReturnValueOnce(second.value)
+    ensureGuardState('/postcards')
+    await settle()
+
+    first.release(BEFORE_CONSENT)
+    await settle()
+    await settle()
+
+    // Releasing the slot unconditionally here would release the *second*
+    // read's, and every render until it answers would issue another round trip
+    // — the exact cost PD-111 removed.
+    ensureGuardState('/postcards')
+    await settle()
+    expect(rpc).toHaveBeenCalledTimes(2)
+
+    second.release(ONBOARDED)
+    await settle()
+    await settle()
+    expect(peek('/postcards')).toEqual({ kind: 'rider', ...ONBOARDED })
+  })
+})
+
 describe('the auth listener', () => {
   beforeEach(() => {
     attachGuardAuthListener()
