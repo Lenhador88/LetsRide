@@ -53,7 +53,13 @@ export default function ExploreClubsPage() {
   // Held until the position is decided — see `/clubs` for the double fetch this
   // avoids. `undefined` is "not yet"; `null` is "no position", which is a real
   // answer and gets the unfiltered list.
-  const positionDecided = near.data !== undefined
+  // `|| !!near.error` for the reason `/rides` spells out at its own gate: a
+  // rejected read leaves `data` undefined for ever, and gating on that alone
+  // parks this list in the skeleton branch with no retry. `resolveRiderLocation`
+  // catches its own chain, so nothing can reach it today — which is why it is
+  // worth one line rather than resting on a never-rejects guarantee that lives
+  // in another module and is asserted nowhere.
+  const positionDecided = near.data !== undefined || !!near.error
   const position = near.data ?? null
   const clubs = useQuery(
     positionDecided ? queryKeys.clubs.explore(position) : null,
