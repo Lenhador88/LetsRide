@@ -583,7 +583,7 @@ describe('a write that lands while a read is in flight — PD-304', () => {
     }
   }
 
-  it('discards the pre-write answer instead of refilling the cache with it', async () => {
+  it('never lets the pre-write answer reach the cache, not even for a render', async () => {
     const pending = pendingStamps()
     rpc.mockReturnValueOnce(pending.value)
 
@@ -596,24 +596,22 @@ describe('a write that lands while a read is in flight — PD-304', () => {
     // round trip that has already left.
     invalidateOnboardingState()
 
-    const notified = vi.fn()
-    const unsubscribe = subscribeGuardCache(notified)
+    // Every snapshot published from here on, not just the one at the end: a
+    // stale answer visible for a single render is a redirect, and
+    // `resolveDestination` turns `terms_accepted_at: null` into a bounce back
+    // to `/onboarding/terms`.
+    const seen: (OnboardingState | undefined)[] = []
+    const unsubscribe = subscribeGuardCache(() => seen.push(getGuardSnapshot().onboarding))
 
     pending.release(BEFORE_CONSENT)
     await settle()
     await settle()
 
-    // Not `{ kind: 'rider', terms_accepted_at: null }`, which is what
-    // `resolveDestination` turns into a bounce back to `/onboarding/terms`.
-    expect(peek('/onboarding/username')).toBeUndefined()
-    // And the guard is woken, because nothing else would ask again: the
-    // invalidation's own notify arrived while this read still held the slot.
-    expect(notified).toHaveBeenCalled()
-
+    expect(seen).not.toContainEqual(BEFORE_CONSENT)
     unsubscribe()
   })
 
-  it('asks again, and the second answer is the one the rider gets', async () => {
+  it('asks again on its own, without waiting for a navigation', async () => {
     const pending = pendingStamps()
     rpc.mockReturnValueOnce(pending.value)
 
@@ -624,13 +622,40 @@ describe('a write that lands while a read is in flight — PD-304', () => {
     await settle()
     await settle()
 
-    // What `RouteGuard`'s effect does when the notify above wakes it. The
-    // discarded read must have released the slot, or this is a no-op and the
-    // rider sits on the splash for ever.
-    ensureGuardState('/onboarding/username')
+    // No second `ensureGuardState` here on purpose. When nothing at all is
+    // known a `notify` republishes the frozen empty snapshot and the effect
+    // never re-runs, so the discarded read has to ask directly.
+    expect(rpc).toHaveBeenCalledTimes(2)
+    expect(peek('/onboarding/username')).toEqual({ kind: 'rider', ...ONBOARDED })
+  })
+
+  it('does not resurrect a session the auth listener has already dropped', async () => {
+    attachGuardAuthListener()
+
+    let release: (value: unknown) => void = () => {}
+    getSession.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve
+      })
+    )
+
+    ensureGuardState('/postcards')
     await settle()
 
-    expect(peek('/onboarding/username')).toEqual({ kind: 'rider', ...ONBOARDED })
+    // auth-js emits this on a failed token refresh — a long-idle tab, a
+    // password changed on another device — with no `signOut()` behind it, so
+    // nothing bumps the generation and only the value check can see it.
+    emitAuth('SIGNED_OUT', null)
+
+    release(session('rider-1'))
+    await settle()
+    await settle()
+
+    // Not `{ kind: 'rider' }` off a session the library has already removed,
+    // which on a warm cache would never be re-read: the rider would sit inside
+    // the app on screens whose every query fails closed at RLS.
+    expect(peek('/postcards')).toEqual({ kind: 'anonymous' })
+    expect(rpc).not.toHaveBeenCalled()
   })
 
   it('leaves a read that raced nothing alone — the discard is not blanket', async () => {
