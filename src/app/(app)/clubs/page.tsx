@@ -81,7 +81,13 @@ export default function ClubsPage() {
   // landed, because that is a different cache entry with no data in it. The
   // rider saw the list load, blank back to a skeleton, and re-appear reordered.
   // `null` is `useQuery`'s disabled contract: no fetch, no subscription.
-  const positionDecided = near.data !== undefined
+  // `|| !!near.error` for the reason `/rides` spells out at its own gate: a
+  // rejected read leaves `data` undefined for ever, and gating on that alone
+  // parks this list in the skeleton branch with no retry. `resolveRiderLocation`
+  // catches its own chain, so nothing can reach it today — which is why it is
+  // worth one line rather than resting on a never-rejects guarantee that lives
+  // in another module and is asserted nowhere.
+  const positionDecided = near.data !== undefined || !!near.error
   const position = near.data ?? null
   const explore = useQuery(
     positionDecided ? queryKeys.clubs.explore(position) : null,
