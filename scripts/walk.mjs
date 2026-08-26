@@ -216,44 +216,11 @@ const RELAY_ORIGIN = `ws://localhost:${process.env.RELAY_PORT ?? 3001}/realtime/
 const isRelayWebSocketFailure = (text) =>
   text.startsWith(`WebSocket connection to '${RELAY_ORIGIN}`)
 
-/**
- * `GET /favicon.ico` 404s on every run, on every screen — measured 2026-08-25:
- * there is no `public/favicon.ico` and no `src/app/favicon.ico`/`icon.*`, so
- * this is Chromium's own automatic per-navigation request finding nothing to
- * fetch, not a symptom of whatever screen happens to be loading when the
- * (asynchronous) console event lands. Left unfiltered it fails whichever path
- * is current at that moment — a fact about request timing, not about that
- * screen — which is the same reasoning `isRelayWebSocketFailure` already
- * applies to the chat WebSocket.
- *
- * **This is a real gap in the app, not cosmetic, and filtering it here does
- * not close it** — a shipped app with no favicon is worth its own fix. Matched
- * on `m.location().url` rather than `m.text()`: Chromium's resource-load
- * console message never repeats the URL in its text, only in the message's
- * `location`.
- */
-const isFaviconFailure = (m) => (m.location()?.url ?? '').endsWith('/favicon.ico')
-
-/**
- * Counted for the same reason `realtimeSuppressed` is (see the comment two
- * paragraphs up, and CLAUDE.md's own line about it): "a suppressed error that
- * stops being reported is indistinguishable from one that stopped
- * happening." This is the first filter added since that rule and it follows
- * it — PD-305 is filed for the missing favicon itself, and this filter comes
- * out the day that closes, which only stays true if a nonzero count keeps
- * showing up here in the meantime.
- */
-let faviconSuppressed = 0
-
 page.on('console', (m) => {
   if (m.type() !== 'error') return
   const text = m.text()
   if (isRelayWebSocketFailure(text)) {
     realtimeSuppressed += 1
-    return
-  }
-  if (isFaviconFailure(m)) {
-    faviconSuppressed += 1
     return
   }
   problems.push(`console: ${text.slice(0, 300)}`)
@@ -708,31 +675,6 @@ async function mintWalkAccount() {
     )
     await browser.close()
     process.exit(1)
-  }
-
-  // **This is a real app-level defect, and this branch is a recovery for
-  // it, not a walk-script quirk.** Measured 2026-08-25, not hypothetical: a
-  // freshly-minted rider can land on the standalone `/onboarding/terms`
-  // prompt even though `signUp` already ran `accept_terms()` and the
-  // database already carries the stamp (confirmed against DEV directly) — a
-  // race between that write and a concurrent guard read of the same
-  // account, not a rider whose consent is genuinely missing. The fix belongs
-  // in `signUp`/`guard-cache.ts`, not here — this branch only stops it from
-  // taking the mint down while that gets its own fix. `accept_terms()` is
-  // idempotent by design ("a second call returns the first call's stamp
-  // rather than moving it" — `021`), so accepting again is a correct
-  // recovery through the real screen rather than a second bug layered on
-  // the first. Do not read this branch's presence as the defect being
-  // closed.
-  if (new URL(page.url()).pathname === '/onboarding/terms') {
-    console.log('  (landed on /onboarding/terms — consent already recorded; accepting again)')
-    await page.waitForSelector('input[name="acceptedTerms"]', { timeout: 20_000 })
-    await page.click('label:has(input[name="acceptedTerms"])')
-    await Promise.all([
-      page.waitForURL((u) => u.pathname !== '/onboarding/terms', { timeout: 20_000 }).catch(() => {}),
-      page.click('button[type="submit"]'),
-    ])
-    await page.waitForTimeout(1000)
   }
 
   if (new URL(page.url()).pathname !== '/onboarding/username') {
@@ -2093,12 +2035,6 @@ if (realtimeSuppressed) {
     `  (Realtime NOT exercised — ${realtimeSuppressed} relay WebSocket failure(s) suppressed; ` +
       'the relay does not proxy the upgrade)'
   )
-}
-if (faviconSuppressed) {
-  // Named rather than swallowed, same reasoning as realtimeSuppressed just
-  // above — PD-305 is filed for the missing favicon itself; this line is
-  // what tells the next session the filter is still doing something.
-  console.log(`  (${faviconSuppressed} favicon.ico 404(s) suppressed — PD-305, no favicon shipped)`)
 }
 if (isFullWalk) {
   const total =

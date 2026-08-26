@@ -146,7 +146,59 @@ let failed = false
  * retry looped. Caught by `guard-cache.test.ts`, not by review.
  */
 let attemptedPath: string | null = null
-let inFlight: Promise<void> | null = null
+
+/**
+ * How many times the stamps have been thrown away (PD-304).
+ *
+ * **A read is only allowed to write what it learned if nothing moved
+ * underneath it**, and this counter is how a read that started before a write
+ * finds that out after the fact. `invalidateOnboardingState` and
+ * `clearGuardCache` each bump it; `attemptRead` captures it before its first
+ * await and discards its answer if it has changed.
+ *
+ * The defect without it: `signUp` establishes the session, then calls
+ * `accept_terms()`, then invalidates. The session landing wakes the guard's
+ * effect, which issues a read — and that read asks `my_onboarding_state()`
+ * *before* the consent stamp is written. The invalidation clears the cache
+ * correctly, and then the older read resolves and refills it with
+ * `terms_accepted_at: null`. The rider who ticked the box ten seconds ago is
+ * sent to `/onboarding/terms`, and `021`'s idempotence is the only reason that
+ * is a papercut rather than a lockout.
+ *
+ * So the hazard CLAUDE.md names — "any new writer of a stamp the decision reads
+ * must invalidate the cache" — is necessary and was never sufficient: all four
+ * writers do invalidate, and an invalidation cannot reach a round trip that has
+ * already left.
+ *
+ * **It covers the writers that bump it, and the session half has one that does
+ * not.** `onAuthStateChange` writes `userId` without bumping — deliberately,
+ * because it fires on every cold load with the same id the first read is about
+ * to write, and discarding on that would put a second round trip in front of
+ * every page load. `attemptRead` therefore checks the session by **value**
+ * against what the listener holds, and the stamps by this counter. Neither
+ * check catches the other's case; both are load-bearing.
+ */
+let generation = 0
+/**
+ * What a read did with what it learned, which is the only thing its caller has
+ * to act on.
+ *
+ * - `published` — it wrote and notified. Includes a read that *threw*: a
+ *   failure is an answer the guard draws, and it notified on the way out.
+ * - `retry` — the generation moved, so it dropped its answer and the cache may
+ *   now hold nothing at all. Somebody has to ask again, and it will not be the
+ *   guard's effect: the write's own `notify` reached it while this read still
+ *   held the slot.
+ * - `superseded` — `onAuthStateChange` wrote a newer session underneath. The
+ *   difference from `retry` is what the cache is left holding: a decided
+ *   session, never an empty one, because `writeSession` leaves `userId` as an
+ *   id or `null` and never `undefined`. So a `notify` here is guaranteed to
+ *   change the snapshot's shape and re-run the effect, and re-reading directly
+ *   would instead loop for as long as `getSession()` and the listener disagree.
+ */
+type ReadOutcome = 'published' | 'retry' | 'superseded'
+
+let inFlight: Promise<ReadOutcome> | null = null
 let subscribed = false
 
 /**
@@ -345,8 +397,34 @@ export function ensureGuardState(pathname: string): void {
   if (inFlight) return
 
   attemptedPath = pathname
-  inFlight = read(pathname).finally(() => {
+  const attempt = read(pathname, generation)
+  inFlight = attempt
+  void attempt.then((outcome) => {
+    // Nothing here is this read's to touch once the slot is somebody else's.
+    // `clearGuardCache` nulls `inFlight` outright, so a later read can already
+    // have taken it — and both the slot and `attemptedPath` then belong to that
+    // read. Releasing either would leave its caller issuing a round trip per
+    // render, which is the cost PD-111 removed.
+    if (inFlight !== attempt) return
     inFlight = null
+    if (outcome === 'published') return
+    if (outcome === 'superseded') {
+      // The listener's own write is what the cache holds now, and it is
+      // decided — so this only has to be published for the effect to see it.
+      notify()
+      return
+    }
+
+    // PD-304 — this read discarded what it learned, so the cache is still
+    // unanswered and nothing else will ask: the write's own `notify` reached
+    // the guard's effect while this promise held the slot, so it returned
+    // without issuing a read. Asking again directly rather than notifying and
+    // trusting the effect to come back: when nothing at all is known, `notify`
+    // republishes the frozen `EMPTY_SNAPSHOT`, `useSyncExternalStore` compares
+    // by identity, and the effect never re-runs — a splash with no read behind
+    // it, for ever. The wake-up must not depend on the snapshot changing shape.
+    attemptedPath = null
+    ensureGuardState(pathname)
   })
 
   // A read is in flight again, so the retry screen is no longer the truth —
@@ -387,9 +465,9 @@ export function retryGuardRead(pathname: string): void {
  * mismatch and bounce every signed-in rider out of every screen. The function
  * returns the three things this needs in one round trip.
  */
-async function read(pathname: string): Promise<void> {
+async function read(pathname: string, readAt: number): Promise<ReadOutcome> {
   try {
-    await attemptRead(pathname)
+    return await attemptRead(pathname, readAt)
   } catch (error) {
     // PD-122. Neither `getSession()` nor the accessor is *supposed* to reject —
     // `session-store.ts`'s `getItem` resolves to `null` on a storage failure,
@@ -404,10 +482,11 @@ async function read(pathname: string): Promise<void> {
     // cannot report anything a log would not say better.
     console.error('The route guard could not read the session:', error)
     notify()
+    return 'published'
   }
 }
 
-async function attemptRead(pathname: string): Promise<void> {
+async function attemptRead(pathname: string, readAt: number): Promise<ReadOutcome> {
   const supabase = createClient()
 
   const {
@@ -417,21 +496,48 @@ async function attemptRead(pathname: string): Promise<void> {
   if (!session) {
     writeSession(null)
     notify()
-    return
+    return 'published'
   }
+
+  // **Two writers can have overtaken this read, and neither check sees the
+  // other's case.**
+  //
+  // `clearGuardCache` bumps the generation, so a sign-out that landed while
+  // this was out is caught by the counter — without this, the read writes the
+  // session it captured back over a cache that has just been emptied.
+  if (generation !== readAt) return 'retry'
+  // `onAuthStateChange` does not bump, so the counter cannot see it: auth-js
+  // emits `SIGNED_OUT` on a failed token refresh — a long-idle tab, a password
+  // changed on another device — with no `signOut()` behind it. Overwriting that
+  // here resurrects a session the library has already removed, on a warm cache
+  // that never re-reads, and the rider sits inside the app on screens whose
+  // every query fails closed at RLS: empty lists, and no bounce to
+  // `/auth/login`. Compared by value rather than counted, because the ordinary
+  // cold load has that listener writing the same id this read is about to.
+  if (userId !== undefined && userId !== session.user.id) return 'superseded'
 
   writeSession(session.user.id)
 
   if (!needsOnboardingState(pathname)) {
     notify()
-    return
+    return 'published'
   }
 
   // The mapping — including the zero-rows case, which must not read as "not
   // onboarded" — lives in `onboardingStateFrom` so it has a test.
+  // PD-304, and the check that catches the defect. Captured **here** rather
+  // than when the read was issued: it is this round trip the write races, so a
+  // stamp committed before the RPC is sent is already *in* the answer, and only
+  // one landing after it is stale. Taking `readAt` for this instead would
+  // discard a correct answer and pay for a second round trip to learn the same
+  // thing.
+  const stampsAt = generation
+
   const state = onboardingStateFrom(
     await supabase.rpc('my_onboarding_state').maybeSingle<OnboardingState>()
   )
+
+  if (generation !== stampsAt) return 'retry'
 
   if (state.kind === 'rider') {
     onboarding = {
@@ -457,6 +563,7 @@ async function attemptRead(pathname: string): Promise<void> {
   }
 
   notify()
+  return 'published'
 }
 
 /**
@@ -577,6 +684,7 @@ export function attachGuardAuthListener(): void {
  */
 export function invalidateOnboardingState(): void {
   if (typeof document === 'undefined') return
+  generation += 1
   onboarding = undefined
   unavailable = false
   gone = false
@@ -601,6 +709,7 @@ export function invalidateOnboardingState(): void {
  */
 export function clearGuardCache(): void {
   if (typeof document === 'undefined') return
+  generation += 1
   userId = undefined
   onboarding = undefined
   unavailable = false
@@ -619,6 +728,7 @@ export function clearGuardCache(): void {
  * happens to be installed is a seam that fails in the one test that removes it.
  */
 export function resetGuardCacheForTests(): void {
+  generation = 0
   userId = undefined
   onboarding = undefined
   unavailable = false

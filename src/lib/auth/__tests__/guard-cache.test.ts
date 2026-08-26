@@ -559,6 +559,152 @@ describe('the onboarding writes', () => {
   })
 })
 
+describe('a write that lands while a read is in flight — PD-304', () => {
+  /** What `my_onboarding_state()` answers for a rider who has signed up but
+   * whose `accept_terms()` has not committed yet — the answer the racing read
+   * comes back with, and the one that must never reach the cache. */
+  const BEFORE_CONSENT: OnboardingState = {
+    terms_accepted_at: null,
+    onboarding_completed_at: null,
+    has_username: false,
+  }
+
+  /** A round trip that does not answer until the test says so, which is the
+   * only way to put a write *inside* one. `stamps` resolves in a microtask, so
+   * with it there is no window to write into. */
+  function pendingStamps() {
+    let release: (data: OnboardingState) => void = () => {}
+    const answered = new Promise<OnboardingState>((resolve) => {
+      release = resolve
+    })
+    return {
+      release,
+      value: { maybeSingle: async () => ({ data: await answered, error: null }) },
+    }
+  }
+
+  it('never lets the pre-write answer reach the cache, not even for a render', async () => {
+    const pending = pendingStamps()
+    rpc.mockReturnValueOnce(pending.value)
+
+    // The session lands and the guard asks for the stamps.
+    ensureGuardState('/onboarding/username')
+    await settle()
+
+    // `accept_terms()` commits and the action invalidates — while that read is
+    // still out. This is the whole defect: the invalidation cannot reach a
+    // round trip that has already left.
+    invalidateOnboardingState()
+
+    // Every snapshot published from here on, not just the one at the end: a
+    // stale answer visible for a single render is a redirect, and
+    // `resolveDestination` turns `terms_accepted_at: null` into a bounce back
+    // to `/onboarding/terms`.
+    const seen: (OnboardingState | undefined)[] = []
+    const unsubscribe = subscribeGuardCache(() => seen.push(getGuardSnapshot().onboarding))
+
+    pending.release(BEFORE_CONSENT)
+    await settle()
+    await settle()
+
+    expect(seen).not.toContainEqual(BEFORE_CONSENT)
+    unsubscribe()
+  })
+
+  it('asks again on its own, without waiting for a navigation', async () => {
+    const pending = pendingStamps()
+    rpc.mockReturnValueOnce(pending.value)
+
+    ensureGuardState('/onboarding/username')
+    await settle()
+    invalidateOnboardingState()
+    pending.release(BEFORE_CONSENT)
+    await settle()
+    await settle()
+
+    // No second `ensureGuardState` here on purpose. When nothing at all is
+    // known a `notify` republishes the frozen empty snapshot and the effect
+    // never re-runs, so the discarded read has to ask directly.
+    expect(rpc).toHaveBeenCalledTimes(2)
+    expect(peek('/onboarding/username')).toEqual({ kind: 'rider', ...ONBOARDED })
+  })
+
+  it('does not resurrect a session the auth listener has already dropped', async () => {
+    attachGuardAuthListener()
+
+    let release: (value: unknown) => void = () => {}
+    getSession.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve
+      })
+    )
+
+    ensureGuardState('/postcards')
+    await settle()
+
+    // auth-js emits this on a failed token refresh — a long-idle tab, a
+    // password changed on another device — with no `signOut()` behind it, so
+    // nothing bumps the generation and only the value check can see it.
+    emitAuth('SIGNED_OUT', null)
+
+    release(session('rider-1'))
+    await settle()
+    await settle()
+
+    // Not `{ kind: 'rider' }` off a session the library has already removed,
+    // which on a warm cache would never be re-read: the rider would sit inside
+    // the app on screens whose every query fails closed at RLS.
+    expect(peek('/postcards')).toEqual({ kind: 'anonymous' })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('leaves a read that raced nothing alone — the discard is not blanket', async () => {
+    const pending = pendingStamps()
+    rpc.mockReturnValueOnce(pending.value)
+
+    ensureGuardState('/onboarding/username')
+    await settle()
+    pending.release(ONBOARDED)
+    await settle()
+    await settle()
+
+    expect(peek('/onboarding/username')).toEqual({ kind: 'rider', ...ONBOARDED })
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not hand back a slot it no longer holds when it lands', async () => {
+    const first = pendingStamps()
+    rpc.mockReturnValueOnce(first.value)
+    ensureGuardState('/postcards')
+    await settle()
+
+    // Sign-out takes the slot away outright, so the read still out there is no
+    // longer the one holding it.
+    clearGuardCache()
+
+    const second = pendingStamps()
+    rpc.mockReturnValueOnce(second.value)
+    ensureGuardState('/postcards')
+    await settle()
+
+    first.release(BEFORE_CONSENT)
+    await settle()
+    await settle()
+
+    // Releasing the slot unconditionally here would release the *second*
+    // read's, and every render until it answers would issue another round trip
+    // — the exact cost PD-111 removed.
+    ensureGuardState('/postcards')
+    await settle()
+    expect(rpc).toHaveBeenCalledTimes(2)
+
+    second.release(ONBOARDED)
+    await settle()
+    await settle()
+    expect(peek('/postcards')).toEqual({ kind: 'rider', ...ONBOARDED })
+  })
+})
+
 describe('the auth listener', () => {
   beforeEach(() => {
     attachGuardAuthListener()
