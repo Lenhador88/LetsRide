@@ -12,18 +12,24 @@ import { RECENT_STARTS } from '@/components/rides/recentStarts'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState, type ActionState } from '@/lib/actions/state'
 import { useRestoreChecked, useRestoreSelection } from '@/lib/actions/retain'
-import { APP_TIME_ZONE, formatRideDepartureInput } from '@/lib/utils'
+import { formatRideDepartureInput, rideZone } from '@/lib/utils'
 import {
   RIDE_DESCRIPTION_MAX,
   RIDE_LOCATION_FIELD_NAMES,
   RIDE_MEETING_POINT_MAX,
+  RIDE_TIMEZONE_FIELD_NAME,
   RIDE_ROUTE_MAX,
   RIDE_TITLE_MAX,
+  resolveDepartureZone,
   rideSchema,
 } from '@/lib/validation/rides'
 import type { RideForEdit } from '@/types'
 
-const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') ?? APP_TIME_ZONE
+/** See `CreateRideForm`'s copy of this for why the label follows the pick. */
+function departureZoneLabel(zone: string | null | undefined): string {
+  const resolved = rideZone(zone)
+  return resolved.split('/').pop()?.replace(/_/g, ' ') ?? resolved
+}
 
 /**
  * `/rides/detail/edit` — PD-101. Composition-is-ours for the same reason
@@ -76,11 +82,41 @@ export function EditRideForm({
           lon: ride.longitude,
           // Never stored on a ride — see `PlaceValue.countryCode`'s own note.
           countryCode: null,
+          // Unlike the country, this IS stored on a ride (`080`) — so seeding it
+          // is what stops an edit that never touches the location from posting a
+          // pick with no zone and dropping one the ride already had.
+          timezone: ride.timezone,
         }
       : null
   )
   const [routeDescription, setRouteDescription] = useState(ride.route_description ?? '')
-  const [departureAt, setDepartureAt] = useState(formatRideDepartureInput(ride.departure_at))
+  // **The zone this form is TYPING IN, which follows the pick and falls back to
+  // the ride's stored one** (`080`, PD-193). `updateRide` reconstructs the same
+  // answer server-side, through the same `resolveDepartureZone`, so an untouched
+  // departure field resolves back to the instant already stored and
+  // `enforce_ride_timezone` is left to hold the wall-clock. Read that action's
+  // comment before changing either half; they have to agree.
+  //
+  // **One window where the LABEL goes stale, and it is a label rather than a
+  // wrong write.** This reads `ride.timezone` off the cached `getRideForEdit`
+  // row; the action re-reads it fresh. If `resolve-ride-location` lands a zone
+  // while the form is open, the hint still names the old one — so a rider who
+  // then changes the time is shown "Amsterdam" while the instant is stored
+  // against the real zone. The STORED value is the correct one (wall-clock at
+  // the meeting point), and the untouched-time case is unaffected because the
+  // trigger moved `departure_at` with the zone, so the same digits still
+  // reproduce the same instant. Closing it means re-reading the ride on submit
+  // and re-labelling under the rider mid-edit, which is a worse trade than a
+  // hint that is briefly one zone behind.
+  const departureZone = resolveDepartureZone(startPlace, ride.timezone)
+
+  // Seeded ONCE, from the ride's own zone. It is deliberately not re-derived
+  // when `departureZone` changes: the digits the rider is looking at are what
+  // they mean, so picking a place in another zone re-labels the field rather
+  // than rewriting it — which is the same thing the hint below now says.
+  const [departureAt, setDepartureAt] = useState(
+    formatRideDepartureInput(ride.departure_at, ride.timezone)
+  )
   const [isPublic, setIsPublic] = useState(ride.is_public)
   const [clubId, setClubId] = useState(ride.club_id ?? '')
   // **Controlled is not enough for either of these, and here it costs data
@@ -177,6 +213,13 @@ export function EditRideForm({
             recents={RECENT_STARTS}
             disabled={pending}
           />
+          {/* Rendered here rather than by `PlaceSearchField` — see
+              `RIDE_TIMEZONE_FIELD_NAME`. */}
+          <input
+            type="hidden"
+            name={RIDE_TIMEZONE_FIELD_NAME}
+            value={startPlace?.timezone ?? ''}
+          />
           <p className="px-1 text-xs text-muted">
             Typing a meeting point is fine — search just adds a map and a pin.
           </p>
@@ -192,7 +235,7 @@ export function EditRideForm({
             onChange={(event) => setDepartureAt(event.target.value)}
           />
           <p className="px-1 text-xs text-muted">
-            {`Times are in ${DEPARTURE_ZONE_LABEL} time, whatever zone you're riding in.`}
+            {`Times are in ${departureZoneLabel(departureZone)} time, whatever zone you're reading this in.`}
           </p>
         </div>
 

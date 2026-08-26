@@ -326,21 +326,36 @@ shape. There is deliberately no generic `formatDate`/`formatDateTime` — both e
 hardcoded `en-US`, and a generic formatter is how a two-locale split gets back in. Write the
 screen's own formatter and let its name say where it belongs.
 
-**Ride times are pinned to `APP_TIME_ZONE`** (`Europe/Amsterdam`), and the client render did not
-lift that. **The SSR pass still runs on Vercel**, so an unpinned formatter renders the server's
-zone into the HTML and the rider's zone on hydration — the viewer's own zone is not the answer
-for exactly that reason, it is a hydration mismatch. It stays a documented **interim**: the
-correct model is wall-clock at the meeting point, which needs a zone column on `rides`.
-`formatRelativeTime` needs no zone (it measures elapsed instants) and keeps `en-US` because it
-produces English prose, not a date format.
+**A ride's times are wall-clock at its meeting point** — `rides.timezone`, `080` (PD-193) — and
+`APP_TIME_ZONE` (`Europe/Amsterdam`) is now the **fallback** rather than the rule. Every
+`formatRide*` helper and `wallClockToUtc` take the zone as a **required** argument, `null` meaning
+"we do not know": a call site that could quietly omit it is a call site that keeps the bug. The
+one ride surface that cannot follow it is `rideDayStartUtc`, the upcoming/past boundary, because
+that is one instant handed to one `gte` and there is no per-row zone available to a predicate the
+rows have not been read for yet.
 
-**`wallClockToUtc` is the write-side half of the same rule.** A `datetime-local` input sends a
-zone-less string, and `new Date(that)` resolves in whatever zone the runtime is in — now always
-the rider's browser, so the same typed time means a different instant for an organizer in Lisbon
-than for one in Berlin, and neither matches what `formatRideTime` draws back. It resolves the
-string as wall-clock in `APP_TIME_ZONE`, in two passes so the two DST days a year are right, and
-its tests assert offsets rather than strings — `TZ=UTC` in `vitest.config.ts` would let a naive
-implementation pass.
+**The viewer's own zone is still not the answer**, and that is not a leftover: the SSR pass runs on
+Vercel, so an unpinned formatter renders the server's zone into the HTML and the rider's on
+hydration. `formatRelativeTime` takes no zone at all (it measures elapsed instants) and keeps
+`en-US` because it produces English prose, not a date format.
+
+**The invariant, and the reason this is a database rule rather than a client one:** *the wall-clock
+the organizer typed is preserved; the zone says which instant that names.* A PICKED start knows its
+zone at submit, so `wallClockToUtc` resolves against it in the same INSERT. A TYPED one does not and
+structurally cannot — the zone comes from the geocode, which needs the key, which lives only in
+`resolve-ride-location`'s secret store, and that call is fire-and-forget **after** the insert. So
+`080`'s `enforce_ride_timezone` shifts `departure_at` whenever a statement moves the zone and leaves
+the instant alone, using `AT TIME ZONE` because it is exact across a DST boundary. Without it a
+Lisbon ride typed as 09:00 silently redraws as 08:00 minutes after Save.
+
+**Two guards, and neither makes the other redundant.** Postgres validates against
+`pg_timezone_names` and stores anything else as NULL; `rideZone()` in `src/lib/utils.ts` falls back
+for anything `Intl` cannot format in — ICU's zone table is not Postgres's, and an unknown `timeZone`
+throws a `RangeError` that would take down every screen the ride appears on.
+
+`wallClockToUtc` still runs two passes so the two DST days a year are right, and **its tests assert
+offsets rather than strings** — `TZ=UTC` in `vitest.config.ts` would let a naive implementation pass
+a string comparison, so the summer/winter pairs are what prove the offset is looked up per instant.
 
 **Deliberately undecided** — raise these rather than inventing an answer: error tracking,
 analytics, i18n, and email delivery beyond Supabase's built-in auth mails.
@@ -587,8 +602,9 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 79 files; DEV is at `079` and PROD at `079` — measured 2026-08-25, at the #310
-promotion, so the two are LEVEL and nothing is owed.** `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
+**Applied state: 80 files; DEV is at `080` and PROD at `079` — measured 2026-08-26, so DEV is
+AHEAD by one and `080` is owed to PROD at the next promotion.** It is additive, so it goes to PROD
+**before** the promotion build serves, per the ordering rule below. `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
 after it was confirmed serving (destructive), which is the whole ordering rule in one sitting.
 **Level is the exception, not the resting state**: DEV-ahead is where a migration lives between its
 merge and its promotion, and the two were last level on 2026-08-20 at PD-273's promotion and
@@ -651,7 +667,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1816** assertions — re-derive rather than trust it:
+Suite **1841** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.

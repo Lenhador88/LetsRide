@@ -23,6 +23,7 @@ function ride(overrides: Partial<RideListItem> = {}): RideListItem {
     title: 'Weekend cruise',
     meeting_point: 'Leiderdorp',
     departure_at: '2026-08-16T10:00:00Z',
+    timezone: null,
     club: null,
     latitude: null,
     longitude: null,

@@ -8648,8 +8648,8 @@ select assert_eq(
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'rides'
       and grantee = 'authenticated' and privilege_type = 'INSERT'),
-  'club_id,departure_at,description,id,is_public,latitude,longitude,meeting_point,organizer_id,route_description,start_place_id,title',
-  '045/067/077: exactly twelve columns of rides hold INSERT, and created_at is not among them — 067 added the three a pick is made of, deliberately NOT geocode_confidence, and 077 took max_riders out by dropping the column, which removes its grants with no revoke');
+  'club_id,departure_at,description,id,is_public,latitude,longitude,meeting_point,organizer_id,route_description,start_place_id,timezone,title',
+  '045/067/077/080: exactly thirteen columns of rides hold INSERT, and created_at is not among them — 067 added the three a pick is made of, deliberately NOT geocode_confidence; 077 took max_riders out by dropping the column, which removes its grants with no revoke; and 080 added timezone, which a PICKED start supplies at creation because that is the one moment its zone is knowable without a geocode');
 select assert_eq(has_column_privilege('authenticated', 'public.rides', 'geocode_confidence', 'INSERT'),
   false, '067: geocode_confidence is the one location column with no INSERT grant — no client produces a vendor score, so a rider cannot author the geocoded arm at create time at all');
 select assert_eq(
@@ -8657,8 +8657,8 @@ select assert_eq(
      from information_schema.column_privileges
     where table_schema = 'public' and table_name = 'rides'
       and grantee = 'authenticated' and privilege_type = 'UPDATE'),
-  'club_id,departure_at,description,geocode_confidence,is_public,latitude,longitude,map_card_path,map_detail_path,meeting_point,route_description,start_place_id,title',
-  '045/051/067/077: exactly thirteen columns of rides hold UPDATE — created_at, id and organizer_id are still not among them, the five 051 added ARE, 067 added start_place_id so a rider can re-pick or clear, and 077 removed max_riders with the column');
+  'club_id,departure_at,description,geocode_confidence,is_public,latitude,longitude,map_card_path,map_detail_path,meeting_point,route_description,start_place_id,timezone,title',
+  '045/051/067/077/080: exactly fourteen columns of rides hold UPDATE — created_at, id and organizer_id are still not among them, the five 051 added ARE, 067 added start_place_id so a rider can re-pick or clear, 077 removed max_riders with the column, and 080 added timezone so resolve-ride-location can write a TYPED ride''s zone under the caller''s own JWT');
 
 -- ---- clubs -------------------------------------------------------------
 select assert_eq(has_table_privilege('authenticated', 'public.clubs', 'insert'),
@@ -14149,7 +14149,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where c.relname = 'rides' and not t.tgisinternal),
-  5, '067: rides carries five non-internal triggers — 051 took it from three to four and 067 adds the precedence one');
+  6, '067/080: rides carries six non-internal triggers — 051 took it from three to four, 067 adds the precedence one, and 080 adds the zone one');
 
 rollback to savepoint ride_start_location_067;
 
@@ -16668,6 +16668,298 @@ select assert_allowed(
   '079.6: a rider with two club watermarks and no app-wide one still gets a number back from "All new" rather than a 21000 error');
 
 rollback to savepoint postcard_unread_079;
+
+-- ===========================================================================
+-- 080  A RIDE CARRIES THE ZONE ITS MEETING POINT IS IN — PD-193
+--
+-- The invariant the whole file rests on: **the wall-clock the organizer typed
+-- is what is preserved; the zone is what says which instant that wall-clock
+-- names.** Everything below is that sentence, in the two directions it can be
+-- got wrong.
+--
+-- Read `080`'s own header before these. The one thing worth repeating here is
+-- WHY the shift is in Postgres rather than in the Edge Function: `AT TIME ZONE`
+-- is exact across a DST boundary, it is atomic with the zone write, nothing
+-- type-checks `supabase/functions`, and the CLIENT moves the zone too — a rule
+-- in the function would cover none of those.
+--
+-- **Two of these assertions are about roles rather than about rows, and that is
+-- deliberate.** `031` is the standing lesson that this suite runs as the table
+-- OWNER, for whom neither RLS nor a column grant exists — so "the write works"
+-- proves nothing about the app's path. 080.5 names `authenticated` explicitly.
+-- ===========================================================================
+savepoint ride_timezone_080;
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 080.1  The column, its bound, and NULL as a first-class answer
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'rides'
+      and column_name = 'timezone' and is_nullable = 'YES' and data_type = 'text'),
+  1, '080: rides.timezone is a NULLABLE text column — NULL is "we do not know", which is every ride created before this and every place whose provider sent no zone');
+
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id)
+values ('00000000-0000-0000-0000-000000080001', 'Typed start', 'The layby past the roundabout',
+        timestamptz '2026-08-16T07:00:00Z', true, '00000000-0000-0000-0000-00000000000a');
+select assert_eq(
+  (select timezone is null from rides where id = '00000000-0000-0000-0000-000000080001'),
+  true, '080: a ride created without a zone carries NULL rather than a default — a default would assert a meeting point''s clock nobody supplied');
+
+-- **`rides_timezone_is_bounded` is UNREACHABLE through the trigger, and that is
+-- the point of these two assertions rather than an omission.** A BEFORE row
+-- trigger runs before CHECK constraints are evaluated, and this one normalises
+-- anything absent from `pg_timezone_names` to NULL — which is every string over
+-- 64 characters, the longest real IANA name being 32. So the ordinary write
+-- path can never raise `23514` here.
+--
+-- It is kept as a FLOOR under the paths that skip user triggers —
+-- `session_replication_role = replica`, which logical replication and some
+-- restore paths set — and asserted BOTH ways so that fact is written down where
+-- a reader would otherwise re-derive the wrong one. `018` and `063` are this
+-- repo's two worked examples of a constraint that reads as live protection
+-- while protecting nothing; the difference here is that this one says so.
+-- Run plainly rather than through `assert_allowed`, which that helper's own
+-- comment forbids for an UPDATE: RLS filters one to zero rows instead of
+-- raising, so it would pass against a policy that forbade the write entirely.
+-- The statement not raising IS the assertion, and the value is checked after.
+update rides set timezone = repeat('a', 65) where id = '00000000-0000-0000-0000-000000080001';
+select assert_eq(
+  (select timezone is null from rides where id = '00000000-0000-0000-0000-000000080001'),
+  true, '080: an over-length zone does NOT raise 23514 on the ordinary path — the trigger normalises it to NULL first, because a BEFORE row trigger runs before CHECK constraints are evaluated, so rides_timezone_is_bounded is unreachable through it by construction');
+
+savepoint bounded_floor_080;
+alter table rides disable trigger enforce_ride_timezone;
+select assert_rejected(
+  $$update rides set timezone = repeat('a', 65) where id = '00000000-0000-0000-0000-000000080001'$$,
+  '23514',
+  '080: ... and with the trigger out of the way the CHECK still refuses it — which is the whole reason a redundant-looking constraint is kept: replication and restore apply rows with user triggers disabled');
+alter table rides enable trigger enforce_ride_timezone;
+rollback to savepoint bounded_floor_080;
+
+-- ---------------------------------------------------------------------------
+-- 080.2  An unresolvable zone is stored as NULL and never raised
+--
+-- Raising was the alternative and it is worse in BOTH directions. On the picked
+-- path the write is the rider's own INSERT, so it would refuse to create their
+-- ride over a value they never saw. On the typed path it reaches
+-- `resolve-ride-location`'s column write, which answers a refusal by deleting
+-- both freshly uploaded tiles — so a perfectly good geocode would cost the
+-- rider their map. Every other stage of that pipeline fails open.
+-- ---------------------------------------------------------------------------
+-- Plainly again, and for the same reason as 080.1: `assert_allowed` cannot
+-- prove an UPDATE was permitted. Not raising is the first half of the claim and
+-- the stored value is the second.
+update rides set timezone = 'Mars/Olympus_Mons' where id = '00000000-0000-0000-0000-000000080001';
+select assert_eq(
+  (select timezone is null from rides where id = '00000000-0000-0000-0000-000000080001'),
+  true, '080: a zone this server cannot resolve is stored as NULL rather than raising — the column''s own contract is "we do not know", and raising would refuse the rider''s INSERT on the picked path and cost them both map tiles on the typed one');
+
+update rides set timezone = 'Europe/Lisbon' where id = '00000000-0000-0000-0000-000000080001';
+select assert_eq(
+  (select timezone from rides where id = '00000000-0000-0000-0000-000000080001'),
+  'Europe/Lisbon', '080: (a real zone IS stored, so the assertion above is about the normalisation and not about the column refusing everything)');
+
+-- ---------------------------------------------------------------------------
+-- 080.3  THE POINT OF THE WHOLE FILE — the zone moves, the wall-clock does not
+--
+-- This is the defect PD-193's own comment stopped the first attempt over: with
+-- the read side alone, the moment `resolve-ride-location` writes the zone,
+-- `formatRideTime` starts drawing 08:00 for a ride the organizer typed as
+-- 09:00 — asynchronously, on their own screen, after they saved.
+-- ---------------------------------------------------------------------------
+savepoint wall_clock_080;
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id)
+values ('00000000-0000-0000-0000-000000080002', 'Lisbon run', 'Rua Augusta, Lisboa',
+        -- 09:00 Amsterdam, which is what `wallClockToUtc` stores for a TYPED
+        -- start: the zone is not known until the geocode lands.
+        timestamptz '2026-08-16T07:00:00Z', true, '00000000-0000-0000-0000-00000000000a');
+
+-- The Edge Function's write: the zone alone, `departure_at` untouched.
+update rides set timezone = 'Europe/Lisbon' where id = '00000000-0000-0000-0000-000000080002';
+select assert_eq(
+  (select to_char(departure_at at time zone 'Europe/Lisbon', 'HH24:MI')
+     from rides where id = '00000000-0000-0000-0000-000000080002'),
+  '09:00', '080: the geocode landing a zone SHIFTS departure_at so the organizer still reads back the 09:00 they typed — without this the ride silently moves an hour on their own screen minutes after they saved it');
+
+-- ...and the shift is a real move of the instant, not a re-labelling of it.
+select assert_eq(
+  (select departure_at from rides where id = '00000000-0000-0000-0000-000000080002'),
+  timestamptz '2026-08-16T08:00:00Z',
+  '080: ... which means the stored INSTANT moved, because the wall-clock is the thing being held rather than the timestamp');
+
+-- ---------------------------------------------------------------------------
+-- 080.4  The `departure_at` guard, which is what keeps it off an ordinary edit
+--
+-- A statement that supplies BOTH has already decided what the instant is.
+-- `updateRide` always sends `departure_at`, resolved against the zone the edit
+-- form was rendering in — so if the rider changed the time, or picked a place
+-- in a different zone, the statement wins and nothing shifts it again.
+-- ---------------------------------------------------------------------------
+update rides
+   set timezone = 'Europe/Berlin', departure_at = timestamptz '2026-08-16T12:00:00Z'
+ where id = '00000000-0000-0000-0000-000000080002';
+select assert_eq(
+  (select departure_at from rides where id = '00000000-0000-0000-0000-000000080002'),
+  timestamptz '2026-08-16T12:00:00Z',
+  '080: a statement that moves the zone AND the instant is left alone — shifting it again would move a ride the rider had just set');
+
+-- The same edit re-sending an unchanged instant is not a move, so a zone
+-- arriving from anywhere else still holds the wall-clock.
+update rides set title = 'Renamed', departure_at = timestamptz '2026-08-16T12:00:00Z'
+ where id = '00000000-0000-0000-0000-000000080002';
+select assert_eq(
+  (select departure_at from rides where id = '00000000-0000-0000-0000-000000080002'),
+  timestamptz '2026-08-16T12:00:00Z',
+  '080: ... and an ordinary edit that touches no zone at all moves nothing');
+
+-- DST is exact rather than a fixed offset per zone, which is the property
+-- `AT TIME ZONE` buys and a TypeScript reimplementation would have to earn.
+-- 09:00 Amsterdam is CEST (+2) in July and CET (+1) in January; 09:00 London is
+-- BST (+1) and GMT (+0). A fixed offset cannot answer both of the next two.
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id)
+values ('00000000-0000-0000-0000-000000080003', 'Summer', 'Dam 1',
+        timestamptz '2026-07-01T07:00:00Z', true, '00000000-0000-0000-0000-00000000000a'),
+       ('00000000-0000-0000-0000-000000080004', 'Winter', 'Dam 1',
+        timestamptz '2026-01-15T08:00:00Z', true, '00000000-0000-0000-0000-00000000000a');
+update rides set timezone = 'Europe/London'
+ where id in ('00000000-0000-0000-0000-000000080003', '00000000-0000-0000-0000-000000080004');
+select assert_eq(
+  (select array_agg(departure_at order by id) from rides
+    where id in ('00000000-0000-0000-0000-000000080003', '00000000-0000-0000-0000-000000080004')),
+  array[timestamptz '2026-07-01T08:00:00Z', timestamptz '2026-01-15T09:00:00Z'],
+  '080: the shift looks the offset up PER INSTANT — the same 09:00 moves by one hour in July and by one hour the other way in January, which no fixed per-zone offset can produce');
+rollback to savepoint wall_clock_080;
+
+-- ---------------------------------------------------------------------------
+-- 080.5  The zone is NOT part of the location group, and this is the assertion
+--        that caught it being put there
+--
+-- `067`'s `clear_ride_map_tiles` clears the coordinate, the vendor score and
+-- both tiles when the meeting point moves, and putting `timezone` in that group
+-- is the obvious next step. It is wrong, it was written that way first, and the
+-- defect is the exact one this whole file exists to prevent — arriving through
+-- the one path 080.4's guard cannot see.
+--
+-- `updateRide` resolves `departure_at` against `resolveDepartureZone(location,
+-- previous.timezone)` — the zone the edit form was RENDERING in, the only zone
+-- that reproduces the digits the rider is looking at. So a save that changes the
+-- meeting point AND the departure time carries an instant expressed in a zone
+-- the clearing trigger is about to drop, and 080.4 correctly declines to shift
+-- it because the statement did move the instant.
+--
+-- Measured on DEV before this file merged: 09:00 Lisbon, saved with a new
+-- address and 09:30 typed, stored 08:30Z with a NULL zone and rendered 10:30.
+-- The control case — address changed, time untouched — was right throughout,
+-- which is what made it asymmetric rather than obvious.
+-- ---------------------------------------------------------------------------
+savepoint zone_survives_080;
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id,
+                   start_place_id, latitude, longitude, timezone)
+values ('00000000-0000-0000-0000-000000080005', 'Picked in Lisbon', 'Rua Augusta, Lisboa',
+        timestamptz '2026-09-10T08:00:00Z', true, '00000000-0000-0000-0000-00000000000a',
+        'geoapify:augusta', 38.71, -9.14, 'Europe/Lisbon');
+select assert_eq(
+  (select timezone from rides where id = '00000000-0000-0000-0000-000000080005'),
+  'Europe/Lisbon', '080: a PICKED ride stores its zone in the same INSERT as departure_at — which is why a picked ride never needs a correction at all');
+
+-- ** THE REGRESSION. ** Exactly what `updateRide` sends when the organizer edits
+-- the address and the time together: a new meeting point, a new instant resolved
+-- against the zone the form was rendering in, and no `timezone` key at all.
+update rides
+   set meeting_point = 'Alexanderplatz, Berlin',
+       departure_at  = timestamptz '2026-09-10T08:30:00Z'   -- 09:30 in Lisbon
+ where id = '00000000-0000-0000-0000-000000080005';
+select assert_eq(
+  (select to_char(departure_at at time zone coalesce(timezone, 'Europe/Amsterdam'), 'HH24:MI')
+     from rides where id = '00000000-0000-0000-0000-000000080005'),
+  '09:30', '080: changing the meeting point AND the departure time in one save still shows the rider the time they TYPED — the zone must not be cleared out from under the instant updateRide just resolved against it, which rendered 10:30 when timezone was in clear_ride_map_tiles'' group');
+select assert_eq(
+  (select timezone from rides where id = '00000000-0000-0000-0000-000000080005'),
+  'Europe/Lisbon', '080: ... because the zone SURVIVES a location change. A stale zone is the better interim — it is the previous meeting point''s, never worse than APP_TIME_ZONE for a ride that was abroad — and resolve-ride-location overwrites it when the geocode lands');
+
+-- The coordinate and the tiles DO still clear, so this is a narrowing of `067`'s
+-- group rather than a removal of it.
+select assert_eq(
+  (select (start_place_id is null and latitude is null and geocode_confidence is null)
+     from rides where id = '00000000-0000-0000-0000-000000080005'),
+  true, '080: (067''s clearing still fires on that same statement, so the assertion above is about timezone being excluded from the group and not about the trigger having stopped running)');
+
+-- And the late geocode then corrects the zone, holding the wall-clock — which is
+-- what makes carrying a stale one safe rather than merely cheaper.
+update rides set timezone = 'Europe/Berlin' where id = '00000000-0000-0000-0000-000000080005';
+select assert_eq(
+  (select to_char(departure_at at time zone 'Europe/Berlin', 'HH24:MI')
+     from rides where id = '00000000-0000-0000-0000-000000080005'),
+  '09:30', '080: ... and when the geocode finally lands the real zone, 080.3 shifts the instant so the rider STILL reads the 09:30 they typed');
+rollback to savepoint zone_survives_080;
+
+-- ---------------------------------------------------------------------------
+-- 080.6  The grants — named by ROLE, because this suite runs as the owner
+--
+-- `045` converted `rides` to per-column INSERT and UPDATE grants, so a column
+-- added after it is NOT writable until it is named. For the Edge Function that
+-- surfaces as the existing `column_write_refused` path — silently.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  has_column_privilege('authenticated', 'public.rides', 'timezone', 'INSERT'),
+  true, '080: authenticated may INSERT rides.timezone — the picked path supplies it at ride CREATION, which is the one moment the zone is knowable without a geocode');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.rides', 'timezone', 'UPDATE'),
+  true, '080: ... and may UPDATE it, which is how resolve-ride-location writes a typed ride''s zone under the CALLER''s own JWT');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.rides', 'created_at', 'UPDATE'),
+  false, '080: (045''s server-owned created_at is still unwritable, so 080''s ADDITIVE grants did not reinstate an absolute list — the 044/046 hazard)');
+set role anon;
+select assert_denied($$select count(*) from rides where timezone is not null$$,
+  '080: a signed-out visitor cannot read a ride''s zone at all — decision #1, and 080 adds no grant and no policy that reaches anon');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 080.7  No policy, and the trigger runs as the rider
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'rides'
+      and (coalesce(qual, '') || coalesce(with_check, '')) like '%timezone%'),
+  0, '080: no rides policy mentions the zone — RLS is row-level, so a reader who gets the row gets every column they hold a grant for, and a second predicate over the same row is how two predicates drift apart');
+select assert_eq(
+  (select prosecdef from pg_proc where proname = 'enforce_ride_timezone'),
+  false, '080: enforce_ride_timezone is NOT security definer — it touches only NEW and OLD, and a definer here would be a privilege nobody needs');
+select assert_eq(
+  -- `proconfig` stores the pin as the literal `search_path=""`, quotes and all —
+  -- matching on `search_path=` alone answers false against a correct function.
+  (select proconfig @> array['search_path=""'] from pg_proc where proname = 'enforce_ride_timezone'),
+  true, '080: ... and it carries the pinned empty search_path every function in this repo does');
+
+-- **Every BEFORE row trigger on `rides`, in the order Postgres fires them.**
+--
+-- Not the three location ones filtered out of the set: `array_agg(... order by
+-- tgname)` returns whatever it is given in name order, so a three-name `in` list
+-- compared against those same three names sorted is a TAUTOLOGY with respect to
+-- ordering — it catches a rename and nothing else, while reading like an
+-- ordering assertion. Two triggers already sort between `clear_ride_map_tiles`
+-- and `enforce_ride_timezone` (`enforce_participation_gate`,
+-- `enforce_ride_club_audience`), and a filtered assertion is blind to a third
+-- landing there.
+--
+-- Asserting the WHOLE list is what actually pins it: any new trigger, any
+-- rename, and any change of relative position turns this red and makes whoever
+-- added it reason about `080` §2 and `067` §4 before moving on.
+select assert_eq(
+  (select array_agg(tgname::text order by tgname) from pg_trigger
+    where tgrelid = 'public.rides'::regclass and not tgisinternal
+      and tgtype & 2 = 2),
+  array['clear_ride_map_tiles', 'enforce_participation_gate', 'enforce_ride_club_audience',
+        'enforce_ride_timezone', 'protect_picked_ride_location'],
+  '080: every BEFORE row trigger on rides, in the NAME order Postgres fires them — enforce_ride_timezone must sort AFTER clear_ride_map_tiles, because 067 clears the coordinate this ride is no longer at and 080 §2 has to read the resulting row rather than the supplied one');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.rides'::regclass and not tgisinternal),
+  6, '080: ... and six non-internal triggers in total — 051 took it from three to four, 067 added the precedence one, 080 the zone one, and the sixth is the AFTER trigger the list above deliberately excludes');
+
+rollback to savepoint ride_timezone_080;
 
 reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);

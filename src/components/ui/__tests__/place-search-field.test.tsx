@@ -25,6 +25,7 @@ const place = (over: Partial<PlaceSearchResult> = {}): PlaceSearchResult => ({
   lat: 51.88,
   lon: 4.36,
   countryCode: null,
+  timezone: null,
   ...over,
 })
 

@@ -122,7 +122,7 @@ export const RIDE_CREW_LIMIT = 200
  * counted as though it were.
  */
 const RIDE_SELECT = `
-  id, title, meeting_point, departure_at, organizer_id, map_card_path,
+  id, title, meeting_point, departure_at, timezone, organizer_id, map_card_path,
   latitude, longitude,
   organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
   club:clubs(id, name),
@@ -134,6 +134,9 @@ export type RideRow = {
   title: string
   meeting_point: string
   departure_at: string
+  /** `080`'s zone for the meeting point, NULL when the ride does not carry one.
+   *  Every `formatRide*` call on this row takes it — see `rideZone`. */
+  timezone: string | null
   organizer_id: string
   map_card_path: string | null
   /** `051`'s pair, null on any ride the geocoder never resolved. */
@@ -179,6 +182,7 @@ export function toRideListItem(
     title: row.title,
     meeting_point: row.meeting_point,
     departure_at: row.departure_at,
+    timezone: row.timezone,
     club: row.club,
     latitude: row.latitude,
     longitude: row.longitude,
@@ -460,7 +464,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
       // draws the 358×160 panel and nothing else `051` added.
       .select(`
         id, title, description, route_description, meeting_point, departure_at,
-        club_id, organizer_id, map_detail_path,
+        timezone, club_id, organizer_id, map_detail_path,
         organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
         club:clubs(${CLUB_EMBED_COLUMNS})
       `)
@@ -509,6 +513,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
     route_description: row.route_description,
     meeting_point: row.meeting_point,
     departure_at: row.departure_at,
+    timezone: row.timezone,
     club_id: row.club_id,
     organizer_id: row.organizer_id,
     organizer: row.organizer,
@@ -555,7 +560,7 @@ export async function getRideForEdit(id: string): Promise<RideForEdit | null> {
     .from('rides')
     .select(`
       id, title, description, route_description, meeting_point, departure_at,
-      is_public, club_id, organizer_id,
+      timezone, is_public, club_id, organizer_id,
       start_place_id, latitude, longitude,
       club:clubs(id, name)
     `)
@@ -855,7 +860,7 @@ export async function getRecentRideStarts(): Promise<RecentRideStart[]> {
   const rows = unwrapList(
     await supabase
       .from('rides')
-      .select('meeting_point, start_place_id, latitude, longitude')
+      .select('meeting_point, start_place_id, latitude, longitude, timezone')
       .eq('organizer_id', user.id)
       .not('start_place_id', 'is', null)
       .order('created_at', { ascending: false })
@@ -871,6 +876,7 @@ type RecentStartRow = {
   start_place_id: string | null
   latitude: number | null
   longitude: number | null
+  timezone: string | null
 }
 
 /**
@@ -896,6 +902,10 @@ export function dedupeRecentStarts(rows: RecentStartRow[]): RecentRideStart[] {
       placeId: row.start_place_id,
       lat: row.latitude,
       lon: row.longitude,
+      // Unlike the three above this is NOT part of what makes a start distinct
+      // — the dedupe is on `start_place_id` alone, so the newest ride at this
+      // place decides the zone, exactly as it already decides the name.
+      timezone: row.timezone,
     })
   }
 

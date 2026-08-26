@@ -160,6 +160,15 @@ export const STREET_LEVEL_RESULT_TYPES: readonly string[] = ['building', 'amenit
  */
 export const SEPARATION_THRESHOLD_METRES = 500
 
+/**
+ * `080`'s `rides_timezone_is_bounded`, restated for the same reason
+ * `search-places/shape.ts` restates it: a value that overruns the CHECK turns a
+ * good geocode into `column_write_refused`, which deletes both freshly uploaded
+ * tiles. The longest name in the IANA database is
+ * `America/Argentina/ComodRivadavia` at 32 characters.
+ */
+export const MAX_TIMEZONE_CHARS = 64
+
 /* -------------------------------------------------------------------------- */
 /* The two tiles                                                               */
 /* -------------------------------------------------------------------------- */
@@ -284,6 +293,23 @@ export type GeocodeFeature = {
       /** Corroboration only — never the primary granularity test. */
       confidence_street_level?: unknown
     }
+    /**
+     * The IANA zone the point is in — PD-193's half, and the reason that story
+     * could be built at all: it arrives on a call this function already makes
+     * and already pays for.
+     *
+     * **Only `name` is read.** The vendor documents `offset_STD`, `offset_DST`
+     * and two abbreviations beside it; all four are derivable from the name and
+     * all four go stale with the tz database, so storing one would be storing a
+     * fact with an expiry date. Absent from the type for the same reason
+     * `rank.importance` is: reaching for one does not compile.
+     *
+     * Documentation-derived and unverified against a live response —
+     * `*.geoapify.com` is egress-blocked from the build container. A shape
+     * guessed wrong yields `null`, which is `rides.timezone`'s own "we do not
+     * know" and the clock every ride had before this.
+     */
+    timezone?: { name?: unknown }
   }
 }
 
@@ -295,10 +321,25 @@ export type Candidate = {
   confidence: number
   resultType: string
   streetLevelConfidence: number | null
+  /**
+   * **Not a gate, and it must never become one.** Every other field on a
+   * candidate can refuse it; this one is carried through the gates and read off
+   * the winner. A missing or malformed zone is a ride on `APP_TIME_ZONE`, which
+   * is where every ride was until `080` — refusing a good coordinate over it
+   * would trade a map for a clock.
+   */
+  timezone: string | null
 }
 
 export type GeocodeVerdict =
-  | { resolved: true; latitude: number; longitude: number; confidence: number }
+  | {
+      resolved: true
+      latitude: number
+      longitude: number
+      confidence: number
+      /** The winner's zone, or `null`. See `Candidate.timezone`. */
+      timezone: string | null
+    }
   | {
       resolved: false
       /**
@@ -327,12 +368,27 @@ function toCandidate(feature: GeocodeFeature): Candidate | null {
   // catching them here means the refusal costs no render rather than two.
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null
 
+  // Shape only, never membership: whether this names a REAL zone is `080`'s
+  // `enforce_ride_timezone`, against `pg_timezone_names`. What is bounded here
+  // is the two things that would reach the rider as a refused write rather than
+  // a missing clock — `rides_timezone_is_bounded`'s 64 characters, and anything
+  // that is not an `Area/Location` name at all.
+  const zone = properties?.timezone?.name
+  const timezone =
+    typeof zone === 'string' &&
+    zone.trim().length > 0 &&
+    zone.trim().length <= MAX_TIMEZONE_CHARS &&
+    /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/.test(zone.trim())
+      ? zone.trim()
+      : null
+
   return {
     latitude,
     longitude,
     confidence,
     resultType,
     streetLevelConfidence: isFiniteNumber(streetLevel) ? streetLevel : null,
+    timezone,
   }
 }
 
@@ -423,6 +479,7 @@ export function resolveCoordinate(response: GeocodeResponse | null | undefined):
     latitude: best.latitude,
     longitude: best.longitude,
     confidence: best.confidence,
+    timezone: best.timezone,
   }
 }
 

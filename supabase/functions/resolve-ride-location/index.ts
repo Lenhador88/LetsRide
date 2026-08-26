@@ -349,6 +349,11 @@ Deno.serve(async (req: Request) => {
 
     let coordinate: { latitude: number; longitude: number }
     let confidence: number | null = null
+    // ** NULL for a picked ride, and that is not a gap ** (`080`, PD-193). A
+    // pick's zone came from the place search and is already stored by the
+    // INSERT that created the ride, so there is nothing to learn and nothing to
+    // correct — which is why a picked ride's departure time never moves.
+    let timezone: string | null = null
 
     if (picked) {
       coordinate = picked
@@ -361,6 +366,7 @@ Deno.serve(async (req: Request) => {
 
       coordinate = { latitude: verdict.latitude, longitude: verdict.longitude }
       confidence = verdict.confidence
+      timezone = verdict.timezone
     }
 
     // 7. Two renders at two zooms — see gates.ts TILE_SPECS for why this is not
@@ -446,9 +452,27 @@ Deno.serve(async (req: Request) => {
     //    would be a no-op at best, and sending a `geocode_confidence` beside it
     //    would violate `067`'s coupling CHECK — a pick has no vendor score by
     //    construction.
+    //
+    //    ** `timezone` rides with the coordinate and NOT with the tiles. ** It
+    //    is what the geocode learned about the PLACE, so it belongs to the same
+    //    group as the coordinate and the score — and unlike a tile it is still
+    //    worth storing when a render fails, because the rider's clock does not
+    //    depend on whether a JPEG came back.
+    //
+    //    ** This statement does not touch `departure_at`, and must not start
+    //    to. ** `080`'s `enforce_ride_timezone` shifts it in the same statement
+    //    precisely because this one sends the zone alone: that is the signal
+    //    that the organizer's typed wall-clock is to be preserved. A payload
+    //    carrying both would tell the database this function had decided what
+    //    the instant is, and the shift would silently stop happening.
     const locationColumns = picked
       ? {}
-      : { latitude: coordinate.latitude, longitude: coordinate.longitude, geocode_confidence: confidence }
+      : {
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
+          geocode_confidence: confidence,
+          timezone,
+        }
 
     // ** The geocoded write is guarded on the pick still being absent, and that
     //    guard is the fix for a race rather than a tidy-up ** (PD-114 §D6).

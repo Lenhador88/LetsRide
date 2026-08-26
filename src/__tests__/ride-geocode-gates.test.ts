@@ -6,6 +6,7 @@ import {
   CONFIDENCE_FLOOR,
   distanceMetres,
   GEOCODE_CANDIDATE_LIMIT,
+  MAX_TIMEZONE_CHARS,
   resolveCoordinate,
   SEPARATION_THRESHOLD_METRES,
   TILE_SPECS,
@@ -58,6 +59,7 @@ function feature(
     result_type?: string
     confidence?: number
     confidence_street_level?: number
+    timezone?: unknown
   } = {},
 ): GeocodeFeature {
   return {
@@ -71,6 +73,9 @@ function feature(
           ? {}
           : { confidence_street_level: overrides.confidence_street_level }),
       },
+      ...(overrides.timezone === undefined
+        ? {}
+        : { timezone: overrides.timezone as { name?: unknown } }),
     },
   }
 }
@@ -200,6 +205,7 @@ describe('the separation gate — the measured regression case', () => {
       latitude: AMSTERDAM.latitude,
       longitude: AMSTERDAM.longitude,
       confidence: 1,
+      timezone: null,
     })
   })
 
@@ -388,5 +394,73 @@ describe('resolvePickedCoordinate', () => {
     expect(resolvePickedCoordinate({ start_place_id: 'gers-0', latitude: 0, longitude: 0 })).toEqual(
       { latitude: 0, longitude: 0 }
     )
+  })
+})
+
+/**
+ * `080` (PD-193) — the zone the geocode already returns, which is what let that
+ * story be built without a second vendor call.
+ *
+ * **The rule under test is that this is carried, never gated.** Every other
+ * field on a candidate can refuse it; a missing or malformed zone must not,
+ * because refusing a good coordinate over a clock trades the rider's map for
+ * their timezone and `APP_TIME_ZONE` is a perfectly good answer.
+ *
+ * Documentation-derived, like every other constant in `gates.ts`:
+ * `*.geoapify.com` is egress-blocked from the build container, so no session has
+ * seen this field on a live response. What is pinned here is the degradation.
+ */
+describe('the meeting point’s timezone', () => {
+  it('rides out on the verdict, taken from the candidate that won', () => {
+    const verdict = resolveCoordinate(
+      response(feature(AMSTERDAM, { timezone: { name: 'Europe/Amsterdam' } })),
+    )
+    expect(verdict).toEqual({
+      resolved: true,
+      latitude: AMSTERDAM.latitude,
+      longitude: AMSTERDAM.longitude,
+      confidence: 1,
+      timezone: 'Europe/Amsterdam',
+    })
+  })
+
+  it('is NEVER a gate — a malformed zone still resolves the coordinate', () => {
+    for (const timezone of [null, {}, { name: '' }, { name: 7 }, { name: 'a'.repeat(65) }, 'x']) {
+      const verdict = resolveCoordinate(response(feature(AMSTERDAM, { timezone })))
+      expect(verdict.resolved).toBe(true)
+      expect(verdict.resolved && verdict.timezone).toBeNull()
+    }
+  })
+
+  it('is null when the vendor sends no timezone at all, which is the old shape', () => {
+    const verdict = resolveCoordinate(response(feature(AMSTERDAM)))
+    expect(verdict.resolved && verdict.timezone).toBeNull()
+  })
+
+  it('bounds the length at the column’s CHECK', () => {
+    // Over `rides_timezone_is_bounded` the write is refused, and this function's
+    // caller answers a refusal by deleting both freshly uploaded tiles. So the
+    // cost of not bounding it here is the rider's map, not their clock.
+    const ok = `Europe/${'a'.repeat(MAX_TIMEZONE_CHARS - 7)}`
+    expect(ok).toHaveLength(MAX_TIMEZONE_CHARS)
+    const good = resolveCoordinate(response(feature(AMSTERDAM, { timezone: { name: ok } })))
+    expect(good.resolved && good.timezone).toBe(ok)
+
+    const over = resolveCoordinate(response(feature(AMSTERDAM, { timezone: { name: `${ok}a` } })))
+    expect(over.resolved && over.timezone).toBeNull()
+  })
+
+  it('reads only `name`, so a vendor offset cannot become a stored fact', () => {
+    // The offsets and abbreviations beside it are derivable from the name and go
+    // stale with the tz database. `GeocodeFeature` not carrying them is the
+    // enforcement; this asserts the mapping agrees.
+    const verdict = resolveCoordinate(
+      response(
+        feature(AMSTERDAM, {
+          timezone: { name: 'Europe/Lisbon', offset_STD: '+00:00', abbreviation_DST: 'WEST' },
+        }),
+      ),
+    )
+    expect(verdict.resolved && verdict.timezone).toBe('Europe/Lisbon')
   })
 })

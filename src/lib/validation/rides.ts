@@ -41,9 +41,17 @@ const optionalText = (max: number, message: string) =>
 export const RIDE_START_PLACE_ID_MAX = 512
 
 /**
- * The place a rider picked for the ride's start, or none — `067`, PD-114.
+ * `080`'s `rides_timezone_is_bounded`, restated for the message. The longest
+ * name in the IANA database is `America/Argentina/ComodRivadavia` at 32
+ * characters, so this is headroom rather than a fit.
+ */
+export const RIDE_TIMEZONE_MAX = 64
+
+/**
+ * The place a rider picked for the ride's start, or none — `067`, PD-114,
+ * carrying its zone since `080` (PD-193).
  *
- * **Only three fields, where a club's location has four.** A club's location
+ * **Only three POSITIONAL fields, where a club's location has four.** A club's location
  * *is* a place, so its name comes from the picker. A ride's start is free text
  * the rider may have typed — `meeting_point` above owns that string and is
  * `NOT NULL` — so what a pick adds is the coordinate and its provenance, never
@@ -65,6 +73,25 @@ export const rideLocationSchema = z
       .max(RIDE_START_PLACE_ID_MAX, 'That place could not be attached.'),
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
+    /**
+     * The IANA zone the picked place is in (`080`, PD-193), or `null`.
+     *
+     * **Nullable INSIDE a pick, unlike the three above.** All-or-nothing is
+     * `067`'s coupling rule about the coordinate; a zone is an enrichment the
+     * provider may simply not have sent, and refusing the whole pick over it
+     * would cost the rider their coordinate to save their clock.
+     *
+     * The bound matches `rides_timezone_is_bounded`. Zod owns the message and
+     * the database owns the guarantee: `080`'s trigger normalises anything it
+     * cannot resolve to NULL, so a name that passes here and is unknown to
+     * Postgres is stored as "we do not know" rather than as itself.
+     */
+    timezone: z
+      .string()
+      .trim()
+      .min(1)
+      .max(RIDE_TIMEZONE_MAX, 'That place could not be attached.')
+      .nullable(),
   })
   .nullable()
 
@@ -84,6 +111,47 @@ export const RIDE_LOCATION_FIELD_NAMES = {
   lat: 'latitude',
   lon: 'longitude',
 } as const
+
+/**
+ * The zone input, which is **not** in the map above and must not be.
+ *
+ * `PlaceSearchField` renders exactly the four inputs `RIDE_LOCATION_FIELD_NAMES`
+ * names, and `place-search-field.test.tsx` asserts that set per mode — including
+ * the composer's nameless mode, where it must write *nothing*. Adding a fifth
+ * would change a contract three callers share to serve one of them. The two ride
+ * forms render this input themselves, from the same `PlaceValue` they hand the
+ * field.
+ */
+export const RIDE_TIMEZONE_FIELD_NAME = 'start_timezone'
+
+/**
+ * Which zone a ride form's `datetime-local` string means — the one rule, in one
+ * place, because FOUR call sites have to give the same answer and two of them
+ * are on opposite sides of the network (`080`, PD-193).
+ *
+ * `CreateRideForm` and `EditRideForm` use it to label the field ("Times are in
+ * Lisbon time"); `createRide` and `updateRide` use it to resolve the string
+ * through `wallClockToUtc`. **A rider must never be told one zone and have
+ * another one stored**, and before this was extracted the two sides were a pair
+ * of one-liners with a comment saying they had to agree.
+ *
+ * **The pick WINS whenever there is one, including when its zone is `null`, and
+ * that is the whole reason this is not `pick?.timezone ?? stored`.** A place
+ * whose provider sent no zone is an ordinary case — it is every place until
+ * `search-places` is redeployed — and `??` falls through it to the ride's
+ * stored zone. On an edit that would label the field `APP_TIME_ZONE` while the
+ * action resolved it against the ride's old zone, so a rider who also changed
+ * the time would get back an hour they never typed.
+ *
+ * `stored` is the ride's own `timezone` on an edit and `null` on a create,
+ * where there is no ride yet to have one.
+ */
+export function resolveDepartureZone(
+  pick: { timezone?: string | null } | null | undefined,
+  stored: string | null
+): string | null {
+  return pick ? (pick.timezone ?? null) : stored
+}
 
 /**
  * The pick, read back off `FormData` as one nullable object.
@@ -108,7 +176,12 @@ export function readRideLocation(formData: FormData): RideLocationInput {
   const longitude = Number(lon)
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
 
-  return { start_place_id: placeId, latitude, longitude }
+  // Deliberately NOT part of the all-or-nothing test above: a pick with no zone
+  // is a place whose provider sent none, which is ordinary, and dropping the
+  // whole pick for it would lose the coordinate too.
+  const zone = (formData.get(RIDE_TIMEZONE_FIELD_NAME) as string | null)?.trim() ?? ''
+
+  return { start_place_id: placeId, latitude, longitude, timezone: zone || null }
 }
 
 export const rideSchema = z.object({
@@ -138,8 +211,12 @@ export const rideSchema = z.object({
    * half of that bug: an organizer in Amsterdam and one in London would mean
    * different instants by the same string.
    *
-   * The correct model is still a zone column on `rides` — see CLAUDE.md. This
-   * keeps the write consistent with `formatRide*` until that lands.
+   * **`080` (PD-193) is that zone column, and this comment is now about which
+   * zone rather than whether there is one.** The string is still zone-less and
+   * still parsed as wall-clock; what decides the instant is `rides.timezone`
+   * when the rider picked their start, and `APP_TIME_ZONE` when they typed it
+   * and the geocode has not landed yet. The action passes it; see
+   * `wallClockToUtc`.
    */
   departure_at: z
     .string()

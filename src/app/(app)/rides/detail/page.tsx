@@ -193,15 +193,16 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
         <p className="flex items-center gap-2.5">
           <CalendarIcon className="h-5 w-5 shrink-0 text-muted" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-            {formatRideDateLong(ride.departure_at)}, {formatRideTime(ride.departure_at)}{' '}
+            {formatRideDateLong(ride.departure_at, ride.timezone)},{' '}
+            {formatRideTime(ride.departure_at, ride.timezone)}{' '}
             {/* The marker a calendar date does not carry: "Sunday, 24 Aug" is
                 only useful to a rider who already knows what today is.
                 `formatRelativeTime` rather than a formatter of this screen's
                 own — the naming rule exists because each design draws a
                 different *shape*, and this draws exactly the shape it already
                 produces. It needs no timezone: it measures the distance between
-                two instants, which is the same everywhere, so it is unaffected
-                by the wall-clock question `APP_TIME_ZONE` is standing in for. */}
+                two instants, which is the same everywhere, so it is the one
+                stamp on this screen that `rides.timezone` does not reach. */}
             <span className="font-medium text-muted">· {formatRelativeTime(ride.departure_at)}</span>
           </span>
         </p>

@@ -12,20 +12,36 @@ import { RECENT_STARTS } from '@/components/rides/recentStarts'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { retaining, seedRetained, useRestoreSelection, wasChecked } from '@/lib/actions/retain'
-import { APP_TIME_ZONE, defaultRideDepartureInput } from '@/lib/utils'
+import { defaultRideDepartureInput, rideZone } from '@/lib/utils'
 import {
   RIDE_DESCRIPTION_MAX,
   RIDE_LOCATION_FIELD_NAMES,
   RIDE_MEETING_POINT_MAX,
   RIDE_ROUTE_MAX,
+  RIDE_TIMEZONE_FIELD_NAME,
   RIDE_TITLE_MAX,
   readRideLocation,
+  resolveDepartureZone,
   rideSchema,
 } from '@/lib/validation/rides'
 
-// "Europe/Amsterdam" -> "Amsterdam", so the hint can never name a different
-// city than the zone `wallClockToUtc` actually resolves against.
-const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') ?? APP_TIME_ZONE
+/**
+ * "Europe/Amsterdam" -> "Amsterdam", so the hint can never name a different city
+ * than the zone `wallClockToUtc` actually resolves against.
+ *
+ * **It follows the picked place now, not the app** (`080`, PD-193). A ride
+ * carries the zone of its meeting point, so a rider who picks a start in Lisbon
+ * is typing Lisbon time — and the hint is the only thing on screen that says
+ * which clock the number they typed is on. Leaving it pinned to the app's zone
+ * would make the form state, in words, the opposite of what it does.
+ *
+ * Resolved through `rideZone` rather than off the raw value, so the label and
+ * the write can never disagree about an unusable zone.
+ */
+function departureZoneLabel(zone: string | null | undefined): string {
+  const resolved = rideZone(zone)
+  return resolved.split('/').pop()?.replace(/_/g, ' ') ?? resolved
+}
 
 /**
  * `Create ride`.
@@ -214,6 +230,14 @@ export function CreateRideForm({
           recents={RECENT_STARTS}
           disabled={pending}
         />
+        {/* Rendered here rather than by `PlaceSearchField`, which writes exactly
+            the four inputs `RIDE_LOCATION_FIELD_NAMES` names and is asserted on
+            that set per mode. See `RIDE_TIMEZONE_FIELD_NAME`. */}
+        <input
+          type="hidden"
+          name={RIDE_TIMEZONE_FIELD_NAME}
+          value={startPlace?.timezone ?? ''}
+        />
         {/* place-search's own requirement: a ride SHALL remain creatable while
             lookup is unavailable, and nothing on screen said a typed meeting
             point was fine before this line. */}
@@ -225,9 +249,11 @@ export function CreateRideForm({
       <div className="flex flex-col gap-1.5">
         {/*
           `datetime-local` sends a zone-less string, which the action resolves as
-          wall-clock in APP_TIME_ZONE — see wallClockToUtc. Sending an ISO string
-          from here instead would put the browser's zone into the write, which is
-          the write-side half of the bug #37 fixed on the read side.
+          wall-clock in the PICKED START'S zone — or APP_TIME_ZONE when the rider
+          typed one, since a typed start has no zone until the geocode lands
+          (`080`, PD-193). See wallClockToUtc. Sending an ISO string from here
+          instead would put the browser's zone into the write, which is the
+          write-side half of the bug #37 fixed on the read side.
         */}
         <Input
           name="departure_at"
@@ -245,7 +271,7 @@ export function CreateRideForm({
             is the cheaper of two ways to write the same string, not a fix for
             a live bug. */}
         <p className="px-1 text-xs text-muted">
-          {`Times are in ${DEPARTURE_ZONE_LABEL} time, whatever zone you're riding in.`}
+          {`Times are in ${departureZoneLabel(resolveDepartureZone(startPlace, null))} time, whatever zone you're reading this in.`}
         </p>
       </div>
 
