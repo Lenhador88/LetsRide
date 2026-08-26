@@ -1,0 +1,4 @@
+{
+  "$comment": "The oldest native bundle allowed to run. RAISING THIS LOCKS RIDERS OUT: a bundle below it cannot be used at all until its owner installs an update, and there is no way back for them from inside the app. Raise it only for a build that is known broken — a wrong backend or a wrong origin baked in (PD-188) — because those cannot be fixed by a deploy. The web is never gated; only the native shell reads this. It is read from the DEPLOYED copy at https://app.letsride.social/app-version.json, so a change reaches devices when it reaches main, with no store review. src/lib/native/version-gate.ts is the reader and src/lib/version.ts holds the version each bundle reports.",
+  "minimum": "0.1.0"
+}
