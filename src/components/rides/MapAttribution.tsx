@@ -54,15 +54,34 @@ import { cn } from '@/lib/utils'
  * be *reasonably calculated to inform*, not to be clickable, and OSM's own
  * guidelines accept a text credit where a link is impractical.
  *
- * ## `bg-scrim`, not a bare white string
+ * ## Two variants, because one tile and forty tiles are different problems
  *
- * The credit sits over imagery nobody has seen — a map can be pale sand or dark
- * forest in the same 80 pixels. `bg-scrim` is `Grey/70%`, which bounds the
- * composite at `#4C4C4C` however bright the tile underneath is, giving
- * `White/100` **8.59:1** at worst. That is the same instrument `RideMap` used
- * for the credit it replaces, and it is bounded to the pill rather than washed
- * over the whole tile — darkening the map to hold text over it is the trade
- * that cost PD-104 its first detail panel.
+ * **`overlay`** — the corner of a single large tile. `bg-scrim` is `Grey/70%`,
+ * which bounds the composite at `#4C4C4C` however bright the map underneath is,
+ * giving `White/100` **8.59:1** at worst. Bounded to the pill rather than washed
+ * over the tile: darkening the whole map to hold text over it is the trade that
+ * cost PD-104 its first detail panel. The ride detail panel uses this.
+ *
+ * **`inline`** — one credit for a screen carrying many small tiles, drawn on the
+ * page background at the end of the list rather than over any single image. The
+ * rides list uses this, and the reason is arithmetic rather than taste: the
+ * three strings are roughly **240px** at the type floor, and `RideCard`'s strip
+ * is **80px** wide. An overlay there wraps to four lines and covers the map,
+ * which is the exact defect PD-236 was opened to fix, reproduced in HTML instead
+ * of pixels.
+ *
+ * **One credit for the screen is the Leaflet pattern and it is compliant.** ODbL
+ * asks that the credit be reasonably calculated to inform a viewer of the
+ * imagery's source, not that it be repeated per image — a page of forty maps
+ * credits the page. Geoapify's own guidance names the corner of the map as what
+ * *"typically"* happens, which is the overlay case; it does not require it, and
+ * it is written for a page showing one map.
+ *
+ * Product owner, 2026-08-27, choosing this over a per-tile credit: *"as long as
+ * we leave the creditation out of the map tiles it's good for now, so at the end
+ * of the list is okay for now."* **The "for now" is the part to carry forward**:
+ * if the rides list ever paginates or virtualises so the end of the list is not
+ * reliably reachable, this placement stops informing anyone and wants revisiting.
  */
 
 /** ODbL 1.0. Every plan, every OSM-based vendor, for ever. */
@@ -86,11 +105,23 @@ const GEOAPIFY_CREDIT = 'Powered by Geoapify'
  */
 export const MAP_CREDITS = [OSM_CREDIT, OPENMAPTILES_CREDIT, GEOAPIFY_CREDIT] as const
 
-export function MapAttribution({ className }: { className?: string }) {
+export function MapAttribution({
+  variant = 'overlay',
+  className,
+}: {
+  variant?: 'overlay' | 'inline'
+  className?: string
+}) {
   return (
     <span
       className={cn(
-        'pointer-events-none absolute rounded bg-scrim px-1.5 py-0.5 text-2xs font-medium text-white',
+        'pointer-events-none text-2xs font-medium',
+        variant === 'overlay'
+          ? 'absolute rounded bg-scrim px-1.5 py-0.5 text-white'
+          : // No scrim: this one sits on the page background, where there is no
+            // unknown imagery to hold it legible against. `text-muted` rather
+            // than `text-white`, for the same reason.
+            'block px-4 pb-2 text-center text-muted',
         className,
       )}
     >

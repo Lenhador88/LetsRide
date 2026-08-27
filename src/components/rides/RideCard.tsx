@@ -48,31 +48,23 @@ import type { RideAttendance, RideListItem } from '@/types'
  * refusing a single shared credit elsewhere on the screen. Two consequences for
  * this file, and both are load-bearing rather than tidy:
  *
- * - **Nothing suppresses it.** The render request passes no attribution,
- *   watermark or logo parameter, and `ride-geocode-gates.test.ts` asserts their
- *   absence. Suppressing the credit would not remove the obligation, it would
- *   move it onto 80px of width that cannot carry `© OpenStreetMap contributors`
- *   at this design system's smallest token.
- * - **`object-right-bottom`, so a crop cannot take it.** The tile is rendered at
- *   80×148, which is this strip in the ordinary 156-tall card. On the
- *   club-filtered screen the card is 128 tall and the strip is 120, and a centred
- *   `object-cover` would crop 14px off the bottom — precisely where the credit
- *   sits. Anchoring bottom-right moves the whole crop to the top.
+ * - **The tile carries no credit at all** — PD-236. `ATTRIBUTION_MODE` sends
+ *   `attribution=none`, so the obligation is discharged by `MapAttribution` at
+ *   the end of the rides list, once for every tile on the screen. The strip is
+ *   80px wide and the credit is roughly 240px at the smallest token, so it never
+ *   could have carried the string; what changed is that it no longer has to.
+ * - **The crop is CENTRED, and that is a consequence of the above.** This strip
+ *   used to be `object-right-bottom`, anchored so a crop could not take the
+ *   credit burned into the bottom-right — on the 128-tall club-filtered card a
+ *   centred `object-cover` removes 14px off the bottom, which was precisely
+ *   where the credit sat.
  *
- *   **The horizontal half of that class is a no-op *here* and is not decoration.**
- *   The strip is `w-20` against an 80-wide tile, so the cover scale is exactly 1
- *   and nothing crops sideways — today. `RideMap` uses the same class where it is
- *   very much not a no-op: its panel is *narrower* than its 358-wide tile below a
- *   390px viewport, and a bottom-only anchor truncated `© OpenStreetMap
- *   contributors` mid-string at 375 and 360. **So if you widen this strip past
- *   `w-20`, that is the failure you inherit** — the credit is burned bottom-RIGHT,
- *   and the horizontal axis becomes load-bearing the moment the scale factor
- *   leaves 1.
- *
- * `Powered by Geoapify` — the Free plan's separate, *service*-level obligation —
- * is not here. It has one legible home, on `RideMap`'s 358×160 panel; that string
- * is not the tile's data attribution, so the spec's rejection of a shared credit
- * does not reach it.
+ *   With nothing burned in, that anchor stopped protecting anything and started
+ *   costing something: **the tile is rendered centred on the meeting point, and
+ *   the pin disc below is `m-auto`** — dead centre of the strip. Anchoring the
+ *   image bottom-right put the map's centre somewhere the pin was not, so the
+ *   marker pointed at the wrong part of its own map. Centred is what puts the
+ *   two back on top of each other.
  *
  * **The open half, stated rather than assumed: whether the burned-in credit is
  * legible at 80×148.** If it is not, `specs/ride-map-tiles`' *A credit that cannot
@@ -134,14 +126,10 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
             // Decorative: the meeting point this tile is centred on is the
             // third line of the card, in text, right beside it.
             alt=""
-            // `object-right-bottom` — see the header. The vendor's credit is
-            // burned into the bottom-RIGHT of the tile, and a centred crop
-            // removes it on the 128-tall club-filtered card. The horizontal half
-            // is a no-op here (the strip is `w-20` against an 80-wide tile, so
-            // there is no horizontal crop) and is written anyway to match
-            // `RideMap`, where it is not a no-op at all, and so that a future
-            // change to the strip's width cannot silently start truncating it.
-            className="absolute inset-0 h-full w-full object-cover object-right-bottom"
+            // Centred, so the map's centre lands under the pin disc that marks
+            // it — see the header. This was `object-right-bottom` while the
+            // vendor burned a credit into that corner.
+            className="absolute inset-0 h-full w-full object-cover"
             onError={() => setFailedTileUrl(ride.map_card_url ?? null)}
             loading="lazy"
             draggable={false}
