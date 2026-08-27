@@ -17,8 +17,8 @@ const CLUB_DETAIL_DISCUSSIONS = 3
 
 /**
  * The `Discussions` section on the merged club detail (`081`, PD-307) — shaped
- * like Members and Upcoming rides: a header with `See all`, a few rows, and an
- * affordance where the rows would be when there are none.
+ * like Members and Upcoming rides: a header with `See all`, a few rows, and a
+ * create affordance under them — also in place of them when there are none.
  *
  * ## A non-member of a PUBLIC club sees a join prompt and no content
  *
@@ -129,31 +129,38 @@ export function ClubDiscussionsSection({
 }
 
 /**
- * The create affordance, drawn under the rows as well as in place of them
- * (PD-312).
+ * The create affordance — drawn under the thread rows, and in place of them when
+ * there are none.
  *
- * **It used to render only when the club had no threads**, which is the shape
- * every other section here has — and on this one it was wrong in a way the
- * others are not. `Upcoming rides` and `Postcards` both have a `See all` that
- * leads to a screen carrying its own create control; Discussions did too, but a
- * rider on the club page with one thread saw only that thread and no way to
- * start a second. The affordance vanished at exactly the moment the club became
- * worth adding to. Product owner, 2026-08-27.
+ * **Its geometry is `ClubDiscussionRow`'s, not a card's**, and that is the whole
+ * of the styling decision. It is a destination like the rows it follows, so it
+ * is the last row of that list: same 72px height, same `px-4` full bleed, same
+ * 40px leading tile, same text baseline. Drawn as an inset `h-14` card instead —
+ * which is what it was while it only ever rendered *instead of* the list — it
+ * stacks flush under a real row and misses on height, inset, icon size and
+ * baseline at once.
  *
- * Kept as a bordered row rather than a `Button`, in both positions, because it
- * is a destination like the rows above it rather than an action on this screen —
- * the same reason `ClubCreateRideRow` is a row.
+ * The dashed border moves to the **tile** rather than the container for the same
+ * reason: it is what says "add" without making the row a different shape from
+ * its neighbours.
  */
 function StartDiscussionRow({ clubId }: { clubId: string }) {
   return (
     <Link
       href={routes.newClubDiscussion(clubId)}
-      className="mx-4 flex h-14 items-center gap-3 rounded-lg border border-dashed border-border-strong bg-track px-3 text-left transition-colors active:bg-border"
+      className="flex min-h-[72px] items-center gap-3 px-4 py-3 text-left transition-colors active:bg-border"
     >
-      <PlusCircleIcon className="h-6 w-6 shrink-0 text-muted" aria-hidden="true" />
-      <span className="flex min-w-0 flex-col">
-        <span className="text-sm font-semibold text-foreground">Start a discussion</span>
-        <span className="truncate text-xs font-medium text-muted">Ask the club a question</span>
+      <span
+        aria-hidden="true"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-border-strong bg-track"
+      >
+        <PlusCircleIcon className="h-5 w-5 text-muted" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-base font-semibold text-foreground">
+          Start a discussion
+        </span>
+        <span className="truncate text-sm font-medium text-muted">Ask the club a question</span>
       </span>
     </Link>
   )

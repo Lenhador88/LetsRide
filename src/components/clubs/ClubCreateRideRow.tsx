@@ -9,21 +9,24 @@ import { cn } from '@/lib/utils'
  * this club. Fixed at 56px (`h-14`) to match `RideChip`'s own height, so the
  * section does not collapse to a bare line when it has nothing to scroll.
  *
- * ## Two variants, because it is now drawn in two places (PD-312)
+ * ## Two variants, for the two places the strip can be in
  *
- * It began as the **empty** state only, and that left a club with one ride
- * offering no way to plan a second: the strip filled up and the affordance
- * disappeared with it, so the only route on was `See all` and a control on
- * another screen. Product owner, 2026-08-27 — *"I am missing a button to create
- * a new ride on the upcoming ride list."*
+ * `variant="row"` is drawn where the strip would be, when the club has no
+ * upcoming rides: full width, inset `mx-4`, with room for a subtitle.
  *
- * `variant="row"` is the original: full width, inset `mx-4`, drawn where the
- * strip would be. `variant="chip"` is the same affordance sized as a
- * `RideChip` (`w-[200px]`) and appended **after** the last chip, so it scrolls
- * with them and reads as the end of the list rather than a second control. It
- * carries no `mx-4` — the strip already supplies `px-4`, and adding it would
- * put a 16px gap before a tile that is meant to sit one gap after the last
- * ride.
+ * `variant="chip"` is appended **after** the last chip of a strip that has
+ * some, so it scrolls with them and reads as the end of the list rather than a
+ * second control competing with `See all`. Three things follow from sitting in
+ * that strip, and all three are why it is not simply the row at a narrower
+ * width:
+ *
+ * - **No `mx-4`.** The strip already supplies `px-4`; adding it would put a
+ *   16px gap before a tile meant to sit one `gap-3` after the last ride.
+ * - **`RideChip`'s internal geometry, not the row's.** `p-1` and a 48px leading
+ *   tile, so the icon lands on the same x as a chip's date block. The row's
+ *   `px-3` and bare 24px icon put it 8px off every neighbour.
+ * - **No subtitle.** At 200px "Pick a date and a meeting point" truncates to a
+ *   few characters and reads as damage rather than help.
  *
  * ## Carries the club, both ways (PD-283)
  *
@@ -57,16 +60,22 @@ export function ClubCreateRideRow({
     <Link
       href={routes.newRideInClub(clubId)}
       className={cn(
-        'flex h-14 items-center gap-3 rounded-lg border border-dashed border-border-strong bg-track px-3 text-left transition-colors active:bg-border',
-        variant === 'chip' ? 'w-[200px] shrink-0' : 'mx-4'
+        'flex h-14 items-center gap-3 rounded-lg border border-dashed border-border-strong bg-track text-left transition-colors active:bg-border',
+        variant === 'chip' ? 'w-[200px] shrink-0 p-1' : 'mx-4 px-3'
       )}
     >
-      <PlusCircleIcon className="h-6 w-6 shrink-0 text-muted" aria-hidden="true" />
-      <span className="flex min-w-0 flex-col">
-        <span className="text-sm font-semibold text-foreground">Plan a ride</span>
-        {/* Dropped in the chip, kept in the row. At 200px the subtitle
-            truncates to a few characters and reads as damage rather than as
-            help; the row has the full width to say it. */}
+      {variant === 'chip' ? (
+        <span
+          aria-hidden="true"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-background"
+        >
+          <PlusCircleIcon className="h-6 w-6 text-muted" />
+        </span>
+      ) : (
+        <PlusCircleIcon className="h-6 w-6 shrink-0 text-muted" aria-hidden="true" />
+      )}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm font-semibold text-foreground">Plan a ride</span>
         {variant === 'row' && (
           <span className="truncate text-xs font-medium text-muted">
             Pick a date and a meeting point
