@@ -486,40 +486,43 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and NOT ONE of the three
-has a file older than its deploy — for `delete-account` the newer commits are COMMENTS ONLY, so its
-behaviour is current, while `search-places` and `resolve-ride-location` are both genuinely stale and
-owed a redeploy. Two of the three have an equal `ezbr_sha256` across the projects and `search-places`
-does NOT** — measured 2026-08-24: PROD runs **v7**
-(`9510589d…`, deployed 12:04Z) against DEV's **v3** (`dcc59ceb…`, 2026-08-20), so **DEV is behind
-PROD for that one function**, which is the opposite of this repo's usual direction and is worth
-knowing before debugging a DEV-only search failure. PROD's v7 is the redeploy that ended PD-276's
-four-day production outage; DEV never needed it, so DEV never got it. **Both are now stale against
-the file again** — PD-279 added `country_code` to `shape.ts`, so `taken_country_code` stores NULL
-on every postcard until each project is redeployed, and the flag falls back to the pin.
-The rest of this paragraph is measured 2026-08-19:
-`delete-account` deployed 2026-08-17 against a file that moved 2026-08-19 (comments only, so the
-behaviour is current — and that date moves with every header edit, which is why it is read off
-the command rather than trusted here); `resolve-ride-location` was redeployed
-2026-08-27 (PD-267) — v3 on both, `02e56f38…` equal — and went stale the same day: PD-236 sends
-`attribution=none` and drops the card zoom to 7, which is real code. **That redeploy has an ORDERING
-rule, and it is the only one in this repo that runs the opposite way to `069`/`070`**: the deployed
-tile loses its burned-in credit, so the app's own `MapAttribution` must be SERVING before the
-function is deployed, never after — a duplicate credit for the length of a deploy is harmless, an
-absent one is a licence breach; and `search-places` was deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) and
-that is the build **DEV still runs** — real code behind it, including `classifyLedgerError`, so
-DEV reports a `23514` participation-gate refusal to the rider as **502 `unavailable`**: search is
-broken, not "you hit a limit". `isPolicyRefusal` matches `42501` only, and the gate raises
-`23514`, so it falls to the outage branch. **Count the undeployed commits rather than reading a
-list here** — an enumeration goes stale on the next merge, and this one already has:
-`TZ=UTC git log --oneline --since=<deploy timestamp> -- supabase/functions/search-places/`. **`git log -1` on the
-directory tells you the file is newer than the deploy and never by how many commits** — list the
-directory's history against the deploy timestamp, or a three-commit gap reads as one.
-**The newest function going stale within two hours of its first deploy is the point** — a
-deployed function is drift the moment anyone edits its file, and this section has already read
-"both" while three were deployed. **Cross-project equality is not what establishes currency**: it says
-the two projects agree, never that either matches the repo, so currency is the
-`updated_at`-against-commit-date check below.
+**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, ALL THREE now have an
+equal `ezbr_sha256` across the projects, and TWO of the three are current against their files by
+date — measured 2026-08-27, and this is the cleanest this row has ever been, which is exactly when
+it is most worth re-measuring rather than trusting.** `resolve-ride-location` (DEV v6 / PROD v5,
+`c09a0474…`) and `search-places` (DEV v5 / PROD v9, `97ae3134…`) were both redeployed at 14:28Z and
+14:41Z against files last committed 2026-08-26 and 2026-08-27T14:33Z, so the deploy is newer than
+the file for both. `delete-account` (DEV v5 / PROD v9, `9793933d…`, 2026-08-17) has a file that
+moved 2026-08-19 — **comments only, so its behaviour is current**, and that date moves with every
+header edit, which is why it is read off the command rather than trusted here.
+
+**Two long-standing staleness claims died with that pair of deploys, and both are worth knowing
+because debugging against them wastes a session.** `search-places` had run **DEV v3 against PROD
+v7** since 2026-08-24 — DEV behind PROD, the opposite of this repo's usual direction, because
+PROD's v7 was the redeploy that ended PD-276's four-day production outage and DEV never needed it.
+That split is gone. And PD-279's `country_code` addition to `shape.ts` was undeployed on both, so
+`taken_country_code` stored NULL on every postcard and the flag fell back to the pin; that is now
+live. **Version numbers stay unequal across the projects and always will** — they count deploys per
+project, not builds — so compare the digest, never `version`.
+
+**One redeploy in this repo has an ORDERING rule that runs the OPPOSITE way to `069`/`070`, and it
+is the worked example to reach for when the next one does.** PD-236 makes the deployed function
+send `attribution=none`, so the tile stops carrying its burned-in credit and the app's own
+`MapAttribution` becomes the only thing discharging the obligation. The app must therefore be
+**SERVING before the function is deployed**, never after — a duplicate credit for the length of a
+deploy is harmless, an absent one is a licence breach. The additive-first rule is about which side
+fails safe, not about a fixed order.
+
+**Count the undeployed commits rather than reading a list anywhere** — an enumeration goes stale on
+the next merge, and the one that used to sit here had already gone stale twice:
+`TZ=UTC git log --oneline --since=<deploy timestamp> -- supabase/functions/<name>/`. **`git log -1`
+on the directory tells you the file is newer than the deploy and never by how many commits**, so
+list the history against the deploy timestamp or a three-commit gap reads as one.
+
+**A deployed function is drift the moment anyone edits its file** — `resolve-ride-location` went
+stale within two hours of a deploy on 2026-08-27, twice in one day. And **cross-project equality is
+not what establishes currency**: it says the two projects agree, never that either matches the repo,
+so currency is the `updated_at`-against-commit-date check below.
 Deploying is an **owner action** — there is no
 `supabase` CLI in the build container, and the
 MCP server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list, which
