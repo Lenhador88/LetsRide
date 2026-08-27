@@ -183,7 +183,7 @@ export type ClubInput = z.infer<typeof clubSchema>
 export const clubIdSchema = z.uuid()
 
 /**
- * Mirrors `club_discussions_title_length` and `club_messages_body_length` in
+ * Mirrors `club_threads_title_length` and `club_messages_body_length` in
  * `081`, and the asymmetry inside each is deliberate there so it is deliberate
  * here: the **floor is on the trimmed value** so a title or body of nothing but
  * whitespace is refused, while the **ceiling is on the raw length** so padding
@@ -205,14 +205,14 @@ export const clubIdSchema = z.uuid()
  * D5); 1000 matches `ride_messages`. Per CLAUDE.md these own the **message**,
  * never the guarantee.
  */
-export const CLUB_DISCUSSION_TITLE_MAX = 80
+export const CLUB_THREAD_TITLE_MAX = 80
 export const CLUB_MESSAGE_MAX_LENGTH = 1000
 
-export const clubDiscussionTitleSchema = z
+export const clubThreadTitleSchema = z
   .string()
-  .max(CLUB_DISCUSSION_TITLE_MAX, `Keep the title under ${CLUB_DISCUSSION_TITLE_MAX} characters.`)
+  .max(CLUB_THREAD_TITLE_MAX, `Keep the title under ${CLUB_THREAD_TITLE_MAX} characters.`)
   .transform((value) => value.trim())
-  .refine((value) => value.length >= 1, 'Give the discussion a title.')
+  .refine((value) => value.length >= 1, 'Give the thread a title.')
 
 export const clubMessageBodySchema = z
   .string()
@@ -221,8 +221,8 @@ export const clubMessageBodySchema = z
   .refine((value) => value.length >= 1, 'Write something first.')
 
 /**
- * A discussion id out of the URL, untrusted like any other query parameter —
+ * A thread id out of the URL, untrusted like any other query parameter —
  * `clubIdSchema`'s reasoning, applied to the thread screen's own `?id=`. A
- * malformed id means "no such discussion", and 404 is the honest answer.
+ * malformed id means "no such thread", and 404 is the honest answer.
  */
-export const clubDiscussionIdSchema = z.uuid()
+export const clubThreadIdSchema = z.uuid()

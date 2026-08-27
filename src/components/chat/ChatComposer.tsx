@@ -160,7 +160,7 @@ export function ChatComposer({
           value={body}
           onChange={(event) => setBody(event.target.value)}
           // The database refuses anything longer (`034` for a ride, `081` for a
-          // club discussion) and the matching Zod schema says so in words; this
+          // club thread) and the matching Zod schema says so in words; this
           // stops the rider reaching either by typing.
           maxLength={maxLength}
           aria-label="Message"

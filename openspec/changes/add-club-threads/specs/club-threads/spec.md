@@ -14,9 +14,9 @@ SET list is an external tool's behaviour the suite speaks no HTTP to observe.
 
 ## ADDED Requirements
 
-### Requirement: A club's discussions SHALL be readable and writable by that club's members, and by nobody else
+### Requirement: A club's threads SHALL be readable and writable by that club's members, and by nobody else
 
-`public.club_discussions` and `public.club_messages` SHALL be reachable only by riders the
+`public.club_threads` and `public.club_messages` SHALL be reachable only by riders the
 predicate `private.is_club_member(club_id)` answers true for — a rider holding a
 `public.club_members` row for the club, or the rider named in `clubs.owner_id` (`054`, split into
 `private.is_club_member_for` by `060`).
@@ -28,11 +28,11 @@ rider** to a public club.
 `ride_messages` (`034`) the parent `EXISTS` is the strict half and the `security definer` crew
 helper is the loose one. Here the parent is the loose half — `is_public` is satisfied by the
 entire platform — and the helper is strict. An implementer who transfers `034`'s conclusion rather
-than its reasoning ships every public club's Discussions to every rider in the app.
+than its reasoning ships every public club's Threads to every rider in the app.
 
 #### Scenario: A club member reads and writes
 - **WHEN** a rider holding a `club_members` row for the club, of any `role`, reads or writes
-  `club_discussions` or `club_messages` for that club
+  `club_threads` or `club_messages` for that club
 - **THEN** the read SHALL return the threads and their messages, and the write SHALL succeed
 
 #### Scenario: The club owner reads and writes while holding no `club_members` row
@@ -45,18 +45,18 @@ than its reasoning ships every public club's Discussions to every rider in the a
 
 #### Scenario: A signed-in non-member of a PUBLIC club reaches no thread and no message
 - **WHEN** a signed-in rider who holds no `club_members` row and is not the owner reads
-  `club_discussions` or `club_messages` for a club whose `is_public` is true
+  `club_threads` or `club_messages` for a club whose `is_public` is true
 - **THEN** zero rows SHALL be returned from both tables
 - **AND** every insert SHALL be refused
 - **AND** the refusal SHALL come from the membership predicate, not from the club being invisible,
   because the club is visible to them and remains so
 
 #### Scenario: A signed-in non-member of a PRIVATE club reaches nothing, including the club
-- **WHEN** a signed-in rider who is not a member reads `club_discussions` for a club whose
+- **WHEN** a signed-in rider who is not a member reads `club_threads` for a club whose
   `is_public` is false
 - **THEN** zero rows SHALL be returned, and this SHALL hold whether or not they somehow hold a
-  `club_discussion_reads` row for a thread in it
-- **AND** the club detail screen SHALL already be unreachable to them, so the Discussions section
+  `club_thread_reads` row for a thread in it
+- **AND** the club detail screen SHALL already be unreachable to them, so the Threads section
   SHALL never be a rider's first encounter with the refusal
 
 #### Scenario: A signed-out visitor reaches nothing
@@ -66,7 +66,7 @@ than its reasoning ships every public club's Discussions to every rider in the a
 - **AND** this change SHALL add none, per decision #1
 - **AND** the visitor SHALL reach the shell and no data, consistent with `client-session-storage`
 
-### Requirement: Discussion visibility SHALL be the conjunction of club visibility and club membership, and the membership half SHALL be the strict one
+### Requirement: Thread visibility SHALL be the conjunction of club visibility and club membership, and the membership half SHALL be the strict one
 
 The SELECT policy on both tables SHALL require **both** that the caller can see the club under
 their own row security **and** that `private.is_club_member` answers true.
@@ -116,7 +116,7 @@ likely to be read as a bug later: a conversation is not retracted because one pa
 #### Scenario: A rider leaves and loses their own words
 - **WHEN** a rider deletes their `club_members` row for a club in which they authored a thread and
   several messages
-- **THEN** reading `club_discussions` and `club_messages` for that club SHALL return zero rows to
+- **THEN** reading `club_threads` and `club_messages` for that club SHALL return zero rows to
   them, their own content included
 - **AND** every other member SHALL continue to see the thread and the messages unchanged
 
@@ -134,18 +134,18 @@ likely to be read as a bug later: a conversation is not retracted because one pa
 - **WHEN** a rider joins a club containing threads older than their membership
 - **THEN** they SHALL see every thread and every message in full, with no per-message cut at
   `joined_at`
-- **AND** the reason SHALL be that a discussion is a topic archive rather than a live-only stream;
+- **AND** the reason SHALL be that a thread is a topic archive rather than a live-only stream;
   `joined_at` bounds the **unread watermark**, never the **visibility**
 
 ### Requirement: Any club member SHALL be able to open a thread, and thread creation SHALL NOT be an owner privilege
 
-INSERT on `public.club_discussions` SHALL be permitted for any rider `private.is_club_member`
+INSERT on `public.club_threads` SHALL be permitted for any rider `private.is_club_member`
 answers true for, with `author_id = auth.uid()`. It SHALL NOT be restricted to `clubs.owner_id`,
 and it SHALL NOT reference `club_members.role`.
 
 Three reasons, in order:
 
-1. **Owner-only makes Discussions dead in the club that needs it most.** The Welcome club (`058`)
+1. **Owner-only makes Threads dead in the club that needs it most.** The Welcome club (`058`)
    is auto-joined by every rider and its owner may be an arbitrary rider who inherited it through
    `029`'s succession. An owner-only rule makes the first-run win PD-299 names impossible.
 2. **There is no admin writer.** `club_members.role` has admitted `admin` since `001` and nothing
@@ -155,7 +155,7 @@ Three reasons, in order:
    ride in a club they belong to.
 
 #### Scenario: A member opens a thread
-- **WHEN** a club member inserts a `club_discussions` row for that club with `author_id = auth.uid()`
+- **WHEN** a club member inserts a `club_threads` row for that club with `author_id = auth.uid()`
 - **THEN** the insert SHALL succeed regardless of their `club_members.role`
 
 #### Scenario: A member cannot open a thread as somebody else
@@ -163,7 +163,7 @@ Three reasons, in order:
 - **THEN** the insert SHALL be refused
 
 #### Scenario: A non-member cannot open a thread in a public club
-- **WHEN** a signed-in rider who has not joined a public club inserts a `club_discussions` row
+- **WHEN** a signed-in rider who has not joined a public club inserts a `club_threads` row
   for it
 - **THEN** the insert SHALL be refused
 
@@ -176,7 +176,7 @@ Three reasons, in order:
 
 ### Requirement: A thread title and a message body SHALL NOT be editable by anyone
 
-Neither `public.club_discussions` nor `public.club_messages` SHALL carry an UPDATE policy or an
+Neither `public.club_threads` nor `public.club_messages` SHALL carry an UPDATE policy or an
 UPDATE grant for any client role, and neither SHALL carry an `updated_at` column.
 
 Editing means designing "edited" — whether it is disclosed, from when, and what it does to a reply
@@ -188,7 +188,7 @@ An `updated_at` column with no UPDATE grant behind it is a dead column that read
 `034` §1 refused for the same reason.
 
 #### Scenario: The author cannot rename their own thread
-- **WHEN** the author of a thread issues an UPDATE against `club_discussions`
+- **WHEN** the author of a thread issues an UPDATE against `club_threads`
 - **THEN** it SHALL be refused
 - **AND** the refusal SHALL be asserted **twice** — that no UPDATE grant exists for
   `authenticated`, and that no permitting policy exists — because absence is the enforcement and a
@@ -200,10 +200,10 @@ An `updated_at` column with no UPDATE grant behind it is a dead column that read
 
 ### Requirement: A thread SHALL be deletable by its author and by the club's owner, and the owner's right SHALL survive a block
 
-DELETE on `public.club_discussions` SHALL be permitted to `author_id = auth.uid()` by policy.
+DELETE on `public.club_threads` SHALL be permitted to `author_id = auth.uid()` by policy.
 
 The **club owner's** moderation right SHALL be exposed as
-`public.moderate_club_discussion(discussion uuid)` — `security definer`, re-checking
+`public.moderate_club_thread(thread uuid)` — `security definer`, re-checking
 `clubs.owner_id = auth.uid()` in its own body — and SHALL NOT be a second arm on the DELETE
 policy.
 
@@ -217,7 +217,7 @@ object in the owner's club: blocking its author hides it from the owner while ev
 keeps reading it. The block is not the remedy, and the moderation right must therefore not depend
 on the owner being able to see the row.
 
-The function SHALL take one discussion id, SHALL delete exactly that thread, SHALL raise the same
+The function SHALL take one thread id, SHALL delete exactly that thread, SHALL raise the same
 `insufficient_privilege` for "no such thread" and "not your club" from one code path so a caller
 learns nothing about a club they do not own (`043`'s shape), and SHALL be granted to
 `authenticated` only. It SHALL add exactly one
@@ -228,12 +228,12 @@ learns nothing about a club they do not own (`043`'s shape), and SHALL be grante
 - **THEN** the delete SHALL succeed and SHALL take every message in the thread with it
 
 #### Scenario: The club owner deletes a member's thread
-- **WHEN** the rider named in `clubs.owner_id` calls `moderate_club_discussion` on a thread in
+- **WHEN** the rider named in `clubs.owner_id` calls `moderate_club_thread` on a thread in
   their club that another member authored
 - **THEN** the thread and all its messages SHALL be deleted
 
 #### Scenario: The club owner deletes a thread whose author they have blocked
-- **WHEN** the owner has blocked the thread's author and calls `moderate_club_discussion`
+- **WHEN** the owner has blocked the thread's author and calls `moderate_club_thread`
 - **THEN** the thread SHALL be deleted
 - **AND** this SHALL be asserted explicitly, because the equivalent through a DELETE policy arm
   succeeds with zero rows affected and reports no error
@@ -242,7 +242,7 @@ learns nothing about a club they do not own (`043`'s shape), and SHALL be grante
 - **WHEN** the author of a thread deletes it while blocked by, or blocking, another club member
 - **THEN** the delete SHALL succeed
 - **AND** the reason SHALL be verified rather than assumed by symmetry with messages: the
-  `club_discussions` DELETE `USING` contains no self-`EXISTS`, its only subquery is against `clubs`,
+  `club_threads` DELETE `USING` contains no self-`EXISTS`, its only subquery is against `clubs`,
   which carries no block predicate, and the SELECT policy that attaches to the delete exempts the
   author through its own `author_id = auth.uid()` arm
 
@@ -252,8 +252,8 @@ learns nothing about a club they do not own (`043`'s shape), and SHALL be grante
 - **THEN** both SHALL be refused
 
 #### Scenario: A non-member cannot moderate
-- **WHEN** a rider who is not the club's owner calls `moderate_club_discussion` on any thread
-- **THEN** it SHALL raise `insufficient_privilege`, identically to a discussion id that does not
+- **WHEN** a rider who is not the club's owner calls `moderate_club_thread` on any thread
+- **THEN** it SHALL raise `insufficient_privilege`, identically to a thread id that does not
   exist
 
 ### Requirement: A rider SHALL always be able to erase their own message, and a block SHALL NOT take that away
@@ -317,8 +317,8 @@ remedy today is to delete the whole thread.
 
 ### Requirement: A thread SHALL die with its club, and a club deletion SHALL need no new cleanup path
 
-`club_discussions.club_id` SHALL reference `clubs(id) ON DELETE CASCADE`, and
-`club_messages.discussion_id` SHALL reference `club_discussions(id) ON DELETE CASCADE`. Deleting a
+`club_threads.club_id` SHALL reference `clubs(id) ON DELETE CASCADE`, and
+`club_messages.thread_id` SHALL reference `club_threads(id) ON DELETE CASCADE`. Deleting a
 club SHALL therefore remove its threads and, transitively, every message in them.
 
 `public.delete_owned_club` (`043`) SHALL require **no change**, and that SHALL be asserted rather
@@ -327,12 +327,12 @@ ride as a zombie, and because a club's Storage objects must be surrendered. Neit
 tables hold no Storage object and neither foreign key is `SET NULL`, so the plain cascade is
 correct and complete.
 
-#### Scenario: Deleting a club removes its discussions
+#### Scenario: Deleting a club removes its threads
 - **WHEN** a club owner deletes their club through `delete_owned_club`
-- **THEN** every `club_discussions` row for it SHALL be gone, and every `club_messages` row beneath
-  those, and every `club_discussion_reads` row beneath those
+- **THEN** every `club_threads` row for it SHALL be gone, and every `club_messages` row beneath
+  those, and every `club_thread_reads` row beneath those
 
-#### Scenario: The default club's discussions cannot be orphaned by a club delete
+#### Scenario: The default club's threads cannot be orphaned by a club delete
 - **WHEN** the owner of the `clubs.is_default` club calls `delete_owned_club`
 - **THEN** it SHALL be refused with `insufficient_privilege` (`059`), so the Welcome club's threads
   SHALL survive
@@ -340,12 +340,12 @@ correct and complete.
 
 #### Scenario: No new zombie is introduced
 - **WHEN** the RLS suite runs
-- **THEN** it SHALL assert that neither new foreign key into `clubs` or `club_discussions` is
+- **THEN** it SHALL assert that neither new foreign key into `clubs` or `club_threads` is
   `ON DELETE SET NULL`, which is the property `043`'s whole existence rests on
 
 ### Requirement: A rider's account deletion SHALL hard-delete their threads and messages, and the reach of a thread deletion SHALL be stated
 
-`club_discussions.author_id` and `club_messages.author_id` SHALL reference `profiles(id)
+`club_threads.author_id` and `club_messages.author_id` SHALL reference `profiles(id)
 ON DELETE CASCADE`. Deleting a rider's account SHALL therefore hard-delete every thread they
 opened and every message they wrote. There SHALL be no tombstone and no reassignment, consistent
 with `ride_messages`, `postcard_comments` and every other authored row in this schema.
@@ -356,7 +356,7 @@ conversation **other riders participated in**. For `ride_messages` an account de
 that rider's own messages; here it can remove forty of somebody else's. The recommended default is
 to accept it — it is the only answer consistent with the rest of the schema, needs no tombstone
 machinery, and is the reading of GDPR erasure the repo has already taken everywhere. The
-alternative (`ON DELETE SET NULL` on `club_discussions.author_id`, a "deleted rider" byline, and a
+alternative (`ON DELETE SET NULL` on `club_threads.author_id`, a "deleted rider" byline, and a
 surviving thread) SHALL be recorded as a question for the product owner rather than decided here.
 
 Both foreign keys into `profiles` SHALL carry a leading-column index, which `029` asserts from
@@ -371,12 +371,12 @@ Both foreign keys into `profiles` SHALL carry a leading-column index, which `029
 - **WHEN** that rider authored no thread but wrote messages in other riders' threads
 - **THEN** exactly their own messages SHALL be deleted and every thread SHALL survive
 
-#### Scenario: A club outlives its owner and keeps its discussions
+#### Scenario: A club outlives its owner and keeps its threads
 - **WHEN** a club owner deletes their account and `private.transfer_owned_clubs` (`029`, `031`)
   hands the club on
 - **THEN** the club's threads SHALL survive **except** those the departing owner authored
 - **AND** the new owner SHALL hold the moderation right on every surviving thread, because
-  `moderate_club_discussion` reads `clubs.owner_id` at call time and never a stored copy
+  `moderate_club_thread` reads `clubs.owner_id` at call time and never a stored copy
 
 #### Scenario: The successor is an admin before an earlier-joined member
 - **WHEN** the succession picks between remaining members
@@ -416,7 +416,7 @@ this is that list extended to a club's conversation.
 
 #### Scenario: A blocked rider's thread vanishes from the list
 - **WHEN** rider A blocks rider B and both are members of the same club, and B authored a thread
-- **THEN** that thread SHALL NOT appear in A's Discussions list, and A's threads SHALL NOT appear
+- **THEN** that thread SHALL NOT appear in A's Threads list, and A's threads SHALL NOT appear
   in B's
 - **AND** neither SHALL be able to open the other's thread by its URL
 
@@ -446,18 +446,18 @@ this is that list extended to a club's conversation.
 #### Scenario: Every per-thread number is computed per viewer
 - **WHEN** any count, "last message" preview or unread answer is produced for a thread
 - **THEN** it SHALL be computed under the caller's own row security, so the block arm decides it
-- **AND** no such value SHALL be stored in a column on `club_discussions`, because a stored value
+- **AND** no such value SHALL be stored in a column on `club_threads`, because a stored value
   is a copy of a visibility decision and would bump a thread for the very rider who blocked its
   latest author
 
 ### Requirement: Both new content tables SHALL carry the participation gate, and the count SHALL be measured
 
-`public.club_discussions` and `public.club_messages` SHALL each carry a
+`public.club_threads` and `public.club_messages` SHALL each carry a
 `BEFORE INSERT ... FOR EACH ROW WHEN (current_user = 'authenticated')` trigger executing
 `public.enforce_participation_gate()`. A thread and a message are content writes, exactly as a
 ride message is (`034` §5).
 
-`public.club_discussion_reads` SHALL carry **none**, following `023`'s stated reason for
+`public.club_thread_reads` SHALL carry **none**, following `023`'s stated reason for
 `feed_reads` and `061`'s for `ride_reads`: a watermark produces nothing anyone sees, and a rider
 who has not consented cannot be a club member in the first place, so the WITH CHECK already
 refuses them.
@@ -483,7 +483,7 @@ call and the gate would never fire (`023` §2, measured).
 
 #### Scenario: The watermark table is asserted to have NO gate trigger
 - **WHEN** the RLS suite runs
-- **THEN** it SHALL assert the absence of the trigger on `club_discussion_reads`, so that adding
+- **THEN** it SHALL assert the absence of the trigger on `club_thread_reads`, so that adding
   one later is a deliberate act rather than a count that quietly reads complete
 
 #### Scenario: The function's own comment is restamped from ELEVEN, and its enumeration extended
@@ -498,12 +498,12 @@ call and the gate would never fire (`023` §2, measured).
 
 ### Requirement: `created_at` SHALL be server-owned on both content tables, and ordering SHALL depend on it
 
-`created_at` SHALL be excluded from the INSERT column grant on both `club_discussions` and
+`created_at` SHALL be excluded from the INSERT column grant on both `club_threads` and
 `club_messages`, following `034` §4b rather than relying on `default now()`.
 
 A default applies only when the column is **omitted**, and PostgREST will happily send it. On these
 screens that is not cosmetic: a message pins itself to the end of every member's thread for ever,
-and a thread pins itself to the top of the club's Discussions list for ever. The only remedy would
+and a thread pins itself to the top of the club's Threads list for ever. The only remedy would
 be a delete.
 
 `club_messages.id` SHALL remain client-suppliable, so an interrupted send can be retried with the
@@ -516,7 +516,7 @@ same id and land as a `23505` the action reads as success rather than double-pos
   because a table-level grant and a complete column grant are indistinguishable by count
 
 #### Scenario: Thread ordering is deterministic across devices
-- **WHEN** the Discussions list is read
+- **WHEN** the Threads list is read
 - **THEN** it SHALL be ordered `created_at DESC, id DESC`, newest thread first
 - **AND** `id` SHALL be in the sort and in the index, because `created_at` is not a total order:
   two rows inserted in one transaction carry an identical `now()` and would otherwise sort
@@ -535,14 +535,14 @@ same id and land as a `23505` the action reads as success rather than double-pos
 
 ### Requirement: Unread SHALL be tracked per thread, on a server clock, excluding the reader's own messages
 
-`public.club_discussion_reads` SHALL hold one row per `(user_id, discussion_id)` with a
+`public.club_thread_reads` SHALL hold one row per `(user_id, thread_id)` with a
 `last_read_at`, that pair being a real PRIMARY KEY. **Both key columns SHALL carry a foreign key
-with `ON DELETE CASCADE`** — `user_id` to `public.profiles(id)` and `discussion_id` to
-`public.club_discussions(id)`. It SHALL be readable **only** by the row's owner.
+with `ON DELETE CASCADE`** — `user_id` to `public.profiles(id)` and `thread_id` to
+`public.club_threads(id)`. It SHALL be readable **only** by the row's owner.
 
 **Per thread, not per club, and not `feed_reads`.** `feed_reads(user_id, club_id)` already means
 "the club's Timeline — postcards and rides" and `club_unread_counts()` reads it; overloading it
-would make opening one thread clear the club's postcard badge. A single per-club discussions
+would make opening one thread clear the club's postcard badge. A single per-club threads
 watermark would make reading thread A mark thread B read, which is the failure the thread model
 exists to avoid.
 
@@ -564,7 +564,7 @@ refusal rather than an omission — the data to draw a "seen by" row SHALL be un
 
 #### Scenario: A deleted rider leaves no watermark behind
 - **WHEN** a rider's account is deleted
-- **THEN** every `club_discussion_reads` row naming them SHALL be gone
+- **THEN** every `club_thread_reads` row naming them SHALL be gone
 - **AND** this SHALL be asserted, because the row records *when a named person last read a named
   topic* and `029` erases it purely by cascade, so a missing foreign key would keep behavioural
   personal data about a deleted rider indefinitely with nothing reporting it
@@ -575,15 +575,15 @@ refusal rather than an omission — the data to draw a "seen by" row SHALL be un
 
 #### Scenario: A member's watermark is private
 - **WHEN** any rider other than the row's owner — the club owner and the thread's author included
-  — reads `club_discussion_reads`
+  — reads `club_thread_reads`
 - **THEN** zero rows SHALL be returned
 
 #### Scenario: A rider cannot write a watermark for a thread they cannot read
-- **WHEN** a rider inserts or updates a watermark for a discussion in a club they are not a member
+- **WHEN** a rider inserts or updates a watermark for a thread in a club they are not a member
   of
 - **THEN** it SHALL be refused
 - **AND** the reason SHALL be that without an audience predicate the foreign key turns the insert
-  into an existence oracle — a nonexistent discussion id raises `23503` while an
+  into an existence oracle — a nonexistent thread id raises `23503` while an
   existing-but-invisible one succeeds (`015` §2's reason, which transfers; `034`'s does not,
   because a WITH CHECK grants no reads)
 
@@ -602,7 +602,7 @@ refusal rather than an omission — the data to draw a "seen by" row SHALL be un
 #### Scenario: A club owner holding no membership row is not the one member whose dot never lights
 - **WHEN** the unread answer is computed for a rider named in `clubs.owner_id` who holds no
   `club_members` row
-- **THEN** the fallback SHALL resolve to the discussion's own `created_at`
+- **THEN** the fallback SHALL resolve to the thread's own `created_at`
 - **AND** the comparison point SHALL be `coalesce(greatest(last_read_at, joined_at), created_at)` —
   the **later** of the watermark and the membership stamp, falling through to the thread's own
   creation when both are absent
@@ -616,7 +616,7 @@ refusal rather than an omission — the data to draw a "seen by" row SHALL be un
   relied on, which is measured behaviour on this Postgres rather than an assumption
 
 #### Scenario: Every arm of the comparison is on the database's clock
-- **WHEN** the fallback resolves to `club_members.joined_at` or `club_discussions.created_at`
+- **WHEN** the fallback resolves to `club_members.joined_at` or `club_threads.created_at`
 - **THEN** both SHALL be server-owned columns (`048` made the first so; the column grant above
   makes the second so), so no arm can smuggle a device clock in through the fallback
 
@@ -627,8 +627,8 @@ refusal rather than an omission — the data to draw a "seen by" row SHALL be un
 - **AND** no block filter SHALL appear in the function, in `lib/data/` or in the component
 
 #### Scenario: The reader is a plural function, and returns booleans
-- **WHEN** the Discussions list needs an unread mark for each of its threads
-- **THEN** one call SHALL answer for the whole list, returning `(discussion_id, has_unread)` for the
+- **WHEN** the Threads list needs an unread mark for each of its threads
+- **THEN** one call SHALL answer for the whole list, returning `(thread_id, has_unread)` for the
   caller's threads in that club
 - **AND** the answer SHALL be a boolean rather than a count, because `exists` short-circuits on the
   first row and no counter component is specified
@@ -636,8 +636,8 @@ refusal rather than an omission — the data to draw a "seen by" row SHALL be un
   reason — N was 1 there because the dot sat on one ride's header, and N is the list here
 
 #### Scenario: Watermark retention is indefinite, and that is a decision
-- **WHEN** the retention of `club_discussion_reads` is questioned
-- **THEN** the answer SHALL be: indefinite, dying with the discussion or the rider through the two
+- **WHEN** the retention of `club_thread_reads` is questioned
+- **THEN** the answer SHALL be: indefinite, dying with the thread or the rider through the two
   cascades and nothing else
 - **AND** it SHALL be stated rather than left silent, because the row is behavioural personal data
   about an identified person — when a named rider last looked at a named topic — which is the
@@ -645,7 +645,7 @@ refusal rather than an omission — the data to draw a "seen by" row SHALL be un
 
 ### Requirement: The Clubs list badge SHALL NOT change, and that SHALL be a stated deferral
 
-`public.club_unread_counts()` SHALL be left exactly as it is, so a new discussion or message SHALL
+`public.club_unread_counts()` SHALL be left exactly as it is, so a new thread or message SHALL
 NOT badge a club card on `/clubs`.
 
 Widening it would mix a **count** (postcards + rides) with a **boolean** (threads) in one number, on
@@ -655,7 +655,7 @@ separate change with its own reasoning, not a line added to this one.
 #### Scenario: A new thread does not move the club card's counter
 - **WHEN** a member opens a thread in a club
 - **THEN** every other member's `/clubs` card SHALL show the same unread number as before
-- **AND** the unread mark SHALL be visible on the club's Discussions section and in its thread list,
+- **AND** the unread mark SHALL be visible on the club's Threads section and in its thread list,
   and nowhere else
 
 ### Requirement: Every state of every new screen SHALL be defined, and permission-denied SHALL be told apart from empty
@@ -667,17 +667,17 @@ club detail read already carries, exactly as `getRide`'s `is_crew` does for the 
 UX affordance and SHALL NOT be described as the enforcement.
 
 #### Scenario: A member sees a club with no threads
-- **WHEN** a member opens Discussions in a club that has none
+- **WHEN** a member opens Threads in a club that has none
 - **THEN** an empty state SHALL be drawn with the create affordance, and it SHALL say the club has
-  no discussions yet rather than implying a failure
+  no threads yet rather than implying a failure
 
-#### Scenario: A non-member views a PUBLIC club's Discussions section
+#### Scenario: A non-member views a PUBLIC club's Threads section
 - **WHEN** a signed-in rider who has not joined a public club views its detail screen
-- **THEN** the Discussions section SHALL render a join prompt, not an empty state
+- **THEN** the Threads section SHALL render a join prompt, not an empty state
 - **AND** it SHALL disclose **no thread title, no thread count, no author name and no activity
   time**, because a count is itself a signal about a conversation they are not in
 - **AND** the section SHALL NOT be hidden outright, because a rider deciding whether to join should
-  see that the club has discussions as a feature
+  see that the club has threads as a feature
 
 #### Scenario: A thread with no messages
 - **WHEN** a thread is opened that has no messages — reachable by construction, because thread
@@ -688,7 +688,7 @@ UX affordance and SHALL NOT be described as the enforcement.
   form is drawn
 
 #### Scenario: First paint gates on data, never on a loading flag
-- **WHEN** any Discussions screen renders before its read resolves
+- **WHEN** any Threads screen renders before its read resolves
 - **THEN** it SHALL draw a skeleton, gated on the **absence of data** rather than on `isLoading`,
   because the first render pass has no data and no fetch in flight
 - **AND** `null` SHALL be treated as a decided answer and `undefined` as "not yet", so only the first
@@ -720,7 +720,7 @@ UX affordance and SHALL NOT be described as the enforcement.
 ### Requirement: The live stream SHALL be the second in the app and SHALL follow the first's rules
 
 `public.club_messages` SHALL be added to the `supabase_realtime` publication in the migration, not
-by a dashboard click. `public.club_discussions` SHALL NOT be added, and that SHALL be stated: a
+by a dashboard click. `public.club_threads` SHALL NOT be added, and that SHALL be stated: a
 client subscribing to a table outside the publication **connects, reports SUBSCRIBED, and silently
 never receives anything**, which is indistinguishable from a quiet conversation.
 

@@ -4,11 +4,11 @@ import { useEffect, useRef } from 'react'
 
 /**
  * Advances this rider's read watermark for the thread they are reading — a
- * ride's chat (`061`, PD-120) or a club discussion (`081`, PD-307).
+ * ride's chat (`061`, PD-120) or a club thread (`081`, PD-307).
  *
  * Renders nothing. `MarkClubSeen`'s shape, and the reason that shape survives is
  * the same one: **the screen mounts this conditionally, on `isCrew`** — or, in a
- * club discussion, below the gate that has already established the rider can
+ * club thread, below the gate that has already established the rider can
  * read the thread at all — so "only somebody in the audience marks a thread
  * read" is expressed by whether the component is on the page rather than by a
  * condition inside an effect that runs anyway. The database refuses the write
@@ -74,7 +74,7 @@ export function MarkChatSeen({
   newestMessageId,
   onMark,
 }: {
-  /** The ride id or the discussion id — whichever `onMark` is expecting. */
+  /** The ride id or the thread id — whichever `onMark` is expecting. */
   threadId: string
   newestMessageId: string | undefined
   /** Writes the watermark. Resolves rather than rejects by contract; a failure

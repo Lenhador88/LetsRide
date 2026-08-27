@@ -3,13 +3,13 @@
 import { useActionState, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { createClubDiscussion } from '@/lib/actions/club-discussions'
+import { createClubThread } from '@/lib/actions/club-threads'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
-import { CLUB_DISCUSSION_TITLE_MAX } from '@/lib/validation/clubs'
+import { CLUB_THREAD_TITLE_MAX } from '@/lib/validation/clubs'
 
 /**
- * `Start a discussion` — one field (`081`, PD-307).
+ * `Start a thread` — one field (`081`, PD-307).
  *
  * **There is no v2 frame for this screen**, so the composition is ours: the v2
  * `Input` primitive and the app's near-black primary `Button` (`Grey/100`
@@ -30,8 +30,8 @@ import { CLUB_DISCUSSION_TITLE_MAX } from '@/lib/validation/clubs'
  * short enough to reach by accident; `maxLength` stops the rider passing it, and
  * `081`'s CHECK is what actually refuses one that gets past this.
  */
-export function CreateDiscussionForm({ clubId }: { clubId: string }) {
-  const [state, formAction, pending] = useActionState(createClubDiscussion, emptyActionState)
+export function CreateThreadForm({ clubId }: { clubId: string }) {
+  const [state, formAction, pending] = useActionState(createClubThread, emptyActionState)
   useActionRedirect(state)
   // Controlled rather than retained through `seedRetained`: it is one field, and
   // the action returns its error without navigating, so this survives a failed
@@ -47,19 +47,19 @@ export function CreateDiscussionForm({ clubId }: { clubId: string }) {
         label="What is it about?"
         value={title}
         onChange={(event) => setTitle(event.target.value)}
-        maxLength={CLUB_DISCUSSION_TITLE_MAX}
+        maxLength={CLUB_THREAD_TITLE_MAX}
         autoFocus
         placeholder="Who's riding Sunday?"
         error={state.error ?? undefined}
       />
 
       <p className="text-xs font-medium text-muted">
-        {title.trim().length}/{CLUB_DISCUSSION_TITLE_MAX} · A title cannot be changed once the
-        discussion exists — delete it and start again instead.
+        {title.trim().length}/{CLUB_THREAD_TITLE_MAX} · A title cannot be changed once the
+        thread exists — delete it and start again instead.
       </p>
 
       <Button type="submit" loading={pending} disabled={title.trim().length === 0}>
-        Start discussion
+        Start thread
       </Button>
     </form>
   )

@@ -1,4 +1,4 @@
-# Club Discussions — titled threads inside a club
+# Club Threads — titled threads inside a club
 
 > Linear **PD-299** — *"A club is a container, not a place"*, proposal **#1 of five**. That issue
 > is the epic; this file is the specification and the issue must not restate it (`CLAUDE.md`
@@ -7,7 +7,7 @@
 ## ⚠ Read this first — what is second-hand, and what was measured
 
 **The threads decision IS on the board, and an earlier draft of this file said it was not.**
-`PD-307` — *"Club Discussions — titled threads on a club"* — is this change's own issue, a child of
+`PD-307` — *"Club Threads — titled threads on a club"* — is this change's own issue, a child of
 `PD-299`, created 2026-08-27 **before** this proposal, and its body states the decision and dates
 it: *"PD-299 asked threads, or one chat per club? — product owner, 2026-08-27: **threads**."*
 `PD-299` now carries a comment recording it too. The first draft checked only `PD-299`, found
@@ -40,7 +40,7 @@ select policyname, qual from pg_policies
 `is_public` admits **every signed-in rider** — decision #1's *"visible to any signed-in rider"* —
 so on a public club the parent `EXISTS` is satisfied by the entire platform. The **helper is the
 load-bearing half here**, and the strict one. A session that reads `034` as "the `EXISTS` is what
-protects you" and swaps the audience by relaxing the helper ships every public club's Discussions
+protects you" and swaps the audience by relaxing the helper ships every public club's Threads
 to every rider in the app.
 
 **The 034 claim about `is_club_member` still holds, and it holds for a narrower reason than it
@@ -60,7 +60,7 @@ A club today is a container. Once a rider joins, the club does nothing: the Time
 postcards tagged to it, there is no conversation, and `docs/reference/product-scope.md` logs the
 activity feed and invitations as unbuilt. Clubs is one of four tabs and the least alive.
 
-Discussions is the cheapest thing that changes that, and it borrows an implementation this repo
+Threads is the cheapest thing that changes that, and it borrows an implementation this repo
 has already proved twice (`034` chat, `061` watermark). It also does double duty on first-run:
 a "Say hello" thread in the Welcome club (`058`, PD-239) gives a brand-new rider somewhere to
 land that is not an empty feed.
@@ -78,19 +78,19 @@ additive-before / destructive-after split, and it hangs **no trigger on an alrea
 path** — both participation-gate triggers land on brand-new tables — so `036`'s hand-exercise gate
 does not fire either. Both checked rather than assumed.
 
-- **`public.club_discussions`** — the thread: `id`, `club_id`, `author_id`, `title`, `created_at`.
+- **`public.club_threads`** — the thread: `id`, `club_id`, `author_id`, `title`, `created_at`.
   RLS on, `to authenticated` only, INSERT granted **per column** so `created_at` is server-owned.
   No UPDATE policy and no UPDATE grant.
-- **`public.club_messages`** — the message: `id` (client-suppliable), `discussion_id`,
+- **`public.club_messages`** — the message: `id` (client-suppliable), `thread_id`,
   `author_id`, `body`, `created_at`. Same shape as `ride_messages` (`034`), including the
   `~ '\S'` whitespace floor rather than `btrim`, the per-column INSERT grant, and membership of
   `supabase_realtime`.
-- **`public.club_discussion_reads`** — a **per-thread** unread watermark, `061`'s model
-  transferred: `(user_id, discussion_id, last_read_at)`, `last_read_at` imposed by a trigger.
-- **`public.club_discussion_unread(club uuid)`** — `security invoker`, returns
-  `(discussion_id, has_unread boolean)` for the caller. Plural where `061` was singular, because
+- **`public.club_thread_reads`** — a **per-thread** unread watermark, `061`'s model
+  transferred: `(user_id, thread_id, last_read_at)`, `last_read_at` imposed by a trigger.
+- **`public.club_thread_unread(club uuid)`** — `security invoker`, returns
+  `(thread_id, has_unread boolean)` for the caller. Plural where `061` was singular, because
   the caller is a *list*. Excludes the caller's own messages (`079`'s fix, applied at birth).
-- **`public.moderate_club_discussion(discussion uuid)`** — `security definer`, the club owner's
+- **`public.moderate_club_thread(thread uuid)`** — `security definer`, the club owner's
   one moderation right, re-checking `clubs.owner_id = auth.uid()` in its own body. `011` §1b's
   shape.
 - **`public.delete_own_club_message(message uuid)`** — `security definer`, re-checking
@@ -101,19 +101,19 @@ does not fire either. Both checked rather than assumed.
 - **Together these add TWO security advisors** and the expected total becomes **15**, not 14 —
   re-derive with `get_advisors(security)`. `CLAUDE.md` records thirteen today and warns in as many
   words that this advisor *"fires once per such function, so a migration adding two adds two"*,
-  which is exactly what `078`'s own task list got wrong. `club_discussion_unread` is
+  which is exactly what `078`'s own task list got wrong. `club_thread_unread` is
   `security invoker` and adds none.
 - **Two new participation-gate triggers.** Measured: **11** today
   (`select count(*) from pg_trigger where tgname = 'enforce_participation_gate' and not tgisinternal`
   → `11` on DEV, 2026-08-27). Both new content tables take one, exactly as `ride_messages` did in
-  `034` §5, so the expected count after `081` is **13, not 12**. `club_discussion_reads` takes
+  `034` §5, so the expected count after `081` is **13, not 12**. `club_thread_reads` takes
   **none**, following `023`'s stated reason for `feed_reads` and `061`'s for `ride_reads`. The
   comment on `enforce_participation_gate()` reads **eleven** today, not nine — measured — and
   enumerates the ninth, tenth and eleventh by name, so the restamp is "eleven → thirteen" plus
   **two new entries in that enumeration**.
-- **Routes**: a Discussions section on `/clubs/detail`, a list at `/clubs/detail/discussions`, a
-  thread at `/clubs/detail/discussion?id=<discussion id>`, and a create screen.
-- **The app's second Realtime subscription** — `club:discussion:<id>:messages`, INSERT only.
+- **Routes**: a Threads section on `/clubs/detail`, a list at `/clubs/detail/threads`, a
+  thread at `/clubs/detail/thread?id=<thread id>`, and a create screen.
+- **The app's second Realtime subscription** — `club:thread:<id>:messages`, INSERT only.
 - **Chat components generalised, not copied.** `RideChatThread`, `RideChatRow`,
   `RideChatComposer` and `MarkRideChatSeen` move to `src/components/chat/` with the ride screens
   importing from there. Two chat renderers that drift is the outcome copying buys.
@@ -129,7 +129,7 @@ does not fire either. Both checked rather than assumed.
 - **Notifications for a new thread or message.** Deferred; it needs its own proposal against
   `event-fanout-integrity`. See `design.md` §Notifications for the two traps waiting there.
 - **A club-level rollup on the `/clubs` list.** `club_unread_counts()` is unchanged, so a new
-  discussion does not badge the club card. Decided, not deferred — `design.md`, `Questions Closed`, D4.
+  thread does not badge the club card. Decided, not deferred — `design.md`, `Questions Closed`, D4.
 - **Editing a thread title or a message.** No UPDATE grant, no UPDATE policy, no `updated_at`
   column — `034` §4 and `011`'s ruling, and `database-enforced-integrity`'s standing requirement.
 
@@ -137,7 +137,7 @@ does not fire either. Both checked rather than assumed.
 
 ### New Capabilities
 
-- `club-discussions`: who may open, read, write, delete and moderate a club's titled threads and
+- `club-threads`: who may open, read, write, delete and moderate a club's titled threads and
   their messages; what a block does inside one; what happens when a rider leaves, is deleted, or
   the club is deleted; and every state each screen can be in.
 
@@ -153,31 +153,31 @@ does not fire either. Both checked rather than assumed.
   requirements written as descriptions of a single subscription into rules that must hold across
   a set — channel naming, publication membership, and per-subscriber authorization.
 - `client-cache-invalidation`: the thread key cannot sit under the `['clubs','detail',<clubId>]`
-  prefix, because the thread screen knows only the discussion id. That is the first key in
+  prefix, because the thread screen knows only the thread id. That is the first key in
   `keys.ts` that a domain-wide invalidation does **not** reach, and the requirement that every
   mutation declares what it invalidates needs the exception stated rather than discovered.
 
 ## Impact
 
-**Database** — `supabase/migrations/081_club_discussions.sql`; assertions in
+**Database** — `supabase/migrations/081_club_threads.sql`; assertions in
 `supabase/tests/rls_test.sql` (suite is **1841** today — re-derive with
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`, and reconcile by **label set**, not
 by count). The comment on `enforce_participation_gate()` must be restamped from **eleven** to
 thirteen, with two names added to its enumeration — it is the `data` agent's first read via
 `list_tables` and no edit to `CLAUDE.md` reaches it (`028`, `033`).
 
-**Reads** — new `src/lib/data/club-discussions.ts`, through `resolveSupabase`. **Writes** — new
-`src/lib/actions/club-discussions.ts`, plain async functions. No component calls
+**Reads** — new `src/lib/data/club-threads.ts`, through `resolveSupabase`. **Writes** — new
+`src/lib/actions/club-threads.ts`, plain async functions. No component calls
 `supabase.from()`.
 
 **Cache** — three new keys in `src/lib/query/keys.ts`, with the reconciliation note that file's
 header exists for.
 
-**Validation** — `clubDiscussionTitleSchema` and `clubMessageBodySchema` in
+**Validation** — `clubThreadTitleSchema` and `clubMessageBodySchema` in
 `src/lib/validation/clubs.ts`, each mirroring a CHECK in `081`. Per `CLAUDE.md`, Zod owns the
 message and never the guarantee.
 
-**Design** — **no v2 frame exists for a club Discussions screen.** `npm run figma -- ls` returns
+**Design** — **no v2 frame exists for a club Threads screen.** `npm run figma -- ls` returns
 `Private club - Timeline / Rides / Members / About / Sub Pages` and the public-club set, and
 nothing matching `discuss|thread|topic`. The composition in `design.md` is **ours**, assembled
 from measured components (`Ride - Chat` `2226:4999`, `Inbox - Chats` `2375:9518`) rather than

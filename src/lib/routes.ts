@@ -75,12 +75,12 @@ export const detailPaths = {
   clubRides: '/clubs/detail/rides',
   clubMembers: '/clubs/detail/members',
   clubEdit: '/clubs/detail/edit',
-  /** A club's discussion threads — `081`, PD-307. The segment says which
-   * entity the `id` names, matching `/rides/detail/chat?id=`: `discussions`
-   * takes a CLUB id, `discussion` takes a DISCUSSION id. */
-  clubDiscussions: '/clubs/detail/discussions',
-  clubDiscussion: '/clubs/detail/discussion',
-  newClubDiscussion: '/clubs/detail/discussions/new',
+  /** A club's threads — `081`, PD-307. The segment says which
+   * entity the `id` names, matching `/rides/detail/chat?id=`: `threads`
+   * takes a CLUB id, `thread` takes a THREAD id. */
+  clubThreads: '/clubs/detail/threads',
+  clubThread: '/clubs/detail/thread',
+  newClubThread: '/clubs/detail/threads/new',
   profile: '/profile/detail',
 } as const
 
@@ -94,10 +94,10 @@ export const routes = {
   clubRides: (id: string) => detail(detailPaths.clubRides, id),
   clubMembers: (id: string) => detail(detailPaths.clubMembers, id),
   clubEdit: (id: string) => detail(detailPaths.clubEdit, id),
-  clubDiscussions: (clubId: string) => detail(detailPaths.clubDiscussions, clubId),
-  /** Takes the DISCUSSION's id, not the club's — see `detailPaths`. */
-  clubDiscussion: (discussionId: string) => detail(detailPaths.clubDiscussion, discussionId),
-  newClubDiscussion: (clubId: string) => detail(detailPaths.newClubDiscussion, clubId),
+  clubThreads: (clubId: string) => detail(detailPaths.clubThreads, clubId),
+  /** Takes the THREAD's id, not the club's — see `detailPaths`. */
+  clubThread: (threadId: string) => detail(detailPaths.clubThread, threadId),
+  newClubThread: (clubId: string) => detail(detailPaths.newClubThread, clubId),
   /** Another rider — `view-rider-profile`. Own-id is redirected to `/profile`
    * rather than resolving here; see that route's own redirect. */
   profile: (id: string) => detail(detailPaths.profile, id),

@@ -8,13 +8,13 @@ import type { ChatBubbleMessage } from '@/types'
 
 /**
  * The bubble list from `Ride - Chat` (`2226:4999`) — **both** of the app's
- * message streams since `081` (PD-307): a ride's chat and a club discussion.
+ * message streams since `081` (PD-307): a ride's chat and a club thread.
  * Moved here from `components/rides/RideChatThread.tsx` unchanged in every
  * measured detail below; copying it instead is how a repo gets two chat
  * renderers that drift.
  *
  * Nothing in a bubble is ride-shaped — `ChatBubbleMessage` deliberately carries
- * neither `ride_id` nor `discussion_id`, because neither is rendered — so the
+ * neither `ride_id` nor `thread_id`, because neither is rendered — so the
  * parameterisation is the optional delete affordance below and nothing else.
  *
  * Measured off the frame rather than inferred:
@@ -72,7 +72,7 @@ export function ChatThread({
    * offers no erasure — which is the ride chat, whose screen draws no such
    * control and whose rendering is therefore byte-for-byte what it was.
    *
-   * A club discussion passes it because `081` makes deletion the *stated*
+   * A club thread passes it because `081` makes deletion the *stated*
    * remedy for a message a rider regrets, through `delete_own_club_message`.
    * **The composition is ours**: `Ride - Chat - Options` (`2226:5205`) draws a
    * context menu over a chat, but its rows are `Pin chat` and `Mute chat` —
