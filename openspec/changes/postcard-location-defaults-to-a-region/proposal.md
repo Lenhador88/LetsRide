@@ -107,7 +107,14 @@ Both are stated. The build proceeds.
 - **No `countrycode` filter on the ride search.** `search-places/shape.ts` §D8: the bias reorders,
   it does not exclude. Splitting the criteria must not narrow what an organizer can find.
 - **The audience, the club field and the ride field.** Those are
-  `postcard-audience-follows-its-entry-point`'s. The two changes ship independently.
+  `postcard-audience-follows-its-entry-point`'s. The two changes ship independently, but they
+  claim overlapping migration numbers — see `tasks.md`'s header.
+
+- **`Region` keeps writing the `'place'` marker.** The button's label and the stored value are
+  deliberately different words, as they have been since 2026-08-20: `'region'` already means
+  `064`'s retired rounding in `taken_location_precision`, one DEV row carries it, and this
+  change declares it legacy and unbackfilled. So `PhotoLocationMode` becomes
+  `'country' | 'place' | 'precise'` and the default is `'place'`.
 
 ## Blocking dependency — the deployed proxy
 

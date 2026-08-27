@@ -103,7 +103,7 @@ Restated for the audience specifically. `authenticated` holds UPDATE on `postcar
 `073` and `074`.
 
 **With the club field removed from the composer, `update (club_id)` is a grant with no screen
-behind it**, and the `009` UPDATE `with check` permits moving a postcard to `club_id` NULL, which
+behind it**, and the `010` UPDATE `with check` permits moving a postcard to `club_id` NULL, which
 **widens** its audience. Whether that grant is revoked is open question A.
 
 #### Scenario: The audience is either insert-only or the widening is deliberate

@@ -94,7 +94,8 @@ never join a ride's journal afterwards. **A refused rider loses that ride's jour
   crew of (`getCrewRides`), and the policy already refuses the rest. Both stay.
 - **Blocking.** Unchanged, in RLS, symmetric.
 - **The location control.** `Country`/`Region`/`Precise`, the default and the search split are
-  `postcard-location-defaults-to-a-region`'s. The two changes ship independently.
+  `postcard-location-defaults-to-a-region`'s. The two changes ship independently, but they claim
+  overlapping migration numbers — see `tasks.md`'s header.
 
 ## Consequence to state, not to solve
 
@@ -120,8 +121,12 @@ or builds toward. Nothing here should be shaped to make it easier.
 
 **A) The `club_id` UPDATE grant, now that no screen writes it.** *(blocking, product owner + `data`)*
 `authenticated` holds `update (club_id)` on `postcards`. With the field gone from the composer,
-that is a grant with no UI behind it — and the `009` UPDATE `with check` permits moving a postcard
-to NULL, which **widens** its audience. Recommended default: revoke `update (club_id)`, making the
+that is a grant with no UI behind it — and the `010` UPDATE `with check` permits moving a postcard
+to NULL, which **widens** its audience. **Read the policy from `010_postcard_storage.sql`, never from `009`** — `010` drops `009`'s
+version and recreates it with a third conjunct, `image_path like ('postcards/' ||
+auth.uid()::text || '/%')`, and an author re-issuing `009`'s text would silently drop that
+prefix guard. `044`/`046`'s trap, on this exact table.
+Recommended default: revoke `update (club_id)`, making the
 audience insert-only like the ride tag and every location column. It makes "audience follows the
 entry point" a database rule instead of a UI convention.
 

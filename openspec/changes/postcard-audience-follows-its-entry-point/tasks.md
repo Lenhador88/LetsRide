@@ -25,6 +25,13 @@ the search split belong to `postcard-location-defaults-to-a-region`. If a task h
 - [ ] 0.3 Confirm `022`'s two triggers cannot trip the new CHECK — both write rows carrying a
       `club_id`. Assert it; do not reason it.
 
+
+**The numbers below are provisional.** `080` is the highest file today and both changes
+claim numbers from `081`; whichever merges first takes them, so **read `ls
+supabase/migrations/` at write time and renumber rather than trusting these**. `run.sh`
+applies by filename, and a file whose local order differs from its hosted order is a trap
+this repo has already sprung.
+
 ## 1. Migration `082_a_clubless_ride_is_public.sql`
 
 - [ ] 1.1 `rides_clubless_ride_is_public`: `check (club_id is not null or is_public)`.
@@ -37,7 +44,8 @@ the search split belong to `postcard-location-defaults-to-a-region`. If a task h
 - [ ] 1.6 No grant statement. No column is added.
 - [ ] 1.7 §Verification: `pg_get_constraintdef`, the rides CHECK count re-derived (nine today,
       ten after), the four policies unmoved by `md5(qual)`/`md5(with_check)`, and
-      `get_advisors(security)` unchanged at thirteen.
+      `get_advisors(security)` unchanged at **fifteen** — measured on DEV
+      2026-08-27, not read off `CLAUDE.md`'s table, which is two definer functions short.
 
 ## 2. Migration `083_postcard_audience_is_insert_only.sql` — ONLY if question A is answered yes
 
@@ -74,6 +82,13 @@ the search split belong to `postcard-location-defaults-to-a-region`. If a task h
       nothing — an unknown id in the URL must not show one context and submit another.
 - [ ] 4.3 The refusal state, computed at render from the ride's `club_id` and the rider's own
       clubs — **before** the upload, so a knowable refusal does not orphan a Storage object.
+- [ ] 4.3b **The membership set must be the policy's, not `getMyClubs()`'s.** That query reads
+      `club_members` alone; `private.is_club_member_for` (`054`) is `club_members` **or**
+      `clubs.owner_id`. So a club owner holding no membership row is a member to the database
+      and a non-member to the composer — and 4.3 withholds Post entirely, which would block an
+      insert the policy accepts. Both specs already name that role for READS; this change
+      promotes the client set to a write gate, which is what makes the divergence matter.
+      Latent today (7 of 7 DEV club owners hold a row), so it fails the day one does not.
 - [ ] 4.4 The audience line, from a pure function in its own module with its own test —
       `resolveLocationCopy`'s shape, and `design.md` D5's five states.
 - [ ] 4.5 Say the audience, never the source. *"Only &lt;club&gt; members see this"*.
@@ -122,7 +137,7 @@ the search split belong to `postcard-location-defaults-to-a-region`. If a task h
 - [ ] 9.1 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
 - [ ] 9.2 `PGPASSWORD=postgres npm test` — additions only, 0 failures.
 - [ ] 9.3 Apply to DEV and read the constraints, the policies and the grants back off the database.
-- [ ] 9.4 `get_advisors(security)` — thirteen, unchanged. No function is added here.
+- [ ] 9.4 `get_advisors(security)` — **fifteen**, unchanged. No function is added here.
 - [ ] 9.5 `npm run walk` against DEV, with `WALK_FIXTURES=1` so the ride and club detail routes
       exist. This is the only gate that renders anything, and the refusal state is exactly the kind
       of screen that stays green through `tsc`, ESLint, Vitest, `next build` and the RLS suite

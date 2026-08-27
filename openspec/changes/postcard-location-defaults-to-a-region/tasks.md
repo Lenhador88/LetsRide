@@ -24,6 +24,13 @@ postcard belong to `postcard-audience-follows-its-entry-point`. If a task here s
       categories, and what does that cost? `*.geoapify.com` is egress-blocked from this container.
       **Do not guess a value into `shape.ts`.**
 
+
+**The numbers below are provisional.** `080` is the highest file today and both changes
+claim numbers from `081`; whichever merges first takes them, so **read `ls
+supabase/migrations/` at write time and renumber rather than trusting these**. `run.sh`
+applies by filename, and a file whose local order differs from its hosted order is a trap
+this repo has already sprung.
+
 ## 1. Migration `081_postcard_location_floor_is_a_country.sql`
 
 - [ ] 1.1 Replace `postcards_taken_location_coupling` with a `'country'`-aware shape. Restructure
@@ -33,8 +40,17 @@ postcard belong to `postcard-audience-follows-its-entry-point`. If a task here s
       arm. This is the single most likely regression in the file.
 - [ ] 1.3 Carry `064`'s range bounds into every arm that admits a coordinate.
 - [ ] 1.4 Keep the legacy `'region'` arm. One DEV row depends on it, and there is no backfill.
-- [ ] 1.5 Drop `postcards_taken_country_code_needs_a_place`. Record in the header that its
-      *argument* is replaced by task 2.1 rather than discarded.
+- [ ] 1.5 Drop `postcards_taken_country_code_needs_a_place` **and replace what it was holding in
+      the same file.** `taken_country_code` appears in NO arm of
+      `postcards_taken_location_coupling` — verified against the live constraint — so dropping
+      this leaves the column governed by the ISO-format CHECK alone, and
+      `(precision NULL, place_name NULL, lat NULL, lon NULL, country_code 'NL')` becomes legal:
+      the arm D2 requires to stay indistinguishable from "we had nothing", carrying a country,
+      which task 8.1 then renders. **Name `taken_country_code` in every arm of the new coupling**
+      — NULL wherever the marker is NULL or `'region'`, permitted only under `'country'`,
+      `'place'` and `'precise'`. `073`'s defect class, arriving through the one column that
+      constraint never mentioned. A client-behaviour scenario does not cover this: an integrity
+      rule living only in the composer is one a rider can decline.
 - [ ] 1.6 Name `'country'` in `postcards_coarse_location_is_rounded`, or state in the header why
       the coupling makes it unreachable. Not neither.
 - [ ] 1.7 Re-issue the column comment on `taken_location_precision` — four legal values now, and
@@ -45,7 +61,8 @@ postcard belong to `postcard-audience-follows-its-entry-point`. If a task here s
       needed at all; prefer issuing none over issuing an absolute list.
 - [ ] 1.10 §Verification footer: all three grant lists scoped to `authenticated`, `anon` at zero,
       both replaced constraints as `pg_get_constraintdef` returns them, the row counts before and
-      after (nothing rewritten), and `get_advisors(security)` unchanged at thirteen.
+      after (nothing rewritten), and `get_advisors(security)` unchanged at **fifteen** — measured on DEV 2026-08-27, not
+      read off `CLAUDE.md`, whose table lists ten definer functions and is two short.
 
 ## 2. Assertions — `supabase/tests/rls_test.sql`
 
@@ -141,9 +158,14 @@ postcard belong to `postcard-audience-follows-its-entry-point`. If a task here s
 
 - [ ] 10.1 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
 - [ ] 10.2 `PGPASSWORD=postgres npm test` — the RLS suite, additions only, 0 failures.
-- [ ] 10.3 Apply `081` to DEV, then re-read the constraints and the grants off the database.
+- [ ] 10.3 **`081` is the WIDENING half, so it reaches PROD *before* the promotion build serves**
+      — `069`'s side of `CLAUDE.md`'s ordering rule, not `070`'s. It admits `'country'` and drops
+      a CHECK; a `'country'` insert against an un-migrated PROD fails
+      `postcards_taken_location_coupling`, so the client cannot go first. The audience change's
+      CHECK is a tightening and goes the other way round — do not copy its ordering here.
+- [ ] 10.3b Apply `081` to DEV, then re-read the constraints and the grants off the database.
       Unapplied migrations are drift.
-- [ ] 10.4 `get_advisors(security)` on DEV — thirteen, unchanged. This change adds no function and
+- [ ] 10.4 `get_advisors(security)` on DEV — **fifteen**, unchanged. This change adds no function and
       nothing `security definer`, so a new advisor means something landed the files do not
       describe.
 - [ ] 10.5 `npm run walk` against DEV — the only gate that renders anything.
