@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { MAP_CREDITS } from '@/components/rides/MapAttribution'
 import {
+  ATTRIBUTION_MODE,
   buildGeocodeUrl,
   buildRideMapPath,
   buildTileUrl,
@@ -109,7 +111,10 @@ describe('the outbound static map requests', () => {
     const card = new URL(buildTileUrl(TILE_SPECS.card, AMSTERDAM, 'test-key'))
     expect(card.searchParams.get('width')).toBe('80')
     expect(card.searchParams.get('height')).toBe('148')
-    expect(card.searchParams.get('zoom')).toBe('13')
+    // 7, not 13 — PD-236. The zoom was never chosen against a visible tile,
+    // because the burned-in credit covered the map. Marked "to try" in
+    // `gates.ts`; if it reads as too far out the next step is 8, not back to 13.
+    expect(card.searchParams.get('zoom')).toBe('7')
 
     const detail = new URL(buildTileUrl(TILE_SPECS.detail, AMSTERDAM, 'test-key'))
     expect(detail.searchParams.get('width')).toBe('358')
@@ -132,14 +137,35 @@ describe('the outbound static map requests', () => {
     expect(url.searchParams.get('center')).toBe('lonlat:4.9031499,52.3784733')
   })
 
-  it('suppresses no attribution parameter', () => {
-    // The OpenStreetMap obligation binds on every plan and the Static Maps
-    // response discharges it by burning the credit into the image. Suppressing it
-    // does not remove the obligation, it moves it onto an 80px strip that cannot
-    // carry the string.
-    const url = buildTileUrl(TILE_SPECS.card, AMSTERDAM, 'test-key').toLowerCase()
-    for (const parameter of ['attribution', 'nologo', 'no_logo', 'watermark', 'copyright']) {
-      expect(url).not.toContain(parameter)
+  it('sends attribution=none, and the app renders the credit the tile lost', () => {
+    // **Inverted deliberately on 2026-08-27, and the replacement is stronger
+    // than the deletion.** This used to assert the ABSENCE of every suppression
+    // parameter — correct while nothing in the app rendered a credit of its own,
+    // and wrong the moment `MapAttribution` existed. A test that simply loses an
+    // assertion is how a suppressed credit comes back with nothing paying for
+    // it, so this pins the two halves TOGETHER: the parameter is sent, and the
+    // component that discharges the obligation carries the required strings.
+    const url = new URL(buildTileUrl(TILE_SPECS.card, AMSTERDAM, 'test-key'))
+    expect(url.searchParams.get('attribution')).toBe('none')
+    expect(ATTRIBUTION_MODE).toBe('none')
+
+    // ODbL 1.0 and OpenMapTiles are unconditional here — no plan, no vendor and
+    // no subscription removes either, so these two may never leave this list
+    // while `attribution=none` is sent.
+    expect(MAP_CREDITS).toContain('© OpenStreetMap contributors')
+    expect(MAP_CREDITS).toContain('© OpenMapTiles')
+
+    // `Powered by Geoapify` is the ONE line a confirmed White Label removes, so
+    // this is asserted as presence-or-absence rather than pinned: dropping it is
+    // a legitimate edit the day the account is confirmed, and dropping either of
+    // the two above never is.
+    expect(MAP_CREDITS.length).toBeGreaterThanOrEqual(2)
+
+    // The three parameters that never existed on this vendor. Kept because their
+    // absence is still the invariant — `attribution` is the only real switch, and
+    // a second one appearing here would be an unreviewed suppression.
+    for (const parameter of ['nologo', 'no_logo', 'watermark', 'copyright']) {
+      expect(url.toString()).not.toContain(parameter)
     }
   })
 })

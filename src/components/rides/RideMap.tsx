@@ -158,12 +158,12 @@ export function RideMap({
             // place that information appears, which is what makes an empty alt
             // correct rather than lazy.
             alt=""
-            // `object-right-bottom`, not the default centre and NOT
-            // `object-bottom`. The tile is 358×160 and this panel is the page
-            // width less 32, with no `max-w` anywhere in the layout — so the
-            // panel is *narrower* than the tile on most phones and `object-cover`
-            // crops HORIZONTALLY, which `object-bottom` (`50% 100%`) does nothing
-            // about because it only moves the vertical axis:
+            // Centred, which is the default and is now the right answer. This
+            // was `object-right-bottom` for one reason only: Geoapify burned the
+            // credit into the bottom-RIGHT, and this panel is *narrower* than
+            // its 358-wide tile on most phones, so `object-cover` crops
+            // HORIZONTALLY and truncated `© OpenStreetMap contributors`
+            // mid-string at the two commonest mobile widths in the world:
             //
             //   430 → 398 panel, no horizontal crop
             //   390 → 358, none
@@ -171,13 +171,16 @@ export function RideMap({
             //   360 → 328, 30px cropped, 15px off the right    (most Android)
             //   320 → 288, 70px cropped, 35px off the right    (iPhone SE 1)
             //
-            // Geoapify burns the credit bottom-RIGHT, so on the two commonest
-            // mobile widths in the world `© OpenStreetMap contributors` was being
-            // truncated mid-string. Obligation 1 has no plan-level escape and
-            // §6.2 forbids resolving it by truncating the vendor's name.
-            // Anchoring bottom-right pins the credit's own corner and moves the
-            // whole crop to the top and left, where nothing is owed.
-            className="absolute inset-0 h-full w-full object-cover object-right-bottom"
+            // The crop is unchanged and the credit is gone — `ATTRIBUTION_MODE`
+            // sends `attribution=none` and `MapAttribution` draws it in HTML
+            // beneath this panel, where no crop can reach it. So the anchor is free to serve
+            // the map again: centred keeps the meeting point in frame, which is
+            // what the tile was rendered around, instead of pushing it toward a
+            // corner to protect pixels that no longer exist.
+            //
+            // **The table stays because the crop stays.** If anything is ever
+            // drawn into this tile's corners, those are the widths that eat it.
+            className="absolute inset-0 h-full w-full object-cover"
             onError={() => setFailedTileUrl(tileUrl ?? null)}
             loading="lazy"
             draggable={false}
@@ -208,12 +211,6 @@ export function RideMap({
           carry: that scrim existed to hold the ADDRESS legible over an unknown
           map, and with the address gone there is nothing left to darken the whole
           tile for. ~120px instead of the entire panel. */}
-      {!!tileUrl && (
-        <span className="pointer-events-none absolute top-1 left-1 rounded bg-scrim px-1.5 py-0.5 text-2xs font-medium text-white">
-          Powered by Geoapify
-        </span>
-      )}
-
       {/* The pin and the address are the NO-TILE rendering, and only that.
           Over a tile the panel draws what the Figma draws — the map and the
           directions chip — because the address is already on screen in the

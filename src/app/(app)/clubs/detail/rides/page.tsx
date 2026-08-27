@@ -3,6 +3,7 @@
 import { Suspense } from 'react'
 import { notFound, useSearchParams } from 'next/navigation'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
+import { MapAttribution } from '@/components/rides/MapAttribution'
 import { RideCard } from '@/components/rides/RideCard'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SectionHeader } from '@/components/ui/SectionHeader'
@@ -116,6 +117,25 @@ function ClubRidesScreen() {
                     <RideList rides={rides.data.past} />
                   </>
                 )}
+
+                {/* **The third tile surface, and the one that had no credit at
+                    all** — PD-236. This screen draws `RideCard` off the same
+                    `getRides` read as `/rides`, so its strips are the same
+                    Geoapify imagery with the burned-in credit suppressed. It was
+                    missed on the first pass because the credit followed the
+                    screens the issue named rather than the component that draws
+                    a tile.
+
+                    **That is the rule to apply to the next one:** anything
+                    rendering `map_card_url` or `map_detail_url` owes this, and
+                    the count is three today — here, `/rides`, and `/rides/detail`
+                    via `RideMap`. Re-derive it rather than trusting the number:
+                    `git grep -l "map_card_url\|map_detail_url" -- 'src/app' 'src/components'`.
+
+                    `px-0` for this screen's own wrapper, as above. */}
+                {[...rides.data.upcoming, ...rides.data.past].some(
+                  (ride) => !!ride.map_card_url,
+                ) && <MapAttribution className="px-0 pt-2" />}
               </>
             )}
           </div>
