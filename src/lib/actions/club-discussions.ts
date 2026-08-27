@@ -277,11 +277,18 @@ export async function markClubDiscussionSeen(
 
 /**
  * A thread that has ceased to exist moves two things and they are not one
- * prefix: the club's list, and the thread's own messages. `keys.ts` records why
- * the second is not reached by the first — the messages key hangs off the
- * discussion id, because the thread screen holds only that.
+ * prefix: the club's list, and everything hanging off the thread itself.
+ *
+ * **The second claim is `discussion(id)`, not `discussionMessages(id)`**, and
+ * the difference is a 404 flash rather than a style point. `invalidate` matches
+ * by prefix, and the messages key is a *child* of the thread's own — so naming
+ * the messages alone leaves the thread's cached title and author row standing.
+ * A rider re-entering the thread URL inside `staleTime` would then draw the
+ * deleted thread's header for one paint before the refetch returned `null` and
+ * `notFound()` took over. Naming the parent is strictly smaller and reaches
+ * both.
  */
 function invalidateDiscussion(discussionId: string, clubId: string) {
   invalidate(queryKeys.clubs.discussions(clubId))
-  invalidate(queryKeys.clubs.discussionMessages(discussionId))
+  invalidate(queryKeys.clubs.discussion(discussionId))
 }

@@ -62,11 +62,23 @@ const STICKY_ACTIONS: Record<string, { label: string; href: string }> = {
 /**
  * Screens that replace the bar rather than scrolling under it.
  *
- * One so far — the ride chat. `Ride - Chat` (`2226:4999`) draws no navigation
- * bar at all: header 120 + content 644 + reply 80 = 844, the whole frame. Its
- * fixed reply bar sits where this one would, so rendering both would stack two
- * fixed bars and put the composer behind the tabs on the one screen a rider is
- * typing on.
+ * Two: the ride chat and a club discussion thread. `Ride - Chat` (`2226:4999`)
+ * draws no navigation bar at all: header 120 + content 644 + reply 80 = 844, the
+ * whole frame. Its fixed reply bar sits where this one would, so rendering both
+ * would stack two fixed bars and put the composer behind the tabs on the one
+ * screen a rider is typing on.
+ *
+ * **The discussion thread was added to this list one walk late, and that is the
+ * lesson rather than a footnote.** `081` gave it the ride chat's `fixed inset-0`
+ * layout and the same bottom-anchored composer, and forgetting this list shipped
+ * a screen where `elementFromPoint` over both the input and Send returned this
+ * `nav`: measured at 390×844, nav `y775 h69` against composer `y792 h40`. Both
+ * bars are bottom-anchored, so no viewport height escapes it and there is
+ * nothing to scroll away. **Nothing else in the repo can see that** — `tsc`,
+ * ESLint, Vitest, `next build` and the RLS suite are all green on a thread
+ * nobody can type in; only `npm run walk` clicks the composer. A new screen
+ * whose layout is copied from a barless one owes this list an entry in the same
+ * commit.
  *
  * Note how this differs from `RideAttendanceBar`, which is *also* a fixed bar on
  * a ride screen and does **not** belong here: that one is drawn on top of the
@@ -82,7 +94,7 @@ const STICKY_ACTIONS: Record<string, { label: string; href: string }> = {
  * rather than a prefix for the reason the old regex was anchored at both ends: a
  * hypothetical `/rides/detail/chat/settings` should decide for itself.
  */
-const BARLESS: string[] = [detailPaths.rideChat]
+const BARLESS: string[] = [detailPaths.rideChat, detailPaths.clubDiscussion]
 
 export function Navbar() {
   const pathname = usePathname()

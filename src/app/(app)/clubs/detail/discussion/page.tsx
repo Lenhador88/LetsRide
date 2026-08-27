@@ -161,6 +161,7 @@ function ThreadBody({
   discussion: ReturnType<typeof useQuery<Awaited<ReturnType<typeof getClubDiscussion>>>>
 }) {
   const online = useOnlineStatus()
+  const showBanner = useBanner()
 
   /**
    * Retire optimistic rows the server has confirmed — the ride chat's own
@@ -227,11 +228,32 @@ function ThreadBody({
     [discussionId, setSending, online]
   )
 
+  /**
+   * A failed delete has to say so, and this is the one refusal on this screen
+   * that cannot show itself.
+   *
+   * The two neighbours above and below already do — `send` withdraws the
+   * optimistic row and returns the reason, and the thread's own delete banners
+   * it. This one has no optimistic half to withdraw: the bubble is a server row
+   * and simply stays. Discarding the `ActionState` therefore leaves a rider who
+   * tapped Delete offline looking at the message they believe they deleted,
+   * with nothing said — and they will believe it is gone.
+   */
   const deleteMessage = useCallback(
-    (messageId: string) => {
-      void deleteClubMessage(messageId, discussionId)
+    async (messageId: string) => {
+      const result = await deleteClubMessage(messageId, discussionId)
+      if (result.error) {
+        // Offline is reported as offline rather than as a refusal, matching
+        // `send` — the RPC failing because there is no network is not the same
+        // thing as the database declining, and only one of them is worth
+        // retrying now.
+        showBanner(
+          online ? result.error : "You're offline — that message was not deleted.",
+          'error'
+        )
+      }
     },
-    [discussionId]
+    [discussionId, online, showBanner]
   )
 
   const markSeen = useCallback(
