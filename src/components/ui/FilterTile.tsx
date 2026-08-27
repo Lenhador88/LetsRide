@@ -184,9 +184,14 @@ export function FilterClubImage({
 }
 
 /**
- * The 2×2 photo collage the "All new" / "All rides" tiles carry. Repeats what it
- * has when it has fewer than four, and falls back to the flat placeholder the
- * design's own empty frame draws.
+ * The 2×2 photo collage the postcards bar's "All new" tile carries. Repeats
+ * what it has when it has fewer than four, and falls back to the flat
+ * placeholder the design's own empty frame draws.
+ *
+ * **One caller, since PD-323.** The rides bar's tile was `All rides`, then
+ * `From clubs`, and now draws a single `ClubsIcon` glyph instead — a category
+ * reads as a category, where "All new" is a genuine collage of four recent
+ * photos that are themselves the content.
  */
 export function FilterCollage({ images }: { images: string[] }) {
   if (images.length === 0) return <span className="block h-full w-full bg-border" />

@@ -51,6 +51,10 @@ import type { RideListItem } from '@/types'
  * same recessed cream the create tile beside it uses, which is what makes the
  * strip read as one row of tiles with the live ones standing out of it.
  *
+ * **The fill-to-fill ratio is 12.65:1** — that is the greyscale check, and it
+ * is a different question from text-on-fill, which has its own floor and is
+ * answered at each text line below.
+ *
  * **Not a prop.** `is_upcoming` is already on every `RideListItem`, computed
  * against `rideDayStartUtc` by the same read that sorts the two halves — so a
  * caller cannot pass one that disagrees with the list the chip came out of.
@@ -68,9 +72,12 @@ export function RideChip({ ride }: { ride: RideListItem }) {
       )}
     >
       {/* The date block keeps its own contrast against whichever fill it sits
-          on: cream inside the dark chip, white inside the light one. Left at
-          `bg-background` on a past chip it would be the same cream as the chip
-          around it and stop reading as a block at all. */}
+          on: `bg-background` inside the dark chip, `bg-surface` inside the
+          light one. Left at `bg-background` on a past chip it would sit at
+          1.17:1 against `bg-track` — a different cream, not the same one, and
+          near enough to stop reading as a block at all. Its `text-muted` month
+          clears the floor on both: 4.90:1 on `bg-background`, 5.74:1 on
+          `bg-surface`. */}
       <span
         className={cn(
           'flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded',
@@ -89,7 +96,17 @@ export function RideChip({ ride }: { ride: RideListItem }) {
         >
           {formatRideTime(ride.departure_at, ride.timezone)}
         </span>
-        <span className={cn('truncate text-sm font-medium', past ? 'text-muted' : 'text-background')}>
+        {/* `text-foreground` rather than `text-muted`, and the reason is a
+            measurement: `#666666` on `bg-track` is 4.17:1, under the 4.5 floor
+            this 14px regular-weight line has. That pairing is a known failure
+            already logged elsewhere (`.claude/agents/design-system.md`, the
+            unselected RSVP label) and this must not become its second home.
+
+            It is not a compromise — it mirrors the upcoming chip, whose own two
+            lines are 17.40:1 and 14.85:1 and separate by WEIGHT rather than by
+            a muted step. Semibold time over medium meeting point is the same
+            hierarchy on both fills. */}
+        <span className={cn('truncate text-sm font-medium', past ? 'text-foreground' : 'text-background')}>
           {ride.meeting_point}
         </span>
       </span>

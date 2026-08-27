@@ -584,9 +584,15 @@ export type RideFilters = {
    */
   fromClubs: number
   /**
-   * Up to four club images, for the `From clubs` tile's 2×2 — a cover where the
-   * club has one, else its avatar. Organizer faces until 2026-08-27, when the
-   * tile stopped meaning "every ride" and started meaning "these clubs".
+   * **Nothing reads this.** PD-323 made the `From clubs` tile a single
+   * `ClubsIcon` glyph, so the 2×2 collage this fed is not drawn — the field is
+   * still computed and still signed, and is dead. PD-331 removes it along with
+   * `collageClubImages`; it was left in place because that function lives in
+   * `src/lib/data/rides.ts`, which another build session held at the time.
+   *
+   * Up to four club images while it lasted — a cover where the club had one,
+   * else its avatar; organizer faces until 2026-08-27, when the tile stopped
+   * meaning "every ride" and started meaning "these clubs".
    */
   collage: string[]
   clubs: RideFilterOption[]
