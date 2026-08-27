@@ -149,12 +149,14 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **thirteen** tables on DEV
-   and **eleven** on PROD — measured 2026-08-27, the two-table difference being `081`, which is
-   applied to DEV and owed to PROD; PROD was ten until `069` promoted on 2026-08-19 — `postcards`,
+   gets inherited as covered.** `enforce_participation_gate` is on **fifteen** tables on DEV
+   and **eleven** on PROD — measured 2026-08-27, the four-table difference being `081`, `083` and
+   `084`, all applied to DEV and owed to PROD; PROD was ten until `069` promoted on 2026-08-19 —
+   `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
    `postcard_reports`, `ride_messages`, `ride_map_render_attempts`, `place_search_attempts`,
-   which `069` added, plus `club_threads` and `club_messages`, which `081` added — and **not**
+   which `069` added, plus `club_threads` and `club_messages`, which `081` added, `ride_invites`
+   (`083`) and `feedback` (`084`) — and **not**
    on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`, `feed_reads`,
    `club_thread_reads`, `push_devices` or any `storage.objects` policy, which
    check the path prefix only. **A per-project split is the ordinary state between a merge and its
@@ -644,14 +646,19 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 82 files; DEV is at `082` and PROD at `079` — measured 2026-08-27, so DEV is
-AHEAD by three and `080`, `081` then `082` are owed to PROD at the next promotion, in that order.**
-All three are additive, so all three go to PROD **before** the promotion build serves, per the
+**Applied state: 84 files; DEV is at `084` and PROD at `079` — measured 2026-08-27, so DEV is
+AHEAD by five and `080`, `081`, `082`, `083` then `084` are owed to PROD at the next promotion, in
+that order.**
+All five are additive, so all five go to PROD **before** the promotion build serves, per the
 ordering rule below. `081` creates the club-thread tables under their old `discussion` names and
 `082` renames them, so on PROD that pair is a create-then-rename with no rows in between — but the
 **order inside the gap is not optional**, and for two separate reasons that are easy to collapse
 into one: `082` renames objects `081` creates, so the reverse simply errors; and the client calls
-RPCs that exist only after `082`, so stopping *between* them serves `PGRST202` with nothing red. `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
+RPCs that exist only after `082`, so stopping *between* them serves `PGRST202` with nothing red.
+**`083` adds a third reason and it is the loudest**: it is additive in schema and NOT inert, because
+it replaces `private.can_read_ride`, which every existing notification fan-out calls inside a
+rider's own RSVP and ride-creation transaction — `036`'s hand-exercise gate, which was run on DEV
+and must be run again on PROD before that promotion. `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
 after it was confirmed serving (destructive), which is the whole ordering rule in one sitting.
 **Level is the exception, not the resting state**: DEV-ahead is where a migration lives between its
 merge and its promotion, and the two were last level on 2026-08-20 at PD-273's promotion and
@@ -714,7 +721,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **2018** assertions — re-derive rather than trust it:
+Suite **2143** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -755,13 +762,13 @@ rider with a NULL stamp no way out of the wizard. Inside a `security definer` fu
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: fifteen, and only one is outstanding.** Re-derive rather than trust the number
+**Security advisors: seventeen, and only one is outstanding.** Re-derive rather than trust the number
 — `get_advisors(security)` — but the *shape* is durable, because fourteen of the fifteen are
 things this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 12 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_own_club_message`, `moderate_club_thread`, `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away), `register_push_device`, `release_push_device` (`078`, because no client role holds any grant on `push_devices`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders, the two push RPCs each write or remove exactly one row for their caller, take no user id and return nothing, and `081`'s pair delete exactly one thread the caller's club owns and exactly one message the caller wrote — the second existing at all because `club_messages` holds no DELETE grant or policy for anyone. Narrowness is the defence. **Count them off `get_advisors` rather than off this cell** — it read ten while twelve were live, which is the same defect a stale number anywhere else in this file is, and it fed a wrong verification gate into two proposals. **This advisor fires once per such function, so a migration adding two adds two** — reading `078`'s sweep as "one new advisor" is what its own task list got wrong |
+| 14 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_own_club_message`, `moderate_club_thread`, `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away), `register_push_device`, `release_push_device` (`078`, because no client role holds any grant on `push_devices`), `accept_ride_invite`, `decline_ride_invite` (`083`, because the status change and the `ride_members` row must be one statement and no client holds UPDATE on `ride_invites`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders, the two push RPCs each write or remove exactly one row for their caller, take no user id and return nothing, and `081`'s pair delete exactly one thread the caller's club owns and exactly one message the caller wrote — the second existing at all because `club_messages` holds no DELETE grant or policy for anyone, and `083`'s pair answer exactly one invite addressed to the caller, taking an invite id and never a rider id, with ONE raise site each so a caller learns nothing about an invite that is not theirs. **`083`'s three `private` functions add NO advisor** — `has_live_ride_invite`, `has_live_ride_invite_for` and `join_ride_from_invite` live in `private`, which PostgREST does not publish, which is why the count went up by two rather than five. Narrowness is the defence. **Count them off `get_advisors` rather than off this cell** — it read ten while twelve were live, which is the same defect a stale number anywhere else in this file is, and it fed a wrong verification gate into two proposals. **This advisor fires once per such function, so a migration adding two adds two** — reading `078`'s sweep as "one new advisor" is what its own task list got wrong |
 | 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design in both cases: `026` and `078` revoke everything on their table from `anon` and `authenticated`, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 

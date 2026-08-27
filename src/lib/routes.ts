@@ -71,6 +71,8 @@ export const detailPaths = {
   rideCrew: '/rides/detail/crew',
   rideChat: '/rides/detail/chat',
   rideEdit: '/rides/detail/edit',
+  /** The organizer's rider picker and invite list — `083`, PD-329. */
+  rideInvite: '/rides/detail/invite',
   club: '/clubs/detail',
   clubRides: '/clubs/detail/rides',
   clubMembers: '/clubs/detail/members',
@@ -90,6 +92,7 @@ export const routes = {
   rideCrew: (id: string) => detail(detailPaths.rideCrew, id),
   rideChat: (id: string) => detail(detailPaths.rideChat, id),
   rideEdit: (id: string) => detail(detailPaths.rideEdit, id),
+  rideInvite: (id: string) => detail(detailPaths.rideInvite, id),
   club: (id: string) => detail(detailPaths.club, id),
   clubRides: (id: string) => detail(detailPaths.clubRides, id),
   clubMembers: (id: string) => detail(detailPaths.clubMembers, id),

@@ -31,6 +31,15 @@ import type { NotificationRow } from '@/types'
  * string, which is the weaker of the two claims and the one the frame actually
  * shows. That matches how `ride_created_in_club` and `club_joined` degrade to
  * "a club" when their own subject does not resolve.
+ *
+ * ## The three invite types say what happened, never what can be done about it
+ *
+ * `ride_invited` reads "invited you to <ride>" and stops there. Whether Accept
+ * and Decline are offered is a different question with a different source —
+ * `RideInviteActions` reads the live invite row, because the notification is a
+ * record of an event and the invite may since have been answered on another
+ * device, withdrawn, or hidden by a block. Putting the affordance in the
+ * sentence would make the row promise something the database may refuse.
  */
 export function notificationCopy(row: NotificationRow, viewerId: string | undefined): string {
   switch (row.type) {
@@ -49,5 +58,20 @@ export function notificationCopy(row: NotificationRow, viewerId: string | undefi
       return `created a ride in ${row.club?.name ?? 'a club'}.`
     case 'club_joined':
       return `joined club ${row.club?.name ?? 'a club'}.`
+    // `083`, PD-329. All three resolve their ride from the live subject like
+    // every other arm here — a rider who loses the ride loses the string with
+    // it, which is `036` §2's rule and the reason none of this is stamped on
+    // the notification.
+    case 'ride_invited':
+      return `invited you to ${row.ride?.title ?? 'a ride'}.`
+    case 'ride_invite_accepted':
+      return `accepted your invite to ${row.ride?.title ?? 'a ride'}.`
+    case 'ride_invite_declined':
+      // Plainly, and without softening it. The organizer chose this rider by
+      // name and already sees their whole crew, so the identity is not new
+      // information — and a count instead of a name would make the list
+      // unactionable, which is the decision `design.md` §Questions Closed Q5
+      // records.
+      return `declined your invite to ${row.ride?.title ?? 'a ride'}.`
   }
 }

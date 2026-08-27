@@ -6,10 +6,26 @@
 
 `rides.is_public` and `rides.club_id` are independently settable and both are in `authenticated`'s
 UPDATE grant list — measured on DEV 2026-08-27. The combination `club_id IS NULL AND is_public =
-false` names a ride nobody but its organizer can ever reach, with no mechanism in the schema to
-admit anyone, because there is no invite flow and no membership row to write.
+false` names a ride nobody but its organizer can reach.
 
-The database SHALL refuse that combination.
+> **⚠ THE JUSTIFICATION FOR THIS REQUIREMENT IS SPENT, AND IT IS THE OWNER'S CALL WHETHER THE
+> REQUIREMENT SURVIVES IT.**
+>
+> This paragraph used to end *"…with no mechanism in the schema to admit anyone, because there is no
+> invite flow and no membership row to write."* **There is one now.** `083` (PD-329, merged) makes a
+> live `ride_invites` row a fourth audience arm of the `rides` SELECT policy and
+> `private.join_ride_from_invite` the membership write, so a clubless, non-public ride is exactly
+> the private ride an organizer invites four friends to — which PD-329's own body names as the
+> reason its default flip is safe.
+>
+> **The clause is removed rather than the requirement**, because deleting another change's
+> requirement is not this change's to do. Whoever applies
+> `postcard-audience-follows-its-entry-point` decides between: dropping this requirement (a
+> clubless private ride is now reachable and the CHECK would refuse a legitimate one), or keeping it
+> for a different reason and stating that reason. **It must not be implemented on the strength of
+> the sentence above**, which no longer says what it said when it was written.
+
+The database SHALL refuse that combination, subject to the note above.
 
 #### Scenario: Refused on INSERT
 - **WHEN** any client, including a hand-rolled request under the publishable key, inserts a ride

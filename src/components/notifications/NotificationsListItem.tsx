@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notificationCopy } from '@/components/notifications/copy'
+import { RideInviteActions } from '@/components/notifications/RideInviteActions'
 import { NotificationRow } from '@/components/ui/NotificationRow'
 import { routes } from '@/lib/routes'
 import { formatNotificationStamp } from '@/lib/utils'
@@ -45,12 +46,30 @@ export function NotificationsListItem({ row, viewerId }: NotificationsListItemPr
     />
   )
 
-  if (!href) return content
+  // `083`, PD-329. Rendered BESIDE the row rather than inside it, and outside
+  // the `<Link>`: a button nested in an anchor is invalid HTML and the tap
+  // would navigate as well as answer. Only `ride_invited` draws anything —
+  // `RideInviteActions` returns null for every other case, including a
+  // `ride_invited` row whose invite is no longer live.
+  const actions =
+    row.type === 'ride_invited' ? <RideInviteActions rideId={row.ride?.id} /> : null
+
+  if (!href) {
+    return (
+      <>
+        {content}
+        {actions}
+      </>
+    )
+  }
 
   return (
-    <Link href={href} className="block transition-colors active:bg-border">
-      {content}
-    </Link>
+    <>
+      <Link href={href} className="block transition-colors active:bg-border">
+        {content}
+      </Link>
+      {actions}
+    </>
   )
 }
 
@@ -72,6 +91,14 @@ function describe(row: NotificationRowData): {
       }
     case 'ride_joined':
     case 'ride_created_in_club':
+    // `083`'s three. The destination is the ride for all of them — for the two
+    // answers because that is what the organizer wants to look at, and for
+    // `ride_invited` because tapping the row should show the rider what they
+    // are being asked to. The Accept/Decline pair sits beside the link rather
+    // than replacing it.
+    case 'ride_invited':
+    case 'ride_invite_accepted':
+    case 'ride_invite_declined':
       // Destination is the ride for both — for `ride_created_in_club` the club
       // is context the copy names rather than where the row leads, per `036`'s
       // comment on `notifications.club_id`. No trailing thumbnail either: the

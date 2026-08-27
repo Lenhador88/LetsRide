@@ -963,9 +963,19 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
     // fixtures are created through the UI by this same signed-in account, so
     // in the common case it is the real form that gets exercised.
     ...(ride
-      ? ['/rides/detail', '/rides/detail/crew', '/rides/detail/chat', '/rides/detail/edit'].map(
-          (p) => detail(p, ride)
-        )
+      ? [
+          '/rides/detail',
+          '/rides/detail/crew',
+          '/rides/detail/chat',
+          '/rides/detail/edit',
+          // `083`, PD-329. Unlike `edit`, this one 404s for a rider who is not
+          // the organizer — so it is walked on the same assumption `edit`
+          // relies on: the walk's fixtures are created through the UI by this
+          // same signed-in account, which makes them its organizer. A red mark
+          // here on a ride somebody else organised is the walk finding a
+          // fixture it did not create, not a broken screen.
+          '/rides/detail/invite',
+        ].map((p) => detail(p, ride))
       : []),
     ...(club
       ? [

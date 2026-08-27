@@ -249,7 +249,18 @@ describe('the cross-references in the real repo', () => {
     // `firstWords` above still reads `['Before', 'Working']`, which is the
     // assertion that would have caught a new KIND of collision arriving with
     // them.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(15)
+    //
+    // **15 -> 17 on 2026-08-27 (invite-riders-to-a-ride).** Two new ones, both
+    // in that change's `proposal.md` and both the same `Working` collision:
+    // `§Working Principles` for the rule that an inferred value must never pass
+    // silently as a measured one — which that proposal is obeying literally,
+    // having been written with two connectors absent and marking every
+    // second-hand claim — and `§Working With the Product Owner` for the rule a
+    // squad agent follows when it surfaces an objection rather than building
+    // around it, which is the section the two deliberate departures are
+    // recorded under. Both cite the heading they actually mean. `firstWords`
+    // above still reads `['Before', 'Working']`.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(17)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been
