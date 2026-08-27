@@ -41,12 +41,11 @@ import type { RideAttendance, RideListItem } from '@/types'
  * unavailable" message — the pin container it has always drawn is the answer,
  * and a tile that fails to load falls back to exactly that.
  *
- * **Attribution — PD-104 §6.2, and the credit this strip carries is the one
- * burned into the tile.** The Static Maps response arrives with map-style
- * attribution rendered into the image itself, bottom-right, which is *composed
- * into the strip* per tile and survives a scroll — exactly what the spec means by
- * refusing a single shared credit elsewhere on the screen. Two consequences for
- * this file, and both are load-bearing rather than tidy:
+ * **Attribution — PD-236, and this strip carries none of it.** The Static Maps
+ * response used to arrive with the credit burned into the image, bottom-right;
+ * `ATTRIBUTION_MODE` now sends `attribution=none`, so the tile is clean and
+ * `MapAttribution` discharges the obligation once per screen. Two consequences
+ * for this file, and both are load-bearing rather than tidy:
  *
  * - **The tile carries no credit at all** — PD-236. `ATTRIBUTION_MODE` sends
  *   `attribution=none`, so the obligation is discharged by `MapAttribution` at
@@ -66,15 +65,20 @@ import type { RideAttendance, RideListItem } from '@/types'
  *   marker pointed at the wrong part of its own map. Centred is what puts the
  *   two back on top of each other.
  *
- * **The open half, stated rather than assumed: whether the burned-in credit is
- * legible at 80×148.** If it is not, `specs/ride-map-tiles`' *A credit that cannot
- * fit means no tile* applies and this strip must render the pin fallback with no
- * tile — which is a specified outcome and not a failure, and is one condition on
- * `showsTile` below. It could not be measured when this was written:
- * `*.geoapify.com` is egress-blocked from the build container, so no tile existed
- * to look at. Task 8.4 answers it against a real one. Do not resolve it by
- * shrinking type below the system's floor, clipping, or truncating the vendor's
- * name.
+ * **That open half is answered and it is why this file changed.** *"Is the
+ * burned-in credit legible at 80×148"* was measured on DEV 2026-08-16: it is
+ * not — the credit is a fixed absolute size and spanned the whole 160-wide
+ * render, clipping at both edges. `specs/ride-map-tiles`' *A credit that cannot
+ * fit means no tile* was the specified outcome, and PD-236 took the other route
+ * the spec did not anticipate: make the tile carry no credit at all. **The
+ * refusals that framed it still stand** — do not resolve any future version of
+ * this by shrinking type below the system's floor, clipping, or truncating the
+ * vendor's name.
+ *
+ * **What this strip does NOT do is render the credit itself**, and that is a
+ * screen-level decision rather than this component's: see `MapAttribution`,
+ * which carries both the arithmetic (the joined string is ~350px against 80px of
+ * strip) and the spec requirement it is currently in tension with.
  *
  * The pin gains a `White/100` disc **only** over a tile. Bare `Grey/100` on a
  * neutral `Grey/10%` container is 13.82:1 — `bg-border` is `#0000001A`, 10.196%

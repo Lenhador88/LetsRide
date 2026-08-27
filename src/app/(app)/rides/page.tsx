@@ -315,7 +315,7 @@ function RidesScreen() {
               map credit, and a line crediting imagery nobody can see is noise
               rather than compliance. */}
           {[...upcoming, ...past].some((ride) => !!ride.map_card_url) && (
-            <MapAttribution variant="inline" />
+            <MapAttribution />
           )}
         </div>
       )}

@@ -691,7 +691,17 @@ working around them.** Four carry detail worth having at hand:
    The redeploy carrying PD-102's re-authentication proof closed **2026-08-17T14:32Z** — `delete-account`
    at **PROD v9 / DEV v5**, both `ezbr_sha256` `9793933d…`, both newer than the directory's last
    *behavioural* commit. Both functions are `ACTIVE` on both projects with `verify_jwt` true;
-   `resolve-ride-location` sits at `02e56f38…`, PROD v3 / DEV v3, redeployed 2026-08-27 by PD-267. **Cross-project equality never means current** —
+   `resolve-ride-location` sits at `02e56f38…`, PROD v3 / DEV v3, redeployed 2026-08-27 by PD-267.
+
+   **A FOURTH redeploy of `resolve-ride-location` is owed, and it is the one deploy in this repo
+   with an ordering rule that runs BACKWARDS.** PD-236 sends `attribution=none`, so the deployed
+   build stops burning the credit into the tile, and `MapAttribution` in the app is what replaces
+   it. **The app must be SERVING before this is deployed, never after** — a duplicate credit for
+   the length of a deploy is harmless, an absent one is a licence breach on every ride card. So:
+   merge the PR, confirm `app-dev` is serving it, then deploy. That is the opposite of `069`/`070`'s
+   additive-first rule, which is why it is written here rather than left to be inferred from it.
+
+   **Cross-project equality never means current** —
    it says the two projects agree, never that either matches the repo, which is row 2 of §Store
    readiness above, not §Known issues, a bulleted list with no rows in it. PD-231 put
    `list_edge_functions` on `reviewer`'s `tools:` line so it can make that comparison rather than

@@ -103,7 +103,12 @@ export const SCALE_FACTOR = 2
 /**
  * **`attribution=none` — the credit is ours to render, and this constant is one
  * half of a two-part obligation.** The other half is `MapAttribution` in
- * `src/components/rides/`, drawn over every tile the app displays. Neither may
+ * `src/components/rides/`, drawn once on each of the THREE screens that display
+ * a tile — `/rides`, `/rides/detail` and `/clubs/detail/rides` — never per tile
+ * and never over one. **A new surface rendering `map_card_url` or
+ * `map_detail_url` owes one and nothing enforces that**, so re-derive the set
+ * with `git grep -l "map_card_url\|map_detail_url" -- 'src/app' 'src/components'`
+ * rather than trusting the count here. Neither half may
  * ship without the other, and the ORDER matters in one direction only: the app
  * gaining a credit before the image loses one is a harmless duplicate, while the
  * image losing one before the app gains one is a breach. So deploy this function

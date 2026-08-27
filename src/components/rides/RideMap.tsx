@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { LocationFilledIcon } from '@/components/icons/generated'
-import { MapAttribution } from '@/components/rides/MapAttribution'
 import { cn, googleMapsDirectionsUrl } from '@/lib/utils'
 
 /**
@@ -173,8 +172,8 @@ export function RideMap({
             //   320 → 288, 70px cropped, 35px off the right    (iPhone SE 1)
             //
             // The crop is unchanged and the credit is gone — `ATTRIBUTION_MODE`
-            // sends `attribution=none` and `MapAttribution` above draws it in
-            // HTML, where no crop can reach it. So the anchor is free to serve
+            // sends `attribution=none` and `MapAttribution` draws it in HTML
+            // beneath this panel, where no crop can reach it. So the anchor is free to serve
             // the map again: centred keeps the meeting point in frame, which is
             // what the tile was rendered around, instead of pushing it toward a
             // corner to protect pixels that no longer exist.
@@ -212,8 +211,6 @@ export function RideMap({
           carry: that scrim existed to hold the ADDRESS legible over an unknown
           map, and with the address gone there is nothing left to darken the whole
           tile for. ~120px instead of the entire panel. */}
-      {!!tileUrl && <MapAttribution className="top-1 left-1" />}
-
       {/* The pin and the address are the NO-TILE rendering, and only that.
           Over a tile the panel draws what the Figma draws — the map and the
           directions chip — because the address is already on screen in the

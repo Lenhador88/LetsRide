@@ -54,34 +54,50 @@ import { cn } from '@/lib/utils'
  * be *reasonably calculated to inform*, not to be clickable, and OSM's own
  * guidelines accept a text credit where a link is impractical.
  *
- * ## Two variants, because one tile and forty tiles are different problems
+ * ## Nothing is drawn over a tile, on any surface
  *
- * **`overlay`** — the corner of a single large tile. `bg-scrim` is `Grey/70%`,
- * which bounds the composite at `#4C4C4C` however bright the map underneath is,
- * giving `White/100` **8.59:1** at worst. Bounded to the pill rather than washed
- * over the tile: darkening the whole map to hold text over it is the trade that
- * cost PD-104 its first detail panel. The ride detail panel uses this.
+ * Product owner, 2026-08-27: *"as long as we leave the creditation out of the
+ * map tiles it's good for now, so at the end of the list is okay for now."* So
+ * the credit is always page furniture, never an overlay — on the detail panel it
+ * sits directly beneath the map, and on a list it sits at the end.
  *
- * **`inline`** — one credit for a screen carrying many small tiles, drawn on the
- * page background at the end of the list rather than over any single image. The
- * rides list uses this, and the reason is arithmetic rather than taste: the
- * three strings are roughly **240px** at the type floor, and `RideCard`'s strip
- * is **80px** wide. An overlay there wraps to four lines and covers the map,
- * which is the exact defect PD-236 was opened to fix, reproduced in HTML instead
- * of pixels.
+ * **That also settles a measurement this component got wrong once.** An earlier
+ * revision put an `overlay` variant in the corner of the detail panel on the
+ * strength of the joined string being "roughly 240px at the type floor". It is
+ * 67 characters, and 10px Poppins Medium at ~0.52–0.55em average advance is
+ * **~350–370px** — wider than the panel itself below a 390px viewport (the panel
+ * is the page width less 32, so 328 at 360 and 288 at 320). A corner pill there
+ * wraps to two or three scrimmed lines across the top of the map, which is the
+ * trade that cost PD-104 its first detail panel. Measure the string before
+ * putting it anywhere narrow.
  *
- * **One credit for the screen is the Leaflet pattern and it is compliant.** ODbL
- * asks that the credit be reasonably calculated to inform a viewer of the
- * imagery's source, not that it be repeated per image — a page of forty maps
- * credits the page. Geoapify's own guidance names the corner of the map as what
- * *"typically"* happens, which is the overlay case; it does not require it, and
- * it is written for a page showing one map.
+ * **`text-foreground`, not `text-muted`.** The page background is a 135°
+ * gradient running `#F2ECE6` → `#CCB8A3` over the full scroll height, and this
+ * element renders at the far end of it — the darkest point. `#666666` there is
+ * **2.99:1**, a WCAG AA failure at 10px, where the same token passes at 4.90:1
+ * on the gradient's start. `#1A1A1A` clears 4.5:1 across every stop. A credit
+ * that cannot be read is weak evidence of being *"reasonably calculated to
+ * inform"*, which is the standard ODbL actually sets.
  *
- * Product owner, 2026-08-27, choosing this over a per-tile credit: *"as long as
- * we leave the creditation out of the map tiles it's good for now, so at the end
- * of the list is okay for now."* **The "for now" is the part to carry forward**:
- * if the rides list ever paginates or virtualises so the end of the list is not
- * reliably reachable, this placement stops informing anyone and wants revisiting.
+ * ## Where it goes, and the one thing that is unresolved
+ *
+ * ODbL 1.0 §4.3 asks for a notice *reasonably calculated to make any Person
+ * that... views... the Produced Work aware* of the source. It does not require
+ * one notice per image, so crediting a screen rather than each of its forty
+ * tiles is a sound reading — and Geoapify's own *"you need to care about
+ * attributions yourself"* sanctions rendering it ourselves.
+ *
+ * **The step that does NOT follow is from "once per screen" to "at the end of a
+ * scrolling list".** Those are different placements: the end of the list is
+ * below the fold from about the fifth card, so a rider who opens the screen,
+ * sees four tiles and taps one is never shown the notice.
+ * `openspec/changes/add-ride-map-tiles/specs/ride-map-tiles/spec.md` refuses
+ * exactly this design in as many words — *"a single shared credit elsewhere on
+ * the screen SHALL NOT be accepted as covering the tiles, because a list is
+ * scrolled and a card is what a rider sees"* — and that requirement has not been
+ * amended. The owner's *"for now"* is doing real work here and is the reason this
+ * ships: it is a provisional placement on a pilot with no riders, not a settled
+ * answer, and PD-236 carries the open question.
  */
 
 /** ODbL 1.0. Every plan, every OSM-based vendor, for ever. */
@@ -105,23 +121,14 @@ const GEOAPIFY_CREDIT = 'Powered by Geoapify'
  */
 export const MAP_CREDITS = [OSM_CREDIT, OPENMAPTILES_CREDIT, GEOAPIFY_CREDIT] as const
 
-export function MapAttribution({
-  variant = 'overlay',
-  className,
-}: {
-  variant?: 'overlay' | 'inline'
-  className?: string
-}) {
+export function MapAttribution({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        'pointer-events-none text-2xs font-medium',
-        variant === 'overlay'
-          ? 'absolute rounded bg-scrim px-1.5 py-0.5 text-white'
-          : // No scrim: this one sits on the page background, where there is no
-            // unknown imagery to hold it legible against. `text-muted` rather
-            // than `text-white`, for the same reason.
-            'block px-4 pb-2 text-center text-muted',
+        // No scrim anywhere: nothing here is ever drawn over imagery, so there
+        // is no unknown background to hold it legible against — only the app
+        // gradient, which `text-foreground` clears at every stop.
+        'pointer-events-none block px-4 pb-2 text-center text-2xs font-medium text-foreground',
         className,
       )}
     >
