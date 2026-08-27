@@ -5,9 +5,11 @@ import { ClubOptionsMenu } from '@/components/clubs/ClubOptionsMenu'
 import { routes } from '@/lib/routes'
 import type { ClubDetail } from '@/types'
 
-/** The three screens that still render this header — the merged detail
- * itself, plus the two roster/list sub-pages `See all` still reaches. */
-export type ClubScreen = 'detail' | 'members' | 'rides'
+/** The four screens that render this header — the merged detail itself, plus
+ * the three list sub-pages `See all` reaches. `discussions` joined them with
+ * `081` (PD-307); the *thread* screen is not one of them, because its back
+ * control returns to that list rather than to the club. */
+export type ClubScreen = 'detail' | 'members' | 'rides' | 'discussions'
 
 /**
  * The chrome the three remaining club screens share — `v2 / Component /

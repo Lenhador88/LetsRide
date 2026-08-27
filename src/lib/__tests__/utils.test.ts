@@ -10,7 +10,7 @@ import {
   formatRideDate,
   formatRideDateLong,
   formatRideDepartureInput,
-  formatRideMessageDay,
+  formatChatMessageDay,
   formatRideTime,
   notificationSection,
   rideDayStartUtc,
@@ -648,16 +648,16 @@ describe('rideDayStartUtc', () => {
   })
 })
 
-describe('formatRideMessageDay', () => {
+describe('formatChatMessageDay', () => {
   const now = new Date('2026-08-07T12:00:00Z')
 
   it('names today and yesterday rather than dating them', () => {
-    expect(formatRideMessageDay('2026-08-07T09:00:00Z', now)).toBe('TODAY')
-    expect(formatRideMessageDay('2026-08-06T09:00:00Z', now)).toBe('YESTERDAY')
+    expect(formatChatMessageDay('2026-08-07T09:00:00Z', now)).toBe('TODAY')
+    expect(formatChatMessageDay('2026-08-06T09:00:00Z', now)).toBe('YESTERDAY')
   })
 
   it('falls back to the ride list card’s date shape further back', () => {
-    expect(formatRideMessageDay('2026-08-01T09:00:00Z', now)).toBe('SAT, 1 AUG')
+    expect(formatChatMessageDay('2026-08-01T09:00:00Z', now)).toBe('SAT, 1 AUG')
   })
 
   it('decides "today" in APP_TIME_ZONE', () => {
@@ -665,12 +665,12 @@ describe('formatRideMessageDay', () => {
     // a `now` of midday on the 7th, so it is not "TODAY". A runtime-zone
     // implementation would call it today and disagree with the 00:30 stamped on
     // the message itself.
-    expect(formatRideMessageDay('2026-08-07T22:30:00Z', now)).not.toBe('TODAY')
+    expect(formatChatMessageDay('2026-08-07T22:30:00Z', now)).not.toBe('TODAY')
   })
 
   it('is uppercase throughout, so the separators read as one component', () => {
     for (const day of ['2026-08-07T09:00:00Z', '2026-08-06T09:00:00Z', '2026-07-01T09:00:00Z']) {
-      const label = formatRideMessageDay(day, now)
+      const label = formatChatMessageDay(day, now)
       expect(label).toBe(label.toUpperCase())
     }
   })

@@ -711,7 +711,7 @@ measurement as current.
   - [ ] **A day separator was ADDED that the design does not draw.** Every bubble carries
         `HH:mm` and nothing else, which is unambiguous for the single-day conversation the
         frame mocks and silently wrong for a ride planned three weeks out — "08:18" on a
-        message from last Tuesday reads as this morning. `formatRideMessageDay` draws `TODAY` /
+        message from last Tuesday reads as this morning. `formatChatMessageDay` draws `TODAY` /
         `YESTERDAY` / `SAT, 16 NOV`, uppercased to match `formatRideDate`. **A question for the
         designer**, and the one thing here that is an addition rather than an omission.
   - [ ] **The bubble tail is not drawn.** Each `Text Balloon` carries an 8×12 `Corner` vector.

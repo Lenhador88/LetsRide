@@ -1199,3 +1199,81 @@ export type LocalityCentroid = {
   /** `lon`, not `lng` — matching `Place.lon` and `PlaceSearchResult.lon`. */
   lon: number
 }
+
+/**
+ * A club's titled discussion thread — `081`, PD-307.
+ *
+ * **No `updated_at` and no `edited` flag, for `RideMessage`'s reason and one
+ * more.** `081` grants no UPDATE and declares no UPDATE policy on either
+ * content table, so neither a title nor a body can change; a title is the
+ * worse of the two to make mutable, because a title that changes after forty
+ * riders have replied retitles their replies too.
+ */
+export type ClubDiscussion = {
+  id: string
+  club_id: string
+  author_id: string
+  title: string
+  created_at: string
+}
+
+/**
+ * One row of the Discussions list — the thread plus its byline.
+ *
+ * `author` is nullable for the reason every other embed's is: the `profiles`
+ * SELECT policy hides a row with a NULL username, so a thread opened by a rider
+ * still mid-onboarding resolves to `null` rather than to a name. The unread mark
+ * is **not** on this type: it comes from `club_discussion_unread`, a separate
+ * read under its own key, so that a failed unread call leaves the list rendering
+ * unmarked rather than not rendering.
+ */
+export type ClubDiscussionListItem = ClubDiscussion & {
+  author: Pick<PublicProfile, 'id' | 'username'> | null
+}
+
+/** The keyset cursor the Discussions list pages on — `(created_at, id)`, for
+ * `NotificationCursor`'s reason: `created_at` is not a total order. */
+export type ClubDiscussionCursor = { createdAt: string; id: string }
+
+/** One message inside a club discussion (`081`). `author` is narrower than
+ * `PublicProfile` for `RideMessage`'s reason — a bubble draws no avatar. */
+export type ClubMessage = {
+  id: string
+  discussion_id: string
+  author_id: string
+  body: string
+  created_at: string
+  author: Pick<PublicProfile, 'id' | 'username'> | null
+}
+
+/**
+ * What `ChatThread` draws, for either stream.
+ *
+ * The three flags are `RideChatMessage`'s, described there at length: `mine` is
+ * resolved once in the read because the viewer's id is a read concern,
+ * `startsGroup`/`startsDay` are properties of the *sequence*, and `pending` is
+ * only ever set on a message this viewer just sent.
+ *
+ * **Structural rather than a shared base**, so `RideChatMessage` keeps its
+ * `ride_id` and `ClubChatMessage` its `discussion_id` while both satisfy the one
+ * component. A bubble renders neither column, which is why neither is here.
+ */
+export type ChatBubbleMessage = {
+  id: string
+  author_id: string
+  body: string
+  created_at: string
+  author: Pick<PublicProfile, 'id' | 'username'> | null
+  mine: boolean
+  startsGroup: boolean
+  startsDay: boolean
+  pending?: boolean
+}
+
+/** A club discussion's messages as the thread screen renders them. */
+export type ClubChatMessage = ClubMessage & {
+  mine: boolean
+  startsGroup: boolean
+  startsDay: boolean
+  pending?: boolean
+}

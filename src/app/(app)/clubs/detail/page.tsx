@@ -5,6 +5,7 @@ import { notFound, useSearchParams } from 'next/navigation'
 import { Globe2Icon, LocationOutlineIcon, Lock2Icon } from '@/components/icons/generated'
 import { ClubCreateRideRow } from '@/components/clubs/ClubCreateRideRow'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
+import { ClubDiscussionsSection } from '@/components/clubs/ClubDiscussionsSection'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
 import { ClubMemberRail } from '@/components/clubs/ClubMemberRail'
 import { ClubPostcardCarousel } from '@/components/clubs/ClubPostcardCarousel'
@@ -270,6 +271,14 @@ function ClubScreen() {
           />
           <ClubMemberRail clubId={id} />
         </section>
+
+        {/* Under Members rather than above it, and above the type/description
+            block: Discussions is a conversation among the people the section
+            above lists, and it must not push the club's own description off
+            the first screen for a rider deciding whether to join. A non-member
+            of a public club gets a join prompt here and no content at all —
+            see `ClubDiscussionsSection`. */}
+        <ClubDiscussionsSection clubId={id} isMember={isMember} />
 
         {/* Grouped with a 4px internal gap, not the section-sized 16px the
             surrounding `gap-4` gives every other pair here — these two read
