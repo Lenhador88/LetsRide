@@ -9,6 +9,7 @@ import {
   OptionsIcon,
   ReportIcon,
 } from '@/components/icons/generated'
+import { useInsidePostcardViewer } from '@/components/postcards/viewerContext'
 import { useBanner } from '@/components/ui/Banner'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { blockRider } from '@/lib/actions/blocks'
@@ -60,6 +61,19 @@ export function PostcardMenu({
   const showBanner = useBanner()
   const router = useRouter()
   const pathname = usePathname()
+  /**
+   * Non-null exactly when this menu belongs to the card **inside the postcard
+   * popup**, in which case closing the popup is what "taking the rider
+   * somewhere" means — there is no route to leave.
+   *
+   * The route test below cannot answer this: the popup does not change the
+   * URL, so `pathname` is whichever screen raised it (`/postcards`,
+   * `/rides/detail`, `/profile`) and never the thread path. Left to it, a
+   * rider deleting their own postcard from the popup got the confirmation and
+   * then a sheet reading "This postcard isn't available." until they dismissed
+   * it by hand.
+   */
+  const closeViewer = useInsidePostcardViewer()
 
   /**
    * Hiding, blocking and deleting all make this postcard unreadable to this
@@ -96,7 +110,11 @@ export function PostcardMenu({
         return
       }
       showBanner(confirmation)
-      if (leavesTheThread && onThisPostcardsThread) router.replace('/postcards')
+      // The popup first: a card can be inside it on any route, including the
+      // thread route itself, and closing is the cheaper of the two exits.
+      if (!leavesTheThread) return
+      if (closeViewer) closeViewer()
+      else if (onThisPostcardsThread) router.replace('/postcards')
     })
   }
 
