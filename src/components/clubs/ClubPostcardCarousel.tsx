@@ -1,44 +1,45 @@
 import Link from 'next/link'
 import { ImageIcon, PlusIcon } from '@/components/icons/generated'
+import { PostcardStamp, STAMP_TILE_WIDTH } from '@/components/postcards/PostcardStamp'
 import { routes } from '@/lib/routes'
-import { formatPostcardDate } from '@/lib/utils'
 import type { Postcard } from '@/types'
 
 /**
  * The `Postcards` section on the merged club detail — a horizontal strip of
- * square tiles, replacing the stacked `PostcardCard` list this section drew
- * before the club detail merge. Product owner, 2026-08-18: *"like that
- * carousel"*, pointing at the ride detail's `RideJournal` — which drew only a
- * placeholder tile then, because nothing wrote `postcards.ride_id` and every
- * ride's Journal was therefore always empty. **PD-256 closed that**, so the two
- * are near-twins now and this is no longer the only one of the pair with real
- * rows in it. What still differs is the empty state, which a club feed reaches
- * far less often than a ride's Journal does on its first day.
+ * **stamps**, one per postcard in the club's feed. Product owner, 2026-08-18:
+ * *"like that carousel"*, pointing at the ride detail's `RideJournal`, and the
+ * two have tracked each other since.
  *
- * **This is a deliberate trade the product owner accepted knowingly**: the
- * byline, caption, likes and comments that `PostcardCard` drew in place are
- * not readable on a tile. A rider taps through to the postcard's own thread
- * for those — `routes.postcard(id)`, the same destination the feed's cards
- * link to.
+ * **They draw the same tile as of 2026-08-27**: both render `PostcardStamp` —
+ * a perforated frame with the author's avatar and username under it — so what
+ * differs between the two components is only their empty state, crew-gated
+ * `Add` there and membership-gated messaging here.
  *
- * `min-w-0` is not needed here the way `RideJournalEmpty` needed it —
- * `w-28 shrink-0` sizes every tile explicitly rather than splitting a flex
- * parent two ways, which is also why this strip does not reuse that
- * component's `flex-1` trick: it only works for exactly two tiles, and this
- * one holds however many the club has posted.
+ * **Tapping one opens the postcard as a popup rather than navigating**, because
+ * that behaviour lives in `PostcardStamp` and arrives with it. Same as the
+ * Journal, same as the home deck.
  *
- * `bg-track`, not `bg-surface`, on the `Add` tile and on a tile whose signed
- * URL failed to sign — see `RideJournalEmpty`'s identical note. This screen's
- * surface is already cream, so a white fill here would read as a card
- * floating above the strip rather than a recessed slot in it.
+ * **The trade the product owner accepted in 2026-08-18 is now half bought
+ * back**: the caption, likes and comments `PostcardCard` drew in place are
+ * still not readable on a tile, but the byline is, and the popup puts the rest
+ * one tap away without leaving the club.
  *
- * ## `Add` posts a postcard; it does not tag it to this club
+ * `min-w-0` is not needed here the way `RideJournalEmpty` needed it, and the
+ * reason is that **nothing in this row is `flex-1`** — every child is sized by
+ * `shrink-0` plus an explicit width, so no item is ever asked to shrink below
+ * its min-content and the `min-width: auto` default cannot bite. That is also
+ * why this strip does not reuse `RideJournalEmpty`'s `flex-1` trick at all: it
+ * only works for exactly two tiles, and this one holds however many the club
+ * has posted.
  *
- * `CreatePostcardForm`'s club picker is a controlled `<select>` seeded from
- * `useState('')` — the composer reads no query parameter naming a club — so a
- * photo added from here lands wherever the rider picks on the form, not
- * necessarily in this club's feed. Same gap `RideJournalEmpty` documents for
- * the ride side.
+ * `bg-track`, not `bg-surface`, on the `Add` tile — see `RideJournalEmpty`'s
+ * identical note. This screen's surface is already cream, so a white fill here
+ * would read as a card floating above the strip rather than a recessed slot in
+ * it.
+ *
+ * `Add` opens the composer with **this club already chosen** as the audience
+ * (PD-283, `routes.newPostcardInClub`) and returns here rather than to Home.
+ * The `clubId` prop exists for that and for nothing else.
  */
 export function ClubPostcardCarousel({
   postcards,
@@ -68,7 +69,11 @@ export function ClubPostcardCarousel({
     )
 
   return (
-    <div className="flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    // `items-start` and `pb-1.5` are the stamp's, not this component's own —
+    // see `RideJournal`, which carries the reason for each: a stamp is its
+    // 128px photo block plus a byline, the `Add` tile is the block alone, and
+    // `overflow-x-auto` would clip the drop shadow off the bottom edge.
+    <div className="flex items-start gap-2 overflow-x-auto px-4 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {/* The empty state draws rather than hides, and it draws the `Add` beside
           it — `RideJournal`'s recorded decision, which the first pass of this
           component dropped: "a section nobody has seen is a feature nobody
@@ -76,44 +81,22 @@ export function ClubPostcardCarousel({
           starts there too, and that is exactly when the rider needs the way
           in. */}
       {postcards.length === 0 && (
-        <div className="flex aspect-square w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-border px-3 text-center">
+        <div
+          className={`flex aspect-square ${STAMP_TILE_WIDTH} shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-border px-3 text-center`}
+        >
           <ImageIcon className="h-6 w-6 text-muted opacity-60" aria-hidden="true" />
           <span className="text-xs font-semibold text-foreground">Nothing yet</span>
         </div>
       )}
 
       {postcards.map((postcard) => (
-        <Link
-          key={postcard.id}
-          href={routes.postcard(postcard.id)}
-          aria-label={
-            postcard.caption?.trim() || `Postcard from ${formatPostcardDate(postcard.created_at)}`
-          }
-          className="aspect-square w-28 shrink-0 overflow-hidden rounded-lg bg-track"
-        >
-          {postcard.image_url ? (
-            // A signed URL that expires hourly — see `PostcardCard`'s identical
-            // note on why next/image is the wrong tool for it.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={postcard.image_url}
-              alt={postcard.caption ?? ''}
-              className="h-full w-full object-cover"
-              loading="lazy"
-              draggable={false}
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-muted">
-              <ImageIcon className="h-6 w-6 opacity-60" aria-hidden="true" />
-            </div>
-          )}
-        </Link>
+        <PostcardStamp key={postcard.id} postcard={postcard} />
       ))}
 
       {isMember && (
         <Link
           href={routes.newPostcardInClub(clubId)}
-          className="flex aspect-square w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
+          className={`flex aspect-square ${STAMP_TILE_WIDTH} shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border`}
         >
           <PlusIcon className="h-6 w-6" aria-hidden="true" />
           <span className="text-xs font-semibold">Add</span>

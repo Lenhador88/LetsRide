@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { ImageIcon, PlusIcon } from '@/components/icons/generated'
-import { PostcardStamp } from '@/components/postcards/PostcardStamp'
+import { PostcardStamp, STAMP_TILE_WIDTH } from '@/components/postcards/PostcardStamp'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { getRideJournal } from '@/lib/data/postcards'
 import { useQuery } from '@/lib/query'
@@ -21,17 +21,15 @@ import { routes } from '@/lib/routes'
  *
  * **Tapping one opens the postcard as a popup, not as a page.** That is
  * `PostcardViewer`, mounted in `(app)/layout.tsx`, and it is the same behaviour
- * the home deck now has. The ride plan keeps its scroll position and spends no
+ * the home deck and the club strip now have. The ride plan keeps its scroll position and spends no
  * back-stack entry, which is what makes browsing a Journal photo-by-photo
  * bearable — the previous tap-through returned the rider to the top of the
  * ride plan every time.
  *
- * It was the ride-side twin of `ClubPostcardCarousel` and is now the divergent
- * one: that component still draws the plain rounded square this used to, and
- * still navigates. They were already two components rather than one shared one
- * because their empty states differ (crew-gated `Add` here, membership-gated
- * messaging there); the stamp is the second reason, and it is a deliberate
- * scoping rather than an oversight — see `PostcardStamp`'s header.
+ * The ride-side twin of `ClubPostcardCarousel`: both draw `PostcardStamp`, so
+ * both strips look the same and open a postcard the same way. What keeps them
+ * two components rather than one is their empty state — crew-gated `Add` here,
+ * membership-gated messaging there.
  *
  * **Reads its own data — `queryKeys.postcards.journal(rideId)` through
  * `getRideJournal`** — the same shape `RideCrewRail` reads `rides.crew(id)`,
@@ -91,7 +89,7 @@ export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolea
       // resize of the same content.
       <div className="flex items-start gap-2 px-4">
         {[0, 1].map((i) => (
-          <div key={i} className="w-32 shrink-0">
+          <div key={i} className={`${STAMP_TILE_WIDTH} shrink-0`}>
             <Skeleton className="aspect-square w-full rounded-lg" />
             <div className="mt-1.5 flex items-center gap-1">
               <Skeleton className="h-5 w-5 rounded-full" />
@@ -120,7 +118,7 @@ export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolea
       {canAdd && (
         <Link
           href={routes.newPostcardInRide(rideId)}
-          className="flex aspect-square w-32 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
+          className={`flex aspect-square ${STAMP_TILE_WIDTH} shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border`}
         >
           <PlusIcon className="h-6 w-6" aria-hidden="true" />
           <span className="text-xs font-semibold">Add</span>
