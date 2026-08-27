@@ -1945,7 +1945,7 @@ PD-329).**
   fresh one rather than being absorbed by `036`'s uniqueness index. An unanswering invitee's only
   exits are to decline (terminal for them too) or to block. Bounding it is a product decision — a
   cooldown, a re-send cap, or dropping the retraction so the index absorbs the repeat — and it is
-  filed rather than settled by omission.
+  **PD-332**, in `Needs decision`, with the four options scored, rather than settled by omission.
 - **A pending invite does not expire.** Considered and declined: nothing renders one except the two
   riders' own lists, and a sweep needs a schedule this repo does not have. **PD-330 is what reopens
   it** — a link is a *bearer* credential and a bearer credential with no expiry is a different risk
@@ -1959,7 +1959,9 @@ overlooked. Nothing in the chain serves a username prefix search and Postgres ca
 for `ILIKE` at all, so each keystroke scans `profiles` with a `security definer` block check per
 surviving row — bounded by a two-character minimum, a prefix anchor and a 20-row cap. An index
 added without changing the query shape would be dead weight that reads as live, which is why `083`
-carries none; its §The rider picker has no index has the two real fixes.
+carries none — an earlier draft added one and it came out before merge. Its §The rider picker has no
+index has the two real fixes, and **PD-333** carries them with the reason the second must be
+`security INVOKER` and never DEFINER.
 
 
 **Ride times are still `APP_TIME_ZONE`. The fix is decided and unbuilt — PD-193, `Todo AI`

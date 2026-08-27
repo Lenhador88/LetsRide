@@ -186,7 +186,7 @@ create index ride_invites_ride_created_idx
 -- `lower(username) like lower(q) || '%'` behind a `(lower(username)
 -- text_pattern_ops)` index — invoker, so `profiles` SELECT and its block arm
 -- still apply, which is what a `security definer` search would step past.
--- Filed; it is a performance change with no visibility consequence either way.
+-- PD-333; it is a performance change with no visibility consequence either way.
 
 comment on table public.ride_invites is
   'One row per (ride, invited rider) — 083, PD-329. A LIVE invite (status `pending` or `accepted`) is a FOURTH audience arm of the rides SELECT policy, reached through private.has_live_ride_invite, and it sits INSIDE that policy''s block-dominated group so a blocked rider''s invite grants nothing. Only the ride''s organizer may insert one; only the invitee may answer it, through accept_ride_invite / decline_ride_invite; nobody may UPDATE the table directly, because no UPDATE grant or policy exists. Decline is terminal against the INVITER — DELETE is scoped to `pending` — and reopenable by the invitee alone. `status` is the answer to the invitation and NEVER a copy of ride_members: nothing keeps the two in step and nothing should.';
@@ -413,7 +413,7 @@ create policy "A ride's organizer invites riders to it"
 -- anti-spam property the story names is held against a REFUSAL and not against
 -- silence. Bounding it is a product decision — a cooldown, a re-send cap, or
 -- dropping the retraction so the uniqueness index absorbs the repeat — and it
--- is filed for the owner rather than settled here by omission.
+-- is PD-332 rather than settled here by omission.
 create policy "An inviter withdraws an invite nobody has answered"
   on public.ride_invites for delete to authenticated
   using (inviter_id = auth.uid() and status = 'pending');
