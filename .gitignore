@@ -87,11 +87,12 @@ __pycache__/
 #
 # **That is ALL this line does, and the limit is worth stating** because the
 # other half of the problem looks like it should be covered here and is not.
-# `eslint.config.mjs` carries a fixed four-entry `globalIgnores` and no
-# `includeIgnoreFile`, so ESLint reads none of this file and a bare `eslint`
-# descends into a dot-directory happily — a live worktree is a second copy of
-# `src/` and doubles `npm run lint`'s output whatever is written here. Remove
-# the worktree when the agent is done; ignoring it only keeps the tree clean.
+# `eslint.config.mjs` has no `includeIgnoreFile`, so ESLint reads none of this
+# file and a bare `eslint` descends into a dot-directory happily — a live
+# worktree is a second copy of `src/` and doubles `npm run lint`'s output
+# whatever is written here. That half is closed in `eslint.config.mjs`'s own
+# `globalIgnores`, which now names this directory separately; the two entries
+# are independent and both are load-bearing.
 #
 # `tsc` is the one that needs no help, for a reason that is easy to get
 # backwards: it is not git-awareness but glob expansion — `include`'s
