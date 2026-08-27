@@ -11,10 +11,29 @@ import type { RideFilter, RideFilters } from '@/types'
  * 1. **Your rides** — a Bike icon on a Grey/10% circle. The only tile with no
  *    imagery behind it, and the only one that is a *predicate* rather than an
  *    entity.
- * 2. **All rides** — the 2×2 collage.
+ * 2. **From clubs** — the 2×2 collage, now a rounded square.
  * 3. **One per club**, rounded squares, for every club with an upcoming ride —
  *    `FilterClubImage`'s cover-behind, avatar-in-front treatment (PD-284), the
  *    same component `PostcardFilterBar` gives its own club tiles.
+ *
+ * ## Tile 2 was `All rides`, and both its label and its shape changed with its
+ * meaning
+ *
+ * Product owner, 2026-08-27. It counted every upcoming ride in the app, which
+ * made it a near-superset of `Your rides` beside it and left the app with no
+ * screen for *finding* a ride at all. It is the rides from the clubs this rider
+ * has joined now, and discovery is `/rides/explore`, reached from the strip
+ * below this bar rather than from a tile — a route, not a fourth filter, for
+ * `/clubs/explore`'s reason.
+ *
+ * **So it is a square, not a circle, and that is semantics rather than
+ * decoration.** `FilterTile`'s own header records the convention this bar
+ * inherits: riders are circles, clubs are rounded squares. This tile is the
+ * aggregate of the club tiles immediately to its right — *all of these at
+ * once* — so it takes their shape, and the collage inside it draws those
+ * clubs' own covers rather than four organizer faces (`collageClubImages`).
+ * A circle here would group it with `Your rides`, which is the one thing it is
+ * not.
  *
  * The design also draws a rider tile among the clubs ("itchyboots"). It is not
  * built — see the note on `RideFilter` in src/types.
@@ -43,10 +62,10 @@ export function RideFilterBar({ filters, active }: RideFilterBarProps) {
 
       <FilterTile
         href="/rides"
-        label="All rides"
-        count={filters.total}
+        label="From clubs"
+        count={filters.fromClubs}
         selected={!active}
-        shape="circle"
+        shape="square"
       >
         <FilterCollage images={filters.collage} />
       </FilterTile>

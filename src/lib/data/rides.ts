@@ -1,5 +1,7 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { CLUB_EMBED_COLUMNS, CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { myClubIds, type RiderPosition } from '@/lib/data/clubs'
+import { distanceKm } from '@/lib/location/distance'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { rideIdSchema } from '@/lib/validation/rides'
 import { resolveAvatarUrls, resolveClubImageUrls, resolveRideMapUrls } from '@/lib/data/media'
@@ -48,6 +50,23 @@ export const RIDES_PAGE_SIZE = 30
  * design asks for, not that screen.
  */
 export const PAST_RIDES_PAGE_SIZE = 20
+
+/**
+ * How many rows `/rides/explore` scans before excluding the viewer's own rides
+ * and slicing back to `RIDES_PAGE_SIZE`.
+ *
+ * **Headroom, not a bigger page.** The exclusion cannot run in Postgres — it is
+ * checked against the fetched page on purpose, see `getExploreRides` — so the
+ * rider's own rides are paid for out of the limit, and they are precisely the
+ * rows that sort to the front of "soonest first". Half a page again is enough
+ * that a rider on every one of the next fifteen public rides still gets a full
+ * screen rather than an empty state.
+ *
+ * Deliberately a ratio of `RIDES_PAGE_SIZE` rather than an independent number,
+ * so the two cannot drift into the shape where the scan is *smaller* than the
+ * page it feeds.
+ */
+export const EXPLORE_RIDES_SCAN_LIMIT = Math.ceil(RIDES_PAGE_SIZE * 1.5)
 
 /** How many faces the design's avatar row shows before it becomes `+N`. */
 export const RIDE_AVATAR_LIMIT = 5
@@ -117,9 +136,9 @@ export const RIDE_CREW_LIMIT = 200
  *
  * **A NULL pair is the ordinary case, not a fault.** Every ride created before
  * `resolve-ride-location` deployed carries one, and so does any ride whose
- * geocode failed. `distanceKm` answers `null` for it and `nearbyRides` drops
- * it — a ride with no coordinate is never near anything, and must never be
- * counted as though it were.
+ * geocode failed. `distanceKm` answers `null` for it and `isNearby` therefore
+ * answers false — a ride with no coordinate is never near anything, and must
+ * never be counted as though it were.
  */
 const RIDE_SELECT = `
   id, title, meeting_point, departure_at, timezone, organizer_id, map_card_path,
@@ -320,13 +339,46 @@ export function mergeMine(rows: RideRow[], window: RideWindow, limit: number): R
  * could not see their own club's rides, and nor could you see a private ride
  * you had created. Restating a policy predicate in application code is the
  * exact drift 009 warns about; the only correct place for it is the policy.
+ *
+ * **`getExploreRides` is the one read that DOES carry `is_public`, and it is
+ * not a counter-example.** There the word is the product's own — the strip says
+ * *Explore public rides* — so the predicate is what the screen promises rather
+ * than a restatement of a policy. It also only ever narrows what RLS already
+ * returned, which is the property that keeps every filter in this file unable
+ * to disclose a row.
+ *
+ * ## The default arm is `From clubs`, not "every ride"
+ *
+ * Product owner, 2026-08-27. The unfiltered tab used to be every ride RLS would
+ * hand over — which included the rides the viewer organises and the ones they
+ * had already RSVP'd to, so the tab and `Your rides` overlapped almost
+ * completely, and there was no screen anywhere for *finding* a ride. The tab is
+ * now the rides from the clubs this rider has joined, and discovery moved to
+ * `/rides/explore`.
+ *
+ * A ride with no club is therefore **not** on the default tab. That is the
+ * intended reading rather than an omission: a clubless ride is either the
+ * rider's own — `Your rides` has it — or a stranger's, and a stranger's ride is
+ * what Explore is for.
  */
 async function readRides(
   supabase: DataClient,
   filter: RideFilter | undefined,
   viewerId: string | undefined,
   window: RideWindow,
-  limit: number
+  limit: number,
+  /**
+   * The viewer's club ids, resolved **once** by `getRides` and handed to both
+   * windows — not read here.
+   *
+   * `myClubIds` is capped with no `order by`, so two calls may legitimately
+   * answer with two different arbitrary subsets. Read per window, the upcoming
+   * and past sections of one screen could therefore be drawn from different
+   * club sets: the cap's own rule is *fewer rows, never wrong ones*, and it
+   * holds per call rather than across three of them. One read is what makes it
+   * hold for the screen, and it saves two round trips on the way.
+   */
+  clubIds: string[]
 ): Promise<RideRow[]> {
   const rides = () => ridesQuery(supabase, RIDE_SELECT)
 
@@ -362,7 +414,22 @@ async function readRides(
     return mergeMine(rows, window, limit)
   }
 
-  return unwrapList(await inWindow(rides(), window, limit), 'the rides list') as unknown as RideRow[]
+  // No filter — the `From clubs` tile. An id list rather than a nested
+  // `club_members!inner` embed, because `myClubIds` is the shape `getYourClubs`
+  // and `getExploreClubs` already ship and a two-level embedded filter is one
+  // more PostgREST behaviour to be sure of. It is bounded at
+  // `CLUB_MEMBERSHIP_LIMIT`, so the degradation past that many memberships is
+  // *fewer* rides, never somebody else's — the rule that constant carries.
+  //
+  // 100 UUIDs in `club_id=in.(…)` is ~3.9 KB encoded against the usual 8 KB
+  // request line, so the cap that bounds the subset also bounds the URL — the
+  // hazard `mergeMine`'s header records, with about half the budget spare.
+  if (!viewerId || clubIds.length === 0) return []
+
+  return unwrapList(
+    await inWindow(rides().in('club_id', clubIds), window, limit),
+    'rides from your clubs',
+  ) as unknown as RideRow[]
 }
 
 /**
@@ -384,9 +451,15 @@ export async function getRides(
   const dayStart = rideDayStartUtc()
   const dayStartMs = new Date(dayStart).getTime()
 
+  // Once, before both windows — see `readRides`'s `clubIds` parameter for why
+  // the two must be handed the same list rather than each reading its own.
+  // Only the unfiltered arm consults it, so the read is skipped entirely for
+  // `mine` and `club`.
+  const clubIds = !filter && user ? await myClubIds(supabase, user.id) : []
+
   const [upcomingRows, pastRows] = await Promise.all([
-    readRides(supabase, filter, user?.id, { from: dayStart }, limit),
-    readRides(supabase, filter, user?.id, { before: dayStart }, PAST_RIDES_PAGE_SIZE),
+    readRides(supabase, filter, user?.id, { from: dayStart }, limit, clubIds),
+    readRides(supabase, filter, user?.id, { before: dayStart }, PAST_RIDES_PAGE_SIZE, clubIds),
   ])
 
   const rows = [...upcomingRows, ...pastRows]
@@ -692,13 +765,25 @@ type FilterRow = {
 }
 
 /**
- * The tiles above the list: your rides, all rides, then one per club.
+ * The tiles above the list: your rides, the clubs you are in as one tile, then
+ * one tile per club.
  *
  * Read through `rides` rather than `clubs`, so one policy decides both what a
  * tile offers and what the list then shows. Asking `clubs` directly would be a
  * second visibility predicate to keep in step — and it would offer club tiles
  * with no rides behind them, which the design's empty frame explicitly does not
  * draw.
+ *
+ * ## Two scans, because the two counts are no longer the same question
+ *
+ * `From clubs` replaced `All rides` on 2026-08-27, so the tile scan is narrowed
+ * to the rider's own clubs. That breaks the old arithmetic, which derived the
+ * `Your rides` count from the very same rows: a ride the rider organises in no
+ * club at all is not in this scan and never was in that club, so counting it
+ * off the scan would report zero for a rider whose whole riding life is
+ * clubless. The `mine` count is therefore its own pair of reads, unioned by id
+ * — the union matters, because organising a ride *and* RSVPing to it is one
+ * ride and two rows.
  *
  * Scanned over RIDE_FILTER_SCAN_LIMIT, **not** the list's page size — see the
  * constant for why the two must not be the same number.
@@ -713,17 +798,26 @@ export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<Ri
   // instead of the row-count one.
   const dayStart = rideDayStartUtc()
 
-  const [rows, joined] = await Promise.all([
-    (async () =>
-      unwrapList(
+  const clubIds = user ? await myClubIds(supabase, user.id) : []
+
+  const [rows, organized, joined] = await Promise.all([
+    (async () => {
+      // No clubs, no scan. `.in('club_id', [])` is a valid query returning
+      // nothing, so this is a saved round trip rather than a correctness fix —
+      // but it is the ordinary state of a rider who has left the Welcome club.
+      if (clubIds.length === 0) return [] as FilterRow[]
+      return unwrapList(
         await supabase
           .from('rides')
           .select(`id, organizer_id, club:clubs(${CLUB_FILTER_EMBED_COLUMNS})`)
+          .in('club_id', clubIds)
           .gte('departure_at', dayStart)
           .order('departure_at', { ascending: true })
           .limit(limit),
         'your ride filters',
-      ) as unknown as FilterRow[])(),
+      ) as unknown as FilterRow[]
+    })(),
+    myUpcomingOrganizedRideIds(supabase, user?.id, dayStart),
     myUpcomingRideIds(supabase, user?.id, dayStart),
   ])
 
@@ -734,15 +828,14 @@ export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<Ri
   // each tile and a pass afterwards would sign rows nothing reads again.
   await resolveClubImageUrls(rows.map((row) => row.club), supabase)
 
-  const joinedIds = new Set(joined)
   const clubs = new Map<string, RideFilterOption>()
-  let mine = 0
 
   for (const row of rows) {
-    if (user && (row.organizer_id === user.id || joinedIds.has(row.id))) mine += 1
-
     // A ride with no club is not an unnamed club — it has no tile, the same way
-    // a null club_id on a postcard is the app-wide feed.
+    // a null club_id on a postcard is the app-wide feed. It also cannot reach
+    // this loop any more, since the scan filters on `club_id`; the branch stays
+    // because the embed's type still admits null and a silent `undefined.id` is
+    // a worse way to learn that.
     if (row.club) {
       const existing = clubs.get(row.club.id)
       if (existing) existing.count += 1
@@ -758,49 +851,239 @@ export async function getRideFilters(limit = RIDE_FILTER_SCAN_LIMIT): Promise<Ri
   }
 
   return {
-    mine,
-    total: rows.length,
-    collage: await collageAvatars(supabase, rows),
+    // A set, not `organized.length + joined.length`: a ride the rider organises
+    // and has also RSVP'd to holds a row on both sides and is one ride. The old
+    // single-scan version got this right by construction, so the union is where
+    // that correctness had to be rebuilt.
+    mine: new Set([...organized, ...joined]).size,
+    fromClubs: rows.length,
+    collage: collageClubImages([...clubs.values()]),
     clubs: [...clubs.values()],
   }
 }
 
 /**
- * The "All rides" tile's 2×2.
+ * The **upcoming** ride ids this viewer organises, for the `Your rides` count.
  *
- * The design fills it with ride photos; `rides` has no image column, so it is
- * the organizers' faces instead — real data in the right shape, rather than
- * four grey squares that would read as "empty". See docs/FIGMA-FIDELITY-TODO.md.
- *
- * Its own query rather than an embed on the scan above, because the scan now
- * covers up to 500 rows and this needs four faces: embedding `profiles` on
- * every scanned ride to read four avatars is 496 joins of pure waste.
+ * The sibling of `myUpcomingRideIds`, and bounded the same way and for the same
+ * reason — see that function's header. Ids rather than a `head: true` count
+ * because the two sets overlap and only ids can be unioned.
  */
-async function collageAvatars(
+async function myUpcomingOrganizedRideIds(
   supabase: DataClient,
-  rows: FilterRow[]
+  viewerId: string | undefined,
+  fromIso: string
 ): Promise<string[]> {
-  const organizerIds = [...new Set(rows.map((row) => row.organizer_id))].slice(0, 4)
-  if (organizerIds.length === 0) return []
+  if (!viewerId) return []
 
-  const profiles = unwrapList(
-    await supabase.from('profiles').select('id, avatar_path').in('id', organizerIds),
-    'the ride filter avatars',
-  ) as { id: string; avatar_path: string | null; avatar_url?: string | null }[]
+  const rows = unwrapList(
+    await supabase
+      .from('rides')
+      .select('id')
+      .eq('organizer_id', viewerId)
+      .gte('departure_at', fromIso)
+      .limit(RIDE_FILTER_SCAN_LIMIT),
+    'the rides you organise',
+  ) as unknown as { id: string }[]
 
-  // Signed like every other avatar. Missed on the first pass, and the miss was
-  // invisible rather than loud: back when `avatar_url` was a column it was NULL
-  // on every row, so the tile rendered zero faces and looked like a design that
-  // simply has no collage — not like a bug. It is a synthesised field now, so
-  // skipping this pass leaves it undefined on every profile instead.
-  await resolveAvatarUrls(profiles, supabase)
+  return rows.map((row) => row.id)
+}
 
-  // Kept in ride order — soonest first — rather than the order Postgres
-  // returned the profiles in.
-  const byId = new Map(profiles.map((profile) => [profile.id, profile.avatar_url]))
-  return organizerIds
-    .map((id) => byId.get(id))
+/**
+ * The `From clubs` tile's 2×2 — one cell per club the rider is in, up to four.
+ *
+ * **It draws the clubs, not the organizers, and that is what the tile means.**
+ * Until 2026-08-27 this tile was `All rides` and its collage was four organizer
+ * faces, which was the right filler for "every ride in the app" and is the
+ * wrong one for "the clubs you are in": the tile now sits immediately left of
+ * the per-club tiles and reads as *all of these at once*, so it is those clubs
+ * that belong in it. That also retires a whole round trip — the faces needed
+ * their own `profiles` read, and these images are already on the tiles.
+ *
+ * A cover before an avatar, because a cover is a photograph and fills a 30px
+ * cell legibly where a centred logo does not. A club with neither contributes
+ * nothing to the list rather than a grey cell.
+ *
+ * **Two things this does NOT do, both easy to assume from the shape.** The
+ * input is the tile map, which is built from the ride scan — so it is one cell
+ * per club with an **upcoming ride**, not per club joined; a club that has
+ * scheduled nothing has no tile and no cell, which is the same rule that keeps
+ * it out of the bar. And `FilterCollage` fills all four quadrants with
+ * `images[i % images.length]`, so fewer than four images **repeat** rather than
+ * leaving blanks — one club draws its cover four times. Only an empty list
+ * reaches `FilterCollage`'s placeholder, which is the honest picture of a rider
+ * whose clubs have uploaded nothing.
+ */
+export function collageClubImages(clubs: RideFilterOption[]): string[] {
+  return clubs
+    .map((club) => club.coverUrl ?? club.imageUrl)
     .filter((url): url is string => !!url)
+    .slice(0, 4)
+}
+
+/**
+ * `/rides/explore` — public rides this rider is not already on.
+ *
+ * The rides sibling of `getExploreClubs`, and deliberately built to the same
+ * rules about *bounding* and *exclusion order*, because the two screens are one
+ * idea on two tabs.
+ *
+ * **The exclusions themselves are NOT the same, and the difference is not an
+ * oversight.** Explore clubs drops the clubs you have joined; this drops the
+ * rides you are *on*, which is what the product owner asked for in those words.
+ * It does not drop rides belonging to your clubs — so a public ride in a club
+ * you are in, that you have not answered yet, appears here **and** under `From
+ * clubs`. That overlap is intended: `From clubs` is what your clubs have
+ * planned, this is everything still open to you, and a ride can honestly be
+ * both. A rider who has said nothing about a ride has not finished with it, and
+ * hiding it from the screen for finding rides would be the narrower reading of
+ * the ask, not the more careful one.
+ *
+ * ## What it excludes, and why the exclusion is not a security predicate
+ *
+ * Two things come out: rides the viewer **organises**, and rides they hold a
+ * `ride_members` row on at any status. Both are already on `Your rides`, and a
+ * discovery screen that lists what the rider has already committed to is the
+ * defect this function exists to fix — the product owner's words, 2026-08-27:
+ * *"exploring rides should not display rides I am already going or that I
+ * own."*
+ *
+ * None of that is enforcement. Every row here already passed the `rides` SELECT
+ * policy; this only ever *narrows* what RLS returned, so no arrangement of
+ * these predicates can disclose a ride, and the screen needs no policy of its
+ * own. `is_public` is in the same category — it is what the strip promises
+ * ("Explore **public** rides"), not a restatement of a policy arm.
+ *
+ * **It is NOT what keeps a private club's ride off this screen, and reading it
+ * that way is a trap the policy invites.** `rides.is_public` and
+ * `clubs.is_public` are independent columns, and the SELECT policy's second arm
+ * is `club_id is not null and private.is_club_member(club_id)` — so a ride
+ * flagged public inside a *private* club is visible to that club's members and
+ * passes this predicate too. It reaches their Explore list. That is a rider
+ * seeing a ride they may genuinely join, so it is neither a leak nor a defect;
+ * what it is not is the guarantee the obvious reading of `.eq('is_public',
+ * true)` suggests. If Explore ever has to mean "open to anyone signed in", the
+ * predicate that expresses it is the club's flag, not the ride's.
+ *
+ * ## The exclusion is checked against THIS PAGE
+ *
+ * `getExploreClubs`'s rule, and it is load-bearing for the same reason: the
+ * alternative reads the viewer's own ride ids and puts them in a
+ * `not.in.(…)` predicate, which is bounded by how many rides they have ever
+ * joined — an unbounded set with no `order by`, so past the cap the exclusion
+ * list is an arbitrary subset and the rider's own rides start reappearing here
+ * with a "Join" affordance that changes nothing. **Wrong rows, not fewer rows**
+ * — the one degradation a cap must never produce. Asking "which of these thirty
+ * am I on" is bounded by the page instead, so it cannot go wrong at any number
+ * of rides.
+ *
+ * ## Upcoming only, and one page of them
+ *
+ * A ride that already happened is not a ride to explore, so there is no past
+ * window here at all — unlike `getRides`, which draws one under its own header.
+ *
+ * The page is the **soonest** `RIDES_PAGE_SIZE`, and that bound is visible in
+ * the product: a ride near the rider that sits beyond it is not counted and not
+ * listed. That is the honest failure rather than a bug, and it is why nothing
+ * upstream may derive a near-count any other way — the strip's `near <place>`
+ * clause reads this same array, so the row and the screen it leads to cannot
+ * disagree. `getExploreClubs` carries the identical property; `PD-254`'s crew
+ * count is what both are avoiding.
+ *
+ * **It scans a page and a half and slices back, and that headroom is the one
+ * place this differs from the clubs side.** The exclusion runs *after* the
+ * limit, so the rider's own rides consume slots — and unlike a club, a ride the
+ * rider is on is exactly the kind of row that sorts to the very front of
+ * "soonest first". A rider who organised or RSVP'd to the next thirty public
+ * rides would otherwise be told *"There are no public rides to explore, yet!"*
+ * directly under a strip that had just invited them to explore. **Short is the
+ * honest failure; empty is a different claim**, and the headroom is what keeps
+ * a busy rider out of it. It is still a bound and can still be exhausted — a
+ * screen with pagination is what actually retires this.
+ *
+ * **The order stays departure-ascending and is never re-sorted by distance.**
+ * The rule, stated once here because nothing else enforces it: a ride is a
+ * thing to turn up to on a date, so distance answers *where* and must not
+ * reorder *when*. `ExploreRidesList`
+ * sections the near ones above the rest and keeps each section in departure
+ * order, which is how both questions get answered without either lying.
+ */
+export async function getExploreRides(near?: RiderPosition | null): Promise<RideListItem[]> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const dayStart = rideDayStartUtc()
+  const dayStartMs = new Date(dayStart).getTime()
+
+  const rows = unwrapList(
+    await supabase
+      .from('rides')
+      .select(RIDE_SELECT)
+      .eq('is_public', true)
+      .gte('departure_at', dayStart)
+      .order('departure_at', { ascending: true })
+      .limit(EXPLORE_RIDES_SCAN_LIMIT),
+    'rides to explore',
+  ) as unknown as RideRow[]
+
+  // The organizer arm needs no round trip — `organizer_id` is on the row — so
+  // it is applied first and the membership probe only asks about what is left.
+  const candidates = rows.filter((row) => row.organizer_id !== user.id)
+  const joined = new Set<string>()
+
+  if (candidates.length > 0) {
+    const memberships = unwrapList(
+      await supabase
+        .from('ride_members')
+        .select('ride_id')
+        .eq('user_id', user.id)
+        .in('ride_id', candidates.map((row) => row.id)),
+      'your place on these rides',
+    ) as unknown as { ride_id: string }[]
+
+    for (const membership of memberships) joined.add(membership.ride_id)
+  }
+
+  // Sliced to the page only after the exclusion, so the headroom above buys
+  // rides rather than blanks. The rider still sees at most `RIDES_PAGE_SIZE`.
+  const keep = candidates.filter((row) => !joined.has(row.id)).slice(0, RIDES_PAGE_SIZE)
+
+  // Signed after the exclusion rather than before it: signing is a round trip
+  // per bucket, and a ride the rider is already on is not going to be drawn.
+  await Promise.all([
+    resolveAvatarUrls(
+      keep.flatMap((row) => [row.organizer, ...(row.riders ?? []).map((member) => member.profile)]),
+      supabase
+    ),
+    resolveRideMapUrls(keep, supabase),
+  ])
+
+  return keep.map((row) => withRideDistance(toRideListItem(row, user.id, dayStartMs), near))
+}
+
+/**
+ * Attaches how far a ride's meeting point is from the rider, when both ends of
+ * the question have an answer.
+ *
+ * Exported for the unit tests, like `mergeMine` and `toRideListItem` and for
+ * the same reason: it is a whole rule, and there is no other way to cover it
+ * without a database.
+ *
+ * The rule, restated once here — `withDistance`'s twin in `lib/data/clubs.ts`,
+ * and the same three-way conflation is deliberate: no position, no coordinate,
+ * or the caller did not ask all collapse to `undefined`, because a screen can
+ * only do one thing with any of them.
+ *
+ * A null coordinate pair is the ordinary case, not a fault — every ride created
+ * before `resolve-ride-location` deployed has one, and so does any ride whose
+ * geocode failed. Such a ride is never near anything and must never be counted
+ * as though it were.
+ */
+export function withRideDistance(item: RideListItem, near?: RiderPosition | null): RideListItem {
+  if (!near || item.latitude === null || item.longitude === null) return item
+  const km = distanceKm(near, { lat: item.latitude, lon: item.longitude })
+  return km === null ? item : { ...item, distance_km: km }
 }
 
 /**
