@@ -438,6 +438,21 @@ export async function updateRide(
   // resupplied, so the rider removed it.
   const pickCleared = !!previous && previous.start_place_id !== null && location === null
 
+  // **A pick REPLACED by a different pick, with the text left identical.**
+  // `addressChanged` compares `meeting_point` alone and `pickCleared` requires
+  // `location === null`, so swapping pick A for pick B under the same label
+  // satisfies neither — while `clear_ride_map_tiles` fires on the `start_place_id`
+  // change regardless and NULLs both path columns.
+  //
+  // Reachable rather than theoretical: `PlaceSearchField` writes the chosen
+  // place's name into the meeting-point input and `toPlaceValue` truncates it, so
+  // two places whose labels truncate alike collide — as do genuine duplicates in
+  // the geocoder's own results. Without this the ride keeps B's coordinate, loses
+  // both tiles, orphans the two objects nothing now names, and can never
+  // re-render short of an edit that happens to change the text.
+  const pickChanged =
+    !!previous && location !== null && location.start_place_id !== previous.start_place_id
+
   // Omitted, not NULLed, when there is nothing to say. An omitted column keeps
   // its value; a NULL erases it, and only one of those is what "the rider did
   // not touch the location" means.
@@ -568,7 +583,7 @@ export async function updateRide(
   // paths, so gating the re-render on the text alone left the ride with no map
   // and no route back to one short of editing the address into something
   // different.
-  if (addressChanged || pickCleared) {
+  if (addressChanged || pickCleared || pickChanged) {
     await removeRideMapTiles(supabase, [previous!.map_card_path, previous!.map_detail_path])
     // Unconditional, for `createRide`'s reason and with the same warning
     // against reintroducing a pick guard. See the note there.

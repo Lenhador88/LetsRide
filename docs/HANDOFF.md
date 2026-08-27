@@ -691,7 +691,7 @@ working around them.** Four carry detail worth having at hand:
    The redeploy carrying PD-102's re-authentication proof closed **2026-08-17T14:32Z** — `delete-account`
    at **PROD v9 / DEV v5**, both `ezbr_sha256` `9793933d…`, both newer than the directory's last
    *behavioural* commit. Both functions are `ACTIVE` on both projects with `verify_jwt` true;
-   `resolve-ride-location` sits at `d5932de9…`. **Cross-project equality never means current** —
+   `resolve-ride-location` sits at `02e56f38…`, PROD v3 / DEV v3, redeployed 2026-08-27 by PD-267. **Cross-project equality never means current** —
    it says the two projects agree, never that either matches the repo, which is row 2 of §Store
    readiness above, not §Known issues, a bulleted list with no rows in it. PD-231 put
    `list_edge_functions` on `reviewer`'s `tools:` line so it can make that comparison rather than
