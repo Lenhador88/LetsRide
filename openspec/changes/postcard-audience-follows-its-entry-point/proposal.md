@@ -109,6 +109,29 @@ This is existing behaviour reaching new rows. It is named here and **not fixed i
 images permanently (`PD-94`), so changing the cascade is its own decision with its own migration
 and its own storage question. See Q**C**.
 
+## The audience becomes insert-only, and that is part of this change
+
+**Settled with the product owner on 2026-08-27**, after it was raised as an open question and they
+asked for it to be included here rather than deferred. It is migration `083`.
+
+`authenticated` holds `update (club_id)` on `postcards` — verified against the live database, the
+UPDATE list being exactly `caption, club_id, image_path` — and the UPDATE `with check` permits
+moving a row to `club_id` NULL, which **widens** its audience. With the club `<select>` gone from
+the composer that is a grant with no screen behind it, so "audience follows the entry point" would
+be a UI convention a patched client could undo, and `CLAUDE.md` names that class as the one that
+fails silently rather than loudly. Revoking it makes the audience insert-only, like the ride tag
+and like every location column.
+
+**Nothing in `src/` updates `postcards` at all** — `046`'s header already records it — so the
+revoke breaks no call site. An author who later wants the audience editable is adding a screen and
+a grant together, which is the reviewable shape.
+
+**Read the policy from `010_postcard_storage.sql`, never from `009`.** `010` drops `009`'s version
+and recreates it with a third conjunct, `image_path like ('postcards/' || auth.uid()::text ||
+'/%')`, so an author re-issuing `009`'s text would silently drop that prefix guard — `044`/`046`'s
+trap, on this exact table. The migration is a narrow `revoke`, never an absolute re-grant list, and
+it touches no policy.
+
 ## A future decision this change does not assume
 
 The owner noted that private clubless rides become possible only if a "friends" concept is
@@ -119,34 +142,23 @@ or builds toward. Nothing here should be shaped to make it easier.
 
 ## Open Questions
 
-**A) The `club_id` UPDATE grant, now that no screen writes it.** *(blocking, product owner + `data`)*
-`authenticated` holds `update (club_id)` on `postcards`. With the field gone from the composer,
-that is a grant with no UI behind it — and the `010` UPDATE `with check` permits moving a postcard
-to NULL, which **widens** its audience. **Read the policy from `010_postcard_storage.sql`, never from `009`** — `010` drops `009`'s
-version and recreates it with a third conjunct, `image_path like ('postcards/' ||
-auth.uid()::text || '/%')`, and an author re-issuing `009`'s text would silently drop that
-prefix guard. `044`/`046`'s trap, on this exact table.
-Recommended default: revoke `update (club_id)`, making the
-audience insert-only like the ride tag and every location column. It makes "audience follows the
-entry point" a database rule instead of a UI convention.
-
-**B) What the clubless-ride coupling does to a club deletion.** *(blocking, `data` — see D4)* A
+**A) What the clubless-ride coupling does to a club deletion.** *(blocking, `data` — see D4)* A
 `club_id is not null or is_public` CHECK interacts with `rides.club_id`'s `ON DELETE SET NULL`: a
 bare `clubs` delete (the DELETE policy is still `auth.uid() = owner_id`) would try to SET NULL on a
 private ride and hit `23514`. Recommended default: ship the CHECK anyway. It converts a silent
 orphaning — which `docs/reference/schema.md` already flags as the reason `delete_owned_club` exists
 — into a loud refusal that points at the RPC. Confirm the RPC's own path stays clean.
 
-**C) The cascade on `postcards.club_id`.** *(non-blocking, product owner)* Should a club deletion
+**B) The cascade on `postcards.club_id`.** *(non-blocking, product owner)* Should a club deletion
 still destroy every member's postcards, now that the audience is inherited rather than chosen?
 Recommended default: unchanged in this change. It is a retention and storage decision, not an
 audience one, and the Storage objects are orphaned either way.
 
-**D) What a rider sees on the ride journal they were refused from.** *(non-blocking, `rider-ux`)*
+**C) What a rider sees on the ride journal they were refused from.** *(non-blocking, `rider-ux`)*
 Recommended default: the journal renders normally and simply contains nothing of theirs; the
 refusal is explained at the moment of posting and not repeated afterwards, because a permanent
 banner about a thing they cannot fix is worse than the loss.
 
-**E) Existing rides on the flipped default.** *(non-blocking, `data`)* Recommended default: no
+**D) Existing rides on the flipped default.** *(non-blocking, `data`)* Recommended default: no
 backfill. DEV holds 15 rides, 8 with a club and **0 private clubless rides**, so the coupling adds
 cleanly with no data migration — measured 2026-08-27. Re-measure against PROD before applying.
