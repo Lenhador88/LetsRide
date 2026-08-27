@@ -9,6 +9,7 @@ import { ClubThreadsSection } from '@/components/clubs/ClubThreadsSection'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
 import { ClubMemberRail } from '@/components/clubs/ClubMemberRail'
 import { ClubPostcardCarousel } from '@/components/clubs/ClubPostcardCarousel'
+import { clubTimelineRides } from '@/components/clubs/clubTimeline'
 import { MarkClubSeen } from '@/components/clubs/MarkClubSeen'
 import { RideChip } from '@/components/rides/RideChip'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -24,17 +25,6 @@ import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 import { formatRideDateLong } from '@/lib/utils'
 
 /**
- * How many upcoming rides the Upcoming rides strip **shows**. The design draws
- * three in a horizontal scroller; five gives it something to scroll without
- * turning this section into the Rides sub-page, which `See all` is one tap
- * away from.
- *
- * It bounds the display rather than the read — see the query below for why the
- * two came apart.
- */
-const CLUB_TIMELINE_RIDES = 5
-
-/**
  * The club — **one screen now, not the head of a set of four** (the club
  * detail merge, 2026-08-18, this domain's counterpart of PD-254).
  *
@@ -42,7 +32,7 @@ const CLUB_TIMELINE_RIDES = 5
  * (`2059:6545`) and `- About` (`2059:6700`) are still the frames the pieces of
  * this screen are built from, and they are no longer the whole specification:
  * the drawn sub-page sheet (`Private club - Sub Pages`, `2059:5931`) is
- * deleted, and Members and Upcoming rides are sections on this page with their
+ * deleted, and Members and Club rides are sections on this page with their
  * own `See all` rather than destinations behind a dropdown. That is a
  * deviation from the Figma and it is logged in
  * docs/FIGMA-FIDELITY-TODO.md §Club detail; the approved frames are
@@ -118,7 +108,7 @@ function ClubScreen() {
     getClubFeed(id)
   )
 
-  // The same key and the same read as `/clubs/detail/rides`, sliced to five
+  // The same key and the same read as `/clubs/detail/rides`, bounded to five
   // for the strip rather than fetched at five. Two different lengths under
   // one key is the failure that avoids: `rides.list('club:<id>')` would hold
   // either the whole list or this strip depending on which screen loaded
@@ -167,10 +157,16 @@ function ClubScreen() {
       </>
     )
 
-  // The strip is the design's "Upcoming rides" section and stays exactly that:
-  // `getRides` now also answers with the club's past rides, which the club
-  // Rides sub-page draws under its own header and this carousel does not.
-  const upcoming = rides.data.upcoming.slice(0, CLUB_TIMELINE_RIDES)
+  // The strip is the design's "Upcoming rides" section widened into the club's
+  // whole ride history (PD-319) — upcoming first, then past, in one scroller,
+  // with `RideChip` inverting its fill for the past half. `getRides` has
+  // answered with both halves since the club Rides sub-page needed them; this
+  // strip used to throw the second one away.
+  //
+  // The split is stated rather than sliced off the concatenation — see
+  // `clubTimelineRides`, which is a pure function so the four cases that rule
+  // has can be asserted.
+  const timeline = clubTimelineRides(rides.data.upcoming, rides.data.past)
   const isMember = !!club.data.viewer_role
   const TypeIcon = club.data.is_public ? Globe2Icon : Lock2Icon
 
@@ -198,23 +194,34 @@ function ClubScreen() {
             line: a control that always fails RLS is worse than no control. */}
         <section className="flex flex-col gap-2">
           <SectionHeader
-            title="Upcoming rides"
+            title="Club rides"
             action={
-              // Gated on what the sub-page has, not on what this strip draws.
-              // A club whose rides are all behind it has an empty strip and a
-              // Rides sub-page full of past rides, and dropping the link
-              // there is PD-125's defect exactly: a screen nobody can reach.
+              // Still gated on what the sub-page has rather than on what this
+              // strip draws, and the two only stopped being able to disagree
+              // with PD-319: before it, a club whose rides were all behind it
+              // had an empty strip over a sub-page full of past rides, and
+              // dropping the link there was PD-125's defect exactly — a screen
+              // nobody can reach. Kept in the sub-page's own terms because that
+              // is what the link opens, and because the strip's bound means it
+              // can still show fewer rides than the sub-page holds.
               rides.data.upcoming.length > 0 || rides.data.past.length > 0
                 ? { label: 'See all', href: routes.clubRides(id) }
                 : undefined
             }
             className="px-4 py-0"
           />
-          {upcoming.length === 0 ? (
+          {/* Empty means the club has NEVER ridden, not "nothing is planned"
+              (PD-319) — the strip carries the past half now, so the sentence
+              that used to be true of an empty strip is only true of a club with
+              no rides at all. `timeline.length` rather than the two arrays,
+              because it is the thing actually drawn. */}
+          {timeline.length === 0 ? (
             isMember ? (
               <ClubCreateRideRow clubId={id} />
             ) : (
-              <p className="px-4 text-sm font-medium text-muted">No rides are planned, yet!</p>
+              <p className="px-4 text-sm font-medium text-muted">
+                This club has not ridden, yet!
+              </p>
             )
           ) : (
             <div className="flex gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -225,7 +232,7 @@ function ClubScreen() {
                   of the list. `isMember` for the same reason the empty state
                   above carries it. */}
               {isMember && <ClubCreateRideRow clubId={id} variant="chip" />}
-              {upcoming.map((ride) => (
+              {timeline.map((ride) => (
                 <RideChip key={ride.id} ride={ride} />
               ))}
             </div>

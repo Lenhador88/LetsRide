@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { routes } from '@/lib/routes'
-import { formatRideChipDate, formatRideTime } from '@/lib/utils'
+import { cn, formatRideChipDate, formatRideTime } from '@/lib/utils'
 import type { RideListItem } from '@/types'
 
 /**
@@ -33,24 +33,65 @@ import type { RideListItem } from '@/types'
  * Fixed at the frame's own 200px rather than flexing to its scroller, so a
  * long `meeting_point` truncates instead of stretching the chip past what the
  * design draws.
+ *
+ * ## A past ride inverts the chip (PD-319)
+ *
+ * The club strip carries both halves of `getRides` now — upcoming first, then
+ * past — so a chip has to say which it is without a section header to sit
+ * under, which is the only distinction the ride *list* has ever needed
+ * (`/clubs/detail/rides` draws a `Past rides` header over its second list, and
+ * `AttendancePill` swaps "Going" for "Went"). Neither travels into a single
+ * scroller.
+ *
+ * **So the fill inverts rather than tinting**: `bg-track` with the dark text,
+ * against the upcoming chip's `bg-foreground` with light text. That is a
+ * luminance difference, so it survives the greyscale check the story asked for
+ * — a hue change or an opacity drop would not, and an opacity drop would also
+ * read as "disabled" on a chip that is still a working link. `bg-track` is the
+ * same recessed cream the create tile beside it uses, which is what makes the
+ * strip read as one row of tiles with the live ones standing out of it.
+ *
+ * **Not a prop.** `is_upcoming` is already on every `RideListItem`, computed
+ * against `rideDayStartUtc` by the same read that sorts the two halves — so a
+ * caller cannot pass one that disagrees with the list the chip came out of.
  */
 export function RideChip({ ride }: { ride: RideListItem }) {
   const { day, month } = formatRideChipDate(ride.departure_at, ride.timezone)
+  const past = !ride.is_upcoming
 
   return (
     <Link
       href={routes.ride(ride.id)}
-      className="flex w-[200px] shrink-0 items-center gap-3 rounded-lg bg-foreground p-1"
+      className={cn(
+        'flex w-[200px] shrink-0 items-center gap-3 rounded-lg p-1',
+        past ? 'bg-track' : 'bg-foreground'
+      )}
     >
-      <span className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded bg-background">
+      {/* The date block keeps its own contrast against whichever fill it sits
+          on: cream inside the dark chip, white inside the light one. Left at
+          `bg-background` on a past chip it would be the same cream as the chip
+          around it and stop reading as a block at all. */}
+      <span
+        className={cn(
+          'flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded',
+          past ? 'bg-surface' : 'bg-background'
+        )}
+      >
         <span className="text-base leading-6 font-semibold text-foreground">{day}</span>
         <span className="text-xs leading-[18px] font-semibold text-muted">{month}</span>
       </span>
       <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-        <span className="truncate text-sm font-semibold text-white">
+        <span
+          className={cn(
+            'truncate text-sm font-semibold',
+            past ? 'text-foreground' : 'text-white'
+          )}
+        >
           {formatRideTime(ride.departure_at, ride.timezone)}
         </span>
-        <span className="truncate text-sm font-medium text-background">{ride.meeting_point}</span>
+        <span className={cn('truncate text-sm font-medium', past ? 'text-muted' : 'text-background')}>
+          {ride.meeting_point}
+        </span>
       </span>
     </Link>
   )
