@@ -221,6 +221,20 @@ function ClubScreen() {
               {upcoming.map((ride) => (
                 <RideChip key={ride.id} ride={ride} />
               ))}
+              {/* At the END of the strip, and only for a member (PD-312).
+                  Until now the create affordance was the EMPTY state alone, so
+                  it disappeared the moment the club had one ride — the only
+                  route to a second was `See all` and a control on another
+                  screen. Product owner, 2026-08-27: "I am missing a button to
+                  create a new ride on the upcoming ride list."
+
+                  Last rather than first because the strip is ordered by
+                  departure and the next ride is what a rider opened the club
+                  for; a create tile in that slot would push it off-screen on
+                  every visit. It scrolls with the chips rather than pinning,
+                  so it reads as the end of the list rather than as a second
+                  control competing with `See all`. */}
+              {isMember && <ClubCreateRideRow clubId={id} variant="chip" />}
             </div>
           )}
         </section>
@@ -250,14 +264,32 @@ function ClubScreen() {
 
         {/* Join only — a constructive action stays visible on the page, where
             the destructive one (Leave) is tucked into the header's dots menu.
-            An owner is always a member and never sees this either way. Kept
-            directly above Members, its original neighbour before the
-            reorder — the pairing reads as "join, then see who's already in". */}
+            An owner is always a member and never sees this either way.
+
+            It now sits directly above Discussions rather than Members (PD-312),
+            and that is the better neighbour for it: what a non-member sees under
+            this button is "Join the club to read and start discussions", which
+            names what joining buys. Kept at this height rather than following
+            Members down — the whole point of the button is that a rider deciding
+            whether to join meets it without scrolling. */}
         {!isMember && (
           <div className="px-4">
             <ClubMembershipButton clubId={id} />
           </div>
         )}
+
+        {/* Above Members rather than below it (PD-312, product owner
+            2026-08-27). The original order put the people before the
+            conversation on the reasoning that a thread is a conversation among
+            the people the section above lists — true, and it buried the one
+            part of a club that changes daily under the one part that does not.
+            Members is a roster: it is looked up, not read. Discussions is why a
+            rider opens the club on a day nobody is riding.
+
+            A non-member of a public club gets a join prompt here and no content
+            at all — see `ClubDiscussionsSection` — so the swap discloses
+            nothing it did not already. */}
+        <ClubDiscussionsSection clubId={id} isMember={isMember} />
 
         {/* `px-4`, not the component's own `px-6`: everything these headers
             sit above — the rail's `mx-4`, the chip strip, the postcard column —
@@ -271,14 +303,6 @@ function ClubScreen() {
           />
           <ClubMemberRail clubId={id} />
         </section>
-
-        {/* Under Members rather than above it, and above the type/description
-            block: Discussions is a conversation among the people the section
-            above lists, and it must not push the club's own description off
-            the first screen for a rider deciding whether to join. A non-member
-            of a public club gets a join prompt here and no content at all —
-            see `ClubDiscussionsSection`. */}
-        <ClubDiscussionsSection clubId={id} isMember={isMember} />
 
         {/* Grouped with a 4px internal gap, not the section-sized 16px the
             surrounding `gap-4` gives every other pair here — these two read

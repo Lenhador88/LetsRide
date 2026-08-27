@@ -105,30 +105,56 @@ export function ClubDiscussionsSection({
           <Skeleton className="h-3 w-32" />
         </div>
       ) : discussions.data && discussions.data.length > 0 ? (
-        <ul className="flex flex-col">
-          {discussions.data.slice(0, CLUB_DETAIL_DISCUSSIONS).map((discussion) => (
-            <li key={discussion.id}>
-              <ClubDiscussionRow
-                discussion={discussion}
-                hasUnread={unread.data?.[discussion.id] === true}
-              />
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="flex flex-col">
+            {discussions.data.slice(0, CLUB_DETAIL_DISCUSSIONS).map((discussion) => (
+              <li key={discussion.id}>
+                <ClubDiscussionRow
+                  discussion={discussion}
+                  hasUnread={unread.data?.[discussion.id] === true}
+                />
+              </li>
+            ))}
+          </ul>
+          {/* Under the rows, not above them: the newest thread is what a rider
+              came for, and a control between the heading and the list pushes it
+              down on every visit for the sake of an action taken once. */}
+          <StartDiscussionRow clubId={clubId} />
+        </>
       ) : (
-        <Link
-          href={routes.newClubDiscussion(clubId)}
-          className="mx-4 flex h-14 items-center gap-3 rounded-lg border border-dashed border-border-strong bg-track px-3 text-left transition-colors active:bg-border"
-        >
-          <PlusCircleIcon className="h-6 w-6 shrink-0 text-muted" aria-hidden="true" />
-          <span className="flex min-w-0 flex-col">
-            <span className="text-sm font-semibold text-foreground">Start a discussion</span>
-            <span className="truncate text-xs font-medium text-muted">
-              Ask the club a question
-            </span>
-          </span>
-        </Link>
+        <StartDiscussionRow clubId={clubId} />
       )}
     </section>
+  )
+}
+
+/**
+ * The create affordance, drawn under the rows as well as in place of them
+ * (PD-312).
+ *
+ * **It used to render only when the club had no threads**, which is the shape
+ * every other section here has — and on this one it was wrong in a way the
+ * others are not. `Upcoming rides` and `Postcards` both have a `See all` that
+ * leads to a screen carrying its own create control; Discussions did too, but a
+ * rider on the club page with one thread saw only that thread and no way to
+ * start a second. The affordance vanished at exactly the moment the club became
+ * worth adding to. Product owner, 2026-08-27.
+ *
+ * Kept as a bordered row rather than a `Button`, in both positions, because it
+ * is a destination like the rows above it rather than an action on this screen —
+ * the same reason `ClubCreateRideRow` is a row.
+ */
+function StartDiscussionRow({ clubId }: { clubId: string }) {
+  return (
+    <Link
+      href={routes.newClubDiscussion(clubId)}
+      className="mx-4 flex h-14 items-center gap-3 rounded-lg border border-dashed border-border-strong bg-track px-3 text-left transition-colors active:bg-border"
+    >
+      <PlusCircleIcon className="h-6 w-6 shrink-0 text-muted" aria-hidden="true" />
+      <span className="flex min-w-0 flex-col">
+        <span className="text-sm font-semibold text-foreground">Start a discussion</span>
+        <span className="truncate text-xs font-medium text-muted">Ask the club a question</span>
+      </span>
+    </Link>
   )
 }
