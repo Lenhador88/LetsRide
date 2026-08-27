@@ -2,14 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   RECENT_STARTS_LIMIT,
   RIDE_AVATAR_LIMIT,
+  collageClubImages,
   dedupeRecentStarts,
   isRideCrew,
   mergeMine,
   toRideListItem,
   withOrganizer,
+  withRideDistance,
   type RideRow,
 } from '@/lib/data/rides'
-import type { PublicProfile } from '@/types'
+import type { PublicProfile, RideFilterOption, RideListItem } from '@/types'
 
 const ORGANIZER: PublicProfile = {
   id: 'organizer-1',
@@ -40,7 +42,7 @@ function row(overrides: Partial<RideRow> = {}): RideRow {
     // NULL on every ride in both databases until the render function ships.
     map_card_path: null,
     // NULL is the ordinary case: every ride predating `resolve-ride-location`
-    // has no pair, and `nearbyRides` drops such a ride rather than counting it.
+    // has no pair, and `isNearby` answers false rather than counting it.
     latitude: null,
     longitude: null,
     organizer: ORGANIZER,
@@ -408,5 +410,95 @@ describe('dedupeRecentStarts', () => {
 
   it('answers with nothing when the rider has no picked start at all', () => {
     expect(dedupeRecentStarts([])).toEqual([])
+  })
+})
+
+/**
+ * `src/lib/rides/__tests__/nearby.test.ts` covered "a ride with no coordinate is
+ * never near anything" and went with the near-you filter. `withRideDistance` is
+ * new code reproducing that rule at a different layer, so the assertions come
+ * back here rather than being lost with the module that used to hold them.
+ *
+ * The half-pair cases are the ones worth having. `067`'s
+ * `rides_location_coupling` makes a half pair unreachable through the app's own
+ * writes, and this deliberately does not rely on that — a CHECK is not a type,
+ * and the row type still admits it. Without the guard `distanceKm` would be
+ * handed a `NaN` and the ride would sort as if it were somewhere.
+ */
+describe('withRideDistance', () => {
+  const UTRECHT = { lat: 52.09, lon: 5.12 }
+  const AMSTERDAM = { latitude: 52.37, longitude: 4.9 }
+
+  const item = (overrides: Partial<RideListItem> = {}): RideListItem =>
+    toRideListItem(row(overrides as Partial<RideRow>), undefined, NOW)
+
+  it('measures when both ends have an answer', () => {
+    const out = withRideDistance(item(AMSTERDAM), UTRECHT)
+    expect(out.distance_km).toBeGreaterThan(0)
+    expect(out.distance_km).toBeLessThan(50)
+  })
+
+  it('leaves the ride untouched when the rider has no position', () => {
+    expect(withRideDistance(item(AMSTERDAM), null).distance_km).toBeUndefined()
+    expect(withRideDistance(item(AMSTERDAM), undefined).distance_km).toBeUndefined()
+  })
+
+  it('leaves it untouched when the ride has no coordinate', () => {
+    // The ordinary case, not a fault — every ride predating the geocoder.
+    expect(withRideDistance(item(), UTRECHT).distance_km).toBeUndefined()
+  })
+
+  it('refuses a half pair rather than measuring against a NaN', () => {
+    expect(withRideDistance(item({ latitude: 52.37 }), UTRECHT).distance_km).toBeUndefined()
+    expect(withRideDistance(item({ longitude: 4.9 }), UTRECHT).distance_km).toBeUndefined()
+  })
+
+  it('returns a new object rather than mutating the row it was given', () => {
+    const original = item(AMSTERDAM)
+    expect(withRideDistance(original, UTRECHT)).not.toBe(original)
+    expect(original.distance_km).toBeUndefined()
+  })
+})
+
+/**
+ * The `From clubs` tile's 2×2. What is worth pinning is the *precedence* and
+ * the *cap* — the header's claim that a cover beats an avatar, that a club with
+ * neither drops out rather than contributing a grey cell, and that no more than
+ * four ever reach `FilterCollage`.
+ */
+describe('collageClubImages', () => {
+  const club = (id: string, coverUrl: string | null, imageUrl: string | null): RideFilterOption => ({
+    id,
+    name: id,
+    imageUrl,
+    coverUrl,
+    count: 1,
+  })
+
+  it('prefers the cover over the avatar', () => {
+    expect(collageClubImages([club('a', 'cover-a', 'avatar-a')])).toEqual(['cover-a'])
+  })
+
+  it('falls back to the avatar when there is no cover', () => {
+    expect(collageClubImages([club('a', null, 'avatar-a')])).toEqual(['avatar-a'])
+  })
+
+  it('drops a club with neither rather than emitting a blank cell', () => {
+    const out = collageClubImages([club('a', null, null), club('b', 'cover-b', null)])
+    expect(out).toEqual(['cover-b'])
+  })
+
+  it('is empty when no club has an image, which is what draws the placeholder', () => {
+    expect(collageClubImages([club('a', null, null)])).toEqual([])
+  })
+
+  it('caps at four however many clubs the rider is in', () => {
+    const clubs = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => club(id, `cover-${id}`, null))
+    expect(collageClubImages(clubs)).toEqual(['cover-a', 'cover-b', 'cover-c', 'cover-d'])
+  })
+
+  it('keeps tile order, which is soonest-departure first', () => {
+    const clubs = [club('later', 'cover-later', null), club('sooner', 'cover-sooner', null)]
+    expect(collageClubImages(clubs)).toEqual(['cover-later', 'cover-sooner'])
   })
 })

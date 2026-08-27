@@ -50,12 +50,13 @@ import type { ClubListItem } from '@/types'
  * it. A screen whose whole content is a sentence telling a rider what they do
  * not have is the one this app most wants back.
  *
- * **Both reads issue on every load, and the explore one is not waste.** It is
- * the strip's count, and it has to be *this* read rather than a cheaper
- * `head: true` count: `getExploreClubs` excludes clubs you have joined in JS,
- * against the page it fetched, so no server-side count can reproduce the
- * predicate. A number derived any other way is PD-254's crew-count bug again —
- * a count that disagrees with the list one tap away. Same key as
+ * **Both reads issue on every load, and the explore one is not waste.** The
+ * strip carried a count until 2026-08-27 and now carries only `near <place>`,
+ * which needs the same read for the same reason: whether any club is actually
+ * near the rider is a predicate applied in JS, against the page `getExploreClubs`
+ * fetched, so no server-side `count` can reproduce it. A `near` clause derived
+ * any other way is PD-254's crew-count bug in words instead of digits — a row
+ * claiming something the list one tap away does not show. Same key as
  * `/clubs/explore` uses, so navigating there is a cache hit rather than a
  * second fetch.
  */
@@ -128,7 +129,6 @@ export default function ClubsPage() {
                 the hairline until the product owner spotted it. */}
             <div className="px-4 pt-4 pb-4">
               <ExploreClubsStrip
-                count={explore.data?.length}
                 nearCount={
                   label && explore.data
                     ? explore.data.filter((club) => isNearby(club.distance_km)).length

@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
-import { NearbyRidesStrip } from '@/components/rides/NearbyRidesStrip'
+import { ExploreRidesStrip } from '@/components/rides/ExploreRidesStrip'
 import { MapAttribution } from '@/components/rides/MapAttribution'
 import { RideCard } from '@/components/rides/RideCard'
 import { RideFilterBar } from '@/components/rides/RideFilterBar'
@@ -13,15 +13,14 @@ import { SectionHeader } from '@/components/ui/SectionHeader'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonFilterBar, SkeletonList } from '@/components/ui/Skeleton'
 import { getMyLocationText } from '@/lib/data/profile'
-import { getRideFilters, getRides } from '@/lib/data/rides'
+import { getExploreRides, getRideFilters, getRides } from '@/lib/data/rides'
+import { isNearby } from '@/lib/location/distance'
 import { nearLabel } from '@/lib/location/near-label'
-import type { NearLabel } from '@/lib/location/near-label'
 import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
 import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
-import { nearbyRides } from '@/lib/rides/nearby'
-import { parseRideFilter, parseRideNear } from '@/lib/validation/rides'
+import { parseRideFilter } from '@/lib/validation/rides'
 import { cn } from '@/lib/utils'
 import type { RideFilter, RideListItem } from '@/types'
 
@@ -47,6 +46,21 @@ import type { RideFilter, RideListItem } from '@/types'
  * only one that does not take a ride off the screen of everyone still on it.
  * `RideCard`'s past variants ("Went") are cut at the same instant, so the pill
  * and the section a card sits in can never disagree.
+ *
+ * ## This tab is the rider's own world; discovery is `/rides/explore`
+ *
+ * Product owner, 2026-08-27. The unfiltered tab used to be every ride RLS would
+ * return, which meant it listed the rides the rider organises and the rides
+ * they had already said yes to — so it duplicated `Your rides` beside it, and
+ * the app had no screen for *finding* a ride at all. The default tile is `From
+ * clubs` now and the strip below the bar is a door rather than a filter.
+ *
+ * **`?near=1` went with that.** It was a filter over the rows this screen had
+ * already read (PD-260), and its whole justification was the asymmetry it
+ * recorded in `NearbyRidesStrip`'s header: *"there is no `/rides/explore`"*.
+ * There is one now, near-you belongs to it, and a second near-you control on
+ * this tab would filter the rider's own clubs by distance — a question nobody
+ * asks about a club they have already joined.
  *
  * ## The split, and why the padding wrapper is out here
  *
@@ -106,7 +120,7 @@ export default function RidesPage() {
           variant, so it owes the sticky action's own height. The number lives
           in globals.css beside the other two, not here. */}
       <div className="pb-navbar-action-extra flex flex-col">
-        <Suspense fallback={<RidesLoading />}>
+        <Suspense fallback={<RidesLoading strip={<ExploreRidesStrip near={null} />} />}>
           <RidesScreen />
         </Suspense>
       </div>
@@ -126,12 +140,6 @@ function RidesScreen() {
     club: searchParams.get('club') ?? undefined,
   })
 
-  // The near-you toggle, a separate axis from the filter above — see
-  // `rideSearchParamsSchema`. It is read from the URL rather than held in state
-  // so it survives a back button, a reload and a shared link, and so the strip
-  // can be a plain link rather than a control with a handler.
-  const near = parseRideNear({ near: searchParams.get('near') ?? undefined })
-
   // `keys.ts` types the list key's filter segment as `string | null`, so the
   // discriminated union is flattened into one string. The kind stays part of it
   // rather than being dropped to the id: `mine` carries no id at all, and two
@@ -143,104 +151,84 @@ function RidesScreen() {
       : filterSegment.mine()
     : null
 
-  // The filter bar always describes every upcoming ride, never the filtered
-  // slice — otherwise picking a club would erase every other tile and strand
-  // you there with no way back. That is why it has its own key with no filter
-  // segment, and why changing the filter refetches one of these two, not both.
+  // The filter bar always describes the rider's whole set — every upcoming ride
+  // in their clubs — never the filtered slice, otherwise picking a club would
+  // erase every other tile and strand you there with no way back. That is why
+  // it has its own key with no filter segment, and why changing the filter
+  // refetches one of these two, not both.
   const rides = useQuery(queryKeys.rides.list(filterKey), () => getRides(filter))
   const filters = useQuery(queryKeys.rides.filters(), () => getRideFilters())
 
-  // Where the rider is, for the near-you strip (PD-260). Its own query, on the
-  // same key `/clubs` and `/clubs/explore` use, so a rider arriving from either
-  // pays nothing and — more importantly — measures from the same coordinates.
-  // It never prompts: without an already-granted permission it answers with the
-  // geocoded profile city, or nothing.
-  //
-  // **No `null`-key hold here, unlike `/clubs`.** That page gates its explore
-  // *query* on the position because the position is part of its cache key; this
-  // one is not — the list read below is keyed on the filter alone and the
-  // position only decides which of its rows are drawn. So a late position
-  // re-renders the strip and refetches nothing.
+  // Where the rider is, for the strip's `near …` (PD-260). Its own query, on the
+  // same key `/clubs`, `/clubs/explore` and `/rides/explore` use, so a rider
+  // arriving from any of them pays nothing and — more importantly — measures
+  // from the same coordinates. It never prompts: without an already-granted
+  // permission it answers with the geocoded profile city, or nothing.
   const position = useQuery(queryKeys.riderLocation(), resolveRiderLocation)
   // The rider's own city, for the strip's `near …`. Its own read rather than
   // `getCurrentProfile`, which would sign an avatar and a cover to render one
   // word.
   const city = useQuery(queryKeys.profile.location(), getMyLocationText)
 
-  // Only the bar's own read gates the bar — on the error path as much as on
-  // the loading one. A failed list read leaves `filters.data` sitting in cache
-  // and its own read successful, so collapsing both into one `gate.error` puts
-  // the reported symptom back on the very path where it is worst: the control
-  // for choosing a different filter is the way out of a failing one.
-  // **Everything the near-you strip needs is derived BEFORE the two early
-  // returns below, because the strip renders in those branches too.** The strip
-  // is the only control that removes the filter, so a load where the filter-bar
-  // read is failing or in flight must still offer the way back — the invariant
-  // `NearbyRidesStrip` states for itself only holds if the page never returns
-  // out from under it.
-
   // **A failed position read is a DECIDED "no position", not "not yet".**
   // `useQuery` leaves `data` undefined for ever on a query that errored, and
-  // with the filter on that parks the list in the skeleton branch below
-  // permanently. `resolveRiderLocation` catches its own chain and resolves
-  // `null`, so nothing can reach this today — which is exactly why it is worth
-  // one line here: the page's correctness would otherwise rest on a
-  // never-rejects guarantee living in another module, asserted nowhere.
+  // gating the explore read on that alone would park it in flight permanently.
+  // `resolveRiderLocation` catches its own chain and resolves `null`, so nothing
+  // can reach this today — which is exactly why it is worth one line here: the
+  // page's correctness would otherwise rest on a never-rejects guarantee living
+  // in another module, asserted nowhere.
   const positionSettled = position.data !== undefined || !!position.error
   const positionValue = position.data ?? null
 
-  // Measured against the upcoming half only. "Rides happening around you" is a
-  // thing a rider turns up to; a ride that already happened two towns over is
-  // not one, however near it was. That is also why the Past section drops out
-  // entirely while the filter is on rather than being filtered too.
-  const nearUpcoming = nearbyRides(rides.data?.upcoming, positionValue)
-
-  // `undefined` until BOTH inputs are decided, and that is not tidiness: a zero
-  // computed while the position is still resolving is indistinguishable from a
-  // real "nothing near you", and `NearbyRidesStrip` draws those differently.
-  const nearCount = !positionSettled || !rides.data ? undefined : nearUpcoming.length
-
-  // **With the filter on and the position still undecided, the answer is "not
-  // yet", not "none".** `nearUpcoming` is `[]` in both states, so handing it
-  // straight to the list would flash `No rides near you` on every load and then
-  // fill in — the same `null`-vs-`undefined` confusion the detail screens make a
-  // 404 out of. `undefined` falls to the skeleton branch below instead.
-  const upcoming = near ? (positionSettled ? nearUpcoming : undefined) : rides.data?.upcoming
-
-  // The Past section drops out entirely while the filter is on. A ride that has
-  // already happened is not a ride happening around you, however near it was.
-  const past = near ? [] : rides.data?.past
-
-  // Toggling preserves every other parameter — a rider who filtered to a club
-  // and then tapped the strip wants that club's rides near them, not a reset to
-  // every ride. `URLSearchParams` rather than string surgery for the same
-  // reason `routes.ts` exists.
-  const toggled = new URLSearchParams(searchParams.toString())
-  if (near) toggled.delete('near')
-  else toggled.set('near', '1')
-  const toggledQuery = toggled.toString()
-  const nearHref = toggledQuery ? `/rides?${toggledQuery}` : '/rides'
+  // **Held with a `null` key until the position is DECIDED**, `/clubs`'s rule
+  // and the same double fetch it avoids: `position.data` is undefined on the
+  // first render, so an ungated read would run under `unlocated` and again under
+  // a coordinate the moment the position landed.
+  //
+  // This is the strip's read and it is the same entry `/rides/explore` renders,
+  // which is what keeps the row's `near <place>` clause equal to the `Near
+  // <place>` section behind it. Nothing on THIS screen draws these rides.
+  const explore = useQuery(
+    positionSettled ? queryKeys.rides.explore(positionValue) : null,
+    () => getExploreRides(positionValue)
+  )
 
   // The name of the place the distances were measured FROM — never the profile
   // city beside a device-measured distance. `nearLabel` owns that rule.
   const label = nearLabel(positionValue, city.data)
 
-  // It carries its own padding, so an off strip renders nothing whatsoever —
-  // no wrapper, no 8px above an error state. See the component.
+  // It carries its own padding, so nothing here adds 8px above an error state.
   const strip = (
     <>
-      <NearbyRidesStrip count={nearCount} near={label} active={near} href={nearHref} />
-      {/* Below the near-you strip and in the same slot, because it is the same
-          question from the other side: the strip says how many rides are near
-          you, this says how to get an answer at all. `locationPrimingState`
-          makes them mutually exclusive in every state but one — a rider who
-          arrives on `?near=1` with no position sees the strip drawing itself as
-          the way OUT of the filter, and the row offering the way in. */}
+      <ExploreRidesStrip
+        near={label}
+        nearCount={
+          label && explore.data
+            ? explore.data.filter((ride) => isNearby(ride.distance_km)).length
+            : undefined
+        }
+      />
+      {/* Below the explore strip and in the same slot, because it is the same
+          question from the other side: the strip says there are rides near you,
+          this says how to get an answer at all. The row only draws when the
+          rider has no position, which is exactly when the strip's `near …`
+          clause has dropped out. */}
       <UseMyLocationRow position={positionSettled ? positionValue : undefined} />
     </>
   )
 
   const gate = combineQueries(rides, filters)
+
+  // Only the bar's own read gates the bar — on the error path as much as on
+  // the loading one. A failed list read leaves `filters.data` sitting in cache
+  // and its own read successful, so collapsing both into one `gate.error` puts
+  // the reported symptom back on the very path where it is worst: the control
+  // for choosing a different filter is the way out of a failing one.
+  //
+  // **The strip renders in these branches too, and that placement is load-
+  // bearing rather than tidy.** It is the only route to `/rides/explore` — the
+  // same rule `ExploreClubsStrip` was corrected into — so a rider whose list is
+  // failing to load must still be able to leave for the screen that works.
   if (filters.error)
     return (
       <>
@@ -257,43 +245,41 @@ function RidesScreen() {
     <>
       <RideFilterBar filters={filters.data} active={filter} />
 
-      {/* Between the bar and the list, and OUTSIDE the list's gate — the strip
-          is the only way to turn the filter back off, so a failed or pending
-          list read must not take it with them. */}
+      {/* Between the bar and the list, and OUTSIDE the list's gate — see the
+          note at the error branch above. */}
       {strip}
 
       {rides.error ? (
         <ErrorState onRetry={rides.refetch} />
-      ) : !rides.data || !upcoming || !past ? (
+      ) : !rides.data ? (
         // The wrapper, not the skeleton, carries `py-2`: `SkeletonList`'s root
         // is `px-4` only, and it now stands in the same slot as the loaded
         // list rather than replacing the screen — so without it every filter
         // tap ends with the cards jumping 8px as the data lands.
-        //
         <div className="py-2">
           <SkeletonList />
         </div>
-      ) : upcoming.length === 0 && past.length === 0 ? (
-        <EmptyList filter={filter} near={near ? (label ?? { name: 'you' }) : null} />
+      ) : rides.data.upcoming.length === 0 && rides.data.past.length === 0 ? (
+        <EmptyList filter={filter} />
       ) : (
         <div className="motion-safe:animate-fade-in flex flex-col">
-          {upcoming.length === 0 ? (
+          {rides.data.upcoming.length === 0 ? (
             // A different sentence and a different amount of room: this one
             // sits above the Past rides header rather than owning the
             // screen, so `py-24` would read as the end of the page — and the
             // claim it makes has to be about *upcoming* rides, since there are
             // demonstrably rides underneath it.
-            <EmptyList filter={filter} near={near ? (label ?? { name: 'you' }) : null} spacing="section" />
+            <EmptyList filter={filter} spacing="section" />
           ) : (
-            <RideCards rides={upcoming} filter={filter} />
+            <RideCards rides={rides.data.upcoming} filter={filter} />
           )}
 
-          {past.length > 0 && (
+          {rides.data.past.length > 0 && (
             <>
               {/* `px-4` to sit over the cards rather than the component's own
                   `px-6`, the same correction the club detail page makes. */}
               <SectionHeader title="Past rides" className="px-4 pb-0 pt-4" />
-              <RideCards rides={past} filter={filter} />
+              <RideCards rides={rides.data.past} filter={filter} />
             </>
           )}
 
@@ -314,7 +300,7 @@ function RidesScreen() {
               state of a fresh database: a screen showing no map data owes no
               map credit, and a line crediting imagery nobody can see is noise
               rather than compliance. */}
-          {[...upcoming, ...past].some((ride) => !!ride.map_card_url) && (
+          {[...rides.data.upcoming, ...rides.data.past].some((ride) => !!ride.map_card_url) && (
             <MapAttribution />
           )}
         </div>
@@ -337,10 +323,18 @@ function RidesLoading({ strip }: { strip?: ReactNode } = {}) {
   return (
     <>
       <SkeletonFilterBar />
-      {/* In the same slot it occupies on the loaded screen. Absent from the
-          `<Suspense>` fallback, which stands in while `useSearchParams`
-          resolves — there is no `near` to read yet, so there is nothing
-          honest to draw. */}
+      {/* In the same slot it occupies on the loaded screen, **at both cold-load
+          positions**, and that is PD-217 rather than symmetry.
+          `NearbyRidesStrip` drew nothing at an undecided count, so the
+          `<Suspense>` fallback could omit it and still match the gate below.
+          `ExploreRidesStrip` always renders — it is the only door to
+          `/rides/explore` — so an omitted strip here injects its ~64px the
+          tick the boundary resolves and moves every skeleton row down.
+
+          The fallback passes `near={null}`: there is no position read in
+          flight yet, and `null` is exactly what the loaded strip draws while
+          the position is undecided, so the two are the same 64px saying the
+          same thing rather than a placeholder guessing at one. */}
       {strip}
       {/* `py-2` on the wrapper, not the skeleton — same reason as the loaded
           branch: `SkeletonList`'s root is `px-4` only. */}
@@ -363,43 +357,38 @@ function RideCards({ rides, filter }: { rides: RideListItem[]; filter?: RideFilt
 }
 
 /**
- * Two of these strings are the design's, verbatim. The other two are not drawn
- * — `Home - Rides - Rides from club` has no empty variant, and no frame draws
- * this screen with past rides but none ahead — so both are written to match
+ * Two of these strings are the design's, verbatim. The others are not drawn —
+ * `Home - Rides - Rides from club` has no empty variant, and no frame draws
+ * this screen with past rides but none ahead — so they are written to match
  * their shape rather than invented in a different voice.
  *
+ * **The unfiltered string names the clubs, because the unfiltered tab is the
+ * clubs.** It said "There are no rides, yet!" while the tab was every ride in
+ * the app, and that sentence is now false in the ordinary case: a rider in one
+ * quiet club sees it while thirty public rides sit one tap away on
+ * `/rides/explore`. Telling them there are no rides, with a door to rides
+ * directly above the sentence, is the contradiction this rewording removes.
+ *
  * **`spacing` changes the claim, not only the padding, and that is the point.**
- * Alone on the screen the unfiltered message is "There are no rides, yet!",
- * which is true. Above a Past rides section it is flatly contradicted by the
- * list under it, so that one case says *upcoming* instead — the qualification
- * the `mine` and `club` strings already carry, which is why only this branch
- * needed it.
+ * Above a Past rides section the message is flatly contradicted by the list
+ * under it, so that case says *upcoming* — the qualification the `mine` and
+ * `club` strings already carry.
  */
 function EmptyList({
   filter,
-  near,
   spacing = 'page',
 }: {
   filter?: RideFilter
-  /**
-   * The place the near-you filter is measuring from, when it is on — `null`
-   * when it is off. It outranks `filter` in the message because it is the
-   * narrower claim and the one the rider just made: told "you have no upcoming
-   * rides" while a near filter is silently excluding three of them, a rider
-   * concludes the list is broken rather than filtered.
-   */
-  near?: NearLabel
   spacing?: 'page' | 'section'
 }) {
-  const message = near
-    ? `No rides near ${near.name}, yet!`
-    : filter?.kind === 'mine'
+  const message =
+    filter?.kind === 'mine'
       ? 'You have no upcoming rides, yet!'
       : filter?.kind === 'club'
         ? 'This club has no upcoming rides, yet!'
         : spacing === 'page'
-          ? 'There are no rides, yet!'
-          : 'There are no upcoming rides, yet!'
+          ? 'No rides from your clubs, yet!'
+          : 'No upcoming rides from your clubs, yet!'
 
   return (
     <p

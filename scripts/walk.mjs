@@ -156,6 +156,7 @@ const STATIC_PATHS = [
   '/postcards',
   '/postcards/new',
   '/rides',
+  '/rides/explore',
   '/rides/new',
   '/clubs',
   '/clubs/explore',

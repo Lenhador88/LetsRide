@@ -64,9 +64,9 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 2349/2349 across 74 files
+npm run test:unit                     # 2347/2347 across 73 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
-  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 37 static routes
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 38 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
 PGPASSWORD=postgres npm test          # 2018 assertions, 0 failures
 ```
@@ -274,8 +274,8 @@ reclassifies the route to `●` without removing the segment. What the native ep
 version under-counts by one the day the first route is ever dynamic — it is right today only
 because `/` sorts first and is static.
 
-`next build` reports **37 static** and **0 dynamic**, and no `ƒ Proxy (Middleware)` line appears
-at all. Do not read the `Generating static pages (38/38)` line as the static route count — it is a
+`next build` reports **38 static** and **0 dynamic**, and no `ƒ Proxy (Middleware)` line appears
+at all. Do not read the `Generating static pages (39/39)` line as the static route count — it is a
 different quantity, and 35 against 34 is exactly the kind of near-miss that gets copied.
 
 **A route in that table is not the same thing as a page**, and `/icon.png` is the standing
@@ -404,15 +404,17 @@ ls out/index.html             # exists; .next-capacitor/ does not
 34 documents and 281 `__next.*.txt` RSC segment payloads, plus the static assets — 393 files in
 all, measured 2026-08-26 off `check-export.mjs`'s own closing line rather than counted by hand.
 **Documents, route rows and the `Generating static pages (N/N)` line are three different
-quantities that all read 34 or 35**, which is exactly the near-miss to get wrong. Reconcile them
-from the 32 `page.tsx` files (`git ls-files src/app | grep -c 'page\.tsx$'`) rather than from each
-other:
+quantities that read within one of each other**, which is exactly the near-miss to get wrong. Reconcile them
+from the 36 `page.tsx` files (`git ls-files src/app | grep -c 'page\.tsx$'`) rather than from each
+other. **Re-derive the page count every time — the three rows below were stale by three before
+`/rides/explore` was ever added**, because a table of totals goes stale on any commit that adds a
+route while nothing here fails:
 
 | Quantity | Today | = |
 |---|---|---|
-| Route rows in `next build`'s table | 34 | 32 pages + `/_not-found` + `/icon.png` |
-| `Generating static pages (N/N)` | 35 | those 34, plus the second file `/_not-found` emits |
-| `.html` in `out/`, which is what `check-export.mjs` counts | 34 | 32 pages + `_not-found.html` + `404.html` |
+| Route rows in `next build`'s table | 38 | 36 pages + `/_not-found` + `/icon.png` |
+| `Generating static pages (N/N)` | 39 | those 38, plus the second file `/_not-found` emits |
+| `.html` in `out/`, which is what `check-export.mjs` counts | 38 | 36 pages + `_not-found.html` + `404.html` |
 
 **The route table does list `/_not-found`** — it is the second row — so the older reading of this
 paragraph, that documents exceed the route count because the table omits it, was wrong twice over.
@@ -691,15 +693,16 @@ working around them.** Four carry detail worth having at hand:
    The redeploy carrying PD-102's re-authentication proof closed **2026-08-17T14:32Z** — `delete-account`
    at **PROD v9 / DEV v5**, both `ezbr_sha256` `9793933d…`, both newer than the directory's last
    *behavioural* commit. Both functions are `ACTIVE` on both projects with `verify_jwt` true;
-   `resolve-ride-location` sits at `02e56f38…`, PROD v3 / DEV v3, redeployed 2026-08-27 by PD-267.
+   `resolve-ride-location` sits at `c09a0474…`, DEV v6 / PROD v5, redeployed 2026-08-27T14:41Z with
+   PD-236 — and `search-places` at `97ae3134…`, DEV v5 / PROD v9, redeployed 14:28Z the same
+   sitting. **Nothing is owed on any of the three today**, which is rare enough to be worth
+   re-measuring rather than trusting.
 
-   **A FOURTH redeploy of `resolve-ride-location` is owed, and it is the one deploy in this repo
-   with an ordering rule that runs BACKWARDS.** PD-236 sends `attribution=none`, so the deployed
-   build stops burning the credit into the tile, and `MapAttribution` in the app is what replaces
-   it. **The app must be SERVING before this is deployed, never after** — a duplicate credit for
-   the length of a deploy is harmless, an absent one is a licence breach on every ride card. So:
-   merge the PR, confirm `app-dev` is serving it, then deploy. That is the opposite of `069`/`070`'s
-   additive-first rule, which is why it is written here rather than left to be inferred from it.
+   **What IS still owed is a re-render of the stored tiles.** A tile is rendered once and written to
+   `rides.map_card_path` / `map_detail_path`; nothing re-renders it, so every ride created before
+   2026-08-27T14:41Z keeps the old build's output — burned-in credit, card z13, detail z15, no pin.
+   The function runs on ride creation and on an address edit and nowhere else, so clearing them is a
+   deliberate pass through the app's own edit form rather than something that heals.
 
    **Cross-project equality never means current** —
    it says the two projects agree, never that either matches the repo, which is row 2 of §Store
