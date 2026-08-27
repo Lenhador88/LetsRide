@@ -1,19 +1,26 @@
 'use client'
 
-import { useEffect } from 'react'
-import { markRideChatSeen } from '@/lib/actions/ride-messages'
+import { useEffect, useRef } from 'react'
 
 /**
- * Advances this rider's read watermark for a ride's chat while they are reading
- * it (`061`, PD-120).
+ * Advances this rider's read watermark for the thread they are reading — a
+ * ride's chat (`061`, PD-120) or a club discussion (`081`, PD-307).
  *
  * Renders nothing. `MarkClubSeen`'s shape, and the reason that shape survives is
- * the same one: **the chat screen mounts this conditionally, on `isCrew`**, so
- * "only a crew member marks a thread read" is expressed by whether the component
- * is on the page rather than by a condition inside an effect that runs anyway.
- * The database refuses the write regardless — `061`'s WITH CHECK requires the
- * ride's own audience — so the conditional mount is an optimisation and the
- * policy is the enforcement.
+ * the same one: **the screen mounts this conditionally, on `isCrew`** — or, in a
+ * club discussion, below the gate that has already established the rider can
+ * read the thread at all — so "only somebody in the audience marks a thread
+ * read" is expressed by whether the component is on the page rather than by a
+ * condition inside an effect that runs anyway. The database refuses the write
+ * regardless — `061`'s and `081`'s WITH CHECKs each require their own audience —
+ * so the conditional mount is an optimisation and the policy is the
+ * enforcement.
+ *
+ * **What it marks is the caller's**, passed as `onMark` rather than imported, so
+ * this file names neither table. Held in a ref and never in the effect's
+ * dependencies: it is an inline arrow at one of its two call sites, so naming it
+ * would re-fire the write on every render — the same shape and the same
+ * reasoning as `useRideMessageStream`'s `onMessageRef`.
  *
  * ## Two triggers, and the second is what PD-119 made necessary
  *
@@ -23,7 +30,7 @@ import { markRideChatSeen } from '@/lib/actions/ride-messages'
  * them a message they watched arrive — the single most visible way this feature
  * can be wrong, and the normal path rather than an edge case.
  *
- * So the effect keys on `[rideId, newestMessageId]`. `rideId` alone would not
+ * So the effect keys on `[threadId, newestMessageId]`. `threadId` alone would not
  * re-fire; the message id changes exactly once per arrival, because the chat
  * screen refetches the thread on every one.
  *
@@ -53,8 +60,8 @@ import { markRideChatSeen } from '@/lib/actions/ride-messages'
  * message. The write is an idempotent upsert of a server-imposed timestamp, so a
  * double fire costs one request and changes nothing.
  */
-export function MarkRideChatSeen({
-  rideId,
+export function MarkChatSeen({
+  threadId,
   /**
    * The id of the last message the thread is currently drawing, or `undefined`
    * while it is still loading or the chat is empty.
@@ -65,19 +72,29 @@ export function MarkRideChatSeen({
    * mount regardless, and this only ever adds further firings.
    */
   newestMessageId,
+  onMark,
 }: {
-  rideId: string
+  /** The ride id or the discussion id — whichever `onMark` is expecting. */
+  threadId: string
   newestMessageId: string | undefined
+  /** Writes the watermark. Resolves rather than rejects by contract; a failure
+   * is swallowed by the action itself, in the safe direction. */
+  onMark: (threadId: string) => void
 }) {
+  const onMarkRef = useRef(onMark)
   useEffect(() => {
-    if (!rideId) return
+    onMarkRef.current = onMark
+  })
+
+  useEffect(() => {
+    if (!threadId) return
 
     const mark = () => {
       // `visibilityState` rather than `hasFocus()`: focus is lost to a dialog or
       // another window on the same screen, where the thread is still perfectly
       // readable and the rider is plausibly reading it.
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
-      void markRideChatSeen(rideId)
+      onMarkRef.current(threadId)
     }
 
     mark()
@@ -88,7 +105,7 @@ export function MarkRideChatSeen({
     // of deferring it.
     document.addEventListener('visibilitychange', mark)
     return () => document.removeEventListener('visibilitychange', mark)
-  }, [rideId, newestMessageId])
+  }, [threadId, newestMessageId])
 
   return null
 }

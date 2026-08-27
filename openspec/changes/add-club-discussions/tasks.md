@@ -92,48 +92,48 @@ Every task here is required: `openspec/config.yaml` and `CLAUDE.md` both say a p
 
 ## 7. Types, validation, reads and writes
 
-- [ ] 7.1 Add `ClubDiscussion`, `ClubDiscussionListItem` and `ClubMessage` to `src/types/index.ts`. Domain types are never inlined.
-- [ ] 7.2 `clubDiscussionTitleSchema` and `clubMessageBodySchema` in `src/lib/validation/clubs.ts`, each mirroring its CHECK exactly — `.trim()` plus the same ceiling on the raw length. Zod owns the message, the database owns the guarantee.
-- [ ] 7.3 `src/lib/data/club-discussions.ts` through `resolveSupabase`: `getClubDiscussions(clubId)`, `getClubDiscussion(id)`, `getClubDiscussionMessages(discussionId)`, `getClubDiscussionUnread(clubId)` (the RPC). Return `null` for a decided absence; never a bare `.from()` in a component.
-- [ ] 7.4 `src/lib/actions/club-discussions.ts`: `createClubDiscussion`, `deleteClubDiscussion`, `moderateClubDiscussion` (RPC), `sendClubMessage`, `deleteClubMessage` (**RPC — `delete_own_club_message`, never `.from('club_messages').delete()`, which holds no grant**), `markClubDiscussionSeen`. Plain async functions, `useActionState`-compatible, each invalidating exactly what it moves.
-- [ ] 7.4b `deleteClubDiscussion` must not chain `.select()` onto its delete. `RETURNING` re-attaches the SELECT policy (measured), which is the mechanism that makes a delete match zero rows and still report success.
-- [ ] 7.5 `sendClubMessage` supplies a client-generated `id` and reads `23505` as success — the retry path `034` designed the suppliable id for.
-- [ ] 7.6 `markClubDiscussionSeen` upserts and **sends** `last_read_at`; the trigger makes the value true. Comment that withholding the column grant would **not** work here — PostgREST builds the `do update set` list from the request body, so an omitted column needs no privilege and nothing raises (`061` §3's measured correction).
+- [x] 7.1 Add `ClubDiscussion`, `ClubDiscussionListItem` and `ClubMessage` to `src/types/index.ts`. Domain types are never inlined.
+- [x] 7.2 `clubDiscussionTitleSchema` and `clubMessageBodySchema` in `src/lib/validation/clubs.ts`, each mirroring its CHECK exactly — `.trim()` plus the same ceiling on the raw length. Zod owns the message, the database owns the guarantee.
+- [x] 7.3 `src/lib/data/club-discussions.ts` through `resolveSupabase`: `getClubDiscussions(clubId)`, `getClubDiscussion(id)`, `getClubDiscussionMessages(discussionId)`, `getClubDiscussionUnread(clubId)` (the RPC). Return `null` for a decided absence; never a bare `.from()` in a component.
+- [x] 7.4 `src/lib/actions/club-discussions.ts`: `createClubDiscussion`, `deleteClubDiscussion`, `moderateClubDiscussion` (RPC), `sendClubMessage`, `deleteClubMessage` (**RPC — `delete_own_club_message`, never `.from('club_messages').delete()`, which holds no grant**), `markClubDiscussionSeen`. Plain async functions, `useActionState`-compatible, each invalidating exactly what it moves.
+- [x] 7.4b `deleteClubDiscussion` must not chain `.select()` onto its delete. `RETURNING` re-attaches the SELECT policy (measured), which is the mechanism that makes a delete match zero rows and still report success.
+- [x] 7.5 `sendClubMessage` supplies a client-generated `id` and reads `23505` as success — the retry path `034` designed the suppliable id for.
+- [x] 7.6 `markClubDiscussionSeen` upserts and **sends** `last_read_at`; the trigger makes the value true. Comment that withholding the column grant would **not** work here — PostgREST builds the `do update set` list from the request body, so an omitted column needs no privilege and nothing raises (`061` §3's measured correction).
 
 ## 8. Cache keys
 
-- [ ] 8.1 Add `clubs.discussions(clubId)`, `clubs.discussionsUnread(clubId)` (nested under the first) and `clubs.discussionMessages(discussionId)` to `src/lib/query/keys.ts`. No key written inline in a component, ever.
-- [ ] 8.2 Document in the `keys.ts` header table **which prefixes reach `clubs.discussionMessages` and which do not**, stated positively: `['clubs']` (i.e. `clubs.all()`) **does** reach it — `invalidate` matches structurally on prefix via `keyStartsWith` in `src/lib/query/queryClient.ts` — while `['clubs','detail',clubId]` does not, because the thread screen holds only the discussion id. Do **not** write "no prefix reaches it": that is false, and `keys.ts`'s header is treated as authoritative.
-- [ ] 8.3 Wire the invalidations: `createClubDiscussion` → `clubs.discussions(clubId)`; `deleteClubDiscussion`/`moderateClubDiscussion` → the list **and** `clubs.discussionMessages(id)`, carrying the club id in the action rather than re-reading it after the row is gone; `sendClubMessage`/`deleteClubMessage` → `clubs.discussionMessages(id)`; `markClubDiscussionSeen` → `clubs.discussionsUnread(clubId)` alone.
+- [x] 8.1 Add `clubs.discussions(clubId)`, `clubs.discussionsUnread(clubId)` (nested under the first) and `clubs.discussionMessages(discussionId)` to `src/lib/query/keys.ts`. No key written inline in a component, ever.
+- [x] 8.2 Document in the `keys.ts` header table **which prefixes reach `clubs.discussionMessages` and which do not**, stated positively: `['clubs']` (i.e. `clubs.all()`) **does** reach it — `invalidate` matches structurally on prefix via `keyStartsWith` in `src/lib/query/queryClient.ts` — while `['clubs','detail',clubId]` does not, because the thread screen holds only the discussion id. Do **not** write "no prefix reaches it": that is false, and `keys.ts`'s header is treated as authoritative.
+- [x] 8.3 Wire the invalidations: `createClubDiscussion` → `clubs.discussions(clubId)`; `deleteClubDiscussion`/`moderateClubDiscussion` → the list **and** `clubs.discussionMessages(id)`, carrying the club id in the action rather than re-reading it after the row is gone; `sendClubMessage`/`deleteClubMessage` → `clubs.discussionMessages(id)`; `markClubDiscussionSeen` → `clubs.discussionsUnread(clubId)` alone.
 
 ## 9. Generalise the chat components
 
-- [ ] 9.1 Move `RideChatThread`, `RideChatRow`, `RideChatComposer` and `MarkRideChatSeen` to `src/components/chat/` as `ChatThread`, `ChatRow`, `ChatComposer`, `MarkChatSeen`, parameterising the ride-specific bits. Update the ride chat screen's imports.
-- [ ] 9.2 Rename `formatRideMessageDay` → `formatChatMessageDay` in `src/lib/utils.ts` and its unit tests. Keep `formatRideTime(created_at, null)` as the message clock — a discussion has no timezone, so `null` is honest, and `CLAUDE.md` forbids adding a generic formatter.
-- [ ] 9.3 `npm run docs:check` and `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs` — a rename can break a declared claim or a section pointer of the form `some-file.md` followed by a section mark.
+- [x] 9.1 **Three of the four moved; `RideChatRow` deliberately did not.** `ChatThread`, `ChatComposer` and `MarkChatSeen` are in `src/components/chat/` and parameterised (an optional `onDeleteMessage`, `maxLength`/`placeholder`, and an `onMark` callback held in a ref). **`RideChatRow` is not a chat row** — it is the labelled `Ride chat` link on the ride plan (PD-254/PD-125), reading `queryKeys.rides.unread` and linking to `routes.rideChat`. Club Discussions has no single-row counterpart (its section is a header plus N `ClubDiscussionRow`s plus `See all`), so moving it would have produced a `ChatRow` with one caller, a ride-shaped key inside `components/chat/`, and no shared behaviour — the "smaller shared core with two thin wrappers" the brief allows. It stays at `src/components/rides/RideChatRow.tsx`, untouched.
+- [x] 9.2 Rename `formatRideMessageDay` → `formatChatMessageDay` in `src/lib/utils.ts` and its unit tests. Keep `formatRideTime(created_at, null)` as the message clock — a discussion has no timezone, so `null` is honest, and `CLAUDE.md` forbids adding a generic formatter.
+- [x] 9.3 `npm run docs:check` and `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs` — a rename can break a declared claim or a section pointer of the form `some-file.md` followed by a section mark.
 
 ## 10. Realtime
 
-- [ ] 10.1 `src/lib/realtime/useClubDiscussionStream.ts`, modelled on `useRideMessageStream`: one channel named `club-discussion:${discussionId}:messages`, INSERT only, removed on unmount, refetch on reconnect and on foreground.
-- [ ] 10.2 The **thread list does not subscribe**. State that in the list component's docstring, so a screen that quietly does not subscribe is distinguishable from one whose channel is broken.
-- [ ] 10.3 Verify per-subscriber authorization **by observation** against DEV — two accounts, a block between them, one shared thread; the blocked side must receive silence. The RLS suite cannot assert this; plain Postgres has no Realtime.
+- [x] 10.1 `src/lib/realtime/useClubDiscussionStream.ts`, modelled on `useRideMessageStream`: one channel named `club-discussion:${discussionId}:messages`, INSERT only, removed on unmount, refetch on reconnect and on foreground.
+- [x] 10.2 The **thread list does not subscribe**. State that in the list component's docstring, so a screen that quietly does not subscribe is distinguishable from one whose channel is broken.
+- [ ] 10.3 **NOT DONE — owed to `test`, and nothing here should be read as covering it.** Verifying per-subscriber authorization needs two live sessions, a block between them and a browser against DEV, which this agent was scoped out of (the `test` agent owns running the app against DEV, on a still tree). What is in place for it: `club_messages` is in the publication and `club_discussions` is not (both asserted in `rls_test.sql`), the channel is `club-discussion:${discussionId}:messages`, INSERT only, filtered server-side on `discussion_id`. **The silence a blocked subscriber must receive is unmeasured.**
 
 ## 11. Screens
 
-- [ ] 11.1 `ClubDiscussionsSection` on `/clubs/detail`, shaped like the Members section — header, up to N rows, `See all`. For a **non-member of a public club** it renders a join prompt and discloses no title, count, author or time.
-- [ ] 11.2 `/clubs/detail/discussions?id=<club id>` — the list, keyset-paged over `(created_at desc, id desc)`, with the per-thread unread dot from `clubs.discussionsUnread`.
-- [ ] 11.3 `/clubs/detail/discussion?id=<discussion id>` — the thread, reusing `ChatThread`/`ChatComposer`, subscribing, and mounting `MarkChatSeen`.
-- [ ] 11.4 `/clubs/detail/discussions/new?id=<club id>` — the create form, title only, hand-rolled controlled input plus `useActionState`.
-- [ ] 11.5 Add the routes to `src/lib/routes.ts` using `DETAIL_ID_PARAM`, and add them to the walk's route list so a screen that throws on load is caught.
-- [ ] 11.6 Every screen: gate on **data**, never `isLoading`; `null` is decided and `undefined` is "not yet"; skeleton at the content's own padding; an error state with retry that is not an empty conversation; a partial state where a failed unread call leaves the list rendering unmarked.
-- [ ] 11.7 Read the composition from `design/` only — there is no v2 Discussions frame, so `Ride - Chat` (`2226:4999`) and `Inbox - Chats` (`2375:9518`) are the measured sources. Use `--all` on any `tree`. Icons from `@/components/icons/generated`; primary buttons near-black `Grey/100 #1A1A1A`, never green.
+- [x] 11.1 `ClubDiscussionsSection` on `/clubs/detail`, shaped like the Members section — header, up to N rows, `See all`. For a **non-member of a public club** it renders a join prompt and discloses no title, count, author or time.
+- [x] 11.2 `/clubs/detail/discussions?id=<club id>` — the list, keyset-paged over `(created_at desc, id desc)`, with the per-thread unread dot from `clubs.discussionsUnread`.
+- [x] 11.3 `/clubs/detail/discussion?id=<discussion id>` — the thread, reusing `ChatThread`/`ChatComposer`, subscribing, and mounting `MarkChatSeen`.
+- [x] 11.4 `/clubs/detail/discussions/new?id=<club id>` — the create form, title only, hand-rolled controlled input plus `useActionState`.
+- [x] 11.5 Add the routes to `src/lib/routes.ts` using `DETAIL_ID_PARAM`, and add them to the walk's route list so a screen that throws on load is caught.
+- [x] 11.6 Every screen: gate on **data**, never `isLoading`; `null` is decided and `undefined` is "not yet"; skeleton at the content's own padding; an error state with retry that is not an empty conversation; a partial state where a failed unread call leaves the list rendering unmarked.
+- [x] 11.7 Read the composition from `design/` only — there is no v2 Discussions frame, so `Ride - Chat` (`2226:4999`) and `Inbox - Chats` (`2375:9518`) are the measured sources. Use `--all` on any `tree`. Icons from `@/components/icons/generated`; primary buttons near-black `Grey/100 #1A1A1A`, never green.
 
 ## 12. Verify and document
 
-- [ ] 12.1 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
+- [x] 12.1 `npx tsc --noEmit` clean; `npm run lint` 0 errors / 9 pre-existing `no-img-element` warnings; `npm run test:unit` **2346 passing across 74 files**, up from 2319 and no file lost; `npm run build` green, with `/clubs/detail/discussion`, `/clubs/detail/discussions` and `/clubs/detail/discussions/new` prerendered static. `npm run docs:check` 33/42 — the 9 failures are all count claims in `CLAUDE.md`/`docs/HANDOFF.md` (tasks 12.5–12.7, main thread): migrations 80→81, RLS 1841→2010, unit tests 2319→2346, static routes 34→37 and the static-pages total 35→38. `crossrefs.test.mjs` 26/26.
 - [ ] 12.2 `npm run walk` against DEV, through `scripts/supabase-relay.mjs` — the only gate that renders anything. Confirm the new routes render and the ride chat still does after task 9.
-- [ ] 12.3 Confirm no component calls `supabase.from()`: `grep -rn "supabase\.from(" src/app/ src/components/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'` prints only the existing comment lines.
-- [ ] 12.4 Confirm the dependency count is unchanged: `node -p "Object.keys(require('./package.json').dependencies).length"`.
+- [x] 12.3 Confirm no component calls `supabase.from()`: `grep -rn "supabase\.from(" src/app/ src/components/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'` prints only the existing comment lines.
+- [x] 12.4 Confirm the dependency count is unchanged: `node -p "Object.keys(require('./package.json').dependencies).length"`.
 - [ ] 12.5 Add the three table rows to `docs/reference/schema.md`, each carrying the audience predicate, the cascade behaviour and the deletion answer.
 - [ ] 12.6 Update the `Clubs` row of `docs/reference/product-scope.md`: Discussions ships, and the remaining gaps are the activity feed and invitations.
 - [ ] 12.7 Update `CLAUDE.md`'s advisor table to **fifteen**, naming both `moderate_club_discussion` and `delete_own_club_message`, and its participation-gate paragraph to thirteen tables. **Main thread writes these, not a subagent.**

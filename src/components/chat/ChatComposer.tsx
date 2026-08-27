@@ -2,7 +2,6 @@
 
 import { useRef, useState, useTransition } from 'react'
 import { PaperPlaneIcon } from '@/components/icons/generated'
-import { RIDE_MESSAGE_MAX_LENGTH } from '@/lib/validation/rides'
 import { cn } from '@/lib/utils'
 
 /**
@@ -26,7 +25,11 @@ function newMessageId(): string {
 
 /**
  * The `Reply` bar from `Ride - Chat` (`2226:4999`) and its focused variant in
- * `Ride - Chat - Text focus` (`2242:11086`).
+ * `Ride - Chat - Text focus` (`2242:11086`) — the composer for **both** of the
+ * app's message streams since `081` (PD-307). Moved here from
+ * `components/rides/RideChatComposer.tsx` with two props added and every
+ * measured number below unchanged; the only ride-shaped things in it were the
+ * placeholder and the length bound, and both are now the caller's.
  *
  * Measured: an 80px bar on `Grey/10` with a `Grey/10%` top hairline, holding a
  * 326×40 field and a 40×40 `Accent Brand/100` send button with a 24px Paper
@@ -57,11 +60,21 @@ function newMessageId(): string {
  * field: a rider's own words are the one thing that must survive a refusal, the
  * same rule `CommentForm` follows.
  */
-export function RideChatComposer({
+export function ChatComposer({
   onSend,
+  maxLength,
+  placeholder,
 }: {
   /** Resolves to an error message, or `null` when the message landed. */
   onSend: (body: string, messageId: string) => Promise<string | null>
+  /**
+   * The database's own ceiling for this stream — `RIDE_MESSAGE_MAX_LENGTH` or
+   * `CLUB_MESSAGE_MAX_LENGTH`, both 1000 today and both owned by a CHECK. Taken
+   * as a prop rather than defaulted, because a default is how a table's bound
+   * gets silently applied to a different table.
+   */
+  maxLength: number
+  placeholder: string
 }) {
   const [body, setBody] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -146,12 +159,12 @@ export function RideChatComposer({
           name="body"
           value={body}
           onChange={(event) => setBody(event.target.value)}
-          // The database refuses anything longer (`034`) and
-          // `rideMessageBodySchema` says so in words; this stops the rider
-          // reaching either by typing.
-          maxLength={RIDE_MESSAGE_MAX_LENGTH}
+          // The database refuses anything longer (`034` for a ride, `081` for a
+          // club discussion) and the matching Zod schema says so in words; this
+          // stops the rider reaching either by typing.
+          maxLength={maxLength}
           aria-label="Message"
-          placeholder="Message the crew"
+          placeholder={placeholder}
           className={cn(
             'h-10 min-w-0 flex-1 rounded-lg bg-background px-3 text-base text-foreground outline-none transition-colors',
             'placeholder:text-muted/70 focus:bg-surface'

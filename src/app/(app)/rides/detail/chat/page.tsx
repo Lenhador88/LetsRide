@@ -5,16 +5,18 @@ import Link from 'next/link'
 import { notFound, useSearchParams } from 'next/navigation'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
-import { MarkRideChatSeen } from '@/components/rides/MarkRideChatSeen'
-import { RideChatComposer } from '@/components/rides/RideChatComposer'
-import { RideChatThread } from '@/components/rides/RideChatThread'
+import { ChatComposer } from '@/components/chat/ChatComposer'
+import { ChatThread } from '@/components/chat/ChatThread'
+import { MarkChatSeen } from '@/components/chat/MarkChatSeen'
 import { RideHeader } from '@/components/rides/RideHeader'
 import { getRide, getRideCrew, withOrganizer } from '@/lib/data/rides'
-import { getRideMessages, groupMessages } from '@/lib/data/ride-messages'
-import { sendRideMessage } from '@/lib/actions/ride-messages'
+import { groupMessages } from '@/lib/data/chat'
+import { getRideMessages } from '@/lib/data/ride-messages'
+import { markRideChatSeen, sendRideMessage } from '@/lib/actions/ride-messages'
 import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
+import { RIDE_MESSAGE_MAX_LENGTH } from '@/lib/validation/rides'
 import { useRideMessageStream } from '@/lib/realtime/useRideMessageStream'
 import type { RideChatMessage } from '@/types'
 
@@ -265,9 +267,10 @@ function ChatBody({
           of your own send is the last thing in `shown` and can never be unread
           for its own author, so keying on it would fire a write that changes
           nothing. `messages.data` is what the database has confirmed. */}
-      <MarkRideChatSeen
-        rideId={rideId}
+      <MarkChatSeen
+        threadId={rideId}
         newestMessageId={messages.data[messages.data.length - 1]?.id}
+        onMark={markRideChatSeen}
       />
       {shown.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center motion-safe:animate-fade-in">
@@ -275,9 +278,15 @@ function ChatBody({
           <p className="text-sm text-muted">Say hello to the riders coming along.</p>
         </div>
       ) : (
-        <RideChatThread messages={shown} className="motion-safe:animate-fade-in" />
+        <ChatThread messages={shown} className="motion-safe:animate-fade-in" />
       )}
-      <RideChatComposer onSend={send} />
+      {/* No `onDeleteMessage`: the ride chat draws no erasure control and did
+          not before `081` generalised this component — see `ChatThread`. */}
+      <ChatComposer
+        onSend={send}
+        maxLength={RIDE_MESSAGE_MAX_LENGTH}
+        placeholder="Message the crew"
+      />
     </>
   )
 }

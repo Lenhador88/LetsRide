@@ -489,7 +489,14 @@ export function rideDayStartUtc(now: number = Date.now()): string {
 }
 
 /**
- * A ride chat's day separator — `Today`, `Yesterday`, or `Sat, 16 Nov`.
+ * A chat's day separator — `Today`, `Yesterday`, or `Sat, 16 Nov`.
+ *
+ * **Named for the surface rather than for the ride since `081`** (PD-307): both
+ * the ride chat and a club discussion draw this exact separator, so a second
+ * function with the same body would be this file's per-screen rule read as its
+ * letter against its reason — the same argument the bubble clock below already
+ * makes for reusing `formatRideTime`. A club discussion has no timezone at all,
+ * so its callers pass `null` and mean it.
  *
  * **The design draws no separator at all**, and this is a deliberate addition
  * rather than a fidelity miss. `Ride - Chat` (`2226:4999`) stamps every bubble
@@ -514,7 +521,7 @@ export function rideDayStartUtc(now: number = Date.now()): string {
  * `formatDateTime` fixed. Pinned until the zone column lands and moves all of
  * them together.
  */
-export function formatRideMessageDay(date: string, now: Date = new Date()): string {
+export function formatChatMessageDay(date: string, now: Date = new Date()): string {
   const key = rideZoneDayKey(date)
   // Uppercased to match `formatRideDate`, which is the branch below and which
   // the design uppercases on the ride card. Mixing `Today` with `SAT, 16 NOV`

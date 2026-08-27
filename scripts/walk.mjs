@@ -914,6 +914,19 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
   const club = preferClub ?? (await firstDetailId('/clubs', '/clubs/detail'))
   if (!club) say('  (no clubs to open — /clubs/detail and its sub-pages unwalked)')
 
+  // The thread route needs a DISCUSSION id, which only the club's own
+  // Discussions list carries — so the list is the "list page" here, reached with
+  // the club id it was just given. A club with no threads yields nothing and the
+  // route is skipped rather than guessed at, and it says so: a silent skip here
+  // reads as a pass.
+  const discussion = club
+    ? await firstDetailId(
+        `/clubs/detail/discussions?id=${club}`,
+        '/clubs/detail/discussion'
+      )
+    : null
+  if (club && !discussion) say('  (no discussions in that club — /clubs/detail/discussion unwalked)')
+
   const postcard = await firstDetailId('/postcards', '/postcards/detail')
   if (!postcard) say('  (no postcard thread link — /postcards/detail unwalked)')
 
@@ -964,12 +977,17 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
           // reads as a broken screen rather than a stale line in this list —
           // one permanent red mark in the only gate that renders anything.
           '/clubs/detail/edit',
+          // Both take the CLUB's id; the thread route below takes the
+          // discussion's, which is why it is not in this map.
+          '/clubs/detail/discussions',
+          '/clubs/detail/discussions/new',
         ].map((p) => detail(p, club))
       : []),
+    ...(discussion ? [detail('/clubs/detail/discussion', discussion)] : []),
     ...(postcard ? [detail('/postcards/detail', postcard)] : []),
     ...(profile ? [detail('/profile/detail', profile)] : []),
   ]
-  return { ride, club, postcard, profile, paths }
+  return { ride, club, discussion, postcard, profile, paths }
 }
 
 /**
