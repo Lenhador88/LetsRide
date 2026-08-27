@@ -55,7 +55,7 @@ the crew helper walks past. Here it closes nothing — `private.is_club_member` 
 `clubs` SELECT disjunct — and the helper is the whole audience.
 
 **Alternative considered: drop the redundant `EXISTS`.** Rejected, for the reasons in
-`specs/club-discussions/spec.md` §Discussion visibility. The short version: the implication is a
+the `Discussion visibility` requirement in `specs/club-discussions/spec.md`. The short version: the implication is a
 property of `clubs`' current three arms, and `054`'s own recursion warning shows `clubs` is
 actively edited; and using a `private` membership helper as a *sole* conjunct anywhere teaches the
 next table that the shape is safe, which is precisely how `034`'s first draft shipped a leak.
@@ -132,11 +132,21 @@ per-viewer aggregate over `club_messages` for every row of the list — the shap
 
 The follow-up, if the ordering is wanted: a `security invoker` function returning
 `(discussion_id, last_message_at)` under the caller's RLS, sorted client-side, capped. It is the
-same shape as the unread reader and can reuse its index. Named, not built. Non-blocking question Q3.
+same shape as the unread reader and can reuse its index. Named, not built — the `Questions Closed` section, D3.
 
-**Consequence worth stating plainly:** in the Welcome club, whose one thread is created by its
-owner, `created_at DESC` puts "Say hello" first by construction. That is the whole of what a pin
-would have bought there.
+**Consequence worth stating plainly, and it is a loss rather than a wash:** `created_at DESC` puts
+"Say hello" first only while it is the *newest* thread. The Welcome club is the club least likely to
+keep that true — every onboarded rider is auto-joined (`058`), and any member may open a thread — so
+the one thread PD-239 wants a brand-new rider to land on is the one most reliably pushed down. PD-299
+asked for a **pinned** thread and this change does not deliver one.
+
+**There is no cheap pin that is not a column, and inventing one would be worse than the gap.** The
+near-misses were considered and all fail: sorting the club's oldest thread first inverts the list for
+every other club; sorting the owner's threads first pins every thread they ever open; hard-coding the
+default club's first thread puts a data-dependent id in a sort. The honest options are a column with
+an owner-only write path or nothing, and this change takes nothing — see §Pinning and the Welcome
+club for what un-defers it. **The product owner has to accept this loss**, and it is called out in
+the `Questions Closed` section rather than left to be discovered when the Welcome club's greeting is third.
 
 ### Pinning and the Welcome club
 
@@ -152,7 +162,13 @@ member-writable pin is a member pinning themselves to the top of a club for ever
 
 ### Unread: per thread, `061` transferred, with `068` and `079` already applied
 
-`club_discussion_reads (user_id, discussion_id, last_read_at)`, PK `(user_id, discussion_id)`.
+`club_discussion_reads (user_id, discussion_id, last_read_at)`, PK `(user_id, discussion_id)`,
+with **both key columns carrying a foreign key**: `user_id references public.profiles(id) on delete
+cascade` and `discussion_id references public.club_discussions(id) on delete cascade`. An earlier
+draft of this file named the columns and the PK and no `references` at all — alone among the three
+tables — which builds a table whose rows say *when this named person last read this named topic*
+and which **survives that person's account deletion for ever**, `029` working purely by cascade. It
+is the one omission here that would have been a privacy defect rather than a correctness one.
 
 - **`user_id` leads the key** — `029` asserts that no foreign key into `profiles` lacks a
   leading-column index, derived from `pg_constraint`, so `(discussion_id, user_id)` fails the suite.
@@ -184,10 +200,12 @@ exists (
    where m.discussion_id = d.id
      and m.author_id <> auth.uid()
      and m.created_at > coalesce(
-       (select w.last_read_at from public.club_discussion_reads w
-         where w.user_id = auth.uid() and w.discussion_id = d.id),
-       (select k.joined_at from public.club_members k
-         where k.club_id = d.club_id and k.user_id = auth.uid()),
+       greatest(
+         (select w.last_read_at from public.club_discussion_reads w
+           where w.user_id = auth.uid() and w.discussion_id = d.id),
+         (select k.joined_at from public.club_members k
+           where k.club_id = d.club_id and k.user_id = auth.uid())
+       ),
        d.created_at
      )
 )
@@ -201,13 +219,24 @@ Four things, each carrying its precedent:
    false.
 2. **`author_id <> auth.uid()`** — `079`'s fix, applied at birth. Your own message never lights
    your own dot, and the answer is then correct independently of a race with the navigation.
-3. **Three coalesce arms.** The third is load-bearing today and for `061`'s exact reason arriving
-   through a different door: a club **owner may hold no `club_members` row** — `054` exists because
-   that state is reachable through `createClub`'s two un-transacted inserts *or* through the owner
-   simply leaving, `club_members` DELETE being `auth.uid() = user_id` with no owner carve-out. With
-   two arms their comparison point is NULL, every `created_at > NULL` is NULL, and the owner is the
-   one member whose dot never lights, silently and for ever.
-4. **All three arms are on the database's clock.** `048` made `club_members.joined_at`
+3. **`greatest(last_read_at, joined_at)`, not `coalesce` between them — and `061` would be wrong
+   here.** A watermark row **survives leaving the club**: the FK is to `club_discussions`, so
+   nothing cascades it away, and rejoining reuses it. With `last_read_at` merely first in a
+   `coalesce`, a rider who read a thread in March, left, and rejoined in September is compared
+   against their March watermark and is badged with every message sent while they were away — which
+   directly contradicts the requirement that a rejoiner is not shown the back catalogue. `greatest`
+   takes whichever is later, so the rejoin advances the comparison point without a write.
+   Measured on this Postgres: `greatest` **ignores NULL** (`greatest(ts, null)` returns `ts`) and is
+   NULL only when every argument is, so the outer `coalesce` still falls through to the third arm
+   exactly as before. `061` does not need this because `ride_reads`' equivalent is a crew a rider
+   rejoins far more rarely, but the same latent defect is there and is not fixed here.
+4. **The third arm is load-bearing today**, for `061`'s exact reason arriving through a different
+   door: a club **owner may hold no `club_members` row** — `054` exists because that state is
+   reachable through `createClub`'s two un-transacted inserts *or* through the owner simply leaving,
+   `club_members` DELETE being `auth.uid() = user_id` with no owner carve-out. With that arm absent
+   their comparison point is NULL, every `created_at > NULL` is NULL, and the owner is the one
+   member whose dot never lights, silently and for ever.
+5. **All three arms are on the database's clock.** `048` made `club_members.joined_at`
    server-owned; the per-column INSERT grant makes `club_discussions.created_at` so. A comparison
    spanning two clocks through the *fallback* is the same defect wearing a fallback's clothes.
 
@@ -217,31 +246,96 @@ rather than a count for `061`'s reason — `exists` short-circuits, so it is O(1
 through the `(discussion_id, created_at, id)` index, with no `limit 100` to justify and no number
 for someone to render later.
 
-### Moderation: a definer RPC for threads, a policy arm for messages
+### Deleting a message: RPC only, because a block otherwise makes your own words unerasable
 
-The asymmetry is deliberate and is argued in `specs/club-discussions/spec.md`. The short version:
-`034` declined the owner-blocked-author gap because *"the block itself already removes the messages
-from the blocker's view, which is the remedy a rider actually reaches for."* That holds for a chat
-message and **fails for a thread**, which is a persistent titled object every *other* member keeps
-reading after the owner has blocked its author.
+**The defect, and it is real.** A authors thread T. B posts in it. A blocks B. B can no longer
+delete their own message, `club_messages` DELETE matching zero rows and PostgREST reporting
+success — while B's words stay visible to every unblocked member. The spec's own stated remedy for
+a message you regret is deletion, so a block silently removes it. The same conjunction stops the
+club owner deleting **any** message in a thread whose author they blocked, which is wider than the
+gap `034` recorded.
 
-`public.moderate_club_discussion(discussion uuid)` therefore follows `043`'s shape exactly: one
-`select ... for update` joining `club_discussions` to `clubs` on `owner_id = auth.uid()`, one raise
-site so "no such thread" and "not your club" are indistinguishable, `security definer`,
-`set search_path = ''`, `revoke all from public, anon`, `grant execute to authenticated`. It deletes
-one row and lets the FK cascade take the messages.
+**Two mechanisms cause it and only one is obvious.** The obvious one is the two-hop `EXISTS` in the
+DELETE `USING`, which runs under the caller's RLS and therefore carries the *thread's* block arm.
+The non-obvious one is that **the SELECT policy attaches to the DELETE as well**, and the message's
+own SELECT policy carries the same two-hop `EXISTS`. Measured on this project (Postgres 17.6), with
+a row the caller cannot select but does own and a DELETE policy that permits it:
 
-It **adds exactly one** `authenticated_security_definer_function_executable` advisor, taking the
-documented total from thirteen to fourteen. `club_discussion_unread` is `invoker` and adds none.
-Re-derive with `get_advisors(security)` before and after; a fifteenth means a revoke did not land.
+| statement | outcome |
+|---|---|
+| `delete from t where id = 1` | row **survives** — SELECT policy applied |
+| `delete from t where id = 1 returning 1` | row **survives** |
+| `delete from t` | row deleted — SELECT policy not applied |
+
+That confirms `034`'s recorded measurement rather than contradicting it, and it is worth saying how
+nearly this went the other way: two earlier probes reported the opposite because a trailing bare
+`delete from t` in the same transaction wiped the rows that had survived the statements under test.
+A probe whose cleanup destroys its own evidence returns a clean, plausible, wrong answer — the
+comment trap wearing a test harness.
+
+**So relaxing the DELETE `USING` cannot fix this**, and a `private.discussion_club(discussion)`
+helper feeding that clause — the fix the review proposed — changes no observable outcome, because
+`supabase-js` issues `delete().eq('id', …)` and the SELECT policy hides the row before the `USING`
+clause is ever reached. Adding it would be adding a conjunct whose stated benefit does not exist,
+which this change's own spec forbids in as many words. **It is therefore not adopted**, and the
+reason is a measurement rather than a preference.
+
+**The fix is `public.delete_own_club_message(message uuid)`** — `security definer`, re-checking
+`author_id = auth.uid()` in its own body — and `club_messages` carries **no DELETE policy and no
+DELETE grant at all**. That is `078`'s `push_devices` shape (no client grant, an RPC that takes no
+subject and acts only for its caller) and `011` §1b's reasoning, which named exactly this class of
+problem: *"RLS filters a DELETE by what the caller may READ"*, solved with a definer function that
+re-checks the authorship itself.
+
+Authorship is the **whole** test — no club-membership conjunct. Your own words are always
+retractable, including after you leave. That diverges from `ride_messages`, where a leaver cannot
+delete, and the divergence is deliberate: a ride's chat disappears with the ride, while a club
+thread is a permanent titled surface that other members keep reading. Stated rather than inherited.
+
+**Threads keep their DELETE policy**, and the same inversion does *not* reach them: the
+`club_discussions` DELETE `USING` contains no self-`EXISTS`, its only subquery is against `clubs`,
+and `clubs` carries no block predicate — measured. The attaching SELECT policy exempts the author
+via its `author_id = auth.uid()` arm, so an author can always see, and therefore delete, their own
+thread. Verified by reading the policy rather than assumed from symmetry.
+
+**The INSERT and watermark policies keep the two-hop `EXISTS` and need no change.** The inversion
+reaches them, and there it is the *correct* answer: a rider who cannot see a thread should not be
+able to post into it or mark it read. The only case it touches is a rider blocked by a thread's
+author, who cannot reach the thread's screen at all.
+
+### Moderating a thread: a definer RPC, because the block is not the remedy here
+
+`public.moderate_club_discussion(discussion uuid)` is the club owner's one moderation right, and it
+is an RPC rather than a second arm on the DELETE policy for the reason above plus one more. `034`
+declined the equivalent gap because *"the block itself already removes the messages from the
+blocker's view, which is the remedy a rider actually reaches for."* That holds for a chat message
+and **fails for a thread**, which is a persistent titled object every *other* member keeps reading
+after the owner has blocked its author.
+
+It follows `043`'s shape exactly: one `select ... for update` joining `club_discussions` to `clubs`
+on `owner_id = auth.uid()`, one raise site so "no such thread" and "not your club" are
+indistinguishable, `security definer`, `set search_path = ''`, `revoke all from public, anon`,
+`grant execute to authenticated`. It deletes one row and lets the FK cascade take the messages.
+
+**Message-level owner moderation stays deferred** — no control is drawn — and its shape is
+`public.moderate_club_message(uuid)`, the same definer pattern.
+
+Together the two RPCs add **two** `authenticated_security_definer_function_executable` advisors,
+taking the documented total from thirteen to **fifteen**. `club_discussion_unread` is `invoker` and
+adds none. Re-derive with `get_advisors(security)` before and after; a sixteenth means a revoke did
+not land.
 
 ### Grants — the shape, per table
 
 | Table | `authenticated` table grants | INSERT column grant |
 |---|---|---|
 | `club_discussions` | `select, delete` | `(id, club_id, author_id, title)` — **not** `created_at` |
-| `club_messages` | `select, delete` | `(id, discussion_id, author_id, body)` — **not** `created_at` |
+| `club_messages` | `select` **only** | `(id, discussion_id, author_id, body)` — **not** `created_at` |
 | `club_discussion_reads` | `select, insert, update` | table-level (nothing to withhold) |
+
+`club_messages` holding no DELETE grant is the enforcement, not an omission — deletion is
+`delete_own_club_message` — so it is asserted in both directions, the missing grant and the missing
+policy, exactly as `034` §4 asserts its missing UPDATE.
 
 `anon` gets nothing anywhere. Note the reading trap `034` records: `information_schema.role_table_grants`
 returns **2** for the content tables because INSERT is a *column* grant and does not appear there —
@@ -267,8 +361,7 @@ here.
 Bounds: `title` ≤ **80**, `body` ≤ **1000**. The body matches `ride_messages` for `034`'s stated
 reason (a chat holds far more rows than a comment thread, so its per-row bound should be *tighter*
 than a comment's, not looser). 80 for a title is a line on a 390px frame at `Poppins/16/Semibold`;
-it is a judgement, and it is the one number here with no precedent behind it — non-blocking
-question Q5.
+and it is `rides_title_length`'s bound from `018` rather than a judgement — the `Questions Closed` section, D5.
 
 Ceilings are on the **raw** length so padding cannot smuggle a longer value past a trimmed check.
 
@@ -363,6 +456,24 @@ picks it up:
    notification on every message points that requirement straight at a chat. The Welcome club
    contains every onboarded rider.
 
+### What account deletion does, read from `private.transfer_owned_clubs` rather than summarised
+
+Two corrections to how this was described in an earlier draft, both read off the live function body:
+
+- **The successor is not "the longest-tenured remaining member".** The order is
+  `case role when 'admin' then 0 when 'member' then 1 else 2 end, joined_at, user_id` — so an
+  **admin outranks an earlier-joined member**, and `joined_at` only breaks ties within a role. That
+  matters here because the successor inherits `moderate_club_discussion` over every surviving
+  thread.
+- **There is a no-successor branch and it deletes the club outright**, cascading every thread and
+  message in it. Unlike `delete_owned_club`, it does **not** check `clubs.is_default` — so the last
+  remaining rider deleting their account takes the Welcome club and its "Say hello" thread with it,
+  permanently, and `058`'s auto-join then points at nothing for every future rider. That is a
+  pre-existing gap in `029`/`059` rather than one this change introduces, and this change makes it
+  *more* costly by putting content in that club. It is recorded here and in the spec, covered by an
+  assertion, and **not fixed** — closing it is a change to `transfer_owned_clubs`, which is
+  `delete-account`'s territory.
+
 ## Risks / Trade-offs
 
 **A builder transfers `034`'s conclusion instead of its reasoning and drops the membership helper**
@@ -373,8 +484,12 @@ reads zero threads — which is the one case a policy carrying only the `EXISTS`
 
 **Deleting a thread author's account deletes other riders' messages** → this is the one genuinely
 new deletion semantic in the change (see `specs/club-discussions/spec.md`). Mitigated by: stating
-it, and putting the `SET NULL` + tombstone alternative to the owner as blocking question Q1 rather
-than deciding it here.
+it, and recording the `SET NULL` + tombstone alternative as declined in the `Questions Closed` section, D1, not deferred.
+
+**A builder re-adds a DELETE grant on `club_messages` because its absence looks like an oversight**
+→ the erasure path silently reverts to one a block can disable. Mitigated by: asserting the absence
+in both directions (no grant, no policy), and by the table comment saying deletion is
+`delete_own_club_message` and why.
 
 **A blocked pair holding a conversation neither can see** → reads as a bug and is a design. Mitigated
 by: an explicit scenario, and by refusing the alternative (blocking the insert) which would disclose
@@ -386,9 +501,10 @@ and 200 members admits up to 100k rows. Acceptable and named rather than discove
 nothing, deliberately — the alternative (one watermark per club) makes reading thread A mark thread
 B read, which is the failure the thread model exists to avoid.
 
-**`moderate_club_discussion` raises the advisor count** → a fourteenth WARN looks like a regression
-to a session checking the documented thirteen. Mitigated by: a task updating `CLAUDE.md`'s advisor
-table in the same PR, and by `078`'s recorded lesson that a sweep adding two functions adds two.
+**The two definer RPCs raise the advisor count by two** → a fourteenth and fifteenth WARN look like
+a regression to a session checking the documented thirteen. Mitigated by: a task updating
+`CLAUDE.md`'s advisor table in the same PR, and by `078`'s recorded lesson — quoted in `CLAUDE.md`
+itself — that this advisor fires once per function, so a sweep adding two adds two.
 
 **Generalising the chat components touches shipped ride screens** → a rename across four components
 and one formatter. Mitigated by: `npm run walk` renders the ride chat; `npm run docs:check` and
@@ -431,37 +547,46 @@ and restoring the `enforce_participation_gate()` comment. Nothing else in the sc
 these, and the publication membership goes with the table. Written as a **new** migration if it is
 ever needed — migrations are append-only.
 
-## Open Questions
+## Questions Closed
 
-Each has a recommended default so the build proceeds and gets corrected later. **Q1 is blocking**;
-the rest are not. Q1, Q3 and Q4 are the product owner's; Q2 and Q5 can be answered by the
-implementing agent.
+**All five questions this design opened with are answered. Nothing here is open**, and none of them
+should be read as awaiting a reply. Each was decided by **this session, on the recommended
+default**, on 2026-08-27, and each is recorded with the reasoning that made the default the
+recommendation rather than merely the cheapest option.
 
-**Q1 — blocking, product owner. When a thread author deletes their account, should the thread and
-everyone's replies in it be deleted?** `ON DELETE CASCADE` says yes and is what every other authored
-row in this schema does. **Recommended default: cascade.** The alternative is `ON DELETE SET NULL` on
-`club_discussions.author_id`, a "deleted rider" byline, and a surviving thread — which needs a
-nullable author, a byline design and a GDPR argument that keeping the *thread* is not keeping the
-person's data. It is blocking because it decides a foreign key, and a foreign key is not cheap to
-change after rows exist.
+**D1 — a thread author's account deletion cascades the thread and every reply in it.** `ON DELETE
+CASCADE` on `club_discussions.author_id`. It is the only answer consistent with every other authored
+row in this schema, it needs no tombstone machinery, and it is the reading of GDPR erasure this repo
+has already taken everywhere. The cost is real and stays stated rather than softened: deleting one
+rider can remove a conversation forty others took part in, which is **wider than `ride_messages`**,
+where only the leaver's own messages go. The alternative — `ON DELETE SET NULL`, a nullable author,
+a "deleted rider" byline and a surviving thread — was declined, not deferred.
 
-**Q2 — non-blocking, implementing agent. Is the block arm on `club_discussions` right, given that
-the thread's title carries no personal data?** Hiding a blocked rider's thread hides its whole
-conversation, including messages from riders the viewer has not blocked. **Recommended default: hide
-the thread**, matching decision #2's "disappears from feeds, search, chat, member lists and ride
-crews simultaneously". The alternative — showing the thread with its author byline suppressed — is a
-second visibility rule to maintain and leaks that a hidden rider exists.
+**D2 — a blocked rider's thread is hidden whole, conversation included.** The block arm sits on
+`club_discussions.author_id`, so hiding the thread hides messages from riders the viewer has not
+blocked. That is decision #2 read literally — *"disappears from feeds, search, chat, member lists
+and ride crews simultaneously"* — and the alternative (render the thread, suppress the byline) is a
+second visibility rule to keep in step and leaks that a hidden rider exists. **This is what makes
+§Deleting a message necessary**, and the two were decided together rather than one falling out of
+the other.
 
-**Q3 — non-blocking, product owner. Should the thread list sort by most recent activity rather than
-by creation?** **Recommended default: creation, this pass.** See §Ordering for why the natural
-implementation is a stored copy of a visibility decision, and for the `security invoker` shape that
-does it correctly later.
+**D3 — the thread list sorts by creation, newest first.** Sorting by most recent activity needs
+either a stored `last_message_at`, which is a copy of a visibility decision and would bump a thread
+for the very rider who blocked its latest author, or a per-viewer aggregate over `club_messages` for
+every row. The `security invoker` shape that does it correctly later is named in §Ordering. **The
+cost is the Welcome club's greeting sinking down the list** — see §Ordering, where that is called out
+as a loss the owner is accepting rather than a wash.
 
-**Q4 — non-blocking, product owner. Should a new discussion badge the club card on `/clubs`?**
-**Recommended default: no, this pass.** Widening `club_unread_counts()` mixes a count with a boolean
-on a shipped counter that already carries a known divergence `079` fixed on one arm only.
+**D4 — a new discussion does not badge the club card on `/clubs`.** `club_unread_counts()` is
+untouched. Widening it mixes a count (postcards + rides) with a boolean (threads) on a shipped
+counter already carrying a divergence `079` fixed on one arm only. The unread mark lives on the
+Discussions section and in the thread list, and nowhere else.
 
-**Q5 — non-blocking, implementing agent. Is 80 characters right for a thread title?** **Recommended
-default: 80.** It is the one bound here with no precedent behind it; measure it against
-`Poppins/16/Semibold` on a 390px frame with the unread dot and the chevron reserved, and pick the
-number that does not wrap to three lines.
+**D5 — a thread title is bounded at 80 characters, and it has a precedent after all.**
+`018_text_bounds.sql` sets `rides_title_length` at exactly 80, so this is the repo's existing bound
+for a rider-authored title rather than a number measured off a frame. **The floor is not copied**:
+`018` uses `length(btrim(title)) >= 1`, and `btrim` with no second argument strips spaces only, so
+that form accepts a title of newlines while the Zod schema's `.trim()` refuses it — the client
+stricter than the database. This change uses `title ~ '\S'`, per §Text bounds. Taking the ceiling
+from `018` and refusing its floor is deliberate and is the whole reason to cite the file rather than
+just the number.

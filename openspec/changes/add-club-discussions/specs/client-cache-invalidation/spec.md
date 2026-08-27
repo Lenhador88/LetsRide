@@ -1,27 +1,31 @@
 ## ADDED Requirements
 
-### Requirement: A key its domain prefix cannot reach SHALL be named at every call site that must move it, and the gap SHALL be documented in `keys.ts`
+### Requirement: A key outside its domain's detail prefix SHALL be named at every call site that must move it, and its reach SHALL be documented in `keys.ts`
 
 Where a screen is reached by an id that is not its domain's own root id — a discussion opened by
-its discussion id, with no club id available until the read resolves — its cache key cannot be
-nested under that domain's detail prefix, and a domain-wide invalidation SHALL NOT be assumed to
-reach it.
+its discussion id, with no club id available until the read resolves — its cache key SHALL NOT be
+nested under that domain's **detail** prefix, and no mutation SHALL rely on a `detail`-scoped
+invalidation to reach it.
 
-Every key in `keys.ts` today is reachable from its domain's root: `invalidate(['clubs'])` reaches
-every club key and `invalidate(['rides'])` every ride key, which is what lets `rides.unread` sit
-under `rides.messages` and move for free. A thread's messages break that, because the screen holds
-only the thread's id. The key is still spelled in `keys.ts` — a key written inline in a component is
-a bug even when the string is right — but its **reach** is different, and a call site that assumes
-otherwise fails silently as a screen that will not refresh.
+**The domain-wide prefix still reaches it, and a spec claiming otherwise would be wrong.**
+`invalidate` matches structurally on prefix — `keyStartsWith` in `src/lib/query/queryClient.ts`
+compares element by element — so `['clubs']` reaches `['clubs','discussions',<id>,'messages']` just
+as it reaches every other key under the domain. The true statement is narrower and is the one that
+matters at the call site: the key is not under `['clubs','detail',<clubId>]`, so the club-scoped
+invalidations that a thread mutation would naturally reach for do **not** move it, while the
+domain-wide `clubs.all()` does.
 
-Every mutation touching such a key SHALL name it explicitly, and `keys.ts` SHALL carry the
-exception in its header table beside the reconciliation it already holds, so the next reader learns
-it from the contract rather than from a stale screen.
+That asymmetry SHALL be recorded in `keys.ts` as *which prefixes reach it*, stated positively, and
+SHALL NOT be recorded as "no prefix reaches it" — `keys.ts`'s header is treated as authoritative by
+every later reader, so a false claim there is worse than no claim.
 
 #### Scenario: The thread key is named, not inherited
 - **WHEN** a message is sent into a club discussion
 - **THEN** the action SHALL invalidate the thread's own key explicitly
-- **AND** it SHALL NOT rely on a `clubs` prefix invalidation, which does not reach it
+- **AND** it SHALL NOT rely on a club-scoped `['clubs','detail',<clubId>]` invalidation, which does
+  not reach it
+- **AND** it SHALL NOT rely on the domain-wide `clubs.all()` either — which *would* reach it —
+  because that refetches every club screen in the cache on every send
 
 #### Scenario: A mutation that moves two unconnected keys names both
 - **WHEN** a thread is deleted
@@ -30,12 +34,15 @@ it from the contract rather than from a stale screen.
 - **AND** the club id needed for the first SHALL be carried by the action rather than re-read after
   the row is gone
 
-#### Scenario: The exception is written down where the keys are
-- **WHEN** a key is added whose domain prefix does not reach it
-- **THEN** `keys.ts` SHALL record which prefixes do and do not reach it, in the same table that
-  reconciles the retired `revalidatePath` claims
-- **AND** the key SHALL NOT be renamed or renested to hide the asymmetry, because the nesting would
-  then assert a reach it does not have
+#### Scenario: The reach is written down where the keys are, positively
+- **WHEN** a key is added that sits outside its domain's detail prefix
+- **THEN** `keys.ts` SHALL record **which prefixes reach it and which do not**, in the same table
+  that reconciles the retired `revalidatePath` claims
+- **AND** the record SHALL be verified against `keyStartsWith` rather than assumed from the key's
+  shape, because prefix matching is structural and an eyeballed answer is how a false claim enters
+  the contract
+- **AND** the key SHALL NOT be renested under `detail` to hide the asymmetry, because the screen
+  does not hold the club id at read time
 
 ### Requirement: An unread mark and the list it annotates SHALL be read under one predicate and invalidated together
 

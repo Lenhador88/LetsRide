@@ -120,12 +120,15 @@ likely to be read as a bug later: a conversation is not retracted because one pa
   them, their own content included
 - **AND** every other member SHALL continue to see the thread and the messages unchanged
 
-#### Scenario: Rejoining restores the whole history
+#### Scenario: Rejoining restores the whole history without badging the back catalogue
 - **WHEN** that rider rejoins the club
 - **THEN** they SHALL see every thread and every message, including those written while they were
   away
-- **AND** their unread watermark SHALL be re-derived from the new `club_members.joined_at`, so
-  they SHALL NOT be badged with the club's entire back catalogue
+- **AND** they SHALL NOT be badged unread for messages sent while they were gone
+- **AND** the surviving watermark row SHALL NOT by itself decide that, because it is **not**
+  cascaded away by leaving: the comparison point SHALL be the **later** of the stored
+  `last_read_at` and the new `club_members.joined_at`, so a rider who read a thread in March, left,
+  and rejoined in September is compared against September
 
 #### Scenario: A rider who joins after a thread was created sees all of it
 - **WHEN** a rider joins a club containing threads older than their membership
@@ -235,6 +238,14 @@ learns nothing about a club they do not own (`043`'s shape), and SHALL be grante
 - **AND** this SHALL be asserted explicitly, because the equivalent through a DELETE policy arm
   succeeds with zero rows affected and reports no error
 
+#### Scenario: A thread's author is never hidden from their own thread
+- **WHEN** the author of a thread deletes it while blocked by, or blocking, another club member
+- **THEN** the delete SHALL succeed
+- **AND** the reason SHALL be verified rather than assumed by symmetry with messages: the
+  `club_discussions` DELETE `USING` contains no self-`EXISTS`, its only subquery is against `clubs`,
+  which carries no block predicate, and the SELECT policy that attaches to the delete exempts the
+  author through its own `author_id = auth.uid()` arm
+
 #### Scenario: A member cannot delete another member's thread
 - **WHEN** a club member who is neither the author nor the club owner deletes the row or calls the
   function
@@ -245,34 +256,64 @@ learns nothing about a club they do not own (`043`'s shape), and SHALL be grante
 - **THEN** it SHALL raise `insufficient_privilege`, identically to a discussion id that does not
   exist
 
-### Requirement: A message SHALL be deletable by its author and by the club's owner, and the owner's arm SHALL be a policy arm with its gap recorded
+### Requirement: A rider SHALL always be able to erase their own message, and a block SHALL NOT take that away
 
-DELETE on `public.club_messages` SHALL be permitted to `author_id = auth.uid()`, or to the rider
-named in `clubs.owner_id` for the message's club, expressed as a policy in both cases — mirroring
-`034`'s *"your own message, or any message on a ride you organize."*
+`public.club_messages` SHALL carry **no DELETE policy and no DELETE grant** for any client role.
+Deletion SHALL be `public.delete_own_club_message(message uuid)` — `security definer`, re-checking
+`author_id = auth.uid()` in its own body, deleting exactly one row, taking no other subject and
+returning nothing. That is `078`'s `push_devices` shape and `011` §1b's reasoning.
 
-The owner arm SHALL ship with **no UI in this change**, because no message-level control is drawn.
-The blocked-author gap therefore SHALL be recorded as a known and inherited gap rather than closed:
-an owner who has blocked a message's author cannot read it and their delete matches zero rows. The
-shape of the fix, if a message-level moderation control is ever drawn, SHALL be
-`public.moderate_club_message(uuid)`, `security definer`, re-checking the club ownership in its own
-body — `011` §1b and this capability's thread-level function.
+**A policy-based delete cannot satisfy this requirement, and the reason is measured rather than
+argued.** RLS applies the SELECT policy to a `DELETE` whose `WHERE` names a column — verified on
+Postgres 17.6: a row the caller owns but cannot select survives `delete from t where id = 1` and
+survives it with `RETURNING`, while a bare `delete from t` removes it. `supabase-js` issues the
+first form. So whenever a rider cannot **read** a message, they cannot delete it, and no
+relaxation of the DELETE `USING` clause changes that.
+
+The case is reachable and is not exotic: A opens thread T, B replies, A blocks B. B can no longer
+see T or their own reply in it, so B's delete matches zero rows and PostgREST reports success,
+while B's words remain visible to every unblocked member. This capability's own remedy for a
+message a rider regrets is deletion, so a block would silently remove it.
+
+Authorship SHALL be the **whole** test, with no club-membership conjunct: a rider's own words are
+retractable after they leave the club. This diverges from `ride_messages`, where a rider who leaves
+the crew can no longer delete, and the divergence SHALL be stated rather than inherited — a ride's
+chat disappears with the ride, while a club thread is a permanent titled surface others keep
+reading.
+
+**Club-owner moderation of an individual message SHALL NOT ship in this change**, no such control
+being drawn. Its shape is `public.moderate_club_message(uuid)`, the same definer pattern. An owner's
+remedy today is to delete the whole thread.
 
 #### Scenario: A rider deletes their own message
-- **WHEN** a message's author deletes it
-- **THEN** it SHALL succeed, and no other rider's message SHALL be affected
+- **WHEN** a message's author calls `delete_own_club_message` with its id
+- **THEN** exactly that row SHALL be deleted and no other rider's message SHALL be affected
 
-#### Scenario: A member cannot delete another member's message
-- **WHEN** a club member who is neither the author nor the club owner deletes a message
-- **THEN** it SHALL be refused
+#### Scenario: A rider blocked by the thread's author can still erase their own message
+- **WHEN** A authored thread T, B replied in it, and A has since blocked B
+- **THEN** B SHALL still be able to delete their own message through the function
+- **AND** this SHALL be asserted explicitly, because the policy-based equivalent affects zero rows
+  and reports no error
 
-#### Scenario: A rider who left the club cannot delete their own message
-- **WHEN** a rider who has left the club deletes a message they authored
-- **THEN** it SHALL be refused, because the SELECT-visibility conjunct is present in the DELETE
-  `USING` clause and not merely inherited
-- **AND** the conjunct SHALL be stated rather than assumed, because a SELECT policy attaches to a
-  DELETE only when the statement has to read the row: `delete from t where id = 1` applies it and
-  `delete from t` does not, and supabase-js will issue the second form
+#### Scenario: A rider who has left the club can still erase their own message
+- **WHEN** a rider who has left the club calls the function for a message they authored
+- **THEN** it SHALL succeed
+
+#### Scenario: Nobody can delete another rider's message
+- **WHEN** any rider — a club member, the club owner, a non-member — calls the function with a
+  message id they did not author
+- **THEN** it SHALL raise `insufficient_privilege`
+- **AND** the refusal SHALL be indistinguishable from a message id that does not exist, so the
+  function is not an existence oracle
+
+#### Scenario: There is no second delete path
+- **WHEN** the RLS suite runs
+- **THEN** it SHALL assert that `authenticated` holds **no** DELETE privilege on `club_messages`
+  **and** that no DELETE policy exists on it
+- **AND** both SHALL be asserted separately, because absence is the enforcement here and a
+  well-meaning `grant all` restores only one of them
+- **AND** the grant assertion SHALL be scoped to `authenticated` via `has_table_privilege`, because
+  an unscoped count reads 2 against a correct database
 
 ### Requirement: A thread SHALL die with its club, and a club deletion SHALL need no new cleanup path
 
@@ -332,10 +373,36 @@ Both foreign keys into `profiles` SHALL carry a leading-column index, which `029
 
 #### Scenario: A club outlives its owner and keeps its discussions
 - **WHEN** a club owner deletes their account and `private.transfer_owned_clubs` (`029`, `031`)
-  hands the club to its longest-tenured remaining member
+  hands the club on
 - **THEN** the club's threads SHALL survive **except** those the departing owner authored
 - **AND** the new owner SHALL hold the moderation right on every surviving thread, because
   `moderate_club_discussion` reads `clubs.owner_id` at call time and never a stored copy
+
+#### Scenario: The successor is an admin before an earlier-joined member
+- **WHEN** the succession picks between remaining members
+- **THEN** the order SHALL be understood as `role` first — `admin`, then `member`, then anything
+  else — and `joined_at` only as a tie-break within a role, with `user_id` last
+- **AND** it SHALL NOT be described as "the longest-tenured remaining member", which is what an
+  earlier draft of this spec said and is wrong whenever the club has an admin
+- **AND** the description SHALL be read off `private.transfer_owned_clubs`'s body rather than
+  summarised from `029`'s header
+
+#### Scenario: The last rider leaving takes the club and every thread with it
+- **WHEN** the departing owner is the club's only remaining member, so the succession finds no
+  successor
+- **THEN** `private.transfer_owned_clubs` SHALL delete the club outright and every thread, message
+  and watermark beneath it SHALL cascade away
+- **AND** this branch SHALL be covered by an assertion rather than left as the untested arm
+
+#### Scenario: The default club has no protection on that branch, and that is a recorded gap
+- **WHEN** the last remaining member of the `clubs.is_default` club deletes their account
+- **THEN** the Welcome club SHALL be deleted with its threads, because
+  `private.transfer_owned_clubs` — unlike `public.delete_owned_club` (`059`) — does **not** check
+  `clubs.is_default`
+- **AND** `058`'s auto-join SHALL thereafter point at nothing for every future rider
+- **AND** this SHALL be recorded as a **pre-existing** gap in `029`/`059` that this change makes
+  more costly by putting content in that club, and SHALL NOT be fixed here: closing it changes
+  `private.transfer_owned_clubs`, which belongs to account deletion
 
 ### Requirement: A block SHALL remove a rider's threads and messages from the other party's view, in RLS, symmetrically
 
@@ -419,11 +486,15 @@ call and the gate would never fire (`023` §2, measured).
 - **THEN** it SHALL assert the absence of the trigger on `club_discussion_reads`, so that adding
   one later is a deliberate act rather than a count that quietly reads complete
 
-#### Scenario: The function's own comment is restamped
+#### Scenario: The function's own comment is restamped from ELEVEN, and its enumeration extended
 - **WHEN** `081` is applied
-- **THEN** it SHALL update the comment on `public.enforce_participation_gate()`, which still says
-  nine, because a database comment is the `data` agent's first read through `list_tables` and no
-  edit to `CLAUDE.md` reaches it (`028`, `033`)
+- **THEN** it SHALL update the comment on `public.enforce_participation_gate()` from **eleven** to
+  **thirteen**
+- **AND** it SHALL add the two new tables to that comment's enumeration, which today names the
+  ninth as `ride_messages` (`034`), the tenth as `ride_map_render_attempts` (`051`) and the eleventh
+  as `place_search_attempts` (`069`)
+- **AND** the number SHALL be read off the live comment rather than from prose: it says eleven, not
+  nine, so an implementer grepping for "nine" finds nothing and skips the restamp entirely
 
 ### Requirement: `created_at` SHALL be server-owned on both content tables, and ordering SHALL depend on it
 
@@ -465,8 +536,9 @@ same id and land as a `23505` the action reads as success rather than double-pos
 ### Requirement: Unread SHALL be tracked per thread, on a server clock, excluding the reader's own messages
 
 `public.club_discussion_reads` SHALL hold one row per `(user_id, discussion_id)` with a
-`last_read_at`, that pair being a real PRIMARY KEY. It SHALL be readable **only** by the row's
-owner.
+`last_read_at`, that pair being a real PRIMARY KEY. **Both key columns SHALL carry a foreign key
+with `ON DELETE CASCADE`** — `user_id` to `public.profiles(id)` and `discussion_id` to
+`public.club_discussions(id)`. It SHALL be readable **only** by the row's owner.
 
 **Per thread, not per club, and not `feed_reads`.** `feed_reads(user_id, club_id)` already means
 "the club's Timeline — postcards and rides" and `club_unread_counts()` reads it; overloading it
@@ -489,6 +561,17 @@ messages sent while they were away read as unread.
 
 There SHALL be no read receipts. Nobody but the row's owner may read a watermark, and that is a
 refusal rather than an omission — the data to draw a "seen by" row SHALL be unreachable.
+
+#### Scenario: A deleted rider leaves no watermark behind
+- **WHEN** a rider's account is deleted
+- **THEN** every `club_discussion_reads` row naming them SHALL be gone
+- **AND** this SHALL be asserted, because the row records *when a named person last read a named
+  topic* and `029` erases it purely by cascade, so a missing foreign key would keep behavioural
+  personal data about a deleted rider indefinitely with nothing reporting it
+
+#### Scenario: A deleted thread leaves no watermark behind
+- **WHEN** a thread is deleted, by its author or through moderation
+- **THEN** every watermark row for it SHALL be gone
 
 #### Scenario: A member's watermark is private
 - **WHEN** any rider other than the row's owner — the club owner and the thread's author included
@@ -520,10 +603,17 @@ refusal rather than an omission — the data to draw a "seen by" row SHALL be un
 - **WHEN** the unread answer is computed for a rider named in `clubs.owner_id` who holds no
   `club_members` row
 - **THEN** the fallback SHALL resolve to the discussion's own `created_at`
-- **AND** the fallback chain SHALL be `last_read_at`, then `club_members.joined_at`, then
-  `club_discussions.created_at` — three arms, where `015` has two, for the reason `061` needed a
-  third: with two, that rider's comparison point is NULL, every comparison against NULL is NULL,
-  and their dot never lights, silently and for ever
+- **AND** the comparison point SHALL be `coalesce(greatest(last_read_at, joined_at), created_at)` —
+  the **later** of the watermark and the membership stamp, falling through to the thread's own
+  creation when both are absent
+- **AND** `greatest` rather than a three-arm `coalesce` SHALL be used between the first two,
+  because a watermark row survives leaving the club and a plain `coalesce` would prefer a stale
+  pre-departure watermark over a fresh `joined_at`, contradicting the rejoining scenario above
+- **AND** the third position SHALL remain, for the reason `061` needed a third arm: without it that
+  rider's comparison point is NULL, every comparison against NULL is NULL, and their dot never
+  lights, silently and for ever
+- **AND** `greatest` ignoring NULL and yielding NULL only when every argument is NULL SHALL be
+  relied on, which is measured behaviour on this Postgres rather than an assumption
 
 #### Scenario: Every arm of the comparison is on the database's clock
 - **WHEN** the fallback resolves to `club_members.joined_at` or `club_discussions.created_at`

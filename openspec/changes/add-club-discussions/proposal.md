@@ -6,14 +6,14 @@
 
 ## ⚠ Read this first — what is second-hand, and what was measured
 
-**The "threads, not one chat per club" decision is not on the board.** `get_issue PD-299` returns
-status `Needs decision` with its three questions unanswered, and `list_comments PD-299` returns
-**zero comments** (read 2026-08-27). The answer reached this proposal through the spawning
-message only. It is *corroborated* rather than contradicted — PD-299's own body says
-**"My recommendation: threads"** and gives the reasoning — so this proposal builds on it. But the
-board does not record it, and whoever picks this up should not read the issue and conclude the
-decision was never made. **Recording it on PD-299 is a main-thread action** (this agent does not
-write to Linear).
+**The threads decision IS on the board, and an earlier draft of this file said it was not.**
+`PD-307` — *"Club Discussions — titled threads on a club"* — is this change's own issue, a child of
+`PD-299`, created 2026-08-27 **before** this proposal, and its body states the decision and dates
+it: *"PD-299 asked threads, or one chat per club? — product owner, 2026-08-27: **threads**."*
+`PD-299` now carries a comment recording it too. The first draft checked only `PD-299`, found
+`Needs decision` with zero comments, and reported the decision as unrecorded — **a false claim
+about the board, caused by reading the epic and not the story split off from it.** Corrected here
+rather than narrated further; `get_issue PD-307` is the command.
 
 Everything else below is **measured**, against `letsride-dev` (`fpmrimzxadewsaiwpsel`) on
 2026-08-27, and each claim carries the command that re-derives it. Nothing here is inferred from
@@ -92,14 +92,25 @@ does not fire either. Both checked rather than assumed.
   the caller is a *list*. Excludes the caller's own messages (`079`'s fix, applied at birth).
 - **`public.moderate_club_discussion(discussion uuid)`** — `security definer`, the club owner's
   one moderation right, re-checking `clubs.owner_id = auth.uid()` in its own body. `011` §1b's
-  shape. **This adds one security advisor** and the expected total becomes **14** — re-derive with
-  `get_advisors(security)`; `CLAUDE.md` records thirteen today and warns that `078`'s task list
-  read a two-function sweep as one new advisor.
+  shape.
+- **`public.delete_own_club_message(message uuid)`** — `security definer`, re-checking
+  `author_id = auth.uid()` in its own body, and **the only** delete path for a message:
+  `club_messages` carries no DELETE policy and no DELETE grant, following `078`'s `push_devices`
+  precedent. It exists because a rider blocked by a thread's author otherwise loses the ability to
+  erase their own words — measured, see `design.md` §Deleting a message.
+- **Together these add TWO security advisors** and the expected total becomes **15**, not 14 —
+  re-derive with `get_advisors(security)`. `CLAUDE.md` records thirteen today and warns in as many
+  words that this advisor *"fires once per such function, so a migration adding two adds two"*,
+  which is exactly what `078`'s own task list got wrong. `club_discussion_unread` is
+  `security invoker` and adds none.
 - **Two new participation-gate triggers.** Measured: **11** today
   (`select count(*) from pg_trigger where tgname = 'enforce_participation_gate' and not tgisinternal`
   → `11` on DEV, 2026-08-27). Both new content tables take one, exactly as `ride_messages` did in
   `034` §5, so the expected count after `081` is **13, not 12**. `club_discussion_reads` takes
-  **none**, following `023`'s stated reason for `feed_reads` and `061`'s for `ride_reads`.
+  **none**, following `023`'s stated reason for `feed_reads` and `061`'s for `ride_reads`. The
+  comment on `enforce_participation_gate()` reads **eleven** today, not nine — measured — and
+  enumerates the ninth, tenth and eleventh by name, so the restamp is "eleven → thirteen" plus
+  **two new entries in that enumeration**.
 - **Routes**: a Discussions section on `/clubs/detail`, a list at `/clubs/detail/discussions`, a
   thread at `/clubs/detail/discussion?id=<discussion id>`, and a create screen.
 - **The app's second Realtime subscription** — `club:discussion:<id>:messages`, INSERT only.
@@ -118,7 +129,7 @@ does not fire either. Both checked rather than assumed.
 - **Notifications for a new thread or message.** Deferred; it needs its own proposal against
   `event-fanout-integrity`. See `design.md` §Notifications for the two traps waiting there.
 - **A club-level rollup on the `/clubs` list.** `club_unread_counts()` is unchanged, so a new
-  discussion does not badge the club card. Deferred with a reason, non-blocking question Q4.
+  discussion does not badge the club card. Decided, not deferred — `design.md`, `Questions Closed`, D4.
 - **Editing a thread title or a message.** No UPDATE grant, no UPDATE policy, no `updated_at`
   column — `034` §4 and `011`'s ruling, and `database-enforced-integrity`'s standing requirement.
 
@@ -151,9 +162,9 @@ does not fire either. Both checked rather than assumed.
 **Database** — `supabase/migrations/081_club_discussions.sql`; assertions in
 `supabase/tests/rls_test.sql` (suite is **1841** today — re-derive with
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`, and reconcile by **label set**, not
-by count). `023`'s comment on `enforce_participation_gate()` must be restamped from nine to
-thirteen — it is the `data` agent's first read via `list_tables` and no edit to `CLAUDE.md`
-reaches it (`028`, `033`).
+by count). The comment on `enforce_participation_gate()` must be restamped from **eleven** to
+thirteen, with two names added to its enumeration — it is the `data` agent's first read via
+`list_tables` and no edit to `CLAUDE.md` reaches it (`028`, `033`).
 
 **Reads** — new `src/lib/data/club-discussions.ts`, through `resolveSupabase`. **Writes** — new
 `src/lib/actions/club-discussions.ts`, plain async functions. No component calls
@@ -175,6 +186,7 @@ invented and called measured.
 **Dependencies** — none added. Nine runtime dependencies before and after
 (`node -p "Object.keys(require('./package.json').dependencies).length"`).
 
-**Docs** — `docs/reference/schema.md` gains three table rows;
-`docs/reference/product-scope.md` §Clubs loses "the Timeline's activity feed and invitations
-remain unbuilt" as the *only* two gaps.
+**Docs** — `CLAUDE.md`'s advisor table goes to fifteen and its participation-gate list to
+thirteen tables; `docs/reference/schema.md` gains three table rows;
+and the `Clubs` row of `docs/reference/product-scope.md` loses the activity feed and invitations
+as its *only* two logged gaps.
