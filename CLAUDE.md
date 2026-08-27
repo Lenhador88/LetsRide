@@ -360,8 +360,28 @@ throws a `RangeError` that would take down every screen the ride appears on.
 offsets rather than strings** — `TZ=UTC` in `vitest.config.ts` would let a naive implementation pass
 a string comparison, so the summer/winter pairs are what prove the offset is looked up per instant.
 
-**Deliberately undecided** — raise these rather than inventing an answer: error tracking,
-analytics, i18n, and email delivery beyond Supabase's built-in auth mails.
+**Deliberately undecided** — raise these rather than inventing an answer: **client-side error
+reporting**, i18n, and email delivery beyond Supabase's built-in auth mails.
+
+**Analytics is not on that list, and the reason is the reusable part: most of it is already
+recorded.** `profiles` holds `created_at`, `terms_accepted_at`, `username` and
+`onboarding_completed_at`, so the onboarding funnel is four counts against one table. Eight of the
+ten questions worth asking are SQL today —
+[`docs/reference/analytics.md`](docs/reference/analytics.md), `scripts/db/analytics.sql`, which
+also carries the three definitions that decide whether the numbers mean anything.
+
+**Failed requests are readable too, and for 24 hours only.** Every call the app makes reaches
+Supabase's log stream — `npm run logs:errors`,
+[`docs/reference/observability.md`](docs/reference/observability.md). There is no backfill, so a
+day nobody reads is gone: the Discussions→Threads rename left 64 404s there during the ~50 minutes
+`082` was ahead of its deploy, and nothing said so.
+
+**What is still undecided is narrower than "error tracking": a client-side JavaScript error
+reaches no log anywhere.** The boundaries contain the failure and at most `console.error` it into
+the rider's own console — `global-error.tsx` does not even do that — so a component that throws is
+invisible, which in a client-rendered bundle is most rider-visible breakage. It carries a tenth
+runtime dependency, a consent question separate from the T&C stamp, and a store privacy label, so
+it wants a proposal (PD-315) rather than a passing choice.
 
 ## Repo Layout
 

@@ -79,7 +79,9 @@ docs/
 │   ├── design-system.md    #   v2 tokens, type scale, geometry, the icon set
 │   ├── migrations.md       #   the ordering chain, the rollback SQL, what reads as drift
 │   ├── repo-layout.md      #   this file
-│   └── product-scope.md    #   what is built per domain, against the Figma
+│   ├── product-scope.md    #   what is built per domain, against the Figma
+│   ├── analytics.md        #   the product questions, and which are already SQL
+│   └── observability.md    #   what we see when it breaks, and the 24h expiry on it
 └── specs/                  # Implementation specs (login-onboarding.md)
 design/                     # Committed Figma snapshot — READ THIS, don't call the API
 ├── README.md               # Why it exists, how to refresh it, how to query it
@@ -91,6 +93,7 @@ design/                     # Committed Figma snapshot — READ THIS, don't call
 └── icons/                  # index.json + exported SVGs
 scripts/figma/              # The snapshot pipeline (pull -> extract -> query)
 scripts/docs/               # docs:check — the numeric doc-claims registry + runner (PD-155)
+scripts/db/                 # drift + seed checks, the analytics queries, the error-log reader
 scripts/native/             # the two build-shape guards — the bundle carries no rider data, the web build is not an export (PD-142)
 openspec/                   # config.yaml, plus:
 ├── specs/                  # Standing capability specs — the current contract
