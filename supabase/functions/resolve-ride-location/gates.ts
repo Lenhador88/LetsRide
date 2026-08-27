@@ -28,21 +28,33 @@
  * ---------------------------------------------------------------------------
  * What is measured here and what is assumed — read this before trusting a value
  * ---------------------------------------------------------------------------
- * `*.geoapify.com` is egress-blocked from the build container, so **not one
- * request in this file has ever been issued.** Per `CLAUDE.md`'s rule that an
- * inferred value must never pass silently as a known one, each constant below
- * says which it is. The three that are genuinely assumed:
+ * Per `CLAUDE.md`'s rule that an inferred value must never pass silently as a
+ * known one, each constant below says which it is.
  *
- *   - `MAP_STYLE`, `SCALE_FACTOR` and the static-map endpoint's parameter names
- *     are taken from the vendor's documentation as this repo understands it and
- *     have not been exercised. A wrong parameter name is a fail-open case here:
- *     `index.ts` treats every non-2xx as "no tile", so the ride still saves.
+ * **Both halves of this file have now been exercised against the live vendor**
+ * — DEV, 2026-08-27, one picked ride and one typed one, both returning
+ * `{"rendered":true}` with two objects in Storage and both path columns
+ * written. So the static-map endpoint, its parameter names, `MAP_STYLE` and
+ * `SCALE_FACTOR` are MEASURED rather than assumed — which matters more than the
+ * text they replace allowed, because a **misspelled query parameter on this API
+ * is IGNORED rather than rejected**. A wrong `scaleFactor` would have returned
+ * 200 with a 1× image and stored it, not a non-2xx and no tile. Only a wrong
+ * *endpoint* fails open through `index.ts`'s "every non-2xx is no tile" path.
+ *
+ * Two things remain genuinely unmeasured, and both are about the *vocabulary*
+ * of a response rather than the shape of a request — one successful geocode
+ * cannot enumerate either:
+ *
  *   - `STREET_LEVEL_RESULT_TYPES` is an **allowlist** precisely because the
  *     vocabulary is unmeasured — see its own comment.
- *   - `CONFIDENCE_FLOOR`'s scale. One observation of the value `1` is equally
+ *   - `CONFIDENCE_FLOOR`'s scale. Two observations of the value `1` are equally
  *     consistent with 0–1, 0–10 and 0–100.
  *
- * Task 8.4's live exercise is where those stop being assumptions.
+ * `*.geoapify.com` was egress-blocked from the build container when this file
+ * was written, which is why so much of it was inferred. **It is not blocked
+ * now** — `apidocs.geoapify.com` and `www.geoapify.com` both answer 200 as of
+ * 2026-08-27, so a session can read the vendor's own documentation rather than
+ * a search summary of it. Check before inheriting the older claim.
  */
 
 /* -------------------------------------------------------------------------- */
@@ -52,13 +64,14 @@
 /** Geocoding. The measured response in `tasks.md` §0.8 came from this endpoint. */
 export const GEOCODE_ENDPOINT = 'https://api.geoapify.com/v1/geocode/search'
 
-/** Static Maps. UNEXERCISED — see the header. */
+/** Static Maps. Exercised 2026-08-27 — see the header. */
 export const STATIC_MAP_ENDPOINT = 'https://maps.geoapify.com/v1/staticmap'
 
 /**
- * ASSUMED, not measured. A light OSM raster style; the two containers put text
- * over the tile (`RideMap`'s `bg-scrim`, `RideCard`'s `White/100` pin disc), so
- * the style only has to be neutral, not chosen.
+ * MEASURED 2026-08-27: the style exists and renders. It was chosen unmeasured,
+ * and the reason it could be is unchanged — a light OSM raster style, with both
+ * containers putting text over the tile (`RideMap`'s `bg-scrim`, `RideCard`'s
+ * `White/100` pin disc), so the style only has to be neutral, not chosen.
  */
 export const MAP_STYLE = 'osm-bright'
 
@@ -66,20 +79,59 @@ export const MAP_STYLE = 'osm-bright'
  * 2× device pixel ratio, `design.md` §D4: an 80×148 CSS-pixel tile drawn 1:1 on
  * a 3× phone is mush.
  *
- * **Expressed as `scaleFactor` rather than by doubling `width`/`height`, and the
- * difference is load-bearing for §6.** Doubling the pixel dimensions doubles the
- * *map area* at a fixed zoom and leaves the vendor's burned-in attribution at
- * its original size — which then displays at **half** its natural size once the
- * browser scales the tile back down to 80 CSS px, dropping it below the design
- * system's 10px floor and putting the strip straight into the spec's
- * *A credit that cannot fit means no tile* branch. `scaleFactor` renders the
- * same map area at twice the resolution, labels and credit included, so the
- * credit lands back at its natural apparent size.
+ * **Expressed as `scaleFactor` rather than by doubling `width`/`height`.**
+ * Doubling the pixel dimensions doubles the *map area* at a fixed zoom;
+ * `scaleFactor` renders the same map area at twice the resolution. MEASURED on
+ * DEV 2026-08-16: `80×148 scaleFactor=2` returned 160×296 and `358×160
+ * scaleFactor=2` returned 716×320. The documented range is **1..2**, "greater
+ * values available on request", so 2 is the ceiling as well as the choice.
  *
- * ASSUMED: that the parameter exists and takes `2`. If it does not, the request
- * fails and the ride saves with no tile, which is the fail-open path.
+ * **It does NOT scale the vendor's burned-in credit**, which was a fixed
+ * absolute size independent of both the dimensions and the factor — so the
+ * credit spanned and clipped the 160-wide card image while remaining legible on
+ * the 716-wide detail panel. That is recorded because it is the trap: raising
+ * `scaleFactor` is the obvious lever and it moves the credit the *opposite* way
+ * from the one that helps, making it occupy less of the tile and so less
+ * legible, which is the axis the obligation is measured on.
+ *
+ * It is history rather than a live constraint now — `ATTRIBUTION_MODE` means
+ * nothing is burned in at all — and it becomes live again the moment anyone
+ * sets that back to `default`.
  */
 export const SCALE_FACTOR = 2
+
+/**
+ * **`attribution=none` — the credit is ours to render, and this constant is one
+ * half of a two-part obligation.** The other half is `MapAttribution` in
+ * `src/components/rides/`, drawn once on each of the THREE screens that display
+ * a tile — `/rides`, `/rides/detail` and `/clubs/detail/rides` — never per tile
+ * and never over one. **A new surface rendering `map_card_url` or
+ * `map_detail_url` owes one and nothing enforces that**, so re-derive the set
+ * with `git grep -l "map_card_url\|map_detail_url" -- 'src/app' 'src/components'`
+ * rather than trusting the count here. Neither half may
+ * ship without the other, and the ORDER matters in one direction only: the app
+ * gaining a credit before the image loses one is a harmless duplicate, while the
+ * image losing one before the app gains one is a breach. So deploy this function
+ * AFTER the app change is serving, never before.
+ *
+ * MEASURED, twice. The parameter is real — Geoapify's own OpenAPI spec at
+ * `apidocs.geoapify.com/assets/openapi/specs/static-maps-api-openapi-specs.json`
+ * declares it `in: query`, `enum: [default, mandatory, none]`, `default:
+ * default` — and the product owner rendered a tile with it on the upgraded
+ * account: *"no more text on top of the image."* PD-236 carries both.
+ *
+ * **`mandatory` is the third mode and we are deliberately not using it.** Its
+ * name suggests it renders whatever the caller's plan legally requires, which
+ * would be a smaller burned-in block rather than none — and a smaller block is
+ * still a block the 80-wide strip cannot carry legibly. `none` plus our own
+ * credit is the only combination that gets a clean card.
+ *
+ * What the account being a paid package changes is the *content* of the credit,
+ * never whether one is shown: White Label drops `Powered by Geoapify`, while the
+ * OpenStreetMap (ODbL 1.0) and OpenMapTiles credits survive every plan and every
+ * OSM-based vendor. `MapAttribution` holds the exact strings.
+ */
+export const ATTRIBUTION_MODE = 'none'
 
 /* -------------------------------------------------------------------------- */
 /* The three gates                                                             */
@@ -187,12 +239,21 @@ export type TileSpec = {
  * there", which needs the town in frame.
  *
  * The dimensions are the containers' own: `RideCard`'s strip is `w-20` (80) by
- * 148, `RideMap`'s panel is `h-40` (160) across the page's 358. Matching them
- * exactly is what keeps `object-cover` from cropping the vendor's burned-in
- * credit out of the bottom of the image on the ordinary card.
+ * 148, `RideMap`'s panel is `h-40` (160) across the page's 358.
+ *
+ * **The card's zoom is 7 and it is marked "to try", not settled.** Product
+ * owner, on the first tile rendered with `ATTRIBUTION_MODE` — *"Seems to be very
+ * zoomed in though"*, then *"zoom 7 seems okay to try"*. It was 13, and nobody
+ * had ever judged it: the burned-in credit covered the map, so the framing was
+ * inherited rather than chosen. **If 7 reads as too far out on a real rides
+ * list, the next step is 8, not back to 13.**
+ *
+ * **The detail panel is unchanged at z15 and was not re-judged** — a much wider
+ * viewport whose credit was legible even burned in, so it was never the broken
+ * one. Do not change it on PD-236's authority.
  */
 export const TILE_SPECS = {
-  card: { width: 80, height: 148, zoom: 13 },
+  card: { width: 80, height: 148, zoom: 7 },
   detail: { width: 358, height: 160, zoom: 15 },
 } as const satisfies Record<string, TileSpec>
 
@@ -235,14 +296,19 @@ export function buildGeocodeUrl(meetingPoint: string, apiKey: string): string {
 }
 
 /**
- * **Nothing here suppresses the vendor's attribution, and that is a decision
- * rather than an omission.** The Static Maps response carries map-style
- * attribution burned into the image, bottom-right, and that is what discharges
- * the OpenStreetMap obligation in practice (`tasks.md` §0.2, obligation 1 —
- * required *always*, on every plan, so there is no upgrade that removes it).
- * Suppressing it would not remove the obligation, it would move it onto a 80px
- * strip that cannot carry the string. `ride-geocode-gates.test.ts` asserts the
- * absence of every suppression parameter this vendor is known to offer.
+ * **This sends `attribution=none`, so the tile carries no credit and the app
+ * carries it instead.** The obligation is unchanged and undischargeable by any
+ * plan — Geoapify's own instruction is that *"you need to care about
+ * attributions yourself when you hide the automatically added attribution"* —
+ * and `MapAttribution` is where this repo takes it. See `ATTRIBUTION_MODE`.
+ *
+ * Until 2026-08-27 this comment said the opposite, on the reasoning that
+ * suppression *"would move the obligation onto an 80px strip that cannot carry
+ * the string"*. The premise was right and the conclusion was not: the string
+ * does not have to sit inside the image. Rendered as HTML over the tile it is
+ * legible at any tile size, which is the Leaflet pattern the vendor's own
+ * guidance names — *"the credit should typically appear in the corner of the
+ * map"*.
  */
 export function buildTileUrl(
   spec: TileSpec,
@@ -261,6 +327,8 @@ export function buildTileUrl(
   url.searchParams.set('zoom', String(spec.zoom))
   // JPEG, never PNG — see `buildRideMapPath`.
   url.searchParams.set('format', 'jpeg')
+  // Ships with `MapAttribution` or not at all — see `ATTRIBUTION_MODE`.
+  url.searchParams.set('attribution', ATTRIBUTION_MODE)
   url.searchParams.set('apiKey', apiKey)
   return url.toString()
 }

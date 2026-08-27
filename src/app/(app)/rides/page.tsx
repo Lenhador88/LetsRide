@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
 import { NearbyRidesStrip } from '@/components/rides/NearbyRidesStrip'
+import { MapAttribution } from '@/components/rides/MapAttribution'
 import { RideCard } from '@/components/rides/RideCard'
 import { RideFilterBar } from '@/components/rides/RideFilterBar'
 import { SectionHeader } from '@/components/ui/SectionHeader'
@@ -294,6 +295,27 @@ function RidesScreen() {
               <SectionHeader title="Past rides" className="px-4 pb-0 pt-4" />
               <RideCards rides={past} filter={filter} />
             </>
+          )}
+
+          {/* **One credit for every tile on this screen** — PD-236, and see
+              `MapAttribution`'s header for why it is not on the cards. An 80px
+              strip cannot carry the string without covering the map, which is
+              the defect this issue exists to fix.
+
+              **Keyed on any card HAVING a tile, not on one currently drawing.**
+              `RideCard` drops its own tile on an `onError` and falls back to the
+              pin, so keying this on what succeeded would take the credit away
+              exactly when a signature expires — and the obligation is owed while
+              the vendor's imagery is on the screen, not while a particular
+              `<img>` is healthy. `RideMap` makes the same distinction for the
+              same reason.
+
+              Absent entirely when nothing has a tile, which is the ordinary
+              state of a fresh database: a screen showing no map data owes no
+              map credit, and a line crediting imagery nobody can see is noise
+              rather than compliance. */}
+          {[...upcoming, ...past].some((ride) => !!ride.map_card_url) && (
+            <MapAttribution />
           )}
         </div>
       )}

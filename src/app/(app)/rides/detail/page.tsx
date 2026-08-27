@@ -14,6 +14,7 @@ import { ErrorState } from '@/components/ui/ErrorState'
 import { ExpandableText } from '@/components/ui/ExpandableText'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonDetail } from '@/components/ui/Skeleton'
+import { MapAttribution } from '@/components/rides/MapAttribution'
 import { RideMap } from '@/components/rides/RideMap'
 import { getRide } from '@/lib/data/rides'
 import { useQuery } from '@/lib/query'
@@ -234,6 +235,15 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
       </div>
 
       <RideMap meetingPoint={ride.meeting_point} tileUrl={ride.map_detail_url} />
+      {/* Beneath the panel rather than in its corner — PD-236. The tile carries
+          no burned-in credit any more (`ATTRIBUTION_MODE`), so this is what
+          discharges the obligation, and it is page furniture rather than an
+          overlay because the joined string is ~350px against a panel that is
+          288 wide at 320px viewport. Keyed on the ride HAVING a tile, not on
+          one currently drawing: `RideMap` falls back to the pin on an
+          `onError`, and the credit is owed while the vendor's imagery is in the
+          app rather than while a particular `<img>` is healthy. */}
+      {!!ride.map_detail_url && <MapAttribution />}
 
       {blurb && <ExpandableText className="px-6">{blurb}</ExpandableText>}
 

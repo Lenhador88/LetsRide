@@ -571,12 +571,46 @@ attribution is a licence breach that ships silently on every ride card in the ap
   4px from the bottom-right
 
 #### Scenario: The 80×148 strip carries the credit as part of its design
+> **SUPERSEDED 2026-08-27 by PD-236, and the supersession is PARTIAL — read the amendment
+> below before treating either version as settled.** This scenario assumed the credit is
+> burned into the tile by the vendor and therefore travels with it. `attribution=none` ends
+> that assumption: the tile is clean and the credit is the app's to place, which is a state
+> this requirement did not contemplate.
+
 - **WHEN** the card strip draws a tile
 - **THEN** the attribution SHALL be composed **into** the strip rather than added beside the card
 - **AND** a single shared credit elsewhere on the screen SHALL NOT be accepted as covering the
   tiles, because a list is scrolled and a card is what a rider sees
 
+#### Scenario: The credit is rendered by the app, once per screen — PD-236
+- **WHEN** any screen draws one or more tiles
+- **THEN** the request SHALL send `attribution=none` and the app SHALL render the credit itself
+- **AND** the credit SHALL NOT be drawn over a tile on any surface, because the joined string is
+  ~350px at the smallest type token and the card strip is 80px wide
+- **AND** every screen rendering `map_card_url` or `map_detail_url` SHALL carry one — three today
+  (`/rides`, `/rides/detail`, `/clubs/detail/rides`), with nothing enforcing it, so the set SHALL
+  be re-derived rather than trusted
+- **AND** the app SHALL be serving its credit **before** the render function is deployed, never
+  after: a duplicate credit for the length of a deploy is harmless and an absent one is a breach
+
+#### Scenario: Placement within the screen is UNRESOLVED and is a live tension
+> The superseded scenario's reason — *"a list is scrolled and a card is what a rider sees"* —
+> was never answered, only routed around. It applies with equal force to a credit at the end of
+> a scrolling list, which is below the fold from roughly the fifth card.
+
+- **WHEN** the credit is placed at the end of a list rather than within the viewport
+- **THEN** it SHALL be recorded as provisional rather than as satisfying the requirement above
+- **AND** the product owner's decision of 2026-08-27 — *"as long as we leave the creditation out
+  of the map tiles it's good for now, so at the end of the list is okay for now"* — SHALL be read
+  with its *"for now"* intact: a pilot with no riders, not a settled answer
+- **AND** the alternative that would resolve it SHALL be recorded rather than left to be
+  rediscovered: a credit fixed to the viewport, which satisfies the same instruction and is
+  visible whatever the scroll position
+
 #### Scenario: A credit that cannot fit means no tile
+> **Still the rule for any credit drawn INSIDE a tile.** PD-236 did not relax it; it removed the
+> need to test it on the card strip by taking the credit out of the image entirely.
+
 - **WHEN** the required attribution string cannot be rendered legibly within 80px at the
   smallest type token this design system has
 - **THEN** the strip SHALL render the existing pin fallback and no tile
