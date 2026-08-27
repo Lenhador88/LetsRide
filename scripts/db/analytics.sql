@@ -1,11 +1,11 @@
 -- The product questions, as SQL against what the schema already stores.
 --
 -- WHY THIS FILE EXISTS. "Analytics" sat on CLAUDE.md's deliberately-undecided
--- list, and the assumption behind leaving it there was that answering any of it
--- needed an events pipeline first. It mostly does not: `profiles` carries
--- created_at, terms_accepted_at, username and onboarding_completed_at on every
--- row, so the onboarding funnel — the highest-value question here — is four
--- counts against one table. Every other domain table carries a timestamp too.
+-- list because answering any of it was assumed to need an events pipeline. It
+-- mostly does not: `profiles` carries created_at, terms_accepted_at, username
+-- and onboarding_completed_at on every row, so the onboarding funnel — the
+-- highest-value question here — is four counts against one table. Every other
+-- domain table carries a timestamp too.
 --
 -- WHAT THIS IS NOT. These are OPERATOR queries. They are run by a human or an
 -- agent with elevated access (the Supabase MCP `execute_sql`, or psql against
@@ -18,18 +18,45 @@
 --   Supabase MCP:  execute_sql, one block at a time
 --   psql:          psql "$DEV_DATABASE_URL" -f scripts/db/analytics.sql
 --
--- THE TRAP, and it inflates the one metric most likely to be quoted:
--- complete_onboarding() joins every rider to the club carrying clubs.is_default
--- (058). So club membership is 100% by construction. Every club query below
--- excludes that club explicitly. A club metric that does not is measuring the
--- migration, not the riders.
+-- ---------------------------------------------------------------------------
+-- THREE DEFINITIONS THAT DECIDE WHETHER THESE NUMBERS MEAN ANYTHING
+-- ---------------------------------------------------------------------------
+--
+-- 1. THE DEFAULT CLUB IS NOT A JOIN A RIDER MADE. complete_onboarding() writes
+--    a club_members row for the club carrying clubs.is_default (058). So club
+--    membership is 100% by construction, AND finishing the wizard is itself a
+--    timestamped write. Every query below that touches club_members excludes
+--    that club — the adoption ones because they would read as total success,
+--    and the ACTIVITY ones because otherwise a rider who completed onboarding
+--    and never returned counts as active, which drives retention toward 100%
+--    on exactly the young install where the number is most quoted.
+--
+-- 2. "CREW" IS 'going' OR 'maybe'. ride_members.status is CHECKed to those two
+--    and both are offered in the UI (RideAttendanceBar). Counting only 'going'
+--    files a ride with five maybes under "nobody came", which is the headline
+--    number on this page and the easiest one to overstate.
+--
+-- 3. ACTIVITY IS ONE DEFINITION, USED TWICE. The `writes` CTE below appears
+--    identically in the snapshot and in Q7. If you change one, change both, or
+--    two different measurements end up printed under the same name.
 
 -- ---------------------------------------------------------------------------
 -- 1. THE SNAPSHOT — every headline number in one result set.
 -- ---------------------------------------------------------------------------
 -- Run this one first. The drill-downs below only earn their time once a line
 -- here looks wrong.
-with default_club as (select id from clubs where is_default limit 1)
+with default_club as (select id from clubs where is_default limit 1),
+writes as (
+  select author_id as uid, created_at as at from postcards
+  union all select author_id, created_at from postcard_comments
+  union all select user_id,   created_at from postcard_likes
+  union all select author_id, created_at from ride_messages
+  union all select author_id, created_at from club_threads
+  union all select author_id, created_at from club_messages
+  union all select user_id,   joined_at  from ride_members
+  union all select user_id,   joined_at  from club_members
+    where club_id is distinct from (select id from default_club)
+)
 select 'riders signed up' as metric,
        (select count(*) from profiles)::text as value
 union all select '… accepted terms',
@@ -40,7 +67,11 @@ union all select '… completed onboarding',
        (select count(*) from profiles where onboarding_completed_at is not null)::text
 union all select 'rides created',
        (select count(*) from rides)::text
-union all select '… with no crew but the organizer',
+union all select '… with no RSVP at all but the organizer',
+       (select count(*) from rides r where not exists (
+          select 1 from ride_members m
+          where m.ride_id = r.id and m.user_id <> r.organizer_id))::text
+union all select '… with no committed rider but the organizer',
        (select count(*) from rides r where not exists (
           select 1 from ride_members m
           where m.ride_id = r.id and m.user_id <> r.organizer_id and m.status = 'going'))::text
@@ -56,13 +87,8 @@ union all select 'postcards',
        (select count(*) from postcards)::text
 union all select '… distinct authors',
        (select count(distinct author_id) from postcards)::text
-union all select 'riders with any write, last 7d',
-       (select count(distinct uid) from (
-          select author_id uid from postcards      where created_at > now() - interval '7 days'
-          union select user_id   from ride_members where joined_at  > now() - interval '7 days'
-          union select user_id   from club_members where joined_at  > now() - interval '7 days'
-          union select author_id from postcard_comments where created_at > now() - interval '7 days'
-       ) s)::text
+union all select 'riders with a deliberate write, last 7d',
+       (select count(distinct uid) from writes where at > now() - interval '7 days')::text
 union all select 'moderation events (block/report/hide)',
        ((select count(*) from blocks)
       + (select count(*) from postcard_reports)
@@ -101,20 +127,27 @@ where onboarding_completed_at is not null;
 -- ---------------------------------------------------------------------------
 -- 3. THE CORE LOOP — do rides get crews, do riders post, do clubs get used.
 -- ---------------------------------------------------------------------------
--- Q4. Crew size per ride. The zero row is the one that matters: a ride nobody
--- joins is the product failing at the thing it is named for.
-select crew, count(*) as rides
+-- Q4. Crew size per ride, counting BOTH statuses (see definition 2 above). The
+-- `crew_any = 0` row is the one that matters: a ride nobody responded to at all
+-- is the product failing at the thing it is named for. `none_committed` splits
+-- out the softer failure — riders answered, but none of them said going.
+select crew_any,
+       count(*) as rides,
+       count(*) filter (where crew_going = 0) as of_which_none_committed
 from (
   select r.id,
          (select count(*) from ride_members m
-           where m.ride_id = r.id and m.user_id <> r.organizer_id and m.status = 'going') as crew
+           where m.ride_id = r.id and m.user_id <> r.organizer_id) as crew_any,
+         (select count(*) from ride_members m
+           where m.ride_id = r.id and m.user_id <> r.organizer_id
+             and m.status = 'going') as crew_going
   from rides r
 ) s
-group by crew
-order by crew;
+group by crew_any
+order by crew_any;
 
--- Q5. Posting concentration. If `distinct authors` is a handful while
--- `postcards` is large, the feed is one person talking.
+-- Q5. Posting concentration. If `authors` is a handful while `postcards` is
+-- large, the feed is one person talking.
 select count(*) as postcards,
        count(distinct author_id) as authors,
        round(count(*)::numeric / nullif(count(distinct author_id), 0), 1) as per_author,
@@ -122,7 +155,7 @@ select count(*) as postcards,
 from postcards;
 
 -- Q6. Club adoption, with the default club excluded. `riders_in_a_real_club`
--- against total riders is the real adoption rate.
+-- against `riders_total` is the real adoption rate.
 with default_club as (select id from clubs where is_default limit 1)
 select (select count(*) from clubs where not is_default) as clubs,
        (select count(distinct user_id) from club_members
@@ -133,13 +166,20 @@ select (select count(*) from clubs where not is_default) as clubs,
            and role = 'owner') as owners;
 
 -- Q7. Return rate. DAU/WAU means nothing at this size; "did this rider write
--- anything" is the honest proxy, because every write is timestamped.
-with writes as (
+-- anything deliberate" is the honest proxy. The default-club join is excluded
+-- for the reason in definition 1 — it is the wizard finishing, not a rider
+-- coming back. Keep this union identical to the snapshot's.
+with default_club as (select id from clubs where is_default limit 1),
+writes as (
   select author_id as uid, created_at as at from postcards
-  union all select user_id,   joined_at  from ride_members
-  union all select user_id,   joined_at  from club_members
   union all select author_id, created_at from postcard_comments
   union all select user_id,   created_at from postcard_likes
+  union all select author_id, created_at from ride_messages
+  union all select author_id, created_at from club_threads
+  union all select author_id, created_at from club_messages
+  union all select user_id,   joined_at  from ride_members
+  union all select user_id,   joined_at  from club_members
+    where club_id is distinct from (select id from default_club)
 )
 select count(distinct uid) filter (where at > now() - interval '7 days')  as active_7d,
        count(distinct uid) filter (where at > now() - interval '30 days') as active_30d,
@@ -150,10 +190,15 @@ from writes;
 -- 4. COST AND SAFETY — already recorded, never looked at.
 -- ---------------------------------------------------------------------------
 -- Q9. The spend ledgers. 069 gives place search a per-rider hourly and daily
--- ceiling plus an application-wide one; 051 gives map tiles 10 per ride. Search
--- fails LOUDLY and tiles fail OPEN, so a rider at the search ceiling sees an
--- error and a ride at the tile ceiling silently shows no map. Both are already
--- in these tables and nothing has ever read them.
+-- ceiling plus an application-wide one; 051 gives map tiles 10 per ride PER
+-- ROLLING 24 HOURS. Search fails LOUDLY and tiles fail OPEN, so a rider at the
+-- search ceiling sees an error and a ride at the tile ceiling silently shows no
+-- map. Both are already in these tables and nothing has ever read them.
+--
+-- Every row here is windowed. Neither ledger prunes on a schedule — 051's own
+-- table comment says nothing removes rows older than the window — so an
+-- unwindowed count against a rolling ceiling only ever grows and would report a
+-- ride that rendered 8 tiles across three weeks as near its limit.
 select 'place searches, last 24h' as ledger, count(*)::text as n from place_search_attempts
   where attempted_at > now() - interval '24 hours'
 union all
@@ -163,11 +208,15 @@ union all
 select 'map renders, last 24h', count(*)::text from ride_map_render_attempts
   where attempted_at > now() - interval '24 hours'
 union all
-select 'rides at or near the 10-render ceiling', count(*)::text from (
-  select ride_id from ride_map_render_attempts group by ride_id having count(*) >= 8) s;
+select 'rides at 8+ of the 10 renders allowed in the last 24h', count(*)::text from (
+  select ride_id from ride_map_render_attempts
+   where attempted_at > now() - interval '24 hours'
+   group by ride_id having count(*) >= 8) s;
 
--- Q10. Moderation rate. A number that climbs is a product problem before it is
--- a legal one. postcard_hides is the softest signal and the earliest.
+-- Q10. Moderation, as raw totals. A number that climbs is a product problem
+-- before it is a legal one, and postcard_hides is the softest and earliest
+-- signal. Deliberately not divided by active riders: at this volume the ratio
+-- swings on single rows and reads as a trend that is not there.
 select 'blocks' as kind, count(*) as n, max(created_at) as latest from blocks
 union all select 'reports', count(*), max(created_at) from postcard_reports
 union all select 'hides',   count(*), max(created_at) from postcard_hides;

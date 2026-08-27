@@ -6,9 +6,13 @@
  * directly, so every read and write a rider makes is an HTTP request that
  * Supabase logs — and a broken screen usually shows up here as a 4xx or 5xx
  * before anyone reports it. On 2026-08-27 the club Discussions→Threads rename
- * (PD-313) left 64 404s against `club_discussions` in this stream while the
- * migration was ahead of the deploy, and nobody looked; it was found days later
- * by accident. That is the failure this script exists to make cheap.
+ * (PD-313) left 64 404s against `club_discussions` in this stream: `082`
+ * applied to DEV at 15:26Z and merged at 16:16Z, so for those ~50 minutes the
+ * schema was ahead of the Preview still calling the old relation. Nothing
+ * alerted. They were found the same afternoon, by accident, while answering an
+ * unrelated question — which is the part this script exists to fix. (DEV has no
+ * riders, so the cost was a broken Preview rather than an outage. On PROD the
+ * same window is rider-visible.)
  *
  * THE EXPIRY IS THE POINT. Free-tier log retention is about a day and the API
  * caps any single query at a 24-hour window, so a day nobody runs this is a day
@@ -32,11 +36,18 @@
  * https://supabase.com/dashboard/account/tokens. It is an operator credential:
  * keep it in the shell, never in .env.local, never in the bundle.
  *
- * VERIFICATION STATUS. The SQL below is verified — it was run against DEV
- * through the Supabase MCP `query_logs` tool and produced the table in this
- * script's header. The HTTP transport here is NOT verified: no management token
- * exists in the build container, so this file has never completed a live call.
- * Treat the first run as a test of the transport, not of the query.
+ * VERIFICATION STATUS — the two halves of this file differ, so read both.
+ *
+ * The SQL below IS verified: run against DEV (`fpmrimzxadewsaiwpsel`) through
+ * the Supabase MCP `query_logs` tool on 2026-08-27, returning the 404s
+ * described above alongside the 401s and 403s that are guards working.
+ *
+ * The HTTP transport here is NOT verified. No Supabase Management API token
+ * exists in the build container, so this file has never completed a live call —
+ * the URL shape, the auth header and the response envelope are written from the
+ * API's documented contract and nothing has exercised them. Treat the first run
+ * as a test of the transport, not of the query, and if the envelope differs the
+ * fix is `payload.result ?? payload.data` at the bottom of this file.
  *
  *   SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors           # DEV
  *   SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors -- --prod
@@ -49,13 +60,16 @@ const PROJECTS = {
   prod: { ref: 'zwprydcyryvudhurbnye', label: 'letsride (PRODUCTION)' },
 }
 
+// `log_attributes` values are strings, so the status has to be cast before it
+// is compared: `>= '400'` is a lexicographic comparison that happens to be
+// right for three-digit codes and is silently wrong for anything else.
 const SQL = `
-select log_attributes['response.status_code'] as status,
+select toInt32OrZero(log_attributes['response.status_code']) as status,
        log_attributes['request.path'] as path,
        count(*) as n
 from logs
 where source = 'edge_logs'
-  and log_attributes['response.status_code'] >= '400'
+  and toInt32OrZero(log_attributes['response.status_code']) >= 400
 group by status, path
 order by n desc
 limit 50

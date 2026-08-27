@@ -28,24 +28,32 @@ the decision it changes. Ordered by how much it would change what we build next.
 | 1 | Of riders who sign up, how many accept terms → set a username → complete? | whether onboarding is the leak | `profiles` |
 | 2 | How long does completion take, and does anyone resume? | whether the resumable wizard earns its complexity | `profiles` |
 | 3 | *Which* step rejects them — is it the username being taken? | the likeliest single fix in the funnel | **nothing — see below** |
-| 4 | % of rides with no crew but the organizer | whether the core promise works at all | `rides` + `ride_members` |
+| 4 | % of rides with no RSVP at all but the organizer, and how many drew no `going` | whether the core promise works at all | `rides` + `ride_members` |
 | 5 | Postcards per author; how concentrated posting is | whether the feed is a product or one person talking | `postcards` |
 | 6 | Club adoption **excluding the default club** | whether clubs are adopted | `clubs` + `club_members` |
-| 7 | Riders with any write in 7 / 30 days | the only honest retention measure at this size | five tables |
+| 7 | Riders with a deliberate write in 7 / 30 days | the only honest retention measure at this size | eight tables |
 | 8 | Which screens throw, for how many riders | see [`observability.md`](observability.md) | **partly missing** |
 | 9 | Are riders hitting the search / map-tile ceilings? | search fails loudly, tiles fail silently | the two spend ledgers |
-| 10 | Blocks, reports and hides per active rider | a safety signal before it is a legal one | three tables |
+| 10 | Blocks, reports and hides, as raw totals | a safety signal before it is a legal one | three tables |
 
 Eight of the ten are SQL today. One needs events (#3) and one needs client-side
-error reporting (#8) — and both of those are decisions, not tasks.
+error reporting (#8) — and both of those are decisions, not tasks. Verify the
+count rather than trusting it: `analytics.sql` supplies a query for every row
+above except 3 and 8.
 
-## The default-club trap
+## Three definitions decide whether these numbers mean anything
 
-`complete_onboarding()` joins every rider to the club carrying `clubs.is_default`
-(`058`). **So raw club membership is 100% by construction**, and any club metric
-that does not exclude that club reads as total success while measuring a
-migration. Every club query in `analytics.sql` excludes it explicitly. This is
-the single easiest number on this page to quote wrongly.
+They are stated in full at the top of
+[`analytics.sql`](../../scripts/db/analytics.sql), where anyone editing a query
+will actually hit them, rather than repeated here where the two copies would
+drift. In short: **the default club is not a join a rider made** (so it is
+excluded from adoption *and* from activity — otherwise finishing the wizard reads
+as engagement), **crew is `going` or `maybe`** (counting only `going` files a ride
+with five maybes under "nobody came"), and **activity is one union used twice**
+(the snapshot and question 7 must stay identical).
+
+Each is a way to produce a confident, wrong number, which is why they lead the
+file rather than sitting in a footnote.
 
 ## The one thing SQL cannot answer
 

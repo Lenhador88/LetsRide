@@ -35,8 +35,14 @@ directly for everything else.
 
 The app also has three error boundaries — `src/app/global-error.tsx`,
 `src/app/error.tsx` and `src/app/(app)/error.tsx`. They are **containment, not
-observability**: they render a designed fallback with a retry, and the only
-thing they do with the error object is `console.error`.
+observability**: they render a designed fallback with a retry, and the most any
+of them does with the error object is `console.error` it into the rider's own
+console.
+
+**`global-error.tsx` does not even do that** — it has no `useEffect` and no
+logging at all, and only renders `error.digest`. That is the root-layout
+failure, the one case no other boundary can reach, so the gap is widest exactly
+where the blast radius is largest.
 
 ## What we cannot see
 
@@ -86,10 +92,17 @@ working and a 403 is usually RLS refusing correctly. What matters is:
 - **any 5xx** — always ours;
 - **a count that jumps** against yesterday.
 
-The worked example is real: the Discussions→Threads rename (PD-313) left 64
-404s on `club_discussions` in this stream while `082` was ahead of its deploy.
-Nothing alerted, and it was found days later by accident while answering an
-unrelated question.
+The worked example is real, and worth stating with its measured timeline rather
+than a rounder one. The Discussions→Threads rename (PD-313) left **64 404s** on
+`club_discussions` in this stream: `082` applied to DEV at 15:26Z and merged at
+16:16Z, so for those **~50 minutes** the schema was ahead of the Preview still
+calling the old relation. Nothing alerted. They were found the same afternoon,
+by accident, while answering an unrelated question.
+
+**DEV has no riders, so the cost there was a broken Preview rather than an
+outage** — the reason to carry the example is that the same ordering mistake on
+PROD is rider-visible for the length of a build, and nothing would have told us
+there either.
 
 ## The open decision: client-side error reporting
 
