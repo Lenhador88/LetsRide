@@ -3805,16 +3805,17 @@ rollback to savepoint stranded_wizard;
 -- would answer 42501 rather than a boolean.
 reset role;
 
--- Thirteen since 081 added club_threads AND club_messages — TWO, not one,
--- which is the arithmetic 078's own task list got wrong about the equivalent
--- advisor. Eleven since 069, ten since 051, nine since 034.
+-- Fourteen since 084 gated `feedback`. Thirteen since 081 added club_threads
+-- AND club_messages — TWO, not one, which is the arithmetic 078's own task list
+-- got wrong about the equivalent advisor. Eleven since 069, ten since 051, nine
+-- since 034.
 -- This number is deliberately hand-written rather than derived:
 -- if it were `(select count(*) from the tables we gated)` it could not notice a
 -- gate going missing, which is the whole point.
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  13, '069/081/082: thirteen gate triggers, one per gated table — 081 added TWO, club_threads and club_messages, because the advisor and the trigger sweep both fire once per table');
+  14, '069/081/082/084: fourteen gate triggers, one per gated table — 081 added TWO, club_threads and club_messages, because the advisor and the trigger sweep both fire once per table');
 
 -- Named rather than counted, for the same reason the omissions below are: the
 -- total above cannot tell a gate that MOVED from one that was added, and the
@@ -3841,7 +3842,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  13, '069/081: every gate trigger carries the WHEN guard that reads the invoking role');
+  14, '069/081/084: every gate trigger carries the WHEN guard that reads the invoking role');
 
 -- The two halves of the security-definer question, and they point opposite ways.
 -- The gate functions MUST be definer; the profile completion guard must NOT be,
@@ -4269,15 +4270,22 @@ select assert_eq(
 -- indefinitely with nothing reporting it. This is the count changed on purpose,
 -- and the derived index assertion above passed on the same run, so all three
 -- leading-column indexes are real.
+--
+-- **23 since 084 added feedback.user_id.** Free text a rider typed about their
+-- own experience, in a table nothing in the app can read back — so the cascade
+-- is the ONLY mechanism that will ever remove it, exactly as it is for
+-- push_devices. 084 §0b argues the alternative (`on delete set null`, keeping
+-- the report and losing the author) and rejects it for this reason; this is the
+-- assertion that would fail if someone took it.
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass),
-  22, '029/061/069/078/081: twenty-two FKs reference public.profiles');
+  23, '029/061/069/078/081/084: twenty-three FKs reference public.profiles');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
       and confdeltype = 'c'),
-  22, '029/061/069/078/081: ... and every one of them is ON DELETE CASCADE');
+  23, '029/061/069/078/081/084: ... and every one of them is ON DELETE CASCADE');
 
 -- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
 -- grounds that pinning the path to owner_id makes any transfer raise 23514;
@@ -16325,12 +16333,13 @@ select assert_eq(
   '078.9b: ... and no trigger at all fires on push_devices');
 
 -- The other half, and it only means something next to 078.9a: the gate's
--- coverage count is UNCHANGED by 078. If this ever reads 12, a trigger that
+-- coverage count is UNCHANGED by 078. If this ever reads one MORE than the
+-- number of gated content tables, a trigger that
 -- cannot fire has been added here and the count above will still be honest.
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  13, '078.9c: ... and 078 itself added NO trigger — the total is thirteen because 081 added two content tables with one each, and push_devices is still not among them');
+  14, '078.9c: ... and 078 itself added NO trigger — the total is fourteen because 081 added two content tables with one each and 084 added a third, and push_devices is still not among them');
 
 -- ---------------------------------------------------------------------------
 -- 078.10  The key is the installation, asserted against the catalogue.
@@ -18094,11 +18103,11 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  13, '081.20: ... and all thirteen carry the WHEN guard that reads the invoking role — inside a security definer body current_user is the OWNER, so a guard moved into the function would fire for nobody');
+  14, '081.20: ... and all fourteen carry the WHEN guard that reads the invoking role — inside a security definer body current_user is the OWNER, so a guard moved into the function would fire for nobody');
 select assert_eq(
   (select obj_description('public.enforce_participation_gate()'::regprocedure, 'pg_proc')
-     like '%thirteen BEFORE INSERT triggers%'),
-  true, '081.20: ... and the function''s own comment is restamped to thirteen — a database comment is the only documentation no edit to CLAUDE.md reaches (028, 033)');
+     like '%fourteen BEFORE INSERT triggers%'),
+  true, '081.20/084: ... and the function''s own comment is restamped to fourteen — a database comment is the only documentation no edit to CLAUDE.md reaches (028, 033)');
 set role authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -18546,6 +18555,226 @@ select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
 
 reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+
+
+-- ===========================================================================
+-- 084 · Rider feedback — a table the app writes and can never read
+-- ===========================================================================
+-- PD-321. The whole contract is an asymmetry: `authenticated` holds a
+-- column-level INSERT grant and NOTHING else, and there is no SELECT policy at
+-- all. So the assertions come in pairs — the write that must work, and the read
+-- that must not — and the read half is the one that would rot silently if a
+-- later change granted SELECT "for the rider's own rows" without noticing that
+-- nothing in the app wants it.
+--
+--   840001  consented rider, files feedback                     -- 084.1 – 084.4
+--   840002  a second rider, whose id 840001 tries to file under -- 084.2
+--   840003  onboarded but NO terms_accepted_at                  -- 084.6
+savepoint feedback_084;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000840001', 'fbauthor@example.com'),
+  ('00000000-0000-0000-0000-000000840002', 'fbother@example.com'),
+  ('00000000-0000-0000-0000-000000840003', 'fbnoterms@example.com');
+reset role;
+
+update profiles set username = 'fbauthor',  location = 'Utrecht',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000840001';
+update profiles set username = 'fbother',   location = 'Haarlem',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000840002';
+-- ** No terms_accepted_at, deliberately. ** The account created by calling
+-- GoTrue's /auth/v1/signup directly and never calling accept_terms(), which
+-- CLAUDE.md names as reachable. 084.6 is what refuses their write.
+update profiles set username = 'fbnoterms', location = 'Zeist',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000840003';
+
+-- Written as the OWNER, not through the policy, and that is what makes 084.3 a
+-- test rather than a tautology: the row has to already exist for "the author
+-- cannot read their own row back" to mean anything. An assert_allowed insert
+-- would unwind itself and leave nothing to fail to read.
+insert into feedback (id, user_id, body, app_version, route) values
+  ('00000000-0000-0000-0000-0000008400f1',
+   '00000000-0000-0000-0000-000000840001',
+   'The RSVP bar covers the last row of the crew list.', '0.1.0', '/rides/detail');
+
+-- ---------------------------------------------------------------------------
+-- 084.1  A consented rider files their own feedback
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000840001', false);
+select assert_allowed($$
+  insert into feedback (user_id, body, app_version, route)
+  values ('00000000-0000-0000-0000-000000840001',
+          'The map tile never loads on my phone.', '0.1.0', '/rides/detail')$$,
+  '084.1: a consented rider files their own feedback');
+-- Both context columns are optional: a client that cannot supply them must
+-- still be able to file, which is why neither is NOT NULL.
+select assert_allowed($$
+  insert into feedback (user_id, body)
+  values ('00000000-0000-0000-0000-000000840001', 'No context at all.')$$,
+  '084.1: ... with neither context column, because a report is worth more than its metadata');
+
+-- ---------------------------------------------------------------------------
+-- 084.2  ** THE PIN. ** Feedback cannot be filed under somebody else's name
+-- ---------------------------------------------------------------------------
+-- The one thing a WITH CHECK on this table has to do. Without it, any signed-in
+-- rider could put words in another rider's mouth in a table that rider can
+-- never read and therefore can never contest.
+select assert_denied($$
+  insert into feedback (user_id, body)
+  values ('00000000-0000-0000-0000-000000840002', 'Not my words')$$,
+  '084.2: ... and cannot file one under another rider''s id');
+
+-- ---------------------------------------------------------------------------
+-- 084.3  ** THE ABSENCE THIS TABLE EXISTS FOR. ** Nobody reads it, not even
+--        the author of the row
+-- ---------------------------------------------------------------------------
+-- 42501 rather than zero rows, and the difference matters: a missing SELECT
+-- POLICY returns an empty set, while a missing SELECT GRANT refuses the
+-- statement. `084` withholds both, and this asserts the stronger of the two —
+-- so a later migration that adds a policy without the grant, or a grant without
+-- the policy, fails here rather than quietly half-opening the table.
+select assert_denied($$select 1 from feedback$$,
+  '084.3: a rider cannot read the feedback table at all');
+select assert_denied($$
+  select 1 from feedback where user_id = '00000000-0000-0000-0000-000000840001'$$,
+  '084.3: ... not even the rows they wrote themselves');
+select assert_denied($$select count(*) from feedback$$,
+  '084.3: ... and cannot count them either, which is the shape a leak would take');
+
+-- ---------------------------------------------------------------------------
+-- 084.4  Nothing is editable and nothing is withdrawable
+-- ---------------------------------------------------------------------------
+-- Asserted against the GRANT rather than by running the statement, because
+-- assert_allowed's own docstring is the reason: an UPDATE or DELETE that RLS
+-- forbids entirely touches zero rows and returns without error, so running one
+-- proves nothing. Here there is no grant at all, so the privilege check is the
+-- real answer and it is checkable directly.
+select assert_eq(has_table_privilege('authenticated', 'public.feedback', 'update'),
+  false, '084.4: `authenticated` holds no UPDATE grant — feedback cannot be edited after the fact');
+select assert_eq(has_table_privilege('authenticated', 'public.feedback', 'delete'),
+  false, '084.4: ... and no DELETE grant — it cannot be withdrawn either');
+select assert_eq(has_table_privilege('authenticated', 'public.feedback', 'select'),
+  false, '084.4: ... and no SELECT grant, which is what 084.3 observes from the other side');
+-- **`has_table_privilege` is FALSE for insert too, and that is the grant being
+-- right rather than wrong.** `084` grants INSERT on four named COLUMNS, and a
+-- column-level grant does not satisfy a table-level privilege check — so the
+-- pair below is what says "may insert, but only the columns it was given".
+-- Asserting `has_table_privilege(..., 'insert')` true would have quietly
+-- demanded a table-wide grant, which is exactly what the column list exists to
+-- avoid.
+select assert_eq(has_table_privilege('authenticated', 'public.feedback', 'insert'),
+  false, '084.4: ... and no TABLE-level INSERT grant either — the grant is per column');
+select assert_eq(has_any_column_privilege('authenticated', 'public.feedback', 'insert'),
+  true, '084.4: ... but a column-level one, which is the single thing it may do');
+
+-- The two columns the client must not name. Scoped to the grantee: the
+-- unscoped information_schema count reads high against a correct database
+-- because postgres and service_role hold everything by Supabase default.
+select assert_eq(has_column_privilege('authenticated', 'public.feedback', 'body', 'INSERT'),
+  true, '084.4: the body column is grantable ...');
+select assert_eq(has_column_privilege('authenticated', 'public.feedback', 'created_at', 'INSERT'),
+  false, '084.4: ... and created_at is NOT — the clock is the server''s, by the grant rather than by the default');
+select assert_eq(has_column_privilege('authenticated', 'public.feedback', 'id', 'INSERT'),
+  false, '084.4: ... nor is id');
+
+-- ---------------------------------------------------------------------------
+-- 084.5  anon reaches nothing, and no policy here names another role
+-- ---------------------------------------------------------------------------
+-- Decision #1, asserted on the new table rather than assumed from the revoke.
+select assert_eq(has_table_privilege('anon', 'public.feedback', 'select'),
+  false, '084.5: anon cannot read feedback');
+select assert_eq(has_table_privilege('anon', 'public.feedback', 'insert'),
+  false, '084.5: ... and cannot write it');
+select assert_eq(
+  (select coalesce(array_agg(distinct roles::text order by roles::text), array[]::text[])
+     from pg_policies where tablename = 'feedback'),
+  array['{authenticated}'],
+  '084.5: every policy on feedback is `to authenticated` and no policy names anon or public');
+
+-- Exactly one policy, and its command is INSERT. Not zero: `rls_enabled_no_policy`
+-- fires only on a table with NO policies at all, so this table deliberately does
+-- NOT become a third INFO advisor beside password_reset_grants and push_devices.
+select assert_eq((select count(*)::int from pg_policies where tablename = 'feedback'),
+  1, '084.5: exactly one policy on feedback ...');
+select assert_eq((select cmd::text from pg_policies where tablename = 'feedback'),
+  'INSERT', '084.5: ... and it is the INSERT one');
+
+-- ---------------------------------------------------------------------------
+-- 084.6  The participation gate — the fourteenth trigger
+-- ---------------------------------------------------------------------------
+-- 23514, not 42501: the policy is satisfied (the rider is filing their own row)
+-- and the trigger is what refuses. assert_rejected rather than assert_denied,
+-- so a future change that made this an RLS refusal instead would fail here
+-- rather than passing for the wrong reason.
+select set_config('test.uid', '00000000-0000-0000-0000-000000840003', false);
+select assert_rejected($$
+  insert into feedback (user_id, body)
+  values ('00000000-0000-0000-0000-000000840003', 'Sent without ever accepting the terms')$$,
+  '23514',
+  '084.6: a rider with terms_accepted_at NULL cannot file feedback — the gate, not the policy');
+
+reset role;
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.feedback'::regclass
+      and tgname = 'enforce_participation_gate' and not tgisinternal),
+  1, '084.6: ... and the trigger really is on this table');
+
+-- ---------------------------------------------------------------------------
+-- 084.7  The body bounds live in the database, not only in Zod
+-- ---------------------------------------------------------------------------
+-- Trimmed floor, raw ceiling — 018's asymmetry. The second assertion is the one
+-- a naive `.trim().max()` in Zod would disagree with.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000840001', false);
+select assert_rejected($$
+  insert into feedback (user_id, body)
+  values ('00000000-0000-0000-0000-000000840001', '     ')$$,
+  '23514',
+  '084.7: whitespace-only feedback is refused by the trimmed floor');
+select assert_rejected($$
+  insert into feedback (user_id, body)
+  values ('00000000-0000-0000-0000-000000840001', repeat('x', 2000) || '  ')$$,
+  '23514',
+  '084.7: ... and 2000 characters of text plus padding is refused by the RAW ceiling, which a trimmed check would have admitted');
+select assert_allowed($$
+  insert into feedback (user_id, body)
+  values ('00000000-0000-0000-0000-000000840001', repeat('x', 2000))$$,
+  '084.7: ... while exactly 2000 characters is accepted');
+select assert_rejected($$
+  insert into feedback (user_id, body, route)
+  values ('00000000-0000-0000-0000-000000840001', 'Fine body', repeat('/', 201))$$,
+  '23514',
+  '084.7: the route column is bounded too — the app writes it, and CLAUDE.md''s rule does not stop applying to a string the app wrote');
+
+-- ---------------------------------------------------------------------------
+-- 084.8  Retention is the cascade window and nothing else
+-- ---------------------------------------------------------------------------
+-- The claim 084 §0b makes, made checkable. Asserted as the OWNER because the
+-- rider cannot read the table to observe either side of it.
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq((select count(*)::int from feedback
+                   where user_id = '00000000-0000-0000-0000-000000840001'),
+  1, '084.8: the author''s row is there ...');
+savepoint feedback_cascade;
+delete from profiles where id = '00000000-0000-0000-0000-000000840001';
+select assert_eq((select count(*)::int from feedback
+                   where user_id = '00000000-0000-0000-0000-000000840001'),
+  0, '084.8: ... and deleting the author takes it, which is the whole of the retention window');
+rollback to savepoint feedback_cascade;
+
+rollback to savepoint feedback_084;
 
 rollback;
 
