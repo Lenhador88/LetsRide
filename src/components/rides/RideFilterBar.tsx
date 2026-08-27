@@ -51,7 +51,10 @@ import type { RideFilter, RideFilters } from '@/types'
  * recent *photos*, which are the content rather than four logos standing in
  * for it. What is now unread is `RideFilters.collage` and the
  * `collageClubImages` that fills it; that lives in `src/lib/data/rides.ts` and
- * is filed rather than removed here (PD-323's own comment says why).
+ * is **PD-331**, filed rather than removed here because that file was another
+ * build session's territory at the time. That issue also carries the one
+ * docstring left describing the collage as drawn — `collageClubImages`' own
+ * header, which still argues for rendering that no longer happens.
  *
  * The design also draws a rider tile among the clubs ("itchyboots"). It is not
  * built — see the note on `RideFilter` in src/types.

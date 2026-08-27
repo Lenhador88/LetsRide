@@ -98,7 +98,9 @@ export function RideChip({ ride }: { ride: RideListItem }) {
         </span>
         {/* `text-foreground` rather than `text-muted`, and the reason is a
             measurement: `#666666` on `bg-track` is 4.17:1, under the 4.5 floor
-            this 14px regular-weight line has. That pairing is a known failure
+            this 14px medium-weight line has — `w500` in the frame, `font-medium`
+            below, and normal text under WCAG either way, since large is 18pt+
+            or 14pt+ bold. That pairing is a known failure
             already logged elsewhere (`.claude/agents/design-system.md`, the
             unselected RSVP label) and this must not become its second home.
 
