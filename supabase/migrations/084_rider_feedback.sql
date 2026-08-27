@@ -158,7 +158,7 @@ grant insert (user_id, body, app_version, route) on public.feedback to authentic
 -- rule that had one.
 
 -- ---------------------------------------------------------------------------
--- §3. The participation gate — the fourteenth trigger
+-- §3. The participation gate — the fifteenth trigger
 -- ---------------------------------------------------------------------------
 -- A rider who has not accepted the terms has no business writing rows, and
 -- feedback is a content write like any other (`023`).
@@ -182,9 +182,9 @@ create trigger enforce_participation_gate
 
 -- The function comment carries the count, because CLAUDE.md's own number is not
 -- reachable from the database and `list_tables` does not show a trigger. `081`
--- set it to thirteen; this file makes it fourteen.
+-- set it to thirteen and `083` to fourteen; this file makes it fifteen.
 comment on function public.enforce_participation_gate() is
-  'Decision #5 and T&C consent, enforced where they are actually broken rather than by a redirect (023). One function, fourteen BEFORE INSERT triggers — the ninth is ride_messages (034), the tenth ride_map_render_attempts (051), the eleventh place_search_attempts (069), the twelfth club_threads and the thirteenth club_messages (081), the fourteenth feedback (084); the five uncovered INSERT-policy tables are named in 023''s header with their reasons.';
+  'Decision #5 and T&C consent, enforced where they are actually broken rather than by a redirect (023). One function, fifteen BEFORE INSERT triggers — the ninth is ride_messages (034), the tenth ride_map_render_attempts (051), the eleventh place_search_attempts (069), the twelfth club_threads and the thirteenth club_messages (081, the twelfth renamed from club_discussions by 082), the fourteenth ride_invites (083) and the fifteenth feedback (084); the five uncovered INSERT-policy tables are named in 023''s header with their reasons.';
 
 -- ---------------------------------------------------------------------------
 -- §4. Indexes
@@ -236,7 +236,7 @@ create index feedback_user_id_idx
 --   -- third INFO advisor beside password_reset_grants and push_devices.
 --   select count(*), min(cmd) from pg_policies where tablename = 'feedback';
 --
---   -- 14 — 081's thirteen plus this one. Count it rather than read it off a
+--   -- 15 — 083's fourteen plus this one. Count it rather than read it off a
 --   -- comment; a table added without one looks exactly like the list being
 --   -- right.
 --   select count(*) from pg_trigger
