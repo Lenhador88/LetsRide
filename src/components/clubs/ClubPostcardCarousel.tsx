@@ -81,8 +81,10 @@ export function ClubPostcardCarousel({
           *"Add ride, postcard, start a thread, should be in the beginning of
           the scroll"*. Unlike the ride strip's create tile this one did not
           have to shrink to earn the slot: it is already the same square as a
-          stamp, and one stamp-width of head start still leaves two full stamps
-          on a 390px screen. */}
+          stamp, so the head start it costs is one 128px tile plus the `gap-2`,
+          and a 390px screen still shows the first stamp whole (152–280) and
+          80% of the second. The ride strip had to shrink because its chip is
+          200px against this tile's 128. */}
       {isMember && (
         <Link
           href={routes.newPostcardInClub(clubId)}
