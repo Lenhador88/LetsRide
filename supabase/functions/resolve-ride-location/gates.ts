@@ -141,45 +141,44 @@ export const ATTRIBUTION_MODE = 'none'
  * particular. `TILE_SPECS`'s zoom table is why it now matters more than it did:
  * at z7 the panel covers a couple of hundred kilometres.
  *
- * **`size` MUST be one of the named values, never a number — that single
- * property took every render on both projects down for an afternoon.** The
- * schema types it `oneOf [enum(small|medium|large|x-large|xx-large), integer
- * 1..1000]`, so `size:40` reads as legal and is not: a query string carries
- * `"40"` as text, which matches neither arm under a strict validator, and the
- * API answers `400 "marker[0][1]" does not match any of the allowed types`.
- * Because both tiles fetch or neither, that 400 took the whole render down and
- * the function logged `nothing_to_write` for every ride created after the
- * deploy.
+ * **`color` MUST be LOWERCASE hex. Uppercase A–F is a 400.** This is the whole
+ * bug that took every render on both projects down for an afternoon, and it is
+ * undocumented: the schema types `color` as `string, minLength 3, maxLength 10`,
+ * which cannot express it, and the vendor's examples happen to be lowercase
+ * without saying why. Measured against the live API 2026-08-27:
  *
- * **`size` is the ONLY `oneOf` in `StaticMapMarker`** — every other property is
- * a flat type — so that error message names this property and no other. Derive
- * it that way rather than guessing at the index, which is what cost the second
- * attempt: a plausible reading blamed `icon`, and `icon` was never the fault.
+ *   color:#ff5050  200      color:#FF5050  400
+ *   color:#abcdef  200      color:#ABCDEF  400
+ *   color:#111111  200      (digits only — no letters to case)
  *
- * The remaining trap, unexercised and stated rather than assumed: `icon` is a
- * free string bounded at 100 characters, so the schema cannot tell a real icon
- * name from a wrong one. **Do not add `icon` back without a real render behind
- * it.** Nothing here needs one — `type` defaults to `material` and
- * `whitecircle` to `yes`, giving a plain teardrop with a white circle in
- * `Grey/100` `#1A1A1A`, which IS the v2 pin the card strip already draws in
- * HTML. The glyph was never load-bearing.
+ * **`Grey/100` is written `#1A1A1A` everywhere else in this design system**, so
+ * the trap is that copying the token in is the natural thing to do and is wrong
+ * here alone. `ride-geocode-gates.test.ts` asserts the absence of uppercase hex
+ * for exactly that reason — a future tidy-up that "matches the tokens" turns
+ * every ride's map off, silently, with the only symptom a `nothing_to_write` in
+ * a log nobody reads.
  *
- * `x-large` rather than a number is also what the vendor's own worked example
- * uses, which is the strongest evidence this API offers short of a render.
+ * **The error message names the property by INDEX and reading it wrongly cost
+ * two attempts.** `"marker[0][1]" does not match any of the allowed types` is
+ * marker 0, property 1 — counting from `lonlat` at 0 — so it was always naming
+ * `color`. It was read first as `icon` and then, on the strength of `size` being
+ * the schema's only `oneOf`, as `size`. Both were wrong and both were plausible.
+ * **Bisect against the API instead**: send one property at a time.
  *
- * Properties within one marker are separated by `;` and multiple markers by
- * `|`; `lonlat` is the only required one. **The `;` may be percent-encoded and
- * this is measured, not assumed** — `URLSearchParams` writes `%3B`, and a
- * hand-built URL with literal separators was rejected identically, so the
- * encoding was never the fault. Colours must be URL-encoded, which
- * `URLSearchParams` also does — do not pre-encode `#` or it double-escapes to
- * `%2523`.
+ * Two things measured on the way that contradict what this file used to say.
+ * `size` accepts a plain integer as well as the named enum — `size:40` renders
+ * 200 on its own — so the `oneOf` was never the problem. And **a bogus `icon`
+ * name does NOT 400, it renders a default**, so an unknown icon fails silently
+ * rather than loudly; that is a reason to distrust `icon`, but not the reason
+ * this was broken.
  *
- * **Not sent for the card**, deliberately: `RideCard` draws its own pin disc in
- * HTML, dead centre, over a tile that is centred on the same coordinate. A
- * burned-in marker there would be a second pin a few pixels from the first.
+ * What ships is a plain teardrop — `type` defaults to `material`, `whitecircle`
+ * to `yes` — in `Grey/100`. That IS the v2 pin the card strip already draws in
+ * HTML, so the glyph was never load-bearing. A glyph does work
+ * (`icontype:material;icon:place` renders), and adding one still wants a real
+ * render behind it because of the silent-fallback above.
  */
-export const MARKER_STYLE = 'color:#1A1A1A;size:x-large'
+export const MARKER_STYLE = 'color:#1a1a1a;size:x-large'
 
 /* -------------------------------------------------------------------------- */
 /* The three gates                                                             */
@@ -298,23 +297,25 @@ export type TileSpec = {
  * had ever been judged against a visible map: the burned-in credit covered the
  * card and nobody had questioned the panel.
  *
- * **What z7 actually shows, because the number is not self-explanatory and this
- * is the sentence to check before changing it.** Web-Mercator ground resolution
- * at the equator is `156543.03 / 2^zoom` metres per pixel, so a 358px-wide panel
- * covers roughly:
+ * **What z7 actually shows, MEASURED against real renders rather than derived.**
+ * The obvious calculation is wrong here and wrong in the alarming direction:
+ * Web-Mercator's `156543.03 / 2^zoom` metres per pixel, times `cos(52°)`, says a
+ * 358px panel covers ~270 km at z7 — country scale, useless. Real renders on
+ * 2026-08-27 put it nearer **65 km**, about 4× tighter, because `scaleFactor`
+ * and this vendor's zoom origin both cut against the naive figure.
  *
- *   z7  → ~437 km   — country scale; the pin is the only thing locating the ride
- *   z9  → ~109 km   — province
- *   z11 → ~27 km    — the town and its surroundings
- *   z13 → ~6.8 km   — the town
- *   z15 → ~1.7 km   — streets, which is what the panel used to draw
+ * So, from images rather than arithmetic, at 358×160 `scaleFactor=2`:
  *
- * At this latitude multiply by `cos(52°)` ≈ 0.62, so the panel is nearer 270 km
- * at z7. **That is why `MARKER` exists**: at this scale a centred tile with no
- * pin says nothing at all about where the ride starts.
+ *   z7  → Alkmaar to Utrecht, coast to Lelystad — the city AND its region
+ *   z11 → central Amsterdam, canals and district names
+ *   z13 → streets
  *
- * If either reads as too far out, move up rather than back — 11 is the value
- * that puts a town in frame on the panel.
+ * And at the 80×148 card, z7 keeps two town names legible, which is the strip's
+ * whole job — "this ride starts over there".
+ *
+ * **Do not re-derive this from the formula.** It is the trap this comment
+ * exists for: the number it gives looks measured, is four times too big, and
+ * argues for a zoom nobody wants.
  */
 export const TILE_SPECS = {
   card: { width: 80, height: 148, zoom: 7, marker: false },

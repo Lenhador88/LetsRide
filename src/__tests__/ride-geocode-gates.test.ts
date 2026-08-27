@@ -136,7 +136,7 @@ describe('the outbound static map requests', () => {
     // Read back off the URL rather than off the constant: `URLSearchParams`
     // encodes `#` and `;` on the way out, and the whole point of asserting here
     // is that what leaves this function is what the vendor documents.
-    expect(marker).toContain('color:#1A1A1A')
+    expect(marker).toContain('color:#1a1a1a')
     // Longitude FIRST, which is the opposite order to every other place this
     // repo writes a coordinate — swapping them is a valid request for a
     // plausible-looking place somewhere else entirely, and it would put the pin
@@ -149,6 +149,24 @@ describe('the outbound static map requests', () => {
     // would be a second pin a few pixels from the first.
     const card = new URL(buildTileUrl(TILE_SPECS.card, AMSTERDAM, 'test-key'))
     expect(card.searchParams.get('marker')).toBeNull()
+  })
+
+  it('writes the marker colour in LOWERCASE hex, which the vendor requires', () => {
+    // Measured against the live API 2026-08-27: `color:#ff5050` renders and
+    // `color:#FF5050` is a 400. It is undocumented — the schema types `color` as
+    // a bounded string, which cannot express it — and it took every render on
+    // both projects down for an afternoon.
+    //
+    // The trap is that `Grey/100` is written `#1A1A1A` everywhere else in this
+    // design system, so copying the token in is the natural move and is wrong
+    // here alone. This assertion is what stops a tidy-up that "matches the
+    // tokens" turning every ride's map off with no visible symptom.
+    const marker = new URL(buildTileUrl(TILE_SPECS.detail, AMSTERDAM, 'test-key'))
+      .searchParams.get('marker')!
+    for (const [, hex] of marker.matchAll(/#([0-9a-zA-Z]+)/g)) {
+      expect(hex).toBe(hex.toLowerCase())
+    }
+    expect(marker).toContain('#1a1a1a')
   })
 
   it('doubles resolution with scaleFactor rather than with the pixel dimensions', () => {
