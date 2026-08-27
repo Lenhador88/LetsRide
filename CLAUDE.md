@@ -486,7 +486,7 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and NOT ONE of the
+**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and exactly ONE of the
 three is current against its file. Two of the three have an equal `ezbr_sha256` across the
 projects and `search-places` does NOT** — measured 2026-08-24: PROD runs **v7**
 (`9510589d…`, deployed 12:04Z) against DEV's **v3** (`dcc59ceb…`, 2026-08-20), so **DEV is behind
@@ -498,9 +498,10 @@ on every postcard until each project is redeployed, and the flag falls back to t
 The rest of this paragraph is measured 2026-08-19:
 `delete-account` deployed 2026-08-17 against a file that moved 2026-08-19 (comments only, so the
 behaviour is current — and that date moves with every header edit, which is why it is read off
-the command rather than trusted here); `resolve-ride-location` deployed 2026-08-16 against a file that moved
-2026-08-19 with `067` — real code, so a **picked** ride start renders no map tile on either
-project; and `search-places` was deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) and
+the command rather than trusted here); `resolve-ride-location` is the **current** one, redeployed
+2026-08-27 (PD-267) — v3 on both, `02e56f38…` equal, `updated_at` newer than the file's last
+commit, which is the first time that has been true for it and stops being true the next time
+anyone edits the directory; and `search-places` was deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) and
 that is the build **DEV still runs** — real code behind it, including `classifyLedgerError`, so
 DEV reports a `23514` participation-gate refusal to the rider as **502 `unavailable`**: search is
 broken, not "you hit a limit". `isPolicyRefusal` matches `42501` only, and the gate raises
@@ -509,8 +510,6 @@ list here** — an enumeration goes stale on the next merge, and this one alread
 `TZ=UTC git log --oneline --since=<deploy timestamp> -- supabase/functions/search-places/`. **`git log -1` on the
 directory tells you the file is newer than the deploy and never by how many commits** — list the
 directory's history against the deploy timestamp, or a three-commit gap reads as one.
-PD-267 is the first redeploy,
-and it has a second half: the guard in `src/lib/actions/rides.ts` must come out in the same PR.
 **The newest function going stale within two hours of its first deploy is the point** — a
 deployed function is drift the moment anyone edits its file, and this section has already read
 "both" while three were deployed. **Cross-project equality is not what establishes currency**: it says
@@ -721,7 +720,7 @@ things this repo chose, and a bare count cannot tell a session whether a new WAR
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 12 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away), `register_push_device`, `release_push_device` (`078`, because no client role holds any grant on `push_devices`), `moderate_club_discussion`, `delete_own_club_message` (`081`, the second because `club_messages` holds no DELETE grant or policy at all). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders, the two push RPCs each write or remove exactly one row for their caller, take no user id and return nothing, and `081`'s pair delete exactly one thread the caller's club owns and exactly one message the caller wrote. Narrowness is the defence. **This advisor fires once per such function, so a migration adding two adds two** — reading `078`'s sweep as "one new advisor" is what its own task list got wrong |
+| 12 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_own_club_message`, `moderate_club_discussion`, `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away), `register_push_device`, `release_push_device` (`078`, because no client role holds any grant on `push_devices`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders, the two push RPCs each write or remove exactly one row for their caller, take no user id and return nothing, and `081`'s pair delete exactly one thread the caller's club owns and exactly one message the caller wrote — the second existing at all because `club_messages` holds no DELETE grant or policy for anyone. Narrowness is the defence. **Count them off `get_advisors` rather than off this cell** — it read ten while twelve were live, which is the same defect a stale number anywhere else in this file is, and it fed a wrong verification gate into two proposals. **This advisor fires once per such function, so a migration adding two adds two** — reading `078`'s sweep as "one new advisor" is what its own task list got wrong |
 | 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design in both cases: `026` and `078` revoke everything on their table from `anon` and `authenticated`, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
