@@ -360,8 +360,28 @@ throws a `RangeError` that would take down every screen the ride appears on.
 offsets rather than strings** — `TZ=UTC` in `vitest.config.ts` would let a naive implementation pass
 a string comparison, so the summer/winter pairs are what prove the offset is looked up per instant.
 
-**Deliberately undecided** — raise these rather than inventing an answer: error tracking,
-analytics, i18n, and email delivery beyond Supabase's built-in auth mails.
+**Deliberately undecided** — raise these rather than inventing an answer: **client-side error
+reporting**, i18n, and email delivery beyond Supabase's built-in auth mails.
+
+**Analytics and server-side error visibility came off that list on 2026-08-27, and what they
+turned out to be is the reusable part.** Both were parked on the assumption that either one
+needed a pipeline first. Neither did: `profiles` already carries `created_at`,
+`terms_accepted_at`, `username` and `onboarding_completed_at`, so the onboarding funnel is four
+counts against one table, and Supabase already logs every request the app makes. Eight of the ten
+questions worth asking are SQL today — [`docs/reference/analytics.md`](docs/reference/analytics.md)
+— and failed requests are readable for 24 hours —
+[`docs/reference/observability.md`](docs/reference/observability.md), `npm run logs:errors`.
+
+**What is still undecided is narrower and worth stating precisely: a client-side JavaScript error
+reaches no log anywhere.** The three error boundaries contain the failure and `console.error` it
+into the rider's own browser, so a component that throws is invisible to us — which in a
+client-rendered bundle is most rider-visible breakage. That decision carries a tenth runtime
+dependency, a GDPR consent question separate from the T&C stamp, and a store privacy label, so it
+wants a proposal rather than a passing choice.
+
+**The log retention is 24 hours and there is no backfill**, so a day nobody reads is gone. That is
+the argument for reading it on a schedule rather than when something is already suspected: the
+Discussions→Threads rename left 64 404s in that stream and was found days later, by accident.
 
 ## Repo Layout
 
