@@ -246,21 +246,18 @@ export async function createRide(
   // the ride, and a render already in flight against a deleted ride would spend
   // a ledger row on a ride that no longer exists.
   //
-  // **Not called when the write carried a pick** — PD-114 §D6, and the
-  // condition is about WHICH BUILD IS DEPLOYED rather than about picks.
+  // **Unconditional, and it must stay that way — PD-267.** An `if (!location)`
+  // guard stood here while the deployed build geocoded unconditionally: against
+  // a picked ride that build spent a geocode and two renders, uploaded both
+  // JPEGs, and had its column write silently overridden by
+  // `protect_picked_ride_location` — succeeding, so its own compensating delete
+  // never ran and two objects were orphaned with nothing naming them.
   //
-  // The function deployed today geocodes unconditionally. Against a picked
-  // ride it would spend a geocode and two renders, upload both JPEGs, and then
-  // have its column write silently overridden by
-  // `protect_picked_ride_location` — succeeding, so its own compensating
-  // delete never runs, and two objects are orphaned with nothing naming them.
-  //
-  // **Reinstate this call the moment `tasks.md` §6.1 is deployed** (§6.5). That
-  // build skips the geocode for a picked ride and renders from the stored
-  // coordinate, which is the only thing that ever gives a picked ride a tile —
-  // nothing else invokes the function. Left as-is, the feature ships and the
-  // map silently never appears for exactly the rides with the best coordinates.
-  if (!location) requestRideMapRender(supabase, ride.id)
+  // The build this merges against skips the geocode for a picked ride and
+  // renders from the stored coordinate. **Nothing else invokes this function**,
+  // so restoring the guard gives exactly the rides carrying the best
+  // coordinates no map at all — silently, with no error and no red gate.
+  requestRideMapRender(supabase, ride.id)
 
   invalidate(queryKeys.rides.all())
   // A ride created into a club appears on that club's Rides sub-page, which
@@ -573,9 +570,9 @@ export async function updateRide(
   // different.
   if (addressChanged || pickCleared) {
     await removeRideMapTiles(supabase, [previous!.map_card_path, previous!.map_detail_path])
-    // Not when the save carried a pick — same condition as `createRide`, same
-    // reason, and the same reinstatement when §6.1 deploys. See the note there.
-    if (!location) requestRideMapRender(supabase, rideId)
+    // Unconditional, for `createRide`'s reason and with the same warning
+    // against reintroducing a pick guard. See the note there.
+    requestRideMapRender(supabase, rideId)
   }
 
   // `rides.all()`, not `rides.detail(rideId)` alone: `club_id` and

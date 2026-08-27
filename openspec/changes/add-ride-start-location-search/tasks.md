@@ -133,7 +133,7 @@
 - [ ] 6.4 **Ask the owner to deploy**, and say plainly in the PR that until they do, a picked ride
       carries an exact coordinate and no tile. Do not claim the function is current; verify with
       `list_edge_functions` against both refs and the `updated_at`-vs-commit-date check.
-- [ ] 6.5 **Reinstate `requestRideMapRender` for picked writes, in the same PR as the deploy.**
+- [x] 6.5 **Reinstate `requestRideMapRender` for picked writes, in the same PR as the deploy.**
       5.7 suppresses the call because the *currently deployed* build would orphan two objects on a
       picked ride — the condition is about which build is live, not about picks. Once 6.1 is
       deployed that build is the only thing that ever renders a picked ride's tile, and nothing else

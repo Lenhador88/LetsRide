@@ -1933,27 +1933,6 @@ And it should ride **PD-267**'s redeploy rather than asking for a second one. Th
 of four options, and the multi-country note (a `timezone` column on `places` filled by the loader
 offline, rather than a client-side coordinate→IANA library), are on PD-193.
 
-**A picked ride gets no map until `resolve-ride-location` is redeployed, and the guard that makes
-that safe must be REMOVED at the same moment — PD-114.** Recorded here rather than only in
-`openspec/changes/add-ride-start-location-search/tasks.md` §6.5, because archiving that change
-takes the unchecked box out of the working tree and leaves the tripwire as two code comments.
-
-`createRide` and `updateRide` skip `requestRideMapRender` when the write carried a pick. That is
-correct against the **deployed** build, which geocodes unconditionally: it would spend a geocode
-and two renders, upload both JPEGs, and have its column write silently overridden by
-`protect_picked_ride_location` — succeeding, so its own compensating delete never runs and two
-objects are orphaned. It is **wrong** against the build in this repo, which skips the geocode for a
-picked ride and renders from the stored coordinate.
-
-**Nothing else invokes that function.** So the day the deploy lands, leaving the guard in place
-ships a map that silently never appears for exactly the rides carrying the best coordinates — no
-error, no red gate, and the tiles that *do* appear are the geocoded ones, which is the opposite of
-what a reader would expect. Check it rather than trusting this line:
-
-```bash
-grep -c "if (!location) requestRideMapRender" src/lib/actions/rides.ts   # 2 today; 0 after the deploy
-```
-
 **An item tracked in Linear carries its PD-id inline.** An item with no id is not untracked by
 oversight — the group marked **absorb on contact** is unfiled on purpose, per the product owner,
 2026-08-09: *"If it seems within the context of the build, and recommended, just do it."* Fix one
