@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { ImageIcon, PlusIcon } from '@/components/icons/generated'
-import { PostcardStamp } from '@/components/postcards/PostcardStamp'
+import { PostcardStamp, STAMP_TILE_WIDTH } from '@/components/postcards/PostcardStamp'
 import { routes } from '@/lib/routes'
 import type { Postcard } from '@/types'
 
@@ -10,14 +10,10 @@ import type { Postcard } from '@/types'
  * *"like that carousel"*, pointing at the ride detail's `RideJournal`, and the
  * two have tracked each other since.
  *
- * **They are the same tile again as of 2026-08-27** (PD-316's follow-up). The
- * Journal grew `PostcardStamp` — a perforated frame with the author's avatar
- * and username under it — and this strip kept the plain square for one merge,
- * which put two different gestures on two screens showing the same photos.
- * Product owner: *"lets do A. Same standard."* So the divergence PD-316's
- * header recorded as deliberate is closed, and what is left differing between
- * the two components is only their empty state — crew-gated `Add` there,
- * membership-gated messaging here.
+ * **They draw the same tile as of 2026-08-27**: both render `PostcardStamp` —
+ * a perforated frame with the author's avatar and username under it — so what
+ * differs between the two components is only their empty state, crew-gated
+ * `Add` there and membership-gated messaging here.
  *
  * **Tapping one opens the postcard as a popup rather than navigating**, because
  * that behaviour lives in `PostcardStamp` and arrives with it. Same as the
@@ -28,9 +24,11 @@ import type { Postcard } from '@/types'
  * still not readable on a tile, but the byline is, and the popup puts the rest
  * one tap away without leaving the club.
  *
- * `min-w-0` is not needed here the way `RideJournalEmpty` needed it — the stamp
- * sizes itself explicitly rather than splitting a flex parent two ways, which
- * is also why this strip does not reuse that component's `flex-1` trick: it
+ * `min-w-0` is not needed here the way `RideJournalEmpty` needed it, and the
+ * reason is that **nothing in this row is `flex-1`** — every child is sized by
+ * `shrink-0` plus an explicit width, so no item is ever asked to shrink below
+ * its min-content and the `min-width: auto` default cannot bite. That is also
+ * why this strip does not reuse `RideJournalEmpty`'s `flex-1` trick at all: it
  * only works for exactly two tiles, and this one holds however many the club
  * has posted.
  *
@@ -83,7 +81,9 @@ export function ClubPostcardCarousel({
           starts there too, and that is exactly when the rider needs the way
           in. */}
       {postcards.length === 0 && (
-        <div className="flex aspect-square w-32 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-border px-3 text-center">
+        <div
+          className={`flex aspect-square ${STAMP_TILE_WIDTH} shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-border px-3 text-center`}
+        >
           <ImageIcon className="h-6 w-6 text-muted opacity-60" aria-hidden="true" />
           <span className="text-xs font-semibold text-foreground">Nothing yet</span>
         </div>
@@ -96,7 +96,7 @@ export function ClubPostcardCarousel({
       {isMember && (
         <Link
           href={routes.newPostcardInClub(clubId)}
-          className="flex aspect-square w-32 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
+          className={`flex aspect-square ${STAMP_TILE_WIDTH} shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border`}
         >
           <PlusIcon className="h-6 w-6" aria-hidden="true" />
           <span className="text-xs font-semibold">Add</span>

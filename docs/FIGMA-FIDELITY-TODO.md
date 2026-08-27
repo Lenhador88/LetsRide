@@ -431,11 +431,14 @@ is a drawn value this repo no longer builds:
       rides moved to lead the screen (with a `Plan a ride` create affordance, `ClubCreateRideRow`,
       when the club has none and the viewer can create one), and Members and Postcards swapped
       from what an earlier revision of this same conversation had settled. **Postcards is a
-      horizontally-scrolling strip of square tiles** (`ClubPostcardCarousel`), not the stacked
+      horizontally-scrolling strip of stamps** (`ClubPostcardCarousel`), not the stacked
       `PostcardCard` list `AI / Club detail merged / 2026-08-17` draws and this section drew
-      until today — modelled on the ride detail's `RideJournal`, whose own tiles are still
-      unbuilt (PD-257), so this is the first *real* tile carousel in the app rather than a copy
-      of an existing one. The trade is deliberate and product-owner-approved: a tile does not
+      until 2026-08-18 — and **it is now literally the same tile as the ride detail's**, both
+      strips rendering one `PostcardStamp` element apiece. It was the first real tile carousel
+      in the app when it shipped, ahead of the Journal's; the shared component arrived on
+      2026-08-27 and the Journal's own *screen* is still unbuilt (PD-257, which is the route
+      `/rides/detail/journal` rather than the tile). The trade is deliberate and
+      product-owner-approved: a tile does not
       show the caption, likes or comment count `PostcardCard` drew in place. **It does show the
       byline as of 2026-08-27** (PD-316 and its follow-up) — both strips draw `PostcardStamp`,
       a perforated postage-stamp frame with the author's avatar and username beneath it, and a

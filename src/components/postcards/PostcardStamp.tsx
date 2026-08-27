@@ -34,11 +34,9 @@ const STAMP_WIDTH = 'w-32'
  *
  * ## Two callers, and the second is why this is a component
  *
- * `RideJournal` and `ClubPostcardCarousel` both draw it. The Journal had it
- * first and the club strip kept the plain square for one merge — long enough to
- * show what that costs: the same photos, on two screens, with two different
- * gestures. Product owner, 2026-08-27, on being offered the swap: *"lets do A.
- * Same standard."*
+ * `RideJournal` and `ClubPostcardCarousel` both draw it — the Journal first,
+ * the club strip a merge later once the product owner saw what two gestures on
+ * the same photos cost (*"lets do A. Same standard."*, 2026-08-27).
  *
  * That is the whole argument for the frame living in a `@utility` and the tile
  * in a component rather than as a class list copied twice. Anything drawing a
@@ -132,5 +130,19 @@ export function PostcardStamp({ postcard, className }: { postcard: Postcard; cla
   )
 }
 
-/** The tile width, for the states beside a stamp that have to match its box. */
+/**
+ * The stamp's outer width, for the tiles that sit **beside** one and have to
+ * match its box — the `Add` tile and the "Nothing yet" tile on both strips.
+ *
+ * Exported rather than written out at those four sites because the coupling is
+ * silent otherwise: a stamp is `w-32` with a 6px frame, so its photo block is
+ * exactly `aspect-square w-32`, and changing `STAMP_WIDTH` would move every
+ * stamp while leaving the neighbours at the old width on both screens — with
+ * `tsc`, ESLint and every test green, since the mismatch is two string literals
+ * that no longer agree.
+ *
+ * Tailwind still finds the class: `STAMP_WIDTH` above is a literal in this
+ * file, which is what its scanner reads, and the call sites interpolate the
+ * binding rather than composing a new class name.
+ */
 export const STAMP_TILE_WIDTH = STAMP_WIDTH
