@@ -141,23 +141,31 @@ export const ATTRIBUTION_MODE = 'none'
  * particular. `TILE_SPECS`'s zoom table is why it now matters more than it did:
  * at z7 the panel covers a couple of hundred kilometres.
  *
- * **Every property here is validated against the vendor's OpenAPI component
- * schema (`StaticMapMarker`), and the first version of this constant was not.**
- * It sent `icontype:material;icon:place;contentcolor:#FFFFFF` and the API
- * answered **400 on every request**, which took the whole render down: both
- * tiles fetch or neither, so the function logged `nothing_to_write` and every
- * ride created after the deploy got no map at all.
+ * **`size` MUST be one of the named values, never a number — that single
+ * property took every render on both projects down for an afternoon.** The
+ * schema types it `oneOf [enum(small|medium|large|x-large|xx-large), integer
+ * 1..1000]`, so `size:40` reads as legal and is not: a query string carries
+ * `"40"` as text, which matches neither arm under a strict validator, and the
+ * API answers `400 "marker[0][1]" does not match any of the allowed types`.
+ * Because both tiles fetch or neither, that 400 took the whole render down and
+ * the function logged `nothing_to_write` for every ride created after the
+ * deploy.
  *
- * `icon` is the one property the schema **cannot** catch — it is a free string
- * bounded at 100 characters, so an icon name that does not exist in the chosen
- * set is a valid *request* and an invalid *icon*, rejected at render time. There
- * is no published list of names. **So do not add `icon` back without a real
- * render behind it**; the shape below is the spec's own `example` field with our
- * colour substituted, which is as close to a guarantee as this API offers.
+ * **`size` is the ONLY `oneOf` in `StaticMapMarker`** — every other property is
+ * a flat type — so that error message names this property and no other. Derive
+ * it that way rather than guessing at the index, which is what cost the second
+ * attempt: a plausible reading blamed `icon`, and `icon` was never the fault.
  *
- * What that leaves is a plain teardrop pin — `type` defaults to `material` and
- * `whitecircle` to `yes` — in `Grey/100` `#1A1A1A`. That IS the v2 pin the app
- * draws over a card strip, so the glyph was never load-bearing.
+ * The remaining trap, unexercised and stated rather than assumed: `icon` is a
+ * free string bounded at 100 characters, so the schema cannot tell a real icon
+ * name from a wrong one. **Do not add `icon` back without a real render behind
+ * it.** Nothing here needs one — `type` defaults to `material` and
+ * `whitecircle` to `yes`, giving a plain teardrop with a white circle in
+ * `Grey/100` `#1A1A1A`, which IS the v2 pin the card strip already draws in
+ * HTML. The glyph was never load-bearing.
+ *
+ * `x-large` rather than a number is also what the vendor's own worked example
+ * uses, which is the strongest evidence this API offers short of a render.
  *
  * Properties within one marker are separated by `;` and multiple markers by
  * `|`; `lonlat` is the only required one. **The `;` may be percent-encoded and
@@ -171,7 +179,7 @@ export const ATTRIBUTION_MODE = 'none'
  * HTML, dead centre, over a tile that is centred on the same coordinate. A
  * burned-in marker there would be a second pin a few pixels from the first.
  */
-export const MARKER_STYLE = 'color:#1A1A1A;size:40'
+export const MARKER_STYLE = 'color:#1A1A1A;size:x-large'
 
 /* -------------------------------------------------------------------------- */
 /* The three gates                                                             */
