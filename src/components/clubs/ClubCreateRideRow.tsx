@@ -1,13 +1,32 @@
 import Link from 'next/link'
 import { PlusCircleIcon } from '@/components/icons/generated'
 import { routes } from '@/lib/routes'
+import { cn } from '@/lib/utils'
 
 /**
- * The empty-`Upcoming rides` affordance on the merged club detail
- * (`club-details-dropdown-removal`, PD-262) — a member sees a way to plan the
- * club's first ride, drawn where the chip strip would otherwise scroll.
- * Fixed at 56px (`h-14`) to match `RideChip`'s own height, so the section
- * does not collapse to a bare line when it has nothing to scroll.
+ * The `Upcoming rides` create affordance on the merged club detail
+ * (`club-details-dropdown-removal`, PD-262) — a member's way to plan a ride in
+ * this club. Fixed at 56px (`h-14`) to match `RideChip`'s own height, so the
+ * section does not collapse to a bare line when it has nothing to scroll.
+ *
+ * ## Two variants, for the two places the strip can be in
+ *
+ * `variant="row"` is drawn where the strip would be, when the club has no
+ * upcoming rides: full width, inset `mx-4`, with room for a subtitle.
+ *
+ * `variant="chip"` is appended **after** the last chip of a strip that has
+ * some, so it scrolls with them and reads as the end of the list rather than a
+ * second control competing with `See all`. Three things follow from sitting in
+ * that strip, and all three are why it is not simply the row at a narrower
+ * width:
+ *
+ * - **No `mx-4`.** The strip already supplies `px-4`; adding it would put a
+ *   16px gap before a tile meant to sit one `gap-3` after the last ride.
+ * - **`RideChip`'s internal geometry, not the row's.** `p-1` and a 48px leading
+ *   tile, so the icon lands on the same x as a chip's date block. The row's
+ *   `px-3` and bare 24px icon put it 8px off every neighbour.
+ * - **No subtitle.** At 200px "Pick a date and a meeting point" truncates to a
+ *   few characters and reads as damage rather than help.
  *
  * ## Carries the club, both ways (PD-283)
  *
@@ -30,18 +49,38 @@ import { routes } from '@/lib/routes'
  * `ClubDetail`'s own docstring); a rider who defeats this gate still meets
  * the real one at the database.
  */
-export function ClubCreateRideRow({ clubId }: { clubId: string }) {
+export function ClubCreateRideRow({
+  clubId,
+  variant = 'row',
+}: {
+  clubId: string
+  variant?: 'row' | 'chip'
+}) {
   return (
     <Link
       href={routes.newRideInClub(clubId)}
-      className="mx-4 flex h-14 items-center gap-3 rounded-lg border border-dashed border-border-strong bg-track px-3 text-left transition-colors active:bg-border"
+      className={cn(
+        'flex h-14 items-center gap-3 rounded-lg border border-dashed border-border-strong bg-track text-left transition-colors active:bg-border',
+        variant === 'chip' ? 'w-[200px] shrink-0 p-1' : 'mx-4 px-3'
+      )}
     >
-      <PlusCircleIcon className="h-6 w-6 shrink-0 text-muted" aria-hidden="true" />
-      <span className="flex min-w-0 flex-col">
-        <span className="text-sm font-semibold text-foreground">Plan a ride</span>
-        <span className="truncate text-xs font-medium text-muted">
-          Pick a date and a meeting point
+      {variant === 'chip' ? (
+        <span
+          aria-hidden="true"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-background"
+        >
+          <PlusCircleIcon className="h-6 w-6 text-muted" />
         </span>
+      ) : (
+        <PlusCircleIcon className="h-6 w-6 shrink-0 text-muted" aria-hidden="true" />
+      )}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm font-semibold text-foreground">Plan a ride</span>
+        {variant === 'row' && (
+          <span className="truncate text-xs font-medium text-muted">
+            Pick a date and a meeting point
+          </span>
+        )}
       </span>
     </Link>
   )

@@ -221,6 +221,13 @@ function ClubScreen() {
               {upcoming.map((ride) => (
                 <RideChip key={ride.id} ride={ride} />
               ))}
+              {/* Last rather than first: the strip is ordered by departure
+                  and the next ride is what a rider opened the club for, so a
+                  create tile in that slot pushes it off-screen on every visit.
+                  Inside the scroller rather than beside it, so it reads as the
+                  end of the list. `isMember` for the same reason the empty
+                  state above carries it. */}
+              {isMember && <ClubCreateRideRow clubId={id} variant="chip" />}
             </div>
           )}
         </section>
@@ -250,14 +257,22 @@ function ClubScreen() {
 
         {/* Join only — a constructive action stays visible on the page, where
             the destructive one (Leave) is tucked into the header's dots menu.
-            An owner is always a member and never sees this either way. Kept
-            directly above Members, its original neighbour before the
-            reorder — the pairing reads as "join, then see who's already in". */}
+            An owner is always a member and never sees this either way. Kept at
+            this height rather than following Members down the page: what sits
+            under it is "Join the club to read and start discussions", which
+            names what joining buys, and a rider deciding whether to join has to
+            meet the button without scrolling. */}
         {!isMember && (
           <div className="px-4">
             <ClubMembershipButton clubId={id} />
           </div>
         )}
+
+        {/* Above Members: a roster is looked up, a discussion is read, so the
+            part of a club that changes daily goes first. A non-member of a
+            public club gets a join prompt here and no content at all — see
+            `ClubDiscussionsSection`. */}
+        <ClubDiscussionsSection clubId={id} isMember={isMember} />
 
         {/* `px-4`, not the component's own `px-6`: everything these headers
             sit above — the rail's `mx-4`, the chip strip, the postcard column —
@@ -271,14 +286,6 @@ function ClubScreen() {
           />
           <ClubMemberRail clubId={id} />
         </section>
-
-        {/* Under Members rather than above it, and above the type/description
-            block: Discussions is a conversation among the people the section
-            above lists, and it must not push the club's own description off
-            the first screen for a rider deciding whether to join. A non-member
-            of a public club gets a join prompt here and no content at all —
-            see `ClubDiscussionsSection`. */}
-        <ClubDiscussionsSection clubId={id} isMember={isMember} />
 
         {/* Grouped with a 4px internal gap, not the section-sized 16px the
             surrounding `gap-4` gives every other pair here — these two read

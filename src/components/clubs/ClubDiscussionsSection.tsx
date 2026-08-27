@@ -17,8 +17,8 @@ const CLUB_DETAIL_DISCUSSIONS = 3
 
 /**
  * The `Discussions` section on the merged club detail (`081`, PD-307) — shaped
- * like Members and Upcoming rides: a header with `See all`, a few rows, and an
- * affordance where the rows would be when there are none.
+ * like Members and Upcoming rides: a header with `See all`, a few rows, and a
+ * create affordance under them — also in place of them when there are none.
  *
  * ## A non-member of a PUBLIC club sees a join prompt and no content
  *
@@ -105,30 +105,63 @@ export function ClubDiscussionsSection({
           <Skeleton className="h-3 w-32" />
         </div>
       ) : discussions.data && discussions.data.length > 0 ? (
-        <ul className="flex flex-col">
-          {discussions.data.slice(0, CLUB_DETAIL_DISCUSSIONS).map((discussion) => (
-            <li key={discussion.id}>
-              <ClubDiscussionRow
-                discussion={discussion}
-                hasUnread={unread.data?.[discussion.id] === true}
-              />
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="flex flex-col">
+            {discussions.data.slice(0, CLUB_DETAIL_DISCUSSIONS).map((discussion) => (
+              <li key={discussion.id}>
+                <ClubDiscussionRow
+                  discussion={discussion}
+                  hasUnread={unread.data?.[discussion.id] === true}
+                />
+              </li>
+            ))}
+          </ul>
+          {/* Under the rows, not above them: the newest thread is what a rider
+              came for, and a control between the heading and the list pushes it
+              down on every visit for the sake of an action taken once. */}
+          <StartDiscussionRow clubId={clubId} />
+        </>
       ) : (
-        <Link
-          href={routes.newClubDiscussion(clubId)}
-          className="mx-4 flex h-14 items-center gap-3 rounded-lg border border-dashed border-border-strong bg-track px-3 text-left transition-colors active:bg-border"
-        >
-          <PlusCircleIcon className="h-6 w-6 shrink-0 text-muted" aria-hidden="true" />
-          <span className="flex min-w-0 flex-col">
-            <span className="text-sm font-semibold text-foreground">Start a discussion</span>
-            <span className="truncate text-xs font-medium text-muted">
-              Ask the club a question
-            </span>
-          </span>
-        </Link>
+        <StartDiscussionRow clubId={clubId} />
       )}
     </section>
+  )
+}
+
+/**
+ * The create affordance — drawn under the thread rows, and in place of them when
+ * there are none.
+ *
+ * **Its geometry is `ClubDiscussionRow`'s, not a card's**, and that is the whole
+ * of the styling decision. It is a destination like the rows it follows, so it
+ * is the last row of that list: same 72px height, same `px-4` full bleed, same
+ * 40px leading tile, same text baseline. Drawn as an inset `h-14` card instead —
+ * which is what it was while it only ever rendered *instead of* the list — it
+ * stacks flush under a real row and misses on height, inset, icon size and
+ * baseline at once.
+ *
+ * The dashed border moves to the **tile** rather than the container for the same
+ * reason: it is what says "add" without making the row a different shape from
+ * its neighbours.
+ */
+function StartDiscussionRow({ clubId }: { clubId: string }) {
+  return (
+    <Link
+      href={routes.newClubDiscussion(clubId)}
+      className="flex min-h-[72px] items-center gap-3 px-4 py-3 text-left transition-colors active:bg-border"
+    >
+      <span
+        aria-hidden="true"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-border-strong bg-track"
+      >
+        <PlusCircleIcon className="h-5 w-5 text-muted" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-base font-semibold text-foreground">
+          Start a discussion
+        </span>
+        <span className="truncate text-sm font-medium text-muted">Ask the club a question</span>
+      </span>
+    </Link>
   )
 }
