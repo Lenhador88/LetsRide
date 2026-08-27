@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { LocationFilledIcon } from '@/components/icons/generated'
+import { MapAttribution } from '@/components/rides/MapAttribution'
 import { cn, googleMapsDirectionsUrl } from '@/lib/utils'
 
 /**
@@ -208,11 +209,7 @@ export function RideMap({
           carry: that scrim existed to hold the ADDRESS legible over an unknown
           map, and with the address gone there is nothing left to darken the whole
           tile for. ~120px instead of the entire panel. */}
-      {!!tileUrl && (
-        <span className="pointer-events-none absolute top-1 left-1 rounded bg-scrim px-1.5 py-0.5 text-2xs font-medium text-white">
-          Powered by Geoapify
-        </span>
-      )}
+      {!!tileUrl && <MapAttribution className="top-1 left-1" />}
 
       {/* The pin and the address are the NO-TILE rendering, and only that.
           Over a tile the panel draws what the Figma draws — the map and the
