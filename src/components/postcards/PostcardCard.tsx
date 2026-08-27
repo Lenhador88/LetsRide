@@ -6,6 +6,7 @@ import { LikeButton } from '@/components/postcards/LikeButton'
 import { CommentsLink } from '@/components/postcards/CommentsLink'
 import { ShareButton } from '@/components/postcards/ShareButton'
 import { PostcardMenu } from '@/components/postcards/PostcardMenu'
+import { usePostcardViewer } from '@/components/postcards/PostcardViewer'
 import { routes } from '@/lib/routes'
 import { cn, countryFlagEmoji, formatPostcardDate } from '@/lib/utils'
 import type { Postcard } from '@/types'
@@ -81,6 +82,12 @@ function PostcardCardComponent({
   // behind it at all — the pin icon below is what that state falls back to,
   // matching what this card drew before PD-279's flag half existed.
   const flag = countryFlagEmoji(postcard.taken_country_code)
+  // `null` outside `(app)` — see `PostcardViewer`. `linkToThread` is what the
+  // popup and the thread screen already pass to silence the comment control,
+  // and it means the same thing here: do not offer a way into the thread this
+  // card is already heading.
+  const openPostcard = usePostcardViewer()
+  const canOpen = linkToThread && openPostcard !== null
 
   return (
     <article
@@ -183,6 +190,35 @@ function PostcardCardComponent({
         >
           {formatPostcardDate(postcard.created_at)}
         </time>
+
+        {/* Tapping the picture opens the postcard as a popup — product owner,
+            2026-08-27: *"This should also be the behavior when we click on a
+            postcard in the homepage."*
+
+            **An overlay rather than the wrapper becoming a `<button>`**, and
+            that is a deck constraint rather than a preference: this div is the
+            positioning context for the scrim, the town pill and the date, and
+            a `<button>` carries a UA `text-align`, `font` and `padding` reset
+            that those three would then each have to undo. Last in the DOM so
+            it is above them; they are text, so nothing interactive is buried.
+
+            **Safe inside the swipe deck**, on the mechanism the byline link
+            already documents: capture is taken on distance rather than at
+            `pointerdown`, so a tap's `click` arrives intact, and a gesture that
+            became a drag is swallowed by the deck's `onClickCapture` before it
+            reaches this handler. `pointerdown` still bubbles from here to the
+            deck's wrapper, so a swipe may start on the photo exactly as before.
+
+            The photo's own `alt` is the caption, so this label names the action
+            rather than repeating it. */}
+        {canOpen && (
+          <button
+            type="button"
+            onClick={() => openPostcard(postcard.id)}
+            aria-label={`Open ${username}'s postcard`}
+            className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+          />
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5 px-3">

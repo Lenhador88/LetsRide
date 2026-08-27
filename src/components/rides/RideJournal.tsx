@@ -2,26 +2,36 @@
 
 import Link from 'next/link'
 import { ImageIcon, PlusIcon } from '@/components/icons/generated'
+import { PostcardStamp } from '@/components/postcards/PostcardStamp'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { getRideJournal } from '@/lib/data/postcards'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
-import { formatPostcardDate } from '@/lib/utils'
 
 /**
  * The ride Journal section on the ride plan (PD-254, PD-256) — a horizontal
- * strip of square tiles, the ride-side twin of `ClubPostcardCarousel`. That
- * component's own header records it was modelled on this one's carousel look
- * while `postcards.ride_id` had no writer and every ride's Journal was
- * therefore always empty; now that PD-256 closes the write half, the two are
- * close to literal twins — same tile size, same `bg-track` recessed fill,
- * same tap-through to the postcard's own thread. They stay two components
- * rather than one shared one because their empty states differ (crew-gated
- * `Add` here, membership-gated messaging there) and because a club's feed is
- * never actually empty, so `ClubPostcardCarousel` never had to draw a
- * placeholder tile at all until this file's decision to draw rather than hide
- * gave it one to copy.
+ * strip of **stamps**, one per postcard tagged to this ride.
+ *
+ * **The tile grew a perforated frame and a byline on 2026-08-27**, at the
+ * product owner's ask: *"Ride journal should list images as stamps + add user
+ * avatar and name. And clicking on it should expand."* `PostcardStamp` owns
+ * both halves and records why the name sits under the photo rather than on it;
+ * `stamp-edge` in `globals.css` owns the mask that bites the notches out.
+ *
+ * **Tapping one opens the postcard as a popup, not as a page.** That is
+ * `PostcardViewer`, mounted in `(app)/layout.tsx`, and it is the same behaviour
+ * the home deck now has. The ride plan keeps its scroll position and spends no
+ * back-stack entry, which is what makes browsing a Journal photo-by-photo
+ * bearable — the previous tap-through returned the rider to the top of the
+ * ride plan every time.
+ *
+ * It was the ride-side twin of `ClubPostcardCarousel` and is now the divergent
+ * one: that component still draws the plain rounded square this used to, and
+ * still navigates. They were already two components rather than one shared one
+ * because their empty states differ (crew-gated `Add` here, membership-gated
+ * messaging there); the stamp is the second reason, and it is a deliberate
+ * scoping rather than an oversight — see `PostcardStamp`'s header.
  *
  * **Reads its own data — `queryKeys.postcards.journal(rideId)` through
  * `getRideJournal`** — the same shape `RideCrewRail` reads `rides.crew(id)`,
@@ -72,9 +82,23 @@ export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolea
 
   if (!journal.data) {
     return (
-      <div className="flex gap-2 px-4">
-        <Skeleton className="aspect-square min-w-0 flex-1 rounded-lg" />
-        <Skeleton className="aspect-square min-w-0 flex-1 rounded-lg" />
+      // Two stamp-shaped placeholders — the photo block at its real 128px and
+      // the byline bar under it — rather than the two half-width squares this
+      // drew before, which were sized for the *empty* layout and now match
+      // neither. The one it cannot match is still the empty state, whose two
+      // `flex-1` tiles are taller than a stamp on any phone; that mismatch
+      // predates the stamp and is the read landing on "no photos", not a
+      // resize of the same content.
+      <div className="flex items-start gap-2 px-4">
+        {[0, 1].map((i) => (
+          <div key={i} className="w-32 shrink-0">
+            <Skeleton className="aspect-square w-full rounded-lg" />
+            <div className="mt-1.5 flex items-center gap-1">
+              <Skeleton className="h-5 w-5 rounded-full" />
+              <Skeleton className="h-3 w-16 rounded" />
+            </div>
+          </div>
+        ))}
       </div>
     )
   }
@@ -82,39 +106,21 @@ export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolea
   if (journal.data.length === 0) return <RideJournalEmpty canAdd={canAdd} rideId={rideId} />
 
   return (
-    <div className="flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    // `items-start`, which is load-bearing now that the row is no longer one
+    // height: a stamp is its 128px photo block plus a byline under it, and the
+    // `Add` tile is the photo block alone. Stretched, the dashed square would
+    // grow to swallow the byline row and stop lining up with the stamps beside
+    // it. `pb-1.5` clears the stamps' drop shadow, which `overflow-x-auto`
+    // would otherwise clip along the bottom edge.
+    <div className="flex items-start gap-2 overflow-x-auto px-4 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {journal.data.map((postcard) => (
-        <Link
-          key={postcard.id}
-          href={routes.postcard(postcard.id)}
-          aria-label={
-            postcard.caption?.trim() || `Postcard from ${formatPostcardDate(postcard.created_at)}`
-          }
-          className="aspect-square w-28 shrink-0 overflow-hidden rounded-lg bg-track"
-        >
-          {postcard.image_url ? (
-            // A signed URL that expires hourly — see `PostcardCard`'s identical
-            // note on why next/image is the wrong tool for it.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={postcard.image_url}
-              alt={postcard.caption ?? ''}
-              className="h-full w-full object-cover"
-              loading="lazy"
-              draggable={false}
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-muted">
-              <ImageIcon className="h-6 w-6 opacity-60" aria-hidden="true" />
-            </div>
-          )}
-        </Link>
+        <PostcardStamp key={postcard.id} postcard={postcard} />
       ))}
 
       {canAdd && (
         <Link
           href={routes.newPostcardInRide(rideId)}
-          className="flex aspect-square w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
+          className="flex aspect-square w-32 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border"
         >
           <PlusIcon className="h-6 w-6" aria-hidden="true" />
           <span className="text-xs font-semibold">Add</span>
