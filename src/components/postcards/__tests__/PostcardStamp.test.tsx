@@ -36,6 +36,12 @@ const postcard = (over: Partial<Postcard> = {}): Postcard => ({
   caption: 'Coffee stop',
   created_at: '2026-08-01T09:00:00Z',
   updated_at: '2026-08-01T09:00:00Z',
+  // Both are `string | null` rather than optional, because `073`/`074` couple
+  // them at the database and the card decides what to draw off the pair — see
+  // their own docstrings in `src/types`. The stamp draws neither; they are here
+  // so the fixture is a real `Postcard` and not a shape that only compiles.
+  taken_place_name: null,
+  taken_country_code: null,
   image_url: 'https://example.test/signed.jpg',
   author: {
     id: '22222222-2222-4222-8222-222222222222',

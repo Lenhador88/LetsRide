@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { ImageIcon } from '@/components/icons/generated'
-import { usePostcardViewer } from '@/components/postcards/PostcardViewer'
+import { usePostcardViewer } from '@/components/postcards/viewerContext'
 import { Avatar } from '@/components/ui/Avatar'
 import { routes } from '@/lib/routes'
 import { cn, formatPostcardDate } from '@/lib/utils'

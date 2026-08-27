@@ -6,7 +6,7 @@ import {
   PostcardActionLink,
   PostcardActionStatic,
 } from '@/components/postcards/PostcardAction'
-import { usePostcardViewer } from '@/components/postcards/PostcardViewer'
+import { usePostcardViewer } from '@/components/postcards/viewerContext'
 import { routes } from '@/lib/routes'
 
 type CommentsLinkProps = {

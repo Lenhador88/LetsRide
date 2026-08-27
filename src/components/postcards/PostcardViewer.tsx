@@ -1,11 +1,16 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { usePathname } from 'next/navigation'
 import { CloseIcon } from '@/components/icons/generated'
 import { CommentForm } from '@/components/postcards/CommentForm'
 import { CommentList } from '@/components/postcards/CommentList'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
+import {
+  InsidePostcardViewerContext,
+  PostcardViewerContext,
+} from '@/components/postcards/viewerContext'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonDetail } from '@/components/ui/Skeleton'
 import { getPostcardComments } from '@/lib/data/comments'
@@ -53,19 +58,15 @@ import { postcardIdSchema } from '@/lib/validation/postcards'
  * the provider sits in `(app)/layout.tsx`, so the one place a card renders
  * outside it is a test rendering `PostcardCard` on its own, and the honest
  * behaviour there is the anchor that was always there.
+ *
+ * Both contexts live in `./viewerContext` rather than here, because this file
+ * renders `PostcardCard` and that card's own menu asks a question of the
+ * viewer — see that file's header for the cycle and what the split buys.
  */
-const PostcardViewerContext = createContext<((postcardId: string) => void) | null>(null)
-
-/**
- * The way in for anything that draws a postcard. `null` means no provider —
- * link instead of opening, per the header.
- */
-export function usePostcardViewer() {
-  return useContext(PostcardViewerContext)
-}
-
 export function PostcardViewerProvider({ children }: { children: React.ReactNode }) {
   const [openId, setOpenId] = useState<string | null>(null)
+  const pathname = usePathname()
+  const [lastPathname, setLastPathname] = useState(pathname)
 
   // Stable, so every `PostcardCard` under this provider stays memo-comparable —
   // `PostcardCard` is memoised precisely because the deck re-renders at display
@@ -73,6 +74,39 @@ export function PostcardViewerProvider({ children }: { children: React.ReactNode
   // bust that comparison for all three visible cards on every `pointermove`.
   const open = useCallback((postcardId: string) => setOpenId(postcardId), [])
   const close = useCallback(() => setOpenId(null), [])
+
+  /**
+   * **A navigation closes the popup, and without this it does not.**
+   *
+   * The dialog holds two links that leave — the byline goes to the author's
+   * profile and the club name to the club — and both land inside `(app)`, so
+   * `AppLayout` is not remounted and this state survives. The rider ends up
+   * reading a postcard laid over a screen they did not know they were on, and
+   * Back then returns them to the previous screen with the popup still up.
+   *
+   * The route change is the only signal: nothing else distinguishes "the rider
+   * followed a link out of the dialog" from "the rider is still reading it".
+   * Stated the other way round, this is what keeps the header's promise that
+   * closing puts them back exactly where they were — because by then they are
+   * somewhere else.
+   *
+   * **Adjusted during render rather than in an effect**, which is React's own
+   * documented shape for state that has to follow a changing input. An effect
+   * runs after paint, so the popup would be drawn once over the screen the
+   * rider has just arrived at — one frame of exactly the confusion this
+   * removes — and it is what `react-hooks` flags as a cascading render. React
+   * discards this pass and re-renders immediately instead; nothing below has
+   * rendered yet, so nothing is thrown away.
+   *
+   * The tempting cheaper version — remembering which path the popup was opened
+   * on and hiding it elsewhere — is wrong rather than merely different: going
+   * to a profile and coming back to `/postcards` matches that path again, and
+   * the popup springs back open around a postcard the rider closed by leaving.
+   */
+  if (pathname !== lastPathname) {
+    setLastPathname(pathname)
+    setOpenId(null)
+  }
 
   return (
     <PostcardViewerContext.Provider value={open}>
@@ -121,7 +155,31 @@ function PostcardViewerDialog({
   useEffect(() => {
     triggerRef.current = document.activeElement
 
+    /**
+     * **Whether this dialog is the one on top.**
+     *
+     * The postcard's own overflow menu opens a `ContextMenu` from inside here,
+     * and both listen for Escape on `document` with no `stopPropagation`
+     * anywhere. This one is registered first, so it also *runs* first: a single
+     * Escape aimed at the sheet tore the whole popup down underneath it.
+     *
+     * The z-index half of this nesting was reasoned about and got the right
+     * answer (55/56 under the sheet's 60/70); the keyboard half is the same
+     * nesting and needed the same thought. Both portal to `document.body`, so
+     * document order is open order and the last modal is the topmost one.
+     *
+     * It guards Tab as well as Escape, and must: while the sheet is open its
+     * own trap owns the focus ring, and two traps fighting over it is the same
+     * defect in a slower shape.
+     */
+    function isTopmost() {
+      const modals = document.querySelectorAll('[role="dialog"][aria-modal="true"]')
+      return modals.length === 0 || modals[modals.length - 1] === panelRef.current
+    }
+
     function onKeyDown(event: KeyboardEvent) {
+      if (!isTopmost()) return
+
       if (event.key === 'Escape') {
         onCloseRef.current()
         return
@@ -139,10 +197,38 @@ function PostcardViewerDialog({
 
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
-      if (event.shiftKey && document.activeElement === first) {
+      const active = document.activeElement
+
+      /**
+       * **Focus is on the panel itself on the very first keystroke**, because
+       * the effect below focuses it — and the panel is `tabIndex={-1}`, so it
+       * is not in `focusable` and matches neither end. Comparing only against
+       * the two ends therefore never fired, never called `preventDefault`, and
+       * let the browser walk Shift+Tab straight out of a portal appended at the
+       * end of `document.body` into the page behind.
+       *
+       * That is not a corner: one Shift+Tab then Enter landed on the deck's
+       * sr-only "Next postcard" button and advanced the feed behind a dialog
+       * the rider cannot see through — verbatim the case the comment above says
+       * this trap exists to stop. And once focus was outside, every later Tab
+       * missed too, so the trap stayed inert for the rest of the dialog's life.
+       *
+       * So the wrap is driven by *is focus inside the panel* rather than by the
+       * two ends alone, which also recovers focus that escaped some other way.
+       */
+      const inside = active instanceof Node && active !== panelRef.current &&
+        panelRef.current?.contains(active)
+
+      if (!inside) {
+        event.preventDefault()
+        ;(event.shiftKey ? last : first).focus()
+        return
+      }
+
+      if (event.shiftKey && active === first) {
         event.preventDefault()
         last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && active === last) {
         event.preventDefault()
         first.focus()
       }
@@ -208,7 +294,7 @@ function PostcardViewerDialog({
             the nav bar. Nothing is behind this one, so it pays only the home
             indicator. */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          <PostcardViewerBody postcardId={postcardId} />
+          <PostcardViewerBody postcardId={postcardId} onClose={onClose} />
         </div>
       </div>
     </>,
@@ -233,7 +319,13 @@ function PostcardViewerDialog({
  * postcard" and "not yours to read" have to look identical, or the response is
  * an existence oracle for club-scoped photos — so both land on the same words.
  */
-function PostcardViewerBody({ postcardId }: { postcardId: string }) {
+function PostcardViewerBody({
+  postcardId,
+  onClose,
+}: {
+  postcardId: string
+  onClose: () => void
+}) {
   // Before the reads, exactly as the route does it: a malformed id reaches
   // Postgres as a `uuid`, comes back 22P02 → 400 → a throw from `unwrap`, and
   // renders a "Try again" on something that can never succeed.
@@ -257,6 +349,11 @@ function PostcardViewerBody({ postcardId }: { postcardId: string }) {
   if (postcard.data === undefined || comments.data === undefined) return <SkeletonDetail />
 
   return (
+    // The one place this context is provided, and it wraps the card rather than
+    // the whole dialog so that only the postcard the popup is *showing* answers
+    // "I am inside the viewer" — a future control elsewhere in the sheet should
+    // not inherit a `close` meant for this card's menu.
+    <InsidePostcardViewerContext.Provider value={onClose}>
     <div className="flex flex-col gap-4">
       {/* `linkToThread={false}`: the comment control would open the dialog that
           is already open, and the photo would re-open the postcard it is
@@ -282,6 +379,7 @@ function PostcardViewerBody({ postcardId }: { postcardId: string }) {
         <CommentForm postcardId={postcard.data.id} />
       </section>
     </div>
+    </InsidePostcardViewerContext.Provider>
   )
 }
 

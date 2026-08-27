@@ -562,12 +562,13 @@ mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
   ceiling makes every reviewer flag a legitimate file:
 
   ```bash
-  grep -rln "from '@/lib/supabase/client'" src/ | grep -v "src/lib/supabase/"   # 6
+  grep -rln "from '@/lib/supabase/client'" src/ | grep -v "src/lib/supabase/"   # 7
   ```
 
   What earns a place on that list is a **session or transport** concern, not a read: the guard
   cache, the three auth routes that exchange or verify an emailed credential, the Storage upload,
-  and the Realtime subscription. Anything that is a *query* belongs in `lib/data/` no matter how
+  and the two Realtime subscriptions — PD-313's club threads joined the ride-messages one, which is
+  what took this from 6 to 7. Anything that is a *query* belongs in `lib/data/` no matter how
   short the list gets.
 - `@/lib/supabase/server` **no longer exists**. Neither does `@supabase/ssr`.
 
