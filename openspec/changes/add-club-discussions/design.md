@@ -534,7 +534,7 @@ comment restamp → the verification block.
    `anon` grant count 0, the enumerated INSERT columns, `has_table_privilege` scoped to
    `authenticated`, publication membership **and** non-membership, `prosecdef` false on the reader
    and true on the moderator, the gate trigger count reading **13**, and `get_advisors(security)`
-   reading **14** with `auth_leaked_password_protection` still the only genuinely outstanding one.
+   reading **15** with `auth_leaked_password_protection` still the only genuinely outstanding one.
 4. `PGPASSWORD=postgres npm test` — the suite must be green and its **label set** compared against
    the pre-change run, not its count: a count cannot tell a rename from a loss, which is what `038`
    did to one of `036`'s assertions.

@@ -2,93 +2,93 @@
 
 - [x] 0.1 **Resolved — nothing is open.** All five questions this change opened with are answered in `design.md` under `Questions Closed` (D1 cascade, D2 hide the thread whole, D3 sort by creation, D4 no club-card badge, D5 title at 80). Do not reopen them; D1 in particular decides a foreign key and is settled before task 1.1.
 - [x] 0.2 **Done.** The threads decision is on the board: `PD-307`'s body states and dates it, and `PD-299` carries a comment recording it. An earlier draft of this change claimed it was unrecorded, having read the epic and not the story split off from it.
-- [ ] 0.3 Re-derive the migration number: `mcp__Supabase__list_migrations` on PROD (`zwprydcyryvudhurbnye`) and DEV (`fpmrimzxadewsaiwpsel`) against `ls supabase/migrations/`. Promote everything the gap already contains, in filename order, per `docs/ENVIRONMENTS.md` §Migrations, **before** adding to it.
-- [ ] 0.4 Record the **before** numbers, so the after-numbers mean something: gate triggers (`select count(*) from pg_trigger where tgname = 'enforce_participation_gate' and not tgisinternal` — expect 11), `get_advisors(security)` (expect 13, going to **15**), and the RLS suite's **label set** via `PGPASSWORD=postgres npm test 2>&1 | grep "NOTICE:  ok"` (a count cannot tell a rename from a loss).
-- [ ] 0.6 Read the **live** comment on `public.enforce_participation_gate()` before writing the restamp — it says **eleven** and names the ninth, tenth and eleventh triggers. Do not grep for "nine".
-- [ ] 0.5 Confirm `clubs` SELECT still carries no `private.is_blocked` call and `private.is_club_member_for` still carries the owner arm — the two facts the whole audience argument rests on.
+- [x] 0.3 Re-derive the migration number: `mcp__Supabase__list_migrations` on PROD (`zwprydcyryvudhurbnye`) and DEV (`fpmrimzxadewsaiwpsel`) against `ls supabase/migrations/`. Promote everything the gap already contains, in filename order, per `docs/ENVIRONMENTS.md` §Migrations, **before** adding to it.
+- [x] 0.4 Record the **before** numbers, so the after-numbers mean something: gate triggers (`select count(*) from pg_trigger where tgname = 'enforce_participation_gate' and not tgisinternal` — expect 11), `get_advisors(security)` (expect 13, going to **15**), and the RLS suite's **label set** via `PGPASSWORD=postgres npm test 2>&1 | grep "NOTICE:  ok"` (a count cannot tell a rename from a loss).
+- [x] 0.6 Read the **live** comment on `public.enforce_participation_gate()` before writing the restamp — it says **eleven** and names the ninth, tenth and eleventh triggers. Do not grep for "nine".
+- [x] 0.5 Confirm `clubs` SELECT still carries no `private.is_blocked` call and `private.is_club_member_for` still carries the owner arm — the two facts the whole audience argument rests on.
 
 ## 1. Migration `081_club_discussions.sql` — the tables
 
-- [ ] 1.1 Create `public.club_discussions` — `id uuid default uuid_generate_v4() primary key`, `club_id uuid references public.clubs(id) on delete cascade not null`, `author_id uuid references public.profiles(id) on delete cascade not null` (per 0.1), `title text not null`, `created_at timestamptz default now() not null`.
-- [ ] 1.2 Add the title CHECK: `title ~ '\S' and length(title) <= 80`. **Not `btrim`** — design.md §Text bounds carries the measured reason.
-- [ ] 1.3 Create `public.club_messages` — `id` (client-suppliable, defaulted), `discussion_id uuid references public.club_discussions(id) on delete cascade not null`, `author_id` (cascade to `profiles`), `body text not null`, `created_at timestamptz default now() not null`, CHECK `body ~ '\S' and length(body) <= 1000`.
-- [ ] 1.4 Create `public.club_discussion_reads` — `user_id uuid references public.profiles(id) on delete cascade not null`, `discussion_id uuid references public.club_discussions(id) on delete cascade not null`, `last_read_at timestamptz default now() not null`, `primary key (user_id, discussion_id)`. **Both foreign keys are required** — without the `profiles` one, "when this named person last read this named topic" survives their account deletion for ever, `029` working purely by cascade. **`user_id` leads the PK**: `029` asserts every FK into `profiles` has a leading-column index.
-- [ ] 1.5 Indexes: `club_discussions (club_id, created_at desc, id desc)`, `club_discussions (author_id)` (cascade), `club_messages (discussion_id, created_at, id)`, `club_messages (author_id, created_at desc)` (cascade), `club_discussion_reads (discussion_id)` (cascade from a thread delete).
-- [ ] 1.6 `alter table ... enable row level security` on all three.
-- [ ] 1.7 Write the table comments. They are the `data` agent's first read via `list_tables` and no edit to `CLAUDE.md` reaches them — say for each that the audience is club membership, that the parent `EXISTS` is the redundant half **here** (the inverse of `ride_messages`), and why the redundant conjunct stays.
+- [x] 1.1 Create `public.club_discussions` — `id uuid default uuid_generate_v4() primary key`, `club_id uuid references public.clubs(id) on delete cascade not null`, `author_id uuid references public.profiles(id) on delete cascade not null` (per 0.1), `title text not null`, `created_at timestamptz default now() not null`.
+- [x] 1.2 Add the title CHECK: `title ~ '\S' and length(title) <= 80`. **Not `btrim`** — design.md §Text bounds carries the measured reason.
+- [x] 1.3 Create `public.club_messages` — `id` (client-suppliable, defaulted), `discussion_id uuid references public.club_discussions(id) on delete cascade not null`, `author_id` (cascade to `profiles`), `body text not null`, `created_at timestamptz default now() not null`, CHECK `body ~ '\S' and length(body) <= 1000`.
+- [x] 1.4 Create `public.club_discussion_reads` — `user_id uuid references public.profiles(id) on delete cascade not null`, `discussion_id uuid references public.club_discussions(id) on delete cascade not null`, `last_read_at timestamptz default now() not null`, `primary key (user_id, discussion_id)`. **Both foreign keys are required** — without the `profiles` one, "when this named person last read this named topic" survives their account deletion for ever, `029` working purely by cascade. **`user_id` leads the PK**: `029` asserts every FK into `profiles` has a leading-column index.
+- [x] 1.5 Indexes: `club_discussions (club_id, created_at desc, id desc)`, `club_discussions (author_id)` (cascade), `club_messages (discussion_id, created_at, id)`, `club_messages (author_id, created_at desc)` (cascade), `club_discussion_reads (discussion_id)` (cascade from a thread delete).
+- [x] 1.6 `alter table ... enable row level security` on all three.
+- [x] 1.7 Write the table comments. They are the `data` agent's first read via `list_tables` and no edit to `CLAUDE.md` reaches them — say for each that the audience is club membership, that the parent `EXISTS` is the redundant half **here** (the inverse of `ride_messages`), and why the redundant conjunct stays.
 
 ## 2. Migration `081` — policies
 
-- [ ] 2.1 `club_discussions` SELECT: `exists (clubs) and private.is_club_member(club_id) and (author_id = auth.uid() or not private.is_blocked(auth.uid(), author_id))`.
-- [ ] 2.2 `club_discussions` INSERT `with check`: `author_id = auth.uid() and exists (clubs) and private.is_club_member(club_id)`. **No block arm** — design.md and the spec both state why a blocked pair may both post.
-- [ ] 2.3 `club_discussions` DELETE `using`: `exists (clubs) and private.is_club_member(club_id) and author_id = auth.uid()`. Author only — the owner's arm is the RPC in task 4.2.
-- [ ] 2.4 **No UPDATE policy on `club_discussions`.** Absence is the enforcement.
-- [ ] 2.5 `club_messages` SELECT: the two-hop `EXISTS` against `club_discussions` written out in design.md §The grandchild, plus the block arm on `club_messages.author_id`.
-- [ ] 2.6 `club_messages` INSERT `with check`: `author_id = auth.uid()` plus the same two-hop conjunction.
-- [ ] 2.7 **No DELETE policy and no DELETE grant on `club_messages`.** Deletion is `delete_own_club_message` (task 4.2b) — a policy-based delete is unfixable here, because RLS applies the SELECT policy to a `DELETE` whose `WHERE` names a column (measured, Postgres 17.6), so a rider blocked by the thread's author silently cannot erase their own words. Comment the absence and the reason, following `078`'s `push_devices` precedent. Do **not** add a `private.discussion_club()` helper to relax the `USING` clause: it changes no observable outcome, because the SELECT policy hides the row before `USING` is reached.
-- [ ] 2.8 **No UPDATE policy on `club_messages`.**
-- [ ] 2.9 `club_discussion_reads`: SELECT `user_id = auth.uid()` alone; INSERT and UPDATE `with check` carrying `user_id = auth.uid()` plus the full audience conjunction; UPDATE `using` = `user_id = auth.uid()` **alone** (`061`'s deliberate asymmetry). Comment that `034`'s reason for the conjunction does **not** transfer — a `WITH CHECK` grants no reads — and that `015` §2's existence-oracle reason does.
-- [ ] 2.10 **No DELETE policy on `club_discussion_reads`**, and comment the honest reason: "mark unread again" is drawn nowhere. Do **not** repeat `015`'s cascade claim — the FK is to `club_discussions`, so leaving the club leaves the row standing.
+- [x] 2.1 `club_discussions` SELECT: `exists (clubs) and private.is_club_member(club_id) and (author_id = auth.uid() or not private.is_blocked(auth.uid(), author_id))`.
+- [x] 2.2 `club_discussions` INSERT `with check`: `author_id = auth.uid() and exists (clubs) and private.is_club_member(club_id)`. **No block arm** — design.md and the spec both state why a blocked pair may both post.
+- [x] 2.3 `club_discussions` DELETE `using`: `exists (clubs) and private.is_club_member(club_id) and author_id = auth.uid()`. Author only — the owner's arm is the RPC in task 4.2.
+- [x] 2.4 **No UPDATE policy on `club_discussions`.** Absence is the enforcement.
+- [x] 2.5 `club_messages` SELECT: the two-hop `EXISTS` against `club_discussions` written out in design.md §The grandchild, plus the block arm on `club_messages.author_id`.
+- [x] 2.6 `club_messages` INSERT `with check`: `author_id = auth.uid()` plus the same two-hop conjunction.
+- [x] 2.7 **No DELETE policy and no DELETE grant on `club_messages`.** Deletion is `delete_own_club_message` (task 4.2b) — a policy-based delete is unfixable here, because RLS applies the SELECT policy to a `DELETE` whose `WHERE` names a column (measured, Postgres 17.6), so a rider blocked by the thread's author silently cannot erase their own words. Comment the absence and the reason, following `078`'s `push_devices` precedent. Do **not** add a `private.discussion_club()` helper to relax the `USING` clause: it changes no observable outcome, because the SELECT policy hides the row before `USING` is reached.
+- [x] 2.8 **No UPDATE policy on `club_messages`.**
+- [x] 2.9 `club_discussion_reads`: SELECT `user_id = auth.uid()` alone; INSERT and UPDATE `with check` carrying `user_id = auth.uid()` plus the full audience conjunction; UPDATE `using` = `user_id = auth.uid()` **alone** (`061`'s deliberate asymmetry). Comment that `034`'s reason for the conjunction does **not** transfer — a `WITH CHECK` grants no reads — and that `015` §2's existence-oracle reason does.
+- [x] 2.10 **No DELETE policy on `club_discussion_reads`**, and comment the honest reason: "mark unread again" is drawn nowhere. Do **not** repeat `015`'s cascade claim — the FK is to `club_discussions`, so leaving the club leaves the row standing.
 
 ## 3. Migration `081` — grants and triggers
 
-- [ ] 3.1 `revoke all on public.club_discussions, public.club_messages, public.club_discussion_reads from anon, authenticated`.
-- [ ] 3.2 `grant select, delete on public.club_discussions to authenticated`; **`grant select` only on `public.club_messages`** (no DELETE — task 2.7); `grant select, insert, update on public.club_discussion_reads to authenticated`.
-- [ ] 3.3 Per-column INSERT grants: `(id, club_id, author_id, title)` and `(id, discussion_id, author_id, body)`. **`created_at` on neither.** Comment that a `default` applies only when the column is omitted and PostgREST will name it.
-- [ ] 3.4 Add `enforce_participation_gate` BEFORE INSERT triggers to **both** content tables, each `for each row when (current_user = 'authenticated')`. The `WHEN` clause is not decoration (`023` §2).
-- [ ] 3.5 **No gate trigger on `club_discussion_reads`**, and say so in a comment with `023`'s reason for `feed_reads`.
-- [ ] 3.6 Restamp the comment on `public.enforce_participation_gate()` from **eleven** to **thirteen** — measured, it does not say nine — and extend its enumeration, which today names the ninth (`ride_messages`, `034`), tenth (`ride_map_render_attempts`, `051`) and eleventh (`place_search_attempts`, `069`), with the twelfth and thirteenth. `028` and `033` exist for exactly this.
-- [ ] 3.7 `public.stamp_club_discussion_read()` — `security invoker`, `set search_path = ''`, sets `new.last_read_at := now()`, `revoke all` from every role, hung as `before insert or update`. **Both arms**: INSERT-only works on fresh rows and drifts in use.
+- [x] 3.1 `revoke all on public.club_discussions, public.club_messages, public.club_discussion_reads from anon, authenticated`.
+- [x] 3.2 `grant select, delete on public.club_discussions to authenticated`; **`grant select` only on `public.club_messages`** (no DELETE — task 2.7); `grant select, insert, update on public.club_discussion_reads to authenticated`.
+- [x] 3.3 Per-column INSERT grants: `(id, club_id, author_id, title)` and `(id, discussion_id, author_id, body)`. **`created_at` on neither.** Comment that a `default` applies only when the column is omitted and PostgREST will name it.
+- [x] 3.4 Add `enforce_participation_gate` BEFORE INSERT triggers to **both** content tables, each `for each row when (current_user = 'authenticated')`. The `WHEN` clause is not decoration (`023` §2).
+- [x] 3.5 **No gate trigger on `club_discussion_reads`**, and say so in a comment with `023`'s reason for `feed_reads`.
+- [x] 3.6 Restamp the comment on `public.enforce_participation_gate()` from **eleven** to **thirteen** — measured, it does not say nine — and extend its enumeration, which today names the ninth (`ride_messages`, `034`), tenth (`ride_map_render_attempts`, `051`) and eleventh (`place_search_attempts`, `069`), with the twelfth and thirteenth. `028` and `033` exist for exactly this.
+- [x] 3.7 `public.stamp_club_discussion_read()` — `security invoker`, `set search_path = ''`, sets `new.last_read_at := now()`, `revoke all` from every role, hung as `before insert or update`. **Both arms**: INSERT-only works on fresh rows and drifts in use.
 
 ## 4. Migration `081` — functions and publication
 
-- [ ] 4.1 `public.club_discussion_unread(club uuid) returns table (discussion_id uuid, has_unread boolean)` — `security invoker`, `stable`, `set search_path = ''`, `author_id <> auth.uid()`, and the comparison point `coalesce(greatest(last_read_at, joined_at), d.created_at)` from design.md. **`greatest`, not a three-arm `coalesce`**: the watermark row survives leaving the club, so a plain `coalesce` prefers a stale pre-departure watermark over a fresh `joined_at` and badges a rejoiner with the whole back catalogue. Comment each property with the precedent it carries (`061` §4, `079`).
-- [ ] 4.2 `public.moderate_club_discussion(discussion uuid)` — `security definer`, `set search_path = ''`, `#variable_conflict error`, one `select ... for update` joining to `clubs` on `owner_id = auth.uid()`, **one** raise site so "no such thread" and "not your club" are indistinguishable (`043`'s shape). Deletes one row; the FK cascades the messages.
-- [ ] 4.2b `public.delete_own_club_message(message uuid)` — `security definer`, `set search_path = ''`, `#variable_conflict error`, re-checking `author_id = auth.uid()` in its own body, deleting exactly one row, **no club-membership conjunct** (your own words stay retractable after you leave — a stated divergence from `ride_messages`). One raise site, so "not yours" and "no such message" are indistinguishable.
-- [ ] 4.3 Grants on all three functions: `revoke all from public, anon`, `grant execute to authenticated`.
-- [ ] 4.4 `alter publication supabase_realtime add table public.club_messages`. **Do not add `club_discussions`**, and say in the file why not, so a later session finds the decision in the file rather than in a channel that reports SUBSCRIBED and never fires.
-- [ ] 4.5 Default replica identity on `club_messages` — no `full`. Comment the reason (no UPDATE, subscriber reads INSERT).
-- [ ] 4.6 Write the verification footer: the policy/role counts, `anon` grant count 0, the **enumerated** INSERT columns, `has_table_privilege('authenticated','public.club_messages','delete')` = **false**, publication membership **and** non-membership, `prosecdef` false on the reader / true on both definer RPCs, `indnullsnotdistinct` count 0 on the reads table, both foreign keys on `club_discussion_reads` present with `confdeltype = 'c'`, gate trigger count **13**, advisors **15**.
+- [x] 4.1 `public.club_discussion_unread(club uuid) returns table (discussion_id uuid, has_unread boolean)` — `security invoker`, `stable`, `set search_path = ''`, `author_id <> auth.uid()`, and the comparison point `coalesce(greatest(last_read_at, joined_at), d.created_at)` from design.md. **`greatest`, not a three-arm `coalesce`**: the watermark row survives leaving the club, so a plain `coalesce` prefers a stale pre-departure watermark over a fresh `joined_at` and badges a rejoiner with the whole back catalogue. Comment each property with the precedent it carries (`061` §4, `079`).
+- [x] 4.2 `public.moderate_club_discussion(discussion uuid)` — `security definer`, `set search_path = ''`, `#variable_conflict error`, one `select ... for update` joining to `clubs` on `owner_id = auth.uid()`, **one** raise site so "no such thread" and "not your club" are indistinguishable (`043`'s shape). Deletes one row; the FK cascades the messages.
+- [x] 4.2b `public.delete_own_club_message(message uuid)` — `security definer`, `set search_path = ''`, `#variable_conflict error`, re-checking `author_id = auth.uid()` in its own body, deleting exactly one row, **no club-membership conjunct** (your own words stay retractable after you leave — a stated divergence from `ride_messages`). One raise site, so "not yours" and "no such message" are indistinguishable.
+- [x] 4.3 Grants on all three functions: `revoke all from public, anon`, `grant execute to authenticated`.
+- [x] 4.4 `alter publication supabase_realtime add table public.club_messages`. **Do not add `club_discussions`**, and say in the file why not, so a later session finds the decision in the file rather than in a channel that reports SUBSCRIBED and never fires.
+- [x] 4.5 Default replica identity on `club_messages` — no `full`. Comment the reason (no UPDATE, subscriber reads INSERT).
+- [x] 4.6 Write the verification footer: the policy/role counts, `anon` grant count 0, the **enumerated** INSERT columns, `has_table_privilege('authenticated','public.club_messages','delete')` = **false**, publication membership **and** non-membership, `prosecdef` false on the reader / true on both definer RPCs, `indnullsnotdistinct` count 0 on the reads table, both foreign keys on `club_discussion_reads` present with `confdeltype = 'c'`, gate trigger count **13**, advisors **15**.
 
 ## 5. RLS assertions — `supabase/tests/rls_test.sql`
 
 Every task here is required: `openspec/config.yaml` and `CLAUDE.md` both say a policy change with no new assertion is not finished. Each maps to a scenario in `specs/club-discussions/spec.md`.
 
-- [ ] 5.1 A club member of any `role` reads and writes both content tables.
-- [ ] 5.2 The club owner holding **no** `club_members` row reads and writes both.
-- [ ] 5.3 **A signed-in non-member of a PUBLIC club reads zero threads and zero messages, and every insert is refused.** This is the case a policy carrying only the `clubs` `EXISTS` fails — the single most important assertion in this change.
-- [ ] 5.4 A signed-in non-member of a **private** club reaches nothing, including with a stale `club_discussion_reads` row present.
-- [ ] 5.5 Each conjunct asserted **alone**: one case fails if the `clubs` `EXISTS` is removed, a different case fails if `private.is_club_member` is removed. A single case both hide is not coverage.
-- [ ] 5.6 `clubs` SELECT still carries **no** `private.is_blocked` call — a catalog assertion, so the day one is added this change's reasoning is re-read.
-- [ ] 5.7 A rider who left the club loses every thread and message including their own; the rows survive for everyone else.
-- [ ] 5.8 A rider who joined after a thread was created sees the whole thread.
-- [ ] 5.9 A member cannot insert with a foreign `author_id`; a non-member of a public club cannot insert at all.
-- [ ] 5.10 No UPDATE grant **and** no UPDATE policy on either content table — asserted separately, per grantee (`has_table_privilege`, not a grant-row count: `postgres` and `service_role` hold everything).
-- [ ] 5.11 Author deletes their own thread; a third member cannot; the messages go with it.
-- [ ] 5.12 `moderate_club_discussion`: the owner deletes a member's thread; **the owner deletes a thread whose author they have blocked** (the case a policy arm fails silently); a non-owner gets `insufficient_privilege` identical to a nonexistent id.
-- [ ] 5.13 Message erasure via `delete_own_club_message`: the author succeeds; **a rider blocked by the thread's author still succeeds** (the case a DELETE policy fails silently at zero rows); a rider who has left the club still succeeds; a club member, the club owner and a non-member all get `insufficient_privilege` for a message they did not author, indistinguishable from a nonexistent id.
-- [ ] 5.13b `authenticated` holds **no** DELETE privilege on `club_messages` **and** no DELETE policy exists on it — asserted separately, the grant half scoped via `has_table_privilege`.
-- [ ] 5.13c **Mutation-test 5.13's blocked case**: temporarily restore a policy-based delete, confirm the assertion goes red, then revert. An assertion for a silent-zero-rows defect that has never been seen to fail is not coverage.
-- [ ] 5.13d A thread's author can delete their own thread while blocking, and while blocked by, another member — the inversion does not reach `club_discussions`.
-- [ ] 5.14 Blocking, both directions from one row: B's thread absent from A's list, B's messages absent from a shared thread, C sees all three riders' content.
-- [ ] 5.15 A blocked pair both insert successfully into the same thread and each sees only their own.
-- [ ] 5.16 Deleting a club removes its threads, messages and watermarks; `delete_owned_club` on the default club is still refused.
-- [ ] 5.16b `private.transfer_owned_clubs`' **no-successor branch**: the last remaining member deleting their account deletes the club and cascades every thread, message and watermark. Assert it, and assert that the branch does **not** check `clubs.is_default` — a recorded pre-existing gap in `029`/`059`, not fixed here.
-- [ ] 5.17 Neither new FK into `clubs`/`club_discussions` is `ON DELETE SET NULL` — the property `043`'s existence rests on.
-- [ ] 5.18 Account deletion: a thread author's deletion removes the thread and other riders' messages in it; a replier's deletion removes only their own messages; **and every `club_discussion_reads` row naming the deleted rider is gone** — the `profiles` FK half, which 5.16 does not reach.
-- [ ] 5.19 Watermark: readable only by its owner (the club owner and thread author included); refused for a thread the writer cannot read; the trigger overrides a future `last_read_at` on **both** INSERT and UPDATE; no DELETE grant.
-- [ ] 5.20 Gate: a rider with `terms_accepted_at` NULL is refused by both new triggers; `club_discussion_reads` carries **no** gate trigger (assert the absence); the total reads **13**.
-- [ ] 5.21 `club_discussion_unread`: excludes the caller's own messages; returns false for a blocked author's message; `prosecdef` is false; falls through to `club_discussions.created_at` for an owner holding no membership row; and **a rider who read a thread, left, and rejoined is not badged with messages sent while away** — the `greatest` case, which a plain `coalesce` fails.
-- [ ] 5.22 Publication: `club_messages` is in `supabase_realtime` and `club_discussions` is **not** — both from the catalog.
-- [ ] 5.23 `anon` holds zero grants on all three tables, and no policy is written for a role other than `authenticated`.
+- [x] 5.1 A club member of any `role` reads and writes both content tables.
+- [x] 5.2 The club owner holding **no** `club_members` row reads and writes both.
+- [x] 5.3 **A signed-in non-member of a PUBLIC club reads zero threads and zero messages, and every insert is refused.** This is the case a policy carrying only the `clubs` `EXISTS` fails — the single most important assertion in this change.
+- [x] 5.4 A signed-in non-member of a **private** club reaches nothing, including with a stale `club_discussion_reads` row present.
+- [x] 5.5 Each conjunct asserted **alone**: one case fails if the `clubs` `EXISTS` is removed, a different case fails if `private.is_club_member` is removed. A single case both hide is not coverage.
+- [x] 5.6 `clubs` SELECT still carries **no** `private.is_blocked` call — a catalog assertion, so the day one is added this change's reasoning is re-read.
+- [x] 5.7 A rider who left the club loses every thread and message including their own; the rows survive for everyone else.
+- [x] 5.8 A rider who joined after a thread was created sees the whole thread.
+- [x] 5.9 A member cannot insert with a foreign `author_id`; a non-member of a public club cannot insert at all.
+- [x] 5.10 No UPDATE grant **and** no UPDATE policy on either content table — asserted separately, per grantee (`has_table_privilege`, not a grant-row count: `postgres` and `service_role` hold everything).
+- [x] 5.11 Author deletes their own thread; a third member cannot; the messages go with it.
+- [x] 5.12 `moderate_club_discussion`: the owner deletes a member's thread; **the owner deletes a thread whose author they have blocked** (the case a policy arm fails silently); a non-owner gets `insufficient_privilege` identical to a nonexistent id.
+- [x] 5.13 Message erasure via `delete_own_club_message`: the author succeeds; **a rider blocked by the thread's author still succeeds** (the case a DELETE policy fails silently at zero rows); a rider who has left the club still succeeds; a club member, the club owner and a non-member all get `insufficient_privilege` for a message they did not author, indistinguishable from a nonexistent id.
+- [x] 5.13b `authenticated` holds **no** DELETE privilege on `club_messages` **and** no DELETE policy exists on it — asserted separately, the grant half scoped via `has_table_privilege`.
+- [x] 5.13c **Mutation-test 5.13's blocked case**: temporarily restore a policy-based delete, confirm the assertion goes red, then revert. An assertion for a silent-zero-rows defect that has never been seen to fail is not coverage.
+- [x] 5.13d A thread's author can delete their own thread while blocking, and while blocked by, another member — the inversion does not reach `club_discussions`.
+- [x] 5.14 Blocking, both directions from one row: B's thread absent from A's list, B's messages absent from a shared thread, C sees all three riders' content.
+- [x] 5.15 A blocked pair both insert successfully into the same thread and each sees only their own.
+- [x] 5.16 Deleting a club removes its threads, messages and watermarks; `delete_owned_club` on the default club is still refused.
+- [x] 5.16b `private.transfer_owned_clubs`' **no-successor branch**: the last remaining member deleting their account deletes the club and cascades every thread, message and watermark. Assert it, and assert that the branch does **not** check `clubs.is_default` — a recorded pre-existing gap in `029`/`059`, not fixed here.
+- [x] 5.17 Neither new FK into `clubs`/`club_discussions` is `ON DELETE SET NULL` — the property `043`'s existence rests on.
+- [x] 5.18 Account deletion: a thread author's deletion removes the thread and other riders' messages in it; a replier's deletion removes only their own messages; **and every `club_discussion_reads` row naming the deleted rider is gone** — the `profiles` FK half, which 5.16 does not reach.
+- [x] 5.19 Watermark: readable only by its owner (the club owner and thread author included); refused for a thread the writer cannot read; the trigger overrides a future `last_read_at` on **both** INSERT and UPDATE; no DELETE grant.
+- [x] 5.20 Gate: a rider with `terms_accepted_at` NULL is refused by both new triggers; `club_discussion_reads` carries **no** gate trigger (assert the absence); the total reads **13**.
+- [x] 5.21 `club_discussion_unread`: excludes the caller's own messages; returns false for a blocked author's message; `prosecdef` is false; falls through to `club_discussions.created_at` for an owner holding no membership row; and **a rider who read a thread, left, and rejoined is not badged with messages sent while away** — the `greatest` case, which a plain `coalesce` fails.
+- [x] 5.22 Publication: `club_messages` is in `supabase_realtime` and `club_discussions` is **not** — both from the catalog.
+- [x] 5.23 `anon` holds zero grants on all three tables, and no policy is written for a role other than `authenticated`.
 
 ## 6. Apply and verify
 
-- [ ] 6.1 Apply `081` to DEV via `apply_migration`. It is well under `036`'s 61 KB, so no reduction technique is needed.
-- [ ] 6.2 Run the footer's verification queries against DEV. Every number must match; a mismatch is investigated before any code lands.
-- [ ] 6.3 `get_advisors(security)` on DEV — expect **15**: two new `authenticated_security_definer_function_executable` WARNs, for `moderate_club_discussion` and `delete_own_club_message`. Two, not one — the advisor fires once per function. A sixteenth means a revoke did not land or `club_discussion_unread` was written `definer`.
-- [ ] 6.4 `PGPASSWORD=postgres npm test` green, and reconcile the **label set** against 0.4's, not the count.
-- [ ] 6.5 `npm run db:drift` — repo, DEV and PROD agree on the chain.
+- [x] 6.1 Apply `081` to DEV via `apply_migration`. It is well under `036`'s 61 KB, so no reduction technique is needed.
+- [x] 6.2 Run the footer's verification queries against DEV. Every number must match; a mismatch is investigated before any code lands.
+- [x] 6.3 `get_advisors(security)` on DEV — expect **15**: two new `authenticated_security_definer_function_executable` WARNs, for `moderate_club_discussion` and `delete_own_club_message`. Two, not one — the advisor fires once per function. A sixteenth means a revoke did not land or `club_discussion_unread` was written `definer`.
+- [x] 6.4 `PGPASSWORD=postgres npm test` green, and reconcile the **label set** against 0.4's, not the count.
+- [ ] 6.5 `npm run db:drift` — repo, DEV and PROD agree on the chain. **NOT RUN: the script needs `PROD_DATABASE_URL`/`DEV_DATABASE_URL`, which no session holds — it printed `Set PROD_DATABASE_URL and/or DEV_DATABASE_URL. Nothing to compare.` Substituted `list_migrations` against `ls supabase/migrations/`: repo 81 files, DEV 81 applied (through `081`), PROD 79 (through `079`), so PROD is owed `080` then `081`, in filename order, at the next promotion. Both are additive, so both go BEFORE the promotion build serves.**
 
 ## 7. Types, validation, reads and writes
 
