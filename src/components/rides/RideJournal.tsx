@@ -26,12 +26,11 @@ import { routes } from '@/lib/routes'
  * bearable — the previous tap-through returned the rider to the top of the
  * ride plan every time.
  *
- * It was the ride-side twin of `ClubPostcardCarousel` and is now the divergent
- * one: that component still draws the plain rounded square this used to, and
- * still navigates. They were already two components rather than one shared one
- * because their empty states differ (crew-gated `Add` here, membership-gated
- * messaging there); the stamp is the second reason, and it is a deliberate
- * scoping rather than an oversight — see `PostcardStamp`'s header.
+ * The ride-side twin of `ClubPostcardCarousel`, and they draw the same tile
+ * again: that component adopted `PostcardStamp` in the follow-up to this
+ * change, so both strips look the same and open a postcard the same way. What
+ * still keeps them two components rather than one is their empty state —
+ * crew-gated `Add` here, membership-gated messaging there.
  *
  * **Reads its own data — `queryKeys.postcards.journal(rideId)` through
  * `getRideJournal`** — the same shape `RideCrewRail` reads `rides.crew(id)`,

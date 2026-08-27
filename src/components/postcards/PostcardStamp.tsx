@@ -32,14 +32,18 @@ const STAMP_WIDTH = 'w-32'
  * same pill with a 24px avatar in it covers a third of the picture, which is the
  * whole content of the tile.
  *
- * ## Not `ClubPostcardCarousel`'s tile, yet
+ * ## Two callers, and the second is why this is a component
  *
- * That component draws the same square from the same `Postcard` and is
- * deliberately left alone: the owner asked for the Journal, and a stamp is a
- * postal metaphor that reads on a *ride's* photo record more obviously than on a
- * club feed. Adopting it there is a one-line change if that is wanted — the
- * shared piece is this file rather than a copied class list, which is why the
- * frame lives in a utility and the tile in a component.
+ * `RideJournal` and `ClubPostcardCarousel` both draw it. The Journal had it
+ * first and the club strip kept the plain square for one merge — long enough to
+ * show what that costs: the same photos, on two screens, with two different
+ * gestures. Product owner, 2026-08-27, on being offered the swap: *"lets do A.
+ * Same standard."*
+ *
+ * That is the whole argument for the frame living in a `@utility` and the tile
+ * in a component rather than as a class list copied twice. Anything drawing a
+ * postcard as a tile should reach for this; a third caller should not need a
+ * third decision about what a stamp looks like.
  */
 export function PostcardStamp({ postcard, className }: { postcard: Postcard; className?: string }) {
   const openPostcard = usePostcardViewer()
