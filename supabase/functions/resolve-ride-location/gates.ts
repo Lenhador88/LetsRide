@@ -133,6 +133,29 @@ export const SCALE_FACTOR = 2
  */
 export const ATTRIBUTION_MODE = 'none'
 
+/**
+ * **The pin on the detail panel.** Product owner, 2026-08-27: *"on the ride
+ * details I do not see the pin on the map highlighting the meeting point."*
+ * They were right and it had never been sent — the tile was centred on the
+ * meeting point and nothing marked it, which reads as a map of nowhere in
+ * particular. `TILE_SPECS`'s zoom table is why it now matters more than it did:
+ * at z7 the panel covers a couple of hundred kilometres.
+ *
+ * Syntax from the vendor's documentation: properties within one marker are
+ * separated by `;`, multiple markers by `|`, and `lonlat` is the only required
+ * one. Colours must be URL-encoded, which `URLSearchParams` does on its own —
+ * do not pre-encode `#` here or it double-escapes to `%2523`.
+ *
+ * `Grey/100` `#1A1A1A` with a white glyph, which is the v2 pin the app already
+ * draws over a card strip — the same marker in two renderings rather than two
+ * marks that happen to both be pins.
+ *
+ * **Not sent for the card**, deliberately: `RideCard` draws its own pin disc in
+ * HTML, dead centre, over a tile that is centred on the same coordinate. A
+ * burned-in marker there would be a second pin a few pixels from the first.
+ */
+export const MARKER_STYLE = 'type:material;color:#1A1A1A;icontype:material;icon:place;contentcolor:#FFFFFF;size:40'
+
 /* -------------------------------------------------------------------------- */
 /* The three gates                                                             */
 /* -------------------------------------------------------------------------- */
@@ -230,6 +253,8 @@ export type TileSpec = {
   readonly width: number
   readonly height: number
   readonly zoom: number
+  /** Burn a pin into the tile. False where the container draws its own. */
+  readonly marker: boolean
 }
 
 /**
@@ -241,20 +266,34 @@ export type TileSpec = {
  * The dimensions are the containers' own: `RideCard`'s strip is `w-20` (80) by
  * 148, `RideMap`'s panel is `h-40` (160) across the page's 358.
  *
- * **The card's zoom is 7 and it is marked "to try", not settled.** Product
- * owner, on the first tile rendered with `ATTRIBUTION_MODE` — *"Seems to be very
- * zoomed in though"*, then *"zoom 7 seems okay to try"*. It was 13, and nobody
- * had ever judged it: the burned-in credit covered the map, so the framing was
- * inherited rather than chosen. **If 7 reads as too far out on a real rides
- * list, the next step is 8, not back to 13.**
+ * **Both zooms are 7, and both are marked "to try" rather than settled.**
+ * Product owner, 2026-08-27, on the first tiles they could actually see —
+ * *"zoom 7 seems okay to try"* for the card, then *"Both maps seem to be very
+ * zoomed in. Can we zoom out to 7?"* for both. They were 13 and 15, and neither
+ * had ever been judged against a visible map: the burned-in credit covered the
+ * card and nobody had questioned the panel.
  *
- * **The detail panel is unchanged at z15 and was not re-judged** — a much wider
- * viewport whose credit was legible even burned in, so it was never the broken
- * one. Do not change it on PD-236's authority.
+ * **What z7 actually shows, because the number is not self-explanatory and this
+ * is the sentence to check before changing it.** Web-Mercator ground resolution
+ * at the equator is `156543.03 / 2^zoom` metres per pixel, so a 358px-wide panel
+ * covers roughly:
+ *
+ *   z7  → ~437 km   — country scale; the pin is the only thing locating the ride
+ *   z9  → ~109 km   — province
+ *   z11 → ~27 km    — the town and its surroundings
+ *   z13 → ~6.8 km   — the town
+ *   z15 → ~1.7 km   — streets, which is what the panel used to draw
+ *
+ * At this latitude multiply by `cos(52°)` ≈ 0.62, so the panel is nearer 270 km
+ * at z7. **That is why `MARKER` exists**: at this scale a centred tile with no
+ * pin says nothing at all about where the ride starts.
+ *
+ * If either reads as too far out, move up rather than back — 11 is the value
+ * that puts a town in frame on the panel.
  */
 export const TILE_SPECS = {
-  card: { width: 80, height: 148, zoom: 7 },
-  detail: { width: 358, height: 160, zoom: 15 },
+  card: { width: 80, height: 148, zoom: 7, marker: false },
+  detail: { width: 358, height: 160, zoom: 7, marker: true },
 } as const satisfies Record<string, TileSpec>
 
 export type TileKind = keyof typeof TILE_SPECS
@@ -325,6 +364,13 @@ export function buildTileUrl(
   // for a plausible-looking place somewhere else entirely.
   url.searchParams.set('center', `lonlat:${coordinate.longitude},${coordinate.latitude}`)
   url.searchParams.set('zoom', String(spec.zoom))
+  // The card draws its own pin in HTML over the tile — see `MARKER_STYLE`.
+  if (spec.marker) {
+    url.searchParams.set(
+      'marker',
+      `lonlat:${coordinate.longitude},${coordinate.latitude};${MARKER_STYLE}`,
+    )
+  }
   // JPEG, never PNG — see `buildRideMapPath`.
   url.searchParams.set('format', 'jpeg')
   // Ships with `MapAttribution` or not at all — see `ATTRIBUTION_MODE`.
