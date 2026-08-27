@@ -218,16 +218,16 @@ function ClubScreen() {
             )
           ) : (
             <div className="flex gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {/* First rather than last (PD-318), which reverses PD-312's own
+                  reasoning — see `ClubCreateRideRow`, which carries the
+                  argument on both sides and the 148px width that answers it.
+                  Inside the scroller rather than beside it, so it reads as part
+                  of the list. `isMember` for the same reason the empty state
+                  above carries it. */}
+              {isMember && <ClubCreateRideRow clubId={id} variant="chip" />}
               {upcoming.map((ride) => (
                 <RideChip key={ride.id} ride={ride} />
               ))}
-              {/* Last rather than first: the strip is ordered by departure
-                  and the next ride is what a rider opened the club for, so a
-                  create tile in that slot pushes it off-screen on every visit.
-                  Inside the scroller rather than beside it, so it reads as the
-                  end of the list. `isMember` for the same reason the empty
-                  state above carries it. */}
-              {isMember && <ClubCreateRideRow clubId={id} variant="chip" />}
             </div>
           )}
         </section>
