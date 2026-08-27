@@ -21,7 +21,7 @@ the search split belong to `postcard-location-defaults-to-a-region`. If a task h
 - [ ] 0.2 Enumerate every path that reaches `rides.club_id`'s `ON DELETE SET NULL` and state the
       outcome under the new CHECK for each — `delete_owned_club` (`043`),
       `private.transfer_owned_clubs` (`029`/`031`), and a bare `clubs` DELETE under the still-live
-      `auth.uid() = owner_id` policy. **Question B is settled by this, not by argument.**
+      `auth.uid() = owner_id` policy. **Question A is settled by this, not by argument.**
 - [ ] 0.3 Confirm `022`'s two triggers cannot trip the new CHECK — both write rows carrying a
       `club_id`. Assert it; do not reason it.
 
@@ -47,7 +47,7 @@ this repo has already sprung.
       `get_advisors(security)` unchanged at **fifteen** — measured on DEV
       2026-08-27, not read off `CLAUDE.md`'s table, which is two definer functions short.
 
-## 2. Migration `083_postcard_audience_is_insert_only.sql` — ONLY if question A is answered yes
+## 2. Migration `083_postcard_audience_is_insert_only.sql`
 
 - [ ] 2.1 Revoke `update (club_id)` on `postcards` from `authenticated`.
 - [ ] 2.2 **Issue it as a narrow revoke, never as an absolute re-grant list.** `044`/`046` is this
@@ -55,8 +55,9 @@ this repo has already sprung.
 - [ ] 2.3 Re-issue the `club_id` column comment: it is the audience and it is now insert-only.
 - [ ] 2.4 §Verification: the UPDATE list reads exactly `caption, image_path`; `ride_id` still on
       INSERT and absent from SELECT; `anon` at zero in every verb.
-- [ ] 2.5 If question A is answered **no**, this file is not written and `proposal.md` records the
-      reason a grant with no UI behind it is retained.
+- [ ] 2.5 §Verification also proves the *policy* is unmoved — `md5(with_check)` on the postcards
+      UPDATE policy, before and after. A revoke should not touch it, and `044`/`046`'s failure was
+      exactly a file that changed more than it named.
 
 ## 3. Assertions — `supabase/tests/rls_test.sql`
 
@@ -128,7 +129,7 @@ this repo has already sprung.
       moved.
 - [ ] 8.2 **State the `ON DELETE CASCADE` consequence** in the `postcards` row: a rider posting
       from a club ride has their photo deleted with the club, an audience they never typed deciding
-      the fate of their own postcard. Named, not fixed — question C.
+      the fate of their own postcard. Named, not fixed — question B.
 - [ ] 8.3 `CLAUDE.md`'s migration-count line if `082`/`083` land. **The main thread writes
       `CLAUDE.md` and `docs/HANDOFF.md`, not an agent.**
 

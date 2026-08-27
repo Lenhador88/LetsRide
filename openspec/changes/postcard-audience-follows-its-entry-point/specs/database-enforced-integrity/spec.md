@@ -104,7 +104,8 @@ Restated for the audience specifically. `authenticated` holds UPDATE on `postcar
 
 **With the club field removed from the composer, `update (club_id)` is a grant with no screen
 behind it**, and the `010` UPDATE `with check` permits moving a postcard to `club_id` NULL, which
-**widens** its audience. Whether that grant is revoked is open question A.
+**widens** its audience. `083` revokes it — settled 2026-08-27, and no longer an open
+question. See `proposal.md` §The audience becomes insert-only.
 
 #### Scenario: The audience is either insert-only or the widening is deliberate
 - **WHEN** the column privileges are read back after this change
