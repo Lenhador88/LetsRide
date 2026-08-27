@@ -483,9 +483,10 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and exactly ONE of the
-three is current against its file. Two of the three have an equal `ezbr_sha256` across the
-projects and `search-places` does NOT** — measured 2026-08-24: PROD runs **v7**
+**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and NOT ONE of the three
+has a file older than its deploy — but for two of them the newer commits are COMMENTS ONLY, so the
+behaviour is current and only `search-places` is genuinely stale. Two of the three have an equal
+`ezbr_sha256` across the projects and `search-places` does NOT** — measured 2026-08-24: PROD runs **v7**
 (`9510589d…`, deployed 12:04Z) against DEV's **v3** (`dcc59ceb…`, 2026-08-20), so **DEV is behind
 PROD for that one function**, which is the opposite of this repo's usual direction and is worth
 knowing before debugging a DEV-only search failure. PROD's v7 is the redeploy that ended PD-276's
@@ -495,10 +496,11 @@ on every postcard until each project is redeployed, and the flag falls back to t
 The rest of this paragraph is measured 2026-08-19:
 `delete-account` deployed 2026-08-17 against a file that moved 2026-08-19 (comments only, so the
 behaviour is current — and that date moves with every header edit, which is why it is read off
-the command rather than trusted here); `resolve-ride-location` is the **current** one, redeployed
-2026-08-27 (PD-267) — v3 on both, `02e56f38…` equal, `updated_at` newer than the file's last
-commit, which is the first time that has been true for it and stops being true the next time
-anyone edits the directory; and `search-places` was deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) and
+the command rather than trusted here); `resolve-ride-location` was redeployed
+2026-08-27 (PD-267) — v3 on both, `02e56f38…` equal — and the **behaviour** is current, though the
+directory's commit date has since moved past the deploy on a comments-only edit (PD-236's §4.6
+correction), which is `delete-account`'s situation exactly and is why the currency check is read
+off the command rather than off this sentence; and `search-places` was deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) and
 that is the build **DEV still runs** — real code behind it, including `classifyLedgerError`, so
 DEV reports a `23514` participation-gate refusal to the rider as **502 `unavailable`**: search is
 broken, not "you hit a limit". `isPolicyRefusal` matches `42501` only, and the gate raises

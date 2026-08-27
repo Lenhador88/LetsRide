@@ -28,21 +28,31 @@
  * ---------------------------------------------------------------------------
  * What is measured here and what is assumed — read this before trusting a value
  * ---------------------------------------------------------------------------
- * `*.geoapify.com` is egress-blocked from the build container, so **not one
- * request in this file has ever been issued.** Per `CLAUDE.md`'s rule that an
- * inferred value must never pass silently as a known one, each constant below
- * says which it is. The three that are genuinely assumed:
+ * Per `CLAUDE.md`'s rule that an inferred value must never pass silently as a
+ * known one, each constant below says which it is.
  *
- *   - `MAP_STYLE`, `SCALE_FACTOR` and the static-map endpoint's parameter names
- *     are taken from the vendor's documentation as this repo understands it and
- *     have not been exercised. A wrong parameter name is a fail-open case here:
- *     `index.ts` treats every non-2xx as "no tile", so the ride still saves.
+ * **Both halves of this file have now been exercised against the live vendor**
+ * — DEV, 2026-08-27, one picked ride and one typed one, both returning
+ * `{"rendered":true}` with two objects in Storage and both path columns
+ * written. So the static-map endpoint, its parameter names, `MAP_STYLE` and
+ * `SCALE_FACTOR` are MEASURED rather than assumed. A wrong parameter name would
+ * have been a fail-open case anyway: `index.ts` treats every non-2xx as "no
+ * tile", so the ride still saves.
+ *
+ * Two things remain genuinely unmeasured, and both are about the *vocabulary*
+ * of a response rather than the shape of a request — one successful geocode
+ * cannot enumerate either:
+ *
  *   - `STREET_LEVEL_RESULT_TYPES` is an **allowlist** precisely because the
  *     vocabulary is unmeasured — see its own comment.
- *   - `CONFIDENCE_FLOOR`'s scale. One observation of the value `1` is equally
+ *   - `CONFIDENCE_FLOOR`'s scale. Two observations of the value `1` are equally
  *     consistent with 0–1, 0–10 and 0–100.
  *
- * Task 8.4's live exercise is where those stop being assumptions.
+ * `*.geoapify.com` was egress-blocked from the build container when this file
+ * was written, which is why so much of it was inferred. **It is not blocked
+ * now** — `apidocs.geoapify.com` and `www.geoapify.com` both answer 200 as of
+ * 2026-08-27, so a session can read the vendor's own documentation rather than
+ * a search summary of it. Check before inheriting the older claim.
  */
 
 /* -------------------------------------------------------------------------- */
@@ -52,13 +62,14 @@
 /** Geocoding. The measured response in `tasks.md` §0.8 came from this endpoint. */
 export const GEOCODE_ENDPOINT = 'https://api.geoapify.com/v1/geocode/search'
 
-/** Static Maps. UNEXERCISED — see the header. */
+/** Static Maps. Exercised 2026-08-27 — see the header. */
 export const STATIC_MAP_ENDPOINT = 'https://maps.geoapify.com/v1/staticmap'
 
 /**
- * ASSUMED, not measured. A light OSM raster style; the two containers put text
- * over the tile (`RideMap`'s `bg-scrim`, `RideCard`'s `White/100` pin disc), so
- * the style only has to be neutral, not chosen.
+ * MEASURED 2026-08-27: the style exists and renders. It was chosen unmeasured,
+ * and the reason it could be is unchanged — a light OSM raster style, with both
+ * containers putting text over the tile (`RideMap`'s `bg-scrim`, `RideCard`'s
+ * `White/100` pin disc), so the style only has to be neutral, not chosen.
  */
 export const MAP_STYLE = 'osm-bright'
 
@@ -66,18 +77,37 @@ export const MAP_STYLE = 'osm-bright'
  * 2× device pixel ratio, `design.md` §D4: an 80×148 CSS-pixel tile drawn 1:1 on
  * a 3× phone is mush.
  *
- * **Expressed as `scaleFactor` rather than by doubling `width`/`height`, and the
- * difference is load-bearing for §6.** Doubling the pixel dimensions doubles the
- * *map area* at a fixed zoom and leaves the vendor's burned-in attribution at
- * its original size — which then displays at **half** its natural size once the
- * browser scales the tile back down to 80 CSS px, dropping it below the design
- * system's 10px floor and putting the strip straight into the spec's
- * *A credit that cannot fit means no tile* branch. `scaleFactor` renders the
- * same map area at twice the resolution, labels and credit included, so the
- * credit lands back at its natural apparent size.
+ * **Expressed as `scaleFactor` rather than by doubling `width`/`height`.**
+ * Doubling the pixel dimensions doubles the *map area* at a fixed zoom;
+ * `scaleFactor` renders the same map area at twice the resolution. That much is
+ * MEASURED — DEV, 2026-08-16: `80×148 scaleFactor=2` returned 160×296 and
+ * `358×160 scaleFactor=2` returned 716×320.
  *
- * ASSUMED: that the parameter exists and takes `2`. If it does not, the request
- * fails and the ride saves with no tile, which is the fail-open path.
+ * **The credit does NOT scale with it, and this comment claimed it did.** The
+ * burned-in attribution is a FIXED absolute size, independent of both the
+ * requested dimensions and `scaleFactor`. So on the 716-wide detail panel it is
+ * oversized but legible, and on the 160-wide card image it spans the whole
+ * tile, clips at both edges (*"owered by / eoapify | © / penMapTiles"*) and
+ * hides the map behind it. PD-236 carries the images.
+ *
+ * The wrong version is recorded because a reader re-derives it from the same
+ * evidence: raising `scaleFactor` is the obvious lever, and it moves the credit
+ * in the *opposite* direction from the one that helps — a higher factor makes
+ * the credit occupy less of the tile, so it stops covering the map and becomes
+ * less legible, which is the axis the obligation is measured on.
+ *
+ * **No `scaleFactor` value fixes the card strip, and no request parameter does
+ * either.** Measured against the vendor's own docs, 2026-08-27: the Static Maps
+ * API accepts `apiKey`, `style`, `width`, `height`, `format`, `area`, `center`,
+ * `zoom`, `pitch`, `bearing`, `marker`, `scaleFactor`, `geometry`, `geojson`,
+ * `styleCustomization` and `lang` — and **nothing that suppresses the credit**.
+ * Turning the burn-in off is an account-level arrangement on a paid plan
+ * (*"switching off the attribution on static maps may be possible on specific
+ * requests for paid plans"*), and even then only the Geoapify half goes: the
+ * OpenStreetMap and OpenMapTiles credits are the map DATA licence and survive
+ * every plan and every OSM-based vendor. PD-236 is where that lands.
+ *
+ * MEASURED: the parameter exists and takes `2`, per the dimensions above.
  */
 export const SCALE_FACTOR = 2
 
