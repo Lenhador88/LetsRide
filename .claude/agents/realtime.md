@@ -17,9 +17,9 @@ agent that owns Realtime that the tables it was about to touch did not exist.
   question.** Read `034`'s header before touching its audience rule: the visibility is an
   *intersection* of "can see the ride" and "is on the crew", and using the `security definer`
   crew helper alone steps past the block and private-club arms. That bug has already shipped once.
-- **Club discussions — SHIPPED** 2026-08-27 (`081`, `PD-307`). `club_messages`, in the publication;
-  `club_discussions` deliberately is **not**, and `081` says why in the file rather than leaving a
-  channel that reports `SUBSCRIBED` and never fires. `src/lib/realtime/useClubDiscussionStream` is
+- **Club threads — SHIPPED** 2026-08-27 (`081`, `PD-307`). `club_messages`, in the publication;
+  `club_threads` deliberately is **not**, and `081` says why in the file rather than leaving a
+  channel that reports `SUBSCRIBED` and never fires. `src/lib/realtime/useClubThreadStream` is
   the second subscription and diverges from the ride chat's in exactly one way — it refetches on
   **foreground** as well as on re-join, so a phone that slept through a conversation comes back to
   it. **The audience inversion is the thing to read before touching it**: a club's audience is

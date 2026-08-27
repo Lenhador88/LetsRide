@@ -2,7 +2,7 @@ import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
-import { clubDiscussionTitleSchema, clubMessageBodySchema } from '@/lib/validation/clubs'
+import { clubThreadTitleSchema, clubMessageBodySchema } from '@/lib/validation/clubs'
 import type { ActionState } from '@/lib/actions/state'
 
 /**
@@ -29,33 +29,33 @@ import type { ActionState } from '@/lib/actions/state'
  * the policy names `auth.uid()`: a parameter is something a caller can get
  * wrong.
  */
-export async function createClubDiscussion(
+export async function createClubThread(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
   const clubId = (formData.get('club_id') as string | null) ?? ''
   if (!clubId) return { error: 'That club could not be found.' }
 
-  const parsed = clubDiscussionTitleSchema.safeParse(formData.get('title') ?? '')
+  const parsed = clubThreadTitleSchema.safeParse(formData.get('title') ?? '')
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Check the form and try again.' }
   }
 
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Sign in to start a discussion.' }
+  if (!user) return { error: 'Sign in to start a thread.' }
 
-  const { data: discussion, error } = await supabase
-    .from('club_discussions')
+  const { data: thread, error } = await supabase
+    .from('club_threads')
     .insert({ club_id: clubId, author_id: user.id, title: parsed.data })
     // A `select` on an INSERT is safe where it is not on a DELETE: the row is
     // one this rider authored in a club they are a member of, so `081`'s SELECT
-    // policy returns it. See `deleteClubDiscussion` for the case where the same
+    // policy returns it. See `deleteClubThread` for the case where the same
     // chaining is a defect.
     .select('id')
     .single()
 
-  if (error || !discussion) {
+  if (error || !thread) {
     // `23514` is the participation gate (`023`) or the title CHECK (`081`). The
     // length is already refused above by a schema mirroring that constraint, so
     // in practice this is the gate: an un-onboarded or un-consented rider who
@@ -66,45 +66,45 @@ export async function createClubDiscussion(
     // Everything else is RLS deciding this rider is not in this club, which from
     // their side reads as the club being closed to them rather than as a
     // permission problem.
-    return { error: 'That discussion could not be started. You may no longer be in this club.' }
+    return { error: 'That thread could not be started. You may no longer be in this club.' }
   }
 
-  invalidate(queryKeys.clubs.discussions(clubId))
-  return { error: null, redirectTo: routes.clubDiscussion(discussion.id) }
+  invalidate(queryKeys.clubs.threads(clubId))
+  return { error: null, redirectTo: routes.clubThread(thread.id) }
 }
 
 /**
  * Deletes a thread the caller authored — `081`'s DELETE policy, `author_id =
- * auth.uid()`. The club owner's equivalent is `moderateClubDiscussion` below.
+ * auth.uid()`. The club owner's equivalent is `moderateClubThread` below.
  *
  * **No `.select()` on the delete, and that is load-bearing rather than tidy.**
  * `RETURNING` re-attaches the SELECT policy to the statement (measured, Postgres
  * 17.6), which is the mechanism that makes a delete match zero rows and still
- * report success. It cannot bite an author on `club_discussions` — the SELECT
+ * report success. It cannot bite an author on `club_threads` — the SELECT
  * policy exempts them through its own `author_id = auth.uid()` arm — but the
  * chaining is the habit that makes it bite elsewhere, so it is not written here.
  *
  * `clubId` is a parameter rather than re-read from the row, because by the time
  * the invalidation runs the row is gone.
  */
-export async function deleteClubDiscussion(
-  discussionId: string,
+export async function deleteClubThread(
+  threadId: string,
   clubId: string
 ): Promise<ActionState> {
-  if (!discussionId || !clubId) return { error: 'That discussion could not be found.' }
+  if (!threadId || !clubId) return { error: 'That thread could not be found.' }
 
   const supabase = await resolveSupabase()
 
-  const { error } = await supabase.from('club_discussions').delete().eq('id', discussionId)
+  const { error } = await supabase.from('club_threads').delete().eq('id', threadId)
 
-  if (error) return { error: 'That discussion could not be deleted.' }
+  if (error) return { error: 'That thread could not be deleted.' }
 
-  invalidateDiscussion(discussionId, clubId)
-  return { error: null, redirectTo: routes.clubDiscussions(clubId) }
+  invalidateThread(threadId, clubId)
+  return { error: null, redirectTo: routes.clubThreads(clubId) }
 }
 
 /**
- * The club owner deleting somebody else's thread — `moderate_club_discussion`,
+ * The club owner deleting somebody else's thread — `moderate_club_thread`,
  * `security definer`, re-checking `clubs.owner_id = auth.uid()` in its own body.
  *
  * **An RPC rather than a second arm on the DELETE policy, and the difference is
@@ -118,22 +118,22 @@ export async function deleteClubDiscussion(
  * One refusal for "no such thread" and "not your club" alike (`043`'s shape), so
  * the message must not speculate about which it was.
  */
-export async function moderateClubDiscussion(
-  discussionId: string,
+export async function moderateClubThread(
+  threadId: string,
   clubId: string
 ): Promise<ActionState> {
-  if (!discussionId || !clubId) return { error: 'That discussion could not be found.' }
+  if (!threadId || !clubId) return { error: 'That thread could not be found.' }
 
   const supabase = await resolveSupabase()
 
   // No `.select()` chained onto an RPC that returns void: it would ask
   // PostgREST for a representation of nothing.
-  const { error } = await supabase.rpc('moderate_club_discussion', { discussion: discussionId })
+  const { error } = await supabase.rpc('moderate_club_thread', { thread: threadId })
 
-  if (error) return { error: 'That discussion could not be deleted.' }
+  if (error) return { error: 'That thread could not be deleted.' }
 
-  invalidateDiscussion(discussionId, clubId)
-  return { error: null, redirectTo: routes.clubDiscussions(clubId) }
+  invalidateThread(threadId, clubId)
+  return { error: null, redirectTo: routes.clubThreads(clubId) }
 }
 
 /**
@@ -150,11 +150,11 @@ export async function moderateClubDiscussion(
  * row); matching on `created_at` is worse, that being the server's clock.
  */
 export async function sendClubMessage(
-  discussionId: string,
+  threadId: string,
   body: string,
   messageId: string
 ): Promise<ActionState> {
-  if (!discussionId) return { error: 'That discussion could not be found.' }
+  if (!threadId) return { error: 'That thread could not be found.' }
 
   const parsed = clubMessageBodySchema.safeParse(body)
   if (!parsed.success) return { error: parsed.error.issues[0].message }
@@ -165,10 +165,10 @@ export async function sendClubMessage(
 
   const { error } = await supabase
     .from('club_messages')
-    .insert({ id: messageId, discussion_id: discussionId, author_id: user.id, body: parsed.data })
+    .insert({ id: messageId, thread_id: threadId, author_id: user.id, body: parsed.data })
 
   if (error) {
-    // The gate or the length CHECK — see `createClubDiscussion`.
+    // The gate or the length CHECK — see `createClubThread`.
     if (error.code === '23514') {
       return { error: 'Finish setting up your account before posting.' }
     }
@@ -181,13 +181,13 @@ export async function sendClubMessage(
     // evaluates WITH CHECK before the index insert, so a non-member is refused
     // `42501` and never reaches a duplicate-key error.
     if (error.code === '23505') {
-      invalidate(queryKeys.clubs.discussionMessages(discussionId))
+      invalidate(queryKeys.clubs.threadMessages(threadId))
       return { error: null, sent: true }
     }
     return { error: 'Could not send that message. You may no longer be in this club.' }
   }
 
-  invalidate(queryKeys.clubs.discussionMessages(discussionId))
+  invalidate(queryKeys.clubs.threadMessages(threadId))
   return { error: null, sent: true }
 }
 
@@ -208,9 +208,9 @@ export async function sendClubMessage(
  */
 export async function deleteClubMessage(
   messageId: string,
-  discussionId: string
+  threadId: string
 ): Promise<ActionState> {
-  if (!messageId || !discussionId) return { error: 'That message could not be found.' }
+  if (!messageId || !threadId) return { error: 'That message could not be found.' }
 
   const supabase = await resolveSupabase()
 
@@ -218,7 +218,7 @@ export async function deleteClubMessage(
 
   if (error) return { error: 'That message could not be deleted.' }
 
-  invalidate(queryKeys.clubs.discussionMessages(discussionId))
+  invalidate(queryKeys.clubs.threadMessages(threadId))
   return { error: null }
 }
 
@@ -245,41 +245,41 @@ export async function deleteClubMessage(
  * unwritten watermark lights the mark again on the next visit, which
  * over-reports unread rather than hiding a message.
  *
- * The invalidation is `clubs.discussionsUnread(clubId)` and nothing else. It is
+ * The invalidation is `clubs.threadsUnread(clubId)` and nothing else. It is
  * a longer prefix than the list's, so it deliberately does **not** reach
- * `clubs.discussions` — this fires on every message arriving while the thread is
+ * `clubs.threads` — this fires on every message arriving while the thread is
  * open, and refetching the club's whole thread list each time would turn one
  * delivered message into two round trips.
  */
-export async function markClubDiscussionSeen(
-  discussionId: string,
+export async function markClubThreadSeen(
+  threadId: string,
   clubId: string
 ): Promise<void> {
-  if (!discussionId || !clubId) return
+  if (!threadId || !clubId) return
 
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
   await supabase
-    .from('club_discussion_reads')
+    .from('club_thread_reads')
     .upsert(
       {
         user_id: user.id,
-        discussion_id: discussionId,
+        thread_id: threadId,
         last_read_at: new Date().toISOString(),
       },
-      { onConflict: 'user_id,discussion_id' }
+      { onConflict: 'user_id,thread_id' }
     )
 
-  invalidate(queryKeys.clubs.discussionsUnread(clubId))
+  invalidate(queryKeys.clubs.threadsUnread(clubId))
 }
 
 /**
  * A thread that has ceased to exist moves two things and they are not one
  * prefix: the club's list, and everything hanging off the thread itself.
  *
- * **The second claim is `discussion(id)`, not `discussionMessages(id)`**, and
+ * **The second claim is `thread(id)`, not `threadMessages(id)`**, and
  * the difference is a 404 flash rather than a style point. `invalidate` matches
  * by prefix, and the messages key is a *child* of the thread's own — so naming
  * the messages alone leaves the thread's cached title and author row standing.
@@ -288,7 +288,7 @@ export async function markClubDiscussionSeen(
  * `notFound()` took over. Naming the parent is strictly smaller and reaches
  * both.
  */
-function invalidateDiscussion(discussionId: string, clubId: string) {
-  invalidate(queryKeys.clubs.discussions(clubId))
-  invalidate(queryKeys.clubs.discussion(discussionId))
+function invalidateThread(threadId: string, clubId: string) {
+  invalidate(queryKeys.clubs.threads(clubId))
+  invalidate(queryKeys.clubs.thread(threadId))
 }

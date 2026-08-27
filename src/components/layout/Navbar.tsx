@@ -62,13 +62,13 @@ const STICKY_ACTIONS: Record<string, { label: string; href: string }> = {
 /**
  * Screens that replace the bar rather than scrolling under it.
  *
- * Two: the ride chat and a club discussion thread. `Ride - Chat` (`2226:4999`)
+ * Two: the ride chat and a club thread. `Ride - Chat` (`2226:4999`)
  * draws no navigation bar at all: header 120 + content 644 + reply 80 = 844, the
  * whole frame. Its fixed reply bar sits where this one would, so rendering both
  * would stack two fixed bars and put the composer behind the tabs on the one
  * screen a rider is typing on.
  *
- * **The discussion thread was added to this list one walk late, and that is the
+ * **The club thread was added to this list one walk late, and that is the
  * lesson rather than a footnote.** `081` gave it the ride chat's `fixed inset-0`
  * layout and the same bottom-anchored composer, and forgetting this list shipped
  * a screen where `elementFromPoint` over both the input and Send returned this
@@ -94,7 +94,7 @@ const STICKY_ACTIONS: Record<string, { label: string; href: string }> = {
  * rather than a prefix for the reason the old regex was anchored at both ends: a
  * hypothetical `/rides/detail/chat/settings` should decide for itself.
  */
-const BARLESS: string[] = [detailPaths.rideChat, detailPaths.clubDiscussion]
+const BARLESS: string[] = [detailPaths.rideChat, detailPaths.clubThread]
 
 export function Navbar() {
   const pathname = usePathname()

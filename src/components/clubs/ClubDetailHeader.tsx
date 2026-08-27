@@ -6,10 +6,10 @@ import { routes } from '@/lib/routes'
 import type { ClubDetail } from '@/types'
 
 /** The four screens that render this header — the merged detail itself, plus
- * the three list sub-pages `See all` reaches. `discussions` joined them with
+ * the three list sub-pages `See all` reaches. `threads` joined them with
  * `081` (PD-307); the *thread* screen is not one of them, because its back
  * control returns to that list rather than to the club. */
-export type ClubScreen = 'detail' | 'members' | 'rides' | 'discussions'
+export type ClubScreen = 'detail' | 'members' | 'rides' | 'threads'
 
 /**
  * The chrome the three remaining club screens share — `v2 / Component /

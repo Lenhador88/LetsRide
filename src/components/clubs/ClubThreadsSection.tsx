@@ -2,10 +2,10 @@
 
 import Link from 'next/link'
 import { PlusCircleIcon } from '@/components/icons/generated'
-import { ClubDiscussionRow } from '@/components/clubs/ClubDiscussionRow'
+import { ClubThreadRow } from '@/components/clubs/ClubThreadRow'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { getClubDiscussionUnread, getClubDiscussions } from '@/lib/data/club-discussions'
+import { getClubThreadUnread, getClubThreads } from '@/lib/data/club-threads'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
@@ -13,10 +13,10 @@ import { routes } from '@/lib/routes'
 /** How many threads the section shows before `See all`. The Members rail's own
  * trade: enough to say what the club talks about, few enough that the club
  * detail does not become the list one tap away. */
-const CLUB_DETAIL_DISCUSSIONS = 3
+const CLUB_DETAIL_THREADS = 3
 
 /**
- * The `Discussions` section on the merged club detail (`081`, PD-307) — shaped
+ * The `Threads` section on the merged club detail (`081`, PD-307) — shaped
  * like Members and Upcoming rides: a header with `See all`, a few rows, and a
  * create affordance under them — also in place of them when there are none.
  *
@@ -25,11 +25,11 @@ const CLUB_DETAIL_DISCUSSIONS = 3
  * This is the requirement the whole change turns on. `clubs` SELECT admits any
  * signed-in rider to a public club; `081` admits only its **members** to the
  * threads. So a non-member's read here returns zero rows — not an error — and
- * an empty state would be a lie ("no discussions yet") while a count, a title,
+ * an empty state would be a lie ("no threads yet") while a count, a title,
  * an author or a time would each disclose something about a conversation they
  * are not in. They get a sentence and nothing else, and the section is **not**
  * hidden outright: a rider deciding whether to join should see that the club has
- * discussions as a feature.
+ * threads as a feature.
  *
  * `isMember` comes from the club's own `viewer_role`, which the detail screen
  * already holds. It is a UX affordance, never the enforcement — a rider who
@@ -37,19 +37,19 @@ const CLUB_DETAIL_DISCUSSIONS = 3
  *
  * ## The unread marks fail to nothing
  *
- * Two reads: the threads, and one RPC answering `(discussion_id, has_unread)`
+ * Two reads: the threads, and one RPC answering `(thread_id, has_unread)`
  * for all of them. A failed unread call resolves to `{}` inside
- * `getClubDiscussionUnread`, so the list renders unmarked rather than not
+ * `getClubThreadUnread`, so the list renders unmarked rather than not
  * rendering. The reverse — a mark beside a row that failed to load — is
  * unreachable, because a mark is only ever looked up for a row this list
  * already has.
  *
  * **This section does not subscribe**, and neither does the list screen: one
  * channel per thread on a screen showing N threads multiplies subscriptions by
- * N, for a title that does not change. See `useClubDiscussionStream`, which the
+ * N, for a title that does not change. See `useClubThreadStream`, which the
  * *thread* screen mounts.
  */
-export function ClubDiscussionsSection({
+export function ClubThreadsSection({
   clubId,
   isMember,
 }: {
@@ -59,21 +59,21 @@ export function ClubDiscussionsSection({
   // Not fetched at all for a non-member: the request is guaranteed to return
   // zero rows, and a `null` key is exactly `useQuery`'s "must not fetch and must
   // not throw" state.
-  const discussions = useQuery(
-    isMember ? queryKeys.clubs.discussions(clubId) : null,
-    () => getClubDiscussions(clubId)
+  const threads = useQuery(
+    isMember ? queryKeys.clubs.threads(clubId) : null,
+    () => getClubThreads(clubId)
   )
   const unread = useQuery(
-    isMember ? queryKeys.clubs.discussionsUnread(clubId) : null,
-    () => getClubDiscussionUnread(clubId)
+    isMember ? queryKeys.clubs.threadsUnread(clubId) : null,
+    () => getClubThreadUnread(clubId)
   )
 
   if (!isMember) {
     return (
       <section className="flex flex-col gap-2">
-        <SectionHeader title="Discussions" className="px-4 py-0" />
+        <SectionHeader title="Threads" className="px-4 py-0" />
         <p className="px-4 text-sm font-medium text-muted">
-          Join the club to read and start discussions.
+          Join the club to read and start threads.
         </p>
       </section>
     )
@@ -82,13 +82,13 @@ export function ClubDiscussionsSection({
   return (
     <section className="flex flex-col gap-2">
       <SectionHeader
-        title="Discussions"
+        title="Threads"
         action={
           // Gated on there being something to open, the same policy the two
           // sections above apply: a `See all` onto an empty screen is PD-125's
           // defect, an entrance to nothing.
-          discussions.data && discussions.data.length > 0
-            ? { label: 'See all', href: routes.clubDiscussions(clubId) }
+          threads.data && threads.data.length > 0
+            ? { label: 'See all', href: routes.clubThreads(clubId) }
             : undefined
         }
         className="px-4 py-0"
@@ -99,19 +99,19 @@ export function ClubDiscussionsSection({
           error: the club screen's own `ErrorState` owns the case where the club
           could not be read, and a section that cannot list threads must not take
           the club down with it — the same call `ClubMemberRail` makes. */}
-      {discussions.data === undefined && !discussions.error ? (
+      {threads.data === undefined && !threads.error ? (
         <div className="mx-4 flex h-14 items-center gap-3 rounded-lg border border-border px-3">
           <Skeleton className="h-8 w-8 rounded-lg" />
           <Skeleton className="h-3 w-32" />
         </div>
-      ) : discussions.data && discussions.data.length > 0 ? (
+      ) : threads.data && threads.data.length > 0 ? (
         <>
           <ul className="flex flex-col">
-            {discussions.data.slice(0, CLUB_DETAIL_DISCUSSIONS).map((discussion) => (
-              <li key={discussion.id}>
-                <ClubDiscussionRow
-                  discussion={discussion}
-                  hasUnread={unread.data?.[discussion.id] === true}
+            {threads.data.slice(0, CLUB_DETAIL_THREADS).map((thread) => (
+              <li key={thread.id}>
+                <ClubThreadRow
+                  thread={thread}
+                  hasUnread={unread.data?.[thread.id] === true}
                 />
               </li>
             ))}
@@ -119,10 +119,10 @@ export function ClubDiscussionsSection({
           {/* Under the rows, not above them: the newest thread is what a rider
               came for, and a control between the heading and the list pushes it
               down on every visit for the sake of an action taken once. */}
-          <StartDiscussionRow clubId={clubId} />
+          <StartThreadRow clubId={clubId} />
         </>
       ) : (
-        <StartDiscussionRow clubId={clubId} />
+        <StartThreadRow clubId={clubId} />
       )}
     </section>
   )
@@ -132,7 +132,7 @@ export function ClubDiscussionsSection({
  * The create affordance — drawn under the thread rows, and in place of them when
  * there are none.
  *
- * **Its geometry is `ClubDiscussionRow`'s, not a card's**, and that is the whole
+ * **Its geometry is `ClubThreadRow`'s, not a card's**, and that is the whole
  * of the styling decision. It is a destination like the rows it follows, so it
  * is the last row of that list: same 72px height, same `px-4` full bleed, same
  * 40px leading tile, same text baseline. Drawn as an inset `h-14` card instead —
@@ -144,10 +144,10 @@ export function ClubDiscussionsSection({
  * reason: it is what says "add" without making the row a different shape from
  * its neighbours.
  */
-function StartDiscussionRow({ clubId }: { clubId: string }) {
+function StartThreadRow({ clubId }: { clubId: string }) {
   return (
     <Link
-      href={routes.newClubDiscussion(clubId)}
+      href={routes.newClubThread(clubId)}
       className="flex min-h-[72px] items-center gap-3 px-4 py-3 text-left transition-colors active:bg-border"
     >
       <span
@@ -158,7 +158,7 @@ function StartDiscussionRow({ clubId }: { clubId: string }) {
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-base font-semibold text-foreground">
-          Start a discussion
+          Start a thread
         </span>
         <span className="truncate text-sm font-medium text-muted">Ask the club a question</span>
       </span>

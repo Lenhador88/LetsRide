@@ -2,14 +2,14 @@
 
 ### Requirement: A key outside its domain's detail prefix SHALL be named at every call site that must move it, and its reach SHALL be documented in `keys.ts`
 
-Where a screen is reached by an id that is not its domain's own root id — a discussion opened by
-its discussion id, with no club id available until the read resolves — its cache key SHALL NOT be
+Where a screen is reached by an id that is not its domain's own root id — a thread opened by
+its thread id, with no club id available until the read resolves — its cache key SHALL NOT be
 nested under that domain's **detail** prefix, and no mutation SHALL rely on a `detail`-scoped
 invalidation to reach it.
 
 **The domain-wide prefix still reaches it, and a spec claiming otherwise would be wrong.**
 `invalidate` matches structurally on prefix — `keyStartsWith` in `src/lib/query/queryClient.ts`
-compares element by element — so `['clubs']` reaches `['clubs','discussions',<id>,'messages']` just
+compares element by element — so `['clubs']` reaches `['clubs','threads',<id>,'messages']` just
 as it reaches every other key under the domain. The true statement is narrower and is the one that
 matters at the call site: the key is not under `['clubs','detail',<clubId>]`, so the club-scoped
 invalidations that a thread mutation would naturally reach for do **not** move it, while the
@@ -20,7 +20,7 @@ SHALL NOT be recorded as "no prefix reaches it" — `keys.ts`'s header is treate
 every later reader, so a false claim there is worse than no claim.
 
 #### Scenario: The thread key is named, not inherited
-- **WHEN** a message is sent into a club discussion
+- **WHEN** a message is sent into a club thread
 - **THEN** the action SHALL invalidate the thread's own key explicitly
 - **AND** it SHALL NOT rely on a club-scoped `['clubs','detail',<clubId>]` invalidation, which does
   not reach it
@@ -29,7 +29,7 @@ every later reader, so a false claim there is worse than no claim.
 
 #### Scenario: A mutation that moves two unconnected keys names both
 - **WHEN** a thread is deleted
-- **THEN** the action SHALL invalidate both the club's Discussions list key and the thread's own
+- **THEN** the action SHALL invalidate both the club's Threads list key and the thread's own
   message key
 - **AND** the club id needed for the first SHALL be carried by the action rather than re-read after
   the row is gone
@@ -55,7 +55,7 @@ anything that changes the list can change the mark; invalidating the mark SHALL 
 because a watermark advancing changes no row.
 
 #### Scenario: A new thread moves both
-- **WHEN** the Discussions list key is invalidated
+- **WHEN** the Threads list key is invalidated
 - **THEN** the per-thread unread key SHALL be invalidated with it
 
 #### Scenario: Marking a thread read does not refetch the list

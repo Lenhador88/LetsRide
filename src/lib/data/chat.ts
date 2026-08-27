@@ -2,7 +2,7 @@ import { rideZoneDayKey } from '@/lib/utils'
 
 /**
  * The positional flags every chat bubble renders from, shared by the app's two
- * message streams — a ride's chat (`034`) and a club discussion (`081`).
+ * message streams — a ride's chat (`034`) and a club thread (`081`).
  *
  * **It moved here from `lib/data/ride-messages.ts` unchanged**, and the move is
  * the point: copying it would give the repo two grouping rules free to disagree
@@ -16,7 +16,7 @@ import { rideZoneDayKey } from '@/lib/utils'
  */
 
 /** The columns the grouping actually reads — deliberately not a message type.
- * A ride message carries `ride_id` and a club message `discussion_id`; neither
+ * A ride message carries `ride_id` and a club message `thread_id`; neither
  * decides where a separator goes. */
 type Groupable = {
   id: string
@@ -68,7 +68,7 @@ export function groupMessages<T extends Groupable>(
     const author = row.mine ? '@me' : row.author_id
     // One fixed zone for both streams, so two riders never see a separator in
     // different places — see that function, and note the name is the ride
-    // chat's inheritance rather than a claim that a discussion has a zone.
+    // chat's inheritance rather than a claim that a thread has a zone.
     const day = rideZoneDayKey(row.created_at)
     const startsDay = day !== previousDay
     const startsGroup = startsDay || author !== previousAuthor

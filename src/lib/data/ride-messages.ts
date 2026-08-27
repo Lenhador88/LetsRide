@@ -126,7 +126,7 @@ export async function getRideChatUnread(rideId: string): Promise<boolean> {
 /**
  * Resolves "is this mine" once per read, then groups — `decorateChat` typed to
  * this table's row. The grouping itself lives in `lib/data/chat.ts` since `081`,
- * shared with the club discussion thread; this wrapper is what keeps
+ * shared with the club thread; this wrapper is what keeps
  * `getRideMessages`' return type exactly `RideChatMessage[]`.
  */
 export function decorate(rows: RideMessage[], viewerId: string | undefined): RideChatMessage[] {

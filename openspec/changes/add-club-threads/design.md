@@ -1,7 +1,7 @@
 ## Context
 
 See `proposal.md` §Why for motivation and §⚠ for what is second-hand. This file covers **how**, and
-the requirements are in `specs/club-discussions/spec.md` — where a section here would only restate
+the requirements are in `specs/club-threads/spec.md` — where a section here would only restate
 one, it points instead.
 
 Three pieces of existing state shape everything below, all measured against `letsride-dev`
@@ -55,16 +55,16 @@ the crew helper walks past. Here it closes nothing — `private.is_club_member` 
 `clubs` SELECT disjunct — and the helper is the whole audience.
 
 **Alternative considered: drop the redundant `EXISTS`.** Rejected, for the reasons in
-the `Discussion visibility` requirement in `specs/club-discussions/spec.md`. The short version: the implication is a
+the `Thread visibility` requirement in `specs/club-threads/spec.md`. The short version: the implication is a
 property of `clubs`' current three arms, and `054`'s own recursion warning shows `clubs` is
 actively edited; and using a `private` membership helper as a *sole* conjunct anywhere teaches the
 next table that the shape is safe, which is precisely how `034`'s first draft shipped a leak.
 
-**Alternative considered: a new `private.is_club_discussion_member(discussion uuid)` helper for
+**Alternative considered: a new `private.is_club_thread_member(thread uuid)` helper for
 `club_messages`, so the message policy is one call.** Rejected. It would hide the two-hop chain
 inside a definer function whose body nobody reads at review time, and a definer function reading
-`club_discussions` sees neither the block arm nor the club conjunct. The messages policy joins to
-`club_discussions` explicitly instead — see §The grandchild.
+`club_threads` sees neither the block arm nor the club conjunct. The messages policy joins to
+`club_threads` explicitly instead — see §The grandchild.
 
 ### The grandchild — `club_messages` restates the whole chain
 
@@ -72,15 +72,15 @@ inside a definer function whose body nobody reads at review time, and a definer 
 
 ```
 exists (
-  select 1 from public.club_discussions d
-   where d.id = club_messages.discussion_id
+  select 1 from public.club_threads d
+   where d.id = club_messages.thread_id
      and exists (select 1 from public.clubs c where c.id = d.club_id)
      and private.is_club_member(d.club_id)
 )
 and (author_id = auth.uid() or not private.is_blocked(auth.uid(), author_id))
 ```
 
-The inner `EXISTS` against `club_discussions` runs under the caller's own row security, so the
+The inner `EXISTS` against `club_threads` runs under the caller's own row security, so the
 thread's policy already applies and the two inner conjuncts are, strictly, redundant a second time.
 They are written anyway, and the honest reason is the same one as above plus one more: without
 them, the message table's audience is undiscoverable from its own policy text, and a later change
@@ -124,14 +124,14 @@ not a total order — two rows inserted in one transaction share `now()` exactly
 
 **Alternative considered, and it is what a chat list normally does: sort by most recent message.**
 Rejected for this pass, for a reason that is a standing requirement rather than a preference. A
-denormalised `last_message_at` on `club_discussions` is **a copy of a visibility decision**
+denormalised `last_message_at` on `club_threads` is **a copy of a visibility decision**
 (`database-enforced-integrity`): a message from an author the viewer has blocked must not bump the
 thread for that viewer, and a stored column cannot know who is asking. Computing it live is a
 per-viewer aggregate over `club_messages` for every row of the list — the shape `015` had to cap at
 `limit 100`.
 
 The follow-up, if the ordering is wanted: a `security invoker` function returning
-`(discussion_id, last_message_at)` under the caller's RLS, sorted client-side, capped. It is the
+`(thread_id, last_message_at)` under the caller's RLS, sorted client-side, capped. It is the
 same shape as the unread reader and can reuse its index. Named, not built — the `Questions Closed` section, D3.
 
 **Consequence worth stating plainly, and it is a loss rather than a wash:** `created_at DESC` puts
@@ -162,23 +162,23 @@ member-writable pin is a member pinning themselves to the top of a club for ever
 
 ### Unread: per thread, `061` transferred, with `068` and `079` already applied
 
-`club_discussion_reads (user_id, discussion_id, last_read_at)`, PK `(user_id, discussion_id)`,
+`club_thread_reads (user_id, thread_id, last_read_at)`, PK `(user_id, thread_id)`,
 with **both key columns carrying a foreign key**: `user_id references public.profiles(id) on delete
-cascade` and `discussion_id references public.club_discussions(id) on delete cascade`. An earlier
+cascade` and `thread_id references public.club_threads(id) on delete cascade`. An earlier
 draft of this file named the columns and the PK and no `references` at all — alone among the three
 tables — which builds a table whose rows say *when this named person last read this named topic*
 and which **survives that person's account deletion for ever**, `029` working purely by cascade. It
 is the one omission here that would have been a privacy defect rather than a correctness one.
 
 - **`user_id` leads the key** — `029` asserts that no foreign key into `profiles` lacks a
-  leading-column index, derived from `pg_constraint`, so `(discussion_id, user_id)` fails the suite.
-- **A second index on `discussion_id`** for the cascade when a thread is deleted, mirroring
+  leading-column index, derived from `pg_constraint`, so `(thread_id, user_id)` fails the suite.
+- **A second index on `thread_id`** for the cascade when a thread is deleted, mirroring
   `ride_reads_ride_id_idx`.
 - **No `unique nulls not distinct`.** Both key columns are NOT NULL, so a real PK is available.
   `015` needs that clause because `feed_reads.club_id IS NULL` *means* the app-wide feed; there is
-  no app-wide discussion, and a clause expressing a rule this table does not have teaches the next
+  no app-wide thread, and a clause expressing a rule this table does not have teaches the next
   reader that the audience is nullable.
-- **`last_read_at` imposed by `public.stamp_club_discussion_read()`**, BEFORE INSERT **OR UPDATE**.
+- **`last_read_at` imposed by `public.stamp_club_thread_read()`**, BEFORE INSERT **OR UPDATE**.
   Both arms: INSERT-only would impose it on a rider's first visit and keep the client's on every
   visit after, which is the worst of the three behaviours because it works on fresh rows and drifts
   in use. This is `068`'s fix applied at birth rather than inherited-then-repaired.
@@ -186,23 +186,23 @@ is the one omission here that would have been a privacy defect rather than a cor
   `WITH CHECK`s. `061`'s asymmetry, for `061`'s reason.
 - **No DELETE policy, no DELETE grant.** "Mark unread again" is drawn nowhere. And note the reason
   is *not* `015`'s stated one — leaving a club does not cascade this row away; the FK is to
-  `club_discussions`, so the row stands until the thread or the rider goes, and rejoining reuses it.
+  `club_threads`, so the row stands until the thread or the rider goes, and rejoining reuses it.
 - **No participation-gate trigger.** `023`'s reason for `feed_reads`, and `061`'s for `ride_reads`.
   The suite must assert the **absence**, or the count reads complete while gating nothing — `078`'s
   lesson, inverted.
 
-**The reader**, `public.club_discussion_unread(club uuid) returns table (discussion_id uuid, has_unread boolean)`,
+**The reader**, `public.club_thread_unread(club uuid) returns table (thread_id uuid, has_unread boolean)`,
 `security invoker`, in `public` so PostgREST reaches it:
 
 ```
 exists (
   select 1 from public.club_messages m
-   where m.discussion_id = d.id
+   where m.thread_id = d.id
      and m.author_id <> auth.uid()
      and m.created_at > coalesce(
        greatest(
-         (select w.last_read_at from public.club_discussion_reads w
-           where w.user_id = auth.uid() and w.discussion_id = d.id),
+         (select w.last_read_at from public.club_thread_reads w
+           where w.user_id = auth.uid() and w.thread_id = d.id),
          (select k.joined_at from public.club_members k
            where k.club_id = d.club_id and k.user_id = auth.uid())
        ),
@@ -220,7 +220,7 @@ Four things, each carrying its precedent:
 2. **`author_id <> auth.uid()`** — `079`'s fix, applied at birth. Your own message never lights
    your own dot, and the answer is then correct independently of a race with the navigation.
 3. **`greatest(last_read_at, joined_at)`, not `coalesce` between them — and `061` would be wrong
-   here.** A watermark row **survives leaving the club**: the FK is to `club_discussions`, so
+   here.** A watermark row **survives leaving the club**: the FK is to `club_threads`, so
    nothing cascades it away, and rejoining reuses it. With `last_read_at` merely first in a
    `coalesce`, a rider who read a thread in March, left, and rejoined in September is compared
    against their March watermark and is badged with every message sent while they were away — which
@@ -237,13 +237,13 @@ Four things, each carrying its precedent:
    their comparison point is NULL, every `created_at > NULL` is NULL, and the owner is the one
    member whose dot never lights, silently and for ever.
 5. **All three arms are on the database's clock.** `048` made `club_members.joined_at`
-   server-owned; the per-column INSERT grant makes `club_discussions.created_at` so. A comparison
+   server-owned; the per-column INSERT grant makes `club_threads.created_at` so. A comparison
    spanning two clocks through the *fallback* is the same defect wearing a fallback's clothes.
 
 **Plural, where `061` was singular**, and `061`'s own reasoning says why that is not a
 contradiction: N was 1 there because the dot sat on one ride's header. N is the list here. Boolean
 rather than a count for `061`'s reason — `exists` short-circuits, so it is O(1) in thread length
-through the `(discussion_id, created_at, id)` index, with no `limit 100` to justify and no number
+through the `(thread_id, created_at, id)` index, with no `limit 100` to justify and no number
 for someone to render later.
 
 ### Deleting a message: RPC only, because a block otherwise makes your own words unerasable
@@ -273,7 +273,7 @@ nearly this went the other way: two earlier probes reported the opposite because
 A probe whose cleanup destroys its own evidence returns a clean, plausible, wrong answer — the
 comment trap wearing a test harness.
 
-**So relaxing the DELETE `USING` cannot fix this**, and a `private.discussion_club(discussion)`
+**So relaxing the DELETE `USING` cannot fix this**, and a `private.thread_club(thread)`
 helper feeding that clause — the fix the review proposed — changes no observable outcome, because
 `supabase-js` issues `delete().eq('id', …)` and the SELECT policy hides the row before the `USING`
 clause is ever reached. Adding it would be adding a conjunct whose stated benefit does not exist,
@@ -293,7 +293,7 @@ delete, and the divergence is deliberate: a ride's chat disappears with the ride
 thread is a permanent titled surface that other members keep reading. Stated rather than inherited.
 
 **Threads keep their DELETE policy**, and the same inversion does *not* reach them: the
-`club_discussions` DELETE `USING` contains no self-`EXISTS`, its only subquery is against `clubs`,
+`club_threads` DELETE `USING` contains no self-`EXISTS`, its only subquery is against `clubs`,
 and `clubs` carries no block predicate — measured. The attaching SELECT policy exempts the author
 via its `author_id = auth.uid()` arm, so an author can always see, and therefore delete, their own
 thread. Verified by reading the policy rather than assumed from symmetry.
@@ -305,14 +305,14 @@ author, who cannot reach the thread's screen at all.
 
 ### Moderating a thread: a definer RPC, because the block is not the remedy here
 
-`public.moderate_club_discussion(discussion uuid)` is the club owner's one moderation right, and it
+`public.moderate_club_thread(thread uuid)` is the club owner's one moderation right, and it
 is an RPC rather than a second arm on the DELETE policy for the reason above plus one more. `034`
 declined the equivalent gap because *"the block itself already removes the messages from the
 blocker's view, which is the remedy a rider actually reaches for."* That holds for a chat message
 and **fails for a thread**, which is a persistent titled object every *other* member keeps reading
 after the owner has blocked its author.
 
-It follows `043`'s shape exactly: one `select ... for update` joining `club_discussions` to `clubs`
+It follows `043`'s shape exactly: one `select ... for update` joining `club_threads` to `clubs`
 on `owner_id = auth.uid()`, one raise site so "no such thread" and "not your club" are
 indistinguishable, `security definer`, `set search_path = ''`, `revoke all from public, anon`,
 `grant execute to authenticated`. It deletes one row and lets the FK cascade take the messages.
@@ -321,7 +321,7 @@ indistinguishable, `security definer`, `set search_path = ''`, `revoke all from 
 `public.moderate_club_message(uuid)`, the same definer pattern.
 
 Together the two RPCs add **two** `authenticated_security_definer_function_executable` advisors,
-taking the documented total from thirteen to **fifteen**. `club_discussion_unread` is `invoker` and
+taking the documented total from thirteen to **fifteen**. `club_thread_unread` is `invoker` and
 adds none. Re-derive with `get_advisors(security)` before and after; a sixteenth means a revoke did
 not land.
 
@@ -329,9 +329,9 @@ not land.
 
 | Table | `authenticated` table grants | INSERT column grant |
 |---|---|---|
-| `club_discussions` | `select, delete` | `(id, club_id, author_id, title)` — **not** `created_at` |
-| `club_messages` | `select` **only** | `(id, discussion_id, author_id, body)` — **not** `created_at` |
-| `club_discussion_reads` | `select, insert, update` | table-level (nothing to withhold) |
+| `club_threads` | `select, delete` | `(id, club_id, author_id, title)` — **not** `created_at` |
+| `club_messages` | `select` **only** | `(id, thread_id, author_id, body)` — **not** `created_at` |
+| `club_thread_reads` | `select, insert, update` | table-level (nothing to withhold) |
 
 `club_messages` holding no DELETE grant is the enforcement, not an omission — deletion is
 `delete_own_club_message` — so it is asserted in both directions, the missing grant and the missing
@@ -367,12 +367,12 @@ Ceilings are on the **raw** length so padding cannot smuggle a longer value past
 
 ### Realtime — the second stream
 
-`club_messages` joins `supabase_realtime` **in `081`**. `club_discussions` does not, stated in the
+`club_messages` joins `supabase_realtime` **in `081`**. `club_threads` does not, stated in the
 file: a thread appearing live is not required, and the list revalidates by key. `supabase/tests/harness.sql`
 already creates an empty publication of that name for the suite, so both the membership and the
 non-membership are assertable on plain Postgres.
 
-Channel name: `club-discussion:${discussionId}:messages` — kind **and** id, per the new
+Channel name: `club-thread:${threadId}:messages` — kind **and** id, per the new
 `realtime-subscriptions` requirement. `ride:${rideId}:messages` was unambiguous with one stream in
 the app; it is not a namespace with two.
 
@@ -386,7 +386,7 @@ silence rather than inferring it from the policy.
 
 ### Components — generalise, do not copy
 
-There is **no v2 frame for a club Discussions screen**. `npm run figma -- ls` returns the club set
+There is **no v2 frame for a club Threads screen**. `npm run figma -- ls` returns the club set
 (`Private club - Timeline / Rides / Members / About / Sub Pages`, `2043:10604` / `2059:6390` /
 `2059:6545` / `2059:6700` / `2059:5931`, plus the public-club frames) and nothing matching
 `discuss|thread|topic`. The composition below is **ours**, assembled from measured components.
@@ -410,34 +410,34 @@ Copying instead is how a repo gets two chat renderers that drift — the same ar
 rests on. The cost is a diff into shipped code; the coverage is that `npm run walk` renders the ride
 chat, so a regression there is caught by the one gate that renders anything.
 
-`formatRideTime(created_at, null)` stays as the message clock — a club discussion has no timezone at
+`formatRideTime(created_at, null)` stays as the message clock — a club thread has no timezone at
 all, so `null` is the honest argument, and `CLAUDE.md` forbids adding a generic formatter.
 
-New components: `ClubDiscussionsSection` (the club detail section, shaped like Members — header,
-rows, `See all`), `ClubDiscussionRow` (title, author username, `formatRelativeTime`, unread dot),
-`ClubDiscussionsList`, `CreateDiscussionForm`. Icons from `@/components/icons/generated`;
+New components: `ClubThreadsSection` (the club detail section, shaped like Members — header,
+rows, `See all`), `ClubThreadRow` (title, author username, `formatRelativeTime`, unread dot),
+`ClubThreadsList`, `CreateThreadForm`. Icons from `@/components/icons/generated`;
 `Element / Icon / Chat Bubble` exists. Primary button is near-black `Grey/100 #1A1A1A`, not green.
 
 ### Routes and cache keys
 
 ```
-/clubs/detail/discussions?id=<club id>            the list
-/clubs/detail/discussion?id=<discussion id>       the thread
-/clubs/detail/discussions/new?id=<club id>        create
+/clubs/detail/threads?id=<club id>            the list
+/clubs/detail/thread?id=<thread id>       the thread
+/clubs/detail/threads/new?id=<club id>        create
 ```
 
 Both `id` params are `DETAIL_ID_PARAM`; the segment says which entity it names, matching
 `/rides/detail/chat?id=`.
 
 ```
-clubs.discussions(clubId)          ['clubs','detail',clubId,'discussions']
-clubs.discussionsUnread(clubId)    ['clubs','detail',clubId,'discussions','unread']
-clubs.discussionMessages(discId)   ['clubs','discussions',discId,'messages']
+clubs.threads(clubId)          ['clubs','detail',clubId,'threads']
+clubs.threadsUnread(clubId)    ['clubs','detail',clubId,'threads','unread']
+clubs.threadMessages(discId)   ['clubs','threads',discId,'messages']
 ```
 
 The third **is not under `['clubs','detail',clubId]`**, because the thread screen holds only the
-discussion id. So `clubs.all()` reaches the first two and not the third, and `sendClubMessage` must
-name it explicitly. `deleteClubDiscussion` must name both, carrying the club id in the action rather
+thread id. So `clubs.all()` reaches the first two and not the third, and `sendClubMessage` must
+name it explicitly. `deleteClubThread` must name both, carrying the club id in the action rather
 than re-reading it after the row is gone. This is the first key in `keys.ts` its domain prefix does
 not reach; the header table has to say so.
 
@@ -463,7 +463,7 @@ Two corrections to how this was described in an earlier draft, both read off the
 - **The successor is not "the longest-tenured remaining member".** The order is
   `case role when 'admin' then 0 when 'member' then 1 else 2 end, joined_at, user_id` — so an
   **admin outranks an earlier-joined member**, and `joined_at` only breaks ties within a role. That
-  matters here because the successor inherits `moderate_club_discussion` over every surviving
+  matters here because the successor inherits `moderate_club_thread` over every surviving
   thread.
 - **There is a no-successor branch and it deletes the club outright**, cascading every thread and
   message in it. Unlike `delete_owned_club`, it does **not** check `clubs.is_default` — so the last
@@ -483,7 +483,7 @@ Mitigated by: the correction section in `proposal.md`, the inverted-direction sc
 reads zero threads — which is the one case a policy carrying only the `EXISTS` fails.
 
 **Deleting a thread author's account deletes other riders' messages** → this is the one genuinely
-new deletion semantic in the change (see `specs/club-discussions/spec.md`). Mitigated by: stating
+new deletion semantic in the change (see `specs/club-threads/spec.md`). Mitigated by: stating
 it, and recording the `SET NULL` + tombstone alternative as declined in the `Questions Closed` section, D1, not deferred.
 
 **A builder re-adds a DELETE grant on `club_messages` because its absence looks like an oversight**
@@ -516,7 +516,7 @@ Mitigated by: `TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=` per agent, or serialising 
 
 ## Migration Plan
 
-**One file, `081_club_discussions.sql`.** Nothing in it is destructive, so it does not need
+**One file, `081_club_threads.sql`.** Nothing in it is destructive, so it does not need
 `069`/`070`'s additive-before / destructive-after split; it is additive and goes to PROD **before**
 the promotion build serves. It hangs no trigger on an already-shipped write path — both gate
 triggers land on brand-new tables — so `036`'s hand-exercise-on-DEV gate does not fire. Both checked,
@@ -541,8 +541,8 @@ comment restamp → the verification block.
 5. Ship the code. Merge to `development`; Vercel builds the Preview against `letsride-dev`.
 6. PROD gets `081` at the next promotion, **before** the build serves.
 
-**Rollback.** Additive and self-contained: `drop table public.club_discussion_reads, public.club_messages, public.club_discussions cascade;`
-plus `drop function public.club_discussion_unread(uuid), public.moderate_club_discussion(uuid), public.stamp_club_discussion_read();`
+**Rollback.** Additive and self-contained: `drop table public.club_thread_reads, public.club_messages, public.club_threads cascade;`
+plus `drop function public.club_thread_unread(uuid), public.moderate_club_thread(uuid), public.stamp_club_thread_read();`
 and restoring the `enforce_participation_gate()` comment. Nothing else in the schema references
 these, and the publication membership goes with the table. Written as a **new** migration if it is
 ever needed — migrations are append-only.
@@ -555,7 +555,7 @@ default**, on 2026-08-27, and each is recorded with the reasoning that made the 
 recommendation rather than merely the cheapest option.
 
 **D1 — a thread author's account deletion cascades the thread and every reply in it.** `ON DELETE
-CASCADE` on `club_discussions.author_id`. It is the only answer consistent with every other authored
+CASCADE` on `club_threads.author_id`. It is the only answer consistent with every other authored
 row in this schema, it needs no tombstone machinery, and it is the reading of GDPR erasure this repo
 has already taken everywhere. The cost is real and stays stated rather than softened: deleting one
 rider can remove a conversation forty others took part in, which is **wider than `ride_messages`**,
@@ -563,7 +563,7 @@ where only the leaver's own messages go. The alternative — `ON DELETE SET NULL
 a "deleted rider" byline and a surviving thread — was declined, not deferred.
 
 **D2 — a blocked rider's thread is hidden whole, conversation included.** The block arm sits on
-`club_discussions.author_id`, so hiding the thread hides messages from riders the viewer has not
+`club_threads.author_id`, so hiding the thread hides messages from riders the viewer has not
 blocked. That is decision #2 read literally — *"disappears from feeds, search, chat, member lists
 and ride crews simultaneously"* — and the alternative (render the thread, suppress the byline) is a
 second visibility rule to keep in step and leaks that a hidden rider exists. **This is what makes
@@ -577,10 +577,10 @@ every row. The `security invoker` shape that does it correctly later is named in
 cost is the Welcome club's greeting sinking down the list** — see §Ordering, where that is called out
 as a loss the owner is accepting rather than a wash.
 
-**D4 — a new discussion does not badge the club card on `/clubs`.** `club_unread_counts()` is
+**D4 — a new thread does not badge the club card on `/clubs`.** `club_unread_counts()` is
 untouched. Widening it mixes a count (postcards + rides) with a boolean (threads) on a shipped
 counter already carrying a divergence `079` fixed on one arm only. The unread mark lives on the
-Discussions section and in the thread list, and nowhere else.
+Threads section and in the thread list, and nowhere else.
 
 **D5 — a thread title is bounded at 80 characters, and it has a precedent after all.**
 `018_text_bounds.sql` sets `rides_title_length` at exactly 80, so this is the repo's existing bound

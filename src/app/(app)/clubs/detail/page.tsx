@@ -5,7 +5,7 @@ import { notFound, useSearchParams } from 'next/navigation'
 import { Globe2Icon, LocationOutlineIcon, Lock2Icon } from '@/components/icons/generated'
 import { ClubCreateRideRow } from '@/components/clubs/ClubCreateRideRow'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
-import { ClubDiscussionsSection } from '@/components/clubs/ClubDiscussionsSection'
+import { ClubThreadsSection } from '@/components/clubs/ClubThreadsSection'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
 import { ClubMemberRail } from '@/components/clubs/ClubMemberRail'
 import { ClubPostcardCarousel } from '@/components/clubs/ClubPostcardCarousel'
@@ -259,7 +259,7 @@ function ClubScreen() {
             the destructive one (Leave) is tucked into the header's dots menu.
             An owner is always a member and never sees this either way. Kept at
             this height rather than following Members down the page: what sits
-            under it is "Join the club to read and start discussions", which
+            under it is "Join the club to read and start threads", which
             names what joining buys, and a rider deciding whether to join has to
             meet the button without scrolling. */}
         {!isMember && (
@@ -268,11 +268,11 @@ function ClubScreen() {
           </div>
         )}
 
-        {/* Above Members: a roster is looked up, a discussion is read, so the
+        {/* Above Members: a roster is looked up, a thread is read, so the
             part of a club that changes daily goes first. A non-member of a
             public club gets a join prompt here and no content at all — see
-            `ClubDiscussionsSection`. */}
-        <ClubDiscussionsSection clubId={id} isMember={isMember} />
+            `ClubThreadsSection`. */}
+        <ClubThreadsSection clubId={id} isMember={isMember} />
 
         {/* `px-4`, not the component's own `px-6`: everything these headers
             sit above — the rail's `mx-4`, the chip strip, the postcard column —

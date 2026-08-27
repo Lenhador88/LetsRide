@@ -3805,7 +3805,7 @@ rollback to savepoint stranded_wizard;
 -- would answer 42501 rather than a boolean.
 reset role;
 
--- Thirteen since 081 added club_discussions AND club_messages — TWO, not one,
+-- Thirteen since 081 added club_threads AND club_messages — TWO, not one,
 -- which is the arithmetic 078's own task list got wrong about the equivalent
 -- advisor. Eleven since 069, ten since 051, nine since 034.
 -- This number is deliberately hand-written rather than derived:
@@ -3814,7 +3814,7 @@ reset role;
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  13, '069/081: thirteen gate triggers, one per gated table — 081 added TWO, club_discussions and club_messages, because the advisor and the trigger sweep both fire once per table');
+  13, '069/081/082: thirteen gate triggers, one per gated table — 081 added TWO, club_threads and club_messages, because the advisor and the trigger sweep both fire once per table');
 
 -- Named rather than counted, for the same reason the omissions below are: the
 -- total above cannot tell a gate that MOVED from one that was added, and the
@@ -4261,8 +4261,8 @@ select assert_eq(
 -- is the whole erasure story for push_devices today, which is why 078 is here
 -- rather than only in its own section.
 --
--- **22 since 081 added THREE at once** — club_discussions.author_id,
--- club_messages.author_id and club_discussion_reads.user_id. The third is the
+-- **22 since 081 added THREE at once** — club_threads.author_id,
+-- club_messages.author_id and club_thread_reads.user_id. The third is the
 -- one worth naming: a watermark records when a NAMED rider last read a NAMED
 -- topic, and an earlier draft of 081's design gave that table no foreign keys at
 -- all, which would have kept behavioural personal data about a deleted rider
@@ -10340,7 +10340,7 @@ select assert_eq((select count(*)::int from pg_policies
   0, '054: every DIRECT caller of is_club_member is in public — storage inherits the widening through an RLS-filtered EXISTS, never by naming the function');
 select assert_eq((select count(*)::int from pg_policies
                    where (coalesce(qual, '') || coalesce(with_check, '')) like '%is_club_member%'),
-  17, '054/081: seventeen policies call is_club_member — the ten 054 left untouched, plus 081''s seven (three on club_discussions, two on club_messages, two on club_discussion_reads), where it is the LOAD-BEARING conjunct rather than a redundant one');
+  17, '054/081/082: seventeen policies call is_club_member — the ten 054 left untouched, plus 081''s seven (three on club_threads, two on club_messages, two on club_thread_reads), where it is the LOAD-BEARING conjunct rather than a redundant one');
 
 set role authenticated;
 rollback to savepoint club_owner_reach_054;
@@ -16973,7 +16973,8 @@ select assert_eq(
 rollback to savepoint ride_timezone_080;
 
 -- ===========================================================================
--- 081: club Discussions — the audience is NARROWER than the club's, which is
+-- 081: club threads (082's name; 081 shipped them as Discussions) — the
+--      audience is NARROWER than the club's, which is
 --      the opposite direction from the one worked example in this repo.
 -- ===========================================================================
 --
@@ -17008,7 +17009,7 @@ rollback to savepoint ride_timezone_080;
 --   810012  member the club OWNER has blocked                 -- 081.12, the case
 --           a DELETE-policy arm fails silently
 --   810013  sole member and owner of the default club         -- 081.16b
-savepoint club_discussions_081;
+savepoint club_threads_081;
 
 reset role;
 select set_config('test.uid', '', false);
@@ -17097,7 +17098,7 @@ insert into blocks (blocker_id, blocked_id) values
 -- membership helper was ever consulted, and the inversion this whole section is
 -- about would go untested.
 insert into clubs (id, name, is_public, owner_id) values
-  ('00000000-0000-0000-0000-0000008100c1', 'Discussion Test MC', true,
+  ('00000000-0000-0000-0000-0000008100c1', 'Thread Test MC', true,
    '00000000-0000-0000-0000-000000810001');
 
 -- ** 810001 is NOT in this list, deliberately. ** The owner holding no
@@ -17118,12 +17119,12 @@ insert into club_members (club_id, user_id, role, joined_at) values
   ('00000000-0000-0000-0000-0000008100c1', '00000000-0000-0000-0000-000000810009', 'member', now() - interval '10 days'),
   ('00000000-0000-0000-0000-0000008100c1', '00000000-0000-0000-0000-000000810010', 'member', now() - interval '10 days'),
   ('00000000-0000-0000-0000-0000008100c1', '00000000-0000-0000-0000-000000810012', 'admin',  now() - interval '10 days'),
-  -- Joined AFTER every thread below was created. 081.8: a discussion is a topic
+  -- Joined AFTER every thread below was created. 081.8: a thread is a topic
   -- archive, so `joined_at` bounds the unread watermark and never the visibility.
   ('00000000-0000-0000-0000-0000008100c1', '00000000-0000-0000-0000-000000810007', 'member', now() - interval '1 hour');
 
 insert into clubs (id, name, is_public, owner_id) values
-  ('00000000-0000-0000-0000-0000008100c2', 'Discussion Private MC', false,
+  ('00000000-0000-0000-0000-0000008100c2', 'Thread Private MC', false,
    '00000000-0000-0000-0000-000000810001');
 insert into club_members (club_id, user_id, role, joined_at) values
   ('00000000-0000-0000-0000-0000008100c2', '00000000-0000-0000-0000-000000810011', 'member', now() - interval '10 days');
@@ -17131,7 +17132,7 @@ insert into club_members (club_id, user_id, role, joined_at) values
 -- The threads. `created_at` is written explicitly for the same reason
 -- `joined_at` is — it is the third arm of the unread comparison, and 081 §3
 -- withholds the column from the INSERT grant so only the owner can place it.
-insert into club_discussions (id, club_id, author_id, title, created_at) values
+insert into club_threads (id, club_id, author_id, title, created_at) values
   ('00000000-0000-0000-0000-0000008100d1', '00000000-0000-0000-0000-0000008100c1',
    '00000000-0000-0000-0000-000000810002', 'Who is riding Sunday?', now() - interval '5 days'),
   -- By B: must vanish for A, whole, conversation included (D2).
@@ -17154,7 +17155,7 @@ insert into club_discussions (id, club_id, author_id, title, created_at) values
   ('00000000-0000-0000-0000-0000008100d9', '00000000-0000-0000-0000-0000008100c1',
    '00000000-0000-0000-0000-000000810003', 'Deleting this one', now() - interval '2 days');
 
-insert into club_messages (id, discussion_id, author_id, body, created_at) values
+insert into club_messages (id, thread_id, author_id, body, created_at) values
   ('00000000-0000-0000-0000-0000008100a1', '00000000-0000-0000-0000-0000008100d1',
    '00000000-0000-0000-0000-000000810002', 'I am in.', now() - interval '1 day'),
   ('00000000-0000-0000-0000-0000008100a2', '00000000-0000-0000-0000-0000008100d1',
@@ -17186,20 +17187,20 @@ select assert_eq(current_user::text, 'authenticated',
 -- 081.1  A member of any `role` reads and writes both tables
 -- ---------------------------------------------------------------------------
 select set_config('test.uid', '00000000-0000-0000-0000-000000810002', false);
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where club_id = '00000000-0000-0000-0000-0000008100c1'),
   7, '081.1: a club member reads every thread in their club');
 select assert_eq((select count(*)::int from club_messages
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+                   where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   6, '081.1: ... and every message in one of them');
 select assert_allowed($$
-  insert into club_discussions (id, club_id, author_id, title)
+  insert into club_threads (id, club_id, author_id, title)
   values ('00000000-0000-0000-0000-0000008100f1',
           '00000000-0000-0000-0000-0000008100c1',
           '00000000-0000-0000-0000-000000810002', 'A new thread')$$,
   '081.1: ... and opens a thread of their own');
 select assert_allowed($$
-  insert into club_messages (id, discussion_id, author_id, body)
+  insert into club_messages (id, thread_id, author_id, body)
   values ('00000000-0000-0000-0000-0000008100f2',
           '00000000-0000-0000-0000-0000008100d1',
           '00000000-0000-0000-0000-000000810002', 'And posts into one')$$,
@@ -17210,7 +17211,7 @@ select assert_allowed($$
 -- club_members.role at all.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810012', false);
 select assert_allowed($$
-  insert into club_discussions (id, club_id, author_id, title)
+  insert into club_threads (id, club_id, author_id, title)
   values ('00000000-0000-0000-0000-0000008100f3',
           '00000000-0000-0000-0000-0000008100c1',
           '00000000-0000-0000-0000-000000810012', 'From an admin row')$$,
@@ -17220,7 +17221,7 @@ select assert_allowed($$
 -- 081.2  The club OWNER, holding NO club_members row
 -- ---------------------------------------------------------------------------
 -- 054's owner arm, reached through private.is_club_member_for. Without it the
--- rider who created the club is locked out of its Discussions the moment they
+-- rider who created the club is locked out of its threads the moment they
 -- leave — and leaving is one tap, because club_members DELETE has no owner
 -- carve-out.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810001', false);
@@ -17234,17 +17235,17 @@ select set_config('test.uid', '00000000-0000-0000-0000-000000810001', false);
 -- Six, not seven: d8's author is blocked BY this owner, so the block arm hides
 -- it from them. That is D2 working, and it is what 081.12 then has to work
 -- around.
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where club_id = '00000000-0000-0000-0000-0000008100c1'),
   6, '081.2: ... and still reads their club''s threads — every one except the thread whose author they blocked');
 select assert_allowed($$
-  insert into club_discussions (id, club_id, author_id, title)
+  insert into club_threads (id, club_id, author_id, title)
   values ('00000000-0000-0000-0000-0000008100f4',
           '00000000-0000-0000-0000-0000008100c1',
           '00000000-0000-0000-0000-000000810001', 'From the ownerless owner')$$,
   '081.2: ... and can open one');
 select assert_allowed($$
-  insert into club_messages (id, discussion_id, author_id, body)
+  insert into club_messages (id, thread_id, author_id, body)
   values ('00000000-0000-0000-0000-0000008100f5',
           '00000000-0000-0000-0000-0000008100d1',
           '00000000-0000-0000-0000-000000810001', 'From the ownerless owner')$$,
@@ -17268,20 +17269,20 @@ select set_config('test.uid', '00000000-0000-0000-0000-000000810004', false);
 select assert_eq((select count(*)::int from clubs
                    where id = '00000000-0000-0000-0000-0000008100c1'),
   1, '081.3: a signed-in non-member CAN see the public club — so every refusal below is about membership, not visibility');
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where club_id = '00000000-0000-0000-0000-0000008100c1'),
   0, '081.3: ... and reads ZERO of its threads — the case a policy carrying only the clubs EXISTS returns to every rider in the app');
 select assert_eq((select count(*)::int from club_messages
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+                   where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   0, '081.3: ... and ZERO of its messages, through the same conjunct restated one hop down');
 select assert_denied($$
-  insert into club_discussions (id, club_id, author_id, title)
+  insert into club_threads (id, club_id, author_id, title)
   values ('00000000-0000-0000-0000-0000008100f6',
           '00000000-0000-0000-0000-0000008100c1',
           '00000000-0000-0000-0000-000000810004', 'Not mine to open')$$,
   '081.3: ... and cannot open a thread in it');
 select assert_denied($$
-  insert into club_messages (id, discussion_id, author_id, body)
+  insert into club_messages (id, thread_id, author_id, body)
   values ('00000000-0000-0000-0000-0000008100f7',
           '00000000-0000-0000-0000-0000008100d1',
           '00000000-0000-0000-0000-000000810004', 'Not mine to post')$$,
@@ -17295,14 +17296,14 @@ select assert_denied($$
 -- the case that isolates the membership half; 081.5 is where the other half is
 -- pinned.
 reset role;
-insert into club_discussion_reads (user_id, discussion_id) values
+insert into club_thread_reads (user_id, thread_id) values
   ('00000000-0000-0000-0000-000000810005', '00000000-0000-0000-0000-0000008100d4');
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810005', false);
 select assert_eq((select count(*)::int from clubs
                    where id = '00000000-0000-0000-0000-0000008100c2'),
   0, '081.4: a non-member cannot see the private club ...');
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where club_id = '00000000-0000-0000-0000-0000008100c2'),
   0, '081.4: ... reads zero of its threads ...');
 select assert_eq((select count(*)::int from club_messages), 0,
@@ -17310,16 +17311,16 @@ select assert_eq((select count(*)::int from club_messages), 0,
 -- The stale watermark is visible to its own owner — the SELECT policy is
 -- `user_id = auth.uid()` alone (061's shape) — and discloses nothing beyond an
 -- id they already hold. What it must NOT do is admit them to the thread.
-select assert_eq((select count(*)::int from club_discussion_reads
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d4'),
+select assert_eq((select count(*)::int from club_thread_reads
+                   where thread_id = '00000000-0000-0000-0000-0000008100d4'),
   1, '081.4: a stale watermark row is still readable by its own owner ...');
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d4'),
   0, '081.4: ... and grants them nothing — the thread it names stays invisible');
 select assert_denied($$
-  update club_discussion_reads set last_read_at = now()
+  update club_thread_reads set last_read_at = now()
    where user_id = '00000000-0000-0000-0000-000000810005'
-     and discussion_id = '00000000-0000-0000-0000-0000008100d4'$$,
+     and thread_id = '00000000-0000-0000-0000-0000008100d4'$$,
   '081.4: ... and cannot be advanced, because the WITH CHECK carries the audience even though the USING clause does not');
 
 -- ---------------------------------------------------------------------------
@@ -17347,11 +17348,11 @@ select assert_denied($$
 reset role;
 select assert_eq(
   (select qual like '%FROM clubs%' from pg_policies
-    where schemaname = 'public' and tablename = 'club_discussions' and cmd = 'SELECT'),
-  true, '081.5: the club_discussions SELECT policy carries an EXISTS against clubs, evaluated under the caller''s own row security — redundant today, load-bearing the day a clubs arm changes');
+    where schemaname = 'public' and tablename = 'club_threads' and cmd = 'SELECT'),
+  true, '081/082: 081.5: the club_threads SELECT policy carries an EXISTS against clubs, evaluated under the caller''s own row security — redundant today, load-bearing the day a clubs arm changes');
 select assert_eq(
   (select qual like '%is_club_member%' from pg_policies
-    where schemaname = 'public' and tablename = 'club_discussions' and cmd = 'SELECT'),
+    where schemaname = 'public' and tablename = 'club_threads' and cmd = 'SELECT'),
   true, '081.5: ... and the narrowing membership conjunct, which is the load-bearing half HERE — the inverse of ride_messages');
 select assert_eq(
   (select qual like '%FROM clubs%' from pg_policies
@@ -17392,7 +17393,7 @@ set role authenticated;
 -- 081.7  Leaving takes the whole conversation, including your own words
 -- ---------------------------------------------------------------------------
 select set_config('test.uid', '00000000-0000-0000-0000-000000810006', false);
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d5'),
   1, '081.7: a member sees the thread they authored ...');
 reset role;
@@ -17401,14 +17402,14 @@ delete from club_members
    and user_id = '00000000-0000-0000-0000-000000810006';
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810006', false);
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where club_id = '00000000-0000-0000-0000-0000008100c1'),
   0, '081.7: ... and after leaving reads zero threads in that club, their OWN included — a conversation is not retracted because one participant left');
 select assert_eq((select count(*)::int from club_messages
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+                   where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   0, '081.7: ... and zero messages, their own included');
 select assert_denied($$
-  insert into club_messages (id, discussion_id, author_id, body)
+  insert into club_messages (id, thread_id, author_id, body)
   values ('00000000-0000-0000-0000-0000008100f8',
           '00000000-0000-0000-0000-0000008100d1',
           '00000000-0000-0000-0000-000000810006', 'Still here?')$$,
@@ -17417,7 +17418,7 @@ select assert_denied($$
 -- The rows stay for everybody else. This is the half most likely to be read as
 -- a bug later, so it is asserted rather than implied.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810003', false);
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d5'),
   1, '081.7: ... while the leaver''s thread stays standing for every remaining member ...');
 select assert_eq((select count(*)::int from club_messages
@@ -17427,15 +17428,15 @@ select assert_eq((select count(*)::int from club_messages
 -- ---------------------------------------------------------------------------
 -- 081.8  Joining after the fact shows the whole archive
 -- ---------------------------------------------------------------------------
--- No per-message cut at `joined_at`: a discussion is a topic archive rather than
+-- No per-message cut at `joined_at`: a thread is a topic archive rather than
 -- a live-only stream, so joined_at bounds the unread WATERMARK and never the
 -- VISIBILITY. 810007 joined an hour ago; every thread and message predates them.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810007', false);
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where club_id = '00000000-0000-0000-0000-0000008100c1'),
   7, '081.8: a rider who joined after every thread was created sees all of them');
 select assert_eq((select count(*)::int from club_messages
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d1'
+                   where thread_id = '00000000-0000-0000-0000-0000008100d1'
                      and created_at < now() - interval '2 hours'),
   6, '081.8: ... and every message in a thread, with no cut at joined_at');
 
@@ -17444,13 +17445,13 @@ select assert_eq((select count(*)::int from club_messages
 -- ---------------------------------------------------------------------------
 select set_config('test.uid', '00000000-0000-0000-0000-000000810002', false);
 select assert_denied($$
-  insert into club_discussions (id, club_id, author_id, title)
+  insert into club_threads (id, club_id, author_id, title)
   values ('00000000-0000-0000-0000-0000008100f9',
           '00000000-0000-0000-0000-0000008100c1',
           '00000000-0000-0000-0000-000000810003', 'Signed by someone else')$$,
   '081.9: a member cannot open a thread as somebody else');
 select assert_denied($$
-  insert into club_messages (id, discussion_id, author_id, body)
+  insert into club_messages (id, thread_id, author_id, body)
   values ('00000000-0000-0000-0000-0000008100fa',
           '00000000-0000-0000-0000-0000008100d1',
           '00000000-0000-0000-0000-000000810003', 'Signed by someone else')$$,
@@ -17466,14 +17467,14 @@ select assert_denied($$
 -- has_table_privilege, never a grant-row count: `postgres` and `service_role`
 -- hold everything by Supabase default.
 reset role;
-select assert_eq(has_table_privilege('authenticated', 'public.club_discussions', 'update'),
-  false, '081.10: authenticated holds no UPDATE grant on club_discussions — a title that silently changes after forty replies retitles all of them');
+select assert_eq(has_table_privilege('authenticated', 'public.club_threads', 'update'),
+  false, '081/082: 081.10: authenticated holds no UPDATE grant on club_threads — a title that silently changes after forty replies retitles all of them');
 select assert_eq(has_table_privilege('authenticated', 'public.club_messages', 'update'),
   false, '081.10: ... nor on club_messages');
 select assert_eq(
   (select count(*)::int from pg_policies
-    where schemaname = 'public' and tablename = 'club_discussions' and cmd = 'UPDATE'),
-  0, '081.10: ... and no UPDATE policy exists on club_discussions either');
+    where schemaname = 'public' and tablename = 'club_threads' and cmd = 'UPDATE'),
+  0, '081/082: 081.10: ... and no UPDATE policy exists on club_threads either');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public' and tablename = 'club_messages' and cmd = 'UPDATE'),
@@ -17481,7 +17482,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from information_schema.columns
     where table_schema = 'public'
-      and table_name in ('club_discussions', 'club_messages')
+      and table_name in ('club_threads', 'club_messages')
       and column_name = 'updated_at'),
   0, '081.10: ... and neither table carries an updated_at — a dead column that reads as live is the trap 034 §1 refused');
 set role authenticated;
@@ -17496,9 +17497,9 @@ set role authenticated;
 -- nothing at all.
 savepoint thread_delete_081;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810003', false);
-delete from club_discussions where id = '00000000-0000-0000-0000-0000008100d9';
+delete from club_threads where id = '00000000-0000-0000-0000-0000008100d9';
 reset role;
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d9'),
   0, '081.11: the author deletes their own thread — counted as the OWNER, so a policy that merely HID the row could not pass this');
 select assert_eq((select count(*)::int from club_messages
@@ -17510,22 +17511,22 @@ rollback to savepoint thread_delete_081;
 -- A third member cannot. Same shape: run it, then count as the owner.
 savepoint thread_delete_refused_081;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810002', false);
-delete from club_discussions where id = '00000000-0000-0000-0000-0000008100d9';
+delete from club_threads where id = '00000000-0000-0000-0000-0000008100d9';
 reset role;
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d9'),
   1, '081.11: a club member who is neither the author nor the owner deletes nothing — the row survives, which is what a filtered DELETE looks like');
 set role authenticated;
 rollback to savepoint thread_delete_refused_081;
 
 -- ---------------------------------------------------------------------------
--- 081.12  moderate_club_discussion — the owner's one moderation right
+-- 081.12  moderate_club_thread — the owner's one moderation right
 -- ---------------------------------------------------------------------------
 savepoint moderate_081;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810001', false);
-select moderate_club_discussion('00000000-0000-0000-0000-0000008100d7');
+select moderate_club_thread('00000000-0000-0000-0000-0000008100d7');
 reset role;
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d7'),
   0, '081.12: the club owner deletes a member''s thread through the RPC');
 set role authenticated;
@@ -17537,12 +17538,12 @@ set role authenticated;
 -- PostgREST would report success while the thread stayed up for every other
 -- member.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810001', false);
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d8'),
   0, '081.12: the owner CANNOT SEE the thread whose author they blocked ...');
-select moderate_club_discussion('00000000-0000-0000-0000-0000008100d8');
+select moderate_club_thread('00000000-0000-0000-0000-0000008100d8');
 reset role;
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d8'),
   0, '081.12: ... and deletes it anyway through the RPC — the case a policy arm would report success on while affecting zero rows');
 set role authenticated;
@@ -17552,15 +17553,15 @@ rollback to savepoint moderate_081;
 -- the thread's own author, and a complete outsider all get the same answer, and
 -- so does an id that was never issued.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810003', false);
-select assert_denied($$select moderate_club_discussion('00000000-0000-0000-0000-0000008100d7')$$,
+select assert_denied($$select moderate_club_thread('00000000-0000-0000-0000-0000008100d7')$$,
   '081.12: a club member who does not own the club cannot moderate');
 select set_config('test.uid', '00000000-0000-0000-0000-000000810002', false);
-select assert_denied($$select moderate_club_discussion('00000000-0000-0000-0000-0000008100d7')$$,
+select assert_denied($$select moderate_club_thread('00000000-0000-0000-0000-0000008100d7')$$,
   '081.12: ... nor can the thread''s own author, who has the DELETE policy instead');
 select set_config('test.uid', '00000000-0000-0000-0000-000000810004', false);
-select assert_denied($$select moderate_club_discussion('00000000-0000-0000-0000-0000008100d7')$$,
+select assert_denied($$select moderate_club_thread('00000000-0000-0000-0000-0000008100d7')$$,
   '081.12: ... nor a rider outside the club');
-select assert_denied($$select moderate_club_discussion('00000000-0000-0000-0000-0000008109f9')$$,
+select assert_denied($$select moderate_club_thread('00000000-0000-0000-0000-0000008109f9')$$,
   '081.12: ... and an id that does not exist is refused IDENTICALLY, from one raise site, so the RPC is not an existence oracle');
 
 -- ---------------------------------------------------------------------------
@@ -17574,7 +17575,7 @@ select assert_eq((select count(*)::int from club_messages
                    where id = '00000000-0000-0000-0000-0000008100a1'),
   0, '081.13: a rider deletes their own message');
 select assert_eq((select count(*)::int from club_messages
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+                   where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   5, '081.13: ... and exactly one row goes — no other rider''s message is touched');
 set role authenticated;
 rollback to savepoint message_delete_081;
@@ -17584,7 +17585,7 @@ rollback to savepoint message_delete_081;
 -- in it — asserted first, because the success below means nothing without it.
 savepoint blocked_delete_081;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810009', false);
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d3'),
   0, '081.13: a rider blocked by a thread''s author cannot see the thread ...');
 select assert_eq((select count(*)::int from club_messages
@@ -17644,8 +17645,8 @@ select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public' and tablename = 'club_messages' and cmd = 'DELETE'),
   0, '081.13b: ... and no DELETE policy exists on it either');
-select assert_eq(has_table_privilege('authenticated', 'public.club_discussions', 'delete'),
-  true, '081.13b: ... while club_discussions DOES carry one, so the assertion above is about this table rather than about the schema');
+select assert_eq(has_table_privilege('authenticated', 'public.club_threads', 'delete'),
+  true, '081/082: 081.13b: ... while club_threads DOES carry one, so the assertion above is about this table rather than about the schema');
 set role authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -17689,10 +17690,10 @@ set role authenticated;
 rollback to savepoint policy_delete_mutation_081;
 
 -- ---------------------------------------------------------------------------
--- 081.13d  The inversion does NOT reach club_discussions
+-- 081.13d  The inversion does NOT reach club_threads
 -- ---------------------------------------------------------------------------
 -- Verified rather than assumed by symmetry with the messages case: the
--- club_discussions DELETE USING contains no self-EXISTS, its only subquery is
+-- club_threads DELETE USING contains no self-EXISTS, its only subquery is
 -- against `clubs`, which carries no block predicate (081.6), and the SELECT
 -- policy that attaches to the delete exempts the author through its own
 -- `author_id = auth.uid()` arm. So an author can always see, and therefore
@@ -17700,16 +17701,16 @@ rollback to savepoint policy_delete_mutation_081;
 -- member. A is the blocker; B is the blocked.
 savepoint blocked_thread_delete_081;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810008', false);
-delete from club_discussions where id = '00000000-0000-0000-0000-0000008100d3';
+delete from club_threads where id = '00000000-0000-0000-0000-0000008100d3';
 reset role;
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d3'),
   0, '081.13d: a thread''s author deletes it while BLOCKING another member');
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810009', false);
-delete from club_discussions where id = '00000000-0000-0000-0000-0000008100d2';
+delete from club_threads where id = '00000000-0000-0000-0000-0000008100d2';
 reset role;
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d2'),
   0, '081.13d: ... and while BLOCKED BY one — the inversion that makes a message unerasable does not reach a thread');
 set role authenticated;
@@ -17722,7 +17723,7 @@ rollback to savepoint blocked_thread_delete_081;
 -- hides messages from riders the viewer has not blocked, and it is decision #2
 -- read literally.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810008', false);
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d2'),
   0, '081.14: B''s thread is absent from A''s list');
 select assert_eq((select count(*)::int from club_messages
@@ -17733,7 +17734,7 @@ select assert_eq((select count(*)::int from club_messages
   1, '081.14: ... while the unblocked third rider''s message in the same thread is still there');
 
 select set_config('test.uid', '00000000-0000-0000-0000-000000810009', false);
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d3'),
   0, '081.14: and the same one directional row hides A''s thread from B — symmetric through the helper, with no call site re-checking the reverse');
 select assert_eq((select count(*)::int from club_messages
@@ -17742,7 +17743,7 @@ select assert_eq((select count(*)::int from club_messages
 
 select set_config('test.uid', '00000000-0000-0000-0000-000000810003', false);
 select assert_eq((select count(*)::int from club_messages
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d1'
+                   where thread_id = '00000000-0000-0000-0000-0000008100d1'
                      and id in ('00000000-0000-0000-0000-0000008100a3',
                                 '00000000-0000-0000-0000-0000008100a4')),
   2, '081.14: ... while an unrelated member C sees both of them — the block is per-viewer, not a deletion');
@@ -17756,14 +17757,14 @@ select assert_eq((select count(*)::int from club_messages
 -- ride they are both on.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810008', false);
 select assert_allowed($$
-  insert into club_messages (id, discussion_id, author_id, body)
+  insert into club_messages (id, thread_id, author_id, body)
   values ('00000000-0000-0000-0000-0000008100fb',
           '00000000-0000-0000-0000-0000008100d1',
           '00000000-0000-0000-0000-000000810008', 'A posts')$$,
   '081.15: A posts into a thread B is also in ...');
 select set_config('test.uid', '00000000-0000-0000-0000-000000810009', false);
 select assert_allowed($$
-  insert into club_messages (id, discussion_id, author_id, body)
+  insert into club_messages (id, thread_id, author_id, body)
   values ('00000000-0000-0000-0000-0000008100fc',
           '00000000-0000-0000-0000-0000008100d1',
           '00000000-0000-0000-0000-000000810009', 'B posts')$$,
@@ -17778,7 +17779,7 @@ reset role;
 select assert_eq((select count(*)::int from clubs where is_default), 0,
   '081.16: no club carries is_default at this point, so the flag set below is this section''s own');
 update clubs set is_default = true where id = '00000000-0000-0000-0000-0000008100c1';
-insert into club_discussion_reads (user_id, discussion_id) values
+insert into club_thread_reads (user_id, thread_id) values
   ('00000000-0000-0000-0000-000000810003', '00000000-0000-0000-0000-0000008100d1');
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810001', false);
@@ -17792,14 +17793,14 @@ select set_config('test.uid', '00000000-0000-0000-0000-000000810001', false);
 select assert_eq((select count(*)::int from delete_owned_club('00000000-0000-0000-0000-0000008100c1')),
   0, '081.16: ... and an ordinary club deletes, returning no Storage paths (this one carries no images)');
 reset role;
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where club_id = '00000000-0000-0000-0000-0000008100c1'),
   0, '081.16: deleting a club removes every thread in it ...');
 select assert_eq((select count(*)::int from club_messages
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+                   where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   0, '081.16: ... every message beneath those ...');
-select assert_eq((select count(*)::int from club_discussion_reads
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+select assert_eq((select count(*)::int from club_thread_reads
+                   where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   0, '081.16: ... and every watermark beneath those — 043 needs no change, because neither new FK is ON DELETE SET NULL');
 set role authenticated;
 rollback to savepoint club_delete_081;
@@ -17823,19 +17824,19 @@ savepoint transfer_no_successor_081;
 reset role;
 update clubs set is_default = false where is_default;
 insert into clubs (id, name, is_public, owner_id, is_default) values
-  ('00000000-0000-0000-0000-0000008100c3', 'Discussion Welcome MC', true,
+  ('00000000-0000-0000-0000-0000008100c3', 'Thread Welcome MC', true,
    '00000000-0000-0000-0000-000000810013', true);
 insert into club_members (club_id, user_id, role, joined_at) values
   ('00000000-0000-0000-0000-0000008100c3', '00000000-0000-0000-0000-000000810013', 'owner', now() - interval '10 days');
-insert into club_discussions (id, club_id, author_id, title, created_at) values
+insert into club_threads (id, club_id, author_id, title, created_at) values
   ('00000000-0000-0000-0000-0000008100da', '00000000-0000-0000-0000-0000008100c3',
    '00000000-0000-0000-0000-000000810013', 'Say hello', now() - interval '5 days');
-insert into club_messages (id, discussion_id, author_id, body, created_at) values
+insert into club_messages (id, thread_id, author_id, body, created_at) values
   ('00000000-0000-0000-0000-0000008100ab', '00000000-0000-0000-0000-0000008100da',
    '00000000-0000-0000-0000-000000810013', 'Hello.', now() - interval '4 days');
 -- A watermark belonging to somebody ELSE, so its disappearance proves the
 -- club -> thread -> watermark cascade rather than the profiles one.
-insert into club_discussion_reads (user_id, discussion_id) values
+insert into club_thread_reads (user_id, thread_id) values
   ('00000000-0000-0000-0000-000000810002', '00000000-0000-0000-0000-0000008100da');
 
 select assert_eq(
@@ -17849,14 +17850,14 @@ select assert_eq(
 select assert_eq((select count(*)::int from clubs
                    where id = '00000000-0000-0000-0000-0000008100c3'),
   0, '081.16b: ... the no-successor branch deletes the club outright — ** including the one carrying clubs.is_default, which this branch does NOT check ** (a recorded pre-existing gap in 029/059, not fixed here)');
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100da'),
   0, '081.16b: ... and every thread cascades with it');
 select assert_eq((select count(*)::int from club_messages
                    where id = '00000000-0000-0000-0000-0000008100ab'),
   0, '081.16b: ... every message ...');
-select assert_eq((select count(*)::int from club_discussion_reads
-                   where discussion_id = '00000000-0000-0000-0000-0000008100da'),
+select assert_eq((select count(*)::int from club_thread_reads
+                   where thread_id = '00000000-0000-0000-0000-0000008100da'),
   0, '081.16b: ... and every watermark, including one belonging to a rider who is not being deleted');
 -- The gap, pinned from the function body rather than only from the behaviour
 -- above, so that adding the check is a deliberate edit that turns this red.
@@ -17878,21 +17879,21 @@ reset role;
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confdeltype <> 'c'
-      and conrelid in ('public.club_discussions'::regclass,
+      and conrelid in ('public.club_threads'::regclass,
                        'public.club_messages'::regclass,
-                       'public.club_discussion_reads'::regclass)),
+                       'public.club_thread_reads'::regclass)),
   0, '081.17: every foreign key on the three new tables is ON DELETE CASCADE — not one is SET NULL, which is what 043 exists because rides.club_id is');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f'
-      and conrelid in ('public.club_discussions'::regclass,
+      and conrelid in ('public.club_threads'::regclass,
                        'public.club_messages'::regclass,
-                       'public.club_discussion_reads'::regclass)),
-  6, '081.17: ... and there are six of them — club_discussions.club_id and .author_id, club_messages.discussion_id and .author_id, and BOTH of the watermark''s key columns');
+                       'public.club_thread_reads'::regclass)),
+  6, '081/082: 081.17: ... and there are six of them — club_threads.club_id and .author_id, club_messages.thread_id and .author_id, and BOTH of the watermark''s key columns');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
-      and conrelid = 'public.club_discussion_reads'::regclass),
+      and conrelid = 'public.club_thread_reads'::regclass),
   1, '081.17: the watermark table carries a foreign key into PROFILES as well as into the thread — without it, "when this named person last read this named topic" would survive their account deletion for ever');
 set role authenticated;
 
@@ -17901,10 +17902,10 @@ set role authenticated;
 -- ---------------------------------------------------------------------------
 savepoint account_delete_081;
 reset role;
-insert into club_discussion_reads (user_id, discussion_id) values
+insert into club_thread_reads (user_id, thread_id) values
   ('00000000-0000-0000-0000-000000810002', '00000000-0000-0000-0000-0000008100d1'),
   ('00000000-0000-0000-0000-000000810002', '00000000-0000-0000-0000-0000008100d5');
-select assert_eq((select count(*)::int from club_discussion_reads
+select assert_eq((select count(*)::int from club_thread_reads
                    where user_id = '00000000-0000-0000-0000-000000810002'),
   2, '081.18: the rider holds two watermarks before the deletion — without this the sweep below would pass vacuously');
 
@@ -17914,11 +17915,11 @@ delete from auth.users where id = '00000000-0000-0000-0000-000000810007';
 select assert_eq((select count(*)::int from club_messages
                    where id = '00000000-0000-0000-0000-0000008100a8'),
   0, '081.18: deleting a rider who only replied removes their message ...');
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d1'),
   1, '081.18: ... and takes no thread with it ...');
 select assert_eq((select count(*)::int from club_messages
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+                   where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   5, '081.18: ... and no other rider''s message in it');
 
 -- Then a THREAD AUTHOR, which is the semantic new to this change and is stated
@@ -17928,16 +17929,16 @@ select assert_eq((select count(*)::int from club_messages
 -- here it removes everybody's in their thread. Decided as D1, with SET NULL plus
 -- a tombstone declined rather than deferred.
 delete from auth.users where id = '00000000-0000-0000-0000-000000810002';
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d1'),
   0, '081.18: deleting a THREAD''s author removes the thread ...');
 select assert_eq((select count(*)::int from club_messages
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+                   where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   0, '081.18: ... and every message in it, INCLUDING messages by riders who still exist — the one genuinely new deletion semantic in 081');
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where id = '00000000-0000-0000-0000-0000008100d5'),
   1, '081.18: ... while other riders'' threads are untouched');
-select assert_eq((select count(*)::int from club_discussion_reads
+select assert_eq((select count(*)::int from club_thread_reads
                    where user_id = '00000000-0000-0000-0000-000000810002'),
   0, '081.18: ... and every watermark naming the deleted rider is gone — the profiles FK half, which the club cascade cannot reach');
 set role authenticated;
@@ -17948,18 +17949,18 @@ rollback to savepoint account_delete_081;
 -- ---------------------------------------------------------------------------
 select set_config('test.uid', '00000000-0000-0000-0000-000000810002', false);
 select assert_allowed($$
-  insert into club_discussion_reads (user_id, discussion_id)
+  insert into club_thread_reads (user_id, thread_id)
   values ('00000000-0000-0000-0000-000000810002',
           '00000000-0000-0000-0000-0000008100d1')$$,
   '081.19: a member marks a thread in their club read');
 -- assert_allowed unwinds its own subtransaction, so the row it just proved
 -- permitted is gone. Everything below turns on riders actually HOLDING
 -- watermarks, so the permitted insert is repeated for real.
-insert into club_discussion_reads (user_id, discussion_id)
+insert into club_thread_reads (user_id, thread_id)
 values ('00000000-0000-0000-0000-000000810002', '00000000-0000-0000-0000-0000008100d1');
 
 select assert_denied($$
-  insert into club_discussion_reads (user_id, discussion_id)
+  insert into club_thread_reads (user_id, thread_id)
   values ('00000000-0000-0000-0000-000000810003',
           '00000000-0000-0000-0000-0000008100d1')$$,
   '081.19: a rider cannot write another rider''s watermark');
@@ -17971,12 +17972,12 @@ select assert_denied($$
 -- IDENTICALLY, neither reaching 23503.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810004', false);
 select assert_denied($$
-  insert into club_discussion_reads (user_id, discussion_id)
+  insert into club_thread_reads (user_id, thread_id)
   values ('00000000-0000-0000-0000-000000810004',
           '00000000-0000-0000-0000-0000008100d1')$$,
   '081.19: a non-member of the PUBLIC club cannot write a watermark for its thread — the audience conjunct, not the club EXISTS');
 select assert_denied($$
-  insert into club_discussion_reads (user_id, discussion_id)
+  insert into club_thread_reads (user_id, thread_id)
   values ('00000000-0000-0000-0000-000000810004',
           '00000000-0000-0000-0000-0000008109f7')$$,
   '081.19: ... and a thread id that does not exist is refused identically, by RLS rather than by the FK, so the write is not an existence oracle');
@@ -17985,7 +17986,7 @@ select assert_denied($$
 -- WITH CHECK's EXISTS runs under their own row security and the thread is hidden.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810009', false);
 select assert_denied($$
-  insert into club_discussion_reads (user_id, discussion_id)
+  insert into club_thread_reads (user_id, thread_id)
   values ('00000000-0000-0000-0000-000000810009',
           '00000000-0000-0000-0000-0000008100d3')$$,
   '081.19: a rider blocked by a thread''s author cannot mark it read — they cannot reach its screen at all, and here the inversion is the CORRECT answer');
@@ -17994,11 +17995,11 @@ select assert_denied($$
 -- unbuilt. The club owner and the thread's author are named specifically,
 -- because they are the two a "seen by" affordance would be built for.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810001', false);
-select assert_eq((select count(*)::int from club_discussion_reads
-                   where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+select assert_eq((select count(*)::int from club_thread_reads
+                   where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   0, '081.19: the CLUB OWNER reads nobody else''s watermark — this app has no read receipts, and the data to draw one is unreachable');
 select set_config('test.uid', '00000000-0000-0000-0000-000000810003', false);
-select assert_eq((select count(*)::int from club_discussion_reads), 0,
+select assert_eq((select count(*)::int from club_thread_reads), 0,
   '081.19: ... and neither does a fellow member, across every thread in the app');
 
 -- The trigger owns the clock, on BOTH arms. An INSERT-only trigger would impose
@@ -18007,41 +18008,41 @@ select assert_eq((select count(*)::int from club_discussion_reads), 0,
 -- rows and drifts in use. Run for real rather than through assert_allowed, which
 -- would unwind the row before the value could be read back.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810003', false);
-insert into club_discussion_reads (user_id, discussion_id, last_read_at)
+insert into club_thread_reads (user_id, thread_id, last_read_at)
 values ('00000000-0000-0000-0000-000000810003', '00000000-0000-0000-0000-0000008100d1',
         timestamptz '3000-01-01 00:00:00+00');
 select assert_eq(
-  (select last_read_at from club_discussion_reads
+  (select last_read_at from club_thread_reads
     where user_id = '00000000-0000-0000-0000-000000810003'
-      and discussion_id = '00000000-0000-0000-0000-0000008100d1') = now(),
+      and thread_id = '00000000-0000-0000-0000-0000008100d1') = now(),
   true, '081.19: a client-sent last_read_at ten centuries in the future is overwritten with server time on INSERT');
-update club_discussion_reads set last_read_at = timestamptz '3000-01-01 00:00:00+00'
+update club_thread_reads set last_read_at = timestamptz '3000-01-01 00:00:00+00'
  where user_id = '00000000-0000-0000-0000-000000810003'
-   and discussion_id = '00000000-0000-0000-0000-0000008100d1';
+   and thread_id = '00000000-0000-0000-0000-0000008100d1';
 select assert_eq(
-  (select last_read_at from club_discussion_reads
+  (select last_read_at from club_thread_reads
     where user_id = '00000000-0000-0000-0000-000000810003'
-      and discussion_id = '00000000-0000-0000-0000-0000008100d1') = now(),
+      and thread_id = '00000000-0000-0000-0000-0000008100d1') = now(),
   true, '081.19: ... and on UPDATE too, which is the arm the upsert reaches on every visit after the first');
 
 reset role;
-select assert_eq(has_table_privilege('authenticated', 'public.club_discussion_reads', 'delete'),
+select assert_eq(has_table_privilege('authenticated', 'public.club_thread_reads', 'delete'),
   false, '081.19: authenticated holds no DELETE grant on the watermark table — "mark this unread again" is drawn nowhere');
-select assert_eq(has_table_privilege('authenticated', 'public.club_discussion_reads', 'update'),
+select assert_eq(has_table_privilege('authenticated', 'public.club_thread_reads', 'update'),
   true, '081.19: ... and does hold UPDATE, which the upsert''s second visit needs');
 select assert_eq(
   (select count(*)::int from pg_index
-    where indrelid = 'public.club_discussion_reads'::regclass and indnullsnotdistinct),
+    where indrelid = 'public.club_thread_reads'::regclass and indnullsnotdistinct),
   0, '081.19: no `nulls not distinct` index — both key columns are NOT NULL, so 015''s clause would state a rule this table does not have');
 select assert_eq(
   (select (tgtype & 4 > 0)::int + (tgtype & 16 > 0)::int + (tgtype & 2 > 0)::int
-     from pg_trigger where tgname = 'stamp_club_discussion_read' and not tgisinternal),
+     from pg_trigger where tgname = 'stamp_club_thread_read' and not tgisinternal),
   3, '081.19: the stamp trigger is BEFORE and fires on both INSERT and UPDATE');
 select assert_eq(
   (select count(*)::int from pg_indexes
-    where tablename = 'club_discussion_reads'
-      and indexname = 'club_discussion_reads_discussion_id_idx'),
-  1, '081.19: the watermark table carries an index on discussion_id, for the cascade a thread deletion runs — the PK leads with user_id, so a thread delete would otherwise scan it whole');
+    where tablename = 'club_thread_reads'
+      and indexname = 'club_thread_reads_thread_id_idx'),
+  1, '081/082: 081.19: the watermark table carries an index on thread_id, for the cascade a thread deletion runs — the PK leads with user_id, so a thread delete would otherwise scan it whole');
 set role authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -18053,17 +18054,17 @@ set role authenticated;
 -- carry the trigger, and the absence is asserted so that adding one later is a
 -- deliberate act rather than a count that quietly reads complete.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810010', false);
-select assert_eq((select count(*)::int from club_discussions
+select assert_eq((select count(*)::int from club_threads
                    where club_id = '00000000-0000-0000-0000-0000008100c1'),
   7, '081.20: a rider with no consent stamp can still READ their club''s threads — the gate is a BEFORE INSERT trigger, so it refuses writes and never filters reads');
 select assert_rejected($$
-  insert into club_discussions (id, club_id, author_id, title)
+  insert into club_threads (id, club_id, author_id, title)
   values ('00000000-0000-0000-0000-0000008100fd',
           '00000000-0000-0000-0000-0000008100c1',
           '00000000-0000-0000-0000-000000810010', 'No consent')$$,
   '23514', '081.20: the gate refuses a thread from a rider whose terms_accepted_at is NULL');
 select assert_rejected($$
-  insert into club_messages (id, discussion_id, author_id, body)
+  insert into club_messages (id, thread_id, author_id, body)
   values ('00000000-0000-0000-0000-0000008100fe',
           '00000000-0000-0000-0000-0000008100d1',
           '00000000-0000-0000-0000-000000810010', 'No consent')$$,
@@ -18073,7 +18074,7 @@ select assert_rejected($$
 -- WITH CHECK already refuses them. 023's reason for feed_reads, 061's for
 -- ride_reads.
 select assert_allowed($$
-  insert into club_discussion_reads (user_id, discussion_id)
+  insert into club_thread_reads (user_id, thread_id)
   values ('00000000-0000-0000-0000-000000810010',
           '00000000-0000-0000-0000-0000008100d1')$$,
   '081.20: ... while the watermark is NOT gated, deliberately — a read mark produces nothing anyone sees');
@@ -18081,13 +18082,13 @@ select assert_allowed($$
 reset role;
 select assert_eq(
   (select count(*)::int from pg_trigger
-    where tgrelid = 'public.club_discussion_reads'::regclass
+    where tgrelid = 'public.club_thread_reads'::regclass
       and tgname = 'enforce_participation_gate' and not tgisinternal),
-  0, '081.20: club_discussion_reads carries NO enforce_participation_gate trigger, asserted as an ABSENCE — 078''s lesson inverted');
+  0, '081/082: 081.20: club_thread_reads carries NO enforce_participation_gate trigger, asserted as an ABSENCE — 078''s lesson inverted');
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where t.tgname = 'enforce_participation_gate'
-      and c.relname in ('club_discussions', 'club_messages')),
+      and c.relname in ('club_threads', 'club_messages')),
   2, '081.20: ... and the two content tables carry one EACH — TWO new triggers, not one, which is the arithmetic 078''s own task list got wrong');
 select assert_eq(
   (select count(*)::int from pg_trigger
@@ -18101,7 +18102,7 @@ select assert_eq(
 set role authenticated;
 
 -- ---------------------------------------------------------------------------
--- 081.21  club_discussion_unread — the dot's answer
+-- 081.21  club_thread_unread — the dot's answer
 -- ---------------------------------------------------------------------------
 -- Every message currently sits at now() - 1 day and every watermark at now(), so
 -- the section starts from "nothing unread" for a rider holding one. The messages
@@ -18110,7 +18111,7 @@ set role authenticated;
 -- this suite can create sits at the transaction's now() to the microsecond.
 savepoint unread_081;
 reset role;
-insert into club_discussion_reads (user_id, discussion_id) values
+insert into club_thread_reads (user_id, thread_id) values
   ('00000000-0000-0000-0000-000000810008', '00000000-0000-0000-0000-0000008100d1');
 
 -- Your own message never lights your own dot — 079's fix applied at birth,
@@ -18122,8 +18123,8 @@ update club_messages set created_at = now() + interval '1 hour'
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810002', false);
 select assert_eq(
-  (select has_unread from club_discussion_unread('00000000-0000-0000-0000-0000008100c1')
-    where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+  (select has_unread from club_thread_unread('00000000-0000-0000-0000-0000008100c1')
+    where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   false, '081.21: a rider''s own newer message does not light their own dot');
 reset role;
 update club_messages set created_at = now() + interval '2 hours'
@@ -18131,8 +18132,8 @@ update club_messages set created_at = now() + interval '2 hours'
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810002', false);
 select assert_eq(
-  (select has_unread from club_discussion_unread('00000000-0000-0000-0000-0000008100c1')
-    where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+  (select has_unread from club_thread_unread('00000000-0000-0000-0000-0000008100c1')
+    where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   true, '081.21: ... while another rider''s does, so the exclusion above is not vacuous');
 
 -- A blocked author's message lights nobody's dot, and no block filter appears in
@@ -18140,7 +18141,7 @@ select assert_eq(
 -- club_messages already excludes the row.
 reset role;
 update club_messages set created_at = now() - interval '1 day'
- where discussion_id = '00000000-0000-0000-0000-0000008100d1';
+ where thread_id = '00000000-0000-0000-0000-0000008100d1';
 update club_messages set created_at = now() + interval '3 hours'
  where id = '00000000-0000-0000-0000-0000008100a4';
 set role authenticated;
@@ -18149,27 +18150,27 @@ select assert_eq((select count(*)::int from club_messages
                    where id = '00000000-0000-0000-0000-0000008100a4'),
   0, '081.21: the blocked rider''s message is not readable by the blocker ...');
 select assert_eq(
-  (select has_unread from club_discussion_unread('00000000-0000-0000-0000-0000008100c1')
-    where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+  (select has_unread from club_thread_unread('00000000-0000-0000-0000-0000008100c1')
+    where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   false, '081.21: ... so it cannot light their dot — the exclusion is the SELECT policy, not a filter in the reader');
 select set_config('test.uid', '00000000-0000-0000-0000-000000810003', false);
 select assert_eq(
-  (select has_unread from club_discussion_unread('00000000-0000-0000-0000-0000008100c1')
-    where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+  (select has_unread from club_thread_unread('00000000-0000-0000-0000-0000008100c1')
+    where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   true, '081.21: ... and the same message DOES light an unblocked member''s dot, so the assertion above is not vacuous');
 -- The blocked author's THREAD is absent from the result set entirely, not merely
--- unbadged: the function reads club_discussions under the caller's own RLS.
+-- unbadged: the function reads club_threads under the caller's own RLS.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810008', false);
 select assert_eq(
-  (select count(*)::int from club_discussion_unread('00000000-0000-0000-0000-0000008100c1')
-    where discussion_id = '00000000-0000-0000-0000-0000008100d2'),
+  (select count(*)::int from club_thread_unread('00000000-0000-0000-0000-0000008100c1')
+    where thread_id = '00000000-0000-0000-0000-0000008100d2'),
   0, '081.21: a blocked author''s thread is absent from the reader''s result set entirely — the answer is not "unbadged", it is "not there"');
 
 -- The third arm, load-bearing TODAY: the club owner holds no club_members row,
 -- so with only two arms their comparison point is NULL, every comparison against
 -- NULL is NULL, and the owner is the one member whose dot never lights.
 reset role;
-select assert_eq((select count(*)::int from club_discussion_reads
+select assert_eq((select count(*)::int from club_thread_reads
                    where user_id = '00000000-0000-0000-0000-000000810001'),
   0, '081.21: the club owner holds no watermark and no club_members row ...');
 update club_messages set created_at = now() + interval '1 hour'
@@ -18177,12 +18178,12 @@ update club_messages set created_at = now() + interval '1 hour'
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810001', false);
 select assert_eq(
-  (select has_unread from club_discussion_unread('00000000-0000-0000-0000-0000008100c1')
-    where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
-  true, '081.21: ... and another rider''s message still lights their dot, through the club_discussions.created_at arm');
+  (select has_unread from club_thread_unread('00000000-0000-0000-0000-0000008100c1')
+    where thread_id = '00000000-0000-0000-0000-0000008100d1'),
+  true, '081/082: 081.21: ... and another rider''s message still lights their dot, through the club_threads.created_at arm');
 
 -- ** THE `greatest` CASE, which a plain coalesce fails. ** A watermark row
--- SURVIVES leaving the club — the FK is to club_discussions, so nothing cascades
+-- SURVIVES leaving the club — the FK is to club_threads, so nothing cascades
 -- it away, and rejoining reuses it. 810006 read the thread, left, a message
 -- arrived while they were away, and they rejoined afterwards. With `last_read_at`
 -- merely first in a coalesce they are compared against their pre-departure
@@ -18193,21 +18194,21 @@ select assert_eq(
 -- has to be expressed forwards rather than backwards.
 reset role;
 update club_messages set created_at = now() - interval '1 day'
- where discussion_id = '00000000-0000-0000-0000-0000008100d1';
+ where thread_id = '00000000-0000-0000-0000-0000008100d1';
 insert into club_members (club_id, user_id, role, joined_at) values
   ('00000000-0000-0000-0000-0000008100c1', '00000000-0000-0000-0000-000000810006',
    'member', now() - interval '10 days');
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810006', false);
-insert into club_discussion_reads (user_id, discussion_id)
+insert into club_thread_reads (user_id, thread_id)
 values ('00000000-0000-0000-0000-000000810006', '00000000-0000-0000-0000-0000008100d1');
 reset role;
 delete from club_members
  where club_id = '00000000-0000-0000-0000-0000008100c1'
    and user_id = '00000000-0000-0000-0000-000000810006';
-select assert_eq((select count(*)::int from club_discussion_reads
+select assert_eq((select count(*)::int from club_thread_reads
                    where user_id = '00000000-0000-0000-0000-000000810006'
-                     and discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+                     and thread_id = '00000000-0000-0000-0000-0000008100d1'),
   1, '081.21: leaving the club leaves the watermark standing — the FK is to the thread, so nothing cascades it away');
 -- Sent while they were away.
 update club_messages set created_at = now() + interval '1 hour'
@@ -18219,8 +18220,8 @@ insert into club_members (club_id, user_id, role, joined_at) values
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810006', false);
 select assert_eq(
-  (select has_unread from club_discussion_unread('00000000-0000-0000-0000-0000008100c1')
-    where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+  (select has_unread from club_thread_unread('00000000-0000-0000-0000-0000008100c1')
+    where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   false, '081.21: a rider who read a thread, LEFT, and REJOINED is not badged with messages sent while they were away — greatest(last_read_at, joined_at), which a plain coalesce fails by preferring the stale pre-departure watermark');
 reset role;
 update club_messages set created_at = now() + interval '3 hours'
@@ -18228,8 +18229,8 @@ update club_messages set created_at = now() + interval '3 hours'
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810006', false);
 select assert_eq(
-  (select has_unread from club_discussion_unread('00000000-0000-0000-0000-0000008100c1')
-    where discussion_id = '00000000-0000-0000-0000-0000008100d1'),
+  (select has_unread from club_thread_unread('00000000-0000-0000-0000-0000008100c1')
+    where thread_id = '00000000-0000-0000-0000-0000008100d1'),
   true, '081.21: ... and IS badged by one sent after they rejoined, so the assertion above is not vacuous');
 rollback to savepoint unread_081;
 
@@ -18238,24 +18239,24 @@ rollback to savepoint unread_081;
 -- answer with no rows and none may raise.
 select set_config('test.uid', '00000000-0000-0000-0000-000000810004', false);
 select assert_eq(
-  (select count(*)::int from club_discussion_unread('00000000-0000-0000-0000-0000008109f6')),
+  (select count(*)::int from club_thread_unread('00000000-0000-0000-0000-0000008109f6')),
   0, '081.21: a club that does not exist answers zero rows rather than raising');
 select assert_eq(
-  (select count(*)::int from club_discussion_unread('00000000-0000-0000-0000-0000008100c2')),
+  (select count(*)::int from club_thread_unread('00000000-0000-0000-0000-0000008100c2')),
   0, '081.21: ... and a private club the caller cannot see answers identically, so the RPC is not an existence oracle');
 
 reset role;
-select assert_eq((select prosecdef from pg_proc where proname = 'club_discussion_unread'),
-  false, '081.21: club_discussion_unread runs as the CALLER — as definer it would start answering true for threads the caller cannot read, and the block arm would stop deciding');
-select assert_eq((select prosecdef from pg_proc where proname = 'stamp_club_discussion_read'),
+select assert_eq((select prosecdef from pg_proc where proname = 'club_thread_unread'),
+  false, '081/082: 081.21: club_thread_unread runs as the CALLER — as definer it would start answering true for threads the caller cannot read, and the block arm would stop deciding');
+select assert_eq((select prosecdef from pg_proc where proname = 'stamp_club_thread_read'),
   false, '081.21: ... and the stamp trigger needs no elevated rights either');
-select assert_eq((select prosecdef from pg_proc where proname = 'moderate_club_discussion'),
-  true, '081.21: while moderate_club_discussion IS definer, which is the whole point — it must reach a thread its caller cannot see');
+select assert_eq((select prosecdef from pg_proc where proname = 'moderate_club_thread'),
+  true, '081/082: 081.21: while moderate_club_thread IS definer, which is the whole point — it must reach a thread its caller cannot see');
 select assert_eq((select prosecdef from pg_proc where proname = 'delete_own_club_message'),
   true, '081.21: ... and so is delete_own_club_message, for the same reason from the other side');
 select assert_eq(
   (select proconfig @> array['search_path=""'] from pg_proc
-    where oid = 'public.moderate_club_discussion(uuid)'::regprocedure),
+    where oid = 'public.moderate_club_thread(uuid)'::regprocedure),
   true, '081.21: ... and both definer functions pin an empty search_path — proconfig stores it with the literal quotes, so matching on `search_path=` alone answers false against a correct function');
 select assert_eq(
   (select proconfig @> array['search_path=""'] from pg_proc
@@ -18263,7 +18264,7 @@ select assert_eq(
   true, '081.21: ... on both of them');
 select assert_eq(
   (select prosrc like '%#variable_conflict error%' from pg_proc
-    where oid = 'public.moderate_club_discussion(uuid)'::regprocedure),
+    where oid = 'public.moderate_club_thread(uuid)'::regprocedure),
   true, '081.21: ... and carry the #variable_conflict pragma, so the guarantee is local to the function rather than resting on a cluster GUC an operator can set to use_column');
 select assert_eq(
   (select prosrc like '%#variable_conflict error%' from pg_proc
@@ -18275,16 +18276,16 @@ select assert_eq(
 -- schema barrier exists, so a successful call proves nothing about who else can
 -- make one.
 select assert_eq(
-  has_function_privilege('authenticated', 'public.club_discussion_unread(uuid)', 'execute'),
-  true, '081.21: authenticated can call club_discussion_unread ...');
+  has_function_privilege('authenticated', 'public.club_thread_unread(uuid)', 'execute'),
+  true, '081/082: 081.21: authenticated can call club_thread_unread ...');
 select assert_eq(
-  has_function_privilege('anon', 'public.club_discussion_unread(uuid)', 'execute'),
+  has_function_privilege('anon', 'public.club_thread_unread(uuid)', 'execute'),
   false, '081.21: ... and anon cannot');
 select assert_eq(
-  has_function_privilege('authenticated', 'public.moderate_club_discussion(uuid)', 'execute'),
-  true, '081.21: authenticated can call moderate_club_discussion ...');
+  has_function_privilege('authenticated', 'public.moderate_club_thread(uuid)', 'execute'),
+  true, '081/082: 081.21: authenticated can call moderate_club_thread ...');
 select assert_eq(
-  has_function_privilege('anon', 'public.moderate_club_discussion(uuid)', 'execute'),
+  has_function_privilege('anon', 'public.moderate_club_thread(uuid)', 'execute'),
   false, '081.21: ... and anon cannot');
 select assert_eq(
   has_function_privilege('authenticated', 'public.delete_own_club_message(uuid)', 'execute'),
@@ -18293,7 +18294,7 @@ select assert_eq(
   has_function_privilege('anon', 'public.delete_own_club_message(uuid)', 'execute'),
   false, '081.21: ... and anon cannot');
 select assert_eq(
-  has_function_privilege('authenticated', 'public.stamp_club_discussion_read()', 'execute'),
+  has_function_privilege('authenticated', 'public.stamp_club_thread_read()', 'execute'),
   false, '081.21: ... and the trigger function is not callable as an RPC by anybody — Postgres checks EXECUTE at CREATE TRIGGER time, not at fire time, which is what makes that revoke free');
 set role authenticated;
 
@@ -18312,8 +18313,8 @@ select assert_eq(
   1, '081.22: club_messages is in the supabase_realtime publication — membership is what makes a subscription fire, and it belongs in the migration chain rather than in a dashboard click');
 select assert_eq(
   (select count(*)::int from pg_publication_tables
-    where pubname = 'supabase_realtime' and tablename = 'club_discussions'),
-  0, '081.22: ... and club_discussions is deliberately NOT, because the thread list revalidates by cache key and one channel per thread on a list screen multiplies subscriptions by the thread count');
+    where pubname = 'supabase_realtime' and tablename = 'club_threads'),
+  0, '081/082: 081.22: ... and club_threads is deliberately NOT, because the thread list revalidates by cache key and one channel per thread on a list screen multiplies subscriptions by the thread count');
 select assert_eq(
   (select relreplident from pg_class where oid = 'public.club_messages'::regclass),
   'd'::"char", '081.22: ... with DEFAULT replica identity — `full` carries the OLD row on UPDATE and DELETE, and this table has no UPDATE at all while the subscriber reads INSERT');
@@ -18323,25 +18324,25 @@ select assert_eq(
 -- ---------------------------------------------------------------------------
 select assert_eq(
   (select count(*)::int from information_schema.role_table_grants
-    where table_name in ('club_discussions', 'club_messages', 'club_discussion_reads')
+    where table_name in ('club_threads', 'club_messages', 'club_thread_reads')
       and grantee = 'anon'),
   0, '081.23: anon holds zero grants on all three tables — decision #1, and 081 adds none');
 select assert_eq(
   (select count(*)::int from information_schema.column_privileges
-    where table_name in ('club_discussions', 'club_messages')
+    where table_name in ('club_threads', 'club_messages')
       and grantee = 'anon'),
   0, '081.23: ... including at column level, which the table-grant query above cannot see');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public'
-      and tablename in ('club_discussions', 'club_messages', 'club_discussion_reads')
+      and tablename in ('club_threads', 'club_messages', 'club_thread_reads')
       and roles::text[] <> array['authenticated']),
   0, '081.23: ... and every one of the eight policies targets authenticated ONLY');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public'
-      and tablename in ('club_discussions', 'club_messages', 'club_discussion_reads')),
-  8, '081.23: eight policies across the three tables — 3 on club_discussions (select, insert, delete), 2 on club_messages (select, insert, and NO delete), 3 on club_discussion_reads (select, insert, update)');
+      and tablename in ('club_threads', 'club_messages', 'club_thread_reads')),
+  8, '081/082: 081.23: eight policies across the three tables — 3 on club_threads (select, insert, delete), 2 on club_messages (select, insert, and NO delete), 3 on club_thread_reads (select, insert, update)');
 
 -- The INSERT column grants, ENUMERATED rather than counted: a table-level grant
 -- and a complete column grant are indistinguishable by count, and `created_at`
@@ -18352,18 +18353,18 @@ select assert_eq(
 select assert_eq(
   (select array_agg(column_name::text order by column_name)
      from information_schema.column_privileges
-    where table_name = 'club_discussions' and grantee = 'authenticated'
+    where table_name = 'club_threads' and grantee = 'authenticated'
       and privilege_type = 'INSERT'),
   array['author_id', 'club_id', 'id', 'title'],
-  '081.23: club_discussions INSERT is granted over exactly id, club_id, author_id and title — NOT created_at');
+  '081/082: 081.23: club_threads INSERT is granted over exactly id, club_id, author_id and title — NOT created_at');
 select assert_eq(
   (select array_agg(column_name::text order by column_name)
      from information_schema.column_privileges
     where table_name = 'club_messages' and grantee = 'authenticated'
       and privilege_type = 'INSERT'),
-  array['author_id', 'body', 'discussion_id', 'id'],
-  '081.23: club_messages INSERT is granted over exactly id, discussion_id, author_id and body — NOT created_at, and id IS granted so a retried send lands as 23505 rather than double-posting');
-select assert_eq(has_column_privilege('authenticated', 'public.club_discussions', 'created_at', 'INSERT'),
+  array['author_id', 'body', 'id', 'thread_id'],
+  '081/082: 081.23: club_messages INSERT is granted over exactly id, thread_id, author_id and body — NOT created_at, and id IS granted so a retried send lands as 23505 rather than double-posting');
+select assert_eq(has_column_privilege('authenticated', 'public.club_threads', 'created_at', 'INSERT'),
   false, '081.23: ... so naming created_at on a thread is refused at the door with 42501');
 select assert_eq(has_column_privilege('authenticated', 'public.club_messages', 'created_at', 'INSERT'),
   false, '081.23: ... and on a message');
@@ -18372,32 +18373,173 @@ select assert_eq(has_column_privilege('authenticated', 'public.club_messages', '
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000810003', false);
 select assert_rejected($$
-  insert into club_discussions (id, club_id, author_id, title)
+  insert into club_threads (id, club_id, author_id, title)
   values ('00000000-0000-0000-0000-0000008100ff',
           '00000000-0000-0000-0000-0000008100c1',
           '00000000-0000-0000-0000-000000810003', E'\n\n')$$,
   '23514', '081.23: a title of NEWLINES is refused — `~ ''\S''` rather than 018''s `length(btrim(title)) >= 1`, because btrim with no second argument strips SPACES ONLY and would accept it while the Zod schema''s .trim() refuses it');
 select assert_rejected($$
-  insert into club_discussions (id, club_id, author_id, title)
+  insert into club_threads (id, club_id, author_id, title)
   values ('00000000-0000-0000-0000-000000810100',
           '00000000-0000-0000-0000-0000008100c1',
           '00000000-0000-0000-0000-000000810003', repeat('x', 81))$$,
   '23514', '081.23: ... and one of 81 characters, the ceiling 018 sets for rides_title_length');
 select assert_rejected($$
-  insert into club_messages (id, discussion_id, author_id, body)
+  insert into club_messages (id, thread_id, author_id, body)
   values ('00000000-0000-0000-0000-000000810101',
           '00000000-0000-0000-0000-0000008100d1',
           '00000000-0000-0000-0000-000000810003', E'\t\t')$$,
   '23514', '081.23: a message body of TABS is refused for the same reason');
 select assert_rejected($$
-  insert into club_messages (id, discussion_id, author_id, body)
+  insert into club_messages (id, thread_id, author_id, body)
   values ('00000000-0000-0000-0000-000000810102',
           '00000000-0000-0000-0000-0000008100d1',
           '00000000-0000-0000-0000-000000810003', repeat('x', 1001))$$,
   '23514', '081.23: ... and one of 1001 characters, matching ride_messages rather than a comment''s looser bound');
 
 set role authenticated;
-rollback to savepoint club_discussions_081;
+rollback to savepoint club_threads_081;
+
+
+-- ===========================================================================
+-- 082 (PD-313): the RENAME itself. club_discussions -> club_threads,
+-- club_discussion_reads -> club_thread_reads, *.discussion_id -> thread_id,
+-- and three renamed functions.
+--
+-- Everything above this line asserts the RULES, and every one of those
+-- assertions now exercises the new identifiers — so between them they already
+-- prove the new names WORK. What they cannot prove is that the OLD ones are
+-- GONE, and that is the whole failure mode of a rename: a compatibility view,
+-- a leftover synonym or a half-applied migration leaves both names resolving,
+-- every assertion above stays green, and the repo carries two spellings of one
+-- table until something writes through the wrong one.
+--
+-- These assertions are catalog reads, so they need no role. `reset role` is
+-- explicit because the block above ends as `authenticated`.
+-- ===========================================================================
+
+reset role;
+
+-- 082.1 / 082.2 — the old names resolve to NOTHING. to_regclass and
+-- to_regprocedure answer NULL rather than raising for an absent object, which
+-- is exactly why they are the right probe here: a query that ERRORED on the old
+-- name would be indistinguishable from a query with a typo in it.
+select assert_eq(
+  (select count(*)::int from (values
+     (to_regclass('public.club_discussions')),
+     (to_regclass('public.club_discussion_reads'))) v(x)
+    where v.x is not null),
+  0, '082.1: neither old table name resolves any more — a compatibility view or a synonym left behind would satisfy every assertion above and fail only this one');
+
+-- ANTI-VACUITY. Without this, a typo in the schema qualification above ('publik.')
+-- makes 082.1 pass by resolving nothing at all, for the wrong reason. Same probe,
+-- same spelling discipline, new names — it must read TWO.
+select assert_eq(
+  (select count(*)::int from (values
+     (to_regclass('public.club_threads')),
+     (to_regclass('public.club_thread_reads'))) v(x)
+    where v.x is not null),
+  2, '082.1 ANTI-VACUITY: the same to_regclass probe DOES resolve both NEW table names, so 082.1''s zero is a measurement rather than a misspelling');
+
+select assert_eq(
+  (select count(*)::int from (values
+     (to_regprocedure('public.club_discussion_unread(uuid)')),
+     (to_regprocedure('public.moderate_club_discussion(uuid)')),
+     (to_regprocedure('public.stamp_club_discussion_read()'))) v(x)
+    where v.x is not null),
+  0, '082.2: none of the three old function names resolves any more — 6b and 6c were DROPPED rather than left beside their replacements, and 6a was renamed rather than copied');
+
+select assert_eq(
+  (select count(*)::int from (values
+     (to_regprocedure('public.club_thread_unread(uuid)')),
+     (to_regprocedure('public.moderate_club_thread(uuid)')),
+     (to_regprocedure('public.stamp_club_thread_read()'))) v(x)
+    where v.x is not null),
+  3, '082.2 ANTI-VACUITY: the same to_regprocedure probe DOES resolve all three NEW signatures, so 082.2''s zero is a measurement');
+
+-- 082.3 — the trap the issue is named after. `alter table ... rename to` carries
+-- policies, indexes, constraints and triggers across and KEEPS THEIR NAMES, so a
+-- rename that stops at the table leaves club_discussion_reads_pkey and "Riders
+-- see only their own discussion watermarks" sitting on club_thread_reads. Every
+-- rule assertion above passes in that state. This sweep is the only thing that
+-- does not.
+--
+-- Scoped to the three tables this migration touched rather than to the schema:
+-- a schema-wide sweep would start failing for a table 082 never named, which is
+-- the shape of assertion that stops testing its own intent.
+select assert_eq(
+  (select count(*)::int from (
+     select policyname as n from pg_policies
+      where schemaname = 'public'
+        and tablename in ('club_threads','club_thread_reads','club_messages')
+     union all
+     select indexname from pg_indexes
+      where schemaname = 'public'
+        and tablename in ('club_threads','club_thread_reads','club_messages')
+     union all
+     select conname from pg_constraint
+      where conrelid in ('public.club_threads'::regclass,
+                         'public.club_thread_reads'::regclass,
+                         'public.club_messages'::regclass)
+     union all
+     select tgname from pg_trigger
+      where tgrelid in ('public.club_threads'::regclass,
+                        'public.club_thread_reads'::regclass,
+                        'public.club_messages'::regclass)
+        and not tgisinternal
+   ) x where x.n ilike '%discussion%'),
+  0, '082.3: no policy, index, constraint or trigger name on the three tables still carries the word "discussion" — the half-rename this migration exists to avoid, and the one state every assertion above stays green in');
+
+-- ANTI-VACUITY for the sweep: it has to be reading a real universe of names. If
+-- the four UNION arms silently returned nothing — a wrong schemaname, a regclass
+-- that no longer resolves — 082.3 would read 0 for the wrong reason.
+select assert_eq(
+  (select count(*)::int > 20 from (
+     select policyname as n from pg_policies
+      where schemaname = 'public'
+        and tablename in ('club_threads','club_thread_reads','club_messages')
+     union all
+     select indexname from pg_indexes
+      where schemaname = 'public'
+        and tablename in ('club_threads','club_thread_reads','club_messages')
+     union all
+     select conname from pg_constraint
+      where conrelid in ('public.club_threads'::regclass,
+                         'public.club_thread_reads'::regclass,
+                         'public.club_messages'::regclass)
+     union all
+     select tgname from pg_trigger
+      where tgrelid in ('public.club_threads'::regclass,
+                        'public.club_thread_reads'::regclass,
+                        'public.club_messages'::regclass)
+        and not tgisinternal
+   ) x),
+  true, '082.3 ANTI-VACUITY: that sweep reads a non-empty universe of names, so its zero is a measurement rather than four arms returning nothing');
+
+-- 082.4 — the OUT column. This is the ONE thing in 082 that `create or replace`
+-- structurally cannot express, so it is the one most likely to have been left
+-- behind: a body updated in place would keep answering `discussion_id` to every
+-- PostgREST caller while every predicate in the suite passed. Read off
+-- pg_proc.proargnames rather than off a call, because a call returns the VALUE
+-- and never the column NAME the client destructures.
+select assert_eq(
+  (select p.proargnames
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'club_thread_unread'),
+  array['club', 'thread_id', 'has_unread'],
+  '082.4: club_thread_unread''s returned column really is thread_id — the one rename create-or-replace cannot do, so 6b dropped and recreated the function to get it');
+
+-- 082.5 — publication membership rides across a table rename on the OID, so a
+-- rename cannot lose it. This asserts that it did not GAIN one either: 081 §6
+-- deliberately kept club_threads out, and a rename is exactly the kind of edit
+-- that gets "fixed" by re-adding a table to the publication under its new name.
+select assert_eq(
+  (select coalesce(array_agg(tablename::text order by tablename), array[]::text[])
+     from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and tablename in ('club_threads','club_thread_reads','club_messages')),
+  array['club_messages'],
+  '082.5: the publication still holds club_messages and still does NOT hold club_threads or club_thread_reads — carried across by the rename on the OID, and not quietly re-added under the new name');
 
 reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);

@@ -24,7 +24,7 @@ deliberately carries no block predicate — which makes copying that shape verba
 trap this requirement closes.
 
 **Which conjunct is the strict one is a property of the parent, not of the pattern, and it is not
-always the parent.** A club's discussions are the worked counter-example. `clubs` SELECT is
+always the parent.** A club's threads are the worked counter-example. `clubs` SELECT is
 `is_public OR owner_id = auth.uid() OR private.is_club_member(id)`; `is_public` admits **every
 signed-in rider**, so on a public club the parent `EXISTS` is satisfied by the entire platform and
 contributes nothing. There, the **narrowing helper is the load-bearing half** and the `EXISTS` is

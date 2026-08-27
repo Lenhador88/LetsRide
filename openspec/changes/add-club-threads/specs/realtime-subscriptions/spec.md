@@ -8,7 +8,7 @@ subscription SHALL be opened only by the screen that renders a single stream.
 
 Until this change the app had exactly one live stream, so "one channel per logical stream" had
 nothing to distinguish it from "one channel per screen". With a second, the distinction becomes
-load-bearing: a Discussions list holding forty threads that subscribes per row opens forty sockets
+load-bearing: a Threads list holding forty threads that subscribes per row opens forty sockets
 on mount, and the symptom is a slow screen and a burnt connection quota rather than anything that
 looks like a Realtime bug.
 
@@ -16,7 +16,7 @@ Every new screen SHALL state, in its own documentation, whether it subscribes â€
 that quietly does not is indistinguishable from one whose channel is broken.
 
 #### Scenario: A thread list does not subscribe
-- **WHEN** the Discussions list for a club is rendered
+- **WHEN** the Threads list for a club is rendered
 - **THEN** no channel SHALL be opened
 - **AND** the list SHALL be refreshed by invalidating its cache key and on foreground, per the
   standing revalidation rule
@@ -42,7 +42,7 @@ is one refactor away from two unrelated streams sharing a channel â€” which deli
 payloads to the other's subscribers, filtered only by RLS.
 
 #### Scenario: Two stream kinds cannot collide
-- **WHEN** channel names are chosen for a ride's messages and a club discussion's messages
+- **WHEN** channel names are chosen for a ride's messages and a club thread's messages
 - **THEN** each SHALL carry a segment naming its kind as well as its id
 - **AND** the two SHALL be verifiably distinct even if the two ids were somehow equal
 

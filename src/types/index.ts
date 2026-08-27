@@ -1241,7 +1241,7 @@ export type LocalityCentroid = {
 }
 
 /**
- * A club's titled discussion thread — `081`, PD-307.
+ * A club's titled thread — `081`, PD-307.
  *
  * **No `updated_at` and no `edited` flag, for `RideMessage`'s reason and one
  * more.** `081` grants no UPDATE and declares no UPDATE policy on either
@@ -1249,7 +1249,7 @@ export type LocalityCentroid = {
  * worse of the two to make mutable, because a title that changes after forty
  * riders have replied retitles their replies too.
  */
-export type ClubDiscussion = {
+export type ClubThread = {
   id: string
   club_id: string
   author_id: string
@@ -1258,28 +1258,28 @@ export type ClubDiscussion = {
 }
 
 /**
- * One row of the Discussions list — the thread plus its byline.
+ * One row of the Threads list — the thread plus its byline.
  *
  * `author` is nullable for the reason every other embed's is: the `profiles`
  * SELECT policy hides a row with a NULL username, so a thread opened by a rider
  * still mid-onboarding resolves to `null` rather than to a name. The unread mark
- * is **not** on this type: it comes from `club_discussion_unread`, a separate
+ * is **not** on this type: it comes from `club_thread_unread`, a separate
  * read under its own key, so that a failed unread call leaves the list rendering
  * unmarked rather than not rendering.
  */
-export type ClubDiscussionListItem = ClubDiscussion & {
+export type ClubThreadListItem = ClubThread & {
   author: Pick<PublicProfile, 'id' | 'username'> | null
 }
 
-/** The keyset cursor the Discussions list pages on — `(created_at, id)`, for
+/** The keyset cursor the Threads list pages on — `(created_at, id)`, for
  * `NotificationCursor`'s reason: `created_at` is not a total order. */
-export type ClubDiscussionCursor = { createdAt: string; id: string }
+export type ClubThreadCursor = { createdAt: string; id: string }
 
-/** One message inside a club discussion (`081`). `author` is narrower than
+/** One message inside a club thread (`081`). `author` is narrower than
  * `PublicProfile` for `RideMessage`'s reason — a bubble draws no avatar. */
 export type ClubMessage = {
   id: string
-  discussion_id: string
+  thread_id: string
   author_id: string
   body: string
   created_at: string
@@ -1295,7 +1295,7 @@ export type ClubMessage = {
  * only ever set on a message this viewer just sent.
  *
  * **Structural rather than a shared base**, so `RideChatMessage` keeps its
- * `ride_id` and `ClubChatMessage` its `discussion_id` while both satisfy the one
+ * `ride_id` and `ClubChatMessage` its `thread_id` while both satisfy the one
  * component. A bubble renders neither column, which is why neither is here.
  */
 export type ChatBubbleMessage = {
@@ -1310,7 +1310,7 @@ export type ChatBubbleMessage = {
   pending?: boolean
 }
 
-/** A club discussion's messages as the thread screen renders them. */
+/** A club thread's messages as the thread screen renders them. */
 export type ClubChatMessage = ClubMessage & {
   mine: boolean
   startsGroup: boolean

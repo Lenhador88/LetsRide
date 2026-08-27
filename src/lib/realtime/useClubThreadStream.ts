@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 
 /**
  * The app's **second** Realtime subscription (`081`, PD-307) — one club
- * discussion's messages. `useRideMessageStream` (`034`) is the first and this is
+ * thread's messages. `useRideMessageStream` (`034`) is the first and this is
  * a transfer of it rather than a new design; every rule below is that file's,
  * with the differences named.
  *
@@ -15,7 +15,7 @@ import { createClient } from '@/lib/supabase/client'
  * deliberately does **not** hand the payload row to the cache even though the
  * payload contains one: `postgres_changes` delivers the table row and nothing
  * else, so it carries `author_id` and no `author` — the joined profile
- * `getClubDiscussionMessages` selects and every other rider's bubble renders a
+ * `getClubThreadMessages` selects and every other rider's bubble renders a
  * name from. Appending it would draw a message from nobody, then swap in the
  * name on the next unrelated refetch.
  *
@@ -29,7 +29,7 @@ import { createClient } from '@/lib/supabase/client'
  * A channel on a table outside the `supabase_realtime` publication **connects,
  * reports `SUBSCRIBED`, and silently never fires** — indistinguishable from a
  * thread nobody is writing in. `081` adds `club_messages` to the publication in
- * the migration and deliberately leaves `club_discussions` out, saying so in the
+ * the migration and deliberately leaves `club_threads` out, saying so in the
  * file: a new *thread* appearing live is not required, and the list revalidates
  * by key. If messages ever stop arriving live, check `pg_publication_tables`
  * before suspecting anything here.
@@ -43,12 +43,12 @@ import { createClient } from '@/lib/supabase/client'
  * ## The channel name carries the KIND as well as the id
  *
  * `ride:${rideId}:messages` was unambiguous while the app had one stream; with
- * two it is not a namespace. `club-discussion:${discussionId}:messages` names
+ * two it is not a namespace. `club-thread:${threadId}:messages` names
  * both, and two components mounting this hook for the same thread share one
  * socket topic instead of stacking two and delivering everything twice.
  */
-export function useClubDiscussionStream(
-  discussionId: string | undefined,
+export function useClubThreadStream(
+  threadId: string | undefined,
   onMessage: () => void
 ): void {
   // The callback closes over component state and gets a new identity every
@@ -62,7 +62,7 @@ export function useClubDiscussionStream(
   })
 
   useEffect(() => {
-    if (!discussionId) return
+    if (!threadId) return
 
     const supabase = createClient()
     let cancelled = false
@@ -87,7 +87,7 @@ export function useClubDiscussionStream(
       if (cancelled) return
 
       channel = supabase
-        .channel(`club-discussion:${discussionId}:messages`)
+        .channel(`club-thread:${threadId}:messages`)
         .on(
           'postgres_changes',
           {
@@ -97,7 +97,7 @@ export function useClubDiscussionStream(
             // Server-side, so a rider in a club with forty threads does not
             // receive the other thirty-nine's traffic and filter it out on the
             // phone.
-            filter: `discussion_id=eq.${discussionId}`,
+            filter: `thread_id=eq.${threadId}`,
           },
           () => onMessageRef.current()
         )
@@ -138,5 +138,5 @@ export function useClubDiscussionStream(
       // topic and every message arrives twice.
       if (channel) supabase.removeChannel(channel)
     }
-  }, [discussionId])
+  }, [threadId])
 }

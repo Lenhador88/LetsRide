@@ -23,19 +23,19 @@
  * widens rather than narrows, and says so at the site.
  *
  * **One key is not reached by its own domain's *detail* prefix, and it is the
- * only one: `clubs.discussionMessages(discussionId)`** (`081`, PD-307). Stated
+ * only one: `clubs.threadMessages(threadId)`** (`081`, PD-307). Stated
  * positively, because the reach is real and a flat "no prefix reaches it" is
  * false:
  *
- * | Prefix | Reaches `clubs.discussionMessages(d)`? |
+ * | Prefix | Reaches `clubs.threadMessages(d)`? |
  * |---|---|
  * | `[]` (`EVERYTHING`) | yes |
  * | `['clubs']` (`clubs.all()`) | **yes** — `keyStartsWith` matches structurally |
- * | `['clubs','detail',clubId]` and everything under it | **no** — the key is `['clubs','discussions',d,'messages']` |
+ * | `['clubs','detail',clubId]` and everything under it | **no** — the key is `['clubs','threads',d,'messages']` |
  *
  * So a write that moves one thread's messages names that key itself, and a
  * write that removes a thread names the list key **and** the messages key. See
- * the key's own docstring for why it hangs off the discussion id rather than
+ * the key's own docstring for why it hangs off the thread id rather than
  * the club's.
  *
  * ## The count
@@ -227,40 +227,40 @@ export const queryKeys = {
       'publicRideCount',
     ],
     /**
-     * A club's discussion threads (`081`, PD-307) — a child of the club for the
+     * A club's threads (`081`, PD-307) — a child of the club for the
      * same reason `members` is: scoped to one club and dying with it. Page one
      * only, matching `notifications.list()`; the list screen appends later pages
      * in local state.
      */
-    discussions: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'discussions'],
+    threads: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'threads'],
     /**
      * Which of those threads hold a message this rider has not read
-     * (`club_discussion_unread`). **A child of `discussions`, deliberately**, and
+     * (`club_thread_unread`). **A child of `threads`, deliberately**, and
      * the asymmetry runs one way, exactly as `rides.unread` sits under
      * `rides.messages`: invalidating the list reaches the marks, and
-     * `markClubDiscussionSeen` naming this key alone does not refetch the list.
+     * `markClubThreadSeen` naming this key alone does not refetch the list.
      */
-    discussionsUnread: (clubId: string): QueryKey => [
+    threadsUnread: (clubId: string): QueryKey => [
       'clubs',
       'detail',
       clubId,
-      'discussions',
+      'threads',
       'unread',
     ],
     /**
      * One thread itself — its title, its author and the club it sits in
-     * (`getClubDiscussion`). Keyed by the discussion id for the same reason its
+     * (`getClubThread`). Keyed by the thread id for the same reason its
      * messages are, and **the parent of that key**: invalidating the thread
      * reaches its messages, while a message cannot move a title `081` grants no
      * UPDATE on.
      */
-    discussion: (discussionId: string): QueryKey => ['clubs', 'discussions', discussionId],
+    thread: (threadId: string): QueryKey => ['clubs', 'threads', threadId],
     /**
      * One thread's messages (`081`).
      *
      * **This is the first key in this file that its own domain's detail prefix
      * does not reach, and the header table above says which prefixes do.** It is
-     * keyed by the *discussion* id because the thread screen holds only that —
+     * keyed by the *thread* id because the thread screen holds only that —
      * the club id arrives with the thread itself — so nesting it under
      * `['clubs','detail',clubId]` would mean building a key from a value the
      * screen does not have when it mounts.
@@ -269,14 +269,14 @@ export const queryKeys = {
      * structurally on prefix (`keyStartsWith` in `queryClient.ts`), and this key
      * starts with `'clubs'`. `['clubs','detail',clubId]` does not. So
      * `sendClubMessage` and `deleteClubMessage` name this key explicitly, and
-     * `deleteClubDiscussion`/`moderateClubDiscussion` name **both** it and the
+     * `deleteClubThread`/`moderateClubThread` name **both** it and the
      * list — carrying the club id into the action rather than re-reading it
      * after the row is gone.
      */
-    discussionMessages: (discussionId: string): QueryKey => [
+    threadMessages: (threadId: string): QueryKey => [
       'clubs',
-      'discussions',
-      discussionId,
+      'threads',
+      threadId,
       'messages',
     ],
   },
