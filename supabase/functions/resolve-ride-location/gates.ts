@@ -141,20 +141,37 @@ export const ATTRIBUTION_MODE = 'none'
  * particular. `TILE_SPECS`'s zoom table is why it now matters more than it did:
  * at z7 the panel covers a couple of hundred kilometres.
  *
- * Syntax from the vendor's documentation: properties within one marker are
- * separated by `;`, multiple markers by `|`, and `lonlat` is the only required
- * one. Colours must be URL-encoded, which `URLSearchParams` does on its own —
- * do not pre-encode `#` here or it double-escapes to `%2523`.
+ * **Every property here is validated against the vendor's OpenAPI component
+ * schema (`StaticMapMarker`), and the first version of this constant was not.**
+ * It sent `icontype:material;icon:place;contentcolor:#FFFFFF` and the API
+ * answered **400 on every request**, which took the whole render down: both
+ * tiles fetch or neither, so the function logged `nothing_to_write` and every
+ * ride created after the deploy got no map at all.
  *
- * `Grey/100` `#1A1A1A` with a white glyph, which is the v2 pin the app already
- * draws over a card strip — the same marker in two renderings rather than two
- * marks that happen to both be pins.
+ * `icon` is the one property the schema **cannot** catch — it is a free string
+ * bounded at 100 characters, so an icon name that does not exist in the chosen
+ * set is a valid *request* and an invalid *icon*, rejected at render time. There
+ * is no published list of names. **So do not add `icon` back without a real
+ * render behind it**; the shape below is the spec's own `example` field with our
+ * colour substituted, which is as close to a guarantee as this API offers.
+ *
+ * What that leaves is a plain teardrop pin — `type` defaults to `material` and
+ * `whitecircle` to `yes` — in `Grey/100` `#1A1A1A`. That IS the v2 pin the app
+ * draws over a card strip, so the glyph was never load-bearing.
+ *
+ * Properties within one marker are separated by `;` and multiple markers by
+ * `|`; `lonlat` is the only required one. **The `;` may be percent-encoded and
+ * this is measured, not assumed** — `URLSearchParams` writes `%3B`, and a
+ * hand-built URL with literal separators was rejected identically, so the
+ * encoding was never the fault. Colours must be URL-encoded, which
+ * `URLSearchParams` also does — do not pre-encode `#` or it double-escapes to
+ * `%2523`.
  *
  * **Not sent for the card**, deliberately: `RideCard` draws its own pin disc in
  * HTML, dead centre, over a tile that is centred on the same coordinate. A
  * burned-in marker there would be a second pin a few pixels from the first.
  */
-export const MARKER_STYLE = 'type:material;color:#1A1A1A;icontype:material;icon:place;contentcolor:#FFFFFF;size:40'
+export const MARKER_STYLE = 'color:#1A1A1A;size:40'
 
 /* -------------------------------------------------------------------------- */
 /* The three gates                                                             */
