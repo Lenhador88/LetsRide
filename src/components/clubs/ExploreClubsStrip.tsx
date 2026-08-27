@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { ChevronRightIcon, LocationFilledIcon } from '@/components/icons/generated'
-import { CLUBS_PAGE_SIZE } from '@/lib/data/clubs'
 import type { NearLabel } from '@/lib/location/near-label'
 
 /**
@@ -29,12 +28,15 @@ import type { NearLabel } from '@/lib/location/near-label'
  * while older unjoined clubs exist. So zero draws the label without a number
  * rather than hiding the row.
  *
- * The number is bounded by that same page, which is why it reads `50+` at the
- * cap: `Explore 50 clubs` against a database of five hundred is a total the
- * rider has no reason to doubt. It is still exactly `explore.data.length` —
- * the same array `/clubs/explore` renders, under the same cache key — because
- * a count that can disagree with the list one tap away is `PD-254`'s crew-count
- * bug, and no server-side `count` can reproduce a predicate applied in JS.
+ * **The count came out on 2026-08-27**, at the product owner's instruction and
+ * with the string given directly: *"Explore clubs near Hoorn"*. It had been
+ * bounded by that same page and rendered `50+` at the cap, which was the honest
+ * shape for a number that could understate by an order of magnitude — and the
+ * simplest way to stop understating is to stop counting. What the number bought
+ * has to be kept by other means, and is: the `near` clause below is still
+ * derived from `explore.data`, the same array `/clubs/explore` renders under the
+ * same cache key, so the row and its destination cannot disagree. That was
+ * `PD-254`'s crew-count bug and it is still the failure mode to design against.
  *
  * **`near` is now TRUE rather than decorative, and PD-259 is what changed
  * that.** This row shipped saying `near Utrecht` while `getExploreClubs` had no
@@ -43,12 +45,11 @@ import type { NearLabel } from '@/lib/location/near-label'
  * is now backed by a measured distance: `nearCount` is how many of the clubs in
  * the list are within `NEARBY_RADIUS_KM` of the rider.
  *
- * **The number and the word move together, and that coupling is the whole
- * rule.** `near <name>` is drawn only when there is a place to name AND at
- * least one club is actually near it; the count beside it is then the NEAR
- * count, not the total. Any other pairing states something false — `Explore 12
- * clubs near Utrecht` with eleven of them in Groningen is worse than the honest
- * `Explore 12 clubs`, because a rider cannot tell it is wrong until they tap.
+ * **`near <name>` is drawn only when there is a place to name AND at least one
+ * club is actually near it.** That rule outlived the number it was written for,
+ * and it binds harder without one: `Explore clubs near Utrecht` over a screen
+ * whose clubs are all in Groningen is a claim a rider cannot check until they
+ * tap, and there is no longer a count beside it to hedge.
  *
  * **And the destination shows that same near set FIRST, under that same
  * name.** `ExploreClubsList` draws a `Near <name>` heading over exactly the
@@ -65,11 +66,10 @@ import type { NearLabel } from '@/lib/location/near-label'
  * match the number. Product owner, 2026-08-18: *"just close by city or village
  * or town is fine. remove the country."*
  *
- * **A zero near-count falls back to the unfiltered total rather than to zero.**
- * PD-258's first trap, and it is sharper now than when it was written: this row
- * is the only door to `/clubs/explore`, so a rider with no club within 100 km
- * must still be told how many there are to explore. Nothing here may ever
- * render `Explore 0 clubs` while public clubs exist.
+ * **A zero near-count drops the clause and keeps the row.** PD-258's first
+ * trap, restated for a label with no number in it: this row is the only door to
+ * `/clubs/explore`, so a rider with no club within 100 km must still be offered
+ * the screen. It reads `Explore clubs` — never nothing, and never a zero.
  *
  * The pin is the approved frame's own glyph.
  *
@@ -78,33 +78,22 @@ import type { NearLabel } from '@/lib/location/near-label'
  * read as the main action.
  */
 export function ExploreClubsStrip({
-  count,
   nearCount,
   near,
 }: {
-  count?: number
   /**
-   * How many of `count` are within `NEARBY_RADIUS_KM`. `undefined` means the
-   * question has no answer yet — the rider's position has not resolved, or the
-   * list has not loaded — which is NOT the same as zero and must not read as it.
+   * How many clubs behind this row are within `NEARBY_RADIUS_KM`. `undefined`
+   * means the question has no answer yet — the rider's position has not
+   * resolved, or the list has not loaded — which is NOT the same as zero. Both
+   * withhold the clause, so they collapse here; they would not in a component
+   * that still drew a count.
    */
   nearCount?: number
   /** What to call where the distances were measured from — see `nearLabel`. */
   near?: NearLabel
 }) {
-  // The word and the number are chosen together. `near <name>` needs a name AND
-  // at least one club actually near it; without both, the row falls back to the
-  // unfiltered total with no place clause — never to a zero.
   const sayNear = !!near && nearCount !== undefined && nearCount > 0
-  const shown = sayNear ? nearCount : count
-  const place = sayNear ? ` near ${near!.name}` : ''
-
-  const label =
-    shown === undefined || shown === 0
-      ? `Explore clubs${place}`
-      : shown >= CLUBS_PAGE_SIZE
-        ? `Explore ${CLUBS_PAGE_SIZE}+ clubs${place}`
-        : `Explore ${shown} ${shown === 1 ? 'club' : 'clubs'}${place}`
+  const label = sayNear ? `Explore clubs near ${near!.name}` : 'Explore clubs'
 
   return (
     <Link

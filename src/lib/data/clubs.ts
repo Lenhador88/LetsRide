@@ -112,8 +112,17 @@ export function toClubListItem(row: ClubListRow, unread?: number): ClubListItem 
   }
 }
 
-/** The club ids this rider belongs to. Both sub-pages need it, from opposite sides. */
-async function myClubIds(supabase: DataClient, userId: string): Promise<string[]> {
+/**
+ * The club ids this rider belongs to. Both sub-pages need it, from opposite
+ * sides, and since the `From clubs` filter (`getRides`, `getRideFilters`) the
+ * rides tab needs it too — which is why it is exported rather than local.
+ *
+ * Bounded by `CLUB_MEMBERSHIP_LIMIT` with no `order by`, so past that many
+ * memberships the answer is an arbitrary subset. Every caller must therefore
+ * degrade to *fewer* rows and never to *wrong* ones — see `getExploreClubs`
+ * for the defect that rule was written after.
+ */
+export async function myClubIds(supabase: DataClient, userId: string): Promise<string[]> {
   const rows = unwrapList(
     await supabase
       .from('club_members')

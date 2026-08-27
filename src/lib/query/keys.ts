@@ -333,6 +333,36 @@ export const queryKeys = {
     list: (filter: string | null): QueryKey => ['rides', 'list', filter],
     filters: (): QueryKey => ['rides', 'filters'],
     /**
+     * `/rides/explore` — public rides the viewer is not already on.
+     *
+     * Position-keyed for exactly `clubs.explore`'s reason, one field down: the
+     * read attaches a distance per row, so a list measured from Utrecht is not
+     * the list for the same rider in Maastricht and a bare `['rides','explore']`
+     * would serve the first from cache to the second with nothing to tell them
+     * apart.
+     *
+     * **`/rides` and `/rides/explore` must keep hitting the SAME entry.** The
+     * tab root reads this to decide whether its strip may say `near <place>`,
+     * and the destination reads it to draw the `Near <place>` section — so a
+     * second entry is a row promising a number the screen behind it does not
+     * show. They agree because both resolve the position through
+     * `resolveRiderLocation`, which memoises one answer per page load and rounds
+     * it to two decimals before anything sees it.
+     *
+     * `null` — no resolvable position — is its own segment rather than an
+     * omitted one, so an unmeasured list cannot silently share an entry with a
+     * measured one.
+     *
+     * Under `rides`, so `setRideAttendance`'s existing `rides.all()` reaches it:
+     * RSVPing to a ride from this screen is precisely what must take that ride
+     * off it.
+     */
+    explore: (near?: { lat: number; lon: number } | null): QueryKey => [
+      'rides',
+      'explore',
+      near ? `${near.lat},${near.lon}` : 'unlocated',
+    ],
+    /**
      * The rider's own last picked start locations, offered by the place field
      * on focus — PD-274, `getRecentRideStarts`.
      *

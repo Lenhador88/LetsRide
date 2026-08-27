@@ -72,7 +72,7 @@ export function UseMyLocationRow({
   position: RiderLocation | null | undefined
   /**
    * Classes for the row's own padded WRAPPER, not the button. The wrapper is
-   * this component's rather than the page's for `NearbyRidesStrip`'s reason:
+   * this component's rather than the page's for `ExploreRidesStrip`'s reason:
    * the row draws nothing in most states, and padding out in the page would
    * leave 8px of empty space above whatever follows on every one of them.
    * `/clubs` passes `px-0` because its slot is already inside a padded block.

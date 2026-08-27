@@ -26,7 +26,7 @@ src/
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout) — plus username-verdict.ts, pure + tested, the postcards/deck.ts shape rather than a fifth component
 │   ├── chat/              # ChatComposer, ChatThread, MarkChatSeen — shared by the ride chat and club discussions since 081
-│   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, RideAttendanceBar, RideCard, RideChatButton, RideChatRow, RideChip, RideCrewRail, RideFilterBar, RideHeader, RideJournal, RideMap, RideOptionsMenu, NearbyRidesStrip, recentStarts
+│   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, RideAttendanceBar, RideCard, RideChatButton, RideChatRow, RideChip, RideCrewRail, RideFilterBar, RideHeader, RideJournal, RideMap, RideOptionsMenu, ExploreRidesList, ExploreRidesStrip, recentStarts
 │   ├── clubs/              # ClubCard, ClubCreateRideRow, ClubDetailHeader, ClubDiscussionRow, ClubDiscussionsSection, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPostcardCarousel, CreateClubForm, CreateDiscussionForm, DeleteClubControl, EditClubForm, ExploreClubsList, ExploreClubsStrip, JoinClubButton, MarkClubSeen
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem, NotificationsPanel
@@ -48,7 +48,7 @@ src/
 │   ├── back-navigation.ts  # where a back control goes on a screen with several entry points — /notifications carries its origin in ?from= (PD-209)
 │   ├── realtime/           # useRideMessageStream, useClubDiscussionStream — the app's two Supabase Realtime subscriptions (081)
 │   ├── location/           # rider-location.ts (where the rider is — device, then profile city; never prompts), distance.ts (haversine + NEARBY_RADIUS_KM, PD-259), near-label.ts (what to CALL that place — never the profile city beside a device fix)
-│   ├── rides/              # nearby.ts — which of the rides on screen are within NEARBY_RADIUS_KM (PD-260). A pure predicate over a fetched list, not a query
+│   ├── rides/              # seed-ride-id.ts. `nearby.ts` went with the near-you filter on 2026-08-27 — `/rides/explore` sections on `isNearby(distance_km)` from `lib/location/distance`, which is where that predicate now lives for both tabs
 │   ├── clubs/              # seed-club-id.ts — the default club every rider joins on completing onboarding (058)
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatChatMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()

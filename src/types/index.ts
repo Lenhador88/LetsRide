@@ -153,7 +153,15 @@ export type RideMember = {
 }
 
 /**
- * Which slice of the rides list is showing. `undefined` is "All rides".
+ * Which slice of the rides list is showing. `undefined` is the `From clubs`
+ * tile — the rides belonging to a club this rider has joined.
+ *
+ * **`undefined` meant "every ride RLS allows" until 2026-08-27**, and the
+ * change is a narrowing rather than a rename: the unfiltered tab overlapped
+ * `Your rides` almost entirely, since a ride you organise is a ride you can
+ * see. Discovery is `/rides/explore` now, and it is a route rather than a
+ * fourth member of this union — a segment cannot be malformed, which is the
+ * same argument `/clubs/explore` was built on.
  *
  * The design's filter bar also draws a *rider* tile ("itchyboots") beside the
  * club ones, which would mean "rides organised by that rider". It is not built:
@@ -209,6 +217,23 @@ export type RideListItem = {
    */
   latitude: number | null
   longitude: number | null
+  /**
+   * How far the meeting point is from the rider, in kilometres — filled by
+   * `getExploreRides` alone, and `undefined` everywhere else.
+   *
+   * Three different "no" collapse to `undefined` and that is deliberate: the
+   * rider has no resolvable position, the ride has no coordinate, or the read
+   * was not asked for a distance. A screen can only usefully do one thing with
+   * any of them, and `isNearby(undefined)` is false — so a ride nothing can
+   * measure is never counted as near. `ClubListItem.distance_km` is the same
+   * field with the same contract.
+   *
+   * **Nothing renders the number.** It sections `ExploreRidesList` and it
+   * decides the strip's `near <place>` clause; a precise kilometre figure to a
+   * meeting point the rider has not opened yet is false precision, which is the
+   * same call the clubs side made.
+   */
+  distance_km?: number
   /** Drawn first in the avatar row, with the brand ring. */
   organizer: PublicProfile | null
   /** Organizer first, then the crew — capped at RIDE_AVATAR_LIMIT. */
@@ -543,11 +568,26 @@ export type RideFilterOption = {
  * comment. See RIDE_FILTER_SCAN_LIMIT for what is actually guaranteed.
  */
 export type RideFilters = {
-  /** Upcoming rides this viewer organises or has RSVP'd to. */
+  /**
+   * Upcoming rides this viewer organises or has RSVP'd to — the union of the
+   * two, deduplicated, because organising a ride and RSVPing to it is one ride.
+   */
   mine: number
-  /** Every upcoming ride in the window. */
-  total: number
-  /** Up to four organizer avatars, for the "All rides" tile's 2×2. */
+  /**
+   * Upcoming rides belonging to a club this viewer has joined — the `From
+   * clubs` tile.
+   *
+   * **Not "every upcoming ride", which is what it counted until 2026-08-27.**
+   * The tab's unfiltered view is now the rider's clubs rather than the whole
+   * app; discovery moved to `/rides/explore`, which has no tile and no count
+   * here at all.
+   */
+  fromClubs: number
+  /**
+   * Up to four club images, for the `From clubs` tile's 2×2 — a cover where the
+   * club has one, else its avatar. Organizer faces until 2026-08-27, when the
+   * tile stopped meaning "every ride" and started meaning "these clubs".
+   */
   collage: string[]
   clubs: RideFilterOption[]
 }
