@@ -14,6 +14,7 @@ import {
   TILE_SPECS,
   type GeocodeFeature,
   resolvePickedCoordinate,
+  MARKER_STYLE,
 } from '../../supabase/functions/resolve-ride-location/gates'
 
 /**
@@ -111,15 +112,43 @@ describe('the outbound static map requests', () => {
     const card = new URL(buildTileUrl(TILE_SPECS.card, AMSTERDAM, 'test-key'))
     expect(card.searchParams.get('width')).toBe('80')
     expect(card.searchParams.get('height')).toBe('148')
-    // 7, not 13 — PD-236. The zoom was never chosen against a visible tile,
-    // because the burned-in credit covered the map. Marked "to try" in
-    // `gates.ts`; if it reads as too far out the next step is 8, not back to 13.
+    // 7 on BOTH, not 13 and 15 — PD-236. Neither zoom had ever been chosen
+    // against a visible tile: the burned-in credit covered the card and nobody
+    // had questioned the panel. Both are marked "to try" in `gates.ts`, which
+    // carries the metres-per-pixel table — if either reads as too far out, 11 is
+    // the value that puts a town in frame.
     expect(card.searchParams.get('zoom')).toBe('7')
 
     const detail = new URL(buildTileUrl(TILE_SPECS.detail, AMSTERDAM, 'test-key'))
     expect(detail.searchParams.get('width')).toBe('358')
     expect(detail.searchParams.get('height')).toBe('160')
-    expect(detail.searchParams.get('zoom')).toBe('15')
+    expect(detail.searchParams.get('zoom')).toBe('7')
+  })
+
+  it('pins the meeting point on the detail panel and nowhere else', () => {
+    // The panel had no marker at all and the product owner reported it: at z7
+    // it covers a couple of hundred kilometres, so a centred tile with nothing
+    // on it says nothing about where the ride starts.
+    const detail = new URL(buildTileUrl(TILE_SPECS.detail, AMSTERDAM, 'test-key'))
+    const marker = detail.searchParams.get('marker')
+    expect(marker).toBe(`lonlat:${AMSTERDAM.longitude},${AMSTERDAM.latitude};${MARKER_STYLE}`)
+
+    // Read back off the URL rather than off the constant: `URLSearchParams`
+    // encodes `#` and `;` on the way out, and the whole point of asserting here
+    // is that what leaves this function is what the vendor documents.
+    expect(marker).toContain('color:#1A1A1A')
+    // Longitude FIRST, which is the opposite order to every other place this
+    // repo writes a coordinate — swapping them is a valid request for a
+    // plausible-looking place somewhere else entirely, and it would put the pin
+    // there rather than fail.
+    expect(marker?.startsWith(`lonlat:${AMSTERDAM.longitude},${AMSTERDAM.latitude};`)).toBe(true)
+    expect(AMSTERDAM.longitude).toBeLessThan(AMSTERDAM.latitude)
+
+    // NOT on the card: `RideCard` draws its own pin disc in HTML, dead centre,
+    // over a tile centred on the same coordinate. A burned-in marker there
+    // would be a second pin a few pixels from the first.
+    const card = new URL(buildTileUrl(TILE_SPECS.card, AMSTERDAM, 'test-key'))
+    expect(card.searchParams.get('marker')).toBeNull()
   })
 
   it('doubles resolution with scaleFactor rather than with the pixel dimensions', () => {
