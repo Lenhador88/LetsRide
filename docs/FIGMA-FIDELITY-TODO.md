@@ -561,14 +561,27 @@ heading that claims nothing was guessed is exactly where a guess goes unnoticed.
 - [ ] **`10:00 - 15:00` is a range; the schema has one timestamp.** `rides.departure_at` has no
       `ends_at` beside it, so the card renders a single departure time. Adding an end time is a
       small migration and would complete the design as drawn.
-- [ ] **The "All rides" tile's 2×2 collage has no ride photos to show.** *Chose:* the
-      organizers' avatars — real data in the right shape. The design's own empty frame draws
-      four `Grey/10%` quadrants, which is the fallback when there are no avatars either.
+- [ ] **The `From clubs` tile's 2×2 collage has no ride photos to show.** *Chose:* since
+      2026-08-27, the **clubs' own covers** (falling back to their avatars) — the tile stopped
+      meaning "every ride" that day and started meaning "these clubs", so the organizers' faces
+      it drew until then were filler for a question it no longer asks. The design's own empty
+      frame draws four `Grey/10%` quadrants, which is still the fallback when no club has an
+      image. Note `FilterCollage` repeats what it is given to fill four quadrants, so one club
+      draws its cover four times.
 - [ ] **The filter bar draws a rider tile ("itchyboots") among the clubs.** It would mean
       "rides organised by that rider". **Not built** — the product owner specified three tiles
-      for this screen: yours, all, and one per club. One question for the designer: is the
-      rider tile intended here, or carried over from the Postcards bar it shares a component
-      set with?
+      for this screen: yours, **from clubs** (the "all" tile until 2026-08-27, when it narrowed
+      to the rider's own clubs and took their square shape), and one per club. One question for
+      the designer: is the rider tile intended here, or carried over from the Postcards bar it
+      shares a component set with? It has become the likelier of the two — the owner wants
+      rides from connected riders on this bar in future, and a rider tile is the shape that
+      would arrive in.
+- [ ] **`/rides/explore` has no v2 frame at all.** `npm run figma -- ls xplore` finds
+      `Clubs - Explore` and nothing else, so every choice on that screen is *borrowed* from it
+      rather than measured: the titled header with a back button, the `Near <place>` / `More
+      rides` sectioning, and the two placeholder treatments in their slots. Deliberate — the two
+      screens are one idea on two tabs — but it is convention, not fidelity, and a designer
+      should see it before it hardens.
 - [ ] **The `Maybe` pill is `#E58F17`, and it is an unnamed fill.** Every other colour in
       `globals.css` inherits a Figma paint style name; this one has none, so `--color-maybe` is
       ours. Worth asking whether it should join the palette properly.

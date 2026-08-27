@@ -344,10 +344,15 @@ export const queryKeys = {
      * **`/rides` and `/rides/explore` must keep hitting the SAME entry.** The
      * tab root reads this to decide whether its strip may say `near <place>`,
      * and the destination reads it to draw the `Near <place>` section — so a
-     * second entry is a row promising a number the screen behind it does not
+     * second entry is a row promising something the screen behind it does not
      * show. They agree because both resolve the position through
-     * `resolveRiderLocation`, which memoises one answer per page load and rounds
-     * it to two decimals before anything sees it.
+     * `resolveRiderLocation`, which rounds to two decimals before anything sees
+     * it and memoises the answer behind **a TTL, not a page load** — that
+     * component's own header retired the page-load framing, because a Capacitor
+     * WebView is not reloaded between screens. So past the TTL a device-sourced
+     * rider can re-resolve and land on a second entry. That is a cache miss and
+     * never a disagreement: both screens still read whatever the current
+     * position resolves to, under one key.
      *
      * `null` — no resolvable position — is its own segment rather than an
      * omitted one, so an unmeasured list cannot silently share an entry with a

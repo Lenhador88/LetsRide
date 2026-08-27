@@ -37,8 +37,12 @@ import { queryKeys } from '@/lib/query/keys'
  *   has already happened is not a ride to explore, so `getExploreRides` has no
  *   past window at all.
  * - **No filter bar.** Every tile on it is a slice of the rider's own world —
- *   their rides, their clubs — which is the half of the tab this screen exists
- *   to be the complement of.
+ *   their rides, their clubs — which is the half of the app this screen is the
+ *   other side of. **Not its complement, and the difference matters**: a public
+ *   ride in a club the rider has joined appears on both screens, because
+ *   `getExploreRides` excludes the rides they are *on* and not the rides their
+ *   clubs have planned. Read that function's header for why the overlap is
+ *   intended rather than tolerated.
  * - **No RSVP control on the card.** `RideCard` links to the detail screen and
  *   that is where a ride is joined, exactly as `ClubCard`'s `Join club` is the
  *   one affordance Explore clubs adds. The asymmetry is the schema's: joining a
@@ -98,7 +102,10 @@ export default function ExploreRidesPage() {
                 collapse to one unordered list and the strip that led here had
                 to drop its `near …` clause. `px-0` because this slot is already
                 inside a padded block. */}
-            <UseMyLocationRow position={near.data} className="px-0" />
+            <UseMyLocationRow
+              position={positionDecided ? position : undefined}
+              className="px-0"
+            />
 
             {rides.data.length === 0 ? (
               // The honest sentence for both of this screen's zeroes, which are

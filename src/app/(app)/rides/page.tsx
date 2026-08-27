@@ -120,7 +120,7 @@ export default function RidesPage() {
           variant, so it owes the sticky action's own height. The number lives
           in globals.css beside the other two, not here. */}
       <div className="pb-navbar-action-extra flex flex-col">
-        <Suspense fallback={<RidesLoading />}>
+        <Suspense fallback={<RidesLoading strip={<ExploreRidesStrip near={null} />} />}>
           <RidesScreen />
         </Suspense>
       </div>
@@ -323,10 +323,18 @@ function RidesLoading({ strip }: { strip?: ReactNode } = {}) {
   return (
     <>
       <SkeletonFilterBar />
-      {/* In the same slot it occupies on the loaded screen. Absent from the
-          `<Suspense>` fallback, which stands in while `useSearchParams`
-          resolves — there is no position read in flight yet, so there is
-          nothing honest to draw. */}
+      {/* In the same slot it occupies on the loaded screen, **at both cold-load
+          positions**, and that is PD-217 rather than symmetry.
+          `NearbyRidesStrip` drew nothing at an undecided count, so the
+          `<Suspense>` fallback could omit it and still match the gate below.
+          `ExploreRidesStrip` always renders — it is the only door to
+          `/rides/explore` — so an omitted strip here injects its ~64px the
+          tick the boundary resolves and moves every skeleton row down.
+
+          The fallback passes `near={null}`: there is no position read in
+          flight yet, and `null` is exactly what the loaded strip draws while
+          the position is undecided, so the two are the same 64px saying the
+          same thing rather than a placeholder guessing at one. */}
       {strip}
       {/* `py-2` on the wrapper, not the skeleton — same reason as the loaded
           branch: `SkeletonList`'s root is `px-4` only. */}
