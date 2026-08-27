@@ -1135,29 +1135,39 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — the repo holds 81, DEV is at `081` and PROD at `079`
+## Migrations — the repo holds 82, DEV is at `082` and PROD at `079`
 
-**`list_migrations` prints 83 on DEV and 79 on PROD against 81 files, and only ONE of those two
+**`list_migrations` prints 85 on DEV and 79 on PROD against 82 files, and only ONE of those two
 differences is a gap.** DEV's **surplus rows** are files applied there in increments: `063` in
 three — `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private`, where PROD
 holds the one consolidated file — and `080` in two, `rides_carry_their_meeting_points_zone` plus
 `rides_zone_is_not_cleared_with_the_location_group`. **DEV keeps all three `063` rows even though
 `077` has dropped everything they built**; a recorded row is a statement that a file ran, never a
-claim that its objects survive. Count rows against files rather than reading a surplus as drift.
+claim that its objects survive. **Count rows against files rather than reading a surplus as drift**,
+and re-derive both rather than trusting the numbers in this heading — they have been wrong here
+before, in the direction of reading one row too few.
 
-**The gap is `080` and `081`, in that order.** `080` (PD-193, a ride's meeting-point timezone) was
-applied to DEV 2026-08-26; `081` (PD-307, club Threads) on 2026-08-27. Both are **ADDITIVE**
-— `080` a nullable column, a trigger and two column grants; `081` three new tables, their policies,
-two `security definer` RPCs and a publication membership — so both go to PROD **before** the
-promotion build serves, which is the `069` half of the `069`/`070` rule rather than the `070` half.
+**The gap is `080`, `081` and `082`, in that order**, and the order is not a convention: `082`
+renames the objects `081` creates, so the reverse errors outright. `080` (PD-193, a ride's
+meeting-point timezone) was applied to DEV 2026-08-26; `081` (PD-307, club discussions) and `082`
+(PD-313, renaming them to threads) on 2026-08-27. **All three are ADDITIVE** — `080` a nullable
+column, a trigger and two column grants; `081` three new tables, their policies, two `security
+definer` RPCs and a publication membership; `082` a pure rename of `081`'s objects — so all three go
+to PROD **before** the promotion build serves, which is the `069` half of the `069`/`070` rule
+rather than the `070` half.
+
+**PROD holds none of the three tables today** (measured 2026-08-27 at version `079`), so `081`
+followed by `082` lands as a create-then-rename with no rows in between.
 
 Nothing breaks if `080` lands late: the column is NULL on every row, and NULL is the fallback every
-ride already had. **`081` is different and its order within the gap matters.** The client calls
-`club_thread_unread`, `moderate_club_thread` and `delete_own_club_message`; code deployed
-ahead of those functions answers `PGRST202`, which is `079`'s lesson on the same shape — so `081`
-must be on PROD before the promotion build serves, not merely before anyone opens a club.
+ride already had. **`081` and `082` are different, and this is the half a partial promotion gets
+wrong.** The client calls `club_thread_unread`, `moderate_club_thread` and
+`delete_own_club_message`, and the first two exist **only after `082`** — so a promotion that
+applies `080` and `081`, stops, and lets the build serve answers `PGRST202` on every club-thread
+screen, with nothing red anywhere. That is `079`'s lesson on the same shape. Applying to the end of
+the gap is the requirement, not applying "the new ones".
 
-Repo 81 files, PROD 79 rows, DEV 83 rows, one chain, **two promotions owed**.
+Repo 82 files, PROD 79 rows, DEV 85 rows, one chain, **three promotions owed**.
 
 **`078` and `079` both went to PROD on 2026-08-25 BEFORE the #310 promotion build served**, which
 is the additive half of the `069`/`070` rule applied twice in one sitting. `079` in particular had

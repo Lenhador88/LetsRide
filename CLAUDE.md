@@ -624,8 +624,10 @@ by anything, and has been deleted. It is unrelated to `letsride-dev`.
 AHEAD by three and `080`, `081` then `082` are owed to PROD at the next promotion, in that order.**
 All three are additive, so all three go to PROD **before** the promotion build serves, per the
 ordering rule below. `081` creates the club-thread tables under their old `discussion` names and
-`082` renames them, so on PROD that pair is a no-op with no rows in between — but the **order
-inside the gap is not optional**, because the client calls RPCs that exist only once `082` has run. `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
+`082` renames them, so on PROD that pair is a create-then-rename with no rows in between — but the
+**order inside the gap is not optional**, and for two separate reasons that are easy to collapse
+into one: `082` renames objects `081` creates, so the reverse simply errors; and the client calls
+RPCs that exist only after `082`, so stopping *between* them serves `PGRST202` with nothing red. `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
 after it was confirmed serving (destructive), which is the whole ordering rule in one sitting.
 **Level is the exception, not the resting state**: DEV-ahead is where a migration lives between its
 merge and its promotion, and the two were last level on 2026-08-20 at PD-273's promotion and
