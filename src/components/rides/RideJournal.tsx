@@ -111,10 +111,11 @@ export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolea
     // it. `pb-1.5` clears the stamps' drop shadow, which `overflow-x-auto`
     // would otherwise clip along the bottom edge.
     <div className="flex items-start gap-2 overflow-x-auto px-4 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {journal.data.map((postcard) => (
-        <PostcardStamp key={postcard.id} postcard={postcard} />
-      ))}
-
+      {/* First, not last (PD-318) — *"Same for ride list postcards"*. Appended
+          after the stamps, `Add` was off the right edge of a 390px screen the
+          moment a ride had three photos, and nothing on the plan said it was
+          there. A crew member with a well-documented ride was the one least
+          able to add to it. */}
       {canAdd && (
         <Link
           href={routes.newPostcardInRide(rideId)}
@@ -124,6 +125,10 @@ export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolea
           <span className="text-xs font-semibold">Add</span>
         </Link>
       )}
+
+      {journal.data.map((postcard) => (
+        <PostcardStamp key={postcard.id} postcard={postcard} />
+      ))}
     </div>
   )
 }
