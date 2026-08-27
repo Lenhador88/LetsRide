@@ -237,7 +237,19 @@ describe('the cross-references in the real repo', () => {
     // one — which is the rule the task is applying, so the citation is the point
     // of the sentence rather than decoration. Same `Working` collision again, so
     // `firstWords` still admits no new kind.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(12)
+    //
+    // **12 -> 15 on 2026-08-27 (the two postcard-composer proposals).** Three
+    // new ones, all the same `Working` collision and all citing the heading they
+    // actually mean: `postcard-location-defaults-to-a-region`'s `design.md` and
+    // `postcard-audience-follows-its-entry-point`'s `proposal.md` cite
+    // `CLAUDE.md §Working Principles` and `§Working With the Product Owner` for
+    // the rule each is obeying — an objection raised once, the decision
+    // reaffirmed, recorded rather than re-argued. Both proposals record such an
+    // objection, so the citation is the load-bearing half of the sentence.
+    // `firstWords` above still reads `['Before', 'Working']`, which is the
+    // assertion that would have caught a new KIND of collision arriving with
+    // them.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(15)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been
