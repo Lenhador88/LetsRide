@@ -18,6 +18,7 @@ import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM } from '@/lib/routes'
 import type { ViewedProfile } from '@/types'
+import { useSwipeBack } from '@/lib/actions/navigate'
 
 /**
  * Another rider's profile — `Profile / View someone else's profile / Profile
@@ -93,6 +94,9 @@ function ProfileDetailScreen() {
   // data that either has no dependency on the read or degrades gracefully
   // while it is in flight, so the header renders on every pass below —
   // loading, erroring or loaded — matching the spec's *partial* requirement.
+  // PD-341, to the same place the arrow goes.
+  useSwipeBack('/postcards')
+
   const header = (
     <Header
       title={profile.data?.username}

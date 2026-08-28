@@ -1,7 +1,10 @@
+'use client'
+
 import { Header } from '@/components/layout/Header'
 import { RideChatButton } from '@/components/rides/RideChatButton'
 import { RideOptionsMenu } from '@/components/rides/RideOptionsMenu'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { useSwipeBack } from '@/lib/actions/navigate'
 import { routes } from '@/lib/routes'
 
 /**
@@ -108,14 +111,24 @@ export function RideHeader({
 }) {
   const onChat = current === 'chat'
 
+  // Chat and Crew are both entered from the ride, so back returns there rather
+  // than to the list — the plan is the list's child, and the other two are the
+  // ride's. `Ride - Chat` draws the same arrow for all three, which is exactly
+  // the kind of thing a static frame cannot distinguish.
+  const backHref = current === 'plan' ? '/rides' : routes.ride(rideId)
+
+  // PD-341: the edge swipe is a second route to the arrow beside it, so it goes
+  // to the same place by construction — one value, read twice. All four ride
+  // screens get it, chat included: the composer is a text field, which
+  // `declinesSwipeBack` refuses on its own, and the message list scrolls
+  // vertically. `/rides/detail/edit` draws a plain `Header` and is deliberately
+  // not one of these — see `useSwipeBack`.
+  useSwipeBack(backHref)
+
   return (
     <Header
       title={title}
-      // Chat and Crew are both entered from the ride, so back returns there
-      // rather than to the list — the plan is the list's child, and the other
-      // two are the ride's. `Ride - Chat` draws the same arrow for all three,
-      // which is exactly the kind of thing a static frame cannot distinguish.
-      backHref={current === 'plan' ? '/rides' : routes.ride(rideId)}
+      backHref={backHref}
       subRow={
         onChat ? (
           // `Ride - Chat` replaces the page switcher with a crew count
