@@ -114,15 +114,27 @@ function ClubManageRidersScreen() {
   // pointing here, and the next tap does the same thing. `ClubOptionsMenu`'s
   // `Leave club` and `PostcardMenu` both pair `showBanner` with their own
   // `router.replace` for exactly this.
+  //
+  // **It states the RULE, never a change**, and the difference is the whole of
+  // what the copy may claim. This screen knows *you may not manage this*; it
+  // does not know *you used to*, and `mayManage === false` is reached by at
+  // least two riders for whom nothing was taken away — a member following a
+  // link an admin shared, and a rider who was just PROMOTED, whose cached
+  // `clubs.detail(id)` entry predates the promotion and so answers false on the
+  // first pass. "You no longer manage this club" would tell that second rider
+  // they had lost management in the same minute they gained it. The bounce
+  // still self-heals — the club detail revalidates the same key and a second
+  // tap works — but the sentence must survive being wrong about the cause.
   useEffect(() => {
     if (mayManage !== false) return
-    showBanner('You no longer manage this club')
+    showBanner('Only a club’s owner and admins can manage its riders')
     router.replace(routes.club(id))
-    // `showBanner` is deliberately absent: it comes from a context whose value
-    // is stable for the provider's lifetime, and naming it would re-run this on
-    // any re-render of that provider — firing the banner twice for one bounce.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mayManage, router, id])
+    // `showBanner` IS listed, with no suppression: `useBanner` returns a
+    // `useCallback(…, [])` whose identity never changes for the provider's
+    // lifetime, which `Banner.tsx`'s own header states and
+    // `MarkNotificationsRead` already relies on. A blanket disable here would
+    // also stop checking every dependency a later edit adds.
+  }, [mayManage, router, id, showBanner])
 
   if (club.data === null) notFound()
 

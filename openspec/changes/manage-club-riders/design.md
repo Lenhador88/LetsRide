@@ -411,8 +411,8 @@ is not secret — every member can already read it at `/clubs/detail/members` �
 screen, arriving from the other side. The guard is an affordance; the three RPCs are the boundary,
 and each refuses with one `insufficient_privilege` whatever the client renders.
 
-**`notFound()` was written here first and is wrong**, which `reviewer` caught on the built branch.
-It is this app's answer to *"no such club, or not one you may see"*, conflated on purpose; reaching
+**`notFound()` is the wrong answer here, and it is the one a careful author reaches for**, because
+every sibling detail route uses it. It is this app's answer to *"no such club, or not one you may see"*, conflated on purpose; reaching
 this screen means `getClub` returned a club, so the reader can already see it and there is nothing
 to hide. Sending them to a 404 on a club plainly in front of them is the app disagreeing with
 itself — and the case that makes it reachable is one this change creates, not a guessed URL: an
