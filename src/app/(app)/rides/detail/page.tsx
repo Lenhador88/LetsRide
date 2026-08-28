@@ -163,6 +163,12 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
   // space rather than a blank line because `ExpandableText` renders a single
   // `<p>` with no `whitespace-pre-line`, so a newline would collapse to exactly
   // this anyway and only the source would suggest otherwise.
+  //
+  // **`description` is read-only now (PD-320) and still read.** Both ride forms
+  // dropped the field, so nothing writes the column any more — but the rows that
+  // already carry text keep rendering it here, which is the decision that story
+  // left to the build. Dropping the read too would silently delete prose riders
+  // wrote and, with no field left, could never retype.
   const blurb = [ride.description, ride.route_description].filter(Boolean).join(' ')
 
   return (

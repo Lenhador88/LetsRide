@@ -370,14 +370,18 @@ export type RideDetail = {
 
 /**
  * One ride, as `/rides/detail/edit` renders it — PD-101. The editable field
- * set only: `description D5` lists exactly these eight columns as what the
- * schema actually has, against the five drawn fields the v1 frame has no
- * column for.
+ * set only: `description D5` lists these columns as what the schema actually
+ * has, against the five drawn fields the v1 frame has no column for.
+ *
+ * **`description` came off this type with the field (PD-320)**, and it is the
+ * one column here that `rides` still has. `RideDetail` keeps it, because the
+ * detail screen still renders what existing rows hold; this type is the
+ * *editable* set, and a field nothing edits on a type nothing else reads is how
+ * a dead column comes back looking live.
  */
 export type RideForEdit = {
   id: string
   title: string
-  description: string | null
   route_description: string | null
   meeting_point: string
   departure_at: string

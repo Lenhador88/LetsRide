@@ -632,7 +632,7 @@ export async function getRideForEdit(id: string): Promise<RideForEdit | null> {
   const result = await supabase
     .from('rides')
     .select(`
-      id, title, description, route_description, meeting_point, departure_at,
+      id, title, route_description, meeting_point, departure_at,
       timezone, is_public, club_id, organizer_id,
       start_place_id, latitude, longitude,
       club:clubs(id, name)
