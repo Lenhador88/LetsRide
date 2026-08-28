@@ -28,8 +28,12 @@ do not spend the session hunting for a way through.** `ToolSearch` is filtered b
 line before it searches, so a rotated tool is not found-then-refused — it is **never surfaced at
 all**. Both passes that day probed `select:` and keyword for Supabase and Linear and got nothing;
 the keyword search for Linear returned a *GitHub* tool, GitHub being the one connector whose
-friendly name was resolving. **There is no recovery from inside the agent.** Report which passes
-did not run and review what you can reach.
+friendly name was resolving. **There is no recovery from inside a subagent, which is what you
+are.** Report which passes did not run and review what you can reach.
+
+That is a fact about *subagents* and does not travel: a **main thread** has no `tools:` line, so a
+keyword search does recover a rotated connector there, and `.claude/commands/queue-pickup.md`
+STEP 0 is right to tell one to try. Do not file those two rules as contradicting each other.
 
 **The `tools:` line above now carries every MCP tool twice** — the friendly name and the
 UUID-prefixed one the same server registers as in other sessions — so the rotation should no

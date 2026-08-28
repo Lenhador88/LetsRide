@@ -259,6 +259,13 @@ Everywhere below writes `mcp__<connector>__<tool>` for readability. **Read it as
 no match means "search again by keyword", never "the connector is gone" — only a keyword search
 coming back empty establishes that.
 
+**`CLAUDE.md` §The Agent Squad's "there is no recovery from inside a subagent" does NOT overrule
+that, and reading it as though it does halts the queue.** You are a **main thread** and hold no
+`tools:` line, so nothing filters your search; that paragraph describes a *subagent*, whose
+`ToolSearch` is filtered by its own allowlist before it runs. Keyword search still recovers a
+rotated connector here — `PD-154`'s 2026-08-09 comment records it — so run it before concluding
+anything is unreachable.
+
 You need two connectors: **Linear** (the board) and **Claude Code Remote** (`create_session`, and
 `get_session` for STEP -1). **A deferred tool is not a missing one**: `InputValidationError` means
 `ToolSearch` then call it, `No such tool available` means absent.

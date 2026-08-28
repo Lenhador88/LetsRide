@@ -147,6 +147,15 @@ search rather than by pasting the literal name. **A `select:` lookup that return
 "search again by keyword", never "the connector is gone"** — only a keyword search coming back
 empty establishes that.
 
+**That still holds here, and `CLAUDE.md` §The Agent Squad's "there is no recovery" does NOT
+overrule it — the two are about different things.** You are a **main thread**: you have no
+`tools:` line, so nothing filters your search and the keyword lookup genuinely recovers a rotated
+connector (`PD-154`'s 2026-08-09 comment records `+list_issues linear` doing it). That paragraph
+is about a **subagent**, whose search is filtered by its own allowlist before it runs — which is
+why the fix there was to put both spellings on the brief. **Do not skip the keyword search on the
+strength of it**: a firing that reads a `select:` miss as a dead connector and sends the
+cannot-reach-Linear push has stopped the queue over a recovery that works.
+
 **Send it yourself, with the `PushNotification` tool.** A self-bound Routine cannot carry
 completion notifications: the server rejects the `notifications` parameter for any trigger
 bound to a persistent session, so the only notification that will ever reach the owner from

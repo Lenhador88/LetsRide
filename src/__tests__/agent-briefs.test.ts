@@ -349,11 +349,45 @@ describe('agent briefs do not describe a world that has moved on', () => {
       Figma: FIGMA_UUID,
     } as const
 
+    /*
+     * `github` is the one connector on a brief with NO twin, and that is a
+     * recorded gap rather than an oversight: it held its friendly name through
+     * both observed rotations (2026-08-09 and 2026-08-27), so no UUID for it has
+     * ever been seen and none can be written. `reviewer.md`'s four
+     * `mcp__github__*` tools are therefore exposed to a rotation that has not
+     * happened yet — it would lose PR reading and CI logs, which is the delta
+     * re-review path.
+     *
+     * Naming it here rather than letting the filter skip it silently is the
+     * point: without this the test cannot tell "deliberately excluded, no id
+     * observed" from "forgotten", which is the exact confusion the twins exist
+     * to end. A FIFTH connector appearing on any brief fails below rather than
+     * being quietly ignored.
+     */
+    const NO_UUID_OBSERVED = ['github']
+
     const checked: string[] = []
     for (const { name, body } of briefs()) {
       const frontmatter = body.split('\n---')[0]
       const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
-      const friendly = declared.filter((t) => /^mcp__(Supabase|Linear|Figma)__/.test(t))
+
+      /*
+       * Every friendly-named connector tool, not only the three with twins — so
+       * an unrecognised connector reaches the assertion below instead of the
+       * filter. The exclusion is the UUID SHAPE rather than a leading letter:
+       * `d217aba8-…` begins with a hex letter, so `/^mcp__[A-Za-z]/` matches the
+       * twins too and every UUID reads as an unknown connector.
+       */
+      const named = declared.filter((t) => /^mcp__/.test(t) && !/^mcp__[0-9a-f]{8}-/.test(t))
+      const servers = [...new Set(named.map((t) => /^mcp__([^_]+(?:_[^_]+)*)__/.exec(t)![1]))]
+      for (const server of servers) {
+        expect(
+          [...Object.keys(UUID), ...NO_UUID_OBSERVED],
+          `${name} names connector "${server}", which this test knows nothing about — add its UUID to the table above, or to NO_UUID_OBSERVED with the reason. Skipping it silently is how a connector goes untwinned unnoticed.`,
+        ).toContain(server)
+      }
+
+      const friendly = named.filter((t) => /^mcp__(Supabase|Linear|Figma)__/.test(t))
       if (friendly.length === 0) continue
       checked.push(name)
 
@@ -366,9 +400,17 @@ describe('agent briefs do not describe a world that has moved on', () => {
         ).toContain(twin)
       }
 
-      // The reverse, so a twin left behind by a deleted tool is caught too: a
-      // stale UUID entry is inert rather than harmful, but it reads as coverage.
-      const twins = declared.filter((t) => /^mcp__[0-9a-f]{8}-/.test(t))
+      /*
+       * The reverse, so a twin left behind by a deleted tool is caught too: a
+       * stale UUID entry is inert rather than harmful, but it reads as coverage.
+       *
+       * Counted against the twinnable set only. Comparing every `mcp__<uuid>__`
+       * entry against `friendly` would make the FIRST correct addition of a
+       * github twin fail a brief that is right — the two halves have to agree
+       * about which connectors are in scope.
+       */
+      const twinnable = new Set(friendly.map((t) => `mcp__${UUID[/^mcp__(Supabase|Linear|Figma)__/.exec(t)![1] as keyof typeof UUID]}__${t.split('__')[2]}`))
+      const twins = declared.filter((t) => twinnable.has(t))
       expect(
         twins.length,
         `${name} has ${twins.length} UUID entries for ${friendly.length} friendly ones — they must correspond one to one`,

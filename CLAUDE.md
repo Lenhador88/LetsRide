@@ -967,24 +967,52 @@ tool being no error. A keyword search (`+execute_sql supabase`) tells them apart
 diagnosis, not recovery**.
 
 **Measured against a real rotation on 2026-08-27, and the mechanism is worse than "refused":
-`ToolSearch` is filtered by the agent's own `tools:` line before it searches, so a rotated tool
-is never surfaced at all.** Both `reviewer` passes that day probed `select:` and keyword for
-Supabase and Linear and found nothing — the keyword search for Linear returned a *GitHub* tool,
-GitHub being the one connector then resolving under its friendly name. **So an agent cannot
-recover from inside itself, and a brief that tells it to try is describing an escape hatch behind
-the door it is meant to open.** That was `PD-154`'s chosen remedy, and it is why this recurred
-after that issue closed.
+in a SUBAGENT, `ToolSearch` is filtered by that agent's own `tools:` line before it searches, so
+a rotated tool is never surfaced at all.** Both `reviewer` passes that day probed `select:` and
+keyword for Supabase and Linear and found nothing — the keyword search for Linear returned a
+*GitHub* tool, GitHub being the one connector then resolving under its friendly name. **So a
+subagent cannot recover from inside itself, and a brief that tells it to try is describing an
+escape hatch behind the door it is meant to open.** That was `PD-154`'s chosen remedy, and it is
+why this recurred after that issue closed.
+
+**The scope of that is the whole of it, and reading it wider stops the queue.** A **main thread
+has no `tools:` line**, so nothing filters its search and a keyword lookup *does* recover a
+rotated connector there — `PD-154`'s own 2026-08-09 comment records `+list_issues linear` doing
+exactly that. So `.claude/commands/queue-pickup.md` STEP 0 and `queue-dispatch.md` are **right** to
+say a `select:` miss means "search again by keyword", and this paragraph does not overrule them:
+a dispatcher that reads "there is no recovery", skips the keyword search and sends the
+cannot-reach-Linear push has abandoned a recovery known to work, and halted the queue to do it.
 
 **The fix is the `tools:` line carrying BOTH spellings**, which every brief reaching Supabase,
 Linear or Figma now does — the friendly name and the UUID-prefixed one. **The UUIDs identify a
-connector, not a session**: `.claude/settings.json` recorded Supabase's on 2026-08-07 and it was
-byte-identical on 2026-08-27, twenty days later. Re-derive rather than trust that pairing —
-a brief's two halves must stay in step, and `src/__tests__/agent-briefs.test.ts` asserts the set
-of briefs it examined for exactly the reason a silent skip is invisible:
+connector, not a session**, measured on three: Supabase, Linear and Figma all carry the same
+prefix in `PD-154`'s 2026-08-09 comment as they did on 2026-08-27, and `.claude/settings.json`
+recorded Supabase's on 2026-08-07 — nineteen and twenty days apart.
+
+**`src/__tests__/agent-briefs.test.ts` is the check, and no grep is.** Every twin sits on one
+`tools:` line, so `grep -c` counts *lines* and answers 1 however many are there — a boolean
+wearing a count's clothes, and this file's own §Working Principles trap in miniature. The test
+asserts the pairing both ways and fails on a connector it has never heard of:
 
 ```bash
-grep -c "mcp__[0-9a-f]\{8\}-" .claude/agents/reviewer.md   # UUID twins present
+npx vitest run src/__tests__/agent-briefs.test.ts
+grep -o "mcp__[0-9a-f]\{8\}-" .claude/agents/reviewer.md | wc -l   # 8, if you want the number
 ```
+
+**Two things this does NOT fix, and reading it as complete is how the next one gets inherited:**
+
+- **`github` has no twin on any brief**, because it held its friendly name through both observed
+  rotations and no UUID for it has ever been seen. `reviewer`'s four `mcp__github__*` tools —
+  PR reading and CI logs, the delta re-review path — are exposed to a rotation that has not
+  happened yet. The test names the exclusion rather than skipping it silently, so a fifth
+  connector fails loudly.
+- **`.claude/settings.json`'s `permissions.allow` carries the identical defect and fails
+  harder.** Those ~40 literal `mcp__Vercel__*`, `mcp__github__*` and `mcp__Linear__*` names are
+  name-matched too, and `PD-154`'s 2026-08-09 comment measured the result: a rotated
+  `mcp__Vercel__list_deployments` came back `MCP error -32003: MCP tool call requires approval`,
+  which in an unattended firing is a hard stop rather than a degraded run. **Pasting UUIDs there
+  is not the obvious fix** — `autoMode.allow` deliberately chose capability-prose over literal
+  ids for this exact reason, and widening a permission surface is the owner's call. Open.
 
 **The report is still owed when a connector arrives under a third spelling nobody has recorded** —
 an agent naming the passes that did not run; restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a

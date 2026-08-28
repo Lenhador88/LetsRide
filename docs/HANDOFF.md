@@ -1936,6 +1936,21 @@ stays valid provenance for ever, never rewritten or backfilled.
 
 ## Known issues, roughly by cost to fix
 
+**Does `tools:` accept a wildcard? The next session can answer it for free, and this one could
+not (PD-154).** Every squad brief now lists each MCP tool twice — the friendly name and the
+UUID-prefixed one the same server registers as in other sessions — which is 51 duplicate entries
+across 8 briefs. `tools: mcp__Supabase__*` would replace the lot, but it is undocumented for
+subagent frontmatter and **untestable from inside a session**: the agent registry loads at session
+start, so a probe brief written mid-session is never registered. Measured 2026-08-27 by trying
+exactly that, and independently confirmed by a `reviewer` running on the *pre-diff* copy of its
+own brief in the same session.
+
+So the cheap experiment is: **write a one-off brief with `tools: ToolSearch, mcp__Supabase__*`,
+and have the FOLLOWING session spawn it** and report whether `ToolSearch` surfaces anything. One
+subagent, no build. If wildcards resolve, the twins and half of
+`src/__tests__/agent-briefs.test.ts`'s new parity case collapse into one entry per connector. If
+they do not, the duplication is correct and this line can go.
+
 **Ride invites are in — and three things about them are decisions rather than gaps (`083`,
 PD-329).**
 
