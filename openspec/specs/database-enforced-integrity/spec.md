@@ -34,6 +34,13 @@ Verified against `pg_constraint` on the live project 2026-08-05: no CHECK exists
 **Nine of the ten are still live. `rides.max_riders` is not** — `077` (PD-293) dropped the column
 and `018`'s `rides_max_riders_range` with it, so the requirement holds over the remaining nine.
 
+**One of those nine has no Zod schema left to match, and its CHECK is deliberately kept anyway.**
+PD-320 took the description field off both ride forms, so `RIDE_DESCRIPTION_MAX` is gone and
+nothing in the app writes `rides.description` — but `018`'s `rides_description_length` stands,
+because the column still holds what riders wrote before the field left and the ride detail still
+renders it. Read "matching its Zod schema exactly" as satisfied-and-frozen there rather than as
+violated: the day a writer returns, it returns with a bound that matches this CHECK.
+
 The bounds themselves are not new decisions. `clubs` and `rides` bounds were chosen rather
 than measured (their Figma frames are OLD-stylesheet and marked To do) and the migration
 adopts them as written rather than reopening them.

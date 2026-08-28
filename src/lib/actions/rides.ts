@@ -210,10 +210,15 @@ export async function createRide(
     .select('id')
     .single()
 
-  // 022 refuses a public ride in a private club. Reachable from the default
-  // path — the audience checkbox ships ticked and the club picker cannot tell a
-  // private club from a public one — so the generic message below would leave
-  // the rider with no route to the fix.
+  // 022 refuses a public ride in a private club. **No longer reachable from the
+  // DEFAULT path — the audience checkbox ships clear since PD-320 — but still
+  // reachable in one tap**, because the club picker cannot tell a private club
+  // from a public one, so a rider who ticks the box has no way to see it coming
+  // and the generic message below would leave them with no route to the fix.
+  //
+  // The flip narrows how often this fires; it does not retire the branch, and
+  // deleting it on the strength of the new default would put that rider back in
+  // front of "That ride could not be created.".
   //
   // Matched on the message rather than on `23514` alone, because 018's text
   // bounds raise the same SQLSTATE and a title-too-long must not be reported as
