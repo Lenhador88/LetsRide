@@ -649,7 +649,7 @@ the words *"stopped being **Owner**"*, so the obvious command counts its own obi
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
-| 7 | ~~**Signup never exercised end to end**~~ — **both halves are proven: the AUTH SERVER 2026-08-16 (`PD-91`), and the APP's confirmation-on arm 2026-08-27 (`PD-252`)** | Read those issues for the calls. PD-91 ran signup → emailed link → verify → password grant against PROD with six raw HTTP calls, so `signUp` itself never ran; `scripts/probes/signup-confirmation.mjs` closed that, driving the app against PROD through the relay — 12/12 green, 0 residue. The `!data.session` arm (`src/lib/actions/auth.ts`) and its "Check your email" screen (`src/app/auth/signup/page.tsx`) have now executed, and the emailed link lands the rider on `/onboarding/terms` signed in. **DEV still structurally cannot cover them** — `mailer_autoconfirm: true` means a signup always returns a session, and a *duplicate* errors, so `checkRefusedSignup` takes a third arm, `alreadyRegistered`. What is left is the *automated* check, which needs a new branch rather than a permitted ref: §Signup below has the mechanism, `PD-334` the decision |
+| 7 | ~~**Signup never exercised end to end**~~ — **the app's confirmation-on arm is proven, 2026-08-27 (`PD-252`); the AUTH SERVER was proven 2026-08-16 (`PD-91`)** | **The DEPLOYED BUNDLE is still unexercised and cannot be, from a session** — `app.letsride.social:443` is refused by the agent proxy (`403` to `CONNECT`), so what ran is the app's own code on a local dev server pointed at PROD through the relay. That is the arm, and it is what was unproven; it is not the production build. `PD-91` used six raw HTTP calls to GoTrue, so `signUp` itself never ran; `scripts/probes/signup-confirmation.mjs` closed that at **12/12, 0 residue**. The `!data.session` arm (`src/lib/actions/auth.ts`) and its "Check your email" screen (`src/app/auth/signup/page.tsx`) have now executed, and the emailed link lands the rider signed in on `/onboarding/terms`. **DEV structurally cannot cover them, measured rather than read off decision #6** — `/auth/v1/settings` reports `mailer_autoconfirm` **True** on `fpmrimzxadewsaiwpsel` and **False** on `zwprydcyryvudhurbnye`, so a DEV signup always returns a session and a *duplicate* errors, taking a third arm, `alreadyRegistered`. What is left is the *automated* check, which needs a new branch rather than a permitted ref: §Signup below has the mechanism, `PD-334` the decision |
 
 Check each guideline against the live text before building to it — they move, and this table
 will not.
@@ -2339,27 +2339,31 @@ Two consequences, and the second is the one that will bite:
 - **`PD-91` proved the auth SERVER; the app's own arm is proven too — 2026-08-27, PD-252.**
   PD-91 made six raw HTTP calls to GoTrue, so `signUp` never ran.
   `scripts/probes/signup-confirmation.mjs` drives the app instead, against PROD through the
-  relay, and came back **12/12 green** across its two phases: the `!data.session` arm in
-  `src/lib/actions/auth.ts` returns `sent`, `/auth/signup` swaps the form for *"Check your
-  email"* **in place** — no alert, no navigation, no form left on screen — the emailed link is
-  accepted, and `/auth/callback` exchanges the code and the guard lands the rider on
-  `/onboarding/terms` with `terms_accepted_at` still NULL. That last part is `023`'s gap being
-  closed by the database rather than by trust, observed rather than argued. **0 residue**: the
-  account was deleted and the mail trashed, as `PD-91` did.
+  relay, and came back **12/12 green** across its two phases (run at 22:54Z on 2026-08-27, and
+  re-run in its committed form at 07:21Z on 2026-08-28 after review changed the assertions): the
+  `!data.session` arm in `src/lib/actions/auth.ts` returns `sent`, `/auth/signup` swaps the form
+  for *"Check your email"* **in place** — no alert, no navigation, no form left on screen — the
+  emailed link is accepted, and `/auth/callback` exchanges the code and the guard lands the rider
+  on `/onboarding/terms` with `terms_accepted_at` still NULL. That last part is `023`'s gap being
+  closed by the database rather than by trust, read straight off `auth.users` and `profiles`.
+  **0 residue**, verified by query: 0 probe rows, 0 orphan profiles, and the mail trashed.
 
   ```bash
-  # the header carries the relay + dev-server commands and the two fail-closed gates
+  # the header carries the relay + dev-server commands and all four fail-closed gates
   node scripts/probes/signup-confirmation.mjs signup you+pd252-1@gmail.com
   ```
 
   **What that run could NOT reach, and it is not the arm.** `app.letsride.social:443` is refused
   by this container's agent proxy — `403` to `CONNECT`, in `recentRelayFailures`, measured
-  2026-08-27 — so the deployed bundle cannot be driven from a session at all. The app under test
-  is the local dev server on `http://localhost:3000`, an origin PROD's allowlist deliberately
-  does not carry, so GoTrue **discarded the whole `redirect_to`** and substituted the Site URL:
-  the mail linked to `https://app.letsride.social?code=…`, path and `next` gone. That is
-  `docs/ENVIRONMENTS.md` §The redirect allowlist working as designed and re-measured; the probe
-  reconstructs the callback URL production emits and says on screen that it did.
+  2026-08-27 — so **the deployed bundle cannot be driven from a session at all and remains
+  unexercised**. The app under test is the local dev server on `http://localhost:3000`, an origin
+  PROD's allowlist deliberately does not carry, so GoTrue **discarded the whole `redirect_to`**
+  and substituted the Site URL: the mail linked to `https://app.letsride.social?code=...`, path
+  and `next` gone. That is `docs/ENVIRONMENTS.md` §The redirect allowlist working as designed and
+  re-measured. The probe then drives the callback URL an allowlisted origin **would** have
+  produced — **an inference from the allowlist, not an observation**; what was observed is the
+  substituted URL. The `code` is GoTrue's own and unmodified; only the delivery address is
+  restored.
 
   **The two phases share one browser, and that is a product property rather than a probe
   artifact.** The flow is PKCE, so `signUp` leaves a `code_verifier` in the storage of the
@@ -2370,14 +2374,22 @@ Two consequences, and the second is the one that will bite:
   **Automating it is still a separate call — PD-334 — and the third arm is why.**
   `checkRefusedSignup` (`scripts/walk.mjs`) posts a duplicate address; with
   `mailer_autoconfirm: true` GoTrue *errors*, so `signUp` takes `alreadyRegistered`. With
-  confirmation **on** the duplicate-signup mitigation returns success with an empty `identities`
-  array instead — **measured on a second probe run, which rendered the same "Check your email"
-  screen for an address that was already confirmed, and sent no second mail.** All four of that
-  phase's assertions assert the *refusal*, so against that screen there is no alert and no
-  `input[name="email"]` at all, the field reads reject on timeout, and the run goes **RED**.
-  `runRefusedSignup`'s ref gate exists to stop exactly that. So a walk phase needs its own
-  assertions **and** `WRITABLE_REFS` widened onto a confirmation-on ref, where every run emails a
-  real address on the production auth server.
+  confirmation **on** the duplicate-signup mitigation returns success and an empty `identities`
+  array instead — **measured directly against PROD**, one call, rather than inferred from the
+  screen it produces:
+
+  ```bash
+  curl -s -X POST "https://<prod ref>.supabase.co/auth/v1/signup" -H "apikey: <publishable>" \
+    -H "Content-Type: application/json" -d '{"email":"<an existing address>","password":"..."}'
+  # -> 200, "identities": [], no error   (and no second mail, for an already-CONFIRMED address)
+  ```
+
+  So the same phase falls through to `!data.session` and renders "Check your email" — observed on
+  a second probe run. All four of that phase's assertions assert the *refusal*, so against that
+  screen there is no alert and no `input[name="email"]` at all, the field reads reject on timeout,
+  and the run goes **RED**. `runRefusedSignup`'s ref gate exists to stop exactly that. So a walk
+  phase needs its own assertions **and** `WRITABLE_REFS` widened onto a confirmation-on ref, where
+  every run emails a real address on the production auth server.
 - **The cross-device confirm route is BUILT and INERT, and turning it on is an owner action.**
   `/auth/confirm` (`src/app/auth/confirm/page.tsx`) verifies an emailed `token_hash` through
   `verifyOtp`, which needs no PKCE verifier and therefore works on any device. **Nothing links to
