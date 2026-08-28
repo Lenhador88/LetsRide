@@ -9,7 +9,9 @@ import { ErrorState } from '@/components/ui/ErrorState'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getClub } from '@/lib/data/clubs'
-import { getRides } from '@/lib/data/rides'
+import { getRides, withRideDistance } from '@/lib/data/rides'
+import type { RiderLocation } from '@/lib/location/rider-location'
+import { useRiderPosition } from '@/lib/location/use-rider-position'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM } from '@/lib/routes'
@@ -66,6 +68,13 @@ function ClubRidesScreen() {
     getRides({ kind: 'club', id })
   )
 
+  // For the cards' `12 km away` (PD-340). Read rather than threaded, on the key
+  // every other screen that measures a distance shares — and it does NOT gate
+  // anything here: the rows are already in hand and the clause simply appears
+  // when the position lands, which is a line of text arriving rather than a
+  // layout moving.
+  const { position } = useRiderPosition()
+
   // `null` is "no such club, or one you may not see" — the same answer on
   // purpose. `undefined` is only "not yet", and 404-ing on it would flash a 404
   // on every load.
@@ -106,7 +115,7 @@ function ClubRidesScreen() {
                     No upcoming rides are planned, yet!
                   </p>
                 ) : (
-                  <RideList rides={rides.data.upcoming} />
+                  <RideList rides={rides.data.upcoming} near={position} />
                 )}
 
                 {rides.data.past.length > 0 && (
@@ -114,7 +123,7 @@ function ClubRidesScreen() {
                     {/* `px-0`: this screen's own wrapper already carries the
                         `px-4` the header would otherwise double. */}
                     <SectionHeader title="Past rides" className="px-0 pb-2 pt-4" />
-                    <RideList rides={rides.data.past} />
+                    <RideList rides={rides.data.past} near={position} />
                   </>
                 )}
 
@@ -145,13 +154,19 @@ function ClubRidesScreen() {
   )
 }
 
-/** One section of the screen. Both draw the same card, with the club chip off. */
-function RideList({ rides }: { rides: RideListItem[] }) {
+/**
+ * One section of the screen. Both draw the same card, with the club chip off.
+ *
+ * `withRideDistance` here rather than in `getRides`, for the reason `/rides`
+ * gives at its own `RideCards`: the read is keyed on the club, and re-keying it
+ * on the rider's position would refetch the list when a fix lands.
+ */
+function RideList({ rides, near }: { rides: RideListItem[]; near: RiderLocation | null }) {
   return (
     <ul className="flex flex-col gap-2">
       {rides.map((ride) => (
         <li key={ride.id}>
-          <RideCard ride={ride} showClub={false} />
+          <RideCard ride={withRideDistance(ride, near)} showClub={false} />
         </li>
       ))}
     </ul>

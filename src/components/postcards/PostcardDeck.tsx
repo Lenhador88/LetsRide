@@ -8,6 +8,7 @@ import { SwipeCoach } from '@/components/postcards/SwipeCoach'
 import { cn } from '@/lib/utils'
 import type { Postcard } from '@/types'
 import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
+import { SWIPE_BACK_OPT_OUT } from '@/lib/swipe-back'
 
 /**
  * The home screen's card stack — `Postcard Stack` in
@@ -531,7 +532,20 @@ export function PostcardDeck({
           `max-h-[36rem]` keeps it card-shaped where the slot is unusually tall
           — a tablet, or a phone in a browser with no chrome — rather than
           letting a 342px-wide card stretch to 700. */}
-      <div className="relative h-full max-h-[36rem] w-full max-w-[342px]">
+      {/* PD-341: this deck owns left/right through the pointer handlers below,
+          so the edge-swipe-back gesture must decline anywhere inside it. The
+          attribute rather than the geometry test that catches every other
+          horizontal surface in the app — the deck does not scroll, so there is
+          no overflow for `declinesSwipeBack` to notice.
+
+          Nothing renders it on a screen with a back control today (`/postcards`
+          is a tab root, and the viewer is a modal, which the gesture refuses
+          outright). It is here because the ownership is a property of the
+          component, not of where it currently sits. */}
+      <div
+        {...{ [SWIPE_BACK_OPT_OUT]: 'off' }}
+        className="relative h-full max-h-[36rem] w-full max-w-[342px]"
+      >
         {visible.map((postcard, depth) => {
           const isFront = depth === 0
           const behind = BEHIND[depth - 1]

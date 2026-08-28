@@ -32,6 +32,7 @@ import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 import { useClubThreadStream } from '@/lib/realtime/useClubThreadStream'
 import { CLUB_MESSAGE_MAX_LENGTH } from '@/lib/validation/clubs'
 import type { ClubChatMessage } from '@/types'
+import { useSwipeBack } from '@/lib/actions/navigate'
 
 /**
  * One club thread — the app's **second** live thread (`081`, PD-307), built
@@ -98,6 +99,21 @@ function ClubThreadScreen() {
 
   const [sending, setSending] = useState<ClubChatMessage[]>([])
 
+  // Read from the URL, so it is right while the thread is still arriving and
+  // after it has failed — the same reason the arrow below takes it.
+  const backHref = clubId ? routes.clubThreads(clubId) : '/clubs'
+
+  // PD-341, folded in: without it this screen and the ride chat — the app's two
+  // conversations, one gesture apart — would answer the same swipe differently,
+  // because the ride's chat inherits the gesture from `RideHeader` and this one
+  // draws a plain `Header`. The composer is a textarea, which
+  // `declinesSwipeBack` refuses on its own, so the reply half is unaffected.
+  //
+  // Above the `notFound()`, which throws during render: a hook past it runs on
+  // the pass where the thread is still arriving and not on the one that decides
+  // there is none.
+  useSwipeBack(backHref)
+
   // `null` is decided — no such thread, or none this rider may see. `undefined`
   // is the effect not having answered yet, and 404ing on it would flash one on
   // every load.
@@ -107,7 +123,7 @@ function ClubThreadScreen() {
     <>
       <Header
         title={thread.data?.title}
-        backHref={clubId ? routes.clubThreads(clubId) : '/clubs'}
+        backHref={backHref}
         action={
           // Waits for all three: a menu drawn before the club and the profile
           // land would offer the wrong row, or none, and then rewrite itself.
