@@ -323,6 +323,22 @@ export type RideDetail = {
   organizer_id: string
   organizer: PublicProfile | null
   club: EmbeddedClub | null
+  /**
+   * `051`'s pair for the meeting point, so this screen can say how far away it
+   * is (PD-340) — the same columns `RideListItem` already carried, arriving
+   * here for the same reason: the distance is measured against the row rather
+   * than fetched with it, so `getRide` stays keyed on the ride id alone.
+   *
+   * **Still not a map.** Decision #3 is a static thumbnail plus a deeplink, so
+   * there is no client-side map to hand a coordinate to and `map_detail_url` is
+   * unaffected. This pair is read by `distanceKm` and nothing else.
+   *
+   * **NULL is the ordinary case**, not a fault: every ride created before
+   * `resolve-ride-location` deployed carries one, and so does any ride whose
+   * geocode failed. Such a ride simply draws no distance.
+   */
+  latitude: number | null
+  longitude: number | null
   /** This viewer's own RSVP. The organizer reads as `going` without a row. */
   attendance: RideAttendance
   /**

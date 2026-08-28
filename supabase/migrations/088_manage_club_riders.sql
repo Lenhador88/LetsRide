@@ -10,9 +10,11 @@
 -- club has exactly one person who can act, and no way to remove anybody,
 -- including a rider who has to be removed.
 --
--- This file adds the two operations and adds NO policy. Both are narrow
--- `security definer` RPCs on `043`'s shape — `moderate_club_thread` and
--- `delete_owned_club` — because the alternative is a permanent widening:
+-- This file adds THREE published operations and adds NO policy — one to remove
+-- and two to move a rider between the roles, §2 having no role argument to
+-- carry both directions. All three are narrow `security definer` RPCs on
+-- `043`'s shape — `moderate_club_thread` and `delete_owned_club` — because the
+-- alternative is a permanent widening:
 --
 --   * a `club_members` UPDATE policy would have to admit an admin writing
 --     ANOTHER rider's row, and RLS cannot see which COLUMN changed, so the
@@ -373,10 +375,12 @@ comment on function public.demote_club_admin(uuid, uuid) is
 -- §3. Verification — run against the project after applying, do not assume
 -- ---------------------------------------------------------------------------
 --
---   select count(*) from pg_policies
+--   select string_agg(cmd, ',' order by cmd) from pg_policies
 --    where schemaname = 'public' and tablename = 'club_members';
---   -- 4, UNCHANGED: SELECT, INSERT, DELETE and nothing else. There is still
---   --    NO UPDATE policy, which is what 036 §7.6 relies on.
+--   -- DELETE,INSERT,SELECT — THREE, UNCHANGED, and read as the sorted COMMAND
+--   --    LIST rather than as a count: a count of 3 would also pass for a set
+--   --    that had swapped DELETE for UPDATE (015's trap). There is still NO
+--   --    UPDATE policy, which is what 036 §7.6 relies on.
 --
 --   select polcmd, polname from pg_policy
 --    where polrelid = 'public.club_members'::regclass order by polname;

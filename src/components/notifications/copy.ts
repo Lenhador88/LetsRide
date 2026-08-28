@@ -96,12 +96,24 @@ export function notificationCopy(row: NotificationRow, viewerId: string | undefi
       return 'declined your request to join.'
   }
 
-  // **A total fallback, and it is not defensive tidiness.** The switch above is
-  // exhaustive over `NotificationType`, which is what makes TypeScript refuse a
-  // new type nobody has written a sentence for — but a BUNDLE already serving
-  // meets rows written by a migration it predates, and without this it returns
-  // `undefined` where a string is expected. `089`'s header prices what that
-  // costs and orders its own apply after the deploy because of it; this is so
-  // the next type has no such window.
+  // **The compile-time guard and the runtime fallback are BOTH needed, and the
+  // fallback alone silently deletes the guard.** Before the `return` below
+  // existed, a new member of `NotificationType` with no `case` produced TS2366
+  // — "function lacks ending return statement" — under this function's `:
+  // string` annotation. An unconditional trailing return makes that path
+  // reachable, so the error can never fire again and the twelfth type ships
+  // rendering this sentence with `href: null`, indefinitely, past `tsc` and
+  // past `next build`.
+  //
+  // So the assignment stays: `row.type` narrows to `never` only while the
+  // switch is exhaustive, and a new type makes THIS line the error instead.
+  const exhaustive: never = row.type
+  void exhaustive
+
+  // **And the fallback is not defensive tidiness either.** A BUNDLE already
+  // serving meets rows written by a migration it predates, and without this it
+  // returns `undefined` where a string is expected. `089`'s header prices what
+  // that costs and orders its own apply after the deploy because of it; this is
+  // so the type after next has no such window.
   return 'did something on LetsRide.'
 }

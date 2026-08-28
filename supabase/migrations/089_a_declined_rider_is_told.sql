@@ -156,7 +156,9 @@
 -- transaction, before applying to PROD.
 --
 -- **No new advisor.** Both new functions live in `private`, which PostgREST
--- does not publish, so the count stays where `088` left it (23).
+-- does not publish, so the count stays where `088` left it — **24**, measured
+-- on DEV with `088` applied: 21 `authenticated_security_definer_function_executable`,
+-- 2 `rls_enabled_no_policy` and the leaked-password toggle.
 
 -- ---------------------------------------------------------------------------
 -- §1. The type, and its subject shape
@@ -511,4 +513,6 @@ create policy "Club avatars are readable with the club"
 --     and tablename = 'objects' and policyname like 'Club %';
 --   -- 6 — UNCHANGED. This file replaces one avatar policy and creates none.
 --
---   -- Advisors: 23, UNCHANGED. Both new functions are in `private`.
+--   -- Advisors: 24, UNCHANGED by this file. Both of its functions are in
+--   -- `private`, which PostgREST does not publish. 21 of the 24 are the
+--   -- definer-executable WARN, and `088` is what took that from 18 to 21.

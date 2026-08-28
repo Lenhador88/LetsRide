@@ -145,11 +145,13 @@ async function resolveDeclinedClubs(
   const wanted = new Map<string, string[]>()
   for (const row of rows) {
     if (row.type !== DECLINED_TYPE || row.club) continue
-    // The row carries no `club_id` of its own — `NOTIFICATION_SELECT` asks for
-    // the embed rather than the column — so a row whose embed came back null
-    // has nothing to look up. `089`'s policy is what guarantees the row is
-    // returned at all; this is the club BEHIND it, and the id has to come from
-    // somewhere. See the second select below.
+    // **`NOTIFICATION_SELECT` asks for the raw `club_id` as well as the embed,
+    // and that column is on the select FOR THIS.** Every other type reads its
+    // club through the embed alone; a decline's embed is null by construction,
+    // because it runs under the reader's own RLS on `clubs` and a private club
+    // refuses them — which is the whole reason `085` wrote no such notification
+    // at all. `089`'s policy is what returns the ROW; the column is what says
+    // which club it is about.
     const clubId = row.club_id
     if (!clubId) continue
     wanted.set(clubId, [...(wanted.get(clubId) ?? []), row.id])

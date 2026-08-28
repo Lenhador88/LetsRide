@@ -21154,7 +21154,7 @@ rollback to savepoint club_stamps_086;
 --
 --   ** 088 ADDS NO POLICY. ** club_members still has NO UPDATE policy — the
 --   absence 036 §7.6 relies on for "nobody can promote an admin" — and still
---   exactly one DELETE policy, `auth.uid() = user_id`. The two RPCs are the
+--   exactly one DELETE policy, `auth.uid() = user_id`. The THREE RPCs are the
 --   whole of the new reach, and 088.1 is what fails if somebody "completes"
 --   the CRUD set alongside them.
 --
@@ -21225,7 +21225,7 @@ select assert_eq(
   (select string_agg(cmd, ',' order by cmd) from pg_policies
     where schemaname = 'public' and tablename = 'club_members'),
   'DELETE,INSERT,SELECT',
-  '088.1: club_members has SELECT, INSERT and DELETE policies and NOTHING ELSE — 088 adds two security definer RPCs and no policy, because 036 §7.6 relies on the UPDATE policy being absent and RLS cannot scope an UPDATE to one column');
+  '088.1: club_members has SELECT, INSERT and DELETE policies and NOTHING ELSE — 088 adds THREE security definer RPCs and no policy, because 036 §7.6 relies on the UPDATE policy being absent and RLS cannot scope an UPDATE to one column');
 select assert_eq(
   (select qual from pg_policies
     where schemaname = 'public' and tablename = 'club_members' and cmd = 'DELETE'),
