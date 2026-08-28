@@ -282,9 +282,21 @@ export function EditRideForm({
             checked={isPublic}
             onChange={(event) => setIsPublic(event.target.checked)}
           />
+          {/* **Word for word `CreateRideForm`'s, and it has to stay that way.**
+              The two forms describe the same checkbox on the same column; until
+              PD-320 this one said "or to you alone if it has no club", which
+              `083`'s ride invites (PD-329) made false — and left a rider who had
+              just created a ride under the new copy being told, on the very next
+              screen, that nobody could see it.
+
+              The `wouldStrand` alert below still argues from that retired
+              premise. It is deliberately NOT edited here: it is the guard's own
+              message, the guard is a written `ride-lifecycle` requirement, and
+              PD-338 is where both go. A hint that describes the feature and a
+              refusal that describes the rule are different sentences. */}
           <p className="pl-8 text-xs font-medium text-muted">
-            Anyone signed in can see and join a public ride. A private ride is visible to its
-            club, or to you alone if it has no club.
+            Anyone signed in can see and join a public ride. A private ride is visible to its club,
+            and to riders you invite.
           </p>
         </div>
 
