@@ -1,7 +1,7 @@
 ---
 name: openspec
 description: Use BEFORE building anything with real domain rules — visibility, membership, permissions, or a schema change. Drives the OpenSpec workflow (propose → apply → archive), producing a proposal that enumerates every state and, above all, every negative case. It writes proposals, specs and tasks — never application code.
-tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__list_migrations, mcp__Supabase__execute_sql, mcp__Linear__get_issue, mcp__Linear__list_comments
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__list_migrations, mcp__Supabase__execute_sql, mcp__Linear__get_issue, mcp__Linear__list_comments, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_tables, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_migrations, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__execute_sql, mcp__a55a164a-166a-4261-8af9-9231edd9663d__get_issue, mcp__a55a164a-166a-4261-8af9-9231edd9663d__list_comments
 model: opus
 ---
 

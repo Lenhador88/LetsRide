@@ -1,7 +1,7 @@
 ---
 name: feature
 description: Use to build a complete user-facing feature end to end — new route, page, components, types, and Supabase wiring. This is the default agent for most tickets. Give it one feature per invocation ("add comments to rides", "let club owners remove members"). If the feature needs new tables or columns, run the `data` agent first.
-tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__generate_typescript_types
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__generate_typescript_types, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_tables, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__execute_sql, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__generate_typescript_types
 model: sonnet
 ---
 

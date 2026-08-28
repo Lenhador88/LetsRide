@@ -147,6 +147,15 @@ search rather than by pasting the literal name. **A `select:` lookup that return
 "search again by keyword", never "the connector is gone"** — only a keyword search coming back
 empty establishes that.
 
+**That still holds here, and `CLAUDE.md` §The Agent Squad's "there is no recovery" does NOT
+overrule it — the two are about different things.** You are a **main thread**: you have no
+`tools:` line, so nothing filters your search and the keyword lookup genuinely recovers a rotated
+connector (`PD-154`'s 2026-08-09 comment records `+list_issues linear` doing it). That paragraph
+is about a **subagent**, whose search is filtered by its own allowlist before it runs — which is
+why the fix there was to put both spellings on the brief. **Do not skip the keyword search on the
+strength of it**: a firing that reads a `select:` miss as a dead connector and sends the
+cannot-reach-Linear push has stopped the queue over a recovery that works.
+
 **Send it yourself, with the `PushNotification` tool.** A self-bound Routine cannot carry
 completion notifications: the server rejects the `notifications` parameter for any trigger
 bound to a persistent session, so the only notification that will ever reach the owner from
@@ -1216,12 +1225,13 @@ Do because the calls that trip them are CCR calls made by a session that is not 
   at 17:09Z. The key appears once explicitly set, but it reports the flag and **not** whether the
   Routine is firing — the one row that has ever carried it was hours past its due fire.
   `next_run_at` is that answer. `queue-dispatch.md` §Why this shape has both measurements.
-- **Never archive the session the dispatcher Routine is bound to.** Archiving it stops the queue
-  silently, with no error anywhere, and `update_trigger` has no `persistent_session_id`
-  parameter — so a session cannot rebind the Routine itself. When this happened on 2026-08-18 the
-  trigger rebound *itself* to a fresh session within the hour; what did not recover was the relay
-  id copied into `queue-dispatch.md`, and the queue dispatched nothing for six days. See that
-  file's §The three roles.
+- **Do not archive the session the dispatcher Routine is bound to** — not a never since
+  2026-08-28, but never a child's call either. `update_trigger` has no `persistent_session_id`
+  parameter, so a session cannot rebind the Routine itself if the rebind does not happen on its
+  own; when this happened on 2026-08-18 the trigger rebound *itself* within the hour. What did not
+  recover was the relay id copied into `queue-dispatch.md`, and the queue dispatched nothing for
+  six days — so no id decides a role any more. Deliberate archiving is now the documented repair
+  for a relay running a stale clone, and it belongs to the owner. See that file's §The three roles.
 
 And what it buys beyond the connectors: the session can see whether the owner is mid-request,
 which is the only reliable idle signal there is, and no fresh session could ever have it.

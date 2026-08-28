@@ -1,7 +1,7 @@
 ---
 name: media
 description: Use for anything involving user-uploaded images — postcards, ride cover images and journals, club covers, profile and cover photos, motorcycle and gear photos, and images shared in chat. Covers Supabase Storage buckets and policies, upload flow, client-side compression, EXIF handling, and rendering. Invoke alongside `feature` when a screen accepts a photo.
-tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__apply_migration, mcp__Supabase__get_advisors, mcp__Supabase__search_docs, mcp__Figma__get_screenshot, mcp__Figma__get_design_context
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__apply_migration, mcp__Supabase__get_advisors, mcp__Supabase__search_docs, mcp__Figma__get_screenshot, mcp__Figma__get_design_context, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_tables, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__execute_sql, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__apply_migration, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_advisors, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__search_docs, mcp__7658846e-eed8-4f3b-8c99-3c152bad83b8__get_screenshot, mcp__7658846e-eed8-4f3b-8c99-3c152bad83b8__get_design_context
 model: sonnet
 ---
 
