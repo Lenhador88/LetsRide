@@ -119,8 +119,9 @@ It must fail loudly — a job that silently does nothing looks exactly like an e
 budget gate and for STEP 7's own id, and `archive_session`, which STEP 7 calls with that id. Do not
 load either here — a build that never reaches those steps has no use for them, and their absence
 must not stop a story that is otherwise buildable. Each step says what to do if its tool will not
-answer, and the two answer differently on purpose: STEP 6's gate fails closed, STEP 7's archive
-fails open.
+answer, and the two answer differently on purpose — stated as outcomes, because "fails open" is
+reversible on a step whose action is *archiving*: an unanswerable `get_session` at STEP 6 **ends**
+the session, and an unanswerable tool at STEP 7 **keeps** it.
 
 **Search for it by keyword, not by the `mcp__Linear__*` name — that prefix is not stable.**
 Watched rotate mid-session on 2026-08-08: every connector's tools came back re-registered under
@@ -172,7 +173,8 @@ The dispatcher's blocker check only sees blockers somebody wrote down. If the is
 turns out to need something another unfinished issue is meant to deliver — its columns, its
 migration, its provider key, its design decision — and no relation says so, **do not build
 it, and do not quietly swap to a different story.** Move it to `Needs help`, comment naming
-the issue it is waiting on and why, and stop. Sequencing is the owner's to fix, and building
+the issue it is waiting on and why, and stop — at STEP 7, which will keep this session rather
+than archive it. Sequencing is the owner's to fix, and building
 in the wrong order is expensive in a way a skipped hour is not.
 
 Consider adding the missing `blockedBy` relation while you are there, so the next firing
@@ -199,7 +201,8 @@ the same story to a second session. Read them back and confirm; do not re-write 
 **If one is in any other status, drop that story and build the rest.** Something changed since you
 were dispatched — most likely the owner moved it — and building it anyway is how work lands that
 nobody asked for. Say which you dropped in a `PushNotification`, in the PR body, and in STEP 5's
-comment on the stories that remain. **If none of them survives, stop and do nothing.**
+comment on the stories that remain. **If none of them survives, stop and do nothing** — go to
+STEP 7 and end there, holding no story.
 
 **Dropping rather than stopping is deliberate, and it is the right way round even though the group
 collides.** The stories were grouped because building them *apart* is unsafe; building *fewer* of
@@ -1134,8 +1137,8 @@ comparison to make, and `CLAUDE.md` §What Not To Do's rule against archiving th
 Routine is bound to is about archiving *someone else's* session, which this step cannot do.
 
 **Do not reach for `list_triggers` to check that.** It would answer a question that cannot arise,
-it would reintroduce the copied trigger id `queue-dispatch.md` §The three roles exists to get rid
-of, and it would not even be sound: `docs/HANDOFF.md` records the disabled fallback Routine not
+it would hardcode the hourly Routine's trigger id into a step that has no other reason to know
+one, and it would not even be sound: `docs/HANDOFF.md` records the disabled fallback Routine not
 appearing in that listing at all, so a session bound to it would read no row and pass.
 
 **If either call will not answer, end the session WITHOUT archiving, and say so.** This one fails
@@ -1157,7 +1160,7 @@ STEP 5 bullet 6 stands — the next hourly firing still reads the board and noth
 ## If you get stuck — this is expected and it is not a failure
 
 Move the issue to **`Needs help`**, comment with *exactly* what you need from the owner, and
-stop. Leave the branch and any PR open and say so in the comment.
+stop — at STEP 7, which keeps this session for them to read. Leave the branch and any PR open and say so in the comment.
 
 ### In a group, park the story — not the group
 
@@ -1222,7 +1225,8 @@ in.** It also parks the whole queue until the owner clears it, which is the inte
 needing the owner does not get buried under the next batch of merged PRs.
 
 **Leave the branch and any PR open, and say so in the comment.** Nothing else will pick this up:
-your session ends here, and the next dispatch will not touch a story it can see is parked. **Send
+your session ends here — at STEP 7, which keeps it — and the next dispatch will not touch a story
+it can see is parked. **Send
 nothing to the queue** — STEP 5 bullet 6 applies to a park exactly as it applies to a merge, and
 the `Needs help` status is what the next hourly firing reads.
 
