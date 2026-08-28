@@ -155,8 +155,9 @@ export function PostcardDeck({
    */
   const coachArrival = useRef<number | null>(null)
   /**
-   * Set once this mount has decided, either by putting the pill up or by a
-   * touch that cancelled it. The effect below re-runs whenever the deck goes
+   * Set once this mount has decided — the arrival firing, whether or not the
+   * device's flag was still there to claim, or a touch cancelling it before it
+   * fired. The effect below re-runs whenever the deck goes
    * from having no card to having one, and "Start over" at the end of the deck
    * is exactly that transition — without this, finishing the deck and starting
    * over would coach the rider a second time on a gesture they just used.
@@ -246,8 +247,10 @@ export function PostcardDeck({
    * coached zero times, for ever: a filter tap, which remounts this deck
    * because `/postcards` keys it on the filter; a bottom-bar tap, on what is
    * the first screen after sign-in; or the last card leaving. Claiming when the
-   * pill actually goes up makes the cancelled cases cost nothing, and the flag
-   * is still spent before any of the three dismissal routes can run.
+   * pill actually goes up makes the cancelled cases cost nothing. For a pill
+   * that is shown, the flag is still spent before any of the three dismissal
+   * routes can reach it; for one cancelled during the beat it is never spent at
+   * all, which is `dismissCoach`'s half of this and is the point of it.
    *
    * Keyed on *whether* there is a card rather than on which one, so a
    * revalidation swapping the front postcard does not run this cleanup at all.
