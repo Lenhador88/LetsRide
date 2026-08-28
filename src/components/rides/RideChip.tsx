@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { routes } from '@/lib/routes'
-import { cn, formatRideChipDate, formatRideTime } from '@/lib/utils'
+import { cn, formatRideChipDate, formatRideTime, formatStartDistanceShort } from '@/lib/utils'
 import type { RideListItem } from '@/types'
 
 /**
@@ -63,6 +63,22 @@ export function RideChip({ ride }: { ride: RideListItem }) {
   const { day, month } = formatRideChipDate(ride.departure_at, ride.timezone)
   const past = !ride.is_upcoming
 
+  // PD-340. **On the time line rather than beside the meeting point**, which is
+  // where the card puts it: this chip's text column is 132px, so a distance on
+  // the place line would leave the place about four characters. The time is
+  // fixed-width, so the pair fits and the place keeps the whole of its own line.
+  //
+  // `formatStartDistanceShort` — `12 km`, not `12 km away` — and that formatter
+  // carries the arithmetic. `undefined` draws nothing, dot included, exactly as
+  // on the card: a chip that cannot be measured is most chips today.
+  const distance = ride.distance_km === undefined ? null : formatStartDistanceShort(ride.distance_km)
+
+  // The smart day does NOT come here, and that is a decision rather than an
+  // omission (PD-340 names this strip as one of its three surfaces). The chip's
+  // date is a 48px day-over-month block — two glyph rows, sized in the frame —
+  // and `This Wednesday` is prose that fits neither row. The block already
+  // answers the question the band word answers, in the shape the design draws.
+
   return (
     <Link
       href={routes.ride(ride.id)}
@@ -95,6 +111,7 @@ export function RideChip({ ride }: { ride: RideListItem }) {
           )}
         >
           {formatRideTime(ride.departure_at, ride.timezone)}
+          {distance && <span className="font-medium"> · {distance}</span>}
         </span>
         {/* `text-foreground` rather than `text-muted`, and the reason is a
             measurement: `#666666` on `bg-track` is 4.17:1, under the 4.5 floor

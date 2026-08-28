@@ -538,6 +538,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
       .select(`
         id, title, description, route_description, meeting_point, departure_at,
         timezone, club_id, organizer_id, map_detail_path,
+        latitude, longitude,
         organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
         club:clubs(${CLUB_EMBED_COLUMNS})
       `)
@@ -591,6 +592,11 @@ export async function getRide(id: string): Promise<RideDetail | null> {
     organizer_id: row.organizer_id,
     organizer: row.organizer,
     club: row.club,
+    // `051`'s pair, for the location row's `12 km away` (PD-340). Copied rather
+    // than measured here: `getRide` takes no position, so the distance is the
+    // screen's to compute against whatever the rider's position turns out to be.
+    latitude: row.latitude,
+    longitude: row.longitude,
     // Same rule as the list card: an explicit row wins, and an organizer
     // without one reads as `going` rather than as unanswered.
     attendance: ownRow?.status ?? (isOrganizer ? 'going' : null),

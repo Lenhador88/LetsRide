@@ -1,7 +1,10 @@
+'use client'
+
 import { Header } from '@/components/layout/Header'
 import { Avatar } from '@/components/ui/Avatar'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { ClubOptionsMenu } from '@/components/clubs/ClubOptionsMenu'
+import { useSwipeBack } from '@/lib/actions/navigate'
 import { routes } from '@/lib/routes'
 import type { ClubDetail, ClubPreview } from '@/types'
 
@@ -77,10 +80,20 @@ export function ClubDetailHeader({
   // action, so it is absent on the preview branch rather than empty. `in` is
   // the discriminant because the preview shape structurally cannot carry it.
   const full = club && 'viewer_role' in club ? club : undefined
+
+  const backHref = current === 'detail' ? '/clubs' : routes.club(clubId)
+
+  // PD-341, and the same value the arrow gets so the two cannot diverge. It
+  // reaches the detail, members, rides and threads screens — every club screen
+  // that renders this header. The club's own postcard carousel and the ride
+  // strip both scroll horizontally and decline the gesture on their own
+  // geometry; see `swipe-back.ts`.
+  useSwipeBack(backHref)
+
   return (
     <Header
       title={club?.name}
-      backHref={current === 'detail' ? '/clubs' : routes.club(clubId)}
+      backHref={backHref}
       titleLeading={
         club ? (
           <Avatar

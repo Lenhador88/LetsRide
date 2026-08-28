@@ -6,10 +6,13 @@ import {
   formatNotificationStamp,
   formatPostcardDate,
   formatRelativeTime,
+  formatRideCardDay,
   formatRideChipDate,
   formatRideDate,
   formatRideDateLong,
   formatRideDepartureInput,
+  formatStartDistance,
+  formatStartDistanceShort,
   formatChatMessageDay,
   formatRideTime,
   notificationSection,
@@ -56,6 +59,127 @@ describe('formatRideDateLong', () => {
 
   it('keeps the comma after the weekday that en-GB omits on its own', () => {
     expect(formatRideDateLong('2024-11-16T10:00:00Z', null)).toContain(', ')
+  })
+})
+
+describe('formatRideCardDay', () => {
+  // A Wednesday, 12:00 Amsterdam. Every case below is expressed as an offset
+  // from this instant so the band boundaries are readable as days rather than
+  // as dates that have to be counted out by hand.
+  const now = new Date('2026-08-26T10:00:00Z')
+  const at = (dayOffset: number, hourUtc = 10) => {
+    const d = new Date(now)
+    d.setUTCDate(d.getUTCDate() + dayOffset)
+    d.setUTCHours(hourUtc, 0, 0, 0)
+    return d.toISOString()
+  }
+
+  it('names the three days a rider thinks of by name', () => {
+    expect(formatRideCardDay(at(-1), null, now)).toBe('Yesterday')
+    expect(formatRideCardDay(at(0), null, now)).toBe('Today')
+    expect(formatRideCardDay(at(1), null, now)).toBe('Tomorrow')
+  })
+
+  it('reads the rest of this week as “This ⟨weekday⟩”', () => {
+    expect(formatRideCardDay(at(2), null, now)).toBe('This Friday')
+    expect(formatRideCardDay(at(4), null, now)).toBe('This Sunday')
+    // The last day of the band: six ahead is still the *next* Tuesday there is.
+    expect(formatRideCardDay(at(6), null, now)).toBe('This Tuesday')
+  })
+
+  it('reads the week after that as “Next ⟨weekday⟩”', () => {
+    // Seven ahead is the same weekday as today, which is the one case where
+    // "This Wednesday" would be actively wrong — today is Wednesday.
+    expect(formatRideCardDay(at(7), null, now)).toBe('Next Wednesday')
+    expect(formatRideCardDay(at(13), null, now)).toBe('Next Tuesday')
+  })
+
+  it('falls back to the plain card date outside the two bands', () => {
+    expect(formatRideCardDay(at(14), null, now)).toBe(formatRideDate(at(14), null))
+    expect(formatRideCardDay(at(-2), null, now)).toBe(formatRideDate(at(-2), null))
+    expect(formatRideCardDay(at(-400), null, now)).toBe(formatRideDate(at(-400), null))
+  })
+
+  // The band is a CALENDAR difference, so a ride eight hours away can be
+  // "Tomorrow" and one twenty hours away can still be "Today". A naive
+  // `(b - a) / 86400000` passes the offsets above and fails both of these.
+  it('buckets by calendar day, not by elapsed hours', () => {
+    const lateTonight = new Date('2026-08-26T20:00:00Z') // 22:00 Amsterdam
+    // 01:00 Amsterdam the next day — five hours away, and Tomorrow.
+    expect(formatRideCardDay('2026-08-26T23:00:00Z', null, lateTonight)).toBe('Tomorrow')
+    const earlyMorning = new Date('2026-08-26T04:00:00Z') // 06:00 Amsterdam
+    // 23:00 Amsterdam the same evening — nineteen hours away, and Today.
+    expect(formatRideCardDay('2026-08-26T21:00:00Z', null, earlyMorning)).toBe('Today')
+  })
+
+  // The whole point of the required zone argument: the ride's own day, never
+  // the runner's and never the reader's. `TZ=UTC` here, so a helper that
+  // skipped `rideZone` would answer 'Today' for both.
+  it('buckets in the ride’s own zone, on both sides of the comparison', () => {
+    // 23:30 UTC on the 26th is already 01:30 on the 27th in Amsterdam, and
+    // still 19:30 on the 26th in New York.
+    const instant = '2026-08-26T23:30:00Z'
+    const clock = new Date('2026-08-26T12:00:00Z')
+    expect(formatRideCardDay(instant, 'Europe/Amsterdam', clock)).toBe('Tomorrow')
+    expect(formatRideCardDay(instant, 'America/New_York', clock)).toBe('Today')
+  })
+
+  // `rideZone` swallows a name ICU cannot format; the band must still resolve
+  // rather than throw out of a card and take the list with it.
+  it('falls back to the app zone for a zone this runtime does not know', () => {
+    expect(formatRideCardDay(at(1), 'Mars/Olympus_Mons', now)).toBe('Tomorrow')
+  })
+})
+
+describe('formatStartDistance', () => {
+  it('rounds to whole kilometres, which is all the inputs support', () => {
+    expect(formatStartDistance(12)).toBe('12 km away')
+    expect(formatStartDistance(11.6)).toBe('12 km away')
+    expect(formatStartDistance(1.2)).toBe('1 km away')
+  })
+
+  it('never says “0 km away”', () => {
+    expect(formatStartDistance(0)).toBe('Under 1 km away')
+    expect(formatStartDistance(0.4)).toBe('Under 1 km away')
+    // 0.6 rounds to 1, so the branch has to be the value and not the rounding.
+    expect(formatStartDistance(0.6)).toBe('Under 1 km away')
+  })
+
+  it('groups a long distance rather than printing a bare integer', () => {
+    expect(formatStartDistance(1240)).toBe('1,240 km away')
+  })
+
+  it('refuses a number that is not a distance', () => {
+    expect(formatStartDistance(Number.NaN)).toBeNull()
+    expect(formatStartDistance(Number.POSITIVE_INFINITY)).toBeNull()
+    expect(formatStartDistance(-3)).toBeNull()
+  })
+})
+
+describe('formatStartDistanceShort', () => {
+  it('is the same number in the chip’s words', () => {
+    expect(formatStartDistanceShort(12)).toBe('12 km')
+    expect(formatStartDistanceShort(11.6)).toBe('12 km')
+    expect(formatStartDistanceShort(1240)).toBe('1,240 km')
+  })
+
+  it('abbreviates the under-a-kilometre case rather than saying zero', () => {
+    expect(formatStartDistanceShort(0)).toBe('<1 km')
+    expect(formatStartDistanceShort(0.6)).toBe('<1 km')
+  })
+
+  it('refuses a number that is not a distance', () => {
+    expect(formatStartDistanceShort(Number.NaN)).toBeNull()
+    expect(formatStartDistanceShort(-3)).toBeNull()
+  })
+
+  // The two forms must never disagree about the number itself — a chip and the
+  // card one tap away draw the same ride. Asserted as a relationship rather than
+  // as two literal tables, so it holds whatever the rounding becomes.
+  it('rounds identically to the long form', () => {
+    for (const km of [1, 1.4, 1.5, 2.5, 11.6, 99.9, 1240]) {
+      expect(formatStartDistance(km)).toBe(`${formatStartDistanceShort(km)} away`)
+    }
   })
 })
 
