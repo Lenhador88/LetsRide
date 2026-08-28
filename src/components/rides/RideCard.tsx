@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { LocationFilledIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { routes } from '@/lib/routes'
-import { cn, formatRideCardDay, formatRideDistance, formatRideTime } from '@/lib/utils'
+import { cn, formatRideCardDay, formatStartDistance, formatRideTime } from '@/lib/utils'
 import type { RideAttendance, RideListItem } from '@/types'
 
 /**
@@ -119,7 +119,7 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
   // comment collapses those three deliberately, and a card can only usefully do
   // one thing with any of them: say nothing. There is no "distance unknown"
   // label, because a row that cannot be measured is most of the list today.
-  const distance = ride.distance_km === undefined ? null : formatRideDistance(ride.distance_km)
+  const distance = ride.distance_km === undefined ? null : formatStartDistance(ride.distance_km)
 
   return (
     <Link

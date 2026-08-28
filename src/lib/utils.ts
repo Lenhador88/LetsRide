@@ -533,6 +533,14 @@ export function formatRideCardDay(date: string, zone: string | null, now: Date =
 /**
  * How far a ride's meeting point is from the rider — `12 km away` (PD-340).
  *
+ * **Not `formatRide*`, deliberately.** That prefix carries a rule in
+ * `CLAUDE.md` — every one of them takes `rides.timezone` as a required argument
+ * — and this formatter has no instant in it at all, so joining the family by
+ * name would make that rule read as false at a glance and invite the next
+ * session to "fix" it by adding a zone parameter nothing could use. It is still
+ * named for what it serves: the distance to a ride's start, on the card and on
+ * the detail's location row.
+ *
  * Takes kilometres, which is what `distanceKm` returns and what
  * `RideListItem.distance_km` carries; a caller with `undefined` has no distance
  * to draw and must render nothing rather than call this with a fallback.
@@ -556,7 +564,7 @@ export function formatRideCardDay(date: string, zone: string | null, now: Date =
  * `en-GB` grouping, so a genuinely distant ride reads `1,240 km away` rather
  * than as a raw integer — the same locale every other `formatRide*` helper uses.
  */
-export function formatRideDistance(km: number) {
+export function formatStartDistance(km: number) {
   if (!Number.isFinite(km) || km < 0) return null
   if (km < 1) return 'Under 1 km away'
   return `${Math.round(km).toLocaleString('en-GB')} km away`

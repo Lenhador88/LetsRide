@@ -27,7 +27,7 @@ import {
   cn,
   formatRelativeTime,
   formatRideDateLong,
-  formatRideDistance,
+  formatStartDistance,
   formatRideTime,
   googleMapsDirectionsUrl,
 } from '@/lib/utils'
@@ -182,7 +182,7 @@ function RidePlan({
       ? { lat: ride.latitude, lon: ride.longitude }
       : null
   const km = distanceKm(near, start)
-  const distance = km === null ? null : formatRideDistance(km)
+  const distance = km === null ? null : formatStartDistance(km)
 
   // Description and route are one paragraph now rather than a blurb and a
   // `Route` heading 200px apart. They are two columns because they are two

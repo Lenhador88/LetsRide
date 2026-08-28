@@ -11,7 +11,7 @@ import {
   formatRideDate,
   formatRideDateLong,
   formatRideDepartureInput,
-  formatRideDistance,
+  formatStartDistance,
   formatChatMessageDay,
   formatRideTime,
   notificationSection,
@@ -130,28 +130,28 @@ describe('formatRideCardDay', () => {
   })
 })
 
-describe('formatRideDistance', () => {
+describe('formatStartDistance', () => {
   it('rounds to whole kilometres, which is all the inputs support', () => {
-    expect(formatRideDistance(12)).toBe('12 km away')
-    expect(formatRideDistance(11.6)).toBe('12 km away')
-    expect(formatRideDistance(1.2)).toBe('1 km away')
+    expect(formatStartDistance(12)).toBe('12 km away')
+    expect(formatStartDistance(11.6)).toBe('12 km away')
+    expect(formatStartDistance(1.2)).toBe('1 km away')
   })
 
   it('never says “0 km away”', () => {
-    expect(formatRideDistance(0)).toBe('Under 1 km away')
-    expect(formatRideDistance(0.4)).toBe('Under 1 km away')
+    expect(formatStartDistance(0)).toBe('Under 1 km away')
+    expect(formatStartDistance(0.4)).toBe('Under 1 km away')
     // 0.6 rounds to 1, so the branch has to be the value and not the rounding.
-    expect(formatRideDistance(0.6)).toBe('Under 1 km away')
+    expect(formatStartDistance(0.6)).toBe('Under 1 km away')
   })
 
   it('groups a long distance rather than printing a bare integer', () => {
-    expect(formatRideDistance(1240)).toBe('1,240 km away')
+    expect(formatStartDistance(1240)).toBe('1,240 km away')
   })
 
   it('refuses a number that is not a distance', () => {
-    expect(formatRideDistance(Number.NaN)).toBeNull()
-    expect(formatRideDistance(Number.POSITIVE_INFINITY)).toBeNull()
-    expect(formatRideDistance(-3)).toBeNull()
+    expect(formatStartDistance(Number.NaN)).toBeNull()
+    expect(formatStartDistance(Number.POSITIVE_INFINITY)).toBeNull()
+    expect(formatStartDistance(-3)).toBeNull()
   })
 })
 

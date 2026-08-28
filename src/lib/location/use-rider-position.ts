@@ -34,7 +34,7 @@ import { queryKeys } from '@/lib/query/keys'
  *
  * `settled` is what a caller holds a position-keyed read on. `position` alone is
  * what a caller renders from, and `null` there means "no distance to draw" — not
- * "zero kilometres". `withRideDistance` and `formatRideDistance` both take that
+ * "zero kilometres". `withRideDistance` and `formatStartDistance` both take that
  * reading, so a card with no position simply draws no distance clause.
  */
 export function useRiderPosition(): {
