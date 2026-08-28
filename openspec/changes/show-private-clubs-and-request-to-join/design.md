@@ -204,9 +204,9 @@ policy — and note that it would resolve the notification by making the whole `
 its Storage objects readable, which is a large price for one sentence.
 
 **If the product owner wants the rider told out loud, B is the buildable one** and it needs the
-`responded_by` column §What the requester may learn refuses. That is a decision, not a task.
+`responded_by` column §Disclosure to the requester refuses. That is a decision, not a task.
 
-## What the requester may learn
+## Disclosure to the requester
 
 The requester holds a readable row — their own — so every column on `club_join_requests` is a
 column they can read. That is why there is **no `responded_by`**.
@@ -443,7 +443,7 @@ already written.
 
 **Q4 — Is a decline told to the rider at all? (product owner; BLOCKING if the answer is yes)**
 Default: **no**. Blocking in one direction only: building A and later wanting B is a new
-notification type, a new column and a rewrite of §What the requester may learn's reasoning, so if
+notification type, a new column and a rewrite of §Disclosure to the requester's reasoning, so if
 the owner wants the rider told, it is cheaper to know before `085` is written.
 
 **Q5 — Does the reduced screen exist, or does the private card simply not navigate? (product

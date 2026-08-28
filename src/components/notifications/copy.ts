@@ -73,5 +73,18 @@ export function notificationCopy(row: NotificationRow, viewerId: string | undefi
       // unactionable, which is the decision `design.md` §Questions Closed Q5
       // records.
       return `declined your invite to ${row.ride?.title ?? 'a ride'}.`
+    // `085`, PD-325. Both resolve their club from the live subject like every
+    // other arm here, so a reader who loses the club loses the string with it —
+    // `036` §2's rule, and the reason none of this is stamped on the row.
+    //
+    // The first is read by a club's owner and admins and the second by the
+    // rider who asked, so unlike `ride_joined` there is no reader-dependent
+    // fork: each type has exactly one audience.
+    case 'club_join_requested':
+      return `asked to join ${row.club?.name ?? 'a club'}.`
+    case 'club_join_request_approved':
+      // "let you into" rather than "approved your request": the rider knows
+      // what they asked, and what is new is that they are now in.
+      return `let you into ${row.club?.name ?? 'a club'}.`
   }
 }

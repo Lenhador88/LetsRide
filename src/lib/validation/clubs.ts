@@ -226,3 +226,16 @@ export const clubMessageBodySchema = z
  * malformed id means "no such thread", and 404 is the honest answer.
  */
 export const clubThreadIdSchema = z.uuid()
+
+/**
+ * A join-request id, on the way into `approve_club_join_request` and
+ * `decline_club_join_request` — `085`, PD-325.
+ *
+ * `clubIdSchema`'s reasoning again, and the RPCs take the REQUEST id rather
+ * than a rider's for a reason worth stating here too: the subject is the row,
+ * so "we check the id belongs to your club" is one refactor away from not
+ * doing that. Zod owns the message; the RPC's single raise site owns the
+ * guarantee, and a malformed id reaching it would be a 400 on the error
+ * boundary where a refusal belongs.
+ */
+export const clubJoinRequestIdSchema = z.uuid()

@@ -63,7 +63,14 @@ function locationColumns(location: ClubLocationInput) {
  * strings below have to match the ones five screens build, and now both come
  * from the same place.
  */
-function invalidateClubMembership(clubId: string) {
+/**
+ * Exported since `085`: `approveClubJoinRequest` writes a `club_members` row
+ * through an RPC and makes exactly the same things stale as `joinClub` does.
+ * Calling this rather than enumerating keys there is deliberate — an
+ * enumeration looks narrower and misses `clubs.mine()`, which is the recorded
+ * reason this helper exists at all.
+ */
+export function invalidateClubMembership(clubId: string) {
   invalidate(queryKeys.clubs.all())
   invalidate(queryKeys.postcards.feed(filterSegment.club(clubId)))
   invalidate(queryKeys.rides.list(filterSegment.club(clubId)))

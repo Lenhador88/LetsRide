@@ -780,6 +780,86 @@ export type ClubListItem = {
    * as though it meant zero would float every unlocated club to the top.
    */
   distance_km?: number
+  /**
+   * The viewer's own outstanding ask, for a PRIVATE club they can see through
+   * `discoverable_private_clubs` (`085`, PD-325). `null` on every public club
+   * and on every private one they have not asked about.
+   *
+   * It decides the card's trailing control and nothing else: `'pending'` draws
+   * `Requested` as plain text, `'declined'` draws nothing at all, and `null`
+   * draws `Request to join`. A declined club deliberately STAYS in Explore —
+   * `private.club_takes_join_requests_for` has no declined conjunct — because
+   * the reduced club screen is the only surface on which a refusal can be
+   * rendered, and removing the row would leave the request readable from psql
+   * and from nowhere in the product.
+   */
+  request_status?: ClubJoinRequestStatus | null
+}
+
+/** `085`. Two values, not three: an APPROVED request is deleted and the
+ * `club_members` row is the record — a surviving `approved` row beside
+ * `unique (club_id, user_id)` would make a club a rider LEFT unreachable. */
+export type ClubJoinRequestStatus = 'pending' | 'declined'
+
+/**
+ * One row of `public.club_join_requests` (`085`, PD-325), as the requester
+ * reads their own.
+ *
+ * **There is no `responded_by` and there never was.** The requester can read
+ * every column on their own row, so such a column would tell them which
+ * individual admin refused them — and a club refuses as a club. `status` and
+ * `responded_at` are the whole answer.
+ */
+export type ClubJoinRequest = {
+  id: string
+  club_id: string
+  user_id: string
+  status: ClubJoinRequestStatus
+  created_at: string
+  responded_at: string | null
+}
+
+/**
+ * A pending request as the club's owner or admins read it — the row plus the
+ * rider who made it, for the `Requests` section on the club detail.
+ *
+ * The profile embed is what the section draws; the id is what
+ * `approveClubJoinRequest` and `declineClubJoinRequest` take. **They take the
+ * REQUEST id and never the rider's** — the subject is the row, and "we check
+ * the id matches" is one refactor away from not doing that.
+ */
+export type ClubJoinRequestListItem = ClubJoinRequest & {
+  requester: PublicProfile | null
+}
+
+/**
+ * A private club as a NON-MEMBER may see it — the seven columns
+ * `public.discoverable_private_clubs` returns, plus the signed avatar URL the
+ * rest of the app expects (`085`, PD-325).
+ *
+ * **The seven columns are the whole disclosure**, and the accessor's return
+ * list is pinned by `085.4` so an eighth is a red test rather than a code
+ * review. Nothing here describes the club's rides, postcards, threads,
+ * messages, roster, description, cover, owner or age.
+ *
+ * **`avatar_url` is null today and that is correct, not a bug.** `016`'s
+ * storage policy runs its own `EXISTS` against `clubs` under the reader's own
+ * RLS, so a non-member cannot read the object and `signImagePaths` answers
+ * null — the card and the reduced screen both fall back to the club's
+ * initials. `avatar_path` is still returned so the day a storage arm lands,
+ * nothing else has to change.
+ */
+export type ClubPreview = {
+  id: string
+  name: string
+  avatar_path: string | null
+  avatar_url: string | null
+  location_name: string | null
+  latitude: number | null
+  longitude: number | null
+  members_count: number
+  /** The viewer's own ask, so the screen can say what happened to it. */
+  request_status: ClubJoinRequestStatus | null
 }
 
 /**
@@ -933,6 +1013,26 @@ export type Postcard = {
   is_liked?: boolean
   /** This viewer authored it — decides which overflow menu the card shows. */
   is_own?: boolean
+  /**
+   * This postcard reached the club's strip through the club's RIDE rather than
+   * because it was posted to the club (`086`, PD-328). `PostcardStamp` draws a
+   * small ride glyph when it is true.
+   *
+   * **Optional, and the default is false everywhere else on purpose.** Only
+   * `getClubFeed` can answer it — the flag comes from
+   * `public.club_stamp_postcard_ids`, which is the only reader of
+   * `postcards.ride_id` a client has, `062` having revoked the column. Every
+   * other read path constructs a `Postcard` with no way to compute it, so a
+   * required field would force those to write a literal `false` they have not
+   * measured. `undefined` here means "this read did not ask", which is the
+   * honest answer for the Journal, the home deck and a profile.
+   *
+   * **It names no ride, deliberately.** `062`'s column comment records that
+   * there is no postcard -> ride read and that a badge naming one "needs its
+   * own accessor"; this is a boolean rather than that accessor, so the marker
+   * says a ride was involved and never which.
+   */
+  from_ride?: boolean
   // A short-lived signed URL for `image_path`, attached by the read functions in
   // lib/data/postcards.ts. The `media` bucket is private (010), so this is the
   // only way a postcard image renders — `image_path` alone is not fetchable.
@@ -1145,6 +1245,19 @@ export type NotificationType =
   | 'ride_invited'
   | 'ride_invite_accepted'
   | 'ride_invite_declined'
+  // `085` (PD-325). Two types, both carrying `club_id` ALONE — the same subject
+  // shape as `club_joined`, which is again why `036` §3's per-column policy
+  // needed no change.
+  //
+  // **There is deliberately no `club_join_request_declined`, and the absence is
+  // load-bearing.** `036` §3's SELECT policy conjuncts `club_id is null or
+  // exists (select 1 from clubs …)` under the READER's own row security, and a
+  // declined requester holds no `club_members` row for a private club — so such
+  // a row would be written and then never returned and never counted, silently,
+  // for ever. The requester learns the answer from their own
+  // `club_join_requests` row instead, which the club's reduced screen renders.
+  | 'club_join_requested'
+  | 'club_join_request_approved'
 
 /**
  * One row from `public.notifications` (`036`), as the notifications screen and

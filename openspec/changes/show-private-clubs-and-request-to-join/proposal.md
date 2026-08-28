@@ -148,7 +148,7 @@ hand-exercise gate applies to that path specifically.
   second row. RLS on, `to authenticated` only, INSERT granted **per column** over
   `(id, club_id, user_id)` so `status`, `created_at` and `responded_at` are server-owned. One
   participation-gate trigger, taking the count from **fifteen** to **sixteen** on DEV.
-  **No `responded_by` column** — `design.md` §What the requester may learn says why storing which
+  **No `responded_by` column** — `design.md` §Disclosure to the requester says why storing which
   admin refused is a disclosure the requester's own SELECT policy would hand them.
 - **`private.is_club_admin_for(candidate uuid, target_club uuid)`** — subject-taking,
   `security definer`, `stable`, `set search_path = ''`, granted to **no** client role.

@@ -5,6 +5,8 @@ import { notFound, useSearchParams } from 'next/navigation'
 import { Globe2Icon, LocationOutlineIcon, Lock2Icon } from '@/components/icons/generated'
 import { ClubCreateRideRow } from '@/components/clubs/ClubCreateRideRow'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
+import { ClubJoinRequestsSection } from '@/components/clubs/ClubJoinRequestsSection'
+import { ClubPreviewScreen } from '@/components/clubs/ClubPreviewScreen'
 import { ClubThreadsSection } from '@/components/clubs/ClubThreadsSection'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
 import { ClubMemberRail } from '@/components/clubs/ClubMemberRail'
@@ -16,7 +18,7 @@ import { ErrorState } from '@/components/ui/ErrorState'
 import { ExpandableText } from '@/components/ui/ExpandableText'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
-import { getClub } from '@/lib/data/clubs'
+import { getClub, getClubPreview } from '@/lib/data/clubs'
 import { getClubFeed } from '@/lib/data/postcards'
 import { getRides } from '@/lib/data/rides'
 import { combineQueries, useQuery } from '@/lib/query'
@@ -86,6 +88,27 @@ function ClubScreen() {
   const club = useQuery(queryKeys.clubs.detail(id), () => getClub(id))
 
   /**
+   * **The reduced branch — `085`, PD-325.** A non-member of a private club can
+   * now find it in Explore, and `ClubCard` wraps its whole row in a stretched
+   * link, so without this every one of those taps landed on a 404.
+   *
+   * **Enabled only once `getClub` has DECIDED it saw nothing.** `null` versus
+   * `undefined` is load-bearing twice on this line: issued eagerly it would
+   * cost every club detail in the app a second round trip, and the
+   * `notFound()` below needs BOTH reads to be `null` rather than merely falsy
+   * or every load would flash a 404 while the first was still out.
+   *
+   * **`getClub` is unchanged and still conflates "no such club" with "a club
+   * the policy hides"** — decision #1's requirement. The PAGE now
+   * distinguishes them, using a second, deliberately narrow read; a club that
+   * genuinely does not exist still 404s, because the accessor returns nothing
+   * for it either.
+   */
+  const preview = useQuery(club.data === null ? queryKeys.clubs.preview(id) : null, () =>
+    getClubPreview(id)
+  )
+
+  /**
    * The two content reads wait for the club rather than running alongside it.
    * Both throw on a malformed uuid — Postgres answers `22P02`, PostgREST turns
    * it into a 400 and `unwrapList` raises — so issued eagerly they would turn
@@ -120,16 +143,31 @@ function ClubScreen() {
     getRides({ kind: 'club', id })
   )
 
-  // Before the error gate: a club that came back null is a 404 whatever else
+  // Before the error gate: a club neither read can see is a 404 whatever else
   // happened, and the two content queries cannot have failed yet because they
   // were never enabled.
-  if (club.data === null) notFound()
+  //
+  // BOTH must be `null`, never merely falsy: `undefined` is "not yet" and
+  // `preview` is `undefined` for the whole of every ordinary club's load.
+  if (club.data === null && preview.data === null) notFound()
+
+  // The reduced screen. It issues no query that could return zero rows, which
+  // is the property that keeps "permission denied" and "empty" distinguishable
+  // here — see `ClubPreviewScreen`. `viewer_role` and `isMember` are untouched
+  // by this branch and never computed in it, so every gate below still means
+  // exactly what it meant before `085`.
+  if (club.data === null && preview.data) return <ClubPreviewScreen club={preview.data} />
 
   // Above both gates, not inside the loaded branch: back and the menu come
   // from the URL and the club read respectively, so they work while the club
   // is still arriving and while it has failed. Only the name and the avatar
   // wait — see `ClubDetailHeader`.
-  const header = <ClubDetailHeader clubId={id} club={club.data} current="detail" />
+  //
+  // `?? undefined` since `085`: `club.data === null` no longer falls straight
+  // to `notFound()` — it may be waiting on the preview read — and `undefined`
+  // is what makes the header draw its placeholder title rather than claiming a
+  // name it does not have.
+  const header = <ClubDetailHeader clubId={id} club={club.data ?? undefined} current="detail" />
 
   const gate = combineQueries(club, postcards, rides)
   // No `.pt-header-sub-extra`: the sub-page switcher that made this header the
@@ -274,6 +312,14 @@ function ClubScreen() {
             <ClubMembershipButton clubId={id} />
           </div>
         )}
+
+        {/* `085`, PD-325 — above Members because a pending request IS a
+            roster decision, and because an owner opening the club should meet
+            it before the list it changes. Draws nothing for anyone but an
+            owner or admin, and nothing when there is nothing pending.
+            **PD-326's `Manage riders` absorbs this section**; it should reuse
+            the same key and the same read rather than build a second list. */}
+        <ClubJoinRequestsSection clubId={id} club={club.data} />
 
         {/* Above Members: a roster is looked up, a thread is read, so the
             part of a club that changes daily goes first. A non-member of a

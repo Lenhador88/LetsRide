@@ -5,16 +5,35 @@ import Link from 'next/link'
 import { Globe2Icon, Lock2Icon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { JoinClubButton } from '@/components/clubs/JoinClubButton'
+import { RequestToJoinButton } from '@/components/clubs/RequestToJoinButton'
 import { routes } from '@/lib/routes'
 import type { ClubListItem } from '@/types'
 
 /**
  * `v2 / Component / List / Club`, measured from the committed snapshot.
  *
- * Three variants, the product of `is Private Club` and `is Joined` — and only
- * three, because `Private + not Joined` is not drawn. That absence is the design
- * agreeing with RLS rather than an oversight: a private club you have not joined
- * is invisible, so the state cannot occur.
+ * The design draws THREE variants, the product of `is Private Club` and
+ * `is Joined`, and does not draw `Private + not Joined` — because when it was
+ * drawn, a private club you had not joined was invisible.
+ *
+ * **`085` (PD-325) makes that state occur**, so this component draws a fourth
+ * variant the design has no frame for. It is assembled from measured pieces
+ * rather than invented: the same 358×112 card, the same type row, and the
+ * trailing slot's `Button / Link / Primary` replaced by `RequestToJoinButton`,
+ * which is that same control with different words. The deviation is logged in
+ * `docs/FIGMA-FIDELITY-TODO.md`.
+ *
+ * **The fourth variant draws the member COUNT with no faces.** That is not a
+ * degraded roster: `public.discoverable_private_clubs` returns an aggregate and
+ * no `club_members` rows at all, so `riders` is empty by construction, and the
+ * overlapping avatar row simply has nothing to draw. The count is the honest
+ * thing this card knows.
+ *
+ * **Its avatar and cover fall back to initials and to the empty container**,
+ * and both are correct rather than missing: `016`'s storage policies run their
+ * own `EXISTS` against `clubs` under the reader's RLS, so a non-member cannot
+ * read either object. See the null-check note below — that reasoning now has a
+ * second, larger population behind it.
  *
  * Geometry, read rather than chosen: card 358×112 radius 8 on White/100, right
  * padding 16 (`p-1 pr-4`, the same shape as `List / Ride`); the media block is
@@ -130,8 +149,18 @@ export function ClubCard({ club, joined }: { club: ClubListItem; joined: boolean
       <div className="relative z-10 flex shrink-0 items-center">
         {joined ? (
           <UnreadCounter count={club.unread ?? 0} />
-        ) : (
+        ) : club.is_public ? (
           <JoinClubButton clubId={club.id} clubName={club.name} />
+        ) : (
+          // `085`. A private club reached through the discovery accessor is
+          // asked rather than joined — `club_members`' own INSERT policy admits
+          // only a public or self-owned club, so `Join club` here would be a
+          // control that always fails RLS.
+          <RequestToJoinButton
+            clubId={club.id}
+            clubName={club.name}
+            status={club.request_status}
+          />
         )}
       </div>
     </div>

@@ -56,7 +56,7 @@
   `is distinct from` because **a CHECK accepts NULL**, `073`'s measured correction).
 - [ ] 1.4 **No `responded_by` column.** Comment the absence and why: the requester reads every
   column on their own row, so it would tell them which admin refused them
-  (`design.md` §What the requester may learn).
+  (`design.md` §Disclosure to the requester).
 - [ ] 1.5 Indexes: `(user_id, created_at desc, id desc)` — the rider's own rows and the `profiles`
   cascade path in one; `(club_id, status, created_at desc, id desc)` for the admin's pending list
   and the `clubs` cascade. The unique index already leads with `club_id`; `029`'s rule is that every

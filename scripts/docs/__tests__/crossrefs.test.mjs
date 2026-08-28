@@ -260,7 +260,27 @@ describe('the cross-references in the real repo', () => {
     // around it, which is the section the two deliberate departures are
     // recorded under. Both cite the heading they actually mean. `firstWords`
     // above still reads `['Before', 'Working']`.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(17)
+    //
+    // **17 -> 23 on 2026-08-28 (the two clubs proposals, PD-325 and PD-328).**
+    // Six new ones, all the same `Working` collision and all citing the heading
+    // they actually mean. `show-private-clubs-and-request-to-join` accounts for
+    // five and `club-stamps-include-its-rides` for one; both cite
+    // `CLAUDE.md §Working Principles` for the rule that a wrong claim is
+    // REPLACED rather than narrated — each change has to overwrite a comment
+    // that is about to become false (`ClubCard`'s "the state cannot occur" and
+    // the club detail's shared-cache-key note) — and `§Working With the Product
+    // Owner` for the rule a proposal follows when it surfaces an objection
+    // rather than building around it, which is where PD-325's undeliverable
+    // decline notification is recorded.
+    //
+    // **A NEW kind was caught here and fixed rather than pinned**, which is the
+    // whole point of the `firstWords` assertion above: PD-325's design.md
+    // originally carried a `§What the requester may learn` heading, whose
+    // one-word match collided with four `What …` siblings in the same change.
+    // It was RENAMED to `§Disclosure to the requester` — first word unique — so
+    // this test's `firstWords` still reads `['Before', 'Working']` because the
+    // collision is gone, not because the ceiling absorbed it.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(23)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been
