@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ImageIcon } from '@/components/icons/generated'
+import { BikeIcon, ImageIcon } from '@/components/icons/generated'
 import { usePostcardViewer } from '@/components/postcards/viewerContext'
 import { Avatar } from '@/components/ui/Avatar'
 import { routes } from '@/lib/routes'
@@ -42,13 +42,48 @@ const STAMP_WIDTH = 'w-32'
  * in a component rather than as a class list copied twice. Anything drawing a
  * postcard as a tile should reach for this; a third caller should not need a
  * third decision about what a stamp looks like.
+ *
+ * ## The ride marker names no ride, and cannot
+ *
+ * `fromRide` (`086`, PD-328) draws a small `BikeIcon` after the username. It
+ * says the photo reached this strip through one of the club's rides and never
+ * WHICH — `062`'s column comment records that there is no postcard -> ride read
+ * and that a badge naming one "needs its own accessor", and `086` deliberately
+ * does not build that accessor. So the tile carries a boolean, not an identity,
+ * and there is no navigation from a stamp to its ride.
+ *
+ * **No frame exists for it.** Checked offline against the committed snapshot:
+ * there is no stamp component in Figma at all, and `v2 / Component / Postcard`'s
+ * only provenance row is `User name · in · Club name`. Assembled from a measured
+ * icon at a measured type scale and logged in docs/FIGMA-FIDELITY-TODO.md rather
+ * than invented and called measured.
  */
-export function PostcardStamp({ postcard, className }: { postcard: Postcard; className?: string }) {
+export function PostcardStamp({
+  postcard,
+  fromRide = false,
+  className,
+}: {
+  postcard: Postcard
+  /**
+   * Draw the ride glyph — this photo reached the strip through the club's RIDE
+   * rather than because it was posted to the club (`086`, PD-328).
+   *
+   * **Defaults to false, and `RideJournal` never passes it.** Every stamp there
+   * is from that ride by construction, so a marker would be on every tile and
+   * would say nothing. Only `ClubPostcardCarousel` has a mix to distinguish.
+   */
+  fromRide?: boolean
+  className?: string
+}) {
   const openPostcard = usePostcardViewer()
   const username = postcard.author?.username ?? 'Rider'
+  const provenance = fromRide ? ' — from a ride' : ''
+  // Folded into the existing label rather than added as a second labelled
+  // element: the glyph is decoration inside a control that already has a name,
+  // and a second one would make a screen reader announce the tile twice.
   const label = postcard.caption?.trim()
-    ? `${username}: ${postcard.caption.trim()}`
-    : `Postcard from ${username}, ${formatPostcardDate(postcard.created_at)}`
+    ? `${username}: ${postcard.caption.trim()}${provenance}`
+    : `Postcard from ${username}, ${formatPostcardDate(postcard.created_at)}${provenance}`
 
   const photo = (
     <span
@@ -89,6 +124,24 @@ export function PostcardStamp({ postcard, className }: { postcard: Postcard; cla
     <span className={cn('mt-1.5 flex items-center gap-1', STAMP_WIDTH)}>
       <Avatar src={postcard.author?.avatar_url} name={username} size="xs" className="h-5 w-5" />
       <span className="truncate text-2xs font-semibold text-foreground">{username}</span>
+      {/* ## Why the marker sits at the END OF THE BYLINE ROW
+          
+          **Not a corner badge on the photo.** `stamp-edge` is a MASK and it
+          bites exactly the corners a badge wants, and the shadow is a
+          `filter: drop-shadow` chosen so it follows that notched silhouette —
+          so anything painted into a corner is either clipped by the mask or
+          sits outside the shadow and reads as detached.
+          
+          **Not a third row.** `STAMP_TILE_WIDTH` plus `aspect-square` size the
+          neighbouring tiles on two different strips against this tile's height,
+          so a row added here shifts the Journal as well as the club strip.
+          
+          `shrink-0` after a truncating username, so the glyph survives a long
+          name rather than being the thing that disappears — the provenance is
+          the whole point of drawing it. */}
+      {fromRide && (
+        <BikeIcon className="h-3 w-3 shrink-0 text-muted" aria-hidden="true" />
+      )}
     </span>
   )
 

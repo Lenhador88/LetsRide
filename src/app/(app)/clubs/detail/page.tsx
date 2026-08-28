@@ -123,10 +123,14 @@ function ClubScreen() {
    */
   const found = !!club.data
 
-  // The club feed under the postcard feed's own key: `getClubFeed(id)` and
-  // `getFeed({}, { kind: 'club', id })` are the same select, order, limit and
-  // predicate, so `/postcards?club=<id>` and this strand share one entry
-  // rather than holding two copies that expire apart.
+  // The club feed under the postcard feed's own key. `getClubFeed(id)` and
+  // `getFeed({}, { kind: 'club', id })` return the same rows because since
+  // `086` the second DELEGATES to the first — they are one function, not two
+  // that happen to agree. That delegation is what keeps this shared entry
+  // honest: before it, widening only one of them would have put two different
+  // lists under one key and made this strip and its own `See all` disagree by
+  // however many ride postcards exist, with the winner decided by which the
+  // rider opened first.
   const postcards = useQuery(found ? queryKeys.postcards.feed(filterSegment.club(id)) : null, () =>
     getClubFeed(id)
   )
