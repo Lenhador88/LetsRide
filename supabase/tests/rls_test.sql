@@ -20685,6 +20685,385 @@ select assert_eq(
 
 rollback to savepoint join_requests_085;
 
+-- ===========================================================================
+-- 086 · A club's stamps include the photos taken on its own rides
+-- ===========================================================================
+-- PD-328. The property this whole block exists to prove is that the accessor is
+-- a FILTER AND NEVER A GRANT — 086.16 asserts that as set containment over the
+-- entire fixture rather than describing it, and 086.1 asserts the audience arm
+-- as an EQUALITY against the reader's own filtered read, because containment
+-- alone would also pass for a function that silently short-pages.
+--
+--   860001  member of the PRIVATE club
+--   860002  non-member of everything here
+--   860003  member of the PUBLIC club
+--   860004  holder of a live ride_invites row for the private club's ride
+--   860005  a blocked author
+--   860006  a rider who has HIDDEN one of the postcards
+--
+--   860c01  the private club        860c02  the public club
+--   860d01  the private club's ride 860d02  the public club's PUBLIC ride
+--   860d03  the public club's PRIVATE ride
+savepoint club_stamps_086;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000860001', 'csmember@example.com'),
+  ('00000000-0000-0000-0000-000000860002', 'csouter@example.com'),
+  ('00000000-0000-0000-0000-000000860003', 'cspublic@example.com'),
+  ('00000000-0000-0000-0000-000000860004', 'csinvitee@example.com'),
+  ('00000000-0000-0000-0000-000000860005', 'csblocked@example.com'),
+  ('00000000-0000-0000-0000-000000860006', 'cshider@example.com');
+reset role;
+
+update profiles set username = 'csmember',  location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000860001';
+update profiles set username = 'csouter',   location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000860002';
+update profiles set username = 'cspublic',  location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000860003';
+update profiles set username = 'csinvitee', location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000860004';
+update profiles set username = 'csblocked', location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000860005';
+update profiles set username = 'cshider',   location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000860006';
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-00000086c001', 'PD086 Private', false,
+   '00000000-0000-0000-0000-000000860001'),
+  ('00000000-0000-0000-0000-00000086c002', 'PD086 Public',  true,
+   '00000000-0000-0000-0000-000000860003');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000086c001', '00000000-0000-0000-0000-000000860001', 'owner'),
+  ('00000000-0000-0000-0000-00000086c001', '00000000-0000-0000-0000-000000860005', 'member'),
+  ('00000000-0000-0000-0000-00000086c001', '00000000-0000-0000-0000-000000860006', 'member'),
+  ('00000000-0000-0000-0000-00000086c002', '00000000-0000-0000-0000-000000860003', 'owner');
+
+insert into rides (id, title, departure_at, meeting_point, organizer_id, club_id, is_public) values
+  ('00000000-0000-0000-0000-00000086d001', 'PD086 private club ride',
+   timestamptz '2026-09-01 09:00:00+00', 'Utrecht',
+   '00000000-0000-0000-0000-000000860001', '00000000-0000-0000-0000-00000086c001', false),
+  ('00000000-0000-0000-0000-00000086d002', 'PD086 public club ride',
+   timestamptz '2026-09-02 09:00:00+00', 'Utrecht',
+   '00000000-0000-0000-0000-000000860003', '00000000-0000-0000-0000-00000086c002', true),
+  -- 022 rewrites a club's rides only in the PRIVATE direction, so a PUBLIC club
+  -- can own a ride a non-member may not read. This is the ride the per-ride
+  -- gate in arm (2b) exists for, and 086.5 is what proves it does work.
+  ('00000000-0000-0000-0000-00000086d003', 'PD086 public club PRIVATE ride',
+   timestamptz '2026-09-03 09:00:00+00', 'Utrecht',
+   '00000000-0000-0000-0000-000000860003', '00000000-0000-0000-0000-00000086c002', false);
+
+-- 083's invitee: can_read_ride is TRUE for them on the private club's ride, and
+-- can_read_club is FALSE. The only rider for whom the outer gate is not
+-- redundant, which is why 086.4 mutation-tests it.
+insert into ride_invites (ride_id, invitee_id, inviter_id) values
+  ('00000000-0000-0000-0000-00000086d001', '00000000-0000-0000-0000-000000860004',
+   '00000000-0000-0000-0000-000000860001');
+
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000860001', '00000000-0000-0000-0000-000000860005');
+
+insert into postcards (id, author_id, club_id, ride_id, image_path, caption) values
+  -- The AUDIENCE arm: posted to the private club, no tag.
+  ('00000000-0000-0000-0000-00000086a001', '00000000-0000-0000-0000-000000860001',
+   '00000000-0000-0000-0000-00000086c001', null, 'postcards/860001/a.jpg', 'to the club'),
+  -- The TAG arm: app-wide audience, tagged to the private club's ride. Invisible
+  -- to `club_id = <club>` and the whole reason this migration exists.
+  ('00000000-0000-0000-0000-00000086a002', '00000000-0000-0000-0000-000000860001',
+   null, '00000000-0000-0000-0000-00000086d001', 'postcards/860001/b.jpg', 'on the ride'),
+  -- BOTH: scoped to the club AND tagged to its own ride. from_ride must be
+  -- FALSE — it reached the strip through the audience arm.
+  ('00000000-0000-0000-0000-00000086a003', '00000000-0000-0000-0000-000000860001',
+   '00000000-0000-0000-0000-00000086c001', '00000000-0000-0000-0000-00000086d001',
+   'postcards/860001/c.jpg', 'both'),
+  -- A blocked author's, tagged to the club's ride.
+  ('00000000-0000-0000-0000-00000086a004', '00000000-0000-0000-0000-000000860005',
+   null, '00000000-0000-0000-0000-00000086d001', 'postcards/860005/a.jpg', 'blocked author'),
+  -- On the public club's PUBLIC ride, app-wide.
+  ('00000000-0000-0000-0000-00000086a005', '00000000-0000-0000-0000-000000860003',
+   null, '00000000-0000-0000-0000-00000086d002', 'postcards/860003/a.jpg', 'public ride'),
+  -- On the public club's PRIVATE ride, app-wide.
+  ('00000000-0000-0000-0000-00000086a006', '00000000-0000-0000-0000-000000860003',
+   null, '00000000-0000-0000-0000-00000086d003', 'postcards/860003/b.jpg', 'private ride'),
+  -- Tagged to club A's ride but posted INTO club B. 086.9's row.
+  ('00000000-0000-0000-0000-00000086a007', '00000000-0000-0000-0000-000000860003',
+   '00000000-0000-0000-0000-00000086c002', '00000000-0000-0000-0000-00000086d001',
+   'postcards/860003/c.jpg', 'A''s ride, B''s audience'),
+  -- The blocked author's own, posted TO the club with no tag. 086.8's first
+  -- half: 009's unconditional author branch has to carry this past the block.
+  ('00000000-0000-0000-0000-00000086a008', '00000000-0000-0000-0000-000000860005',
+   '00000000-0000-0000-0000-00000086c001', null, 'postcards/860005/b.jpg', 'mine, blocked'),
+  -- 860006's own, which they then hide from themselves. 086.8's third half.
+  ('00000000-0000-0000-0000-00000086a009', '00000000-0000-0000-0000-000000860006',
+   '00000000-0000-0000-0000-00000086c001', null, 'postcards/860006/a.jpg', 'mine, hidden');
+
+insert into postcard_hides (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-00000086a001', '00000000-0000-0000-0000-000000860006'),
+  ('00000000-0000-0000-0000-00000086a009', '00000000-0000-0000-0000-000000860006');
+
+-- ---------------------------------------------------------------------------
+-- 086.1  ** THE AUDIENCE ARM IS AN EQUALITY, NOT A SPOT CHECK. **
+-- ---------------------------------------------------------------------------
+-- Containment alone would also pass for an accessor that silently short-pages,
+-- so the club_id-scoped half is asserted as set equality against the reader's
+-- own `.eq('club_id', …)` read — the exact query getClubFeed used to issue.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000860001', false);
+select assert_eq(
+  (select array(select id from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')
+                 where not from_ride order by id)),
+  (select array(select id from postcards
+                 where club_id = '00000000-0000-0000-0000-00000086c001' order by id)),
+  '086.1: the audience arm returns EXACTLY what the reader''s own club_id filter returns — a regression in the restated qual is visible here rather than as a missing tile');
+
+-- ---------------------------------------------------------------------------
+-- 086.2  The tag arm — the rows the old filter could never see
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select from_ride from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')
+    where id = '00000000-0000-0000-0000-00000086a002'),
+  true,
+  '086.2: a postcard with a NULL club_id, tagged to one of the club''s rides, is on the strip and marked from_ride');
+
+-- ---------------------------------------------------------------------------
+-- 086.10  from_ride is `is distinct from`, and the both-row is what proves it
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select from_ride from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')
+    where id = '00000000-0000-0000-0000-00000086a003'),
+  false,
+  '086.10: a postcard scoped to the club AND tagged to its own ride is NOT marked from_ride — it reached the strip through the audience arm');
+
+-- ---------------------------------------------------------------------------
+-- 086.3  ** A NON-MEMBER OF A PRIVATE CLUB READS ZERO ROWS. **
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000860002', false);
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')),
+  0, '086.3: a non-member of a private club reads zero rows from its strip, through BOTH arms');
+
+-- ---------------------------------------------------------------------------
+-- 086.4  ** 083's INVITEE READS ZERO — the one rider the outer gate is for. **
+-- ---------------------------------------------------------------------------
+-- can_read_ride is TRUE for them and can_read_club is FALSE, so this is the
+-- only rider for whom private.can_read_club is not redundant.
+-- ** MUTATION-TEST: remove the outer gate from 086 §1, confirm this goes red,
+-- revert. ** An assertion for a predicate that has never been seen to fail is
+-- not coverage.
+select set_config('test.uid', '00000000-0000-0000-0000-000000860004', false);
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000086d001'),
+  1, '086.4: 083''s invitee CAN read the private club''s ride ...');
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')),
+  0, '086.4: ... and still reads ZERO of that club''s stamps — private.can_read_club is the gate, and this rider is the only one it is not redundant for');
+
+-- ---------------------------------------------------------------------------
+-- 086.5  A public club's PRIVATE ride — what the per-ride gate buys
+-- ---------------------------------------------------------------------------
+-- 022 rewrites a club's rides only in the private direction, so a public club
+-- can own a ride a non-member may not read.
+select set_config('test.uid', '00000000-0000-0000-0000-000000860002', false);
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c002')
+    where id = '00000000-0000-0000-0000-00000086a005'),
+  1, '086.5: a non-member of a PUBLIC club reads postcards tagged to its PUBLIC rides ...');
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c002')
+    where id = '00000000-0000-0000-0000-00000086a006'),
+  0, '086.5: ... and ZERO tagged to its PRIVATE one — which is exactly what the per-ride can_read_ride conjunct buys');
+
+-- ---------------------------------------------------------------------------
+-- 086.6  A blocked author's postcard — absent from BOTH, asserted separately
+-- ---------------------------------------------------------------------------
+-- Two assertions, because the accessor may not RELY on the re-read: a row it
+-- returns that the re-read then drops is a correlation leak even though no
+-- content reaches the screen.
+select set_config('test.uid', '00000000-0000-0000-0000-000000860001', false);
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')
+    where id = '00000000-0000-0000-0000-00000086a004'),
+  0, '086.6: a blocked author''s postcard is absent from the ACCESSOR ...');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-00000086a004'),
+  0, '086.6: ... and from the re-read — the accessor may not rely on the second, because the correlation leaks before the content does');
+
+-- ---------------------------------------------------------------------------
+-- 086.7 / 086.8  Hides, and the unconditional author branch
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000860006', false);
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')
+    where id = '00000000-0000-0000-0000-00000086a001'),
+  0, '086.7: a postcard this reader has hidden is absent from their strip');
+-- ** 086.8 HAS THREE HALVES AND THE SECOND IS THE ONE NOBODY WOULD PREDICT. **
+-- 009's author branch is unconditional, so a rider never loses their own photo
+-- — but that governs arm (3) alone. Whether the photo is CORRELATED to this
+-- club's strip is arms (1) and (2b), and the tag arm's per-ride gate is not
+-- author-exempt. So a rider blocked with the ride's organizer keeps their
+-- postcard everywhere it is theirs and does not see it on the strip, because
+-- the thing they cannot read is the RIDE that put it there. That is the right
+-- answer and it is asserted rather than discovered later.
+select set_config('test.uid', '00000000-0000-0000-0000-000000860005', false);
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')
+    where id = '00000000-0000-0000-0000-00000086a008'),
+  1, '086.8: the reader''s OWN postcard, posted TO the club, is on their strip even though the club''s owner has blocked them — 009''s author branch is unconditional there and stays unconditional here');
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-00000086d001'),
+  0, '086.8: ... while the same rider cannot read the club''s RIDE, because its organizer is who blocked them ...');
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')
+    where id = '00000000-0000-0000-0000-00000086a004'),
+  0, '086.8: ... so their ride-TAGGED postcard is absent from the strip. The author branch governs whether they may READ the row; the per-ride gate governs whether it may be CORRELATED to this club, and it is deliberately not author-exempt');
+select set_config('test.uid', '00000000-0000-0000-0000-000000860006', false);
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')
+    where id = '00000000-0000-0000-0000-00000086a009'),
+  1, '086.8: and a rider''s OWN postcard that they have hidden from themselves is still on their strip — 009''s author branch dominates the hide, exactly as it does in the policy');
+
+-- ---------------------------------------------------------------------------
+-- 086.9  Club A's ride, club B's audience
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000860001', false);
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')
+    where id = '00000000-0000-0000-0000-00000086a007'),
+  0, '086.9: a postcard tagged to club A''s ride but posted INTO club B is absent from A''s strip for a member of A alone — the tag arm still passes 011''s club_id conjunct');
+-- As the OWNER: the private club's own INSERT policy refuses a self-join to a
+-- private club, which is the very gap 085 exists to close — and using 085's
+-- approval RPC here would couple this block to that migration for a fixture.
+reset role;
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000086c001', '00000000-0000-0000-0000-000000860003', 'member');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000860003', false);
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids('00000000-0000-0000-0000-00000086c001')
+    where id = '00000000-0000-0000-0000-00000086a007' and from_ride),
+  1, '086.9: ... and present, marked from_ride, for a member of BOTH');
+
+-- ---------------------------------------------------------------------------
+-- 086.11 / 086.12  Ordering, the cap and `before`
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000860001', false);
+select assert_eq(
+  (select count(*)::int <= 100 from public.club_stamp_postcard_ids(
+     '00000000-0000-0000-0000-00000086c001', null, 10000)),
+  true, '086.12: page_size is capped at 100 in SQL rather than trusted from the client');
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids(
+     '00000000-0000-0000-0000-00000086c001', null, -1)),
+  0, '086.12: ... and a negative page_size returns nothing rather than raising `LIMIT must not be negative`');
+select assert_eq(
+  (select count(*)::int from public.club_stamp_postcard_ids(
+     '00000000-0000-0000-0000-00000086c001', timestamptz '2000-01-01 00:00:00+00')),
+  0, '086.12: `before` excludes everything newer than it, matching what getFeed does today');
+
+-- ---------------------------------------------------------------------------
+-- 086.16  ** IT IS A FILTER AND NEVER A GRANT. ** Set containment.
+-- ---------------------------------------------------------------------------
+-- Over the whole fixture, for every reader in it: the accessor may not name a
+-- postcard the reader's own RLS-governed read would not return. Proven rather
+-- than described, and this is the assertion that fails if the restated qual is
+-- ever loosened relative to the policy.
+do $$
+declare u uuid; c uuid; leaked int;
+begin
+  foreach u in array array[
+    '00000000-0000-0000-0000-000000860001'::uuid,'00000000-0000-0000-0000-000000860002'::uuid,
+    '00000000-0000-0000-0000-000000860003'::uuid,'00000000-0000-0000-0000-000000860004'::uuid,
+    '00000000-0000-0000-0000-000000860005'::uuid,'00000000-0000-0000-0000-000000860006'::uuid]
+  loop
+    foreach c in array array[
+      '00000000-0000-0000-0000-00000086c001'::uuid,'00000000-0000-0000-0000-00000086c002'::uuid]
+    loop
+      perform set_config('test.uid', u::text, false);
+      select count(*) into leaked
+        from public.club_stamp_postcard_ids(c) a
+       where not exists (select 1 from public.postcards p where p.id = a.id);
+      if leaked <> 0 then
+        raise exception 'FAIL  086.16: the accessor named % postcard(s) reader % cannot read on club % — it is acting as a GRANT rather than a FILTER', leaked, u, c;
+      end if;
+    end loop;
+  end loop;
+  perform set_config('test.uid', '00000000-0000-0000-0000-000000860001', false);
+  raise notice 'ok    086.16: across every reader and both clubs, the accessor is a SUBSET of the reader''s own postcards read — a filter, never a grant';
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 086.13 / 086.14  The grants, and the column revoke this file depends on
+-- ---------------------------------------------------------------------------
+reset role;
+select assert_eq(
+  has_function_privilege('anon', 'public.club_stamp_postcard_ids(uuid,timestamptz,int)', 'execute'),
+  false, '086.13: anon holds no EXECUTE — named by role rather than attempted, since the suite runs as the table owner (031)');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.club_stamp_postcard_ids(uuid,timestamptz,int)', 'execute'),
+  true, '086.13: ... and authenticated does, because the client calls it through PostgREST');
+select assert_eq(
+  (select prosecdef from pg_proc where proname = 'club_stamp_postcard_ids'),
+  true, '086.13: it is security definer — which is the whole mechanism, since 062 revoked the column it filters on');
+-- Compared by SHAPE rather than by the rendered array text: Postgres 16 prints
+-- the empty setting as `search_path=""` and 17 as `search_path=`, so a literal
+-- comparison passes on the runner and fails locally or the other way round —
+-- and the thing being asserted is that the path is EMPTY, not how it is spelled.
+select assert_eq(
+  (select array_length(proconfig, 1) = 1
+       and regexp_replace(proconfig[1], '^search_path=', '') in ('', '""')
+     from pg_proc where proname = 'club_stamp_postcard_ids'),
+  true, '086.13: ... with search_path pinned EMPTY and nothing else set — an unpinned definer function resolves unqualified names against the caller''s path');
+select assert_eq(
+  (select pg_get_function_result(oid) from pg_proc where proname = 'club_stamp_postcard_ids'),
+  'TABLE(id uuid, from_ride boolean)',
+  '086.13: it returns IDS AND A FLAG and never a row — widening this to return columns off postcards would make it a grant');
+
+-- ** THE REVOKE THIS ENTIRE FILE EXISTS BECAUSE OF. ** If it were ever
+-- restored, the accessor would be pointless and PD-166's exposure would be
+-- live again. A sorted string rather than a count — 015's trap.
+select assert_eq(
+  (select string_agg(column_name, ',' order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'postcards'
+      and grantee = 'authenticated' and privilege_type = 'SELECT'),
+  'author_id,caption,club_id,created_at,id,image_path,taken_at,taken_at_offset_minutes,taken_country_code,taken_latitude,taken_location_precision,taken_longitude,taken_place_name,updated_at',
+  '086.14: authenticated''s SELECT column list on postcards is UNCHANGED by 086 — fourteen columns, and ride_id is not among them. 062''s footer names seven because the taken_* columns arrived later; the list rather than the count is what makes an addition visible');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.postcards', 'ride_id', 'SELECT'),
+  false, '086.14: ... and ride_id is still revoked, which is the only reason this accessor has to exist');
+
+-- ---------------------------------------------------------------------------
+-- 086.15  ** THE SECOND PIN ON postcards SELECT. **
+-- ---------------------------------------------------------------------------
+-- The suite already pins this policy's whole text under
+-- ride_journal_postcard_ids' name. There are now TWO accessors restating it, so
+-- it is pinned again under this one — and the failure message says to move BOTH
+-- bodies rather than to re-pin the string. PD-211's shape: a change that moves
+-- one copy of a rule and not the other.
+select assert_eq(
+  (select md5(qual) from pg_policies
+    where schemaname = 'public' and tablename = 'postcards' and cmd = 'SELECT'),
+  'c8fb49b026866743283b3d7ecfbc5122',
+  '086.15: postcards SELECT is TEXTUALLY what BOTH public.ride_journal_postcard_ids AND public.club_stamp_postcard_ids restate. If this fails, TWO accessor bodies are stale — update both in the same change rather than re-pinning this string, or the club strip and the ride Journal start naming rows against a rule that no longer exists');
+
+rollback to savepoint club_stamps_086;
+
 rollback;
 
 \echo ''
