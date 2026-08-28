@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Use to review a branch, PR, or set of changes before merge. Always run this after `data` or `feature` completes work — the value comes from reviewing code it did not write. Reports findings; does not fix them. Which passes run is decided by what the diff touches — a code or SQL diff gets the RLS and data-exposure audit, a docs diff gets the documentation-claims audit, and the scope pass runs on anything from a queue pickup.
-tools: Read, Glob, Grep, Bash, ReportFindings, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__list_migrations, mcp__Supabase__list_edge_functions, mcp__Supabase__get_advisors, mcp__Linear__get_issue, mcp__Linear__list_issues, mcp__Linear__list_comments, mcp__github__pull_request_read, mcp__github__get_file_contents, mcp__github__actions_list, mcp__github__get_job_logs
+tools: Read, Glob, Grep, Bash, ReportFindings, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__list_migrations, mcp__Supabase__list_edge_functions, mcp__Supabase__get_advisors, mcp__Linear__get_issue, mcp__Linear__list_issues, mcp__Linear__list_comments, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_tables, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__execute_sql, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_migrations, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_edge_functions, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_advisors, mcp__a55a164a-166a-4261-8af9-9231edd9663d__get_issue, mcp__a55a164a-166a-4261-8af9-9231edd9663d__list_issues, mcp__a55a164a-166a-4261-8af9-9231edd9663d__list_comments, mcp__github__pull_request_read, mcp__github__get_file_contents, mcp__github__actions_list, mcp__github__get_job_logs
 model: opus
 ---
 
@@ -21,7 +21,20 @@ above is neither guaranteed loaded nor guaranteed present, and its two failures 
 - **`No such tool available`** — the name is absent, which is what a rotation does (2026-08-08:
   every MCP server re-registered under a UUID prefix). A keyword search, `+execute_sql supabase`,
   says whether it moved — **diagnosis, not recovery**, since a name found under a new prefix is
-  not on the exact-name allowlist either (measured 2026-08-09; untested against a real rotation).
+  not on the exact-name allowlist either.
+
+**Measured against a real rotation on 2026-08-27, and it is worse than that line predicted, so
+do not spend the session hunting for a way through.** `ToolSearch` is filtered by *this* `tools:`
+line before it searches, so a rotated tool is not found-then-refused — it is **never surfaced at
+all**. Both passes that day probed `select:` and keyword for Supabase and Linear and got nothing;
+the keyword search for Linear returned a *GitHub* tool, GitHub being the one connector whose
+friendly name was resolving. **There is no recovery from inside the agent.** Report which passes
+did not run and review what you can reach.
+
+**The `tools:` line above now carries every MCP tool twice** — the friendly name and the
+UUID-prefixed one the same server registers as in other sessions — so the rotation should no
+longer reach you. That is the fix; this block is the fallback for the case where a connector
+registers as a *third* spelling nobody has recorded yet.
 
 Project ref: **DEV `fpmrimzxadewsaiwpsel`** for a PR into `development`, **PROD
 `zwprydcyryvudhurbnye`** for a promotion (`docs/ENVIRONMENTS.md`'s head table). Read-only.

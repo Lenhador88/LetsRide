@@ -964,10 +964,30 @@ then call it*, as `.claude/commands/queue-pickup.md` STEP 0 does. `No such tool 
 the name is **absent**, which is what a rotation does: on 2026-08-08 every MCP server
 re-registered under a UUID prefix and `mcp__Supabase__*` stopped resolving, silently, an absent
 tool being no error. A keyword search (`+execute_sql supabase`) tells them apart and **buys
-diagnosis, not recovery** — probed 2026-08-09, a tool absent from the allowlist is refused
-outright, so a UUID-prefixed name it finds is very likely refused too (untested against a real
-rotation). **The fix is therefore the *report***, an agent naming the passes that did not run;
-restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
+diagnosis, not recovery**.
+
+**Measured against a real rotation on 2026-08-27, and the mechanism is worse than "refused":
+`ToolSearch` is filtered by the agent's own `tools:` line before it searches, so a rotated tool
+is never surfaced at all.** Both `reviewer` passes that day probed `select:` and keyword for
+Supabase and Linear and found nothing — the keyword search for Linear returned a *GitHub* tool,
+GitHub being the one connector then resolving under its friendly name. **So an agent cannot
+recover from inside itself, and a brief that tells it to try is describing an escape hatch behind
+the door it is meant to open.** That was `PD-154`'s chosen remedy, and it is why this recurred
+after that issue closed.
+
+**The fix is the `tools:` line carrying BOTH spellings**, which every brief reaching Supabase,
+Linear or Figma now does — the friendly name and the UUID-prefixed one. **The UUIDs identify a
+connector, not a session**: `.claude/settings.json` recorded Supabase's on 2026-08-07 and it was
+byte-identical on 2026-08-27, twenty days later. Re-derive rather than trust that pairing —
+a brief's two halves must stay in step, and `src/__tests__/agent-briefs.test.ts` asserts the set
+of briefs it examined for exactly the reason a silent skip is invisible:
+
+```bash
+grep -c "mcp__[0-9a-f]\{8\}-" .claude/agents/reviewer.md   # UUID twins present
+```
+
+**The report is still owed when a connector arrives under a third spelling nobody has recorded** —
+an agent naming the passes that did not run; restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
 §Reaching Supabase block (`reviewer`'s leads its file as §First), and a new one needing the
 database gets both; `design-system` is out, its connector being Figma and its *answers* coming
 from the committed `design/` snapshot with reads over the API forbidden — which is a rule about

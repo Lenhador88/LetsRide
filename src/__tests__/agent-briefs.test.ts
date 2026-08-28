@@ -38,6 +38,38 @@ function briefs(): Array<{ name: string; body: string }> {
 }
 
 /**
+ * Is this tool Figma's, under **either** spelling a connector registers as?
+ *
+ * The three exemptions below skip a brief whose connectors are all Figma's —
+ * `design-system` is deliberately outside the §Reaching Supabase convention,
+ * because its answers come from the committed `design/` snapshot and reads over
+ * the API are forbidden outright (CLAUDE.md §The Agent Squad).
+ *
+ * **It has to match on the connector rather than on the prefix, and that is the
+ * same bug the briefs themselves carry.** A `tools:` line now lists each MCP
+ * tool twice — the friendly name and the UUID-prefixed one the same server
+ * registers as in other sessions — so `startsWith('mcp__Figma__')` is false for
+ * half of `design-system`'s entries, `every` collapses, and the exemption
+ * silently stops applying. The failure is loud (three assertions it was never
+ * meant to face) rather than dangerous, but it is the identical shape:
+ * behaviour keyed to one spelling of a name that has two.
+ *
+ * `.claude/settings.json` states the rule this follows — *"IDENTIFY TOOLS BY
+ * WHAT THEY DO, NOT BY THEIR CONNECTOR NAME"*.
+ */
+function isFigmaTool(tool: string): boolean {
+  return tool.startsWith('mcp__Figma__') || tool.startsWith(`mcp__${FIGMA_UUID}__`)
+}
+
+/**
+ * The UUID prefix the Figma connector registers under when it does not register
+ * under its friendly name. Observed 2026-08-27. The Supabase equivalent has been
+ * stable since 2026-08-07 (`.claude/settings.json` records it), which is the
+ * evidence that these ids identify a connector rather than a session.
+ */
+const FIGMA_UUID = '7658846e-eed8-4f3b-8c99-3c152bad83b8'
+
+/**
  * Strip the passages that exist to say a thing is GONE. Without this the test
  * fires on its own fix: the corrected briefs all name the retired concept in
  * order to warn about it, which is the repo's most-repeated measurement error
@@ -267,7 +299,7 @@ describe('agent briefs do not describe a world that has moved on', () => {
       const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
       const connectors = declared.filter((t) => t.startsWith('mcp__'))
       if (connectors.length === 0) continue
-      if (connectors.every((t) => t.startsWith('mcp__Figma__'))) continue
+      if (connectors.every(isFigmaTool)) continue
       checked.push(name)
       expect(
         declared,
@@ -280,6 +312,77 @@ describe('agent briefs do not describe a world that has moved on', () => {
       'the guard examined a different set of briefs than expected — a `tools:` line it can no longer parse skips silently',
     ).toEqual([
       'data.md',
+      'feature.md',
+      'media.md',
+      'openspec.md',
+      'realtime.md',
+      'reviewer.md',
+      'test.md',
+    ])
+  })
+
+  it('every MCP tool on a brief is listed under BOTH spellings its connector uses', () => {
+    /*
+     * The fix for the rotation, and the thing that decays silently without a
+     * test. A `tools:` line is an exact-name allowlist, so a tool listed only as
+     * `mcp__Supabase__execute_sql` vanishes in any session where that server
+     * registers under its UUID prefix instead — and `ToolSearch` cannot find it
+     * back, because `ToolSearch` is filtered by this same line before it
+     * searches. Measured 2026-08-27: both `reviewer` passes lost Supabase and
+     * Linear entirely and reported themselves degraded.
+     *
+     * `PD-154` closed on the opposite remedy — give the agents `ToolSearch` and
+     * a brief telling them to probe — which cannot work for the reason above,
+     * and the bug recurred with the issue marked Done. So the twin entry is the
+     * fix and this is what keeps it true: **adding one tool means adding two
+     * lines**, and the failure mode without this test is a half-added tool that
+     * works right up until the connector rotates.
+     *
+     * The UUIDs identify a connector rather than a session — Supabase's was
+     * recorded in `.claude/settings.json` on 2026-08-07 and was byte-identical
+     * twenty days later. A connector arriving under a THIRD spelling is what the
+     * briefs' own degraded-report blocks are still for.
+     */
+    const UUID = {
+      Supabase: 'd217aba8-fcb6-4a59-af93-7a4613b7ef05',
+      Linear: 'a55a164a-166a-4261-8af9-9231edd9663d',
+      Figma: FIGMA_UUID,
+    } as const
+
+    const checked: string[] = []
+    for (const { name, body } of briefs()) {
+      const frontmatter = body.split('\n---')[0]
+      const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
+      const friendly = declared.filter((t) => /^mcp__(Supabase|Linear|Figma)__/.test(t))
+      if (friendly.length === 0) continue
+      checked.push(name)
+
+      for (const tool of friendly) {
+        const [, server, method] = /^mcp__(Supabase|Linear|Figma)__(.+)$/.exec(tool)!
+        const twin = `mcp__${UUID[server as keyof typeof UUID]}__${method}`
+        expect(
+          declared,
+          `${name} lists ${tool} but not its UUID twin — it disappears from this agent entirely in any session where ${server} registers under its UUID prefix, and ToolSearch cannot find it back`,
+        ).toContain(twin)
+      }
+
+      // The reverse, so a twin left behind by a deleted tool is caught too: a
+      // stale UUID entry is inert rather than harmful, but it reads as coverage.
+      const twins = declared.filter((t) => /^mcp__[0-9a-f]{8}-/.test(t))
+      expect(
+        twins.length,
+        `${name} has ${twins.length} UUID entries for ${friendly.length} friendly ones — they must correspond one to one`,
+      ).toBe(friendly.length)
+    }
+
+    // Same both-ways guard as the tests around it: a `tools:` line this can no
+    // longer parse would skip every brief and pass.
+    expect(
+      checked.sort(),
+      'the guard examined a different set of briefs than expected — a `tools:` line it can no longer parse skips silently',
+    ).toEqual([
+      'data.md',
+      'design-system.md',
       'feature.md',
       'media.md',
       'openspec.md',
@@ -324,7 +427,7 @@ describe('agent briefs do not describe a world that has moved on', () => {
       const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
       const connectors = declared.filter((t) => t.startsWith('mcp__'))
       if (connectors.length === 0) continue
-      if (connectors.every((t) => t.startsWith('mcp__Figma__'))) continue
+      if (connectors.every(isFigmaTool)) continue
       checked.push(name)
 
       expect(
@@ -407,7 +510,7 @@ describe('agent briefs do not describe a world that has moved on', () => {
       const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
       const connectors = declared.filter((t) => t.startsWith('mcp__'))
       if (connectors.length === 0) continue
-      if (connectors.every((t) => t.startsWith('mcp__Figma__'))) continue
+      if (connectors.every(isFigmaTool)) continue
       checked.push(name)
 
       const probes = [

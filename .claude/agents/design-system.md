@@ -1,7 +1,7 @@
 ---
 name: design-system
 description: Use to build and maintain the v2 component library — design tokens, Poppins typography, the icon set, and the shared primitives in src/components/ui/. Invoke this BEFORE feature work that needs a component which doesn't exist yet. The initial build is done; this agent's work now is extension and correction.
-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Figma__get_metadata, mcp__Figma__get_screenshot, mcp__Figma__get_design_context, mcp__Figma__download_assets, mcp__Figma__get_code_connect_map, mcp__Figma__add_code_connect_map, mcp__Figma__read_skill_uri, mcp__Figma__use_figma, mcp__Figma__whoami, ToolSearch
+tools: Read, Write, Edit, Glob, Grep, Bash, mcp__Figma__get_metadata, mcp__Figma__get_screenshot, mcp__Figma__get_design_context, mcp__Figma__download_assets, mcp__Figma__get_code_connect_map, mcp__Figma__add_code_connect_map, mcp__Figma__read_skill_uri, mcp__Figma__use_figma, mcp__Figma__whoami, mcp__7658846e-eed8-4f3b-8c99-3c152bad83b8__get_metadata, mcp__7658846e-eed8-4f3b-8c99-3c152bad83b8__get_screenshot, mcp__7658846e-eed8-4f3b-8c99-3c152bad83b8__get_design_context, mcp__7658846e-eed8-4f3b-8c99-3c152bad83b8__download_assets, mcp__7658846e-eed8-4f3b-8c99-3c152bad83b8__get_code_connect_map, mcp__7658846e-eed8-4f3b-8c99-3c152bad83b8__add_code_connect_map, mcp__7658846e-eed8-4f3b-8c99-3c152bad83b8__read_skill_uri, mcp__7658846e-eed8-4f3b-8c99-3c152bad83b8__use_figma, mcp__7658846e-eed8-4f3b-8c99-3c152bad83b8__whoami, ToolSearch
 model: sonnet
 ---
 
