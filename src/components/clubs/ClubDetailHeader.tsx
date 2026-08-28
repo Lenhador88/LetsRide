@@ -3,7 +3,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { ClubOptionsMenu } from '@/components/clubs/ClubOptionsMenu'
 import { routes } from '@/lib/routes'
-import type { ClubDetail } from '@/types'
+import type { ClubDetail, ClubPreview } from '@/types'
 
 /** The four screens that render this header — the merged detail itself, plus
  * the three list sub-pages `See all` reaches. `threads` joined them with
@@ -59,11 +59,24 @@ export function ClubDetailHeader({
   current,
 }: {
   clubId: string
-  /** `undefined` while the club is still being read — `Header` draws a
-   * placeholder bar for the title. See that component's `title` prop. */
-  club: ClubDetail | undefined
+  /**
+   * `undefined` while the club is still being read — `Header` draws a
+   * placeholder bar for the title. See that component's `title` prop.
+   *
+   * **The narrow arm is `085`'s reduced screen** (PD-325), where a non-member
+   * of a private club has a name and an avatar and nothing else. It is a
+   * `ClubPreview` rather than a partial `ClubDetail` on purpose: `viewer_role`
+   * and `viewer_is_owner` are the DISCRIMINANT below, so a shape that carried
+   * them as optionals would let the options menu render for a rider who is not
+   * in the club at all.
+   */
+  club: ClubDetail | Pick<ClubPreview, 'name' | 'avatar_url'> | undefined
   current: ClubScreen
 }) {
+  // Every entry in the menu — Leave, Edit, Delete — is a member or owner
+  // action, so it is absent on the preview branch rather than empty. `in` is
+  // the discriminant because the preview shape structurally cannot carry it.
+  const full = club && 'viewer_role' in club ? club : undefined
   return (
     <Header
       title={club?.name}
@@ -83,11 +96,11 @@ export function ClubDetailHeader({
         )
       }
       action={
-        club ? (
+        full ? (
           <ClubOptionsMenu
             clubId={clubId}
-            viewerRole={club.viewer_role}
-            isOwner={club.viewer_is_owner}
+            viewerRole={full.viewer_role}
+            isOwner={full.viewer_is_owner}
           />
         ) : undefined
       }

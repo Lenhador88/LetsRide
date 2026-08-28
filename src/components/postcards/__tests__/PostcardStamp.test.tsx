@@ -52,10 +52,10 @@ const postcard = (over: Partial<Postcard> = {}): Postcard => ({
 })
 
 const bare = (p: Postcard) => renderToStaticMarkup(<PostcardStamp postcard={p} />)
-const withViewer = (p: Postcard) =>
+const withViewer = (p: Postcard, fromRide?: boolean) =>
   renderToStaticMarkup(
     <PostcardViewerProvider>
-      <PostcardStamp postcard={p} />
+      <PostcardStamp postcard={p} fromRide={fromRide} />
     </PostcardViewerProvider>
   )
 
@@ -113,5 +113,40 @@ describe('PostcardStamp — what a tap does', () => {
     // and the route it points at is the same one shared links already open.
     const out = bare(postcard())
     expect(out).toContain('href="/postcards/detail?id=11111111-1111-4111-8111-111111111111"')
+  })
+})
+
+describe('PostcardStamp — the ride marker', () => {
+  /**
+   * `086`, PD-328. Two assertions and the SECOND is the one that matters: the
+   * marker has to be absent when the prop is not passed, because `RideJournal`
+   * draws every one of its tiles that way and a default that leaked would put a
+   * ride glyph on every stamp in the app.
+   *
+   * Asserted on the glyph's own class list rather than on a name, for
+   * `PostcardAction.test.tsx`'s recorded reason: the environment is `node`, so
+   * there is no layout to measure and the class list is what actually survives
+   * to the browser.
+   */
+  it('draws the ride glyph when the postcard reached the strip through a ride', () => {
+    const out = withViewer(postcard(), true)
+    expect(out).toContain('h-3 w-3 shrink-0 text-muted')
+  })
+
+  it('draws NOTHING when the prop is not passed — the Journal branch', () => {
+    // `RideJournal` passes no flag at all, deliberately: every stamp there is
+    // from that ride, so a marker on all of them would say nothing. If this
+    // ever goes red, the default has leaked and every strip in the app has
+    // grown a glyph.
+    const out = withViewer(postcard())
+    expect(out).not.toContain('h-3 w-3 shrink-0 text-muted')
+  })
+
+  it('folds the provenance into the existing label rather than adding a second one', () => {
+    // One labelled element, not two: the glyph is decoration inside a control
+    // that already has a name, and a second would make a screen reader announce
+    // the tile twice.
+    expect(withViewer(postcard(), true)).toContain('aria-label="pedro: Coffee stop — from a ride"')
+    expect(withViewer(postcard())).toContain('aria-label="pedro: Coffee stop"')
   })
 })

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notificationCopy } from '@/components/notifications/copy'
+import { ClubJoinRequestActions } from '@/components/notifications/ClubJoinRequestActions'
 import { RideInviteActions } from '@/components/notifications/RideInviteActions'
 import { NotificationRow } from '@/components/ui/NotificationRow'
 import { routes } from '@/lib/routes'
@@ -52,7 +53,13 @@ export function NotificationsListItem({ row, viewerId }: NotificationsListItemPr
   // `RideInviteActions` returns null for every other case, including a
   // `ride_invited` row whose invite is no longer live.
   const actions =
-    row.type === 'ride_invited' ? <RideInviteActions rideId={row.ride?.id} /> : null
+    row.type === 'ride_invited' ? (
+      <RideInviteActions rideId={row.ride?.id} />
+    ) : row.type === 'club_join_requested' ? (
+      // `085`. Same shape and same reasoning as the invite pair: the enabled
+      // state is read from the live request, never from this row.
+      <ClubJoinRequestActions clubId={row.club?.id} actorId={row.actor?.id} />
+    ) : null
 
   if (!href) {
     return (
@@ -105,7 +112,27 @@ function describe(row: NotificationRowData): {
       // frame draws a map tile with a pin overlay, which is an open design
       // question logged in docs/FIGMA-FIDELITY-TODO.md rather than a guess.
       return { href: row.ride ? routes.ride(row.ride.id) : null }
+    // `085`'s two (PD-325). Both go to the club, and both draw its avatar for
+    // the same reason `club_joined` does — one club, one destination, one
+    // thumbnail.
+    //
+    // **`club_join_requested` gets the Approve/Decline pair beside the link**,
+    // on `ride_invited`'s shape: `ClubJoinRequestActions` reads the LIVE
+    // request row rather than trusting this notification, because by the time
+    // it is read the request may have been answered on another device,
+    // withdrawn by the rider, or hidden by a block — and in every one of those
+    // cases the RPC refuses, so offering the buttons would promise something
+    // the database will not do.
+    //
+    // **There is no `club_join_request_declined` case, and its absence is the
+    // whole of how a decline is told.** `036` §3's SELECT policy conjuncts the
+    // club's readability under the READER's own RLS, so such a row would be
+    // written and never returned to the rider it addresses. They read their own
+    // request row on the club's reduced screen instead. `085`'s header has the
+    // two reasons the obvious fixes are worse.
     case 'club_joined':
+    case 'club_join_requested':
+    case 'club_join_request_approved':
       return {
         href: row.club ? routes.club(row.club.id) : null,
         trailing: row.club?.avatar_url ? (

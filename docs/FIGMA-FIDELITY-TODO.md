@@ -1544,6 +1544,46 @@ item.
       nothing in `src/` uses `watchPosition`, and a device fix leaves the device only as a
       ~1 km-rounded proximity bias. A designer rewording this needs to keep both.
 
+### Private clubs in Explore, and the ride marker on a stamp — built 2026-08-28 (PD-325, PD-328)
+
+**Three surfaces the design has no frame for**, and the first two exist because `085` made a
+state occur that the design was drawn assuming could not.
+
+- [ ] **`ClubCard`'s fourth variant — `Private + not Joined`.** `v2 / Component / List / Club`
+      draws THREE, the product of `is Private Club` and `is Joined`, and the fourth is absent
+      because a private club you had not joined used to be invisible. `ClubCard`'s own header
+      said so in as many words until this change replaced it. Assembled from measured pieces
+      rather than invented: the same 358×112 card on `White/100` at radius 8, the same type row,
+      and the trailing slot's `Button / Link / Primary` (65×32, `Accent Brand/100`,
+      Poppins/14/Semibold) with different words. **Two things it draws that no frame covers**:
+      the member COUNT with no avatar faces, because `discoverable_private_clubs` returns an
+      aggregate and no roster, and the club's INITIALS in place of its avatar, because `016`'s
+      storage policy refuses the object to a non-member. Both are the honest thing the card
+      knows; a designer settling this should decide whether a faceless count belongs in the
+      avatar row at all, or whether that row should collapse.
+- [ ] **The reduced club screen** (`ClubPreviewScreen`), which a non-member lands on when they
+      tap a private club. No frame — `Clubs / View private club` holds Timeline, Rides, Members,
+      About and Sub Pages, all member-facing. Built from `ClubDetailHeader` plus the club
+      detail's own muted type line, `Lock2Icon` and `LocationOutlineIcon` at 24, and
+      `ClubMembershipButton`'s full-width `Button / Regular` at `lg`. **Its copy is invented and
+      is the part worth a designer's eye**: *"This club is private. Its rides, postcards,
+      threads and members are for its members."* and, for a refused rider, *"You asked to join.
+      The club said no."* The second is the ONLY place in the product a decline is told — `085`
+      can write no notification for it — so its tone is load-bearing rather than cosmetic.
+- [ ] **The ride marker on `PostcardStamp`** (`086`). There is **no stamp component in Figma at
+      all**, and `v2 / Component / Postcard`'s only provenance row is `User name · in · Club
+      name`. A `BikeIcon` at `h-3 w-3` in `text-muted`, `shrink-0`, at the end of the byline
+      row — measured icon at a measured type scale. Two placements were refused for structural
+      reasons rather than taste, and a redesign has to answer both: a corner badge is bitten by
+      `stamp-edge`'s mask and falls outside the `filter: drop-shadow` that follows the notch,
+      and a third row changes a tile height that sizes neighbours on TWO different strips.
+
+**Contrast, carried forward rather than introduced.** `RequestToJoinButton` reuses
+`JoinClubButton`'s class string byte for byte, so no new pairing ships — but it raises the
+instance count of `Accent Brand/100` on `White/100` at Poppins/14/Semibold, measured **3.52:1**
+against a 4.5:1 bar (14px semibold is not WCAG large). Its cream sibling is already logged at
+3.00:1 under §Ride detail. The accent-on-light pairing wants one decision, not one per button.
+
 ## Rule for anyone building against this
 
 **Read `design/` first — it is offline and cannot be rate limited.** An inferred composition

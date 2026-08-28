@@ -149,14 +149,15 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **fifteen** tables on DEV
-   and **eleven** on PROD — measured 2026-08-27, the four-table difference being `081`, `083` and
-   `084`, all applied to DEV and owed to PROD; PROD was ten until `069` promoted on 2026-08-19 —
+   gets inherited as covered.** `enforce_participation_gate` is on **sixteen** tables on DEV
+   and **eleven** on PROD — measured 2026-08-28, the five-table difference being `081`, `083`,
+   `084` and `085`, all applied to DEV and owed to PROD (`086` and `087` add no gate); PROD was ten until `069` promoted on
+   2026-08-19 —
    `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
    `postcard_reports`, `ride_messages`, `ride_map_render_attempts`, `place_search_attempts`,
    which `069` added, plus `club_threads` and `club_messages`, which `081` added, `ride_invites`
-   (`083`) and `feedback` (`084`) — and **not**
+   (`083`), `feedback` (`084`) and `club_join_requests` (`085`) — and **not**
    on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`, `feed_reads`,
    `club_thread_reads`, `push_devices` or any `storage.objects` policy, which
    check the path prefix only. **A per-project split is the ordinary state between a merge and its
@@ -646,11 +647,16 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 84 files; DEV is at `084` and PROD at `079` — measured 2026-08-27, so DEV is
-AHEAD by five and `080`, `081`, `082`, `083` then `084` are owed to PROD at the next promotion, in
-that order.**
-All five are additive, so all five go to PROD **before** the promotion build serves, per the
-ordering rule below. `081` creates the club-thread tables under their old `discussion` names and
+**Applied state: 87 files; DEV is at `087` and PROD at `079` — measured 2026-08-28, so DEV is
+AHEAD by eight and `080`, `081`, `082`, `083`, `084`, `085`, `086` then `087` are owed to PROD at
+the next promotion, in that order.**
+All eight are additive, so all eight go to PROD **before** the promotion build serves, per the
+ordering rule below. **`085` is additive and NOT inert**, the same shape `083` has: it rewrites
+`private.may_participate` to delegate to a new subject-taking twin — a function `023`'s gate
+trigger calls on sixteen tables — and its `private.join_club_from_request` fires
+`private.notify_club_joined` inside a `security definer` body, so a raise there takes a rider's
+approval down with it. `036`'s hand-exercise gate applies and was run on DEV; run it again on PROD
+before that promotion. `086` creates one function and hangs no trigger, so it needs none. `081` creates the club-thread tables under their old `discussion` names and
 `082` renames them, so on PROD that pair is a create-then-rename with no rows in between — but the
 **order inside the gap is not optional**, and for two separate reasons that are easy to collapse
 into one: `082` renames objects `081` creates, so the reverse simply errors; and the client calls
@@ -721,7 +727,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **2145** assertions — re-derive rather than trust it:
+Suite **2279** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -762,13 +768,13 @@ rider with a NULL stamp no way out of the wizard. Inside a `security definer` fu
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: seventeen, and only one is outstanding.** Re-derive rather than trust the number
-— `get_advisors(security)` — but the *shape* is durable, because fourteen of the fifteen are
+**Security advisors: twenty-one, and only one is outstanding.** Re-derive rather than trust the number
+— `get_advisors(security)` — but the *shape* is durable, because twenty of the twenty-one are
 things this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 14 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_own_club_message`, `moderate_club_thread`, `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away), `register_push_device`, `release_push_device` (`078`, because no client role holds any grant on `push_devices`), `accept_ride_invite`, `decline_ride_invite` (`083`, because the status change and the `ride_members` row must be one statement and no client holds UPDATE on `ride_invites`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders, the two push RPCs each write or remove exactly one row for their caller, take no user id and return nothing, and `081`'s pair delete exactly one thread the caller's club owns and exactly one message the caller wrote — the second existing at all because `club_messages` holds no DELETE grant or policy for anyone, and `083`'s pair answer exactly one invite addressed to the caller, taking an invite id and never a rider id, with ONE raise site each so a caller learns nothing about an invite that is not theirs. **`083`'s three `private` functions add NO advisor** — `has_live_ride_invite`, `has_live_ride_invite_for` and `join_ride_from_invite` live in `private`, which PostgREST does not publish, which is why the count went up by two rather than five. Narrowness is the defence. **Count them off `get_advisors` rather than off this cell** — it read ten while twelve were live, which is the same defect a stale number anywhere else in this file is, and it fed a wrong verification gate into two proposals. **This advisor fires once per such function, so a migration adding two adds two** — reading `078`'s sweep as "one new advisor" is what its own task list got wrong |
+| 18 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_own_club_message`, `moderate_club_thread`, `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away), `register_push_device`, `release_push_device` (`078`, because no client role holds any grant on `push_devices`), `accept_ride_invite`, `decline_ride_invite` (`083`, because the status change and the `ride_members` row must be one statement and no client holds UPDATE on `ride_invites`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders, the two push RPCs each write or remove exactly one row for their caller, take no user id and return nothing, and `081`'s pair delete exactly one thread the caller's club owns and exactly one message the caller wrote — the second existing at all because `club_messages` holds no DELETE grant or policy for anyone, and `083`'s pair answer exactly one invite addressed to the caller, taking an invite id and never a rider id, with ONE raise site each so a caller learns nothing about an invite that is not theirs. `085` adds three — `discoverable_private_clubs`, which returns SEVEN named columns of a private club and no roster, ordered and page-capped in SQL, and `approve_club_join_request` / `decline_club_join_request`, which answer exactly one request for a club the caller administers, taking a REQUEST id and never a rider id, again with ONE raise site each; and `086` adds `club_stamp_postcard_ids`, which like `ride_journal_postcard_ids` returns ids and never a row. **`085`'s EIGHT `private` functions add NO advisor between them** — `is_club_admin`/`is_club_admin_for`, `club_takes_join_requests`/`club_takes_join_requests_for`, `may_participate_for`, `join_club_from_request` and the two fan-outs all live in `private`, which is why `085` took the count up by three rather than eleven. **`083`'s three `private` functions add NO advisor** — `has_live_ride_invite`, `has_live_ride_invite_for` and `join_ride_from_invite` live in `private`, which PostgREST does not publish, which is why the count went up by two rather than five. Narrowness is the defence. **Count them off `get_advisors` rather than off this cell** — it read ten while twelve were live, which is the same defect a stale number anywhere else in this file is, and it fed a wrong verification gate into two proposals. **This advisor fires once per such function, so a migration adding two adds two** — reading `078`'s sweep as "one new advisor" is what its own task list got wrong |
 | 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design in both cases: `026` and `078` revoke everything on their table from `anon` and `authenticated`, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
@@ -964,10 +970,65 @@ then call it*, as `.claude/commands/queue-pickup.md` STEP 0 does. `No such tool 
 the name is **absent**, which is what a rotation does: on 2026-08-08 every MCP server
 re-registered under a UUID prefix and `mcp__Supabase__*` stopped resolving, silently, an absent
 tool being no error. A keyword search (`+execute_sql supabase`) tells them apart and **buys
-diagnosis, not recovery** — probed 2026-08-09, a tool absent from the allowlist is refused
-outright, so a UUID-prefixed name it finds is very likely refused too (untested against a real
-rotation). **The fix is therefore the *report***, an agent naming the passes that did not run;
-restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
+diagnosis, not recovery**.
+
+**Measured against a real rotation on 2026-08-27, and the mechanism is worse than "refused":
+in a SUBAGENT, `ToolSearch` is filtered by that agent's own `tools:` line before it searches, so
+a rotated tool is never surfaced at all.** Both `reviewer` passes that day probed `select:` and
+keyword for Supabase and Linear and found nothing — the keyword search for Linear returned a
+*GitHub* tool, GitHub being the one connector then resolving under its friendly name. **So a
+subagent cannot recover from inside itself, and a brief that tells it to try is describing an
+escape hatch behind the door it is meant to open.** That was `PD-154`'s chosen remedy, and it is
+why this recurred after that issue closed.
+
+**The scope of that is the whole of it, and reading it wider stops the queue.** A **main thread
+has no `tools:` line**, so nothing filters its search and a keyword lookup *does* recover a
+rotated connector there — `PD-154`'s own 2026-08-09 comment records `+list_issues linear` doing
+exactly that. So `.claude/commands/queue-pickup.md` STEP 0 and `queue-dispatch.md` are **right** to
+say a `select:` miss means "search again by keyword", and this paragraph does not overrule them:
+a dispatcher that reads "there is no recovery", skips the keyword search and sends the
+cannot-reach-Linear push has abandoned a recovery known to work, and halted the queue to do it.
+
+**The fix is the `tools:` line carrying BOTH spellings**, which every brief reaching Supabase,
+Linear or Figma now does — the friendly name and the UUID-prefixed one. **The UUIDs identify a
+connector, not a session.** `PD-154`'s 2026-08-09 comment records all four prefixes verbatim —
+Supabase, Linear, Figma and Vercel — and the three this repo twins are byte-identical to what the
+briefs now carry. **Supabase is the one corroborated at BOTH ends**: `.claude/settings.json`
+recorded it on 2026-08-07 and it was unchanged on 2026-08-27, twenty days. Linear's and Figma's
+second observation is this session's and is written down nowhere checkable, so treat those two as
+one dated record plus a live sighting rather than as two.
+
+**`src/__tests__/agent-briefs.test.ts` is the check, and no grep is.** Every twin sits on one
+`tools:` line, so `grep -c` counts *lines* and answers 1 however many are there — a boolean
+wearing a count's clothes, and this file's own §Working Principles trap in miniature. The test
+asserts a friendly tool with no twin, and fails on a connector it has never heard of. **The
+orphan direction — a twin left behind by a deleted tool — is covered only while no `tools:` line
+repeats an entry**, because that half compares counts rather than sets and one duplicate masks
+one orphan. Latent today (no brief has a duplicate) and it is **PD-336**:
+
+```bash
+npx vitest run src/__tests__/agent-briefs.test.ts
+grep -o "mcp__[0-9a-f]\{8\}-" .claude/agents/reviewer.md | wc -l   # 8, if you want the number
+```
+
+**Two things this does NOT fix, and reading it as complete is how the next one gets inherited:**
+
+- **`github` has no twin on any brief**, because it held its friendly name through both observed
+  rotations and no UUID for it has ever been seen. `reviewer`'s four `mcp__github__*` tools —
+  PR reading and CI logs, the delta re-review path — are exposed to a rotation that has not
+  happened yet. The test names the exclusion rather than skipping it silently, so a fifth
+  connector fails loudly.
+- **`.claude/settings.json`'s `permissions.allow` carries the identical defect and fails
+  harder.** Those literal names are name-matched too —
+  **45** of them, `jq -r '.permissions.allow[]' .claude/settings.json | grep -c '^mcp__'`, being
+  Linear 23, github 13 and Vercel 9 — and `PD-154`'s 2026-08-09 comment measured the result: a rotated
+  `mcp__Vercel__list_deployments` came back `MCP error -32003: MCP tool call requires approval`,
+  which in an unattended firing is a hard stop rather than a degraded run. **Pasting UUIDs there
+  is not the obvious fix** — `autoMode.allow` deliberately chose capability-prose over literal
+  ids for this exact reason, and widening a permission surface is the owner's call. Open.
+
+**The report is still owed when a connector arrives under a third spelling nobody has recorded** —
+an agent naming the passes that did not run; restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
 §Reaching Supabase block (`reviewer`'s leads its file as §First), and a new one needing the
 database gets both; `design-system` is out, its connector being Figma and its *answers* coming
 from the committed `design/` snapshot with reads over the API forbidden — which is a rule about
@@ -1977,15 +2038,20 @@ cheapest to get green. The one case that needs no PR is a session that changed n
   this organization, so no session can recreate it; `update_trigger enabled: true` restores it
   whole. `…WJkMV` is the cheap hourly one, `…Gzy8e` is the irreplaceable one — keep them straight
   in both directions. Detail in [`docs/reference/linear.md`](docs/reference/linear.md).
-- **Don't archive or abandon the relay session** — the one
-  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to, **currently
-  `session_014ncc5vBmsKG9fmfznUoZ48`, and read it off the trigger rather than off this line**:
-  `list_triggers` carries the authoritative `persistent_session_id`, and this id is also copied
-  into `.claude/commands/queue-dispatch.md`, where a stale one silently stops the queue while
-  every health signal stays green. Archiving the relay stops the queue with no error
-  anywhere, and `update_trigger` has no `persistent_session_id` parameter, so no session can
-  rebind the Routine itself. **It is the only session in the queue that is reused, and
-  since 2026-08-18 it decides nothing**: a firing spawns a fresh dispatcher and exits, so
-  everything it spawns is disposable and archiving one is fine — a dispatcher carries
-  `queue-dispatch-run` and a child carries `queue-dispatch`, which is how the three are told
-  apart. `.claude/commands/queue-dispatch.md` STEP -1 is the procedure.
+- **Don't archive the relay session on your own initiative** — the one
+  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to. **Read which session that is off the trigger, never
+  off a line in a file**: `list_triggers` carries the authoritative `persistent_session_id`, and
+  since 2026-08-28 no role decision anywhere reads it, because a copied id stopped the queue for
+  ten days across two separate causes (`.claude/commands/queue-dispatch.md` §The three roles carries
+  both). `update_trigger` has no `persistent_session_id` parameter, so no session can rebind the
+  Routine itself — though the binding did recover on its own within an hour the one time it was
+  tested. **It is the only session in the queue that is reused, and since 2026-08-18 it decides
+  nothing**: a firing spawns a fresh dispatcher and exits, so everything it spawns is disposable
+  and archiving one is always fine — a dispatcher carries `queue-dispatch-run` and a child carries
+  `queue-dispatch`, which is how the three are told apart.
+
+  **Archiving it deliberately is the one documented repair, and it is the owner's call.** The
+  relay's container is provisioned once and never re-provisioned, so a relay older than a change to
+  `queue-dispatch.md` keeps executing the copy it cloned, silently, with every firing still
+  recording `SUCCEEDED`. Archiving is what forces a fresh clone. `queue-dispatch.md` STEP -1 is the
+  procedure and §Two irreversible things is the rule.

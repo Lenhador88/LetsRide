@@ -1,7 +1,7 @@
 ---
 name: realtime
 description: Use for anything that updates without a page load — direct messages, per-ride group chat, the notification feed, unread counters, and presence. Also use when a screen shows stale data that should have refreshed, or when a Supabase Realtime subscription leaks or fires twice.
-tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__apply_migration, mcp__Supabase__get_logs, mcp__Supabase__get_advisors, mcp__Supabase__generate_typescript_types, mcp__Supabase__search_docs
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__apply_migration, mcp__Supabase__get_logs, mcp__Supabase__get_advisors, mcp__Supabase__generate_typescript_types, mcp__Supabase__search_docs, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_tables, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__execute_sql, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__apply_migration, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_logs, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_advisors, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__generate_typescript_types, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__search_docs
 model: sonnet
 ---
 
