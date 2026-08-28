@@ -129,6 +129,17 @@
      `animate-fade-in` utility used below, always behind `motion-safe:` —
      the same guard `Skeleton.tsx`'s own `animate-pulse` already uses. */
   --animate-fade-in: fade-in 230ms ease-out;
+
+  /* The deck's one-time swipe coach mark (PD-324) — `SwipeCoach`. Registered
+     here in the same `--animate-*` namespace as `fade-in` above, so the call
+     site reads `motion-safe:animate-swipe-hint` and the timing lives with the
+     other one rather than as a bespoke keyframe next to a component.
+
+     1.6s and 8px either side of centre: slow enough and small enough to read as
+     a hint about the card rather than as something demanding a tap, and it runs
+     for the few seconds the deck keeps the pill up. `infinite` because the
+     deck, not the animation, decides when it ends. */
+  --animate-swipe-hint: swipe-hint 1600ms ease-in-out infinite;
 }
 
 /* **Applying this class to an element that is already on screen is enough to
@@ -152,6 +163,21 @@
 @keyframes fade-in {
   from {
     opacity: 0;
+  }
+}
+
+/* Both ends are stated, unlike `fade-in`'s `from`-only shape above, and the
+   reason is the opposite property: this element has no resting transform worth
+   inheriting, and an implicit final keyframe synthesized from `translateX(0)`
+   would make the drift asymmetric — out to +8px and back to centre, rather than
+   the even sweep either side of it that says "this moves both ways". */
+@keyframes swipe-hint {
+  0%,
+  100% {
+    transform: translateX(-8px);
+  }
+  50% {
+    transform: translateX(8px);
   }
 }
 
