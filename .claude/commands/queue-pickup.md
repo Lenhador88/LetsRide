@@ -1216,12 +1216,13 @@ Do because the calls that trip them are CCR calls made by a session that is not 
   at 17:09Z. The key appears once explicitly set, but it reports the flag and **not** whether the
   Routine is firing — the one row that has ever carried it was hours past its due fire.
   `next_run_at` is that answer. `queue-dispatch.md` §Why this shape has both measurements.
-- **Never archive the session the dispatcher Routine is bound to.** Archiving it stops the queue
-  silently, with no error anywhere, and `update_trigger` has no `persistent_session_id`
-  parameter — so a session cannot rebind the Routine itself. When this happened on 2026-08-18 the
-  trigger rebound *itself* to a fresh session within the hour; what did not recover was the relay
-  id copied into `queue-dispatch.md`, and the queue dispatched nothing for six days. See that
-  file's §The three roles.
+- **Do not archive the session the dispatcher Routine is bound to** — not a never since
+  2026-08-28, but never a child's call either. `update_trigger` has no `persistent_session_id`
+  parameter, so a session cannot rebind the Routine itself if the rebind does not happen on its
+  own; when this happened on 2026-08-18 the trigger rebound *itself* within the hour. What did not
+  recover was the relay id copied into `queue-dispatch.md`, and the queue dispatched nothing for
+  six days — so no id decides a role any more. Deliberate archiving is now the documented repair
+  for a relay running a stale clone, and it belongs to the owner. See that file's §The three roles.
 
 And what it buys beyond the connectors: the session can see whether the owner is mid-request,
 which is the only reliable idle signal there is, and no fresh session could ever have it.

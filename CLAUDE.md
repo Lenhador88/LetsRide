@@ -1977,15 +1977,20 @@ cheapest to get green. The one case that needs no PR is a session that changed n
   this organization, so no session can recreate it; `update_trigger enabled: true` restores it
   whole. `…WJkMV` is the cheap hourly one, `…Gzy8e` is the irreplaceable one — keep them straight
   in both directions. Detail in [`docs/reference/linear.md`](docs/reference/linear.md).
-- **Don't archive or abandon the relay session** — the one
-  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to, **currently
-  `session_014ncc5vBmsKG9fmfznUoZ48`, and read it off the trigger rather than off this line**:
-  `list_triggers` carries the authoritative `persistent_session_id`, and this id is also copied
-  into `.claude/commands/queue-dispatch.md`, where a stale one silently stops the queue while
-  every health signal stays green. Archiving the relay stops the queue with no error
-  anywhere, and `update_trigger` has no `persistent_session_id` parameter, so no session can
-  rebind the Routine itself. **It is the only session in the queue that is reused, and
-  since 2026-08-18 it decides nothing**: a firing spawns a fresh dispatcher and exits, so
-  everything it spawns is disposable and archiving one is fine — a dispatcher carries
-  `queue-dispatch-run` and a child carries `queue-dispatch`, which is how the three are told
-  apart. `.claude/commands/queue-dispatch.md` STEP -1 is the procedure.
+- **Don't archive the relay session on your own initiative** — the one
+  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to. **Read which session that is off the trigger, never
+  off a line in a file**: `list_triggers` carries the authoritative `persistent_session_id`, and
+  since 2026-08-28 no role decision anywhere reads it, because a copied id stopped the queue for
+  ten days across two separate causes (`.claude/commands/queue-dispatch.md` §The three roles carries
+  both). `update_trigger` has no `persistent_session_id` parameter, so no session can rebind the
+  Routine itself — though the binding did recover on its own within an hour the one time it was
+  tested. **It is the only session in the queue that is reused, and since 2026-08-18 it decides
+  nothing**: a firing spawns a fresh dispatcher and exits, so everything it spawns is disposable
+  and archiving one is always fine — a dispatcher carries `queue-dispatch-run` and a child carries
+  `queue-dispatch`, which is how the three are told apart.
+
+  **Archiving it deliberately is the one documented repair, and it is the owner's call.** The
+  relay's container is provisioned once and never re-provisioned, so a relay older than a change to
+  `queue-dispatch.md` keeps executing the copy it cloned, silently, with every firing still
+  recording `SUCCEEDED`. Archiving is what forces a fresh clone. `queue-dispatch.md` STEP -1 is the
+  procedure and §Two irreversible things is the rule.
