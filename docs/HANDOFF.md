@@ -1937,7 +1937,7 @@ stays valid provenance for ever, never rewritten or backfilled.
 ## Known issues, roughly by cost to fix
 
 **A ride created with the new private default cannot be edited afterwards, and the guard that
-refuses it is a written spec requirement rather than a stray `if` (PD-320 shipped, PD-337 open).**
+refuses it is a written spec requirement rather than a stray `if` (PD-320 shipped, PD-338 open).**
 
 `EditRideForm`'s `wouldStrand` disables Save, and `updateRide` refuses the same combination, when
 a ride is neither public nor in a club. PD-320 made exactly that combination the **default** for
