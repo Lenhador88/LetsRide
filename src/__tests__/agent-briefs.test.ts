@@ -38,6 +38,38 @@ function briefs(): Array<{ name: string; body: string }> {
 }
 
 /**
+ * Is this tool Figma's, under **either** spelling a connector registers as?
+ *
+ * The three exemptions below skip a brief whose connectors are all Figma's —
+ * `design-system` is deliberately outside the §Reaching Supabase convention,
+ * because its answers come from the committed `design/` snapshot and reads over
+ * the API are forbidden outright (CLAUDE.md §The Agent Squad).
+ *
+ * **It has to match on the connector rather than on the prefix, and that is the
+ * same bug the briefs themselves carry.** A `tools:` line now lists each MCP
+ * tool twice — the friendly name and the UUID-prefixed one the same server
+ * registers as in other sessions — so `startsWith('mcp__Figma__')` is false for
+ * half of `design-system`'s entries, `every` collapses, and the exemption
+ * silently stops applying. The failure is loud (three assertions it was never
+ * meant to face) rather than dangerous, but it is the identical shape:
+ * behaviour keyed to one spelling of a name that has two.
+ *
+ * `.claude/settings.json` states the rule this follows — *"IDENTIFY TOOLS BY
+ * WHAT THEY DO, NOT BY THEIR CONNECTOR NAME"*.
+ */
+function isFigmaTool(tool: string): boolean {
+  return tool.startsWith('mcp__Figma__') || tool.startsWith(`mcp__${FIGMA_UUID}__`)
+}
+
+/**
+ * The UUID prefix the Figma connector registers under when it does not register
+ * under its friendly name. Observed 2026-08-27. The Supabase equivalent has been
+ * stable since 2026-08-07 (`.claude/settings.json` records it), which is the
+ * evidence that these ids identify a connector rather than a session.
+ */
+const FIGMA_UUID = '7658846e-eed8-4f3b-8c99-3c152bad83b8'
+
+/**
  * Strip the passages that exist to say a thing is GONE. Without this the test
  * fires on its own fix: the corrected briefs all name the retired concept in
  * order to warn about it, which is the repo's most-repeated measurement error
@@ -267,7 +299,7 @@ describe('agent briefs do not describe a world that has moved on', () => {
       const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
       const connectors = declared.filter((t) => t.startsWith('mcp__'))
       if (connectors.length === 0) continue
-      if (connectors.every((t) => t.startsWith('mcp__Figma__'))) continue
+      if (connectors.every(isFigmaTool)) continue
       checked.push(name)
       expect(
         declared,
@@ -280,6 +312,157 @@ describe('agent briefs do not describe a world that has moved on', () => {
       'the guard examined a different set of briefs than expected — a `tools:` line it can no longer parse skips silently',
     ).toEqual([
       'data.md',
+      'feature.md',
+      'media.md',
+      'openspec.md',
+      'realtime.md',
+      'reviewer.md',
+      'test.md',
+    ])
+  })
+
+  it('every MCP tool on a brief is listed under BOTH spellings its connector uses', () => {
+    /*
+     * The fix for the rotation, and the thing that decays silently without a
+     * test. A `tools:` line is an exact-name allowlist, so a tool listed only as
+     * `mcp__Supabase__execute_sql` vanishes in any session where that server
+     * registers under its UUID prefix instead — and `ToolSearch` cannot find it
+     * back, because `ToolSearch` is filtered by this same line before it
+     * searches. Measured 2026-08-27: both `reviewer` passes lost Supabase and
+     * Linear entirely and reported themselves degraded.
+     *
+     * `PD-154` closed on the opposite remedy — give the agents `ToolSearch` and
+     * a brief telling them to probe — which cannot work for the reason above,
+     * and the bug recurred with the issue marked Done. So the twin entry is the
+     * fix and this is what keeps it true: **adding one tool means adding two
+     * lines**, and the failure mode without this test is a half-added tool that
+     * works right up until the connector rotates.
+     *
+     * The UUIDs identify a connector rather than a session — Supabase's was
+     * recorded in `.claude/settings.json` on 2026-08-07 and was byte-identical
+     * twenty days later. A connector arriving under a THIRD spelling is what the
+     * briefs' own degraded-report blocks are still for.
+     */
+    const UUID = {
+      Supabase: 'd217aba8-fcb6-4a59-af93-7a4613b7ef05',
+      Linear: 'a55a164a-166a-4261-8af9-9231edd9663d',
+      Figma: FIGMA_UUID,
+    } as const
+
+    /*
+     * `github` is the one connector on a brief with NO twin, and that is a
+     * recorded gap rather than an oversight: it held its friendly name through
+     * both observed rotations (2026-08-09 and 2026-08-27), so no UUID for it has
+     * ever been seen and none can be written. `reviewer.md`'s four
+     * `mcp__github__*` tools are therefore exposed to a rotation that has not
+     * happened yet — it would lose PR reading and CI logs, which is the delta
+     * re-review path.
+     *
+     * Naming it here rather than letting the filter skip it silently is the
+     * point: without this the test cannot tell "deliberately excluded, no id
+     * observed" from "forgotten", which is the exact confusion the twins exist
+     * to end. A FIFTH connector appearing on any brief fails below rather than
+     * being quietly ignored.
+     */
+    const NO_UUID_OBSERVED = ['github']
+
+    const checked: string[] = []
+    for (const { name, body } of briefs()) {
+      const frontmatter = body.split('\n---')[0]
+      const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
+
+      /*
+       * Every friendly-named connector tool, not only the three with twins — so
+       * an unrecognised connector reaches the assertion below instead of the
+       * filter. The exclusion is the UUID SHAPE rather than a leading letter:
+       * `d217aba8-…` begins with a hex letter, so `/^mcp__[A-Za-z]/` matches the
+       * twins too and every UUID reads as an unknown connector.
+       */
+      const named = declared.filter((t) => /^mcp__/.test(t) && !/^mcp__[0-9a-f]{8}-/.test(t))
+
+      // A readable assertion rather than the bare TypeError `exec(...)![1]`
+      // throws on a malformed entry — every other check in this file names its
+      // file and its cause, and a stack trace from a regex does not.
+      for (const tool of named) {
+        expect(
+          /^mcp__([^_]+(?:_[^_]+)*)__.+$/.test(tool),
+          `${name} declares "${tool}", which is not a parseable mcp__<connector>__<tool> name`,
+        ).toBe(true)
+      }
+
+      const servers = [...new Set(named.map((t) => /^mcp__([^_]+(?:_[^_]+)*)__/.exec(t)![1]))]
+      for (const server of servers) {
+        expect(
+          [...Object.keys(UUID), ...NO_UUID_OBSERVED],
+          `${name} names connector "${server}", which this test knows nothing about — add its UUID to the table above, or to NO_UUID_OBSERVED with the reason. Skipping it silently is how a connector goes untwinned unnoticed.`,
+        ).toContain(server)
+      }
+
+      const friendly = named.filter((t) => /^mcp__(Supabase|Linear|Figma)__/.test(t))
+      if (friendly.length === 0) continue
+      checked.push(name)
+
+      for (const tool of friendly) {
+        const [, server, method] = /^mcp__(Supabase|Linear|Figma)__(.+)$/.exec(tool)!
+        const twin = `mcp__${UUID[server as keyof typeof UUID]}__${method}`
+        expect(
+          declared,
+          `${name} lists ${tool} but not its UUID twin — it disappears from this agent entirely in any session where ${server} registers under its UUID prefix, and ToolSearch cannot find it back`,
+        ).toContain(twin)
+      }
+
+      /*
+       * The reverse, so a twin ORPHANED by a deleted tool is caught too: a
+       * stale UUID entry is inert at runtime but it reads as coverage, which is
+       * the failure class this whole file exists to end.
+       *
+       * **Counted against the three KNOWN prefixes — not against a set derived
+       * from `friendly`, which makes the assertion tautological.** Deriving it
+       * from `friendly` and then filtering `declared` by it can only ever count
+       * what the forward loop above has already proven present, so
+       * `twins.length === friendly.length` held by construction and no input
+       * could fail.
+       *
+       * **KNOWN LIMITATION, and the comparison rather than the derivation is
+       * where it lives (PD-336).** This compares two CARDINALITIES; the prose
+       * says "correspond one to one" and the code has never asserted
+       * correspondence. `declared` is not deduplicated, so one repeated
+       * friendly entry masks exactly one orphaned twin — the counts still
+       * match. Measured against the real `test.md` line: delete
+       * `mcp__Supabase__list_projects`, leave its twin, and it fails; add a
+       * duplicate of any friendly entry as well and it passes. No brief carries
+       * a duplicate today (all 8 are `friendly === twins`), so this is latent,
+       * and a duplicate is inert at runtime, which is why nothing would ever
+       * prompt someone to remove one.
+       *
+       * The fix is to assert the SETS — the declared known-UUID entries against
+       * the expected twin set — rather than their sizes. Deliberately not
+       * attempted here: three successive rewrites of this block each changed
+       * the derivation and left the comparison alone, and a fourth pass from
+       * the same session is how that becomes a fourth reshaping.
+       *
+       * Nor against *every* `mcp__<uuid>__` entry, which is the other ditch:
+       * that would fail a brief the first time someone correctly adds a github
+       * twin under a UUID this table does not list. Keyed to the known
+       * prefixes, both hold — an unknown connector's twin is ignored, and an
+       * orphaned Supabase/Linear/Figma twin still fails.
+       */
+      const known = Object.values(UUID)
+      const twins = declared.filter((t) => known.some((u) => t.startsWith(`mcp__${u}__`)))
+      expect(
+        twins.length,
+        `${name} has ${twins.length} UUID entries for ${friendly.length} friendly ones — they must correspond one to one, so a twin left behind by a deleted tool is caught rather than reading as coverage`,
+      ).toBe(friendly.length)
+    }
+
+    // Same both-ways guard as the tests around it: a `tools:` line this can no
+    // longer parse would skip every brief and pass.
+    expect(
+      checked.sort(),
+      'the guard examined a different set of briefs than expected — a `tools:` line it can no longer parse skips silently',
+    ).toEqual([
+      'data.md',
+      'design-system.md',
       'feature.md',
       'media.md',
       'openspec.md',
@@ -324,7 +507,7 @@ describe('agent briefs do not describe a world that has moved on', () => {
       const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
       const connectors = declared.filter((t) => t.startsWith('mcp__'))
       if (connectors.length === 0) continue
-      if (connectors.every((t) => t.startsWith('mcp__Figma__'))) continue
+      if (connectors.every(isFigmaTool)) continue
       checked.push(name)
 
       expect(
@@ -407,7 +590,7 @@ describe('agent briefs do not describe a world that has moved on', () => {
       const declared = (/^tools: (.*)$/m.exec(frontmatter)?.[1] ?? '').split(',').map((t) => t.trim())
       const connectors = declared.filter((t) => t.startsWith('mcp__'))
       if (connectors.length === 0) continue
-      if (connectors.every((t) => t.startsWith('mcp__Figma__'))) continue
+      if (connectors.every(isFigmaTool)) continue
       checked.push(name)
 
       const probes = [

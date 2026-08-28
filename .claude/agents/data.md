@@ -1,7 +1,7 @@
 ---
 name: data
 description: Use for anything touching the database — new tables, columns, indexes, RLS policies, triggers, or slow queries. Invoke this BEFORE building a feature that needs new schema, so the migration lands first. Also use when a query returns rows it shouldn't, or returns nothing when it should (usually an RLS policy problem).
-tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__apply_migration, mcp__Supabase__execute_sql, mcp__Supabase__list_tables, mcp__Supabase__list_migrations, mcp__Supabase__list_extensions, mcp__Supabase__get_advisors, mcp__Supabase__get_logs, mcp__Supabase__generate_typescript_types, mcp__Supabase__search_docs
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__apply_migration, mcp__Supabase__execute_sql, mcp__Supabase__list_tables, mcp__Supabase__list_migrations, mcp__Supabase__list_extensions, mcp__Supabase__get_advisors, mcp__Supabase__get_logs, mcp__Supabase__generate_typescript_types, mcp__Supabase__search_docs, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__apply_migration, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__execute_sql, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_tables, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_migrations, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_extensions, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_advisors, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_logs, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__generate_typescript_types, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__search_docs
 model: opus
 ---
 
