@@ -652,16 +652,23 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 87 files; DEV is at `087` and PROD at `079` — measured 2026-08-28, so DEV is
-AHEAD by eight and `080`, `081`, `082`, `083`, `084`, `085`, `086` then `087` are owed to PROD at
-the next promotion, in that order.**
-All eight are additive, so all eight go to PROD **before** the promotion build serves, per the
+**Applied state: 89 files; DEV is at `088` and PROD at `079` — measured 2026-08-28, so DEV is
+AHEAD by nine and `080`–`088` are owed to PROD at the next promotion, in filename order.
+`089` is on neither project yet and is owed to BOTH, DEV first**, because it is the one file on
+this branch whose apply must follow its own deploy rather than precede it — its header has the
+reason and it is in the CLIENT rather than the SQL: `notificationCopy` and
+`NotificationsListItem`'s `describe` are exhaustive switches, so one decline landing while an
+older bundle is still serving takes that rider's notifications screen down.
+`080`–`088` are additive, so all nine go to PROD **before** the promotion build serves, per the
 ordering rule below. **`085` is additive and NOT inert**, the same shape `083` has: it rewrites
 `private.may_participate` to delegate to a new subject-taking twin — a function `023`'s gate
 trigger calls on sixteen tables — and its `private.join_club_from_request` fires
 `private.notify_club_joined` inside a `security definer` body, so a raise there takes a rider's
 approval down with it. `036`'s hand-exercise gate applies and was run on DEV; run it again on PROD
-before that promotion. `086` creates one function and hangs no trigger, so it needs none. `081` creates the club-thread tables under their old `discussion` names and
+before that promotion. `086` creates one function and hangs no trigger, so it needs none, and neither
+does `088` — three `security definer` RPCs, no trigger and no policy. **`089` DOES need it**: it
+hangs a fan-out on the DECLINE path, which is live, so from the moment it applies every decline
+runs new code inside the admin's own transaction. `081` creates the club-thread tables under their old `discussion` names and
 `082` renames them, so on PROD that pair is a create-then-rename with no rows in between — but the
 **order inside the gap is not optional**, and for two separate reasons that are easy to collapse
 into one: `082` renames objects `081` creates, so the reverse simply errors; and the client calls
@@ -732,7 +739,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **2279** assertions — re-derive rather than trust it:
+Suite **2332** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -773,13 +780,13 @@ rider with a NULL stamp no way out of the wizard. Inside a `security definer` fu
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: twenty-one, and only one is outstanding.** Re-derive rather than trust the number
-— `get_advisors(security)` — but the *shape* is durable, because twenty of the twenty-one are
+**Security advisors: twenty-four, and only one is outstanding.** Re-derive rather than trust the number
+— `get_advisors(security)` — but the *shape* is durable, because twenty-three of the twenty-four are
 things this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 18 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_own_club_message`, `moderate_club_thread`, `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away), `register_push_device`, `release_push_device` (`078`, because no client role holds any grant on `push_devices`), `accept_ride_invite`, `decline_ride_invite` (`083`, because the status change and the `ride_members` row must be one statement and no client holds UPDATE on `ride_invites`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders, the two push RPCs each write or remove exactly one row for their caller, take no user id and return nothing, and `081`'s pair delete exactly one thread the caller's club owns and exactly one message the caller wrote — the second existing at all because `club_messages` holds no DELETE grant or policy for anyone, and `083`'s pair answer exactly one invite addressed to the caller, taking an invite id and never a rider id, with ONE raise site each so a caller learns nothing about an invite that is not theirs. `085` adds three — `discoverable_private_clubs`, which returns SEVEN named columns of a private club and no roster, ordered and page-capped in SQL, and `approve_club_join_request` / `decline_club_join_request`, which answer exactly one request for a club the caller administers, taking a REQUEST id and never a rider id, again with ONE raise site each; and `086` adds `club_stamp_postcard_ids`, which like `ride_journal_postcard_ids` returns ids and never a row. **`085`'s EIGHT `private` functions add NO advisor between them** — `is_club_admin`/`is_club_admin_for`, `club_takes_join_requests`/`club_takes_join_requests_for`, `may_participate_for`, `join_club_from_request` and the two fan-outs all live in `private`, which is why `085` took the count up by three rather than eleven. **`083`'s three `private` functions add NO advisor** — `has_live_ride_invite`, `has_live_ride_invite_for` and `join_ride_from_invite` live in `private`, which PostgREST does not publish, which is why the count went up by two rather than five. Narrowness is the defence. **Count them off `get_advisors` rather than off this cell** — it read ten while twelve were live, which is the same defect a stale number anywhere else in this file is, and it fed a wrong verification gate into two proposals. **This advisor fires once per such function, so a migration adding two adds two** — reading `078`'s sweep as "one new advisor" is what its own task list got wrong |
+| 21 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_own_club_message`, `moderate_club_thread`, `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away), `register_push_device`, `release_push_device` (`078`, because no client role holds any grant on `push_devices`), `accept_ride_invite`, `decline_ride_invite` (`083`, because the status change and the `ride_members` row must be one statement and no client holds UPDATE on `ride_invites`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders, the two push RPCs each write or remove exactly one row for their caller, take no user id and return nothing, and `081`'s pair delete exactly one thread the caller's club owns and exactly one message the caller wrote — the second existing at all because `club_messages` holds no DELETE grant or policy for anyone, and `083`'s pair answer exactly one invite addressed to the caller, taking an invite id and never a rider id, with ONE raise site each so a caller learns nothing about an invite that is not theirs. `085` adds three — `discoverable_private_clubs`, which returns SEVEN named columns of a private club and no roster, ordered and page-capped in SQL, and `approve_club_join_request` / `decline_club_join_request`, which answer exactly one request for a club the caller administers, taking a REQUEST id and never a rider id, again with ONE raise site each; `086` adds `club_stamp_postcard_ids`, which like `ride_journal_postcard_ids` returns ids and never a row; and `088` (PD-326) adds THREE — `remove_club_member`, `promote_club_member` and `demote_club_admin`, each taking a CLUB and a RIDER and no role argument at all, so `019`'s property that `admin` is claimable by no client survives the first write path that ever sets it. **`089` adds NONE**, both of its functions being in `private`. **`085`'s EIGHT `private` functions add NO advisor between them** — `is_club_admin`/`is_club_admin_for`, `club_takes_join_requests`/`club_takes_join_requests_for`, `may_participate_for`, `join_club_from_request` and the two fan-outs all live in `private`, which is why `085` took the count up by three rather than eleven. **`083`'s three `private` functions add NO advisor** — `has_live_ride_invite`, `has_live_ride_invite_for` and `join_ride_from_invite` live in `private`, which PostgREST does not publish, which is why the count went up by two rather than five. Narrowness is the defence. **Count them off `get_advisors` rather than off this cell** — it read ten while twelve were live, which is the same defect a stale number anywhere else in this file is, and it fed a wrong verification gate into two proposals. **This advisor fires once per such function, so a migration adding two adds two** — reading `078`'s sweep as "one new advisor" is what its own task list got wrong |
 | 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design in both cases: `026` and `078` revoke everything on their table from `anon` and `authenticated`, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 

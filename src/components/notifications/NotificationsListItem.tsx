@@ -32,7 +32,17 @@ type NotificationsListItemProps = {
  * crashing on it.
  */
 export function NotificationsListItem({ row, viewerId }: NotificationsListItemProps) {
-  const actorName = row.actor?.username ?? 'Rider'
+  // **`089`'s decline draws the CLUB where every other row draws the actor**,
+  // and that is the render half of what makes it disclose nothing. Its stored
+  // `actor_id` is the recipient themselves (see `NotificationType`), so drawing
+  // the actor would read "you · declined your request to join." — and any
+  // OTHER actor would have named the admin who pressed Decline, which is the
+  // fact `085` refused a `responded_by` column in order to withhold.
+  const drawsClubAsActor = row.type === 'club_join_request_declined'
+  const actorName = drawsClubAsActor
+    ? (row.club?.name ?? 'A club')
+    : (row.actor?.username ?? 'Rider')
+  const avatarUrl = drawsClubAsActor ? row.club?.avatar_url : row.actor?.avatar_url
   const stamp = formatNotificationStamp(row.created_at)
   const { href, trailing } = describe(row)
   const copy = notificationCopy(row, viewerId)
@@ -40,7 +50,7 @@ export function NotificationsListItem({ row, viewerId }: NotificationsListItemPr
   const content = (
     <NotificationRow
       actorName={actorName}
-      avatarUrl={row.actor?.avatar_url}
+      avatarUrl={avatarUrl}
       stamp={stamp}
       copy={copy}
       trailing={trailing}
@@ -124,22 +134,67 @@ function describe(row: NotificationRowData): {
     // cases the RPC refuses, so offering the buttons would promise something
     // the database will not do.
     //
-    // **There is no `club_join_request_declined` case, and its absence is the
-    // whole of how a decline is told.** `036` §3's SELECT policy conjuncts the
-    // club's readability under the READER's own RLS, so such a row would be
-    // written and never returned to the rider it addresses. They read their own
-    // request row on the club's reduced screen instead. `085`'s header has the
-    // two reasons the obvious fixes are worse.
+    // **`089`'s decline is the fourth club type and is deliberately NOT in this
+    // group.** It draws the club in the ACTOR slot rather than the trailing
+    // one, and it takes no controls: an admin can lift a refusal from Manage
+    // riders, and the rider it addresses can do nothing about it from here.
     case 'club_joined':
-    case 'club_join_requested':
     case 'club_join_request_approved':
+      return { href: row.club ? routes.club(row.club.id) : null, trailing: clubThumbnail(row) }
+    // **Split off from its two siblings by `088` (PD-326), because its
+    // destination moved.** `085` put the pending-requests section on the club
+    // DETAIL and this row pointed there; PD-326 absorbed that section into
+    // Manage riders, so the old link now lands an admin on a screen where the
+    // request they were just told about is not. The Approve/Decline pair beside
+    // the row is unchanged and is still the primary path — this is the LINK
+    // being repointed at where the request actually lives.
+    //
+    // `routes.clubManage` is safe for every reader of this type, which is what
+    // makes it a repoint rather than a widening: the fan-out addresses a club's
+    // owner and its admins and nobody else (`085` §5.4), and that is exactly
+    // the set the screen admits.
+    case 'club_join_requested':
       return {
-        href: row.club ? routes.club(row.club.id) : null,
-        trailing: row.club?.avatar_url ? (
-          <img src={row.club.avatar_url} alt="" className="h-full w-full object-cover" />
-        ) : undefined,
+        href: row.club ? routes.clubManage(row.club.id) : null,
+        trailing: clubThumbnail(row),
       }
+    // `089`, PD-335. The club is the destination as well as the subject, and it
+    // lands on the REDUCED club screen (`085`) — which is the one surface that
+    // reads the rider's own request row and says the club declined it. So the
+    // row and the screen it opens tell the same rider the same thing from two
+    // different sources, neither of which names an admin.
+    //
+    // **No trailing thumbnail, unlike the three above**: the club's avatar is
+    // already drawn in the actor slot for this type, and drawing it twice in
+    // one row reads as two clubs.
+    case 'club_join_request_declined':
+      return { href: row.club ? routes.club(row.club.id) : null }
   }
+
+  // Both halves, for `notificationCopy`'s recorded reason. The assignment keeps
+  // the compile-time guard the trailing `return` would otherwise delete — a new
+  // `NotificationType` with no `case` narrows `row.type` to something other
+  // than `never` and fails HERE — and the return keeps the runtime one: an
+  // already-serving bundle can meet a row written by a migration it predates,
+  // and this result is DESTRUCTURED at the call site, so `undefined` is a
+  // TypeError that takes the whole list down rather than one blank row.
+  const exhaustive: never = row.type
+  void exhaustive
+
+  return { href: null }
+}
+
+/**
+ * The club's avatar in the trailing slot, on `postcardThumbnail`'s shape —
+ * extracted when `club_join_requested` split off its two siblings so the
+ * `<img>` stays written once. Not drawn for `089`'s decline, which already
+ * puts the club's avatar in the ACTOR slot: twice in one row reads as two
+ * clubs.
+ */
+function clubThumbnail(row: NotificationRowData): React.ReactNode {
+  return row.club?.avatar_url ? (
+    <img src={row.club.avatar_url} alt="" className="h-full w-full object-cover" />
+  ) : undefined
 }
 
 function postcardThumbnail(row: NotificationRowData): React.ReactNode {

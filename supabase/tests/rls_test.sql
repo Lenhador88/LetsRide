@@ -5992,12 +5992,12 @@ select assert_eq(
       and (has_function_privilege('authenticated', p.oid, 'execute')
         or has_function_privilege('anon', p.oid, 'execute')
         or has_function_privilege('service_role', p.oid, 'execute'))),
-  0, '036/083/085: no client role can call any of the eleven fan-out functions directly');
+  0, '036/083/085/089: no client role can call any of the thirteen fan-out functions directly');
 select assert_eq(
   (select count(*)::int from pg_proc
     where pronamespace = 'private'::regnamespace
       and (proname like 'notify\_%' or proname like 'retract\_%')),
-  11, '036/083/085: ... and there are eleven of them — 036''s six, 083''s notify_ride_invited, notify_ride_invite_answered and retract_ride_invited, and 085''s notify_club_join_requested and retract_club_join_requested — so that assertion is not vacuous');
+  13, '036/083/085/089: ... and there are thirteen of them — 036''s six, 083''s notify_ride_invited, notify_ride_invite_answered and retract_ride_invited, 085''s notify_club_join_requested and retract_club_join_requested, and 089''s notify_club_join_request_declined and retract_club_join_request_declined — so that assertion is not vacuous');
 
 -- ---------------------------------------------------------------------------
 -- 7.5 — blocking, applied TWICE, with A and B exchanged
@@ -6511,7 +6511,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where not tgisinternal
       and (tgname like 'notify\_%' or tgname like 'retract\_%')),
-  12, '036/083/085/087: twelve fan-out triggers exist');
+  14, '036/083/085/087/089: fourteen fan-out triggers exist');
 -- ** 087 CHANGED WHAT THIS ASSERTION HAD TO SAY. ** It used to read
 -- `tgqual is not null` = 0 — no WHEN clause at all — because the only WHEN
 -- anybody had ever put on one of these was 023's `current_user` guard, which
@@ -6553,8 +6553,9 @@ select assert_eq(
                  where not tgisinternal and tgqual is not null
                    and (tgname like 'notify\_%' or tgname like 'retract\_%')
                  order by 1)),
-  array['(old.status IS DISTINCT FROM new.status)'],
-  '036/083/085/087: exactly ONE of them carries a WHEN clause and this is its TEXT — 087''s retract_club_join_requested_on_answer, guarding the status TRANSITION so a no-op update retracts nothing. Pinned by text rather than counted, because a count cannot tell WHICH trigger carries it: the delete arm could acquire a clause while this one lost its own and a count would not move');
+  array['((new.status = ''declined''::text) AND (old.status IS DISTINCT FROM new.status))',
+        '(old.status IS DISTINCT FROM new.status)'],
+  '036/083/085/087/089: exactly TWO of them carry a WHEN clause and these are their TEXTS — 087''s retract_club_join_requested_on_answer, guarding the status TRANSITION so a no-op update retracts nothing, and 089''s notify_club_join_request_declined, which guards the transition AND the value because only one destination status writes a notification. Pinned by text rather than counted, because a count cannot tell WHICH trigger carries it: a delete arm could acquire a clause while one of these lost its own and a count would not move. 089''s two DELETE-arm retractions must never acquire one — their writers are security definer RPCs and the guard would disable them silently');
 
 -- auth.uid() appears nowhere in a fan-out body, checkable by inspection rather
 -- than inferred from behaviour.
@@ -6569,7 +6570,7 @@ select assert_eq(
     where pronamespace = 'private'::regnamespace
       and (proname like 'notify\_%' or proname like 'retract\_%')
       and prosecdef and proconfig @> array['search_path=""']),
-  11, '036/083/085: every fan-out is SECURITY DEFINER with search_path pinned empty');
+  13, '036/083/085/089: every fan-out is SECURITY DEFINER with search_path pinned empty');
 
 -- The count must be INVOKER. A definer count steps past the block predicate and
 -- every resolvability conjunct, producing a badge the rider can never clear.
@@ -11069,9 +11070,16 @@ select assert_eq(
 --
 -- **085 added two more, and the same judgement applies.** `club_join_requested`
 -- and `club_join_request_approved` are two different events with two different
--- recipients. The type this pin should make you look for is the ABSENT one:
--- there is no `club_join_request_declined`, because 036 §3's club conjunct
--- would make it unreadable to the very rider it addresses (085.26).
+-- recipients.
+--
+-- **089 added the third, and it is the one that used to be ABSENT here.** This
+-- comment said there was deliberately no `club_join_request_declined`, because
+-- 036 §3's club conjunct would make it unreadable to the very rider it
+-- addresses. That was true of the policy as 085 left it; the product owner
+-- decided on 2026-08-28 that a declined rider IS told, and 089 makes the row
+-- resolve with a TYPE-SCOPED disjunct on that conjunct rather than by widening
+-- it. It is still not a second copy of an existing event: nobody else is told
+-- a decline, and it is the only type whose actor is its own recipient.
 --
 -- **083 added three types and the pin moved with it, which does not weaken it.**
 -- `ride_invited`, `ride_invite_accepted` and `ride_invite_declined` are three
@@ -11084,8 +11092,8 @@ select assert_eq(
   (select pg_get_constraintdef(oid) from pg_constraint
     where conrelid = 'public.notifications'::regclass
       and conname = 'notifications_type_check'),
-  'CHECK ((type = ANY (ARRAY[''postcard_liked''::text, ''postcard_commented''::text, ''ride_joined''::text, ''club_joined''::text, ''ride_created_in_club''::text, ''ride_invited''::text, ''ride_invite_accepted''::text, ''ride_invite_declined''::text, ''club_join_requested''::text, ''club_join_request_approved''::text])))',
-  '055/083/085: the type CHECK carries no second RIDE_JOINED type — the organizer''s distinct copy is chosen at render time by comparing the reader against rides.organizer_id; 083''s three invite types are three different events rather than a sixth copy of that one, and 085 adds two more for the same reason. There is deliberately no club_join_request_DECLINED: 036 §3''s club conjunct would make it unreadable to the rider it addresses (085.26)');
+  'CHECK ((type = ANY (ARRAY[''postcard_liked''::text, ''postcard_commented''::text, ''ride_joined''::text, ''club_joined''::text, ''ride_created_in_club''::text, ''ride_invited''::text, ''ride_invite_accepted''::text, ''ride_invite_declined''::text, ''club_join_requested''::text, ''club_join_request_approved''::text, ''club_join_request_declined''::text])))',
+  '055/083/085/089: the type CHECK carries no second RIDE_JOINED type — the organizer''s distinct copy is chosen at render time by comparing the reader against rides.organizer_id; 083''s three invite types are three different events rather than a sixth copy of that one, and 085 and 089 add three more for the same reason. 089''s club_join_request_declined is the type this pin used to record as deliberately ABSENT; read 089''s header before reading that as a reversal of 085''s reasoning, because the mechanism is a type-scoped disjunct and NOT the policy widening 085 refused');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public' and tablename = 'notifications'),
@@ -12202,8 +12210,8 @@ select assert_eq(
   (select pg_get_constraintdef(oid) from pg_constraint
     where conrelid = 'public.notifications'::regclass
       and conname = 'notifications_type_check'),
-  'CHECK ((type = ANY (ARRAY[''postcard_liked''::text, ''postcard_commented''::text, ''ride_joined''::text, ''club_joined''::text, ''ride_created_in_club''::text, ''ride_invited''::text, ''ride_invite_accepted''::text, ''ride_invite_declined''::text, ''club_join_requested''::text, ''club_join_request_approved''::text])))',
-  '060/083/085: the type CHECK carries 036''s five, 083''s three and 085''s two and nothing else — 060 itself changed who receives which EXISTING type and never what a notification is, and re-pinning here is what makes each later addition a deliberate one rather than a silent one');
+  'CHECK ((type = ANY (ARRAY[''postcard_liked''::text, ''postcard_commented''::text, ''ride_joined''::text, ''club_joined''::text, ''ride_created_in_club''::text, ''ride_invited''::text, ''ride_invite_accepted''::text, ''ride_invite_declined''::text, ''club_join_requested''::text, ''club_join_request_approved''::text, ''club_join_request_declined''::text])))',
+  '060/083/085/089: the type CHECK carries 036''s five, 083''s three, 085''s two and 089''s one and nothing else — 060 itself changed who receives which EXISTING type and never what a notification is, and re-pinning here is what makes each later addition a deliberate one rather than a silent one');
 
 set role authenticated;
 rollback to savepoint recipient_sets_060;
@@ -20473,7 +20481,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgrelid = 'public.club_join_requests'::regclass and not tgisinternal
       and tgqual is not null),
-  2, '087.1: exactly TWO triggers on this table carry a WHEN clause — the participation gate''s current_user guard and 087''s status-transition guard. Neither fan-out nor the delete-arm retraction may acquire one: their only writers are security definer RPCs, where current_user is the owner and the guard would disable them silently');
+  3, '087.1/089.6: exactly THREE triggers on this table carry a WHEN clause — the participation gate''s current_user guard, 087''s status-transition guard and 089''s notify_club_join_request_declined, which guards the transition AND the destination value. The two DELETE-arm retractions and notify_club_join_requested may acquire none: their only writers are security definer RPCs, where current_user is the owner and a role guard would disable them silently');
 
 -- ---------------------------------------------------------------------------
 -- 085.14b / 085.15  A refusal sticks against the requester and nobody else
@@ -21132,6 +21140,642 @@ select assert_eq(
   '086.15: postcards SELECT is TEXTUALLY what BOTH public.ride_journal_postcard_ids AND public.club_stamp_postcard_ids restate. If this fails, TWO accessor bodies are stale — update both in the same change rather than re-pinning this string, or the club strip and the ride Journal start naming rows against a rule that no longer exists');
 
 rollback to savepoint club_stamps_086;
+
+-- ===========================================================================
+-- 088 · Manage riders — removal and the role nothing had ever written
+-- ===========================================================================
+-- PD-326. `club_members.role` has carried `admin` since 001 and nothing had
+-- ever written it, so every assertion below exercises a path that did not
+-- exist. The property the whole block is about:
+--
+--   ** AN ADMIN MAY ACT ON MEMBERS. ONLY THE OWNER MAY ACT ON ADMINS. **
+--
+-- and the one nothing else in this file can assert:
+--
+--   ** 088 ADDS NO POLICY. ** club_members still has NO UPDATE policy — the
+--   absence 036 §7.6 relies on for "nobody can promote an admin" — and still
+--   exactly one DELETE policy, `auth.uid() = user_id`. The THREE RPCs are the
+--   whole of the new reach, and 088.1 is what fails if somebody "completes"
+--   the CRUD set alongside them.
+--
+--   880001  the club's owner        880002  an admin
+--   880003  a second admin          880004  a member
+--   880005  a rider in no club here
+--   88c001  the private club        88c002  a public club, same owner
+savepoint manage_riders_088;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000880001', 'mrowner@example.com'),
+  ('00000000-0000-0000-0000-000000880002', 'mradmin1@example.com'),
+  ('00000000-0000-0000-0000-000000880003', 'mradmin2@example.com'),
+  ('00000000-0000-0000-0000-000000880004', 'mrmember@example.com'),
+  ('00000000-0000-0000-0000-000000880005', 'mrouter@example.com');
+reset role;
+
+update profiles set username = 'mrowner',  location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000880001';
+update profiles set username = 'mradmin1', location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000880002';
+update profiles set username = 'mradmin2', location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000880003';
+update profiles set username = 'mrmember', location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000880004';
+update profiles set username = 'mrouter',  location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000880005';
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000088c0001', 'PD088 Private', false,
+   '00000000-0000-0000-0000-000000880001'),
+  ('00000000-0000-0000-0000-0000088c0002', 'PD088 Public',  true,
+   '00000000-0000-0000-0000-000000880001');
+-- Both admin rows are written directly, because 019's INSERT policy lets no
+-- client role claim the role and 088's own RPC is what this block is testing.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880001', 'owner'),
+  ('00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880002', 'admin'),
+  ('00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880003', 'admin'),
+  ('00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004', 'member'),
+  ('00000000-0000-0000-0000-0000088c0002', '00000000-0000-0000-0000-000000880001', 'owner');
+
+-- ---------------------------------------------------------------------------
+-- 088.1  ** THE ABSENCE 088 EXISTS IN ORDER NOT TO FILL. **
+-- ---------------------------------------------------------------------------
+-- 036 §7.6's "nobody can promote an admin" is a statement about a MISSING
+-- policy, not about a check anywhere. The natural way to build this story is
+-- an UPDATE policy admitting an admin — and RLS cannot see WHICH column an
+-- UPDATE changed, so the same policy that permits a promotion permits
+-- rewriting club_id and user_id, which 048 grants together with role. Pinned
+-- as the full sorted command list rather than a count, on 015's trap: a count
+-- of 3 would also pass for a set that had swapped DELETE for UPDATE.
+select assert_eq(
+  (select string_agg(cmd, ',' order by cmd) from pg_policies
+    where schemaname = 'public' and tablename = 'club_members'),
+  'DELETE,INSERT,SELECT',
+  '088.1: club_members has SELECT, INSERT and DELETE policies and NOTHING ELSE — 088 adds THREE security definer RPCs and no policy, because 036 §7.6 relies on the UPDATE policy being absent and RLS cannot scope an UPDATE to one column');
+select assert_eq(
+  (select qual from pg_policies
+    where schemaname = 'public' and tablename = 'club_members' and cmd = 'DELETE'),
+  '(auth.uid() = user_id)',
+  '088.1: ... and the DELETE policy still says you may remove only YOURSELF. Removing somebody else is remove_club_member and nothing else');
+
+-- ---------------------------------------------------------------------------
+-- 088.2  Who may not remove: a member, an outsider, and yourself
+-- ---------------------------------------------------------------------------
+-- ONE raise site in the function, so every one of these is the same 42501 and
+-- a caller cannot tell "not your club" from "no such rider" from "that rider
+-- is an admin". That is the point rather than a limitation.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000880004', false);
+select assert_rejected($$select public.remove_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880003')$$,
+  '42501', '088.2: an ordinary member removes nobody');
+select set_config('test.uid', '00000000-0000-0000-0000-000000880005', false);
+select assert_rejected($$select public.remove_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004')$$,
+  '42501', '088.2: ... nor does a rider who is not in the club at all');
+select set_config('test.uid', '00000000-0000-0000-0000-000000880002', false);
+select assert_rejected($$select public.remove_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880002')$$,
+  '42501', '088.2: ... nor an admin removing THEMSELVES — leaving is 001''s own DELETE policy and must never require an authority check');
+select assert_rejected($$select public.remove_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880001')$$,
+  '42501', '088.2: ... nor an admin removing the OWNER, whose standing is clubs.owner_id and not a roster row');
+select assert_rejected($$select public.remove_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880003')$$,
+  '42501', '088.2: ** ... nor an ADMIN removing another ADMIN. ** One rogue admin must not be able to dismantle a club''s leadership without its owner acting, and removal is a superset of demotion so the two must agree');
+select assert_rejected($$select public.remove_club_member(
+  '00000000-0000-0000-0000-0000088c0002', '00000000-0000-0000-0000-000000880001')$$,
+  '42501', '088.2: ... and an admin of one club is nobody in another — the authority is read against the club passed in, never against any club');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 088.3  An admin removes a MEMBER, and that is the whole of what they may do
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000880002', false);
+select public.remove_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004');
+reset role;
+select assert_eq((select count(*)::int from club_members
+  where club_id = '00000000-0000-0000-0000-0000088c0001'
+    and user_id = '00000000-0000-0000-0000-000000880004'), 0,
+  '088.3: an admin removes a member and exactly that row goes');
+select assert_eq((select count(*)::int from club_members
+  where club_id = '00000000-0000-0000-0000-0000088c0001'), 3,
+  '088.3: ... and nothing else moved — the owner and both admins are untouched');
+
+-- ** REMOVAL IS NOT A BAN, AND 088 DELIBERATELY DOES NOT MAKE IT ONE. **
+-- An approval DELETES the request row (085 §5), so a removed rider holds none
+-- and may ask again at once. A ban is a different feature with a different
+-- table; blocking is what a club owner has today for a rider they want gone
+-- for good.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000880004', false);
+insert into club_join_requests (club_id, user_id)
+  values ('00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004');
+reset role;
+select assert_eq((select count(*)::int from club_join_requests
+  where club_id = '00000000-0000-0000-0000-0000088c0001'
+    and user_id = '00000000-0000-0000-0000-000000880004'), 1,
+  '088.3: ... and the removed rider may ask to join again immediately — removal is not a ban, and nothing in 088 writes one');
+delete from club_join_requests
+ where club_id = '00000000-0000-0000-0000-0000088c0001'
+   and user_id = '00000000-0000-0000-0000-000000880004';
+
+-- ---------------------------------------------------------------------------
+-- 088.4  The OWNER removes an admin
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000880001', false);
+select public.remove_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880003');
+select assert_rejected($$select public.remove_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880001')$$,
+  '42501', '088.4: ... and not even the owner removes the owner — the way out of owning a club is delete_owned_club (043) or 029''s succession, both elsewhere on purpose');
+reset role;
+select assert_eq((select count(*)::int from club_members
+  where club_id = '00000000-0000-0000-0000-0000088c0001'
+    and user_id = '00000000-0000-0000-0000-000000880003'), 0,
+  '088.4: the owner removes an admin, which the admin arm could not');
+
+-- ---------------------------------------------------------------------------
+-- 088.5  ** NO ROLE ARGUMENT EXISTS, WHICH IS STRONGER THAN REFUSING ONE. **
+-- ---------------------------------------------------------------------------
+-- 019 made `admin` claimable by no client and 085 preserved that through a new
+-- write path by giving it "no input by which to attempt it". 088 keeps the
+-- property by writing LITERAL roles: there is no single
+-- set_club_member_role(club, rider, text) whose whitelist a later session could
+-- widen, and the signature is what says so.
+select assert_eq(
+  (select string_agg(p.proname || '(' || pg_get_function_arguments(p.oid) || ')', ' · ' order by p.proname)
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('remove_club_member', 'promote_club_member',
+                        'demote_club_admin', 'set_club_member_role')),
+  'demote_club_admin(target_club uuid, target_rider uuid) · promote_club_member(target_club uuid, target_rider uuid) · remove_club_member(target_club uuid, target_rider uuid)',
+  '088.5: THREE functions, each taking a club and a rider and NO ROLE — the role each writes is a literal in its own body, so there is no argument by which a client could attempt `owner`. A set_club_member_role(..., text) appearing here is the regression');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('remove_club_member', 'promote_club_member', 'demote_club_admin')
+      and p.prosrc like '%role = ''owner''%'),
+  0, '088.5: ... and no body writes any role but member and admin');
+
+-- ---------------------------------------------------------------------------
+-- 088.6  Promotion — an admin may, and the owner's row is not a target
+-- ---------------------------------------------------------------------------
+-- The product owner's sentence grants admins the constructive act:
+-- "admins ... promote riders to admins". The counter-argument — that 029's
+-- succession makes a promotion the power to inherit the club — is recorded in
+-- 088's header and in PD-326 rather than built, and it is one conjunct away.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004', 'member');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000880002', false);
+select public.promote_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004');
+reset role;
+select assert_eq((select role from club_members
+  where club_id = '00000000-0000-0000-0000-0000088c0001'
+    and user_id = '00000000-0000-0000-0000-000000880004'), 'admin',
+  '088.6: an admin promotes a member, which is the product owner''s own sentence');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000880002', false);
+select assert_rejected($$select public.promote_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004')$$,
+  '42501', '088.6: ... and promoting somebody who is ALREADY an admin is refused rather than a no-op — the target must be a `member`, so this is never a way to touch the owner''s row either');
+select assert_rejected($$select public.promote_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880001')$$,
+  '42501', '088.6: ... and the club OWNER is not promotable, checked against clubs.owner_id rather than against their roster role — 054''s ownerless owner may hold no row at all');
+select assert_rejected($$select public.promote_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880005')$$,
+  '42501', '088.6: ... and a rider who is not in the club has nothing to promote — promotion is not a way in');
+select set_config('test.uid', '00000000-0000-0000-0000-000000880005', false);
+select assert_rejected($$select public.promote_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004')$$,
+  '42501', '088.6: ... and an outsider promotes nobody');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 088.7  ** DEMOTION IS THE ONE ARM AN ADMIN DOES NOT GET. **
+-- ---------------------------------------------------------------------------
+-- Removal is a superset of demotion, so the two must agree: an admin who could
+-- demote a peer could remove them in two steps, and 088.2's refusal would be
+-- decorative.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000880002', false);
+select assert_rejected($$select public.demote_club_admin(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004')$$,
+  '42501', '088.7: ** an admin cannot demote the admin they just promoted. ** Promoting somebody is not a way to acquire the power to take it back — only the owner does that');
+-- Stepping down takes nothing from anybody else, and an admin with no way out
+-- would have to leave the club entirely to shed the role.
+select public.demote_club_admin(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880002');
+reset role;
+select assert_eq((select role from club_members
+  where club_id = '00000000-0000-0000-0000-0000088c0001'
+    and user_id = '00000000-0000-0000-0000-000000880002'), 'member',
+  '088.7: ... but an admin may step DOWN themselves');
+
+-- The rider who has just stepped down is a member again IMMEDIATELY: the check
+-- reads the live row, never the caller's idea of it.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000880002', false);
+select assert_rejected($$select public.promote_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880002')$$,
+  '42501', '088.7: ... and cannot then promote themselves back — a rider who has stepped down is an ordinary member, on both RPCs');
+select assert_rejected($$select public.remove_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004')$$,
+  '42501', '088.7: ... so stepping down is not a half-measure');
+select set_config('test.uid', '00000000-0000-0000-0000-000000880001', false);
+select assert_rejected($$select public.demote_club_admin(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880001')$$,
+  '42501', '088.7: ... and not even the owner demotes the owner — ownership is clubs.owner_id and transferring it is 029''s succession, deliberately elsewhere');
+select public.demote_club_admin(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004');
+reset role;
+select assert_eq((select role from club_members
+  where club_id = '00000000-0000-0000-0000-0000088c0001'
+    and user_id = '00000000-0000-0000-0000-000000880004'), 'member',
+  '088.7: the OWNER demotes an admin, which is the arm nobody else has');
+select assert_eq((select joined_at is not null from club_members
+  where club_id = '00000000-0000-0000-0000-0000088c0001'
+    and user_id = '00000000-0000-0000-0000-000000880004'), true,
+  '088.7: ... and `joined_at` survives it — a demotion is not a rejoin, and 029''s succession orders on that column');
+
+-- ---------------------------------------------------------------------------
+-- 088.8  Reachable by no anonymous caller, and definer with an empty path
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('remove_club_member', 'promote_club_member', 'demote_club_admin')
+      and has_function_privilege('anon', p.oid, 'execute')),
+  0, '088.8: anon holds EXECUTE on none of the three RPCs — decision #1, asserted by naming the ROLE rather than by attempting a call');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('remove_club_member', 'promote_club_member', 'demote_club_admin')
+      and p.prosecdef and p.proconfig @> array['search_path=""']),
+  3, '088.8: all three are SECURITY DEFINER with search_path pinned EMPTY — an unpinned definer resolves unqualified names against the CALLER''s path');
+
+-- ---------------------------------------------------------------------------
+-- 088.9  ** 029's SUCCESSION BECOMES REACHABLE FOR THE FIRST TIME. **
+-- ---------------------------------------------------------------------------
+-- private.transfer_owned_clubs hands a deleting owner's club to "its
+-- longest-tenured remaining admin, else its longest-tenured remaining member".
+-- Its own comment calls the admin arm "correct and unreachable, in that order",
+-- because nothing had ever written `admin`. 088 makes it reachable, so the
+-- first real use of it is here rather than in front of a rider deleting their
+-- account — and it is the sharpest statement of what a promotion IS: putting a
+-- rider first in line to inherit the club.
+savepoint succession_088;
+-- 880002 and 880004 are both plain members at this point and 880002 joined
+-- FIRST, so the succession would pick them on tenure alone. 880004 is the one
+-- promoted, which is what makes this assertion about the ROLE ordering rather
+-- than about joined_at.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000880001', false);
+select public.promote_club_member(
+  '00000000-0000-0000-0000-0000088c0001', '00000000-0000-0000-0000-000000880004');
+reset role;
+select private.transfer_owned_clubs('00000000-0000-0000-0000-000000880001');
+select assert_eq((select owner_id from clubs
+  where id = '00000000-0000-0000-0000-0000088c0001'),
+  '00000000-0000-0000-0000-000000880004'::uuid,
+  '088.9: 029''s ADMIN arm of transfer_owned_clubs runs for the first time — the promoted admin inherits AHEAD of a longer-tenured member, which is what makes a promotion an authorization decision rather than a label');
+rollback to savepoint succession_088;
+
+rollback to savepoint manage_riders_088;
+
+-- ===========================================================================
+-- 089 · A declined rider is told, and a private club's avatar is readable
+-- ===========================================================================
+-- PD-335, both halves decided by the product owner on 2026-08-28. The two
+-- properties this block exists to prove, because each is the cost of an option
+-- that was NOT chosen:
+--
+--   ** NOBODY LEARNS WHO REFUSED. ** The notification's actor is its own
+--   recipient, so the requester reads nothing they did not already know —
+--   which is what 085 refused a `responded_by` column to protect.
+--
+--   ** TWO CLUBS ARE TWO ROWS. ** A subject-less notification would collapse
+--   under 036's event key (NULLS NOT DISTINCT) and silently drop the second
+--   decline. The club stays the subject, so the key is per club.
+--
+--   890001  the owner of BOTH private clubs — the same admin refusing twice,
+--           which is precisely the case a subject-less row would lose
+--   890002  the requester, declined by both
+--   890003  a member of the first club
+--   890004  a rider blocked with 890001
+--   89c001, 89c002  the two private clubs
+savepoint declined_told_089;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000890001', 'dtowner@example.com'),
+  ('00000000-0000-0000-0000-000000890002', 'dtasker@example.com'),
+  ('00000000-0000-0000-0000-000000890003', 'dtmember@example.com'),
+  ('00000000-0000-0000-0000-000000890004', 'dtblocked@example.com');
+reset role;
+
+update profiles set username = 'dtowner',   location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000890001';
+update profiles set username = 'dtasker',   location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000890002';
+update profiles set username = 'dtmember',  location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000890003';
+update profiles set username = 'dtblocked', location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000890004';
+
+insert into clubs (id, name, is_public, owner_id, avatar_path, cover_image_path) values
+  ('00000000-0000-0000-0000-0000089c0001', 'PD089 Private One', false,
+   '00000000-0000-0000-0000-000000890001',
+   'club-avatars/00000000-0000-0000-0000-000000890001/aaaaaaaa-0000-4000-8000-000000000001.jpg',
+   'club-covers/00000000-0000-0000-0000-000000890001/cccccccc-0000-4000-8000-000000000001.jpg'),
+  ('00000000-0000-0000-0000-0000089c0002', 'PD089 Private Two', false,
+   '00000000-0000-0000-0000-000000890001', null, null);
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000089c0001', '00000000-0000-0000-0000-000000890001', 'owner'),
+  ('00000000-0000-0000-0000-0000089c0001', '00000000-0000-0000-0000-000000890003', 'member'),
+  ('00000000-0000-0000-0000-0000089c0002', '00000000-0000-0000-0000-000000890001', 'owner');
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000890001', '00000000-0000-0000-0000-000000890004');
+
+-- The bucket is `media`, which is the whole of 016's first conjunct. The 085.6
+-- rows this replaces used bucket_id `club-avatars` — a value no policy in this
+-- repo can ever match — so both of its assertions read zero whatever the policy
+-- said. That is CLAUDE.md's vacuous-guard shape in a Storage fixture: a pin on
+-- a behaviour it was not able to observe.
+insert into storage.objects (bucket_id, name, owner, metadata) values
+  ('media', 'club-avatars/00000000-0000-0000-0000-000000890001/aaaaaaaa-0000-4000-8000-000000000001.jpg',
+   '00000000-0000-0000-0000-000000890001', '{"mimetype":"image/jpeg","size":1}'),
+  ('media', 'club-covers/00000000-0000-0000-0000-000000890001/cccccccc-0000-4000-8000-000000000001.jpg',
+   '00000000-0000-0000-0000-000000890001', '{"mimetype":"image/jpeg","size":1}');
+
+-- Both asks, both refused by the SAME rider. Under a subject-less notification
+-- these two would share one event key and the second would vanish.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000890002', false);
+insert into club_join_requests (club_id, user_id) values
+  ('00000000-0000-0000-0000-0000089c0001', '00000000-0000-0000-0000-000000890002'),
+  ('00000000-0000-0000-0000-0000089c0002', '00000000-0000-0000-0000-000000890002');
+select set_config('test.uid', '00000000-0000-0000-0000-000000890001', false);
+select public.decline_club_join_request((select id from club_join_requests
+  where club_id = '00000000-0000-0000-0000-0000089c0001'
+    and user_id = '00000000-0000-0000-0000-000000890002'));
+select public.decline_club_join_request((select id from club_join_requests
+  where club_id = '00000000-0000-0000-0000-0000089c0002'
+    and user_id = '00000000-0000-0000-0000-000000890002'));
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 089.1  ** THE ROW 085.26 ASSERTED WOULD NEVER EXIST. **
+-- ---------------------------------------------------------------------------
+-- 085 wrote no decline notification because 036 §3's club conjunct would have
+-- made it unreadable to the rider it addresses. The product owner decided on
+-- 2026-08-28 that the rider IS told; 089 makes the row resolve with a
+-- TYPE-SCOPED disjunct rather than by widening that conjunct, so 085.26's
+-- reasoning about the policy AS 085 LEFT IT is unchanged and only the policy
+-- moved. Read 089's header before reading this as a reversal.
+select assert_eq((select count(*)::int from notifications
+  where type = 'club_join_request_declined'
+    and user_id = '00000000-0000-0000-0000-000000890002'), 2,
+  '089.1: ** TWO declines from TWO clubs are TWO rows. ** This is the assertion that fails for a subject-less notification: 036''s event key is unique over the four subject columns with NULLS NOT DISTINCT, so with club_id NULL the same admin refusing twice writes one row and the second is dropped with no error');
+select assert_eq((select count(*)::int from notifications
+  where type = 'club_join_request_declined'
+    and user_id <> '00000000-0000-0000-0000-000000890002'), 0,
+  '089.1: ... and it is a fan-out of ONE — the club''s owner, its admins and its members are told nothing');
+
+-- ---------------------------------------------------------------------------
+-- 089.2  ** THE DISCLOSURE THAT IS NOT MADE. **
+-- ---------------------------------------------------------------------------
+-- notifications.actor_id is read by the recipient through the list's own
+-- profiles embed, so ANY other rider in that column tells the requester
+-- something. 085 refused a `responded_by` column for exactly this, and a
+-- client that declines to render a column is a promise where a column value is
+-- a guarantee.
+select assert_eq((select count(*)::int from notifications
+  where type = 'club_join_request_declined' and actor_id <> user_id), 0,
+  '089.2: ** every decline notification''s actor IS its own recipient. ** A club refuses as a club, and no rider''s id appears in a row that would tell the requester who pressed Decline');
+select assert_eq((select count(*)::int from notifications
+  where actor_id = '00000000-0000-0000-0000-000000890001'
+    and user_id = '00000000-0000-0000-0000-000000890002'), 0,
+  '089.2: ... and in particular the DECLINING ADMIN appears in no row addressed to the rider they refused — this is 085.26''s zero, still standing, under the new mechanism');
+
+-- ---------------------------------------------------------------------------
+-- 089.3  It RESOLVES for the rider it addresses, which is the whole change
+-- ---------------------------------------------------------------------------
+-- The row existing is not the property. 085's header names the failure mode
+-- exactly: a decline notification would be "written, never returned and never
+-- counted — silently, for ever, looking correct to every reviewer and to every
+-- test that checks the row was inserted". So this reads it AS the rider.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000890002', false);
+select assert_eq((select count(*)::int from notifications
+  where type = 'club_join_request_declined'), 2,
+  '089.3: ** the declined rider READS both rows. ** 085.26''s failure mode was a row that inserts and never returns, so an assertion made as the table owner would pass for a change that does nothing');
+select assert_eq((select unread_notification_count()::int >= 2), true,
+  '089.3: ... and they are COUNTED — the badge reads through the same predicate, so a row the list returns and the count does not is a badge over an empty screen');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 089.4  ** THE DISJUNCT IS TYPE-SCOPED, WHICH IS WHY THIS IS NOT PD-335's C.
+-- ---------------------------------------------------------------------------
+-- Widening 036 §3's club conjunct outright would make EVERY club_id-carrying
+-- notification resolve for any non-member holding one. This inserts exactly
+-- such a row — a club_joined addressed to the requester, naming a club they
+-- cannot read — and requires it to stay invisible.
+insert into notifications (user_id, actor_id, type, club_id) values
+  ('00000000-0000-0000-0000-000000890002', '00000000-0000-0000-0000-000000890001',
+   'club_joined', '00000000-0000-0000-0000-0000089c0001');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000890002', false);
+select assert_eq((select count(*)::int from notifications where type = 'club_joined'), 0,
+  '089.4: ** a club_joined row naming the same unreadable club still does NOT resolve. ** The disjunct is gated on the type, so nothing but a decline reads differently than it did before 089 — which is the entire difference between this and the policy widening PD-335 priced as high risk');
+reset role;
+delete from notifications where type = 'club_joined'
+  and user_id = '00000000-0000-0000-0000-000000890002';
+
+-- And nobody else reads the decline, including the admin who wrote it.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000890001', false);
+select assert_eq((select count(*)::int from notifications
+  where type = 'club_join_request_declined'), 0,
+  '089.4: ... and the club''s owner reads none of them — 036''s recipient scope is untouched, and a decline is told to exactly one rider');
+select set_config('test.uid', '00000000-0000-0000-0000-000000890003', false);
+select assert_eq((select count(*)::int from notifications
+  where type = 'club_join_request_declined'), 0,
+  '089.4: ... nor does a member of the club');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 089.5  ** THE RETRACTION, AND THE TRAP IN BUILDING IT THE OBVIOUS WAY. **
+-- ---------------------------------------------------------------------------
+-- 085's retract_club_join_requested already deletes by (type, actor_id,
+-- club_id) and this row shares both of the latter. Widening THAT function to
+-- cover this type instead of adding a second one deletes the row in the same
+-- transaction that writes it: 087 hung it on the status transition too, and
+-- triggers fire in NAME order — notify_club_join_request_declined sorts before
+-- retract_club_join_requested_on_answer. 089.1 above is what catches that,
+-- and this is what catches the opposite mistake.
+--
+-- ** MUTATION-TEST: drop retract_club_join_request_declined, confirm this goes
+-- red, revert. ** The other two retraction triggers stay in place through it,
+-- so a pass would mean the wrong one is doing the work.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000890001', false);
+delete from club_join_requests
+ where club_id = '00000000-0000-0000-0000-0000089c0001'
+   and user_id = '00000000-0000-0000-0000-000000890002';
+reset role;
+select assert_eq((select count(*)::int from notifications
+  where type = 'club_join_request_declined'
+    and club_id = '00000000-0000-0000-0000-0000089c0001'), 0,
+  '089.5: an admin CLEARING a refused request takes the refusal notification with it — a rider who may ask again must not still be holding the "no"');
+select assert_eq((select count(*)::int from notifications
+  where type = 'club_join_request_declined'
+    and club_id = '00000000-0000-0000-0000-0000089c0002'), 1,
+  '089.5: ... and took only that club''s. The second club''s refusal stands, so the scope is the full event key rather than the rider');
+
+-- ---------------------------------------------------------------------------
+-- 089.6  The three policy expressions stay textually identical (036 §4)
+-- ---------------------------------------------------------------------------
+-- No write path may reach a row no read path returns: a wider UPDATE turns
+-- "mark all read" into a disclosure channel, because the affected-row count is
+-- a number the rider can compare against the list they were just shown. 089
+-- pastes its disjunct into all three, and this is what fails if a later edit
+-- reaches only one.
+select assert_eq(
+  (select count(distinct e)::int from (
+     select qual as e from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'SELECT'
+     union all
+     select qual from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'UPDATE'
+     union all
+     select with_check from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'UPDATE'
+   ) t),
+  1, '089.6: the SELECT using, the UPDATE using and the UPDATE with check are still ONE expression — 036 §4''s rule, and 089 edits all three or none');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'notifications'),
+  2, '089.6: ... and there are still exactly two policies on notifications — 089 replaces both and creates no third, and adds no INSERT policy');
+
+-- ---------------------------------------------------------------------------
+-- 089.7  ** THE POLICY 089 EXISTS NOT TO TOUCH, PINNED EXACTLY AS 085.1 DID.
+-- ---------------------------------------------------------------------------
+-- PD-335's option C was an arm on clubs SELECT for a live request. It is worse
+-- than it looks: 016's TWO storage policies both delegate to this expression,
+-- so an arm here ships the club's COVER as well — which the product owner
+-- excluded in the same sentence that admitted the avatar.
+select assert_eq(
+  (select qual from pg_policies
+    where schemaname = 'public' and tablename = 'clubs' and cmd = 'SELECT'),
+  '(is_public OR (owner_id = auth.uid()) OR private.is_club_member(id))',
+  '089.7: clubs SELECT is UNCHANGED by 089 — a private club is still discoverable through public.discoverable_private_clubs and through nothing else, and the decline notification resolves through a conjunct on NOTIFICATIONS rather than through a grant on clubs');
+
+-- ---------------------------------------------------------------------------
+-- 089.8  ** THE AVATAR SHIPS AND THE COVER DOES NOT. **
+-- ---------------------------------------------------------------------------
+-- This replaces 085.6, which pinned the opposite behaviour — and which could
+-- not have observed either answer: its fixture rows named bucket_id
+-- `club-avatars`, and every 016 policy opens with `bucket_id = 'media'`, so
+-- both of its assertions read zero for a reason that had nothing to do with
+-- the club. The rows above are in `media`.
+--
+-- The accepted cost, stated because the owner accepted it explicitly: every
+-- private club's avatar OBJECT is now readable to every signed-in rider who is
+-- not blocked with its owner — the same audience the club's name, town and
+-- member count already reach through the accessor.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000890002', false);
+select assert_eq((select count(*)::int from storage.objects
+  where bucket_id = 'media'
+    and name = 'club-avatars/00000000-0000-0000-0000-000000890001/aaaaaaaa-0000-4000-8000-000000000001.jpg'), 1,
+  '089.8: a rider who can DISCOVER a private club reads its avatar object — the third disjunct on 016''s avatar policy, and the reason the Explore card stops drawing initials');
+select assert_eq((select count(*)::int from storage.objects
+  where bucket_id = 'media'
+    and name = 'club-covers/00000000-0000-0000-0000-000000890001/cccccccc-0000-4000-8000-000000000001.jpg'), 0,
+  '089.8: ** ... and still reads ZERO for the cover. ** An avatar is the club''s identity and a cover is its content — the product owner''s words, and the obvious tidy-up is to apply the same arm to both policies');
+select set_config('test.uid', '00000000-0000-0000-0000-000000890004', false);
+select assert_eq((select count(*)::int from storage.objects
+  where bucket_id = 'media'
+    and name = 'club-avatars/00000000-0000-0000-0000-000000890001/aaaaaaaa-0000-4000-8000-000000000001.jpg'), 0,
+  '089.8: ... and a rider BLOCKED with the club''s owner reads zero — the new arm delegates to club_takes_join_requests, which carries decision #2''s symmetric block conjunct');
+reset role;
+select assert_eq((select count(*)::int from storage.objects
+  where bucket_id = 'media'
+    and name like 'club-%/00000000-0000-0000-0000-000000890001/%'), 2,
+  '089.8: ... and the fixture really holds both objects, so neither zero above is a row that simply is not there — which is exactly how 085.6 passed for four days while asserting nothing');
+
+-- 016's second lock on the same door, restated in the new arm rather than
+-- shared: without the owner-folder binding, attaching a victim's object path to
+-- a club you own would make that object readable to everyone who can discover
+-- the club. 010 §2's line.
+-- ** THE PRE-WRITTEN ARM COULD NOT HAVE WORKED, AND WOULD HAVE GONE GREEN. **
+-- design.md's block put the new conjunct INSIDE an `exists (select 1 from
+-- public.clubs c …)`, which is read under the READER's own RLS — the very
+-- thing a private club refuses, and the whole reason 016's second disjunct
+-- fails here. A conjunct on a subquery that already returns zero rows changes
+-- nothing. So the club lookup lives in a definer helper, and this is what
+-- fails if somebody inlines it back.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'Club avatars are readable with the club'
+      and qual like '%club_avatar_is_discoverable%'),
+  1, '089.8: the new disjunct goes through a SECURITY DEFINER helper, never an inline exists on public.clubs — an inline one reads the club under the reader''s own RLS, which for a private club returns nothing however many conjuncts are added to it');
+select assert_eq(
+  (select prosrc like '%owner_id%' from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'club_avatar_is_discoverable'),
+  true, '089.8: ... and that helper carries the owner-folder binding itself — 010 §2''s line, and 016''s second lock on the same door');
+select assert_eq(
+  (select count(*)::int from (values ('anon'), ('authenticated')) as r(role)
+    where has_function_privilege(r.role,
+      (select p.oid from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'private' and p.proname = 'club_avatar_is_discoverable'), 'execute')),
+  1, '089.8: ... and only `authenticated` may call it — it is evaluated inside a storage.objects policy as the querying role, so the grant is load-bearing, and anon holds none of it');
+select assert_eq(
+  (select md5(qual) from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'Club covers are readable with the club'),
+  '779ca2806579f0650bf58e82146b4e83',
+  '089.8: and the COVERS policy is byte-for-byte what 016 wrote — 089 replaces one storage policy, not two');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname ~* 'club (avatar|cover)'),
+  6, '089.8: ... and there are still SIX club storage policies — two SELECT, two INSERT, two DELETE. 089 replaces one and creates none');
+
+rollback to savepoint declined_told_089;
 
 rollback;
 

@@ -86,5 +86,34 @@ export function notificationCopy(row: NotificationRow, viewerId: string | undefi
       // "let you into" rather than "approved your request": the rider knows
       // what they asked, and what is new is that they are now in.
       return `let you into ${row.club?.name ?? 'a club'}.`
+    // `089`, PD-335. **The only arm whose sentence follows the CLUB's name
+    // rather than a rider's** — `NotificationsListItem` draws the club in the
+    // actor slot for this type, because the stored actor is the reader
+    // themselves and drawing it would read "you declined your request". A club
+    // refuses as a club, and the actor being the recipient is what makes the
+    // row name nobody.
+    case 'club_join_request_declined':
+      return 'declined your request to join.'
   }
+
+  // **The compile-time guard and the runtime fallback are BOTH needed, and the
+  // fallback alone silently deletes the guard.** Before the `return` below
+  // existed, a new member of `NotificationType` with no `case` produced TS2366
+  // — "function lacks ending return statement" — under this function's `:
+  // string` annotation. An unconditional trailing return makes that path
+  // reachable, so the error can never fire again and the twelfth type ships
+  // rendering this sentence with `href: null`, indefinitely, past `tsc` and
+  // past `next build`.
+  //
+  // So the assignment stays: `row.type` narrows to `never` only while the
+  // switch is exhaustive, and a new type makes THIS line the error instead.
+  const exhaustive: never = row.type
+  void exhaustive
+
+  // **And the fallback is not defensive tidiness either.** A BUNDLE already
+  // serving meets rows written by a migration it predates, and without this it
+  // returns `undefined` where a string is expected. `089`'s header prices what
+  // that costs and orders its own apply after the deploy because of it; this is
+  // so the type after next has no such window.
+  return 'did something on LetsRide.'
 }

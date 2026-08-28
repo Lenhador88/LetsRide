@@ -5,7 +5,6 @@ import { notFound, useSearchParams } from 'next/navigation'
 import { Globe2Icon, LocationOutlineIcon, Lock2Icon } from '@/components/icons/generated'
 import { ClubCreateRideRow } from '@/components/clubs/ClubCreateRideRow'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
-import { ClubJoinRequestsSection } from '@/components/clubs/ClubJoinRequestsSection'
 import { ClubPreviewScreen } from '@/components/clubs/ClubPreviewScreen'
 import { ClubThreadsSection } from '@/components/clubs/ClubThreadsSection'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
@@ -348,13 +347,11 @@ function ClubScreen() {
           </div>
         )}
 
-        {/* `085`, PD-325 — above Members because a pending request IS a
-            roster decision, and because an owner opening the club should meet
-            it before the list it changes. Draws nothing for anyone but an
-            owner or admin, and nothing when there is nothing pending.
-            **PD-326's `Manage riders` absorbs this section**; it should reuse
-            the same key and the same read rather than build a second list. */}
-        <ClubJoinRequestsSection clubId={id} club={club.data} />
+        {/* `ClubJoinRequestsSection` moved to `Manage riders` — `088`,
+            PD-326, which is what `085`'s own design.md Q7 said would happen:
+            it put the minimum approval surface here precisely so PD-326 would
+            have a section to move rather than a route to delete. The entrance
+            is `ClubOptionsMenu`'s `Manage riders` row. */}
 
         {/* Above Members: a roster is looked up, a thread is read, so the
             part of a club that changes daily goes first. A non-member of a

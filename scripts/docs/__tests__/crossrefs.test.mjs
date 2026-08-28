@@ -280,7 +280,15 @@ describe('the cross-references in the real repo', () => {
     // It was RENAMED to `§Disclosure to the requester` — first word unique — so
     // this test's `firstWords` still reads `['Before', 'Working']` because the
     // collision is gone, not because the ceiling absorbed it.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(23)
+    //
+    // **23 -> 24 on 2026-08-28 (`manage-club-riders`, PD-326 and PD-335).** One
+    // more, the same `Working` collision and citing the heading it means:
+    // `CLAUDE.md §Working Principles` for *fix the tool, don't route around
+    // it*, which that proposal cites to record that `openspec validate` had not
+    // been run on artifacts written by hand. It has since — the change
+    // validates — but the citation stays, because the rule it names is what
+    // made the gap worth recording rather than passing over.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(24)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been

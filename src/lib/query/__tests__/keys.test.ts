@@ -163,7 +163,21 @@ describe('the invalidation claims keys.ts maps', () => {
     const writesWithoutInvalidation = sources
       .filter(([name]) => name !== 'state.ts' && name !== 'navigate.ts')
       .filter(([, source]) => /\.from\(|\.rpc\(|auth\.signOut/.test(source))
-      .filter(([, source]) => !/\binvalidate\(|clearQueryCache\(/.test(source))
+      // `invalidateClubMembership` is named EXPLICITLY rather than matched by a
+      // widened `invalidate[A-Za-z]*\(` pattern, and the difference is measured
+      // rather than stylistic: that wider form also matches
+      // `invalidateOnboardingState`, which is the GUARD cache (`guard-cache.ts`)
+      // and not this one — so it would silently drop `onboarding.ts` off the
+      // deliberate-silence list below and read a module that claims nothing as
+      // one that claims something.
+      //
+      // `club-members.ts` (`088`) claims through the helper `clubs.ts` exports
+      // and `joinClub`/`leaveClub` already share; pasting a second copy of that
+      // rule into it is exactly what the shared helper exists to prevent.
+      .filter(
+        ([, source]) =>
+          !/\binvalidate\(|\binvalidateClubMembership\(|clearQueryCache\(/.test(source)
+      )
       .map(([name]) => name)
 
     // Two deliberate silences, and they are silent for different reasons.
