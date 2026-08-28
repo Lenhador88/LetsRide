@@ -147,6 +147,41 @@ export async function declineClubJoinRequest(
 }
 
 /**
+ * An owner or admin CLEARS a declined request — the "you may ask again"
+ * affordance, deliberately in the club's hands (`085`, and its surface is
+ * `088`'s Manage riders screen).
+ *
+ * **A plain DELETE and not an RPC**, unlike the two answers above, because
+ * `085`'s DELETE policy already admits exactly this: its admin arm is scoped
+ * to the club rather than to a status, so an admin may delete a row of either
+ * status while the requester's own arm is scoped to `pending`. There is no
+ * authority for an RPC to re-check that the policy is not already checking.
+ *
+ * **No `.select()` chained on**, for the reason `withdrawJoinRequest` records:
+ * `RETURNING` re-attaches the SELECT policy, which is how a delete matches
+ * zero rows and still reports success.
+ *
+ * Deleting the row also fires `089`'s retraction, which takes the requester's
+ * own "declined" notification away at the same moment they become able to ask
+ * again — a rider who may ask again must not still be holding the "no".
+ */
+export async function clearClubJoinRequest(
+  requestId: string,
+  clubId: string
+): Promise<ActionState> {
+  if (!clubJoinRequestIdSchema.safeParse(requestId).success) {
+    return { error: 'That request could not be cleared.' }
+  }
+
+  const supabase = await resolveSupabase()
+  const { error } = await supabase.from('club_join_requests').delete().eq('id', requestId)
+  if (error) return { error: 'That request could not be cleared.' }
+
+  invalidateJoinRequests(clubId)
+  return { error: null }
+}
+
+/**
  * What a request write makes stale: the club's own pending list, the reduced
  * screen's copy of the viewer's status, and Explore — whose cards carry
  * `request_status` and would otherwise keep offering `Request to join` to a
@@ -154,6 +189,7 @@ export async function declineClubJoinRequest(
  */
 function invalidateJoinRequests(clubId: string) {
   invalidate(queryKeys.clubs.joinRequests(clubId))
+  invalidate(queryKeys.clubs.declinedRequests(clubId))
   invalidate(queryKeys.clubs.preview(clubId))
   // **The whole `clubs` prefix rather than `clubs.explore(...)`.** That key
   // carries the rider's rounded position as a segment, so there is no argument

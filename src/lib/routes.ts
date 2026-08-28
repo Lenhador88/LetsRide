@@ -76,6 +76,12 @@ export const detailPaths = {
   club: '/clubs/detail',
   clubRides: '/clubs/detail/rides',
   clubMembers: '/clubs/detail/members',
+  /** The roster an owner or admin acts on — `088`, PD-326. Takes a CLUB id.
+   * Separate from `clubMembers`, which is the read-only roster every member
+   * sees: one screen serving both would have to hide half of itself from most
+   * of its readers, and `viewer_role` is a display hint rather than the
+   * authority (`ClubDetail`'s own docstring). The RPCs decide either way. */
+  clubManage: '/clubs/detail/manage',
   clubEdit: '/clubs/detail/edit',
   /** A club's threads — `081`, PD-307. The segment says which
    * entity the `id` names, matching `/rides/detail/chat?id=`: `threads`
@@ -96,6 +102,7 @@ export const routes = {
   club: (id: string) => detail(detailPaths.club, id),
   clubRides: (id: string) => detail(detailPaths.clubRides, id),
   clubMembers: (id: string) => detail(detailPaths.clubMembers, id),
+  clubManage: (id: string) => detail(detailPaths.clubManage, id),
   clubEdit: (id: string) => detail(detailPaths.clubEdit, id),
   clubThreads: (clubId: string) => detail(detailPaths.clubThreads, clubId),
   /** Takes the THREAD's id, not the club's — see `detailPaths`. */

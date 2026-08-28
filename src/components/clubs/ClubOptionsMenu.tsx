@@ -8,6 +8,7 @@ import {
   LogOutIcon,
   OptionsIcon,
   PaperPlaneIcon,
+  ProfileIcon,
 } from '@/components/icons/generated'
 import { useBanner } from '@/components/ui/Banner'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
@@ -33,8 +34,14 @@ import type { ClubDetail } from '@/types'
  * - **Owner** → `Edit club`, into `routes.clubEdit`. What used to be the
  *   header's standalone pencil `Link`, now inside this sheet instead of beside
  *   it — plus `Delete club` below it.
- * - **Member, not owner** (`admin` included — the role exists in `001`'s
- *   CHECK and carries no extra menu of its own) → `Leave club`, warning tone.
+ * - **Owner or admin** → `Manage riders` (`088`, PD-326), into
+ *   `routes.clubManage`. **This is the only entrance to that screen**, which is
+ *   why the row is gated on the same disjunction the screen and
+ *   `private.is_club_admin_for` both use — `viewer_is_owner || viewer_role ===
+ *   'admin'`, never the role alone. PD-125 shipped a screen nobody could reach;
+ *   an entrance drawn for the wrong set is the same defect one step down.
+ * - **Member, not owner** (an `admin` also gets `Manage riders` above) →
+ *   `Leave club`, warning tone.
  *   This is where leaving lives now that `/clubs/detail/about` dissolves; it
  *   calls `leaveClub` directly rather than mounting `ClubMembershipButton`
  *   (a full-width `Button`, not a menu row) — the reused part is the *action*,
@@ -78,6 +85,10 @@ export function ClubOptionsMenu({
   isOwner: boolean
 }) {
   const isMember = viewerRole !== null
+  // The same disjunction `ClubManageRidersPage` and `private.is_club_admin_for`
+  // use. `viewer_is_owner` is the column on `clubs`, not the roster row, so an
+  // owner holding no `club_members` row still gets the entrance (PD-280).
+  const canManage = isOwner || viewerRole === 'admin'
   const [open, setOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -127,6 +138,16 @@ export function ClubOptionsMenu({
         <ContextMenuItem icon={<PaperPlaneIcon className="h-6 w-6" />} onClick={onShare}>
           Share club
         </ContextMenuItem>
+
+        {canManage && (
+          <ContextMenuItem
+            href={routes.clubManage(clubId)}
+            icon={<ProfileIcon className="h-6 w-6" />}
+            onClick={() => setOpen(false)}
+          >
+            Manage riders
+          </ContextMenuItem>
+        )}
 
         {isOwner ? (
           <>

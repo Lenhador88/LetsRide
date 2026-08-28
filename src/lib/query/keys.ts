@@ -233,6 +233,19 @@ export const queryKeys = {
      */
     joinRequests: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'joinRequests'],
     /**
+     * The DECLINED requests an admin can clear — `088`, PD-326. Its own leaf
+     * rather than a segment on `joinRequests`, because the two lists are read
+     * by two components on one screen and a shared key would serve whichever
+     * landed first: `keys.ts`'s own header calls that the collision to avoid,
+     * and `edit`/`preview` are already here for the same reason.
+     */
+    declinedRequests: (clubId: string): QueryKey => [
+      'clubs',
+      'detail',
+      clubId,
+      'declinedRequests',
+    ],
+    /**
      * The delete confirmation's live counts (`club-lifecycle`'s delete
      * requirement). Nested under `detail` so `updateClub`/`deleteClub`'s
      * existing `clubs.all()` invalidation reaches it for free, and read only

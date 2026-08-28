@@ -86,3 +86,46 @@ async function signRequesterAvatars(rows: ClubJoinRequestListItem[], supabase: D
     supabase
   )
 }
+
+/**
+ * The DECLINED requests for one club, newest answered first — `088`, PD-326.
+ *
+ * A second function rather than a `status` parameter on the one above, and the
+ * reason is what each list IS. `getClubJoinRequests` feeds a to-do list; this
+ * feeds a history with one control on it. A parameterised read would let a
+ * caller pass the wrong string and get the other screen's rows, and the two
+ * are drawn in different places with different affordances.
+ *
+ * **Nothing here checks whether the reader is an admin.** `085`'s SELECT
+ * policy is `(user_id = auth.uid() or private.is_club_admin(club_id))`, so a
+ * member reads zero rows and a requester reads only their own — which for this
+ * screen means the same empty list an admin of a club with no refusals sees,
+ * deliberately, because the two are indistinguishable to somebody who may not
+ * know which they are looking at.
+ *
+ * **The rows this returns are the ONLY ones any surface may clear**, and the
+ * requester may not: `085` scopes their DELETE arm to `status = 'pending'`, so
+ * a refusal is theirs to live with and the club's to lift.
+ */
+export async function getDeclinedClubJoinRequests(
+  clubId: string
+): Promise<ClubJoinRequestListItem[]> {
+  if (!clubIdSchema.safeParse(clubId).success) return []
+
+  const supabase = await resolveSupabase()
+
+  const rows = unwrapList(
+    await supabase
+      .from('club_join_requests')
+      .select(REQUEST_SELECT)
+      .eq('club_id', clubId)
+      .eq('status', 'declined')
+      .order('responded_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(CLUB_JOIN_REQUESTS_LIMIT),
+    "this club's declined requests",
+  ) as unknown as ClubJoinRequestListItem[]
+
+  await signRequesterAvatars(rows, supabase)
+  return rows
+}
