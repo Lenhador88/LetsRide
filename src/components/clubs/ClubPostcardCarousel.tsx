@@ -74,6 +74,27 @@ export function ClubPostcardCarousel({
     // 128px photo block plus a byline, the `Add` tile is the block alone, and
     // `overflow-x-auto` would clip the drop shadow off the bottom edge.
     <div className="flex items-start gap-2 overflow-x-auto px-4 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* First, not last (PD-318). Appended after the stamps it was invisible
+          the moment the club had posted more than two: the strip scrolls, and
+          nothing on the page said the tile was out there. The product owner hit
+          exactly that on the rides strip beside this one and asked for both —
+          *"Add ride, postcard, start a thread, should be in the beginning of
+          the scroll"*. Unlike the ride strip's create tile this one did not
+          have to shrink to earn the slot: it is already the same square as a
+          stamp, so the head start it costs is one 128px tile plus the `gap-2`,
+          and a 390px screen still shows the first stamp whole (152–280) and
+          80% of the second. The ride strip had to shrink because its chip is
+          200px against this tile's 128. */}
+      {isMember && (
+        <Link
+          href={routes.newPostcardInClub(clubId)}
+          className={`flex aspect-square ${STAMP_TILE_WIDTH} shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border`}
+        >
+          <PlusIcon className="h-6 w-6" aria-hidden="true" />
+          <span className="text-xs font-semibold">Add</span>
+        </Link>
+      )}
+
       {/* The empty state draws rather than hides, and it draws the `Add` beside
           it — `RideJournal`'s recorded decision, which the first pass of this
           component dropped: "a section nobody has seen is a feature nobody
@@ -92,16 +113,6 @@ export function ClubPostcardCarousel({
       {postcards.map((postcard) => (
         <PostcardStamp key={postcard.id} postcard={postcard} />
       ))}
-
-      {isMember && (
-        <Link
-          href={routes.newPostcardInClub(clubId)}
-          className={`flex aspect-square ${STAMP_TILE_WIDTH} shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border`}
-        >
-          <PlusIcon className="h-6 w-6" aria-hidden="true" />
-          <span className="text-xs font-semibold">Add</span>
-        </Link>
-      )}
     </div>
   )
 }

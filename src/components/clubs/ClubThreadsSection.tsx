@@ -17,8 +17,9 @@ const CLUB_DETAIL_THREADS = 3
 
 /**
  * The `Threads` section on the merged club detail (`081`, PD-307) — shaped
- * like Members and Upcoming rides: a header with `See all`, a few rows, and a
- * create affordance under them — also in place of them when there are none.
+ * like Members and Club rides: a header with `See all`, a create affordance,
+ * and a few rows under it — the affordance also standing in place of them when
+ * there are none.
  *
  * ## A non-member of a PUBLIC club sees a join prompt and no content
  *
@@ -106,6 +107,21 @@ export function ClubThreadsSection({
         </div>
       ) : threads.data && threads.data.length > 0 ? (
         <>
+          {/* Above the rows (PD-318). This section is a vertical list, so the
+              tile was never *hidden* the way the two horizontal strips on this
+              screen hid theirs — three rows above it at most, and it is on
+              screen. It moves anyway, for consistency: the product owner asked
+              for `Add ride, postcard, start a thread` together, and a create
+              affordance that is first in two sections and last in the third is
+              a rule the rider has to learn twice.
+
+              What that costs is the argument this replaces — "the newest thread
+              is what a rider came for, and a control between the heading and
+              the list pushes it down on every visit for the sake of an action
+              taken once" — and the cost is one 72px row, bounded, with the
+              first thread still above the fold. On the strips the same argument
+              cost the control entirely, which is why it lost there too. */}
+          <StartThreadRow clubId={clubId} />
           <ul className="flex flex-col">
             {threads.data.slice(0, CLUB_DETAIL_THREADS).map((thread) => (
               <li key={thread.id}>
@@ -116,10 +132,6 @@ export function ClubThreadsSection({
               </li>
             ))}
           </ul>
-          {/* Under the rows, not above them: the newest thread is what a rider
-              came for, and a control between the heading and the list pushes it
-              down on every visit for the sake of an action taken once. */}
-          <StartThreadRow clubId={clubId} />
         </>
       ) : (
         <StartThreadRow clubId={clubId} />
@@ -129,15 +141,15 @@ export function ClubThreadsSection({
 }
 
 /**
- * The create affordance — drawn under the thread rows, and in place of them when
- * there are none.
+ * The create affordance — drawn above the thread rows (PD-318), and in place of
+ * them when there are none.
  *
  * **Its geometry is `ClubThreadRow`'s, not a card's**, and that is the whole
- * of the styling decision. It is a destination like the rows it follows, so it
- * is the last row of that list: same 72px height, same `px-4` full bleed, same
+ * of the styling decision. It is a destination like the rows it sits with, so
+ * it is a row of that list: same 72px height, same `px-4` full bleed, same
  * 40px leading tile, same text baseline. Drawn as an inset `h-14` card instead —
  * which is what it was while it only ever rendered *instead of* the list — it
- * stacks flush under a real row and misses on height, inset, icon size and
+ * stacks flush against a real row and misses on height, inset, icon size and
  * baseline at once.
  *
  * The dashed border moves to the **tile** rather than the container for the same
