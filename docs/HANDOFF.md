@@ -2336,7 +2336,8 @@ that issue has the calls, and §Store readiness row 7 has what is left.
 
 Two consequences, and the second is the one that will bite:
 
-- **`PD-91` proved the auth SERVER; the app's own arm is proven too — 2026-08-27, PD-252.**
+- **`PD-91` proved the auth SERVER. The app's own arm has now RUN — 2026-08-27/28, PD-252 — and
+  "run" is deliberately not "proven": two boundaries below, and row 7 carries them too.**
   PD-91 made six raw HTTP calls to GoTrue, so `signUp` never ran.
   `scripts/probes/signup-confirmation.mjs` drives the app instead, against PROD through the
   relay, and came back **11/11 green** across its two phases (run at 22:54Z on 2026-08-27, and

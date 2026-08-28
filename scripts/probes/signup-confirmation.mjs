@@ -196,8 +196,9 @@ const supabaseUrl = process.env.PROBE_SUPABASE_URL
 const anonKey = process.env.PROBE_SUPABASE_ANON_KEY
 const ownedMailbox = process.env.PROBE_OWNED_MAILBOX
 const password = process.env.PROBE_PASSWORD
-// Gate 4, and the only one that exits before `refuse()` exists as a concept:
-// without these there is nothing to refuse *about*.
+// Gate 4, and the only one that exits **2** rather than 1: the others refuse a
+// value, this one reports that the invocation was never usable. Anything
+// scripting this should treat 2 as "fix the command" and 1 as "it said no".
 if (!supabaseUrl || !anonKey || !ownedMailbox || !password) {
   console.error(
     'Set PROBE_SUPABASE_URL, PROBE_SUPABASE_ANON_KEY, PROBE_OWNED_MAILBOX and PROBE_PASSWORD.\n' +
@@ -414,15 +415,35 @@ if (phase === 'confirm') {
     storageState: JSON.parse(readFileSync(STATE, 'utf8')),
   })
   const page = await context.newPage()
-  // The one place the reason for a refused exchange survives — see the assertion
-  // below. `postgrest-js` and gotrue-js both swallow it into an error object the
-  // page discards, so it is read off the wire instead.
+  // **The one place the reason for a refused exchange survives, and it is read by
+  // INTERCEPTING rather than by listening.**
+  //
+  // A `page.on('response')` listener cannot do this reliably, measured rather
+  // than assumed: Playwright does not await an async handler, and by the time
+  // `res.text()` returns, the app's own `router.replace` has navigated and
+  // Chromium has discarded the body — the status survives, the body comes back
+  // `<body unreadable>`, and the body is the half that carries `error_code` and
+  // `msg`. Intercepting has the body in hand before the page ever sees the
+  // response. Three for three in a harness that reproduces the navigation.
+  //
+  // First answer wins: after the bounce to `/auth/login` a refresh attempt can
+  // produce a second `/auth/v1/token` 4xx, which is a different question and must
+  // not overwrite this one.
+  //
+  // Only error bodies are kept. GoTrue's 4xx for `grant_type=pkce` is
+  // `{code, error_code, msg}` — the `code` and `code_verifier` travel in the
+  // request and are never echoed back — so no token can reach stdout this way.
   let exchangeFailure = null
-  page.on('response', async (res) => {
-    if (!res.url().includes('/auth/v1/token')) return
-    if (res.status() < 400) return
-    exchangeFailure = `${res.status()} ${await res.text().catch(() => '<unreadable>')}`.slice(0, 300)
+  await page.route('**/auth/v1/token*', async (route) => {
+    const res = await route.fetch().catch(() => null)
+    if (!res) return route.abort()
+    const body = await res.text().catch(() => '<body unreadable>')
+    if (res.status() >= 400 && !exchangeFailure) {
+      exchangeFailure = `${res.status()} ${body}`.slice(0, 300)
+    }
+    await route.fulfill({ response: res, body })
   })
+
   await page.goto(rewritten, { waitUntil: 'domcontentloaded' })
   // Waits for the guard to settle rather than sleeping a fixed interval: the
   // exchange and then `my_onboarding_state()` are two round trips to eu-west-1,
@@ -447,10 +468,10 @@ if (phase === 'confirm') {
     // **The landing URL is useless here and saying otherwise was wrong.**
     // `callbackFailureDestination` returns one of two constants and
     // discriminates on `next`, never on the cause — with `next=/postcards`
-    // hardcoded below it is always `/auth/login?error=invalid_confirmation`.
+    // hardcoded above it is always `/auth/login?error=invalid_confirmation`.
     // `/auth/callback`'s own header records that GoTrue puts `error_code` in the
     // **fragment**, which `router.replace` then discards. So the only place the
-    // reason survives is the token response itself.
+    // reason survives is the token response itself, captured above.
     `the exchange was refused — ${exchangeFailure ?? 'no /token response was seen at all'}`
   )
   report(
