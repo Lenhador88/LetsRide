@@ -86,5 +86,22 @@ export function notificationCopy(row: NotificationRow, viewerId: string | undefi
       // "let you into" rather than "approved your request": the rider knows
       // what they asked, and what is new is that they are now in.
       return `let you into ${row.club?.name ?? 'a club'}.`
+    // `089`, PD-335. **The only arm whose sentence follows the CLUB's name
+    // rather than a rider's** — `NotificationsListItem` draws the club in the
+    // actor slot for this type, because the stored actor is the reader
+    // themselves and drawing it would read "you declined your request". A club
+    // refuses as a club, and the actor being the recipient is what makes the
+    // row name nobody.
+    case 'club_join_request_declined':
+      return 'declined your request to join.'
   }
+
+  // **A total fallback, and it is not defensive tidiness.** The switch above is
+  // exhaustive over `NotificationType`, which is what makes TypeScript refuse a
+  // new type nobody has written a sentence for — but a BUNDLE already serving
+  // meets rows written by a migration it predates, and without this it returns
+  // `undefined` where a string is expected. `089`'s header prices what that
+  // costs and orders its own apply after the deploy because of it; this is so
+  // the next type has no such window.
+  return 'did something on LetsRide.'
 }

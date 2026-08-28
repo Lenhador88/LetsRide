@@ -412,11 +412,17 @@ async function myRequestStatuses(
  * A discoverable private club as a `ClubListItem`, so `ClubCard` draws one
  * component rather than two.
  *
- * **`riders` is empty and `avatar_url` will stay null**, and neither is a
- * failure to fill in: the accessor returns no roster at all, and `016`'s
- * storage policy refuses the avatar object to a non-member. The card falls
- * back to the member COUNT with no faces and to the club's initials, which is
- * the design's own empty treatment rather than a degraded one.
+ * **`riders` is empty and stays empty** — the accessor returns no roster at
+ * all, so the card falls back to the member COUNT with no faces, which is the
+ * design's own empty treatment rather than a degraded one.
+ *
+ * **`avatar_url` is null HERE and is filled in by `signClubImages` below**,
+ * which is a change from `085`: that policy refused a private club's avatar
+ * object to a non-member and the card drew initials. `089` (PD-335) adds the
+ * third disjunct on `016`'s avatar policy, on the product owner's decision of
+ * 2026-08-28, so the same batched signing pass the public half already goes
+ * through now returns a URL for these rows too. The cover is still null and is
+ * still not asked for.
  *
  * `is_public` is `false` by construction — the accessor returns nothing else —
  * so the card's `Private club` type line is right without asking.
@@ -454,11 +460,14 @@ function toDiscoverableListItem(
  * `getClub` conflates its own two cases: distinguishing them would confirm a
  * private club exists to somebody the accessor is refusing.
  *
- * **The request status comes with it**, because it is the whole of how a
- * declined rider learns the answer — `085` writes no decline notification, so
- * this read and the sentence the screen draws from it ARE the record. That is
- * also why `private.club_takes_join_requests_for` has no declined conjunct: the
- * club has to stay discoverable for this screen to be reachable at all.
+ * **The request status comes with it**, and it is still what the screen's own
+ * sentence is drawn from. It is no longer the ONLY way a declined rider learns
+ * the answer — `089` (PD-335) writes them a notification, on the product
+ * owner's decision of 2026-08-28 — but the two agree by construction, because
+ * that notification's destination is this very screen. `private.club_takes_join_requests_for`
+ * still has no declined conjunct: the club has to stay discoverable for this
+ * screen to be reachable at all, and `089`'s policy disjunct now depends on
+ * that same property.
  */
 export async function getClubPreview(id: string): Promise<ClubPreview | null> {
   // Before `resolveSupabase()`, following `getClub` and `getRideForEdit`: a
@@ -481,20 +490,26 @@ export async function getClubPreview(id: string): Promise<ClubPreview | null> {
 
   const status = await myRequestStatuses(supabase, user.id, [row.id])
 
-  return {
+  const preview = {
     id: row.id,
     name: row.name,
     avatar_path: row.avatar_path,
-    // Null by design — see `ClubPreview`'s own note. No sign is attempted,
-    // because `016`'s policy refuses the object to a non-member and every
-    // attempt would be a round trip spent on a guaranteed null.
-    avatar_url: null,
+    // **Signed since `089`** (PD-335), where it used to be null by design. The
+    // product owner decided on 2026-08-28 that a private club's avatar is
+    // readable to every rider who can discover it, so `016`'s avatar policy now
+    // carries a third disjunct and this attempt is no longer a round trip spent
+    // on a guaranteed null. **The COVER is still not readable and is not asked
+    // for** — an avatar is the club's identity, a cover is its content.
+    avatar_url: null as string | null,
     location_name: row.location_name,
     latitude: row.latitude,
     longitude: row.longitude,
     members_count: row.members_count,
     request_status: status.get(row.id) ?? null,
   }
+
+  await resolveAvatarUrls([preview], supabase)
+  return preview
 }
 
 /**

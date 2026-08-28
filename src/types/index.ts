@@ -1252,16 +1252,26 @@ export type NotificationType =
   // `085` (PD-325). Two types, both carrying `club_id` ALONE — the same subject
   // shape as `club_joined`, which is again why `036` §3's per-column policy
   // needed no change.
-  //
-  // **There is deliberately no `club_join_request_declined`, and the absence is
-  // load-bearing.** `036` §3's SELECT policy conjuncts `club_id is null or
-  // exists (select 1 from clubs …)` under the READER's own row security, and a
-  // declined requester holds no `club_members` row for a private club — so such
-  // a row would be written and then never returned and never counted, silently,
-  // for ever. The requester learns the answer from their own
-  // `club_join_requests` row instead, which the club's reduced screen renders.
   | 'club_join_requested'
   | 'club_join_request_approved'
+  // `089` (PD-335). The third, and the only one in this union whose `actor` is
+  // its own RECIPIENT.
+  //
+  // `085` deliberately wrote no such type: `036` §3's SELECT policy conjuncts
+  // `club_id is null or exists (select 1 from clubs …)` under the READER's own
+  // row security, and a declined requester holds no `club_members` row for a
+  // private club — so the row would be written and then never returned and
+  // never counted, silently, for ever. The product owner decided on 2026-08-28
+  // that the rider IS told, and `089` makes it resolve with a TYPE-SCOPED
+  // disjunct on that conjunct rather than by widening it.
+  //
+  // **Two things follow for anything rendering this type.** The `actor` is the
+  // reader themselves and must never be drawn — a club refuses as a club, and
+  // the actor being the recipient is what makes the row disclose nothing about
+  // which admin pressed Decline. And `club` does NOT arrive through the row's
+  // own `clubs` embed, which returns null for a club the reader cannot see:
+  // `getNotificationsPage` fills it from `discoverable_private_clubs`.
+  | 'club_join_request_declined'
 
 /**
  * One row from `public.notifications` (`036`), as the notifications screen and
