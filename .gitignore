@@ -102,3 +102,6 @@ __pycache__/
 # this repo's `include`/`exclude`: the same broken file exits 0 under a dotted
 # path and TS2322 at the same depth without the dot.
 .claude/worktrees/
+
+# The PD-252 signup probe's saved browser storage — holds a PKCE verifier and a session.
+.probe/
