@@ -24,6 +24,18 @@ import type { Postcard } from '@/types'
  * still not readable on a tile, but the byline is, and the popup puts the rest
  * one tap away without leaving the club.
  *
+ * **Since `086` (PD-328) this strip also carries the photos taken on the club's
+ * own RIDES**, not only those posted to the club — `getClubFeed` merges both
+ * through `public.club_stamp_postcard_ids`, because `club_id` IS the audience
+ * and a photo from the club's ride posted app-wide carries none. The ones that
+ * arrived that way draw a small ride glyph.
+ *
+ * **The provenance is readable and the ride's IDENTITY deliberately is not.**
+ * `062` revoked `select (ride_id)` from every client, so this tile knows a ride
+ * was involved and not which one, and there is no navigation from a stamp to
+ * its ride. `RideJournal` passes no flag at all — every stamp there is from
+ * that ride, so a marker on all of them would say nothing.
+ *
  * `min-w-0` is not needed here the way `RideJournalEmpty` needed it, and the
  * reason is that **nothing in this row is `flex-1`** — every child is sized by
  * `shrink-0` plus an explicit width, so no item is ever asked to shrink below
@@ -111,7 +123,7 @@ export function ClubPostcardCarousel({
       )}
 
       {postcards.map((postcard) => (
-        <PostcardStamp key={postcard.id} postcard={postcard} />
+        <PostcardStamp key={postcard.id} postcard={postcard} fromRide={postcard.from_ride} />
       ))}
     </div>
   )

@@ -26,6 +26,11 @@ import { routes } from '@/lib/routes'
  * bearable — the previous tap-through returned the rider to the top of the
  * ride plan every time.
  *
+ * **It passes no `fromRide` flag, and the asymmetry is deliberate** (`086`,
+ * PD-328): every stamp here is from THIS ride by construction, so the marker
+ * `ClubPostcardCarousel` draws would be on every tile and would say nothing.
+ * The flag distinguishes a mixed strip, and this one is not mixed.
+ *
  * The ride-side twin of `ClubPostcardCarousel`: both draw `PostcardStamp`, so
  * both strips look the same and open a postcard the same way. What keeps them
  * two components rather than one is their empty state — crew-gated `Add` here,

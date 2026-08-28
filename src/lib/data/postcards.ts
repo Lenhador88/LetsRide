@@ -2,6 +2,7 @@ import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { resolveAvatarUrls, resolveClubImageUrls, signImagePaths } from '@/lib/data/media'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
+import { clubIdSchema } from '@/lib/validation/clubs'
 import { rideIdSchema } from '@/lib/validation/rides'
 import type {
   ClubFilterEmbed,
@@ -179,17 +180,27 @@ async function attachLikeState(
 }
 
 /**
- * The app-wide feed, newest first. Deliberately has no `club_id` filter: the
- * postcards SELECT policy already unions "club_id is null" (the app-wide
- * feed) with "club_id the viewer belongs to" (their clubs' posts) with "authored
- * by the viewer" (even a club they've since left), so restating any of that
- * here would be the exact drift trap 009 warns about — a second copy of a
- * predicate that can silently disagree with the policy it duplicates.
+ * The app-wide feed, newest first. Deliberately has no `club_id` filter on the
+ * unfiltered path: the postcards SELECT policy already unions "club_id is null"
+ * (the app-wide feed) with "club_id the viewer belongs to" (their clubs' posts)
+ * with "authored by the viewer" (even a club they've since left), so restating
+ * any of that here would be the exact drift trap 009 warns about — a second
+ * copy of a predicate that can silently disagree with the policy it duplicates.
+ *
+ * **The `club` filter DELEGATES to `getClubFeed` since `086` (PD-328), and the
+ * delegation is load-bearing rather than tidy.** Both reads share one cache
+ * key — `postcards.feed(filterSegment.club(id))` — so widening only one of them
+ * would put two different lists under one entry and make the club's strip and
+ * its own `See all` disagree by however many ride postcards exist, with the
+ * winner decided by which the rider opened first. `tsc`, ESLint, Vitest, the
+ * RLS suite and `next build` are all blind to that.
  */
 export async function getFeed(
   { before, limit = FEED_PAGE_SIZE }: FeedPage = {},
   filter?: FeedFilter
 ): Promise<Postcard[]> {
+  if (filter?.kind === 'club') return getClubFeed(filter.id, { before, limit })
+
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -200,11 +211,10 @@ export async function getFeed(
     .limit(limit)
   if (before) query = query.lt('created_at', before)
 
-  // Narrowing *within* what the policy already allows. Neither of these restates
+  // Narrowing *within* what the policy already allows. This does not restate
   // the audience rule — a rider filter still cannot surface a club postcard the
   // viewer is not a member of, because the policy runs first either way.
   if (filter?.kind === 'rider') query = query.eq('author_id', filter.id)
-  if (filter?.kind === 'club') query = query.eq('club_id', filter.id)
 
   const rows = unwrapList(await query, 'the postcard feed')
   return attachLikeState(supabase, rows as unknown as PostcardRow[], user?.id)
@@ -329,25 +339,88 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
   }
 }
 
-/** The same feed, scoped to one club. RLS still decides whether the viewer
- * may see club-scoped rows at all; `club_id` here just picks which club. */
+/**
+ * A club's postcards — those posted TO it and those taken on its own RIDES
+ * (`086`, PD-328). Two steps, on `getRideJournal`'s shape and for the same
+ * reason.
+ *
+ * ## Why the ride half cannot be a widened `.eq()`
+ *
+ * `club_id` IS the audience, so a postcard taken on the club's ride but posted
+ * app-wide carries `club_id null` and the old filter could never see it. And it
+ * cannot be found by `ride_id` either: `062` revoked `select (ride_id)` from
+ * `authenticated` PRECISELY so the raw uuid could not be used to group
+ * postcards, and Postgres checks a column privilege to FILTER on a column as
+ * well as to return it. So the correlation is
+ * `public.club_stamp_postcard_ids` — `security definer`, ids only — and these
+ * rows are then re-read under the caller's own RLS, exactly as the Journal
+ * does. **No second filter by club, membership or block is applied here**: the
+ * accessor and this read have already applied the audience rule and a third
+ * copy is a third place for it to drift.
+ *
+ * ## The cap is on the IDS, not only on the query
+ *
+ * `getRideJournal`'s note applies unchanged: `.in('id', ids)` serialises every
+ * id into the PostgREST query string, so an unbounded first step eventually
+ * meets a URL-length wall rather than degrading.
+ *
+ * ## Both order keys, not one
+ *
+ * `044` made `created_at` server-owned at transaction time, so postcards
+ * written in one transaction tie on it exactly — and `.in(…)` carries no
+ * ordering guarantee of its own, so this `.order()` pair is what actually
+ * orders the result, matching the accessor's own `created_at desc, id desc`.
+ *
+ * `[]`, never `null`: a club with nothing on its strip and a club whose strip
+ * the viewer cannot resolve look identical from here, and `getClub` has already
+ * turned "no such club" into `null` for the page to act on.
+ */
 export async function getClubFeed(
   clubId: string,
   { before, limit = FEED_PAGE_SIZE }: FeedPage = {}
 ): Promise<Postcard[]> {
+  // Before `resolveSupabase()`, the guard `getRideJournal` carries for its ride
+  // id and for the same reason: a non-uuid reaches the RPC as `22P02`,
+  // PostgREST turns it into a 400 and `unwrapList` throws, which puts a rider
+  // on the error boundary where a not-found belongs (PD-142).
+  if (!clubIdSchema.safeParse(clubId).success) return []
+
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
-  let query = supabase
-    .from('postcards')
-    .select(POSTCARD_SELECT)
-    .eq('club_id', clubId)
-    .order('created_at', { ascending: false })
-    .limit(limit)
-  if (before) query = query.lt('created_at', before)
+  const correlated = unwrap(
+    await supabase.rpc('club_stamp_postcard_ids', {
+      club: clubId,
+      before: before ?? null,
+      page_size: limit,
+    }),
+    "this club's postcards",
+  ) as { id: string; from_ride: boolean }[] | null
 
-  const rows = unwrapList(await query, "this club's postcards")
-  return attachLikeState(supabase, rows as unknown as PostcardRow[], user?.id)
+  if (!correlated || correlated.length === 0) return []
+
+  const window = correlated.slice(0, limit)
+  const fromRide = new Map(window.map((row) => [row.id, row.from_ride]))
+
+  const rows = unwrapList(
+    await supabase
+      .from('postcards')
+      .select(POSTCARD_SELECT)
+      .in('id', window.map((row) => row.id))
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(limit),
+    "this club's postcards",
+  )
+
+  const postcards = await attachLikeState(supabase, rows as unknown as PostcardRow[], user?.id)
+  // Carried from the accessor rather than recomputed: `club_id` is readable
+  // here, but `ride_id` is not, so the client has no way to tell an app-wide
+  // postcard that reached this strip through a ride from one that did not.
+  return postcards.map((postcard) => ({
+    ...postcard,
+    from_ride: fromRide.get(postcard.id) ?? false,
+  }))
 }
 
 export async function getPostcard(id: string): Promise<Postcard | null> {

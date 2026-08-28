@@ -208,6 +208,31 @@ export const queryKeys = {
      */
     edit: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'edit'],
     /**
+     * `085`, PD-325. What `getClubPreview` returns for the reduced screen a
+     * non-member of a private club lands on.
+     *
+     * **A child of `detail` rather than a sibling**, on `edit`'s precedent
+     * directly above and for the identical reason: `ClubPreview` is a narrower
+     * shape than `ClubDetail`, so sharing `detail`'s own key would serve
+     * whichever landed first — but a CHILD key cannot collide, and being inside
+     * the `['clubs','detail',id]` prefix is what lets anything narrower than
+     * `clubs.all()` reach it.
+     *
+     * Both reads are live at once on that route: the page issues `getClub`
+     * first and only enables this one once that has DECIDED it saw nothing.
+     */
+    preview: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'preview'],
+    /**
+     * The pending join requests an owner or admin answers on the club detail
+     * (`085`, PD-325). A child of `detail` like `members`, and for the same
+     * reason: scoped to one club and dying with it, so an approval claiming
+     * `clubs.all()` reaches it without enumerating anything.
+     *
+     * **PD-326 absorbs this key along with the section it feeds.** It should
+     * reuse it rather than introduce a second one for the same rows.
+     */
+    joinRequests: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'joinRequests'],
+    /**
      * The delete confirmation's live counts (`club-lifecycle`'s delete
      * requirement). Nested under `detail` so `updateClub`/`deleteClub`'s
      * existing `clubs.all()` invalidation reaches it for free, and read only
