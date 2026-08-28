@@ -28,7 +28,7 @@ src/
 │   ├── chat/              # ChatComposer, ChatThread, MarkChatSeen — shared by the ride chat and club threads since 081
 │   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, RideAttendanceBar, RideCard, RideChatButton, RideChatRow, RideChip, RideCrewRail, RideFilterBar, RideHeader, RideJournal, RideMap, RideOptionsMenu, ExploreRidesList, ExploreRidesStrip, recentStarts
 │   ├── clubs/              # ClubCard, ClubCreateRideRow, ClubDetailHeader, ClubThreadRow, ClubThreadsSection, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPostcardCarousel, CreateClubForm, CreateThreadForm, DeleteClubControl, EditClubForm, ExploreClubsList, ExploreClubsStrip, JoinClubButton, MarkClubSeen, clubTimeline
-│   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
+│   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, PostcardStamp, PostcardViewer, ShareButton, SwipeCoach, coachMark, deck, locationCopy, viewerContext
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem, NotificationsPanel
 │   └── profile/            # CountryFlags, EditProfileForm, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu
 ├── lib/
