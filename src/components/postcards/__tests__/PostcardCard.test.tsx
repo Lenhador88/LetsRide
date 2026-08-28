@@ -36,11 +36,18 @@ const render = (fill: boolean) =>
  *
  * The two modes assert opposite things on purpose:
  *
- *   `fill`   the photo grows and the caption is capped — the deck, where a card
- *            is handed a height it did not choose
- *   flow     the photo is a square and the caption is unbounded — the popup and
- *            `/postcards/detail`, where there is no parent height to divide and
- *            `flex-1` on the photo would collapse it to nothing
+ *   `fill`   the photo grows off a floor and the caption is capped — the deck,
+ *            where a card is handed a height it did not choose
+ *   flow     the photo is a square and the caption is unbounded — the popup,
+ *            `/postcards/detail` and the two profile lists, where there is no
+ *            parent height to divide and a growing photo would collapse to
+ *            nothing
+ *
+ * **The floor is asserted on its own, because losing it inverts the story.**
+ * With the photo on a zero basis it draws at `card − 188`, which is ~171px on a
+ * 667pt phone against the 200 it had before PD-343 — smaller, on the smallest
+ * supported device, from a change made to enlarge it. The tall-phone case looks
+ * right either way, so nothing but this catches it.
  *
  * **Classes, not pixels.** `vitest.config.ts` is `environment: 'node'`, so
  * `renderToStaticMarkup` gives what the browser would have parsed and no layout
@@ -71,6 +78,13 @@ const postcard = (over: Partial<Postcard> = {}): Postcard => ({
   ...over,
 })
 
+/** The caption's own wrapper — the element carrying the cap. */
+const captionClasses = (html: string) => {
+  const match = html.match(/class="([^"]*max-h-20[^"]*)"/)
+  expect(match, 'the caption should still be the element carrying the cap').not.toBeNull()
+  return match![1]
+}
+
 /** The photo's own wrapper — the element carrying the ratio or the growth. */
 const photoClasses = (html: string) => {
   const match = html.match(/class="([^"]*relative[^"]*overflow-hidden[^"]*rounded[^"]*)"/)
@@ -82,17 +96,30 @@ describe('PostcardCard — which row absorbs the height (PD-343)', () => {
   it('grows the photo and caps the caption in the deck', () => {
     const html = render(true)
 
-    expect(photoClasses(html)).toContain('flex-1')
+    expect(photoClasses(html)).toContain('grow')
     // The cap is what hands the growth over; without it the caption takes it
     // back and the photo is a fixed remainder again.
     expect(html).toContain('max-h-20')
+  })
+
+  it('floors the photo at the height it had before the change', () => {
+    const classes = photoClasses(render(true))
+
+    // A basis rather than a `min-h`: a min on a zero-basis item cannot produce
+    // the negative free space that makes another row give way, so the card
+    // overflows and the action row is clipped instead.
+    expect(classes).toContain('basis-[200px]')
+    // And the photo never pays for a short card — the caption does, which is
+    // why it is the one carrying `min-h-0`.
+    expect(classes).toContain('shrink-0')
+    expect(captionClasses(render(true))).toContain('min-h-0')
   })
 
   it('draws the photo as a square in flow, where flex-1 would collapse it', () => {
     const html = render(false)
 
     expect(photoClasses(html)).toContain('aspect-square')
-    expect(photoClasses(html)).not.toContain('flex-1')
+    expect(photoClasses(html)).not.toContain('grow')
     // The popup is where a rider READS a caption, so nothing bounds it there.
     expect(html).not.toContain('max-h-20')
   })

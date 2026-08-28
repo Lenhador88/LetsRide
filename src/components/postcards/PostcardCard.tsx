@@ -57,13 +57,19 @@ type PostcardCardProps = {
  * any phone taller than the 844 frame every extra pixel went to text on a
  * screen whose entire purpose is the picture. They are swapped.
  *
- *   fill (the deck)   photo `flex-1`, caption capped at `max-h-20` and scrolling
- *   flow (popup, /postcards/detail)   photo `aspect-square`, caption unbounded
+ *   fill   photo grows above a 200px floor, caption capped at `max-h-20`
+ *          and scrolling. One surface: the deck.
+ *   flow   photo `aspect-square`, caption unbounded. FIVE surfaces — the popup,
+ *          `/postcards/detail`, and the postcard lists on `/profile` and
+ *          `/profile/detail`, which are the two a reader is most likely to
+ *          forget: both draw a vertical list of these, so a card there gains
+ *          ~134px and a screen holds fewer of them.
  *
- * **1:1 rather than 4:5**, which was the other candidate: a 5:3 photo cropped
- * to 4:5 by `object-cover` loses 62% of its width, and a ride photo is far more
- * often landscape than portrait. Square takes 67% more height than 5:3 and
- * crops a landscape shot to its middle rather than to a slice of it.
+ * **1:1 rather than 4:5**, which was the other candidate: `object-cover` keeps
+ * `target ÷ source` of the width, so a 5:3 photo cropped to 4:5 keeps
+ * `0.8 ÷ 1.667` = **48%** of it, and a ride photo is far more often landscape
+ * than portrait. Square takes 67% more height than 5:3 (`1 ÷ 0.6`) and crops a
+ * landscape shot to its middle rather than to a slice of it.
  *
  * **The caption's cap is what pays for it in the deck, and the split is
  * deliberate**: the deck is where a rider *looks* at photos and the popup is
@@ -138,16 +144,32 @@ function PostcardCardComponent({
           '0 4px 8px #00000014, -4px -2px 16px #00AAFF14, 4px 2px 16px #FF005514',
       }}
     >
-      {/* PD-343 — see the header. In `fill` this is the row that grows, so it
-          carries no ratio at all and takes whatever the card has left after a
-          24px byline, a capped caption and the 52px action row; `min-h-0` is
-          what lets it shrink on a short viewport instead of overflowing the
-          card. In flow there is no parent height to divide up, so it needs an
+      {/* PD-343 — see the header. In `fill` this is the row that grows, and the
+          three classes are one decision each:
+
+            `basis-[200px]`  the FLOOR, and it is the height this photo had
+                             before PD-343. Without it the photo is `card − 188`
+                             and a 667pt phone (iPhone SE 2/3, 8) has a 359px
+                             card, so the photo would draw at ~171 — SMALLER
+                             than the change set out to make it, on the smallest
+                             phone this app supports, while the 844pt device it
+                             was reasoned on showed 287. A basis rather than a
+                             `min-h` because a min on a zero-basis item cannot
+                             produce the negative free space that makes anything
+                             else give way: the card simply overflows and the
+                             action row is clipped by the `<article>`.
+            `grow`           everything above the floor is the photo's.
+            `shrink-0`       and nothing below it is. The caption is the only
+                             shrinkable row, so a card too short for both takes
+                             it out of the caption — which scrolls — rather than
+                             out of the picture.
+
+          In flow there is no parent height to divide up, so it needs an
           explicit one and gets a square. */}
       <div
         className={cn(
           'relative overflow-hidden rounded',
-          fill ? 'min-h-0 flex-1' : 'aspect-square shrink-0'
+          fill ? 'shrink-0 grow basis-[200px]' : 'aspect-square shrink-0'
         )}
       >
         {postcard.image_url ? (
@@ -393,11 +415,18 @@ function PostcardCardComponent({
           The cap is what hands the growth to the photo above: as `flex-1` this
           row took every pixel a tall phone offered, which is the defect the
           product owner reported. A caption shorter than four lines still draws
-          at its own height and gives the rest away. */}
+          at its own height and gives the rest away.
+
+          **It is also the only row that may shrink**, which is the other half
+          of the photo's floor above: `min-h-0` overrides the `min-height: auto`
+          a flex item would otherwise get, so on a card too short for 200 + 188
+          this row gives way and the photo keeps its size. It scrolls, so
+          nothing is lost that a finger — or the popup, at `fill={false}` —
+          cannot still reach. */}
       <div
         className={cn(
           'px-3',
-          fill && 'max-h-20 shrink-0 overflow-y-auto touch-none select-none'
+          fill && 'max-h-20 min-h-0 overflow-y-auto touch-none select-none'
         )}
       >
         <p className="text-sm whitespace-pre-line text-foreground">{postcard.caption}</p>

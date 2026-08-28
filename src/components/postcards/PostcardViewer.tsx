@@ -150,6 +150,16 @@ function PostcardViewerDialog({
    * about every gesture and not only the ones the scrim happens to see: a
    * pointerdown inside the panel is a sibling's event and would never reach the
    * scrim to disarm it.
+   *
+   * **Deliberately not cleared on `pointerup`**, which is the obvious tidiness
+   * fix and breaks it outright: `click` is dispatched *after* `pointerup`, so a
+   * reset there means the check below reads `false` for every gesture and the
+   * scrim stops dismissing at all. It is already per-gesture without one —
+   * every gesture rewrites the flag at its own `pointerdown` — and the only
+   * click that could inherit a stale `true` is one arriving with no pointer
+   * gesture behind it, which this element cannot receive: it is a `div` with no
+   * `tabIndex` and `aria-hidden`, so neither the keyboard nor assistive tech
+   * can activate it.
    */
   const scrimArmed = useRef(false)
 

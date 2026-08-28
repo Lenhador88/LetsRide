@@ -130,9 +130,18 @@ being called done.
       card has left in the deck's `fill` mode, where the caption is capped at four lines and
       scrolls instead of absorbing the growth. The deck's stack also stops honouring the
       frame's 342×448 ratio and takes its slot's full height, which is what there was to give.
-      **1:1 rather than the 4:5 the other candidate offered**: `object-cover` at 4:5 keeps 38%
-      of a landscape photo's width, and a ride photo is landscape far more often than not.
-      → `src/components/postcards/PostcardCard.tsx`, `PostcardDeck.tsx`,
+      **1:1 rather than the 4:5 the other candidate offered**: `object-cover` keeps
+      `target ÷ source` of the width, so 4:5 against this frame's 5:3 keeps `0.8 ÷ 1.667` =
+      **48%** of a landscape photo, and a ride photo is landscape far more often than not.
+      **The `fill` photo has a 200px floor** — the height it had before this entry — because
+      without one it draws at `card − 188` and a 667pt phone (iPhone SE 2/3, 8) would have
+      rendered it *smaller* than before, on the smallest supported device, from a change made
+      to enlarge it.
+      **Five surfaces, not the two that are obvious.** The deck is the `fill` one; the popup,
+      `/postcards/detail` **and the postcard lists on `/profile` and `/profile/detail`** are
+      flow, and those last two are the ones a reader forgets — each draws a vertical list of
+      these cards, so every card there gains ~134px.
+      → `src/components/postcards/PostcardCard.tsx`, `PostcardDeck.tsx`, `Skeleton.tsx`,
       `CreatePostcardForm.tsx` (the composer's preview follows the crop, as it has twice
       before).
 - [ ] **An uncounted action control is the owner's 6/6 box, 8px under the glove floor —

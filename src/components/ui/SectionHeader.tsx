@@ -31,9 +31,10 @@ import { cn } from '@/lib/utils'
  * `action` is the text link, `create` is the icon; `create` is drawn last so
  * the tap target sits at the row's trailing edge where a thumb reaches it.
  *
- * The wrapper is `self-center` against the row's `items-baseline`: the title
- * and its count are baseline-aligned deliberately, and a 40px control has no
- * baseline worth aligning to.
+ * **`self-center` is on the `(+)` alone, never on a wrapper around both.** The
+ * title, its count and `See all` are baseline-aligned deliberately; a 40px icon
+ * control has no baseline worth aligning to, and centring the pair together
+ * lifts every existing `See all` off the baseline it was drawn on.
  */
 export function SectionHeader({
   title,
@@ -57,29 +58,30 @@ export function SectionHeader({
     <div className={cn('flex items-baseline gap-2 px-6 py-1.5', className)}>
       <h2 className="text-xl font-semibold text-foreground">{title}</h2>
       {meta && <span className="text-sm font-medium text-muted">{meta}</span>}
-      {(action || create) && (
-        <div className="ml-auto flex items-center gap-1 self-center">
-          {action && (
-            <Link
-              href={action.href}
-              className="rounded text-sm font-semibold text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              {action.label}
-            </Link>
+      {action && (
+        <Link
+          href={action.href}
+          className="ml-auto rounded text-sm font-semibold text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          {action.label}
+        </Link>
+      )}
+      {create && (
+        // 40px, matching every other icon button in the app — `-my-1.5` keeps
+        // it from growing the row, whose own content is 28px inside `py-1.5`,
+        // so a section would otherwise sit 12px further from its neighbours.
+        // `ml-auto` only when it is alone: with `See all` beside it, that link
+        // has already taken the gap and a second one would split them apart.
+        <Link
+          href={create.href}
+          aria-label={create.label}
+          className={cn(
+            '-my-1.5 flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-lg text-foreground transition-colors active:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+            !action && 'ml-auto'
           )}
-          {create && (
-            // 40px, and the negative margin keeps it from growing the row: the
-            // heading's own content is 28px inside `py-1.5`, so a glove-sized
-            // target here would otherwise push every section 12px apart.
-            <Link
-              href={create.href}
-              aria-label={create.label}
-              className="-my-1.5 flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              <PlusCircleIcon className="h-6 w-6" aria-hidden="true" />
-            </Link>
-          )}
-        </div>
+        >
+          <PlusCircleIcon className="h-6 w-6" aria-hidden="true" />
+        </Link>
       )}
     </div>
   )
