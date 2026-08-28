@@ -131,12 +131,18 @@ export function useBack(): () => void {
  * ## `chain` is the unmeasured part of this feature, and it is not the numbers
  *
  * `declinesSwipeBack` has **six** cases over hand-built nodes — six, not the
- * fifteen in that file, which is its whole suite including the two geometry
- * predicates — and by construction none of them can fail if `chain` feeds it the
- * wrong shape.
+ * fifteen in that file, which is its whole suite including `startsInEdgeZone`
+ * and `isSwipeBack` — and by construction none of them can fail if `chain` feeds
+ * it the wrong shape.
  *
- * Re-derive rather than trust that:
- * `npx vitest list --run src/lib/__tests__/swipe-back.test.ts`. Every
+ * **Re-derive it with the filter, not without.** The bare `vitest list` prints
+ * fifteen lines, which is exactly the number this sentence exists to correct — a
+ * command that returns the wrong answer reads as measured and is worse than
+ * none:
+ *
+ * ```
+ * npx vitest list --run src/lib/__tests__/swipe-back.test.ts | grep -c "declinesSwipeBack >"
+ * ``` Every
  * decline rests on two DOM facts nothing here has executed: that
  * `getComputedStyle(el).overflowX` answers `'auto'` for a Tailwind
  * `overflow-x-auto` element, and that `scrollWidth > clientWidth` is true for a

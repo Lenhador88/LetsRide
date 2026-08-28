@@ -590,8 +590,14 @@ export function formatStartDistance(km: number) {
  * exact because the obvious fear is the other way round: `RideChip` puts
  * `truncate` on the span wrapping both, and `text-overflow: ellipsis` clips the
  * tail, so the time — first, and about 35px of the 132 — can never be the
- * casualty. The long form is refused because `· 1…` is worse than no clause at
- * all, not because it would cost the rider the departure time.
+ * casualty.
+ *
+ * The overflow is a character or two rather than a collapse: at the same 7.3px
+ * per character, `14:00 · 123 km away` is ~138px against 132, so it renders
+ * about `14:00 · 123 km aw…`. **That is still the reason the long form is
+ * refused** — a clause that trails off mid-word says less than a complete
+ * `123 km` — but it is not the departure time that is lost, and stating it as a
+ * near-total truncation would overstate a real cost into an unreachable one.
  *
  * `<1 km` rather than `Under 1 km` for the same reason, and it is the one place
  * in the app that abbreviates it. The rounding is shared, so the two forms can

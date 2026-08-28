@@ -58,10 +58,21 @@ export function useRiderPosition(): {
  *
  * **A second hook rather than a third field on the one above**, and the reason
  * is a round trip rather than tidiness: it reads `profiles.location`, which only
- * a screen that draws the words needs. One screen does — `/rides`, for the
- * Explore strip's `near <place>` clause. The four that merely render a distance
- * would have paid for a column they never draw, on every cold load of a club or
- * a ride detail by a rider who had not passed through `/rides` first.
+ * a screen that draws the words needs. One of the four callers does — `/rides`,
+ * for the Explore strip's `near <place>` clause. The other three would have paid
+ * for a **second, separately-keyed read** of that column on every cold load of a
+ * club or a ride detail by a rider who had not passed through `/rides` first.
+ *
+ * **A second read of it, not the first.** `resolveRiderLocation`'s profile source
+ * already calls `getMyLocationText` — and that is the common path, since the
+ * device source only answers where permission is *already* granted — so the
+ * column is fetched either way. What the split removes is the duplicate under
+ * `queryKeys.profile.location()`, which is a round trip rather than a column.
+ *
+ * Count the callers rather than grepping for one: `grep -rn "useRiderPosition()"
+ * src/` answers **5**, because the definition line matches its own pattern. That
+ * is `CLAUDE.md`'s comment trap in a smaller place, and it is what made an
+ * earlier version of this paragraph say four where it meant three.
  *
  * `nearLabel` owns the rule this exists for: the name must come from the same
  * source as the number, so a device fix reads `near you` rather than borrowing
