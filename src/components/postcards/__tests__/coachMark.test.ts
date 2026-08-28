@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SWIPE_COACH_KEY, claimSwipeCoach } from '@/components/postcards/swipeCoach'
+import { SWIPE_COACH_KEY, claimSwipeCoach } from '@/components/postcards/coachMark'
 
 /**
  * The deck's coach mark shows **once per device** (PD-324), and "once" is the

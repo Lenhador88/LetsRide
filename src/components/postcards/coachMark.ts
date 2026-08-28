@@ -8,6 +8,17 @@
  * Both functions take the store as an argument for the same reason — the test
  * hands them a fake, and the caller does the `window` lookup.
  *
+ * **Named for the concern rather than for `SwipeCoach`**, which is the same
+ * convention `deck.ts` and `viewerContext.ts` already follow beside their own
+ * components — and here it is load-bearing rather than tidy. A `swipeCoach.ts`
+ * beside a `SwipeCoach.tsx` differs only in case, and `tsconfig.json`'s
+ * `"moduleResolution": "bundler"` probes `.tsx` before `.ts` for an
+ * extensionless specifier: on a case-insensitive filesystem — APFS by default,
+ * so any ordinary Mac clone — the import of the flag resolves to the component
+ * module instead, which exports none of these names. Every gate here is Linux
+ * and case-sensitive, so that failure never reaches CI and surfaces only on a
+ * developer's machine, reading as a phantom missing export.
+ *
  * **Per device, deliberately.** PD-324's assumed default: a `localStorage` key,
  * no migration, nothing on the guard's critical path. The honest cost is that
  * the same rider meets the coach mark again on a second device; a `profiles`

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { armsDrag, remainingPostcards, resolveSwipe } from '@/components/postcards/deck'
-import { claimSwipeCoach, swipeCoachStore } from '@/components/postcards/swipeCoach'
+import { claimSwipeCoach, swipeCoachStore } from '@/components/postcards/coachMark'
 import { SwipeCoach } from '@/components/postcards/SwipeCoach'
 import { cn } from '@/lib/utils'
 import type { Postcard } from '@/types'
@@ -42,7 +42,7 @@ import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
  *
  * **Nothing drew that gesture until PD-324**, so the deck now coaches it once
  * per device on first sight of a card — `SwipeCoach` for the overlay,
- * `./swipeCoach` for the flag. The overlay takes no pointer input and this
+ * `./coachMark` for the flag. The overlay takes no pointer input and this
  * component owns its dismissal, which is what keeps it clear of both
  * behaviours above and of PD-316's tap-to-open photo button.
  */
@@ -150,28 +150,25 @@ export function PostcardDeck({
   // `localStorage` to read the flag out of.
   const [coach, setCoach] = useState<CoachPhase>('hidden')
   /**
-   * The claim's answer, cached for this mount. The flag in `localStorage`
-   * covers every *other* mount — including the remount `/postcards` forces when
-   * the filter changes, since the deck is keyed on it — and this holds the
-   * answer so the effect below can re-run without asking twice.
-   *
-   * **Two refs rather than one, and the second is not redundant.** React
-   * StrictMode runs every effect twice in development: mount, cleanup, mount.
-   * A single "already claimed" flag set *before* the timer is what that pattern
-   * eats — the first pass claims and schedules, the cleanup cancels, and the
-   * second pass sees the flag and schedules nothing, so the coach mark never
-   * appears in `npm run dev` and looks broken while being correct in
-   * production. Caching the answer instead makes the second pass idempotent.
+   * The pending arrival, so a touch can cancel a pill that has not appeared
+   * yet — see `dismissCoach`. `null` whenever nothing is scheduled.
    */
-  const coachClaim = useRef<boolean | null>(null)
+  const coachArrival = useRef<number | null>(null)
   /**
-   * Set when the pill actually goes up, which is what stops it coming back
-   * *within* one mount. The effect below re-runs whenever the deck goes from
-   * having no card to having one, and "Start over" at the end of the deck is
-   * exactly that transition — without this, finishing the deck and starting
+   * Set once this mount has decided, either by putting the pill up or by a
+   * touch that cancelled it. The effect below re-runs whenever the deck goes
+   * from having no card to having one, and "Start over" at the end of the deck
+   * is exactly that transition — without this, finishing the deck and starting
    * over would coach the rider a second time on a gesture they just used.
+   *
+   * Deliberately **not** set before the arrival timer fires, which is what
+   * makes the effect safe to run twice: React StrictMode runs every effect
+   * twice in development — mount, cleanup, mount — and a flag set up front
+   * would let the cleanup cancel the only scheduled pill while the second pass
+   * declined to schedule another, so the coach mark would never appear in
+   * `npm run dev` while being correct in production.
    */
-  const coachShown = useRef(false)
+  const coachDecided = useRef(false)
 
   /**
    * Takes the coach mark away on the rider's first touch, whatever that touch
@@ -184,8 +181,20 @@ export function PostcardDeck({
    * expecting. That is also what makes the issue's *"never require a second
    * interaction to get past"* true by construction — the dismissing touch is
    * never spent on the dismissal.
+   *
+   * **It cancels a pill that has not arrived yet as well as one that has**, and
+   * that half is not symmetry for its own sake: without it a rider who touches
+   * the card inside `COACH_ARRIVE` gets told how to swipe ~400ms *after*
+   * swiping, and then waits out the full `COACH_TIMEOUT` because their one
+   * touch is already spent. The flag is deliberately left unclaimed on that
+   * path — nothing was shown, so nothing should be recorded as shown.
    */
   const dismissCoach = useCallback(() => {
+    if (coachArrival.current !== null) {
+      window.clearTimeout(coachArrival.current)
+      coachArrival.current = null
+      coachDecided.current = true
+    }
     setCoach((phase) => (phase === 'shown' ? 'leaving' : phase))
   }, [])
 
@@ -221,9 +230,6 @@ export function PostcardDeck({
    * no new postcards, yet!" would spend the one showing this device ever gets
    * on a screen with nothing to swipe.
    *
-   * `claimSwipeCoach` both answers and spends — see its header for why the flag
-   * is written at first sight rather than at dismissal.
-   *
    * **The pill arrives a beat after the card does**, which is `COACH_ARRIVE`
    * and is two things at once. It reads better — `/postcards` hands this deck
    * `motion-safe:animate-fade-in`, and a hint drawn during that fade lands on a
@@ -231,22 +237,34 @@ export function PostcardDeck({
    * effect body, which `react-hooks/set-state-in-effect` rejects for the
    * cascading render it causes.
    *
+   * **`claimSwipeCoach` is called inside the timer, not beside it, and the
+   * difference is the whole once-per-device guarantee.** It both answers and
+   * spends (see its header for why the flag is written at first sight rather
+   * than at dismissal) — so calling it here in the effect body would spend the
+   * device's one showing `COACH_ARRIVE` before anything is drawn, and every
+   * teardown inside that window would leave the flag written and the rider
+   * coached zero times, for ever: a filter tap, which remounts this deck
+   * because `/postcards` keys it on the filter; a bottom-bar tap, on what is
+   * the first screen after sign-in; or the last card leaving. Claiming when the
+   * pill actually goes up makes the cancelled cases cost nothing, and the flag
+   * is still spent before any of the three dismissal routes can run.
+   *
    * Keyed on *whether* there is a card rather than on which one, so a
-   * revalidation swapping the front postcard cannot cancel the pending hint
-   * through this effect's own cleanup. A rider who swipes inside that beat
-   * loses it and has spent the flag, which is the right way round: they have
-   * just demonstrated they know the gesture.
+   * revalidation swapping the front postcard does not run this cleanup at all.
    */
   const hasCard = front !== undefined
   useEffect(() => {
-    if (coachShown.current || !hasCard) return
-    coachClaim.current ??= claimSwipeCoach(swipeCoachStore())
-    if (!coachClaim.current) return
+    if (coachDecided.current || !hasCard) return
     const timer = window.setTimeout(() => {
-      coachShown.current = true
-      setCoach('shown')
+      coachArrival.current = null
+      coachDecided.current = true
+      if (claimSwipeCoach(swipeCoachStore())) setCoach('shown')
     }, COACH_ARRIVE)
-    return () => window.clearTimeout(timer)
+    coachArrival.current = timer
+    return () => {
+      window.clearTimeout(timer)
+      coachArrival.current = null
+    }
   }, [hasCard])
 
   /**
