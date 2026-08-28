@@ -84,7 +84,7 @@ comment on function private.retract_club_join_requested() is
 --   select tgname, pg_get_triggerdef(oid) from pg_trigger
 --    where tgrelid = 'public.club_join_requests'::regclass and not tgisinternal
 --    order by tgname;
---   -- THREE: enforce_participation_gate (before insert, WHEN current_user),
+--   -- FOUR: enforce_participation_gate (before insert, WHEN current_user),
 --   --        notify_club_join_requested (after insert, no WHEN),
 --   --        retract_club_join_requested (after delete, no WHEN),
 --   --        retract_club_join_requested_on_answer (after update of status,
@@ -97,5 +97,9 @@ comment on function private.retract_club_join_requested() is
 --
 --   select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 --    where n.nspname = 'private' and p.proname like 'retract\_%';
---   -- 2 — unchanged; 087 adds a trigger, never a function, so the advisor
---   --     count does not move either (21).
+--   -- 3 — retract_postcard_liked (036), retract_ride_invited (083) and
+--   --     retract_club_join_requested (085). UNCHANGED by this file: 087 adds
+--   --     a trigger, never a function, so the advisor count does not move
+--   --     either (21). The number was 3 before 087 too — it is written out
+--   --     because a session running this block against DEV and reading a
+--   --     documented 2 would conclude drift in a file that is correct.

@@ -6512,32 +6512,49 @@ select assert_eq(
     where not tgisinternal
       and (tgname like 'notify\_%' or tgname like 'retract\_%')),
   12, '036/083/085/087: twelve fan-out triggers exist');
--- ** 087 CHANGED WHAT THIS ASSERTION HAD TO SAY, AND THE NEW FORM IS THE ONE
--- THAT WAS ALWAYS MEANT. ** It used to read `tgqual is not null` = 0 — no WHEN
--- clause at all — because the only WHEN anybody had ever put on one of these
--- was 023's `current_user` guard, which would fire for nobody: the writers are
--- security definer RPCs, where `current_user` is the OWNER.
+-- ** 087 CHANGED WHAT THIS ASSERTION HAD TO SAY. ** It used to read
+-- `tgqual is not null` = 0 — no WHEN clause at all — because the only WHEN
+-- anybody had ever put on one of these was 023's `current_user` guard, which
+-- would fire for nobody: the writers are security definer RPCs, where the role
+-- is the OWNER.
 --
 -- 087's retraction carries a WHEN, and it is not that guard: it fires on
 -- `old.status is distinct from new.status`, which is a guard on the EVENT
 -- rather than on the invoking role, and without it every no-op UPDATE would
 -- retract. So the flat zero would have refused a correct trigger.
 --
--- The property is therefore restated as what it always meant — **no fan-out or
--- retraction trigger may gate on the invoking role** — which is strictly
--- stronger than the old form on the case it was written for, because it also
--- catches a `current_user` guard smuggled in beside a legitimate one.
+-- ** THE REPLACEMENT IS NOT STRICTLY STRONGER, AND SAYING SO WAS WRONG. ** The
+-- old form was CONTENT-BLIND: it refused any WHEN clause whatever it said. A
+-- form that greps for `current_user` is content-aware and therefore evadable,
+-- because Postgres deparses CURRENT_ROLE, USER and SESSION_USER to their own
+-- spellings — measured on 16, all four are distinct in pg_get_triggerdef, so
+-- `ilike '%current_user%'` catches exactly one of them. `when (old.status is
+-- distinct from new.status and current_role = 'authenticated')` would pass a
+-- naive version of both assertions below and disable the retraction for
+-- everyone, which is the very bug 087 exists to fix arriving by a second route.
+--
+-- So the role test names ALL FOUR spellings, and the second assertion pins 087's
+-- WHEN by its TEXT rather than counting how many exist — a count cannot tell
+-- which trigger carries the clause, so the delete arm could acquire one while
+-- `..._on_answer` lost its own and both would still read 0 and 1.
 select assert_eq(
   (select count(*)::int from pg_trigger
     where not tgisinternal and tgqual is not null
       and (tgname like 'notify\_%' or tgname like 'retract\_%')
-      and pg_get_triggerdef(oid) ilike '%current_user%'),
-  0, '036/083/085/087: ... and NOT ONE gates on the INVOKING ROLE — 023''s current_user guard would fire for nobody here, because every writer is a security definer RPC and current_user is then the owner');
+      and pg_get_triggerdef(oid) ~* '(current_user|current_role|session_user|\muser\M)'),
+  0, '036/083/085/087: ... and NOT ONE gates on the INVOKING ROLE, under ANY of its four spellings — 023''s guard would fire for nobody here, because every writer is a security definer RPC and the role is then the owner. CURRENT_ROLE, USER and SESSION_USER are exact synonyms that deparse to themselves, so a check naming only current_user is evadable by typing a different one');
+-- Read out of pg_get_triggerdef rather than with pg_get_expr(tgqual, tgrelid):
+-- this WHEN references BOTH old and new, and pg_get_expr raises `expression
+-- contains variables of more than one relation` on exactly that shape — which
+-- is every interesting transition guard there will ever be.
 select assert_eq(
-  (select count(*)::int from pg_trigger
-    where not tgisinternal and tgqual is not null
-      and (tgname like 'notify\_%' or tgname like 'retract\_%')),
-  1, '036/083/085/087: exactly ONE of them carries a WHEN clause at all — 087''s retract_club_join_requested_on_answer, guarding the status TRANSITION so a no-op update retracts nothing. A second appearing here is the prompt to check it is not a current_user guard');
+  (select array(select substring(pg_get_triggerdef(oid) from 'WHEN \((.*)\) EXECUTE')
+                  from pg_trigger
+                 where not tgisinternal and tgqual is not null
+                   and (tgname like 'notify\_%' or tgname like 'retract\_%')
+                 order by 1)),
+  array['(old.status IS DISTINCT FROM new.status)'],
+  '036/083/085/087: exactly ONE of them carries a WHEN clause and this is its TEXT — 087''s retract_club_join_requested_on_answer, guarding the status TRANSITION so a no-op update retracts nothing. Pinned by text rather than counted, because a count cannot tell WHICH trigger carries it: the delete arm could acquire a clause while this one lost its own and a count would not move');
 
 -- auth.uid() appears nowhere in a fan-out body, checkable by inspection rather
 -- than inferred from behaviour.

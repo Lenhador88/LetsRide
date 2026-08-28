@@ -66,7 +66,15 @@ export function ClubJoinRequestsSection({
 }) {
   const online = useOnlineStatus()
   const showBanner = useBanner()
-  const [pending, setPending] = useState<string | null>(null)
+  // **`{ id, choice }` rather than the id alone**, and the pair is the whole
+  // point: `pending` gates BOTH buttons' `disabled`, so an id-only state makes
+  // `loading` true on both and tapping Decline spins Approve as well. The first
+  // cut of this section had `loading` on Approve only, which pointed at the
+  // wrong control outright; an id-only fix would have made it ambiguous rather
+  // than wrong, which is not the same as fixed.
+  const [pending, setPending] = useState<{ id: string; choice: 'approve' | 'decline' } | null>(
+    null
+  )
 
   const isAdmin = club.viewer_is_owner || club.viewer_role === 'admin'
 
@@ -83,7 +91,7 @@ export function ClubJoinRequestsSection({
   if (!requests.data || requests.data.length === 0) return null
 
   async function answer(requestId: string, choice: 'approve' | 'decline') {
-    setPending(requestId)
+    setPending({ id: requestId, choice })
     const result =
       choice === 'approve'
         ? await approveClubJoinRequest(requestId, clubId)
@@ -118,7 +126,7 @@ export function ClubJoinRequestsSection({
                 <Button
                   size="sm"
                   onClick={() => answer(request.id, 'approve')}
-                  loading={pending === request.id}
+                  loading={pending?.id === request.id && pending.choice === 'approve'}
                   // Offline disables rather than queues: letting somebody into
                   // a club is a promise to the rest of it, and `085`'s RPC is
                   // not a write to be optimistic about.
@@ -130,10 +138,12 @@ export function ClubJoinRequestsSection({
                   size="sm"
                   variant="secondary"
                   onClick={() => answer(request.id, 'decline')}
-                  // `loading` as well as `disabled`: without it a decline on a
-                  // slow connection looks unregistered, because `pending` greys
-                  // BOTH controls and neither says which one is working.
-                  loading={pending === request.id}
+                  // `loading` as well as `disabled`, and gated on the CHOICE
+                  // as well as the id: `disabled` already greys both controls
+                  // while either runs, so a spinner keyed on the row alone
+                  // would appear on both and say nothing about which one the
+                  // rider pressed.
+                  loading={pending?.id === request.id && pending.choice === 'decline'}
                   disabled={!online || pending !== null}
                 >
                   Decline
