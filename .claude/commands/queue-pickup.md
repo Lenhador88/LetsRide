@@ -1073,6 +1073,70 @@ protect.
 
 ---
 
+## STEP 7 — Archive yourself, or leave the session for the owner to read
+
+**Standing instruction, product owner 2026-08-28:** *"whenever an automatic build session closes a
+bundle of stories, if there are no any further actions feel free to close the session and archive
+it straight away. Only if there are relevant things I should read, questions, or anything needing
+my attention please keep the session, so I can read it when I back."*
+
+**The test is not "did it go well", it is "is anything here that is NOT already on the record".**
+A firing writes to three durable places — the Linear comment, the merged PR, and the push
+notification — and every one of them outlives this container. A transcript is worth keeping only
+when it holds something those three could not: a question, a judgement call the owner has to make,
+a thing you could not verify. **An ordinary green run holds nothing of the kind**, which is why
+this defaults to archiving rather than to keeping.
+
+**Archive when ALL of these are true:**
+
+- every story you held is merged and sitting in `Deployed to DEV`;
+- nothing of yours is in `Needs help` or `Needs decision`;
+- no PR you opened is still open;
+- STEP 5's comment and push notification are both sent.
+
+**Keep the session — do not archive — if ANY of these is true.** The list is not exhaustive; the
+question behind it is whether the owner would have to reconstruct something by reading the
+transcript:
+
+- **a story parked** into `Needs help`, or moved to `Needs decision` on a stale premise;
+- **a PR left open**, for any reason, including the three-attempt CI bound at STEP 4c;
+- **a blocked capability** — a credential, a quota, a network policy, a dashboard toggle. Most of
+  what blocks this repo cannot be restored from inside a session, so the ask has to survive in the
+  owner's reach and in your own words;
+- **a question only the owner can answer**, or an option set you put to them;
+- **anything inferred rather than measured** that they now have to weigh. An unlabelled guess is
+  what this repo forbids; a labelled one they have not read yet is a reason to stay.
+
+**Archiving is the LAST action of the run, after every write.** It ends the session, so anything
+not already in Linear, the PR or the push is lost with it — including a report you were about to
+give. Write first, archive second, and never the other way round.
+
+```
+mcp__<connector>__get_session                      # session_id omitted -> describes the caller
+mcp__<connector>__archive_session  session_id=<your own id, from the call above>
+```
+
+**One check before you call it, and it is not optional: confirm the id you are about to archive is
+yours and is not the relay's.** `CLAUDE.md` §What Not To Do forbids archiving the session
+`trig_01WJkMVXGzUVGDcC1njNmaan` is bound to on your own initiative — that one is the owner's
+documented repair, not a firing's housekeeping. **Read the binding off the trigger rather than off
+any file**, which is the same rule `queue-dispatch.md` §The three roles carries and for the same
+reason: a copied id stopped the queue for ten days.
+
+```
+mcp__<connector>__list_triggers                    # persistent_session_id on the hourly Routine
+```
+
+If that id equals yours, **you are not a build child and this step does not apply** — end the
+session without archiving and say so. The same goes for a session carrying `queue-dispatch-run`: a
+dispatcher is not what this instruction is about.
+
+**This does not touch STEP 5 bullet 6.** Archiving is not a report and reaches nobody; the next
+hourly firing still reads the board and nothing else. And it changes no lock — your slot label left
+`Development (AI)` at STEP 5 bullet 4, so the slot was already free before this step ran.
+
+---
+
 ## If you get stuck — this is expected and it is not a failure
 
 Move the issue to **`Needs help`**, comment with *exactly* what you need from the owner, and
