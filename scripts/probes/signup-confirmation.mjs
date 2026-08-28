@@ -46,15 +46,24 @@
  * - **That project must report `mailer_autoconfirm: false`.** Pointed at a
  *   confirmation-*off* project the branch is unreachable, the run goes green,
  *   and it has proved nothing.
- * - **The address must be `<PROBE_OWNED_MAILBOX>+something@…`.** A `+` alone is a
+ * - **The address must be `PROBE_OWNED_MAILBOX` plus-tagged.** A `+` alone is a
  *   shape guard and **not** proof of ownership: `stranger+x@gmail.com` passes it,
- *   and so does a typo in the local part — which on a confirmation-on server
- *   mails a real confirmation link to somebody else and leaves a PROD row behind
- *   that the operator never finds, because they are watching the wrong inbox.
- *   Pinning the local part is what makes the guarantee real.
+ *   and so does a typo — which on a confirmation-on server mails a real
+ *   confirmation link to somebody else and leaves a PROD row behind that the
+ *   operator never finds, because they are watching the wrong inbox. **Both
+ *   halves are pinned**, because a typo'd domain (`you+x@gmial.com`) mails a
+ *   stranger exactly as a typo'd local part does; so `PROBE_OWNED_MAILBOX` is a
+ *   whole address and the tag is the only free part.
  * - **`PROBE_PASSWORD` must be set.** There is deliberately no default: a
  *   default would be a committed password for accounts on a production auth
  *   server.
+ * - **`confirm`'s link must be on the gated project's host.** It refuses before
+ *   it resolves the link, so a link pasted from an older run or the wrong inbox
+ *   never has its token spent.
+ *
+ * **Gates refuse; assertions measure.** All eleven assertions are evidence about
+ * `signUp` and the callback, and none of them is input validation — that is what
+ * the five gates are for, and it is why the count means what it says.
  *
  * ## Running it
  *
@@ -65,7 +74,7 @@
  *
  *   export PROBE_SUPABASE_URL=https://<prod ref>.supabase.co
  *   export PROBE_SUPABASE_ANON_KEY=<publishable>
- *   export PROBE_OWNED_MAILBOX=you PROBE_PASSWORD=<anything>
+ *   export PROBE_OWNED_MAILBOX=you@gmail.com PROBE_PASSWORD=<anything>
  *
  *   node scripts/probes/signup-confirmation.mjs signup you+pd252-1@gmail.com
  *   # read the mail, then — same browser storage, because the flow is PKCE:
@@ -88,6 +97,30 @@
  * the direct evidence for PD-233's still-inert `/auth/confirm` route. The file
  * holds a live session once `confirm` has run, so `confirm` deletes it and
  * `.gitignore` carries `.probe/`.
+ *
+ * ## The confirm phase can go red without the arm being broken — read this first
+ *
+ * **The confirmation link is single-use, and something follows it about twenty
+ * seconds after delivery, on every run.** Measured on two consecutive runs
+ * against PROD, 2026-08-28: `email_confirmed_at` was stamped at
+ * `confirmation_sent_at` + 18.5s and + 23s, in both cases **before the operator
+ * had opened the mailbox**. Whatever does it — a mailbox link-scanner is the
+ * obvious candidate — it spends the token this phase is about to spend.
+ *
+ * Usually GoTrue still answers the operator's later `verify` with a `303` and a
+ * fresh `code`, and the exchange succeeds. **Once it did not**: a run whose
+ * `confirm` came about five minutes after the mail reported
+ * `4/6` — "the exchange completes" ok, then "the rider is signed in" and "sent
+ * into onboarding" both FAIL, with the rider on `/auth/login`. The identical
+ * code five minutes later, run within a minute of the mail, was `6/6`.
+ *
+ * So: **run `confirm` promptly, and read a red confirm phase as "retry from a
+ * fresh signup" before reading it as "the arm is broken".** The signup phase is
+ * unaffected — it touches no link.
+ *
+ * **Whether that automatic follow breaks confirmation for a real rider is a
+ * product question this probe does not answer, and it is not this script's to
+ * carry** — PD-337.
  *
  * ## What it cannot cover from this container
  *
@@ -121,6 +154,8 @@ if (phase !== 'signup' && phase !== 'confirm') {
   console.error('usage: signup-confirmation.mjs signup <address> | confirm <link>')
   process.exit(2)
 }
+
+const escapeRe = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const refuse = (why) => {
   console.error(`refusing: ${why}`)
@@ -184,14 +219,21 @@ const browser = await chromium.launch({ executablePath: EXECUTABLE })
 
 if (phase === 'signup') {
   const address = argument
-  // Gate 3.
-  if (!address || !address.startsWith(`${ownedMailbox}+`)) {
+  // Gate 3. Both halves of the owned address, not just the local part: a typo'd
+  // domain mails a stranger exactly as a typo'd local part does.
+  const [ownedLocal, ownedDomain] = ownedMailbox.split('@')
+  const permitted =
+    ownedDomain && address && new RegExp(`^${escapeRe(ownedLocal)}\\+[^@]+@${escapeRe(ownedDomain)}$`).test(address)
+  if (!permitted) {
     await browser.close()
     refuse(
-      `the address must be ${ownedMailbox}+something@…, and is ${address ?? '(none)'}.\n` +
+      `the address must be ${ownedLocal}+something@${ownedDomain ?? '<domain>'}, and is ${address ?? '(none)'}.\n` +
+        (ownedDomain
+          ? ''
+          : 'PROBE_OWNED_MAILBOX must be a whole address (you@example.com), not a local part.\n') +
         'A confirmation-on server emails whoever owns whatever is typed — including on a\n' +
         'duplicate, which GoTrue answers with success and a mail rather than an error. A bare\n' +
-        '"+" would let a typo in the local part mail a stranger from production.'
+        '"+", or a local part alone, would let one typo mail a stranger from production.'
     )
   }
 
@@ -261,6 +303,20 @@ if (phase === 'confirm') {
     refuse(`no ${STATE} — run the signup phase first; the PKCE verifier lives in it.`)
   }
 
+  // Gate 5, and it is a gate rather than an assertion because it has to run
+  // BEFORE the request below: a `report()` here would already have handed the
+  // pasted host a token, and would then let the run continue and drive the app
+  // with a code from a foreign origin. Every other gate in this file refuses,
+  // and so does this one.
+  if (new URL(link).host !== `${projectRef}.supabase.co`) {
+    await browser.close()
+    refuse(
+      `the link is on ${new URL(link).host}, not ${projectRef}.supabase.co.\n` +
+        'That is a different project from the one this run gated on — most likely a link\n' +
+        'pasted from an older run, or from the wrong inbox.'
+    )
+  }
+
   console.log('\nconfirmation link:')
   // Resolved with Node rather than in the browser: this hop is the auth server,
   // and Supabase is the one host Chromium in this container cannot reach.
@@ -271,11 +327,6 @@ if (phase === 'confirm') {
     verify.status >= 300 && verify.status < 400 && Boolean(location),
     'the link is accepted',
     `status ${verify.status}`
-  )
-  report(
-    new URL(link).host === `${projectRef}.supabase.co`,
-    'the link belongs to the project this run gated on',
-    `the link is on ${new URL(link).host}, not ${projectRef}.supabase.co`
   )
   if (!location) {
     await browser.close()
@@ -350,7 +401,13 @@ if (phase === 'confirm') {
   report(
     landed !== '/auth/login',
     'the rider is signed in',
-    'bounced to /auth/login — the exchange was refused'
+    // The full URL, because `callbackFailureDestination` puts the reason in the
+    // query and the pathname alone cannot tell a refused exchange from an
+    // expired one. The usual cause is a SPENT link: the token is single-use, and
+    // anything that follows it before you do — a mailbox link-scanner, a preview
+    // fetch, a retry — consumes it, after which GoTrue still answers 3xx with a
+    // code but that code no longer matches the verifier in your storage.
+    `bounced to ${page.url()} — the exchange was refused`
   )
   report(
     landed === '/onboarding/terms',
@@ -358,10 +415,12 @@ if (phase === 'confirm') {
     `landed on ${landed}; a confirmed rider with no terms stamp belongs on /onboarding/terms`
   )
   await context.close()
-  // The state file holds a live access and refresh token once the exchange has
-  // run. It has done its job — the verifier was spent by the exchange above.
+  // Not because it holds a session — it does not, and on this arm never could:
+  // the exchange's tokens were in the context just closed. It holds the PKCE
+  // verifier `signUp` wrote, which has now been spent, and a spendable verifier
+  // for a production account is not a thing to leave on disk.
   rmSync(STATE, { force: true })
-  console.log(`\n${STATE} deleted (it held a live session after the exchange)`)
+  console.log(`\n${STATE} deleted (it held the spent PKCE verifier)`)
   console.log('remember the account itself:')
   cleanup('<the address you signed up with>')
 }

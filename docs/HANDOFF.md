@@ -649,7 +649,7 @@ the words *"stopped being **Owner**"*, so the obvious command counts its own obi
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
-| 7 | ~~**Signup never exercised end to end**~~ — **the app's confirmation-on arm is proven, 2026-08-27 (`PD-252`); the AUTH SERVER was proven 2026-08-16 (`PD-91`)** | **The DEPLOYED BUNDLE is still unexercised and cannot be, from a session** — `app.letsride.social:443` is refused by the agent proxy (`403` to `CONNECT`), so what ran is the app's own code on a local dev server pointed at PROD through the relay. That is the arm, and it is what was unproven; it is not the production build. `PD-91` used six raw HTTP calls to GoTrue, so `signUp` itself never ran; `scripts/probes/signup-confirmation.mjs` closed that at **12/12, 0 residue**. The `!data.session` arm (`src/lib/actions/auth.ts`) and its "Check your email" screen (`src/app/auth/signup/page.tsx`) have now executed, and the emailed link lands the rider signed in on `/onboarding/terms`. **DEV structurally cannot cover them, measured rather than read off decision #6** — `/auth/v1/settings` reports `mailer_autoconfirm` **True** on `fpmrimzxadewsaiwpsel` and **False** on `zwprydcyryvudhurbnye`, so a DEV signup always returns a session and a *duplicate* errors, taking a third arm, `alreadyRegistered`. What is left is the *automated* check, which needs a new branch rather than a permitted ref: §Signup below has the mechanism, `PD-334` the decision |
+| 7 | ~~**Signup never exercised end to end**~~ — **the app's confirmation-on arm is proven, 2026-08-27 (`PD-252`); the AUTH SERVER was proven 2026-08-16 (`PD-91`)** | **The DEPLOYED BUNDLE is still unexercised and cannot be, from a session** — `app.letsride.social:443` is refused by the agent proxy (`403` to `CONNECT`), so what ran is the app's own code on a local dev server pointed at PROD through the relay. That is the arm, and it is what was unproven; it is not the production build. `PD-91` used six raw HTTP calls to GoTrue, so `signUp` itself never ran; `scripts/probes/signup-confirmation.mjs` closed that at **11/11, 0 residue**. The `!data.session` arm (`src/lib/actions/auth.ts`) and its "Check your email" screen (`src/app/auth/signup/page.tsx`) have now executed, and the emailed link lands the rider signed in on `/onboarding/terms`. **DEV structurally cannot cover them, measured rather than read off decision #6** — `/auth/v1/settings` reports `mailer_autoconfirm` **True** on `fpmrimzxadewsaiwpsel` and **False** on `zwprydcyryvudhurbnye`, so a DEV signup always returns a session and a *duplicate* errors, taking a third arm, `alreadyRegistered`. What is left is the *automated* check, which needs a new branch rather than a permitted ref: §Signup below has the mechanism, `PD-334` the decision |
 
 Check each guideline against the live text before building to it — they move, and this table
 will not.
@@ -2339,17 +2339,35 @@ Two consequences, and the second is the one that will bite:
 - **`PD-91` proved the auth SERVER; the app's own arm is proven too — 2026-08-27, PD-252.**
   PD-91 made six raw HTTP calls to GoTrue, so `signUp` never ran.
   `scripts/probes/signup-confirmation.mjs` drives the app instead, against PROD through the
-  relay, and came back **12/12 green** across its two phases (run at 22:54Z on 2026-08-27, and
+  relay, and came back **11/11 green** across its two phases (run at 22:54Z on 2026-08-27, and
   re-run in its committed form at 07:21Z on 2026-08-28 after review changed the assertions): the
   `!data.session` arm in `src/lib/actions/auth.ts` returns `sent`, `/auth/signup` swaps the form
   for *"Check your email"* **in place** — no alert, no navigation, no form left on screen — the
   emailed link is accepted, and `/auth/callback` exchanges the code and the guard lands the rider
   on `/onboarding/terms` with `terms_accepted_at` still NULL. That last part is `023`'s gap being
   closed by the database rather than by trust, read straight off `auth.users` and `profiles`.
-  **0 residue**, verified by query: 0 probe rows, 0 orphan profiles, and the mail trashed.
+  **0 residue**, verified by query rather than asserted — and residue is state that moves, so
+  re-run this rather than trusting the sentence: a later probe run reintroduces rows.
+
+  **One of the four runs was RED at the last two assertions, and the reason is not the arm** —
+  PD-337. The confirmation link is single-use and **something follows it about twenty seconds
+  after delivery, on every run**, before the mailbox is even opened: `email_confirmed_at` lands
+  at `confirmation_sent_at` + 18.5s and + 23s on the two runs measured. GoTrue usually still
+  answers a later `verify` with a `303` and a fresh `code` and the exchange succeeds; on the run
+  whose `confirm` came about five minutes after the mail it did not, and the rider ended on
+  `/auth/login`. **Run `confirm` promptly, and read a red confirm phase as "retry from a fresh
+  signup" before reading it as "the arm is broken".** Whether that automatic follow breaks
+  confirmation for a *real* rider is PD-337's question, not this probe's.
+
+  ```sql
+  -- on zwprydcyryvudhurbnye. Both must be 0.
+  select (select count(*) from auth.users where email like '%+pd252%') as probe_rows,
+         (select count(*) from public.profiles p
+            where not exists (select 1 from auth.users u where u.id = p.id)) as orphan_profiles;
+  ```
 
   ```bash
-  # the header carries the relay + dev-server commands and all four fail-closed gates
+  # the header carries the relay + dev-server commands and all five fail-closed gates
   node scripts/probes/signup-confirmation.mjs signup you+pd252-1@gmail.com
   ```
 

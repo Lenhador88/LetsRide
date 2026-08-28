@@ -96,6 +96,8 @@ scripts/docs/               # docs:check — the numeric doc-claims registry + r
 scripts/db/                 # drift + seed checks, the analytics queries, the error-log reader
 scripts/native/             # the two build-shape guards — the bundle carries no rider data, the web build is not an export (PD-142)
 scripts/probes/             # hand-run probes — the confirmation-on signup arm, which no automated gate may reach (PD-252)
+scripts/brand/              # favicon + OG card generation
+scripts/storage/            # sweep-orphans — Storage objects with no row pointing at them
 openspec/                   # config.yaml, plus:
 ├── specs/                  # Standing capability specs — the current contract
 └── changes/                # Active proposals; archive/ holds shipped ones
