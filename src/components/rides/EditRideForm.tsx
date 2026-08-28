@@ -283,17 +283,20 @@ export function EditRideForm({
             onChange={(event) => setIsPublic(event.target.checked)}
           />
           {/* **Word for word `CreateRideForm`'s, and it has to stay that way.**
-              The two forms describe the same checkbox on the same column; until
-              PD-320 this one said "or to you alone if it has no club", which
-              `083`'s ride invites (PD-329) made false — and left a rider who had
-              just created a ride under the new copy being told, on the very next
-              screen, that nobody could see it.
+              The two forms describe the same checkbox on the same column, so a
+              rider who creates a ride and then edits it reads both. "Riders you
+              invite" is `083`'s fourth `rides` SELECT arm (PD-329), which is
+              what makes the sentence true of a ride with no club.
 
-              The `wouldStrand` alert below still argues from that retired
-              premise. It is deliberately NOT edited here: it is the guard's own
+              **Nothing enforces the match.** The two drifted once already and a
+              read caught it, not a gate. PD-338 rewrites the sentences below
+              and is where an assertion over the pair belongs.
+
+              The `wouldStrand` alert below still argues from the premise `083`
+              retired. It is deliberately NOT edited here: it is the guard's own
               message, the guard is a written `ride-lifecycle` requirement, and
-              PD-338 is where both go. A hint that describes the feature and a
-              refusal that describes the rule are different sentences. */}
+              PD-338 owns both. A hint that describes the feature and a refusal
+              that describes the rule are different sentences. */}
           <p className="pl-8 text-xs font-medium text-muted">
             Anyone signed in can see and join a public ride. A private ride is visible to its club,
             and to riders you invite.
