@@ -19,13 +19,16 @@ type PostcardCardProps = {
    */
   linkToThread?: boolean
   /**
-   * True in the deck, where the card is a fixed 342×448 slot and a long caption
-   * has to scroll inside itself rather than push the action row off the bottom.
+   * True in the deck, where the card fills a slot of a height it does not
+   * choose, so exactly one row has to absorb the difference. Since PD-343 that
+   * row is the **photo**, and the caption is the one that is capped and scrolls
+   * rather than pushing the action row off the bottom.
    *
-   * False on the thread screen, where the card sits in normal flow and grows to
-   * its content. The distinction is load-bearing, not cosmetic: `flex-1` with
-   * `min-h-0` inside an auto-height column collapses to zero, so a filling
-   * caption in a flow context would render the card with no caption at all.
+   * False on the thread screen and in the popup, where the card sits in normal
+   * flow and grows to its content. The distinction is load-bearing, not
+   * cosmetic: `flex-1` with `min-h-0` inside an auto-height column collapses to
+   * zero, so the photo in a flow context would render at no height at all —
+   * which is why that mode gives it an explicit ratio instead.
    */
   fill?: boolean
 }
@@ -39,6 +42,38 @@ type PostcardCardProps = {
  *   photo 334×200 (5:3, not the 4:5 previously inferred), 4px radius
  *   caption row fills the remaining 140px
  *   actions row 52px: like / comment / share, options pushed right
+ *
+ * ## The photo is DELIBERATELY bigger than the frame draws it (PD-343)
+ *
+ * Product owner, 2026-08-28: *"The actual image of the postcard is too small.
+ * Can we make the image take substantial more space on the postcard?"* The
+ * frame above is unchanged and still draws 334×200, so **this is a deviation
+ * from v2 rather than a fidelity correction** — checked before building, and
+ * recorded here so the next reader does not "fix" it back. Registered in
+ * docs/FIGMA-FIDELITY-TODO.md.
+ *
+ * What changed is which row absorbs a card's spare height. It was the caption:
+ * the photo was `shrink-0` at a fixed 5:3 and the caption was `flex-1`, so on
+ * any phone taller than the 844 frame every extra pixel went to text on a
+ * screen whose entire purpose is the picture. They are swapped.
+ *
+ *   fill (the deck)   photo `flex-1`, caption capped at `max-h-20` and scrolling
+ *   flow (popup, /postcards/detail)   photo `aspect-square`, caption unbounded
+ *
+ * **1:1 rather than 4:5**, which was the other candidate: a 5:3 photo cropped
+ * to 4:5 by `object-cover` loses 62% of its width, and a ride photo is far more
+ * often landscape than portrait. Square takes 67% more height than 5:3 and
+ * crops a landscape shot to its middle rather than to a slice of it.
+ *
+ * **The caption's cap is what pays for it in the deck, and the split is
+ * deliberate**: the deck is where a rider *looks* at photos and the popup is
+ * where they *read* one, so the deck's caption is four lines and a scroll while
+ * the popup — `fill={false}` — still draws every one of the 2000 characters
+ * `POSTCARD_CAPTION_MAX_LENGTH` allows.
+ *
+ * The two overlays on the photo's bottom edge — the taken-place chip and the
+ * date — are positioned against this container and are unchanged; a taller
+ * photo simply gives them more room above.
  *
  * The card is #FAFAFA in Figma but its fill *style* is White/100. A 1.5%
  * difference is invisible and `bg-surface` keeps it on the token, so the token
@@ -103,7 +138,18 @@ function PostcardCardComponent({
           '0 4px 8px #00000014, -4px -2px 16px #00AAFF14, 4px 2px 16px #FF005514',
       }}
     >
-      <div className="relative shrink-0 overflow-hidden rounded" style={{ aspectRatio: '334 / 200' }}>
+      {/* PD-343 — see the header. In `fill` this is the row that grows, so it
+          carries no ratio at all and takes whatever the card has left after a
+          24px byline, a capped caption and the 52px action row; `min-h-0` is
+          what lets it shrink on a short viewport instead of overflowing the
+          card. In flow there is no parent height to divide up, so it needs an
+          explicit one and gets a square. */}
+      <div
+        className={cn(
+          'relative overflow-hidden rounded',
+          fill ? 'min-h-0 flex-1' : 'aspect-square shrink-0'
+        )}
+      >
         {postcard.image_url ? (
           /* A signed URL that expires hourly. next/image would key its optimiser cache on a
              URL that changes every hour, so every render is a cache miss and the private
@@ -343,7 +389,17 @@ function PostcardCardComponent({
           cause, but `touch-action` does not govern selection at all, so a
           press-and-drag on caption text can still raise iOS's selection callout
           mid-swipe. Nobody selects caption text inside a swipe deck. */}
-      <div className={cn('px-3', fill && 'min-h-0 flex-1 overflow-y-auto touch-none select-none')}>
+      {/* `max-h-20` — four lines at `text-sm` — rather than `flex-1` (PD-343).
+          The cap is what hands the growth to the photo above: as `flex-1` this
+          row took every pixel a tall phone offered, which is the defect the
+          product owner reported. A caption shorter than four lines still draws
+          at its own height and gives the rest away. */}
+      <div
+        className={cn(
+          'px-3',
+          fill && 'max-h-20 shrink-0 overflow-y-auto touch-none select-none'
+        )}
+      >
         <p className="text-sm whitespace-pre-line text-foreground">{postcard.caption}</p>
       </div>
 

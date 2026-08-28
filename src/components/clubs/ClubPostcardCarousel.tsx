@@ -51,7 +51,9 @@ import type { Postcard } from '@/types'
  *
  * `Add` opens the composer with **this club already chosen** as the audience
  * (PD-283, `routes.newPostcardInClub`) and returns here rather than to Home.
- * The `clubId` prop exists for that and for nothing else.
+ * The `clubId` prop exists for that and for nothing else — and since PD-342 it
+ * is drawn only on an empty strip; a populated one is added to from the `(+)`
+ * in the section heading, which `/clubs/detail` owns.
  */
 export function ClubPostcardCarousel({
   postcards,
@@ -86,18 +88,21 @@ export function ClubPostcardCarousel({
     // 128px photo block plus a byline, the `Add` tile is the block alone, and
     // `overflow-x-auto` would clip the drop shadow off the bottom edge.
     <div className="flex items-start gap-2 overflow-x-auto px-4 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {/* First, not last (PD-318). Appended after the stamps it was invisible
-          the moment the club had posted more than two: the strip scrolls, and
-          nothing on the page said the tile was out there. The product owner hit
-          exactly that on the rides strip beside this one and asked for both —
-          *"Add ride, postcard, start a thread, should be in the beginning of
-          the scroll"*. Unlike the ride strip's create tile this one did not
-          have to shrink to earn the slot: it is already the same square as a
-          stamp, so the head start it costs is one 128px tile plus the `gap-2`,
-          and a 390px screen still shows the first stamp whole (152–280) and
-          80% of the second. The ride strip had to shrink because its chip is
-          200px against this tile's 128. */}
-      {isMember && (
+      {/* **Empty strips only, since PD-342** — with stamps to look at, the way
+          in is the `(+)` beside the section heading and this tile would cost
+          the rider their newest photo for an action taken once. Its condition
+          is the exact complement of the one `/clubs/detail` puts on that
+          heading's `create`, and the two must stay complements: overlap gives a
+          club with photos two ways in, a gap gives a club with none no way in
+          at all.
+
+          PD-318 put it FIRST rather than last, and that argument is what the
+          heading now serves instead: appended after the stamps it was invisible
+          the moment the club had posted more than two, because the strip
+          scrolls and nothing on the page said the tile was out there. A heading
+          is on screen in every state, which is the property PD-318 was
+          protecting. */}
+      {isMember && postcards.length === 0 && (
         <Link
           href={routes.newPostcardInClub(clubId)}
           className={`flex aspect-square ${STAMP_TILE_WIDTH} shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border`}

@@ -415,13 +415,16 @@ export function CreatePostcardForm({
             'flex w-full items-center justify-center overflow-hidden rounded-lg bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50',
             !preview && 'border-2 border-dashed border-border-strong',
           )}
-          // The design's own box — 358x224 inside a 390-wide frame, so a ratio
-          // rather than a height, and it survives a wider screen. It is also
-          // what the FEED draws (`PostcardCard`, 334/200): the previous
-          // `aspect-4/5` showed the rider a tall crop of a photo that posts
-          // landscape, so shrinking this made the preview honest as well as
-          // smaller.
-          style={{ aspectRatio: '358 / 224' }}
+          // **The preview's job is to show the crop the photo will actually
+          // get**, which is the standard this box has been held to twice now.
+          // It was `aspect-4/5`, a tall crop of a photo that posts landscape;
+          // it became the design's 358×224 to match what the feed drew at
+          // 334/200; and PD-343 moved the feed to a square, so it is square.
+          // The deck's photo has no fixed ratio at all any more — it takes what
+          // the card has left — but the popup and `/postcards/detail` are
+          // exactly this, and the deck lands near it, so a square is the
+          // honest single answer.
+          style={{ aspectRatio: '1 / 1' }}
         >
           {preview ? (
             // eslint-disable-next-line @next/next/no-img-element -- a blob: object URL, not a remote asset next/image can optimise

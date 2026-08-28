@@ -122,6 +122,19 @@ being called done.
       **Heart Filled in Pink/100 `#F23071`** when liked. That settles the
       "Pink/100 — purpose not established" note in `CLAUDE.md`: it is the liked heart, and
       nothing else uses it.
+- [ ] **The photo is bigger than the frame draws it — deviation, adopted 2026-08-28 (PD-343).**
+      A product decision on record, not drift. Product owner: *"The actual image of the
+      postcard is too small. Can we make the image take substantial more space on the
+      postcard?"* The frame is unchanged and still draws 334×200; the shipped card gives the
+      photo **1:1** in flow (the popup and `/postcards/detail`) and lets it take whatever the
+      card has left in the deck's `fill` mode, where the caption is capped at four lines and
+      scrolls instead of absorbing the growth. The deck's stack also stops honouring the
+      frame's 342×448 ratio and takes its slot's full height, which is what there was to give.
+      **1:1 rather than the 4:5 the other candidate offered**: `object-cover` at 4:5 keeps 38%
+      of a landscape photo's width, and a ride photo is landscape far more often than not.
+      → `src/components/postcards/PostcardCard.tsx`, `PostcardDeck.tsx`,
+      `CreatePostcardForm.tsx` (the composer's preview follows the crop, as it has twice
+      before).
 - [ ] **An uncounted action control is the owner's 6/6 box, 8px under the glove floor —
       deviation, adopted 2026-08-17.** Same status as the photo-box entry under §Create
       postcard: a design question on record, not drift. All eight

@@ -140,8 +140,18 @@ function PostcardViewerDialog({
   onClose: () => void
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const scrimRef = useRef<HTMLDivElement>(null)
   // Where focus was before the dialog opened, so it can go back there on close.
   const triggerRef = useRef<Element | null>(null)
+  /**
+   * Whether the gesture in progress STARTED on the scrim — see the scrim's own
+   * comment below (PD-339). Written from a capture-phase `pointerdown` on the
+   * document rather than from the scrim's own handler, because the question is
+   * about every gesture and not only the ones the scrim happens to see: a
+   * pointerdown inside the panel is a sibling's event and would never reach the
+   * scrim to disarm it.
+   */
+  const scrimArmed = useRef(false)
 
   // Held in a ref rather than named as a dependency — `onClose` is stable here,
   // but the effect below also calls `.focus()`, and `ContextMenu` records what
@@ -234,7 +244,12 @@ function PostcardViewerDialog({
       }
     }
 
+    function onPointerDownAnywhere(event: PointerEvent) {
+      scrimArmed.current = event.target === scrimRef.current
+    }
+
     document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDownAnywhere, true)
     panelRef.current?.focus()
 
     const { overflow } = document.body.style
@@ -242,6 +257,7 @@ function PostcardViewerDialog({
 
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDownAnywhere, true)
       document.body.style.overflow = overflow
       if (triggerRef.current instanceof HTMLElement) triggerRef.current.focus()
     }
@@ -255,9 +271,25 @@ function PostcardViewerDialog({
 
   return createPortal(
     <>
+      {/**
+        * **Dismisses only a gesture that BEGAN on the scrim (PD-339).**
+        *
+        * Product owner, 2026-08-28: *"Scrolling up up, closes postcard
+        * details/popup."* The panel deliberately stops short of the top, so a
+        * strip of scrim is left above it — see the panel's own comment — and a
+        * drag that starts inside the sheet and lifts on that strip was closing
+        * the sheet the rider was reading. `pointerdown` is the only signal that
+        * separates "the rider tapped the scrim to dismiss" from "the rider
+        * scrolled and their thumb ended up there", and it is checked rather
+        * than assumed: a click whose down and up straddle the boundary still
+        * fires somewhere, and this is what makes it inert.
+        */}
       <div
+        ref={scrimRef}
         className="fixed inset-0 z-[55] bg-scrim motion-safe:animate-fade-in"
-        onClick={onClose}
+        onClick={() => {
+          if (scrimArmed.current) onClose()
+        }}
         // A convenience for pointer users; Escape and the Close button are the
         // exits a keyboard user actually reaches, so this carries no role.
         aria-hidden="true"
@@ -292,8 +324,17 @@ function PostcardViewerDialog({
         {/* The scroller, and the one thing separating this from the route: the
             page version scrolls the document, so its bottom padding comes off
             the nav bar. Nothing is behind this one, so it pays only the home
-            indicator. */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            indicator.
+
+            **`overscroll-contain` is the second half of PD-339.** Without it an
+            upward drag at the top of the thread chains out of this scroller to
+            the document behind, which rubber-bands the whole screen under a
+            sheet that is meant to be modal — and the `document.body.style
+            .overflow = 'hidden'` above does NOT prevent that in the native
+            shell, where PD-317 records it as a no-op. `contain` keeps the
+            overscroll here without `none`'s cost, which would also kill the
+            platform's own pull-to-refresh everywhere this pattern is copied. */}
+        <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <PostcardViewerBody postcardId={postcardId} onClose={onClose} />
         </div>
       </div>

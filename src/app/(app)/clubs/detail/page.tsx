@@ -250,6 +250,15 @@ function ClubScreen() {
                 ? { label: 'See all', href: routes.clubRides(id) }
                 : undefined
             }
+            create={
+              // PD-342: with a strip to scroll, the 148px create chip becomes
+              // the `(+)` up here. Still `isMember`, exactly as the chip was —
+              // `017`'s rides INSERT policy needs the membership, and a control
+              // that always fails RLS is worse than no control.
+              isMember && timeline.length > 0
+                ? { label: 'Plan a ride', href: routes.newRideInClub(id) }
+                : undefined
+            }
             className="px-4 py-0"
           />
           {/* Empty means the club has NEVER ridden, not "nothing is planned"
@@ -266,14 +275,13 @@ function ClubScreen() {
               </p>
             )
           ) : (
+            /* No create chip in the strip any more (PD-342) — it is the `(+)`
+               in the heading above. That closes PD-312's objection outright
+               rather than paying it down: the tile no longer costs the strip
+               any width at all, so the next ride is the first thing under the
+               header, and PD-318's requirement that the affordance be visible
+               without scrolling is met by the heading instead. */
             <div className="flex gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {/* First rather than last (PD-318), which reverses PD-312's own
-                  reasoning — see `ClubCreateRideRow`, which carries the
-                  argument on both sides and the 148px width that answers it.
-                  Inside the scroller rather than beside it, so it reads as part
-                  of the list. `isMember` for the same reason the empty state
-                  above carries it. */}
-              {isMember && <ClubCreateRideRow clubId={id} variant="chip" />}
               {timeline.map((ride) => (
                 <RideChip key={ride.id} ride={ride} />
               ))}
@@ -297,6 +305,15 @@ function ClubScreen() {
             action={
               postcards.data.length > 0
                 ? { label: 'See all', href: `/postcards?club=${encodeURIComponent(id)}` }
+                : undefined
+            }
+            create={
+              // PD-342. The strip's own `Add` tile stays for the empty state —
+              // `ClubPostcardCarousel` draws it on exactly the complement of
+              // this condition, and the two must not drift apart or a club with
+              // photos gets two ways in and a club with none gets neither.
+              isMember && postcards.data.length > 0
+                ? { label: 'Add a postcard', href: routes.newPostcardInClub(id) }
                 : undefined
             }
             className="px-4 py-0"
