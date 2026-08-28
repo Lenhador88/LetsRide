@@ -985,14 +985,18 @@ cannot-reach-Linear push has abandoned a recovery known to work, and halted the 
 
 **The fix is the `tools:` line carrying BOTH spellings**, which every brief reaching Supabase,
 Linear or Figma now does — the friendly name and the UUID-prefixed one. **The UUIDs identify a
-connector, not a session**, measured on three: Supabase, Linear and Figma all carry the same
-prefix in `PD-154`'s 2026-08-09 comment as they did on 2026-08-27, and `.claude/settings.json`
-recorded Supabase's on 2026-08-07 — nineteen and twenty days apart.
+connector, not a session.** `PD-154`'s 2026-08-09 comment records all four prefixes verbatim —
+Supabase, Linear, Figma and Vercel — and the three this repo twins are byte-identical to what the
+briefs now carry. **Supabase is the one corroborated at BOTH ends**: `.claude/settings.json`
+recorded it on 2026-08-07 and it was unchanged on 2026-08-27, twenty days. Linear's and Figma's
+second observation is this session's and is written down nowhere checkable, so treat those two as
+one dated record plus a live sighting rather than as two.
 
 **`src/__tests__/agent-briefs.test.ts` is the check, and no grep is.** Every twin sits on one
 `tools:` line, so `grep -c` counts *lines* and answers 1 however many are there — a boolean
 wearing a count's clothes, and this file's own §Working Principles trap in miniature. The test
-asserts the pairing both ways and fails on a connector it has never heard of:
+asserts the pairing in both directions — a friendly tool with no twin, and a twin orphaned by
+a deleted tool — and fails on a connector it has never heard of:
 
 ```bash
 npx vitest run src/__tests__/agent-briefs.test.ts
@@ -1007,8 +1011,9 @@ grep -o "mcp__[0-9a-f]\{8\}-" .claude/agents/reviewer.md | wc -l   # 8, if you w
   happened yet. The test names the exclusion rather than skipping it silently, so a fifth
   connector fails loudly.
 - **`.claude/settings.json`'s `permissions.allow` carries the identical defect and fails
-  harder.** Those ~40 literal `mcp__Vercel__*`, `mcp__github__*` and `mcp__Linear__*` names are
-  name-matched too, and `PD-154`'s 2026-08-09 comment measured the result: a rotated
+  harder.** Those literal names are name-matched too —
+  **45** of them, `jq -r '.permissions.allow[]' .claude/settings.json | grep -c '^mcp__'`, being
+  Linear 23, github 13 and Vercel 9 — and `PD-154`'s 2026-08-09 comment measured the result: a rotated
   `mcp__Vercel__list_deployments` came back `MCP error -32003: MCP tool call requires approval`,
   which in an unattended firing is a hard stop rather than a degraded run. **Pasting UUIDs there
   is not the obvious fix** — `autoMode.allow` deliberately chose capability-prose over literal

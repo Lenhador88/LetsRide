@@ -379,6 +379,17 @@ describe('agent briefs do not describe a world that has moved on', () => {
        * twins too and every UUID reads as an unknown connector.
        */
       const named = declared.filter((t) => /^mcp__/.test(t) && !/^mcp__[0-9a-f]{8}-/.test(t))
+
+      // A readable assertion rather than the bare TypeError `exec(...)![1]`
+      // throws on a malformed entry — every other check in this file names its
+      // file and its cause, and a stack trace from a regex does not.
+      for (const tool of named) {
+        expect(
+          /^mcp__([^_]+(?:_[^_]+)*)__.+$/.test(tool),
+          `${name} declares "${tool}", which is not a parseable mcp__<connector>__<tool> name`,
+        ).toBe(true)
+      }
+
       const servers = [...new Set(named.map((t) => /^mcp__([^_]+(?:_[^_]+)*)__/.exec(t)![1]))]
       for (const server of servers) {
         expect(
@@ -401,19 +412,29 @@ describe('agent briefs do not describe a world that has moved on', () => {
       }
 
       /*
-       * The reverse, so a twin left behind by a deleted tool is caught too: a
-       * stale UUID entry is inert rather than harmful, but it reads as coverage.
+       * The reverse, so a twin ORPHANED by a deleted tool is caught too: a
+       * stale UUID entry is inert at runtime but it reads as coverage, which is
+       * the failure class this whole file exists to end.
        *
-       * Counted against the twinnable set only. Comparing every `mcp__<uuid>__`
-       * entry against `friendly` would make the FIRST correct addition of a
-       * github twin fail a brief that is right — the two halves have to agree
-       * about which connectors are in scope.
+       * **Counted against the three KNOWN prefixes — not against a set derived
+       * from `friendly`, which makes the assertion tautological.** Deriving it
+       * from `friendly` and then filtering `declared` by it can only ever count
+       * what the forward loop above has already proven present, so
+       * `twins.length === friendly.length` holds by construction and no input
+       * can fail. Measured: deleting `mcp__Supabase__list_projects` while
+       * leaving its twin caught the orphan before that shape and passed after.
+       *
+       * Nor against *every* `mcp__<uuid>__` entry, which is the other ditch:
+       * that would fail a brief the first time someone correctly adds a github
+       * twin under a UUID this table does not list. Keyed to the known
+       * prefixes, both hold — an unknown connector's twin is ignored, and an
+       * orphaned Supabase/Linear/Figma twin still fails.
        */
-      const twinnable = new Set(friendly.map((t) => `mcp__${UUID[/^mcp__(Supabase|Linear|Figma)__/.exec(t)![1] as keyof typeof UUID]}__${t.split('__')[2]}`))
-      const twins = declared.filter((t) => twinnable.has(t))
+      const known = Object.values(UUID)
+      const twins = declared.filter((t) => known.some((u) => t.startsWith(`mcp__${u}__`)))
       expect(
         twins.length,
-        `${name} has ${twins.length} UUID entries for ${friendly.length} friendly ones — they must correspond one to one`,
+        `${name} has ${twins.length} UUID entries for ${friendly.length} friendly ones — they must correspond one to one, so a twin left behind by a deleted tool is caught rather than reading as coverage`,
       ).toBe(friendly.length)
     }
 

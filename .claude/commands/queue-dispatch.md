@@ -259,7 +259,7 @@ Everywhere below writes `mcp__<connector>__<tool>` for readability. **Read it as
 no match means "search again by keyword", never "the connector is gone" — only a keyword search
 coming back empty establishes that.
 
-**`CLAUDE.md` §The Agent Squad's "there is no recovery from inside a subagent" does NOT overrule
+**`CLAUDE.md` §The Agent Squad's "a subagent cannot recover from inside itself" does NOT overrule
 that, and reading it as though it does halts the queue.** You are a **main thread** and hold no
 `tools:` line, so nothing filters your search; that paragraph describes a *subagent*, whose
 `ToolSearch` is filtered by its own allowlist before it runs. Keyword search still recovers a
