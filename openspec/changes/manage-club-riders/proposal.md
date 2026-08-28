@@ -18,9 +18,8 @@ here is inferred and unmarked.
 **The `openspec` CLI is still not installed** — `npm run openspec -- list --json` returns
 `sh: 1: openspec: not found`, and `node_modules/@fission-ai/openspec` holds no `bin` this project can
 run — so these artifacts were written by hand against the structure
-`openspec/changes/show-private-clubs-and-request-to-join/` establishes. `openspec validate` has not
-run on them. Same artifact, per `CLAUDE.md` §Fix the tool, don't route around it; recorded rather
-than passed over.
+`openspec/changes/show-private-clubs-and-request-to-join/` establishes. `openspec validate` HAS since run on them and the change validates. Same artifact, per `CLAUDE.md` §Working Principles' *fix the tool, don't route around it*;
+recorded rather than passed over.
 
 ## Four things that contradict what a reader would otherwise assume
 
