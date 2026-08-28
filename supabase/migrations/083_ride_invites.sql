@@ -54,10 +54,29 @@
 --       load-bearing part of the function, and it is a real disclosure: bounded,
 --       intended, and asserted at 083.2 rather than discovered later.
 --
---   NOT REACHED, because each hangs off a helper this file does not touch
+--   NOT REACHED **WHILE THE INVITE IS PENDING**, because each hangs off a
+--   helper this file does not touch
 --     * the club, its other rides, its member list, its threads — `is_club_member`
 --     * the ride's chat and its read watermark — `is_ride_crew`
 --     * tagging a postcard to the ride — `041` needs both conjuncts
+--
+--   ** THE `is_ride_crew` THREE ARE PENDING-ONLY, AND SAYING SO IS THE POINT. **
+--   Accepting writes a `ride_members` row, which makes `is_ride_crew` true — so
+--   an ACCEPTED invitee to a private club's ride reaches its chat, `ride_reads`'
+--   write predicate and `041`'s tagging, none of which they could reach before
+--   `083`. That is the product working: accepting means joining. It is stated
+--   here because these lines are the blast-radius statement for a visibility
+--   change into a private club, and a reader asking "can an invited non-member
+--   of this club post in the ride chat?" would otherwise be told no. The suite
+--   is scoped correctly — 083.2's label reads *an invitee is not crew*.
+--
+--   ** AND AN ORGANIZER CANNOT UNDO AN ACCEPTED INVITE. ** DELETE is scoped to
+--   `pending`, there is no UPDATE grant or policy, and `accepted` grants read
+--   for ever by design (§1's anti-eviction property). Their only exit is a
+--   block. That is not new — `ride_members` DELETE has been `auth.uid() =
+--   user_id` since `001`, so an organizer has never been able to remove a rider
+--   from a ride — but the invite is the first thing that lets them *add* one,
+--   which is what makes the asymmetry worth writing down.
 --
 --   NOT REACHED, because both its policies are organizer-scoped
 --     * `ride_map_render_attempts` (`051`)

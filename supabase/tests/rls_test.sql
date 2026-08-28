@@ -19198,10 +19198,28 @@ rollback to savepoint invite_already_crew;
 -- about the organizer changed, which decision #2 forbids as a "marker".
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000830005', false);
+-- ** ANTI-VACUITY FIRST, and it is not decoration. ** `error_of` returns the
+-- literal '<no error>' on success, so an equality between two of its calls is
+-- satisfied by an implementation that stopped raising ALTOGETHER — on the one
+-- assertion in this file whose entire subject is that a refusal happens
+-- indistinguishably. This line is what makes the comparison below mean
+-- something.
+--
+-- **Mutation-tested, and the first attempt proved the wrong thing.** Deleting
+-- `accept_ride_invite`'s raise outright is caught by 083.13 two blocks up
+-- ("a second accept is refused"), which aborts the run before this is reached —
+-- so it says nothing about this line. The mutation that isolates it is
+-- `join_ride_from_invite` never refusing an unreadable ride (`if false and not
+-- private.can_read_ride(...)`): 083.13 still passes, because a second accept
+-- matches no row and raises anyway, and THIS assertion is the one that goes
+-- red. Both were walked and reverted.
+select assert_eq(
+  error_of($$select accept_ride_invite('00000000-0000-0000-0000-0000008300f4')$$) <> '<no error>',
+  true, '083.14: a blocked invitee accepting DOES fail — asserted before the two failures are compared, because two successes compare equal too');
 select assert_eq(
   error_of($$select accept_ride_invite('00000000-0000-0000-0000-0000008300f4')$$),
   error_of($$select accept_ride_invite('00000000-0000-0000-0000-0000008300ff')$$),
-  '083.14: a BLOCKED invitee accepting gets the byte-identical error a nonexistent invite id gives — SQLSTATE and message');
+  '083.14: ... and it is the byte-identical error a nonexistent invite id gives — SQLSTATE and message');
 select set_config('test.uid', '00000000-0000-0000-0000-000000830002', false);
 select assert_eq(
   error_of($$select accept_ride_invite('00000000-0000-0000-0000-0000008300f3')$$),

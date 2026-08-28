@@ -20,6 +20,33 @@ import type { RideInvite, RideInviteListItem, RiderSearchResult } from '@/types'
 /** One page of the picker. Deliberately unpaginated — see `searchRidersToInvite`. */
 export const RIDER_SEARCH_LIMIT = 20
 
+/**
+ * A rider's typed query as a **prefix-anchored** LIKE pattern, with every
+ * wildcard escaped.
+ *
+ * Exported and pure so it has a test in a container with no database in it —
+ * the split `resolveComboboxKey` and `resolveDestination` make, for the same
+ * reason: the part that can be wrong is one string transformation, and the
+ * function it lives in cannot be unit-tested without PostgREST.
+ *
+ * **Four characters, and `*` is the one that looks safe.** `%`, `_` and `\`
+ * are LIKE's own; **`*` is PostgREST's documented alias for `%`** in its
+ * `like`/`ilike` operators, substituted server-side, and postgrest-js passes
+ * the pattern through untouched. So without it a rider types `*a` and gets
+ * `%a%` — an infix search over the whole directory — or `**` and gets the
+ * first page of every username on the platform, or `a*` and gets the
+ * one-character prefix the two-character minimum exists to refuse. **Two of
+ * the three bounds `searchRidersToInvite` names as the reason its exposure is
+ * acceptable, defeated by one keystroke**, with nothing red anywhere because
+ * none of it crosses an RLS line.
+ *
+ * Escaped rather than stripped: `_` is legal in a username, and dropping it
+ * would return hits the rider did not ask for.
+ */
+export function riderSearchPattern(query: string): string {
+  return `${query.replace(/([%_*\\])/g, '\\$1')}%`
+}
+
 const INVITE_MINE_SELECT = `
   id, ride_id, status, created_at,
   inviter:profiles!inviter_id(${PUBLIC_PROFILE_COLUMNS}),
@@ -52,6 +79,17 @@ export async function getMyPendingInvites(): Promise<RideInvite[]> {
     await supabase
       .from('ride_invites')
       .select(INVITE_MINE_SELECT)
+      // **A scoping predicate, not a restated policy, and the distinction is
+      // the whole reason this line is here.** `083`'s SELECT policy is
+      // `(invitee_id = auth.uid() or inviter_id = auth.uid())` — it covers BOTH
+      // sides deliberately, so without this the caller's own OUTGOING invites
+      // come back too, with `inviter` set to themselves. Nothing renders them
+      // wrong today (the only reader matches on `ride_id` and an organizer
+      // cannot be invited to their own ride), but the next reader inherits the
+      // bug with none of that protection: a "Your invites" screen, or PD-330's
+      // link half, would list the organizer's own sent invites as things to
+      // Accept.
+      .eq('invitee_id', user.id)
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
       .order('id', { ascending: false }),
@@ -80,34 +118,6 @@ export async function getMyPendingInvites(): Promise<RideInvite[]> {
     supabase
   )
   return open
-}
-
-/**
- * One invite by id — what the notification row reads to decide whether it may
- * still offer Accept and Decline.
- *
- * **Read live rather than inferred from the notification's `type`.** A
- * notification records an event that happened; the invite may since have been
- * answered on another device, withdrawn by the organizer, or hidden by a block.
- * `null` is the decided answer for every one of those and they are deliberately
- * indistinguishable — telling them apart would make the row an oracle for
- * whether a block is in place.
- */
-export async function getRideInvite(inviteId: string): Promise<RideInvite | null> {
-  // Before `resolveSupabase()`, so a malformed id costs no round trip — a
-  // non-uuid reaches PostgREST as `22P02`, which `unwrap` turns into the error
-  // boundary instead of the not-found this deserves.
-  if (!rideIdSchema.safeParse(inviteId).success) return null
-
-  const supabase = await resolveSupabase()
-  const rows = unwrapList(
-    await supabase.from('ride_invites').select(INVITE_MINE_SELECT).eq('id', inviteId).limit(1),
-    'that invite'
-  ) as unknown as RideInvite[]
-
-  const invite = rows[0] ?? null
-  if (invite) await resolveAvatarUrls([invite.inviter], supabase)
-  return invite
 }
 
 /**
@@ -200,17 +210,13 @@ export async function searchRidersToInvite(
     data: { user },
   } = await supabase.auth.getUser()
 
-  // `%` and `_` are wildcards in a LIKE pattern, so a rider typing either would
-  // otherwise widen their own search rather than narrow it. Escaped rather than
-  // stripped: `_` is legal in a username, and dropping it would return hits the
-  // rider did not ask for.
-  const prefix = parsed.data.replace(/([%_\\])/g, '\\$1')
-
   const hits = unwrapList(
     await supabase
       .from('profiles')
       .select(PUBLIC_PROFILE_COLUMNS)
-      .ilike('username', `${prefix}%`)
+      // `riderSearchPattern` owns the anchor and the escaping, including the
+      // one that is not LIKE's — see its docstring.
+      .ilike('username', riderSearchPattern(parsed.data))
       .order('username')
       .limit(RIDER_SEARCH_LIMIT),
     'riders'

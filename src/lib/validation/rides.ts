@@ -319,8 +319,19 @@ export const rideInviteIdSchema = z.uuid()
  */
 export const RIDER_SEARCH_MIN_LENGTH = 2
 
+/**
+ * A ceiling as well as a floor, and it is the half that is easy to skip.
+ *
+ * The query is interpolated into a LIKE pattern and travels as a **URL query
+ * parameter**, so an unbounded one is an unbounded URL — and `056` caps a
+ * username at 25 characters anyway, which makes anything past that a search
+ * that cannot match.
+ */
+export const RIDER_SEARCH_MAX_LENGTH = 40
+
 export const riderSearchQuerySchema = z
   .string()
+  .max(RIDER_SEARCH_MAX_LENGTH, `Keep it under ${RIDER_SEARCH_MAX_LENGTH} characters.`)
   .transform((value) => value.trim())
   .refine(
     (value) => value.length >= RIDER_SEARCH_MIN_LENGTH,

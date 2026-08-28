@@ -79,14 +79,30 @@ export async function inviteRiderToRide(
 }
 
 /**
- * The invitee accepts. **Five keys move, across two domains.**
+ * The invitee accepts. **Four claims, and the ride one is the WHOLE `['rides']`
+ * prefix rather than the two entries the rider is about to look at.**
  *
- * The one that gets missed is `rides.detail` — the rider is navigated straight
- * to a screen that reads it, and a stale entry shows them a ride they have just
- * joined with themselves absent from the crew. It is named here rather than
- * left to `rides.all()` so the reason survives.
+ * This action writes a `ride_members` row through
+ * `private.join_ride_from_invite` — byte for byte the state change
+ * `setRideAttendance` makes — so it owes the same claim: `invalidateRide()`
+ * there is `invalidate(queryKeys.rides.all())`, deliberately, because a joined
+ * ride is "always in the blast radius".
+ *
+ * **An earlier version of this named `rides.detail(id)` and the crew key
+ * instead, and the reason it was wrong is worth keeping.** `invalidate` matches
+ * structurally by prefix, so those two reach exactly themselves and NOT
+ * `rides.list(filter)` — the `/rides` tab's own lists — or `rides.explore(...)`,
+ * which lists public rides the rider holds no `ride_members` row on. Accept an
+ * invite from the notifications panel, tap the Rides tab inside the 30-second
+ * stale window, and the ride you just joined is missing from `Your rides` while
+ * a public one is still sitting in Explore. Naming the two keys made the
+ * *reason* survive and dropped the coverage; the prefix reaches both of them and
+ * `detail` and `crew` as well.
+ *
+ * **It therefore takes no `rideId`**, unlike its sibling: the whole-prefix claim
+ * needs no id, and a parameter nothing reads is the next reader's puzzle.
  */
-export async function acceptRideInvite(inviteId: string, rideId: string): Promise<ActionState> {
+export async function acceptRideInvite(inviteId: string): Promise<ActionState> {
   if (!rideInviteIdSchema.safeParse(inviteId).success) {
     return { error: 'That invite could not be found.' }
   }
@@ -104,19 +120,23 @@ export async function acceptRideInvite(inviteId: string, rideId: string): Promis
 
   invalidate(queryKeys.invites.pending())
   invalidate(queryKeys.notifications.all())
-  invalidate(queryKeys.rides.detail(rideId))
-  invalidate(queryKeys.rides.crew(rideId))
-  invalidate(queryKeys.rides.invites(rideId))
+  // The whole prefix: it reaches `detail` and `crew` — the two the rider is
+  // navigated to — AND the tab's lists and Explore, which the narrower pair
+  // does not. `setRideAttendance`'s parity, for the same write.
+  invalidate(queryKeys.rides.all())
   return { error: null, sent: true }
 }
 
 /**
- * The invitee declines. **Deliberately does NOT invalidate the ride.**
+ * The invitee declines. **It writes no membership and still has to claim the
+ * ride, because what it changes is the ride's READABILITY.**
  *
- * Declining changes nothing a ride screen renders — no crew row is written or
- * removed — and the rider is not navigated there. What it does change is the
- * ride's *readability*, which is why they are not sent there either: a declined
- * invite grants nothing, so the ride they just refused is gone from them.
+ * A declined invite grants nothing, so the ride the rider just refused is gone
+ * from them — and a cached `rides.detail(rideId)` from before the decline is a
+ * screen they can still open. That is the entry they demonstrably have, since
+ * tapping the notification is how they got here. No list key is owed: a pending
+ * invitee holds no `ride_members` row, so the ride was never in `Your rides` or
+ * out of Explore.
  */
 export async function declineRideInvite(inviteId: string, rideId: string): Promise<ActionState> {
   if (!rideInviteIdSchema.safeParse(inviteId).success) {
@@ -132,6 +152,7 @@ export async function declineRideInvite(inviteId: string, rideId: string): Promi
 
   invalidate(queryKeys.invites.pending())
   invalidate(queryKeys.notifications.all())
+  invalidate(queryKeys.rides.detail(rideId))
   invalidate(queryKeys.rides.invites(rideId))
   return { error: null, sent: true }
 }

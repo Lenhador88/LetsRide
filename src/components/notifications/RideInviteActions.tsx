@@ -70,7 +70,7 @@ export function RideInviteActions({ rideId }: { rideId: string | undefined }) {
     setPending(choice)
     const result =
       choice === 'accept'
-        ? await acceptRideInvite(invite.id, invite.ride_id)
+        ? await acceptRideInvite(invite.id)
         : await declineRideInvite(invite.id, invite.ride_id)
     setPending(null)
 

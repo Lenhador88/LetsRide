@@ -508,12 +508,6 @@ export const queryKeys = {
     all: (): QueryKey => ['invites'],
     pending: (): QueryKey => ['invites', 'pending'],
     /**
-     * One invite, read live by the notification row to decide whether it may
-     * still offer Accept and Decline. Under `invites`, so answering one moves
-     * it.
-     */
-    detail: (inviteId: string): QueryKey => ['invites', 'detail', inviteId],
-    /**
      * The rider picker's hits for one ride and one query string (`083`).
      *
      * **Keyed on the query as well as the ride**, for `places.search`'s reason:
