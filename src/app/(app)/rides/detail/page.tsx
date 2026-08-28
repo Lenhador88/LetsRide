@@ -259,8 +259,10 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
           hiding the section was the UI inventing a rule the policy does not
           have. `canAdd` carries the half that IS a database rule: tagging wants
           `private.is_ride_crew`, so only the crew is offered the tile. */}
+      {/* No `SectionHeader` here — `RideJournal` draws its own since PD-342,
+          because the `(+)` beside the title is gated on whether the section has
+          photos and only that component knows. */}
       <section className="flex flex-col gap-2">
-        <SectionHeader title="Journal" className="py-0" />
         <RideJournal rideId={ride.id} canAdd={isCrew} />
       </section>
 

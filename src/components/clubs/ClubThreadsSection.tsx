@@ -80,6 +80,13 @@ export function ClubThreadsSection({
     )
   }
 
+  // `?? []` rather than a guard at each use: `useQuery` types `data` as
+  // `T | null | undefined` and the loading branch below still tests `undefined`
+  // on its own, so this only collapses "decided, and empty" into "empty" —
+  // which is what both of them draw anyway.
+  const threadRows = threads.data ?? []
+  const hasThreads = threadRows.length > 0
+
   return (
     <section className="flex flex-col gap-2">
       <SectionHeader
@@ -88,9 +95,15 @@ export function ClubThreadsSection({
           // Gated on there being something to open, the same policy the two
           // sections above apply: a `See all` onto an empty screen is PD-125's
           // defect, an entrance to nothing.
-          threads.data && threads.data.length > 0
-            ? { label: 'See all', href: routes.clubThreads(clubId) }
-            : undefined
+          hasThreads ? { label: 'See all', href: routes.clubThreads(clubId) } : undefined
+        }
+        create={
+          // The same gate, for the reason PD-342 gives: with rows to read, the
+          // 72px `StartThreadRow` costs a slot above them on every visit for an
+          // action taken once, so it becomes the `(+)` here. With none it stays
+          // full size below — that is the state where it is the only thing
+          // saying threads exist.
+          hasThreads ? { label: 'Start a thread', href: routes.newClubThread(clubId) } : undefined
         }
         className="px-4 py-0"
       />
@@ -105,34 +118,25 @@ export function ClubThreadsSection({
           <Skeleton className="h-8 w-8 rounded-lg" />
           <Skeleton className="h-3 w-32" />
         </div>
-      ) : threads.data && threads.data.length > 0 ? (
-        <>
-          {/* Above the rows (PD-318). This section is a vertical list, so the
-              tile was never *hidden* the way the two horizontal strips on this
-              screen hid theirs — three rows above it at most, and it is on
-              screen. It moves anyway, for consistency: the product owner asked
-              for `Add ride, postcard, start a thread` together, and a create
-              affordance that is first in two sections and last in the third is
-              a rule the rider has to learn twice.
+      ) : hasThreads ? (
+        /* No `StartThreadRow` here any more (PD-342) — the `(+)` in the heading
+           above is this section's create affordance once it has rows, which is
+           the argument PD-318 accepted the cost of rather than answered: *"the
+           newest thread is what a rider came for, and a control between the
+           heading and the list pushes it down on every visit for the sake of an
+           action taken once."*
 
-              What that costs is the argument this replaces — "the newest thread
-              is what a rider came for, and a control between the heading and
-              the list pushes it down on every visit for the sake of an action
-              taken once" — and the cost is one 72px row, bounded, with the
-              first thread still above the fold. On the strips the same argument
-              cost the control entirely, which is why it lost there too. */}
-          <StartThreadRow clubId={clubId} />
-          <ul className="flex flex-col">
-            {threads.data.slice(0, CLUB_DETAIL_THREADS).map((thread) => (
-              <li key={thread.id}>
-                <ClubThreadRow
-                  thread={thread}
-                  hasUnread={unread.data?.[thread.id] === true}
-                />
-              </li>
-            ))}
-          </ul>
-        </>
+           **PD-318 is not undone by this.** That story was about the affordance
+           being *invisible* — appended to the end of a strip that scrolls — and
+           the heading is on screen in every state, which is the property it was
+           protecting. */
+        <ul className="flex flex-col">
+          {threadRows.slice(0, CLUB_DETAIL_THREADS).map((thread) => (
+            <li key={thread.id}>
+              <ClubThreadRow thread={thread} hasUnread={unread.data?.[thread.id] === true} />
+            </li>
+          ))}
+        </ul>
       ) : (
         <StartThreadRow clubId={clubId} />
       )}
@@ -141,8 +145,10 @@ export function ClubThreadsSection({
 }
 
 /**
- * The create affordance — drawn above the thread rows (PD-318), and in place of
- * them when there are none.
+ * The create affordance for an **empty** section — the only state it is drawn
+ * in since PD-342, which moved the one above a populated list into the heading.
+ * Full size here on purpose: with no rows to read, this row is the only thing
+ * on screen saying the club has threads at all.
  *
  * **Its geometry is `ClubThreadRow`'s, not a card's**, and that is the whole
  * of the styling decision. It is a destination like the rows it sits with, so

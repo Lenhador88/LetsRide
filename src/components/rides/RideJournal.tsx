@@ -3,11 +3,13 @@
 import Link from 'next/link'
 import { ImageIcon, PlusIcon } from '@/components/icons/generated'
 import { PostcardStamp, STAMP_TILE_WIDTH } from '@/components/postcards/PostcardStamp'
+import { SectionHeader } from '@/components/ui/SectionHeader'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { getRideJournal } from '@/lib/data/postcards'
-import { useQuery } from '@/lib/query'
+import { useQuery, type UseQueryResult } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
+import type { Postcard } from '@/types'
 
 /**
  * The ride Journal section on the ride plan (PD-254, PD-256) — a horizontal
@@ -78,6 +80,41 @@ import { routes } from '@/lib/routes'
 export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolean }) {
   const journal = useQuery(queryKeys.postcards.journal(rideId), () => getRideJournal(rideId))
 
+  return (
+    <>
+      {/* The heading is this component's rather than the ride screen's since
+          PD-342, and the reason is the `(+)`: whether the section has photos is
+          known only here, and the affordance is gated on exactly that. Hoisting
+          the read to `/rides/detail` to keep the header there would give the
+          screen a query it renders nothing from. */}
+      <SectionHeader
+        title="Journal"
+        create={
+          // Both halves matter. `canAdd` is the half that IS a database rule —
+          // tagging a postcard to a ride wants `private.is_ride_crew` — and the
+          // count is PD-342's: an empty Journal keeps `RideJournalEmpty`'s
+          // full-size tile, which is the only thing on screen saying photos
+          // belong here at all.
+          canAdd && journal.data && journal.data.length > 0
+            ? { label: 'Add a photo', href: routes.newPostcardInRide(rideId) }
+            : undefined
+        }
+        className="py-0"
+      />
+      <RideJournalStrip rideId={rideId} canAdd={canAdd} journal={journal} />
+    </>
+  )
+}
+
+function RideJournalStrip({
+  rideId,
+  canAdd,
+  journal,
+}: {
+  rideId: string
+  canAdd: boolean
+  journal: UseQueryResult<Postcard[]>
+}) {
   // Checked ahead of `!journal.data`, which a failed read leaves `undefined`
   // forever — without this branch the skeleton below would never resolve to
   // anything for a rider whose read keeps failing.
@@ -115,22 +152,14 @@ export function RideJournal({ rideId, canAdd }: { rideId: string; canAdd: boolea
     // grow to swallow the byline row and stop lining up with the stamps beside
     // it. `pb-1.5` clears the stamps' drop shadow, which `overflow-x-auto`
     // would otherwise clip along the bottom edge.
+    /* No `Add` tile in the strip any more (PD-342) — a populated Journal is
+       added to from the `(+)` in the heading above, which costs the strip no
+       width at all and so leaves the newest photo first. PD-318 moved the tile
+       to the FRONT of this strip because appended it fell off the right edge of
+       a 390px screen the moment a ride had three photos, with nothing on the
+       plan saying it was there; the heading is visible in every state, which is
+       the property that story was protecting. */
     <div className="flex items-start gap-2 overflow-x-auto px-4 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {/* First, not last (PD-318) — *"Same for ride list postcards"*. Appended
-          after the stamps, `Add` was off the right edge of a 390px screen the
-          moment a ride had three photos, and nothing on the plan said it was
-          there. A crew member with a well-documented ride was the one least
-          able to add to it. */}
-      {canAdd && (
-        <Link
-          href={routes.newPostcardInRide(rideId)}
-          className={`flex aspect-square ${STAMP_TILE_WIDTH} shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong bg-track text-muted transition-colors active:bg-border`}
-        >
-          <PlusIcon className="h-6 w-6" aria-hidden="true" />
-          <span className="text-xs font-semibold">Add</span>
-        </Link>
-      )}
-
       {journal.data.map((postcard) => (
         <PostcardStamp key={postcard.id} postcard={postcard} />
       ))}

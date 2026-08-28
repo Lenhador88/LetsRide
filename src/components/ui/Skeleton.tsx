@@ -71,21 +71,32 @@ function SkeletonRegion({
 
 /**
  * Stands in for `PostcardDeck` — the home screen's card stack. Geometry from
- * `PostcardCard`: the 342×448 slot at `p-1` with a `334/200` photo, an
- * `xs` (24px) avatar row, caption lines and the four-item action row, all
- * measured in that component's own doc comment rather than re-measured here.
+ * `PostcardCard`: a 342-wide card filling its slot at `p-1`, the photo taking
+ * whatever is left after an `xs` (24px) avatar row, a capped caption and the
+ * four-item action row — all reasoned in that component's own doc comment
+ * rather than re-measured here.
  */
 export function SkeletonDeck() {
   return (
     <SkeletonRegion label="Loading postcards" className="relative flex h-full items-center justify-center px-6">
-      <div className="relative aspect-[342/448] w-full max-w-[342px] overflow-hidden rounded-lg bg-surface p-1">
+      {/* **The OUTER box tracks `PostcardDeck` exactly, and that is the part
+          that has to**: this stands in the deck's own slot, so a mismatch there
+          moves the card at the moment the feed arrives. Since PD-343 that means
+          the slot's height rather than the design's 342/448 ratio.
+
+          The rows below it match the shape rather than the content — the photo
+          is the row that grows off the same 200px floor, the caption is fixed
+          where the real one is 0–80px. Two placeholder lines cannot know how
+          long a caption it is standing in for, so the photo/byline boundary
+          still moves a little at the swap; the card does not. */}
+      <div className="relative h-full max-h-[36rem] w-full max-w-[342px] overflow-hidden rounded-lg bg-surface p-1">
         <div className="flex h-full flex-col gap-2">
-          <Skeleton className="aspect-[334/200] w-full shrink-0 rounded" />
+          <Skeleton className="w-full shrink-0 grow basis-[200px] rounded" />
           <div className="flex shrink-0 items-center gap-2 px-3">
             <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
             <Skeleton className="h-3 w-24 rounded" />
           </div>
-          <div className="flex flex-1 flex-col gap-2 px-3">
+          <div className="flex shrink-0 flex-col gap-2 px-3">
             <Skeleton className="h-3.5 w-full rounded" />
             <Skeleton className="h-3.5 w-4/5 rounded" />
           </div>

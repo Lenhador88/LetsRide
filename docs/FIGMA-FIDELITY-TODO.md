@@ -122,6 +122,28 @@ being called done.
       **Heart Filled in Pink/100 `#F23071`** when liked. That settles the
       "Pink/100 — purpose not established" note in `CLAUDE.md`: it is the liked heart, and
       nothing else uses it.
+- [ ] **The photo is bigger than the frame draws it — deviation, adopted 2026-08-28 (PD-343).**
+      A product decision on record, not drift. Product owner: *"The actual image of the
+      postcard is too small. Can we make the image take substantial more space on the
+      postcard?"* The frame is unchanged and still draws 334×200; the shipped card gives the
+      photo **1:1** in flow (the popup and `/postcards/detail`) and lets it take whatever the
+      card has left in the deck's `fill` mode, where the caption is capped at four lines and
+      scrolls instead of absorbing the growth. The deck's stack also stops honouring the
+      frame's 342×448 ratio and takes its slot's full height, which is what there was to give.
+      **1:1 rather than the 4:5 the other candidate offered**: `object-cover` keeps
+      `target ÷ source` of the width, so 4:5 against this frame's 5:3 keeps `0.8 ÷ 1.667` =
+      **48%** of a landscape photo, and a ride photo is landscape far more often than not.
+      **The `fill` photo has a 200px floor** — the height it had before this entry — because
+      without one it draws at `card − 188` and a 667pt phone (iPhone SE 2/3, 8) would have
+      rendered it *smaller* than before, on the smallest supported device, from a change made
+      to enlarge it.
+      **Five surfaces, not the two that are obvious.** The deck is the `fill` one; the popup,
+      `/postcards/detail` **and the postcard lists on `/profile` and `/profile/detail`** are
+      flow, and those last two are the ones a reader forgets — each draws a vertical list of
+      these cards, so every card there gains ~134px.
+      → `src/components/postcards/PostcardCard.tsx`, `PostcardDeck.tsx`, `Skeleton.tsx`,
+      `CreatePostcardForm.tsx` (the composer's preview follows the crop, as it has twice
+      before).
 - [ ] **An uncounted action control is the owner's 6/6 box, 8px under the glove floor —
       deviation, adopted 2026-08-17.** Same status as the photo-box entry under §Create
       postcard: a design question on record, not drift. All eight

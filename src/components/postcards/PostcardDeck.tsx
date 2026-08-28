@@ -13,7 +13,8 @@ import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
  * The home screen's card stack — `Postcard Stack` in
  * `Home - Postcards - All new`, measured from the committed snapshot.
  *
- * Three cards sit at the same centre, 342×448, and the two behind the front one
+ * Three cards sit at the same centre — 342 wide, and as tall as the slot allows
+ * since PD-343 rather than the frame's 448 — and the two behind the front one
  * are rotated. The rotations are exact: −2° for the middle card and +2° for the
  * deepest, read from the raw node and now carried in the snapshot (the pruned
  * tree used to drop `rotation`, which made the fan look like three
@@ -517,9 +518,20 @@ export function PostcardDeck({
 
   return (
     <div className={cn('relative flex h-full items-center justify-center px-6', className)}>
-      {/* The stack is 342×448 in a 390 frame — 24px either side. Capped rather
-          than fixed so it still fits a 320px phone. */}
-      <div className="relative aspect-[342/448] w-full max-w-[342px]">
+      {/* 342 wide in a 390 frame — 24px either side, capped rather than fixed so
+          it still fits a 320px phone.
+
+          **Height is the slot's, not the design's 448 (PD-343).** The frame's
+          ratio left ~44px of this screen's deck slot unused on the 844 device
+          it is drawn for, and more on anything taller — dead space above and
+          below a card whose photo the product owner had just called too small.
+          `h-full` hands all of it to the card, and `PostcardCard`'s `fill` mode
+          hands it on to the photo.
+
+          `max-h-[36rem]` keeps it card-shaped where the slot is unusually tall
+          — a tablet, or a phone in a browser with no chrome — rather than
+          letting a 342px-wide card stretch to 700. */}
+      <div className="relative h-full max-h-[36rem] w-full max-w-[342px]">
         {visible.map((postcard, depth) => {
           const isFront = depth === 0
           const behind = BEHIND[depth - 1]
