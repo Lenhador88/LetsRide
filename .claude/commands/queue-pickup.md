@@ -115,10 +115,12 @@ on assumptions and do not pick work from the repo instead.
 
 It must fail loudly — a job that silently does nothing looks exactly like an empty queue.
 
-**One Claude Code Remote tool is needed too, and only at the end**: `get_session`, for STEP 6's
-budget gate. Do not load it here — a build that never reaches STEP 6 has no use for it, and its
-absence must not stop a story that is otherwise buildable. STEP 6 says what to do if it will not
-answer.
+**Two Claude Code Remote tools are needed too, and only at the end**: `get_session`, for STEP 6's
+budget gate and for STEP 7's own id, and `archive_session`, which STEP 7 calls with that id. Do not
+load either here — a build that never reaches those steps has no use for them, and their absence
+must not stop a story that is otherwise buildable. Each step says what to do if its tool will not
+answer, and the two answer differently on purpose: STEP 6's gate fails closed, STEP 7's archive
+fails open.
 
 **Search for it by keyword, not by the `mcp__Linear__*` name — that prefix is not stable.**
 Watched rotate mid-session on 2026-08-08: every connector's tools came back re-registered under
@@ -281,7 +283,8 @@ it.** An ambiguous check is a build.
 with the command, its output and which of the three rows it falls under, move it to
 **`Needs decision`**, strip your slot label from it, and drop it from your group. **Never
 `Needs help`** — that stops the whole queue over work nobody is doing. If every story in your group
-is stale, say so in a `PushNotification` and end the session.
+is stale, say so in a `PushNotification` and end the session — via STEP 7, like every other
+exit.
 
 ---
 
@@ -882,8 +885,10 @@ That is why they are numbered and cross-referenced by number.
    A queue that also messages itself has two records of the same fact, and the second one is the
    one that goes stale.
 
-   **Then go to STEP 6**, which decides whether you take another story or end. That is the one
-   thing that happens after this bullet, and it sends nothing either way.
+   **Then go to STEP 6**, which decides whether you take another story or end — and, when it
+   ends, hands off to STEP 7, which decides whether this session is archived or left for the owner
+   to read. Those two are the only things that happen after this bullet, and neither sends
+   anything to anyone.
 
    **What a freed slot costs when you do end: it waits for the top of the hour.** Finish at 10:05
    and the next story starts at 11:00, not at 10:06 — unless STEP 6's gates let you take it
@@ -891,9 +896,11 @@ That is why they are numbered and cross-referenced by number.
    nothing to double-fire, and at most one firing an hour that can land on a dispatcher still
    working. **Pausing the Routine still cannot stop a session already building**, yours included.
 
-   **You need exactly one Claude Code Remote tool, and it is not a messaging one.** STEP 6 reads
-   your own token spend through `get_session` (with `session_id` omitted) to decide whether to take
-   another story. That is the whole of it: **no `fire_trigger`, no `send_later`, no
+   **The Claude Code Remote tools you need are two, and neither is a messaging one — which is the
+   point of this paragraph, rather than the count.** STEP 6 reads your own token spend through
+   `get_session` (with `session_id` omitted) to decide whether to take another story, and STEP 7
+   ends the run with `archive_session` on the id that same call returns. Both act on *this*
+   session and nothing else. That is the whole of it: **no `fire_trigger`, no `send_later`, no
    `create_session`, no message to any session.** Reaching for one of those is a design change
    rather than a convenience — say so instead.
 
@@ -983,7 +990,7 @@ happens to land on. **The slot is yours until you have either re-filled it or gi
    mcp__Claude_Code_Remote__get_session          # external_metadata.usage.output_tokens
    ```
 
-   **If that tool will not answer, end the session — this one fails CLOSED.** An
+   **If that tool will not answer, end the session (via STEP 7) — this one fails CLOSED.** An
    `InputValidationError` is a deferred schema, so `ToolSearch` (`+get_session claude code
    remote`) and call it again; `No such tool available` after a keyword search means the connector
    is not on this session at all. **A budget you cannot read is not a budget you have cleared**,
@@ -1003,7 +1010,7 @@ owner-directed session's job rather than a firing's.
 tool exposes it, and the harness's own compaction is lossy summarisation you cannot trigger. **So
 ending the session IS the clear**, and these two numbers are what decide when to spend one.
 
-**If either gate fails, end the session.** Say nothing to anyone: STEP 5 already sent the
+**If either gate fails, end the session — at STEP 7, not here.** Say nothing to anyone: STEP 5 already sent the
 notification and wrote the record, the leftover stories are still in `Queued (AI)`, and the next
 hourly firing will dispatch them into a fresh window.
 
@@ -1019,7 +1026,7 @@ Take the highest-priority candidate (Urgent → High → Medium → Low → No p
 `createdAt`) that clears **all** of these:
 
 - **`Needs help` is empty.** A parked story stops the whole queue, and that applies to you exactly
-  as it applies to the dispatcher. Any row → end the session.
+  as it applies to the dispatcher. Any row → end the session, via STEP 7.
 - **It does not collide with the OTHER slot's territory.** Read that slot's `<!-- territory -->`
   comment the way the dispatcher does, and apply the same three caps: overlapping paths, both
   adding a migration, both touching a shared primitive. **You are the one session that cannot see
@@ -1031,7 +1038,7 @@ Take the highest-priority candidate (Urgent → High → Medium → Low → No p
 - **Its premise is intact**, by the bar at STEP 3. You are about to build it, so the check is the
   same one and it happens now, not after the branch exists.
 
-**Nothing qualifies → end the session.** Leaving a story for the next firing is the ordinary
+**Nothing qualifies → end the session, via STEP 7.** Leaving a story for the next firing is the ordinary
 outcome, not a failure.
 
 **Claiming it is one write and it must carry your label:**
@@ -1049,7 +1056,7 @@ why). So confirm all three:
 - **your** slot label is on it,
 - and the *other* slot's label is **not**.
 
-**Any of those wrong → release it back to `Queued (AI)`, strip your label, and end the session.**
+**Any of those wrong → release it back to `Queued (AI)`, strip your label, and end the session, via STEP 7.**
 Losing a race costs one story an hour; winning one you should have lost costs two sessions building
 one story on two branches, which nothing downstream can see — `queue-pickup.md` STEP 3 says plainly
 that both children read the status they expect.
@@ -1075,6 +1082,11 @@ protect.
 
 ## STEP 7 — Archive yourself, or leave the session for the owner to read
 
+**Every exit in this file arrives here, and this is the only place a run actually ends.** A park, a
+stale premise, a budget gate, a clean merge — all of them. That is deliberate: the decision below
+is about what the session *holds*, not about how it got here, so routing only the happy path would
+have left every other exit deciding it by omission.
+
 **Standing instruction, product owner 2026-08-28:** *"whenever an automatic build session closes a
 bundle of stories, if there are no any further actions feel free to close the session and archive
 it straight away. Only if there are relevant things I should read, questions, or anything needing
@@ -1084,28 +1096,27 @@ my attention please keep the session, so I can read it when I back."*
 A firing writes to three durable places — the Linear comment, the merged PR, and the push
 notification — and every one of them outlives this container. A transcript is worth keeping only
 when it holds something those three could not: a question, a judgement call the owner has to make,
-a thing you could not verify. **An ordinary green run holds nothing of the kind**, which is why
-this defaults to archiving rather than to keeping.
+a thing you could not verify. **An ordinary green run holds nothing of the kind.**
 
 **Archive when ALL of these are true:**
 
-- every story you held is merged and sitting in `Deployed to DEV`;
-- nothing of yours is in `Needs help` or `Needs decision`;
+- you held at least one story, and every one of them is merged and sitting in `Deployed to DEV`;
+- nothing of yours is in `Needs help` or `Needs decision`, and no story of yours was delivered only
+  in part and left open;
 - no PR you opened is still open;
 - STEP 5's comment and push notification are both sent.
 
-**Keep the session — do not archive — if ANY of these is true.** The list is not exhaustive; the
-question behind it is whether the owner would have to reconstruct something by reading the
-transcript:
+**Otherwise keep the session.** These are the cases that put something here the record cannot
+carry, and the list is illustrative rather than a second test — the four conditions above are the
+test, and anything failing one of them stays:
 
 - **a story parked** into `Needs help`, or moved to `Needs decision` on a stale premise;
+- **a story delivered in part** and left open at STEP 5 bullet 4. This is the one the owner most
+  needs to read, because the board shows an open issue and only the transcript says what shipped;
 - **a PR left open**, for any reason, including the three-attempt CI bound at STEP 4c;
-- **a blocked capability** — a credential, a quota, a network policy, a dashboard toggle. Most of
-  what blocks this repo cannot be restored from inside a session, so the ask has to survive in the
-  owner's reach and in your own words;
+- **a blocked capability** — a credential, a quota, a network policy, a dashboard toggle;
 - **a question only the owner can answer**, or an option set you put to them;
-- **anything inferred rather than measured** that they now have to weigh. An unlabelled guess is
-  what this repo forbids; a labelled one they have not read yet is a reason to stay.
+- **anything inferred rather than measured** that they now have to weigh.
 
 **Archiving is the LAST action of the run, after every write.** It ends the session, so anything
 not already in Linear, the PR or the push is lost with it — including a report you were about to
@@ -1113,27 +1124,33 @@ give. Write first, archive second, and never the other way round.
 
 ```
 mcp__<connector>__get_session                      # session_id omitted -> describes the caller
-mcp__<connector>__archive_session  session_id=<your own id, from the call above>
+mcp__<connector>__archive_session  session_id=<the id that call returned>
 ```
 
-**One check before you call it, and it is not optional: confirm the id you are about to archive is
-yours and is not the relay's.** `CLAUDE.md` §What Not To Do forbids archiving the session
-`trig_01WJkMVXGzUVGDcC1njNmaan` is bound to on your own initiative — that one is the owner's
-documented repair, not a firing's housekeeping. **Read the binding off the trigger rather than off
-any file**, which is the same rule `queue-dispatch.md` §The three roles carries and for the same
-reason: a copied id stopped the queue for ten days.
+**Pass the id `get_session` just returned and no other**, which is the whole of the safety story
+here: the only session this step can reach is the one running it. The relay is not reachable and
+never was — it exits at `queue-dispatch.md` STEP -1 without opening this file — so there is no id
+comparison to make, and `CLAUDE.md` §What Not To Do's rule against archiving the session the hourly
+Routine is bound to is about archiving *someone else's* session, which this step cannot do.
 
-```
-mcp__<connector>__list_triggers                    # persistent_session_id on the hourly Routine
-```
+**Do not reach for `list_triggers` to check that.** It would answer a question that cannot arise,
+it would reintroduce the copied trigger id `queue-dispatch.md` §The three roles exists to get rid
+of, and it would not even be sound: `docs/HANDOFF.md` records the disabled fallback Routine not
+appearing in that listing at all, so a session bound to it would read no row and pass.
 
-If that id equals yours, **you are not a build child and this step does not apply** — end the
-session without archiving and say so. The same goes for a session carrying `queue-dispatch-run`: a
-dispatcher is not what this instruction is about.
+**If either call will not answer, end the session WITHOUT archiving, and say so.** This one fails
+**open**, which is the opposite of STEP 6's budget gate and for a reason worth stating: keeping a
+session costs the owner one row in a list, and the harm this file guards against is losing a
+transcript that had something in it. Tell the two failures apart the way STEP 0 does —
+`InputValidationError` is a deferred schema, so `ToolSearch` by keyword and call it again;
+`No such tool available` after a keyword search means the connector is not on this session.
+**A permission prompt is the third case and it looks like neither**: `.claude/settings.json` carries
+no Claude Code Remote entry, so an unattended firing can be stopped by an approval request here.
+Treat all three the same — keep the session, and end.
 
-**This does not touch STEP 5 bullet 6.** Archiving is not a report and reaches nobody; the next
-hourly firing still reads the board and nothing else. And it changes no lock — your slot label left
-`Development (AI)` at STEP 5 bullet 4, so the slot was already free before this step ran.
+**This changes no lock and reports to nobody.** Your slot label left `Development (AI)` at STEP 5
+bullet 4, so the slot was already free before this step ran; and archiving is not a message, so
+STEP 5 bullet 6 stands — the next hourly firing still reads the board and nothing else.
 
 ---
 

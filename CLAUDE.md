@@ -2050,11 +2050,13 @@ cheapest to get green. The one case that needs no PR is a session that changed n
   and archiving one is always fine — a dispatcher carries `queue-dispatch-run` and a child carries
   `queue-dispatch`, which is how the three are told apart.
 
-  **A build child archiving ITSELF is a different act and is now required rather than forbidden** —
-  product owner, 2026-08-28, when a firing's work is done and nothing is left for them to read.
-  `.claude/commands/queue-pickup.md` STEP 7 carries the test and the one check that keeps the two
-  apart: read the relay's id off `list_triggers` and refuse if it is yours. This bullet is about
-  archiving the session someone *else* is bound to; that one is about ending your own.
+  **A build child archiving ITSELF is a different act, and the owner permitted it on 2026-08-28** —
+  *"feel free to close the session and archive it straight away"* — when a firing's work is done and
+  nothing is left for them to read. Permission, not obligation: a session that keeps itself has not
+  done anything wrong, and `.claude/commands/queue-pickup.md` STEP 7 carries the test for which one
+  a given run is. The two acts stay apart without a check, because `archive_session` is called with
+  the id `get_session` returns for the caller: this bullet is about archiving the session someone
+  *else* is bound to, which a firing cannot reach at all.
 
   **Archiving it deliberately is the one documented repair, and it is the owner's call.** The
   relay's container is provisioned once and never re-provisioned, so a relay older than a change to
