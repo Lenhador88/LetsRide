@@ -12,6 +12,7 @@ import {
   formatRideDateLong,
   formatRideDepartureInput,
   formatStartDistance,
+  formatStartDistanceShort,
   formatChatMessageDay,
   formatRideTime,
   notificationSection,
@@ -152,6 +153,33 @@ describe('formatStartDistance', () => {
     expect(formatStartDistance(Number.NaN)).toBeNull()
     expect(formatStartDistance(Number.POSITIVE_INFINITY)).toBeNull()
     expect(formatStartDistance(-3)).toBeNull()
+  })
+})
+
+describe('formatStartDistanceShort', () => {
+  it('is the same number in the chip’s words', () => {
+    expect(formatStartDistanceShort(12)).toBe('12 km')
+    expect(formatStartDistanceShort(11.6)).toBe('12 km')
+    expect(formatStartDistanceShort(1240)).toBe('1,240 km')
+  })
+
+  it('abbreviates the under-a-kilometre case rather than saying zero', () => {
+    expect(formatStartDistanceShort(0)).toBe('<1 km')
+    expect(formatStartDistanceShort(0.6)).toBe('<1 km')
+  })
+
+  it('refuses a number that is not a distance', () => {
+    expect(formatStartDistanceShort(Number.NaN)).toBeNull()
+    expect(formatStartDistanceShort(-3)).toBeNull()
+  })
+
+  // The two forms must never disagree about the number itself — a chip and the
+  // card one tap away draw the same ride. Asserted as a relationship rather than
+  // as two literal tables, so it holds whatever the rounding becomes.
+  it('rounds identically to the long form', () => {
+    for (const km of [1, 1.4, 1.5, 2.5, 11.6, 99.9, 1240]) {
+      expect(formatStartDistance(km)).toBe(`${formatStartDistanceShort(km)} away`)
+    }
   })
 })
 

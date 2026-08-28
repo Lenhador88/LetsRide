@@ -99,11 +99,6 @@ function ClubThreadScreen() {
 
   const [sending, setSending] = useState<ClubChatMessage[]>([])
 
-  // `null` is decided — no such thread, or none this rider may see. `undefined`
-  // is the effect not having answered yet, and 404ing on it would flash one on
-  // every load.
-  if (thread.data === null) notFound()
-
   // Read from the URL, so it is right while the thread is still arriving and
   // after it has failed — the same reason the arrow below takes it.
   const backHref = clubId ? routes.clubThreads(clubId) : '/clubs'
@@ -113,7 +108,16 @@ function ClubThreadScreen() {
   // because the ride's chat inherits the gesture from `RideHeader` and this one
   // draws a plain `Header`. The composer is a textarea, which
   // `declinesSwipeBack` refuses on its own, so the reply half is unaffected.
+  //
+  // Above the `notFound()`, which throws during render: a hook past it runs on
+  // the pass where the thread is still arriving and not on the one that decides
+  // there is none.
   useSwipeBack(backHref)
+
+  // `null` is decided — no such thread, or none this rider may see. `undefined`
+  // is the effect not having answered yet, and 404ing on it would flash one on
+  // every load.
+  if (thread.data === null) notFound()
 
   return (
     <>

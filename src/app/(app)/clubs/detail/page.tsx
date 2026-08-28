@@ -20,11 +20,12 @@ import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getClub, getClubPreview } from '@/lib/data/clubs'
 import { getClubFeed } from '@/lib/data/postcards'
-import { getRides } from '@/lib/data/rides'
+import { getRides, withRideDistance } from '@/lib/data/rides'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 import { formatRideDateLong } from '@/lib/utils'
+import { useRiderPosition } from '@/lib/location/use-rider-position'
 
 /**
  * The club — **one screen now, not the head of a set of four** (the club
@@ -86,6 +87,13 @@ function ClubScreen() {
   const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
 
   const club = useQuery(queryKeys.clubs.detail(id), () => getClub(id))
+
+  // For the ride strip's `· 12 km` (PD-340). Up here with the other hooks
+  // rather than beside the `timeline` it feeds, because everything below the
+  // gates is past a `notFound()` that throws during render. It reads on the key
+  // every distance in the app shares and gates nothing: the strip renders
+  // whether or not a position ever lands.
+  const { position } = useRiderPosition()
 
   /**
    * **The reduced branch — `085`, PD-325.** A non-member of a private club can
@@ -208,7 +216,13 @@ function ClubScreen() {
   // The split is stated rather than sliced off the concatenation — see
   // `clubTimelineRides`, which is a pure function so the four cases that rule
   // has can be asserted.
-  const timeline = clubTimelineRides(rides.data.upcoming, rides.data.past)
+  // `withRideDistance` at the render boundary rather than in `getRides`, the
+  // same call `/rides` and the club's Rides sub-page make: the read is keyed on
+  // the club, and re-keying it on the rider's position would refetch the strip
+  // when a fix lands.
+  const timeline = clubTimelineRides(rides.data.upcoming, rides.data.past).map((ride) =>
+    withRideDistance(ride, position)
+  )
   const isMember = !!club.data.viewer_role
   const TypeIcon = club.data.is_public ? Globe2Icon : Lock2Icon
 

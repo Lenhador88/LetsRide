@@ -106,17 +106,21 @@ function PostcardThread() {
   )
   const profile = useQuery(queryKeys.profile.me(), getCurrentProfile)
 
+  // PD-341, to the same place the arrow goes. The comment composer is a
+  // textarea and `declinesSwipeBack` refuses a gesture that starts in one, so
+  // the reply half of this screen is unaffected.
+  //
+  // Above the `notFound()` for the reason the comment fifteen lines up already
+  // gives about the reads: hooks cannot live behind a conditional return, and
+  // `notFound()` throws during render like any other one.
+  useSwipeBack('/postcards')
+
   if (!valid) notFound()
 
   // Hoisted and rendered in every branch below, the way `/profile/detail` does
   // it: title and back are both constants here, so the chrome owes nothing to
   // the three reads and must not disappear while they are in flight or after
   // they have failed — an error state with no way back is a dead end.
-  // PD-341, to the same place the arrow goes. The comment composer is a
-  // textarea and `declinesSwipeBack` refuses a gesture that starts in one, so
-  // the reply half of this screen is unaffected.
-  useSwipeBack('/postcards')
-
   const header = <Header title={THREAD_TITLE} backHref="/postcards" />
 
   const gate = combineQueries(postcard, comments, profile)

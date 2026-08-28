@@ -21,10 +21,23 @@
  *
  * ## "Strong" is three tests, and none of them is sufficient alone
  *
- * The axis is already claimed on most of these screens — `PostcardDeck` owns
- * left/right on its front card, and `ExploreRidesStrip`, `RideJournal`,
- * `ClubPostcardCarousel` and the filter tiles all scroll horizontally. So the
- * gesture has to be one nobody performs by accident on those.
+ * The axis is already claimed on several of these screens — `PostcardDeck` owns
+ * left/right on its front card, and three scrollers sit on screens the gesture
+ * reaches: `RideJournal` on the ride detail, and `ClubPostcardCarousel` plus the
+ * club's own ride strip on the club detail. So the gesture has to be one nobody
+ * performs by accident on those.
+ *
+ * **`ExploreRidesStrip` is NOT one of them, and PD-341's own body says it is.**
+ * It is a single 56px link row with no `overflow-x` at all — it stopped being a
+ * filter and became a door (`CLAUDE.md`'s test roster records the change), and
+ * the strip that does scroll beside it on `/rides` is `FilterTile`. Neither
+ * matters to this gesture either way, because `/rides` is a tab root with no
+ * back control. Corrected here rather than left, because the argument below is
+ * that geometry beats a list of names — and a wrong name in the paragraph
+ * making that argument is the failure it describes.
+ *
+ * Re-derive rather than trust the three:
+ * `grep -rn "overflow-x-auto" src/components src/app --include=*.tsx`.
  *
  * 1. **It starts at the left edge** (`startsInEdgeZone`). This is the test doing
  *    most of the work: an edge-origin drag is what every native back gesture
@@ -168,10 +181,11 @@ const TEXT_ENTRY_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
  *
  * Three reasons, and each covers a case the others cannot see:
  *
- * - **It scrolls horizontally.** `ExploreRidesStrip`'s filter tiles,
- *   `RideJournal`, `ClubPostcardCarousel` — and anything added later, which is
+ * - **It scrolls horizontally.** `RideJournal`, `ClubPostcardCarousel`, the
+ *   club detail's ride strip, `FilterTile` — and anything added later, which is
  *   the point of testing the geometry rather than keeping a list of component
- *   names that goes stale silently. A scroller already at its left end still
+ *   names that goes stale silently. This list had gone stale before it was
+ *   written: see the header. A scroller already at its left end still
  *   declines: the rider is dragging a strip that has nowhere further to go, not
  *   asking to leave the screen, and reading "it cannot scroll right now" as
  *   permission would make the gesture fire only on the strips the rider had

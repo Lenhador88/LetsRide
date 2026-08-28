@@ -328,9 +328,12 @@ whichever `npm install` runs first, and would also silently change what a `cap a
 **Dates: `Intl` only, no date library.** All in `src/lib/utils.ts`, and every formatter is
 **named for the screen it serves** — `formatPostcardDate`, `formatRideDate`,
 `formatRideCardDay`, `formatRideDateLong`, `formatRideTime` — because each design draws a
-genuinely different shape. `formatStartDistance` (PD-340) is the one that is not a date at all,
-and it is deliberately outside the `formatRide*` prefix: that prefix carries the zone rule below,
-and a member of it holding no instant makes the rule read as false at a glance. There is deliberately no generic `formatDate`/`formatDateTime` — both existed, both
+genuinely different shape. `formatStartDistance` and `formatStartDistanceShort` (PD-340) are the
+two that are not dates at all, and both sit deliberately outside the `formatRide*` prefix: that
+prefix carries the zone rule below, and a member of it holding no instant makes the rule read as
+false at a glance. They are a pair for the ordinary reason — the ride card has room for `12 km
+away` and `RideChip`'s 132px text column does not — and they share their rounding, so the two
+surfaces cannot disagree about the number. There is deliberately no generic `formatDate`/`formatDateTime` — both existed, both
 hardcoded `en-US`, and a generic formatter is how a two-locale split gets back in. Write the
 screen's own formatter and let its name say where it belongs.
 

@@ -75,6 +75,16 @@ function ProfileDetailScreen() {
     getProfile(id)
   )
 
+  // PD-341, to the same place the arrow goes. **Above every guard below, and
+  // that placement is the whole of it**: `redirect()` and `notFound()` throw
+  // during render, so a hook past one runs on some renders and not others — and
+  // the self-view case is the ordinary path, not an exotic one. `me.data` is
+  // undefined on the first pass, so `isSelf` is false and the hook runs; it
+  // lands, `isSelf` flips, `redirect('/profile')` throws, and the hook does not.
+  // Neither `tsc` nor `react-hooks/rules-of-hooks` can see it, because those two
+  // are ordinary calls rather than a `return`.
+  useSwipeBack('/postcards')
+
   // The route guard has already refused an anonymous request to this path;
   // `me.data === null` is the one case it leaves open — the caller's own
   // profile row failed to create — and `/profile` bounces the same way for
@@ -94,9 +104,6 @@ function ProfileDetailScreen() {
   // data that either has no dependency on the read or degrades gracefully
   // while it is in flight, so the header renders on every pass below —
   // loading, erroring or loaded — matching the spec's *partial* requirement.
-  // PD-341, to the same place the arrow goes.
-  useSwipeBack('/postcards')
-
   const header = (
     <Header
       title={profile.data?.username}

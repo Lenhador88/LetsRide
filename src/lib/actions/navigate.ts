@@ -128,6 +128,22 @@ export function useBack(): () => void {
  * declined swipe is a swipe this hook says nothing about, so the deck, the
  * strips and the page scroll exactly as they did — see `swipe-back.ts`.
  *
+ * ## `chain` is the unmeasured part of this feature, and it is not the numbers
+ *
+ * `declinesSwipeBack` has fifteen cases over hand-built nodes, and by
+ * construction none of them can fail if `chain` feeds it the wrong shape. Every
+ * decline rests on two DOM facts nothing here has executed: that
+ * `getComputedStyle(el).overflowX` answers `'auto'` for a Tailwind
+ * `overflow-x-auto` element, and that `scrollWidth > clientWidth` is true for a
+ * strip wider than its box. Both are ordinary and both are believed rather than
+ * measured, because Chromium in the build container cannot reach Supabase and
+ * the walk cannot sign in.
+ *
+ * That is a sharper label than the thresholds carry: a wrong threshold makes the
+ * gesture feel bad and is cheap to retune, while a wrong `chain` makes the
+ * gesture fire inside a strip the rider was scrolling. **First thing to check on
+ * a device**, before any of the numbers.
+ *
  * ## The overlay case, which is PD-317's warning
  *
  * A gesture is refused outright while any `[role="dialog"][aria-modal="true"]`

@@ -571,6 +571,33 @@ export function formatStartDistance(km: number) {
 }
 
 /**
+ * The same distance for `RideChip`, the club detail's 200px rides strip —
+ * `12 km`, `<1 km`.
+ *
+ * **A second formatter rather than a flag on the one above, which is this
+ * file's own rule**: each screen writes what it draws, and a `compact` boolean
+ * would read as a preference at the call site when it is really "which screen
+ * is this". `formatRideDate` and `formatRideDateLong` are the same pair for the
+ * same reason.
+ *
+ * **The chip genuinely has no room for the long form, and that is arithmetic
+ * rather than taste.** The chip is 200px with `p-1`, a 48px date block and a
+ * 12px gap, leaving 132px for its text column. `14:00 · 12 km away` is 18
+ * characters — about 131px at `text-sm` — so the long form truncates the moment
+ * the distance reaches three digits, and it eats the *time* rather than the
+ * distance because it is the same line.
+ *
+ * `<1 km` rather than `Under 1 km` for the same reason, and it is the one place
+ * in the app that abbreviates it. The rounding is shared, so the two forms can
+ * never disagree about the number.
+ */
+export function formatStartDistanceShort(km: number) {
+  if (!Number.isFinite(km) || km < 0) return null
+  if (km < 1) return '<1 km'
+  return `${Math.round(km).toLocaleString('en-GB')} km`
+}
+
+/**
  * Which calendar day an instant falls on **in `APP_TIME_ZONE`**, as `YYYY-MM-DD`.
  *
  * Not a display format — nothing renders this. It exists so `getRideMessages`
