@@ -649,7 +649,7 @@ the words *"stopped being **Owner**"*, so the obvious command counts its own obi
 | 4 | ~~**No edit or delete UI for rides or clubs**~~ — **resolved, `PD-101` is in production** | `updateRide`/`deleteRide`/`updateClub`/`deleteClub` are in `src/lib/actions/`, `/rides/detail/edit` and `/clubs/detail/edit` exist, and both delete confirmations enumerate the blast radius. Club delete goes through `delete_owned_club` (`043`), never a bare `.delete()` |
 | 5 | ~~**Email confirmation is off**~~ — **it is ON for PROD** | Not a store blocker. It *was* an app blocker: `signUp` assumed a live session that confirmation-on does not give it. Fixed — see §Signup below |
 | 6 | **Supabase free tier auto-pauses** | ~7 days idle, serves nothing, no alert. Needs Pro. **Owner** |
-| 7 | ~~**Signup never exercised end to end**~~ — **the app's confirmation-on arm is proven, 2026-08-27 (`PD-252`); the AUTH SERVER was proven 2026-08-16 (`PD-91`)** | **The DEPLOYED BUNDLE is still unexercised and cannot be, from a session** — `app.letsride.social:443` is refused by the agent proxy (`403` to `CONNECT`), so what ran is the app's own code on a local dev server pointed at PROD through the relay. That is the arm, and it is what was unproven; it is not the production build. `PD-91` used six raw HTTP calls to GoTrue, so `signUp` itself never ran; `scripts/probes/signup-confirmation.mjs` closed that at **11/11, 0 residue**. The `!data.session` arm (`src/lib/actions/auth.ts`) and its "Check your email" screen (`src/app/auth/signup/page.tsx`) have now executed, and the emailed link lands the rider signed in on `/onboarding/terms`. **DEV structurally cannot cover them, measured rather than read off decision #6** — `/auth/v1/settings` reports `mailer_autoconfirm` **True** on `fpmrimzxadewsaiwpsel` and **False** on `zwprydcyryvudhurbnye`, so a DEV signup always returns a session and a *duplicate* errors, taking a third arm, `alreadyRegistered`. What is left is the *automated* check, which needs a new branch rather than a permitted ref: §Signup below has the mechanism, `PD-334` the decision |
+| 7 | ~~**Signup never exercised end to end**~~ — **the app's confirmation-on arm has now RUN, 2026-08-27/28 (`PD-252`); the AUTH SERVER was proven 2026-08-16 (`PD-91`)** | **Not "proven" without its two boundaries, and both matter.** (1) **The DEPLOYED BUNDLE is still unexercised and cannot be from a session** — `app.letsride.social:443` is refused by the agent proxy (`403` to `CONNECT`), so what ran is the app's own code on a local dev server pointed at PROD through the relay. (2) **A delayed click is unmeasured**: four `confirm` runs within ~1–2.5 minutes of the mail were green, one at ~5 minutes failed inside `exchangeCodeForSession` with GoTrue clean, and the experiment that would settle it could not be completed here — `PD-337` holds it. What *is* established: `PD-91` used six raw HTTP calls to GoTrue, so `signUp` itself never ran; `scripts/probes/signup-confirmation.mjs` closed that at **11/11, 0 residue**. The `!data.session` arm (`src/lib/actions/auth.ts`) and its "Check your email" screen (`src/app/auth/signup/page.tsx`) have executed, and the emailed link lands the rider signed in on `/onboarding/terms`. **DEV structurally cannot cover them, measured rather than read off decision #6** — `/auth/v1/settings` reports `mailer_autoconfirm` **True** on `fpmrimzxadewsaiwpsel` and **False** on `zwprydcyryvudhurbnye`. The *automated* check is `PD-334`'s decision; §Signup below has the mechanism |
 
 Check each guideline against the live text before building to it — they move, and this table
 will not.
@@ -2349,22 +2349,44 @@ Two consequences, and the second is the one that will bite:
   **0 residue**, verified by query rather than asserted — and residue is state that moves, so
   re-run this rather than trusting the sentence: a later probe run reintroduces rows.
 
-  **One of the four runs was RED at the last two assertions, and the reason is not the arm** —
-  PD-337. The confirmation link is single-use and **something follows it about twenty seconds
-  after delivery, on every run**, before the mailbox is even opened: `email_confirmed_at` lands
-  at `confirmation_sent_at` + 18.5s and + 23s on the two runs measured. GoTrue usually still
-  answers a later `verify` with a `303` and a fresh `code` and the exchange succeeds; on the run
-  whose `confirm` came about five minutes after the mail it did not, and the rider ended on
-  `/auth/login`. **Run `confirm` promptly, and read a red confirm phase as "retry from a fresh
-  signup" before reading it as "the arm is broken".** Whether that automatic follow breaks
-  confirmation for a *real* rider is PD-337's question, not this probe's.
+  **One of five runs was RED at the last two assertions, and what that means is genuinely open**
+  — PD-337. Four `confirm` phases run within ~1–2.5 minutes of the mail were green; one run about
+  five minutes after the mail reported `4/6`, with GoTrue's `verify` clean and the failure inside
+  `exchangeCodeForSession`. **The experiment that would settle it — sign up, wait, confirm —
+  could not be completed**, because PROD stopped delivering mail part way through (below). So
+  neither reading is available yet: the green runs do not show a delayed click is safe, and the
+  red one does not show it is broken.
+
+  **One tempting explanation is ruled out and is worth not re-deriving.** On both runs whose
+  timestamps were read, something followed the single-use link about twenty seconds after
+  delivery, before the mailbox was opened — `last_sign_in_at` at `confirmation_sent_at` + 23s on
+  one, `email_confirmed_at` at + 18.5s on the other. That is real, and it is **not** what
+  separates the green runs from the red one, because it happened on the green runs too. It does
+  locate the follower: on the run whose mail never arrived, `confirmation_sent_at` was stamped and
+  `email_confirmed_at` stayed NULL for nine minutes — **no mail, no follow**, so it is downstream
+  of delivery rather than inside GoTrue.
+
+  **And PROD silently stopped delivering, which nothing in the app can see.** A signup at
+  09:27:03 had `confirmation_sent_at` stamped and produced no mail at all, against four delivered
+  in the preceding two hours; a send limit on Supabase's built-in SMTP is the likely cause and is
+  **not established**. `signUp` returns the same `{ sent: true }` either way and the probe still
+  reports `5/5` — so a green signup phase means the arm ran, never that a rider got mail. That is
+  `PD-108`'s (custom SMTP) to fix, and it now has a measurement.
 
   ```sql
-  -- on zwprydcyryvudhurbnye. Both must be 0.
-  select (select count(*) from auth.users where email like '%+pd252%') as probe_rows,
-         (select count(*) from public.profiles p
-            where not exists (select 1 from auth.users u where u.id = p.id)) as orphan_profiles;
+  -- on zwprydcyryvudhurbnye. Must be 0.
+  -- Keyed on what gate 3 PERMITS — any tag on the owned mailbox — not on the tag
+  -- one run happened to use: `+pd252%` would report 0 for an account left behind
+  -- by a run tagged `+retry`, which the gate allows and this query is the only
+  -- thing looking for.
+  select count(*) as probe_rows from auth.users
+   where email like 'pedro88email+%@gmail.com';
   ```
+
+  There is deliberately no orphan-`profiles` check beside it: `001` declares
+  `profiles.id references auth.users(id) on delete cascade`, so an orphan cannot exist and a
+  count of it is a second confirmation that cannot fail. One check that can fail beats two where
+  one is decorative.
 
   ```bash
   # the header carries the relay + dev-server commands and all five fail-closed gates

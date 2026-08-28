@@ -32,7 +32,7 @@
  * PD-334. This script is the cheap half: it settles whether the arm works,
  * today, without changing what any automated gate may write to.
  *
- * ## Four gates, all fail closed
+ * ## Five gates, all fail closed
  *
  * A green run that proves nothing is worse than no probe, and a run against the
  * wrong project or the wrong mailbox is worse than either.
@@ -58,8 +58,11 @@
  *   default would be a committed password for accounts on a production auth
  *   server.
  * - **`confirm`'s link must be on the gated project's host.** It refuses before
- *   it resolves the link, so a link pasted from an older run or the wrong inbox
- *   never has its token spent.
+ *   it resolves the link, so the token is not spent on the way to finding out.
+ *   **It catches a link from a DIFFERENT PROJECT and nothing else** — an older
+ *   link from the *same* project has an identical host and passes, which is the
+ *   ordinary case and the one §The confirm phase can go red is about. Stated
+ *   narrowly on purpose: this gate cannot be the reason you stop checking.
  *
  * **Gates refuse; assertions measure.** All eleven assertions are evidence about
  * `signUp` and the callback, and none of them is input validation — that is what
@@ -100,27 +103,54 @@
  *
  * ## The confirm phase can go red without the arm being broken — read this first
  *
- * **The confirmation link is single-use, and something follows it about twenty
- * seconds after delivery, on every run.** Measured on two consecutive runs
- * against PROD, 2026-08-28: `email_confirmed_at` was stamped at
- * `confirmation_sent_at` + 18.5s and + 23s, in both cases **before the operator
- * had opened the mailbox**. Whatever does it — a mailbox link-scanner is the
- * obvious candidate — it spends the token this phase is about to spend.
+ * **What is known, from five runs against PROD on 2026-08-28.** Four `confirm`
+ * phases ran within about a minute to two and a half minutes of the mail and
+ * were green. **One, about five minutes after the mail, was `4/6`** — "the
+ * exchange completes" ok, then "the rider is signed in" and "sent into
+ * onboarding" both FAIL, rider on `/auth/login`. GoTrue's `verify` was clean on
+ * that run and handed back a `code`; the step that failed was
+ * `exchangeCodeForSession`, inside the app.
  *
- * Usually GoTrue still answers the operator's later `verify` with a `303` and a
- * fresh `code`, and the exchange succeeds. **Once it did not**: a run whose
- * `confirm` came about five minutes after the mail reported
- * `4/6` — "the exchange completes" ok, then "the rider is signed in" and "sent
- * into onboarding" both FAIL, with the rider on `/auth/login`. The identical
- * code five minutes later, run within a minute of the mail, was `6/6`.
+ * **What is NOT known: whether a delayed click fails reproducibly.** The
+ * experiment — sign up, wait, confirm — could not be completed here, because
+ * PROD's mail stopped being delivered part way through (see below). So do not
+ * read the green runs as showing a delayed click is safe, and do not read the
+ * red one as showing it is broken. **PD-337 holds that question and the
+ * experiment.**
  *
- * So: **run `confirm` promptly, and read a red confirm phase as "retry from a
- * fresh signup" before reading it as "the arm is broken".** The signup phase is
- * unaffected — it touches no link.
+ * **A tempting explanation that does NOT work, recorded so it is not re-derived.**
+ * On both runs whose timestamps were read, something followed the single-use link
+ * about twenty seconds after delivery, before the mailbox was opened
+ * (`last_sign_in_at` at `confirmation_sent_at` + 23s on one, `email_confirmed_at`
+ * at + 18.5s on the other). That is real, and it is **not** the difference between
+ * the green runs and the red one, because it happened on the green runs too — a
+ * cause present in both explains neither. The one variable that differed is
+ * elapsed time.
  *
- * **Whether that automatic follow breaks confirmation for a real rider is a
- * product question this probe does not answer, and it is not this script's to
- * carry** — PD-337.
+ * It does say *where* the follower lives: on the run whose mail was never
+ * delivered, `confirmation_sent_at` was stamped and `email_confirmed_at` stayed
+ * NULL for nine minutes. **No mail, no follow** — so whatever follows the link is
+ * downstream of delivery rather than inside GoTrue.
+ *
+ * **So: a red confirm phase is not to be waved through.** Read the
+ * `the exchange was refused — <status> <body>` detail the assertion prints — that
+ * is GoTrue's own answer, captured off the wire, and the only place the reason
+ * survives, because `callbackFailureDestination` returns a constant and GoTrue's
+ * `error_code` arrives in a fragment `router.replace` discards. Then say which
+ * you have. The signup phase is unaffected; it touches no link.
+ *
+ * ## The signup phase goes green whether or not the mail is ever delivered
+ *
+ * Measured the same day: a signup whose `confirmation_sent_at` was stamped at
+ * 09:27:03 produced **no mail at all**, nine minutes later and counting, against
+ * four that had been delivered in the preceding two hours. The likely cause is a
+ * send limit on Supabase's built-in SMTP and it is **not established** — what is
+ * established is that GoTrue recorded a send and nothing arrived.
+ *
+ * Nothing in the app or in this probe can see that: `signUp` returns the same
+ * `{ sent: true }`, the same screen renders, and the phase reports `5/5`. **So
+ * "5/5" means the arm ran, never that a rider got mail.** PD-108 (custom SMTP)
+ * is where that belongs.
  *
  * ## What it cannot cover from this container
  *
@@ -166,6 +196,8 @@ const supabaseUrl = process.env.PROBE_SUPABASE_URL
 const anonKey = process.env.PROBE_SUPABASE_ANON_KEY
 const ownedMailbox = process.env.PROBE_OWNED_MAILBOX
 const password = process.env.PROBE_PASSWORD
+// Gate 4, and the only one that exits before `refuse()` exists as a concept:
+// without these there is nothing to refuse *about*.
 if (!supabaseUrl || !anonKey || !ownedMailbox || !password) {
   console.error(
     'Set PROBE_SUPABASE_URL, PROBE_SUPABASE_ANON_KEY, PROBE_OWNED_MAILBOX and PROBE_PASSWORD.\n' +
@@ -303,7 +335,7 @@ if (phase === 'confirm') {
     refuse(`no ${STATE} — run the signup phase first; the PKCE verifier lives in it.`)
   }
 
-  // Gate 5, and it is a gate rather than an assertion because it has to run
+  // Gate 5 (see the header), and it is a gate rather than an assertion because it has to run
   // BEFORE the request below: a `report()` here would already have handed the
   // pasted host a token, and would then let the run continue and drive the app
   // with a code from a foreign origin. Every other gate in this file refuses,
@@ -312,8 +344,8 @@ if (phase === 'confirm') {
     await browser.close()
     refuse(
       `the link is on ${new URL(link).host}, not ${projectRef}.supabase.co.\n` +
-        'That is a different project from the one this run gated on — most likely a link\n' +
-        'pasted from an older run, or from the wrong inbox.'
+        'That is a different project from the one this run gated on. (An older link from the\n' +
+        'SAME project has the same host and is not caught here — only the run itself can be.)'
     )
   }
 
@@ -382,6 +414,15 @@ if (phase === 'confirm') {
     storageState: JSON.parse(readFileSync(STATE, 'utf8')),
   })
   const page = await context.newPage()
+  // The one place the reason for a refused exchange survives — see the assertion
+  // below. `postgrest-js` and gotrue-js both swallow it into an error object the
+  // page discards, so it is read off the wire instead.
+  let exchangeFailure = null
+  page.on('response', async (res) => {
+    if (!res.url().includes('/auth/v1/token')) return
+    if (res.status() < 400) return
+    exchangeFailure = `${res.status()} ${await res.text().catch(() => '<unreadable>')}`.slice(0, 300)
+  })
   await page.goto(rewritten, { waitUntil: 'domcontentloaded' })
   // Waits for the guard to settle rather than sleeping a fixed interval: the
   // exchange and then `my_onboarding_state()` are two round trips to eu-west-1,
@@ -401,13 +442,16 @@ if (phase === 'confirm') {
   report(
     landed !== '/auth/login',
     'the rider is signed in',
-    // The full URL, because `callbackFailureDestination` puts the reason in the
-    // query and the pathname alone cannot tell a refused exchange from an
-    // expired one. The usual cause is a SPENT link: the token is single-use, and
-    // anything that follows it before you do — a mailbox link-scanner, a preview
-    // fetch, a retry — consumes it, after which GoTrue still answers 3xx with a
-    // code but that code no longer matches the verifier in your storage.
-    `bounced to ${page.url()} — the exchange was refused`
+    // GoTrue's own answer to the exchange, captured off the wire above.
+    //
+    // **The landing URL is useless here and saying otherwise was wrong.**
+    // `callbackFailureDestination` returns one of two constants and
+    // discriminates on `next`, never on the cause — with `next=/postcards`
+    // hardcoded below it is always `/auth/login?error=invalid_confirmation`.
+    // `/auth/callback`'s own header records that GoTrue puts `error_code` in the
+    // **fragment**, which `router.replace` then discards. So the only place the
+    // reason survives is the token response itself.
+    `the exchange was refused — ${exchangeFailure ?? 'no /token response was seen at all'}`
   )
   report(
     landed === '/onboarding/terms',
