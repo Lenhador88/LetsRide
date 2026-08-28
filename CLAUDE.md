@@ -995,8 +995,10 @@ one dated record plus a live sighting rather than as two.
 **`src/__tests__/agent-briefs.test.ts` is the check, and no grep is.** Every twin sits on one
 `tools:` line, so `grep -c` counts *lines* and answers 1 however many are there — a boolean
 wearing a count's clothes, and this file's own §Working Principles trap in miniature. The test
-asserts the pairing in both directions — a friendly tool with no twin, and a twin orphaned by
-a deleted tool — and fails on a connector it has never heard of:
+asserts a friendly tool with no twin, and fails on a connector it has never heard of. **The
+orphan direction — a twin left behind by a deleted tool — is covered only while no `tools:` line
+repeats an entry**, because that half compares counts rather than sets and one duplicate masks
+one orphan. Latent today (no brief has a duplicate) and it is **PD-336**:
 
 ```bash
 npx vitest run src/__tests__/agent-briefs.test.ts

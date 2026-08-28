@@ -420,9 +420,26 @@ describe('agent briefs do not describe a world that has moved on', () => {
        * from `friendly`, which makes the assertion tautological.** Deriving it
        * from `friendly` and then filtering `declared` by it can only ever count
        * what the forward loop above has already proven present, so
-       * `twins.length === friendly.length` holds by construction and no input
-       * can fail. Measured: deleting `mcp__Supabase__list_projects` while
-       * leaving its twin caught the orphan before that shape and passed after.
+       * `twins.length === friendly.length` held by construction and no input
+       * could fail.
+       *
+       * **KNOWN LIMITATION, and the comparison rather than the derivation is
+       * where it lives (PD-336).** This compares two CARDINALITIES; the prose
+       * says "correspond one to one" and the code has never asserted
+       * correspondence. `declared` is not deduplicated, so one repeated
+       * friendly entry masks exactly one orphaned twin — the counts still
+       * match. Measured against the real `test.md` line: delete
+       * `mcp__Supabase__list_projects`, leave its twin, and it fails; add a
+       * duplicate of any friendly entry as well and it passes. No brief carries
+       * a duplicate today (all 8 are `friendly === twins`), so this is latent,
+       * and a duplicate is inert at runtime, which is why nothing would ever
+       * prompt someone to remove one.
+       *
+       * The fix is to assert the SETS — the declared known-UUID entries against
+       * the expected twin set — rather than their sizes. Deliberately not
+       * attempted here: three successive rewrites of this block each changed
+       * the derivation and left the comparison alone, and a fourth pass from
+       * the same session is how that becomes a fourth reshaping.
        *
        * Nor against *every* `mcp__<uuid>__` entry, which is the other ditch:
        * that would fail a brief the first time someone correctly adds a github
