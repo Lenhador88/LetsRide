@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect } from 'react'
 import { notFound, useRouter, useSearchParams } from 'next/navigation'
+import { useBanner } from '@/components/ui/Banner'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { ClubJoinRequestsSection } from '@/components/clubs/ClubJoinRequestsSection'
 import { ClubDeclinedRequestsSection } from '@/components/clubs/ClubDeclinedRequestsSection'
@@ -85,6 +86,7 @@ export default function ClubManageRidersPage() {
 function ClubManageRidersScreen() {
   const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
   const router = useRouter()
+  const showBanner = useBanner()
 
   const club = useQuery(queryKeys.clubs.detail(id), () => getClub(id))
   // Enabled only once the club has come back, matching the Members screen:
@@ -104,8 +106,22 @@ function ClubManageRidersScreen() {
 
   // In an effect, never during render: `router.replace` is a side effect, and
   // the prerender pass runs this body with no router history to write to.
+  //
+  // **The banner is what turns a bounce into an answer.** Without it the rider
+  // lands on the club detail with nothing explaining why — and since `088`
+  // moved the requests section OFF that screen, nothing there relates to what
+  // they tapped either, so the notification is still in their list, still
+  // pointing here, and the next tap does the same thing. `ClubOptionsMenu`'s
+  // `Leave club` and `PostcardMenu` both pair `showBanner` with their own
+  // `router.replace` for exactly this.
   useEffect(() => {
-    if (mayManage === false) router.replace(routes.club(id))
+    if (mayManage !== false) return
+    showBanner('You no longer manage this club')
+    router.replace(routes.club(id))
+    // `showBanner` is deliberately absent: it comes from a context whose value
+    // is stable for the provider's lifetime, and naming it would re-run this on
+    // any re-render of that provider — firing the banner twice for one bounce.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mayManage, router, id])
 
   if (club.data === null) notFound()

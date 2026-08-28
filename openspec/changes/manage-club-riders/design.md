@@ -397,7 +397,7 @@ assumption. A migration that lands without them is a policy nobody can observe.
 
 ## Where the screen lives, and who reaches it
 
-`/clubs/detail/riders`, reached from a `Manage riders` row in `ClubOptionsMenu` drawn when
+`/clubs/detail/manage`, reached from a `Manage riders` row in `ClubOptionsMenu` drawn when
 `viewer_is_owner || viewer_role === 'admin'`.
 
 **`viewer_is_owner`, not `viewer_role === 'owner'`** — `ClubJoinRequestsSection` already draws that
@@ -405,11 +405,25 @@ distinction and here it decides whether the feature exists at all: the ownerless
 roster row, `private.is_club_admin_for` admits them through its `clubs.owner_id` arm, and gating the
 menu row on the role would hide the screen from the one rider who can actually use it.
 
-**A non-admin who guesses the URL gets `notFound()`.** The roster itself is not secret — every
-member can already read it at `/clubs/detail/members` — but a screen called *Manage riders* whose
-every control refuses is the same class of defect as PD-125's unreachable screen, arriving from the
-other side. The guard is an affordance; the three RPCs are the boundary, and each refuses with one
-`insufficient_privilege` whatever the client renders.
+**A non-admin who reaches the URL is REDIRECTED to the club, not `notFound()`.** The roster itself
+is not secret — every member can already read it at `/clubs/detail/members` — but a screen called
+*Manage riders* whose every control refuses is the same class of defect as PD-125's unreachable
+screen, arriving from the other side. The guard is an affordance; the three RPCs are the boundary,
+and each refuses with one `insufficient_privilege` whatever the client renders.
+
+**`notFound()` was written here first and is wrong**, which `reviewer` caught on the built branch.
+It is this app's answer to *"no such club, or not one you may see"*, conflated on purpose; reaching
+this screen means `getClub` returned a club, so the reader can already see it and there is nothing
+to hide. Sending them to a 404 on a club plainly in front of them is the app disagreeing with
+itself — and the case that makes it reachable is one this change creates, not a guessed URL: an
+admin told about a pending request, demoted before they open it, whose notification `085`'s
+retraction does not touch because the request is still pending.
+
+The redirect also self-heals a state the 404 could not. `useQuery` serves cached data synchronously,
+so a rider promoted mid-session whose `clubs.detail(id)` entry predates the promotion computes
+"not an admin"; under `notFound()` the render threw, the revalidation was never issued, and they
+were stuck for the rest of the session. The redirect lands them on the club detail, which reads the
+same key and revalidates.
 
 **A non-member of a private club** never gets that far: `getClub` returns null and the existing
 `notFound()` fires, which is `085`'s conflation of "no such club" with "not yours" and is unchanged.
@@ -478,6 +492,9 @@ own docstring already calls the honest trade. Recorded so the truncation is not 
 so a club at the bound is a known state rather than a surprise.
 
 **Q6 — Is the route `/clubs/detail/riders`? (agent's, recorded)**
-Answered: **yes**, matching `detailPaths`' existing shape and the product owner's own word,
-"riders". Not `/members`, which is taken by the read-only roster and must stay reachable — a member
-who is not an admin still has somewhere to see who is in their club.
+Answered: **no — it shipped as `/clubs/detail/manage`.** `riders` was proposed to match the product
+owner's own word, and the segment reads as a second roster beside `/members` rather than as the
+thing you do to one. `manage` says which of the two it is at a glance in `detailPaths`, where every
+other club segment is a noun for a *screen*. Not `/members` either way: that is the read-only roster
+and must stay reachable, because a member who is not an admin still has somewhere to see who is in
+their club.

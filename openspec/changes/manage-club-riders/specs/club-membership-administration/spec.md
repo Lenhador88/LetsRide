@@ -283,8 +283,20 @@ The join-request half of the same screen keeps `085`'s conjuncts exactly as writ
 ### Requirement: The management surface SHALL be reachable only by those who can use it, and its refusals SHALL come from the database
 
 The Manage riders screen SHALL be reachable from `ClubOptionsMenu` only when
-`viewer_is_owner || viewer_role === 'admin'`, and SHALL `notFound()` for anyone else who reaches its
-URL directly.
+`viewer_is_owner || viewer_role === 'admin'`, and SHALL **redirect to the club** for anyone else who
+reaches its URL directly.
+
+**It SHALL NOT `notFound()`, and the reason is that a 404 there would be false.** `notFound()` is
+this app's answer to *"no such club, or not one you may see"*, deliberately conflated so a private
+club's existence is not confirmed. Reaching this screen at all means `getClub` returned a club, so
+the reader can already open it by name and the conflation has nothing left to protect. The case that
+makes this reachable rather than hypothetical is one this change itself creates: an admin is told
+*"Rider asked to join Club"*, is demoted before opening it — by the owner, or by themselves — and
+`085`'s retraction does not fire, because the request is still pending and nothing about it changed.
+The notification is still readable and still points here.
+
+The redirect SHALL be issued from an effect and the screen SHALL draw its placeholder rather than
+its roster while it is pending, so no rider sees controls the RPCs would refuse.
 
 **The gate SHALL be `viewer_is_owner`, never `viewer_role === 'owner'`.** The two differ for `054`'s
 ownerless owner, `private.is_club_admin_for` admits that rider through its `clubs.owner_id` arm, and

@@ -227,12 +227,13 @@ One per arm, including every negative. A policy change with no new assertion is 
 
 ## 5. Screens
 
-- [ ] 5.1 `routes.clubRiders` / `detailPaths.clubRiders` → `/clubs/detail/riders`.
+- [ ] 5.1 `routes.clubManage` / `detailPaths.clubManage` → `/clubs/detail/manage`.
 - [ ] 5.2 `ClubOptionsMenu`: a `Manage riders` row, gated on
   `isOwner || viewerRole === 'admin'`. **`viewer_is_owner`, never `viewer_role === 'owner'`** — the
   ownerless owner is the one rider who most needs it.
 - [ ] 5.3 The Manage riders page: the roster with per-rider actions in a `ContextMenu`, each drawn
-  only where the authority matrix permits it, and `notFound()` for a non-admin.
+  only where the authority matrix permits it, and a REDIRECT to the club for a non-admin —
+  never `notFound()`, which would be false for a club the reader can already see.
 - [ ] 5.4 Destructive confirmation per `client-render-shell`'s copy requirement — the public/private
   clause, and no claim that the rider is told or that their content goes.
 - [ ] 5.5 **Move** `ClubJoinRequestsSection` from `src/app/(app)/clubs/detail/page.tsx` onto the new

@@ -171,7 +171,7 @@ calls yet.
 ### Screens
 
 - **A `Manage riders` row in `ClubOptionsMenu`**, gated on `viewer_is_owner || viewer_role ===
-  'admin'`, opening `/clubs/detail/riders`.
+  'admin'`, opening `/clubs/detail/manage`.
 - **`ClubJoinRequestsSection` MOVES** off the club detail and onto that screen — same route data,
   same `queryKeys.clubs.joinRequests(clubId)`, same `getClubJoinRequests`, per `085`'s own
   instruction to absorb rather than duplicate. Plus the **`Clear`** control on a declined row that
