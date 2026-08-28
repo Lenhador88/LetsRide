@@ -106,8 +106,8 @@ export function useBack(): () => void {
  * ## Which screens call this, and which deliberately do not
  *
  * Every **read** screen with a back control: the ride plan, crew, invite and
- * chat; the club detail, members, rides and threads; the postcard thread; the
- * profile detail; and `/notifications`.
+ * chat; the club detail, members, rides, threads and one thread; the postcard
+ * thread; the profile detail; and `/notifications`.
  *
  * **Not the create and edit forms** — `/rides/new`, `/clubs/new`,
  * `/postcards/new`, both edit screens and the new-thread screen. Leaving those
