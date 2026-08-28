@@ -675,6 +675,17 @@ whole of the change, and each has a number behind it rather than a preference.
   same evening — `next_run_at` sat at 18:05Z with the clock at 20:40Z and no fire since 17:09Z, the
   second time this Routine has been found silently stopped.
 
+  **It answers whether the Routine FIRES, never whether a firing DOES anything, and that is the
+  gap the 2026-08-28 outage fell through.** All three trigger-side signals read healthy across
+  roughly nine dead firings that day — `enabled: true`, `next_run_at` in the future, and
+  `last_run: ROUTINE_RUN_STATUS_SUCCEEDED` at 21:15Z, finishing in 21 seconds — because the
+  firings *were* arriving and were being refused by a relay running a ten-day-old clone of this
+  file. A short `SUCCEEDED` run that spawns nothing is indistinguishable from one that correctly
+  found an empty queue. **So no field on the Routine detects this. The board does**: work sitting
+  in `Queued (AI)` with a free slot, no `Needs help` row and nothing new arriving in
+  `Development (AI)`, across several hour boundaries. §Editing this file is not finished until the
+  relay is archived carries the cause and the repair.
+
   **Re-arm `trig_01WJkMVXGzUVGDcC1njNmaan` — name the id, do not write "the trigger"** — with
   `update_trigger enabled: true`. That exact command is also the documented restore for the
   irreplaceable fallback `…Gzy8e`, so an unqualified "re-arm it" is one slip away from running two
@@ -704,6 +715,46 @@ old shape and notifies rather than stopping.
 **Carried here because the calls that trip them are CCR calls made by a session that is not
 reading this file:**
 
+### Editing this file is not finished until the relay is archived
+
+**An edit to `queue-dispatch.md` and archiving the relay are ONE action, and the edit is the
+half that does nothing on its own.** Whoever changes this file owns the archive — do not merge a
+change to it and leave the archiving to be noticed later, and do not write a note asking someone
+else to do it. The relay executes the copy it cloned when its session was created, so a merged
+change reaches dispatchers and children (each a fresh session with a fresh checkout) and **never
+reaches the relay**. It is an obligation on the editor rather than a thing to consider, because
+the passive version of this sentence was already in this section and was not followed.
+
+**It cost nine hours on 2026-08-28 and ten days across the two outages before it.** Six stories
+sat in `Queued (AI)` from 13:07Z to 22:05Z with both slots free and `Needs help` empty, while
+roughly nine hourly firings dispatched nothing. That morning's rewrite had deleted the id-based
+role decision *specifically* so a stale copy could not misroute — and could not reach the relay
+that needed it, because the relay was already running the old copy. **A fix to this file cannot
+repair a relay running an older version of this file. Only archiving can.**
+
+**The health signals do not detect it — all three read healthy across those ~9 dead firings.**
+`enabled: true`, `next_run_at` in the future, and `last_run: ROUTINE_RUN_STATUS_SUCCEEDED` at
+21:15Z finishing in 21 seconds. A 20-second `SUCCEEDED` run that spawns nothing is what a refused
+firing looks like, and nothing distinguishes it from a firing that correctly found an empty queue.
+**The detector is the board**: anything sitting in `Queued (AI)` with a free slot, no `Needs help`
+row, and no new arrival in `Development (AI)`, persisting across several hour boundaries. Check it
+before checking the Routine, and see §Why this shape for what `next_run_at` does and does not
+answer.
+
+**The relay is not in the ordinary session list, so it is found by id or not at all.** A
+trigger-minted session carries `origin: scheduled_trigger` and the tags
+`config:routine-lineage-none` and `routine:agent-minted`, and trigger-fired runs are excluded from
+`list_sessions` by default — the owner could not find it by title. Take the id from
+`list_triggers`' `persistent_session_id` on `trig_01WJkMVXGzUVGDcC1njNmaan`, which is the
+authority, and pass that to `archive_session`. **Do not write the id into this file or any other**
+— that is the failure §The three roles documents twice.
+
+**`archive_session` on the relay succeeds from inside a session** — done 2026-08-28T22:09:58Z,
+`SESSION_STATUS_ARCHIVED`. The refusal recorded earlier that day was a *dispatcher archiving
+itself* under the auto-mode classifier, which is a different call. **It remains the owner's
+decision**; what is wrong is any implication that a session cannot execute it once they have
+decided.
+
 - **Never delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`**, the disabled fresh-session Routine. Its three
   connectors were hand-attached and `create_trigger` refuses the parameter, so no session can
   recreate it. **It was not in `list_triggers` on 2026-08-16, and still was not on 2026-08-18** —
@@ -724,15 +775,32 @@ reading this file:**
   **Archiving it is now sometimes the REPAIR rather than the damage**, and this is the case that
   calls for it: a relay that predates a change to this file goes on executing the version it
   cloned, invisibly, since every firing still records `SUCCEEDED`. Archiving forces a fresh
-  session, a fresh container and a current checkout. **Do it only when a change to this procedure
-  has to reach the relay**, and expect a rebind to take up to an hour — **n=1**, 55 minutes, on
-  2026-08-18.
+  session, a fresh container and a current checkout. **When a change to this procedure has to
+  reach the relay, archiving is not optional and is the editor's own job** — §Editing this file is
+  not finished until the relay is archived above, which is the obligation this sentence used to
+  state passively and which was therefore not followed.
+
+  **Expect the rebind to take up to an hour, and it may take longer.** `trig_01WJkMVXGzUVGDcC1njNmaan`
+  rebound itself 55 minutes after the 2026-08-18 archive; after the 2026-08-28T22:09:58Z archive,
+  `list_triggers` at 22:57Z still reported `persistent_session_id` on the **archived**
+  `session_014ncc5vBmsKG9fmfznUoZ48`, 48 minutes on, with `next_run_at` 23:05:51Z. So the field is
+  not a countdown, a firing can fall in the gap, and **a stale `persistent_session_id` shortly
+  after an archive is expected rather than a second failure**. Read it again an hour later before
+  concluding anything.
 
   **INFERRED, not measured: that a relay container is provisioned once and never re-provisioned.**
   What was measured on 2026-08-28 is that one relay's container *had not been* re-provisioned in
-  ten days — `container_cc_version 2.1.235` against 2.1.247+ on every session started that week.
-  Whether some other event re-provisions one is untested, and it matters: if anything else does,
-  archiving is not the only repair. Re-derive it before relying on it —
-  `get_session` on the relay, and compare `container_cc_version` against a session started today.
+  ten days — `container_cc_version 2.1.235` against 2.1.247+ on every session started that week —
+  read twice that day, in the morning and again at 21:15Z, still 2.1.235. **n=2, both on the same
+  relay**, which is why it is still an inference: what has been shown is that nothing re-provisioned
+  *this* one, never that nothing can. It matters because if some other event rebuilds a container,
+  archiving is not the only repair. The check is one call, and it is the one to run before
+  believing a relay is executing the current file:
+
+  ```
+  mcp__Claude_Code_Remote__get_session  session_id=<persistent_session_id off list_triggers>
+  #   -> container_cc_version, against the same field on any session started today.
+  #      Older = it is running a clone from its own creation date, whatever the repo says.
+  ```
   **Everything the relay spawns is disposable** and archiving one is always fine: a dispatcher
   carries `queue-dispatch-run` and a child carries `queue-dispatch`.
