@@ -347,12 +347,6 @@ function ClubScreen() {
           </div>
         )}
 
-        {/* `085`, PD-325 — above Members because a pending request IS a
-            roster decision, and because an owner opening the club should meet
-            it before the list it changes. Draws nothing for anyone but an
-            owner or admin, and nothing when there is nothing pending.
-            **PD-326's `Manage riders` absorbs this section**; it should reuse
-            the same key and the same read rather than build a second list. */}
         {/* `ClubJoinRequestsSection` moved to `Manage riders` — `088`,
             PD-326, which is what `085`'s own design.md Q7 said would happen:
             it put the minimum approval surface here precisely so PD-326 would

@@ -1,7 +1,7 @@
 'use client'
 
-import { Suspense } from 'react'
-import { notFound, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect } from 'react'
+import { notFound, useRouter, useSearchParams } from 'next/navigation'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { ClubJoinRequestsSection } from '@/components/clubs/ClubJoinRequestsSection'
 import { ClubDeclinedRequestsSection } from '@/components/clubs/ClubDeclinedRequestsSection'
@@ -11,7 +11,7 @@ import { SkeletonList } from '@/components/ui/Skeleton'
 import { getClub, getClubMembers } from '@/lib/data/clubs'
 import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
-import { DETAIL_ID_PARAM } from '@/lib/routes'
+import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 
 /**
  * `Manage riders` — `088`, PD-326. Reached from `ClubOptionsMenu` and from
@@ -38,11 +38,28 @@ import { DETAIL_ID_PARAM } from '@/lib/routes'
  *
  * ## The gate here is a screen, never a permission
  *
- * A rider who guesses the URL gets `notFound()` — but that is the courtesy,
- * not the enforcement. `088`'s three RPCs each re-check the caller's authority
- * in their own body, where `security definer` makes it load-bearing, and each
- * refuses with one indistinguishable `42501`. Defeating this branch reaches a
- * screen whose every control the database says no to.
+ * A rider who may not manage this club never sees it — but that is the
+ * courtesy, not the enforcement. `088`'s three RPCs each re-check the caller's
+ * authority in their own body, where `security definer` makes it load-bearing,
+ * and each refuses with one indistinguishable `42501`. Defeating this branch
+ * reaches a screen whose every control the database says no to.
+ *
+ * **A non-admin is REDIRECTED to the club, never `notFound()`, and that is not
+ * softness — a 404 here would be a lie.** `notFound()` is this app's answer to
+ * *"no such club, or not one you may see"*, deliberately conflated so a private
+ * club's existence is not confirmed (`getClub`'s own note). That reasoning does
+ * not reach this screen: getting here at all means `getClub` returned a club,
+ * so the reader can already see it and there is nothing left to hide.
+ *
+ * The case that makes it matter is one `088` itself creates. An admin is told
+ * *"Rider asked to join Club"*; before they open it they are demoted — by the
+ * owner, or by themselves, which `088`'s permission table grants — and
+ * `085`'s retraction does not fire, because the request is still pending and
+ * nothing about it changed. The row is still readable and `NotificationsListItem`
+ * now points it here. Sending that rider to a 404 on a club they can plainly
+ * see would be the app disagreeing with itself; sending them to the club is the
+ * truthful answer, and it covers every other stale entrance — a bookmark, a
+ * second tab, a link an admin shared — for free.
  *
  * **The gate is `viewer_is_owner || viewer_role === 'admin'`, and the first
  * disjunct is not redundant** (PD-280, and `ClubJoinRequestsSection`'s own
@@ -67,6 +84,7 @@ export default function ClubManageRidersPage() {
 
 function ClubManageRidersScreen() {
   const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
+  const router = useRouter()
 
   const club = useQuery(queryKeys.clubs.detail(id), () => getClub(id))
   // Enabled only once the club has come back, matching the Members screen:
@@ -77,12 +95,20 @@ function ClubManageRidersScreen() {
     getClubMembers(id)
   )
 
+  // **`null` is decided and `undefined` is "not yet"**, so this is three states
+  // rather than two: no club, a club this rider may manage, and a club they may
+  // not. The last is a redirect and not a 404 — see the header.
+  const mayManage = club.data
+    ? club.data.viewer_is_owner || club.data.viewer_role === 'admin'
+    : undefined
+
+  // In an effect, never during render: `router.replace` is a side effect, and
+  // the prerender pass runs this body with no router history to write to.
+  useEffect(() => {
+    if (mayManage === false) router.replace(routes.club(id))
+  }, [mayManage, router, id])
+
   if (club.data === null) notFound()
-  // `undefined` is "not yet" and only `null` is decided — so this waits rather
-  // than flashing a 404, and the authority check below runs on a real answer.
-  if (club.data && !(club.data.viewer_is_owner || club.data.viewer_role === 'admin')) {
-    notFound()
-  }
 
   // Above both gates: back comes from the URL, so it stays usable while the
   // club is arriving and when it has failed.
@@ -97,7 +123,10 @@ function ClubManageRidersScreen() {
       <div className="flex flex-col gap-6 pt-4">
         {gate.error ? (
           <ErrorState onRetry={gate.refetch} />
-        ) : !club.data || !members.data ? (
+        ) : // `mayManage === false` draws the placeholder rather than the screen,
+        // so the redirect above never flashes a roster at a rider who is about
+        // to leave it — and never draws controls the RPCs would refuse.
+        !club.data || !members.data || !mayManage ? (
           <SkeletonList rows={5} />
         ) : (
           <div className="flex flex-col gap-6 motion-safe:animate-fade-in">
