@@ -436,6 +436,133 @@ export function formatRideDateLong(date: string, zone: string | null) {
 }
 
 /**
+ * Which calendar day an instant falls on in `zone`, as a count of days since the
+ * epoch — the unit `formatRideCardDay` subtracts.
+ *
+ * **A day *number*, not a duration.** "Tomorrow" is a calendar fact, not
+ * twenty-four hours: a ride leaving at 08:00 tomorrow is 14 hours away at 18:00
+ * tonight and 26 hours away at 06:00 this morning, and it is "Tomorrow" in both.
+ * Dividing an instant difference by 86,400,000 answers the wrong question and is
+ * wrong twice a year besides, on the two days that are 23 and 25 hours long.
+ *
+ * Assembled from `Intl` parts rather than from an offset calculation, the same
+ * trick `rideZoneDayKey` uses and for the same reason: the zone's own rules —
+ * DST, historical offsets, the half-hour zones — are ICU's to apply, not ours.
+ */
+function zoneDayNumber(instant: Date, zone: string): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(instant)
+
+  const find = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value)
+
+  // `Date.UTC` on the zone's own calendar parts, so the result is a plain day
+  // index with no offset left in it — two of these subtract to a day count.
+  return Math.floor(Date.UTC(find('year'), find('month') - 1, find('day')) / 86_400_000)
+}
+
+/**
+ * The ride card's day, in the words a rider actually uses — `Today`,
+ * `Tomorrow`, `This Wednesday`, `Next Wednesday`, and `SAT, 16 NOV` beyond
+ * that (PD-340).
+ *
+ * Product owner, 2026-08-28: *"'smart date' for eg. \"This Wednesday at 14h\""*.
+ * The card used to draw `formatRideDate` alone, which makes the rider do
+ * arithmetic the app already has the numbers for: `SAT, 16 NOV` only means
+ * something to someone who knows what today is.
+ *
+ * ## The bands, and where each boundary sits
+ *
+ * | Days ahead, in the ride's own zone | Reads |
+ * |---|---|
+ * | `-1` | `Yesterday` |
+ * | `0` | `Today` |
+ * | `1` | `Tomorrow` |
+ * | `2`–`6` | `This ⟨weekday⟩` |
+ * | `7`–`13` | `Next ⟨weekday⟩` |
+ * | anything else, past or future | `formatRideDate` — `SAT, 16 NOV` |
+ *
+ * **`This`/`Next` is a decision, not a convention, because English has none.**
+ * "This Wednesday" said on a Monday means two days away to most people and next
+ * week's to some; the split here is *the next occurrence* versus *the one after
+ * it*, which is the reading that never leaves a rider with two candidate dates.
+ * It is safe precisely because the two bands cannot overlap: at 7–13 days the
+ * nearer occurrence has already been named `This`, so `Next` can only mean the
+ * far one.
+ *
+ * **Past days beyond yesterday get the plain date and that is deliberate.**
+ * `RideCard` draws past rides too — the "Went" pill exists for them — and
+ * `Last Wednesday` competes with `Yesterday` for the same week in a way
+ * nothing on the card resolves. A date is unambiguous, and history is read
+ * rather than planned against.
+ *
+ * ## The zone is the ride's, for both halves of the comparison
+ *
+ * `now` is bucketed in `rideZone(zone)` too, never in the runtime's zone. Every
+ * other thing this card says about the ride is its meeting point's wall clock
+ * (`080`, PD-193), so a card reading `Tomorrow · 09:00` must mean nine
+ * tomorrow *there*. Bucketing `now` locally would let a rider in Lisbon see
+ * `Today · 01:00` for a ride that has already left Berlin.
+ *
+ * `now` is injectable for the tests, which is the only way to assert a band:
+ * `vitest.config.ts` pins `TZ=UTC`, so a fixed clock is what distinguishes a
+ * real zone lookup from a string comparison that happens to agree.
+ */
+export function formatRideCardDay(date: string, zone: string | null, now: Date = new Date()) {
+  const resolved = rideZone(zone)
+  const departure = new Date(date)
+  const days = zoneDayNumber(departure, resolved) - zoneDayNumber(now, resolved)
+
+  if (days === -1) return 'Yesterday'
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Tomorrow'
+  if (days < 0 || days > 13) return formatRideDate(date, zone)
+
+  const weekday = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    timeZone: resolved,
+  }).format(departure)
+
+  return `${days < 7 ? 'This' : 'Next'} ${weekday}`
+}
+
+/**
+ * How far a ride's meeting point is from the rider — `12 km away` (PD-340).
+ *
+ * Takes kilometres, which is what `distanceKm` returns and what
+ * `RideListItem.distance_km` carries; a caller with `undefined` has no distance
+ * to draw and must render nothing rather than call this with a fallback.
+ *
+ * **Whole kilometres, and never a decimal.** The rider's own position is
+ * rounded to two decimal places — roughly a kilometre — before it reaches any
+ * distance calculation (PD-151), and the meeting point's own coordinate is a
+ * geocode of a free-text address. `11.6 km away` would render four significant
+ * figures onto an input good for two, which is the "unlabelled guess passing as
+ * a known value" this repo refuses everywhere else.
+ *
+ * **`Under 1 km away` rather than `0 km away`** for anything below a kilometre.
+ * Rounding to zero states something false — the ride is not *here* — and it is
+ * the one bucket where the ±1 km input error is the whole of the number.
+ *
+ * No further bucketing above that: the error is ~1 km at every distance, so the
+ * kilometre digit is exactly as honest at 400 km as at 4, and rounding a long
+ * distance to the nearest ten would be a display preference with nothing behind
+ * it.
+ *
+ * `en-GB` grouping, so a genuinely distant ride reads `1,240 km away` rather
+ * than as a raw integer — the same locale every other `formatRide*` helper uses.
+ */
+export function formatRideDistance(km: number) {
+  if (!Number.isFinite(km) || km < 0) return null
+  if (km < 1) return 'Under 1 km away'
+  return `${Math.round(km).toLocaleString('en-GB')} km away`
+}
+
+/**
  * Which calendar day an instant falls on **in `APP_TIME_ZONE`**, as `YYYY-MM-DD`.
  *
  * Not a display format — nothing renders this. It exists so `getRideMessages`

@@ -12,17 +12,16 @@ import { RideFilterBar } from '@/components/rides/RideFilterBar'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonFilterBar, SkeletonList } from '@/components/ui/Skeleton'
-import { getMyLocationText } from '@/lib/data/profile'
-import { getExploreRides, getRideFilters, getRides } from '@/lib/data/rides'
+import { getExploreRides, getRideFilters, getRides, withRideDistance } from '@/lib/data/rides'
 import { isNearby } from '@/lib/location/distance'
-import { nearLabel } from '@/lib/location/near-label'
 import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
-import { resolveRiderLocation } from '@/lib/location/rider-location'
+import { useRiderPosition } from '@/lib/location/use-rider-position'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { parseRideFilter } from '@/lib/validation/rides'
 import { cn } from '@/lib/utils'
 import type { RideFilter, RideListItem } from '@/types'
+import type { RiderLocation } from '@/lib/location/rider-location'
 
 /**
  * The rides list — `Home - Rides - All`, `… - Your rides` and `… - Rides from
@@ -159,26 +158,13 @@ function RidesScreen() {
   const rides = useQuery(queryKeys.rides.list(filterKey), () => getRides(filter))
   const filters = useQuery(queryKeys.rides.filters(), () => getRideFilters())
 
-  // Where the rider is, for the strip's `near …` (PD-260). Its own query, on the
-  // same key `/clubs`, `/clubs/explore` and `/rides/explore` use, so a rider
-  // arriving from any of them pays nothing and — more importantly — measures
-  // from the same coordinates. It never prompts: without an already-granted
-  // permission it answers with the geocoded profile city, or nothing.
-  const position = useQuery(queryKeys.riderLocation(), resolveRiderLocation)
-  // The rider's own city, for the strip's `near …`. Its own read rather than
-  // `getCurrentProfile`, which would sign an avatar and a cover to render one
-  // word.
-  const city = useQuery(queryKeys.profile.location(), getMyLocationText)
-
-  // **A failed position read is a DECIDED "no position", not "not yet".**
-  // `useQuery` leaves `data` undefined for ever on a query that errored, and
-  // gating the explore read on that alone would park it in flight permanently.
-  // `resolveRiderLocation` catches its own chain and resolves `null`, so nothing
-  // can reach this today — which is exactly why it is worth one line here: the
-  // page's correctness would otherwise rest on a never-rejects guarantee living
-  // in another module, asserted nowhere.
-  const positionSettled = position.data !== undefined || !!position.error
-  const positionValue = position.data ?? null
+  // Where the rider is, for the strip's `near …` (PD-260) and for the distance
+  // clause on every card below it (PD-340). One hook, on the key `/clubs`,
+  // `/clubs/explore` and `/rides/explore` share, so a rider arriving from any of
+  // them pays nothing and — more importantly — measures from the same
+  // coordinates. `useRiderPosition` carries the whole reasoning, including why
+  // `settled` is not `!isLoading`.
+  const { position: positionValue, settled: positionSettled, label } = useRiderPosition()
 
   // **Held with a `null` key until the position is DECIDED**, `/clubs`'s rule
   // and the same double fetch it avoids: `position.data` is undefined on the
@@ -192,10 +178,6 @@ function RidesScreen() {
     positionSettled ? queryKeys.rides.explore(positionValue) : null,
     () => getExploreRides(positionValue)
   )
-
-  // The name of the place the distances were measured FROM — never the profile
-  // city beside a device-measured distance. `nearLabel` owns that rule.
-  const label = nearLabel(positionValue, city.data)
 
   // It carries its own padding, so nothing here adds 8px above an error state.
   const strip = (
@@ -271,7 +253,7 @@ function RidesScreen() {
             // demonstrably rides underneath it.
             <EmptyList filter={filter} spacing="section" />
           ) : (
-            <RideCards rides={rides.data.upcoming} filter={filter} />
+            <RideCards rides={rides.data.upcoming} filter={filter} near={positionValue} />
           )}
 
           {rides.data.past.length > 0 && (
@@ -279,7 +261,7 @@ function RidesScreen() {
               {/* `px-4` to sit over the cards rather than the component's own
                   `px-6`, the same correction the club detail page makes. */}
               <SectionHeader title="Past rides" className="px-4 pb-0 pt-4" />
-              <RideCards rides={rides.data.past} filter={filter} />
+              <RideCards rides={rides.data.past} filter={filter} near={positionValue} />
             </>
           )}
 
@@ -345,12 +327,37 @@ function RidesLoading({ strip }: { strip?: ReactNode } = {}) {
   )
 }
 
-/** One section of the list. Both sections draw the same card, at the same width. */
-function RideCards({ rides, filter }: { rides: RideListItem[]; filter?: RideFilter }) {
+/**
+ * One section of the list. Both sections draw the same card, at the same width.
+ *
+ * **The distance is attached here rather than fetched with the rows** (PD-340).
+ * `getRides` is keyed on the filter alone; re-keying it on the rider's position
+ * would refetch the whole list the moment a GPS fix landed, which is the double
+ * fetch `/clubs` documents and the reason `RideListItem` carries `latitude` and
+ * `longitude` at all. Measuring on the row we already hold costs one `Math` call
+ * per card and no round trip.
+ *
+ * `near` null — no position — leaves `distance_km` undefined on every row, and
+ * `RideCard` then draws no distance clause. That is the state of every card
+ * today for a rider who has never granted location and set no profile city.
+ */
+function RideCards({
+  rides,
+  filter,
+  near,
+}: {
+  rides: RideListItem[]
+  filter?: RideFilter
+  near: RiderLocation | null
+}) {
   return (
     <div className="flex flex-col gap-2 px-4 py-2">
       {rides.map((ride) => (
-        <RideCard key={ride.id} ride={ride} showClub={filter?.kind !== 'club'} />
+        <RideCard
+          key={ride.id}
+          ride={withRideDistance(ride, near)}
+          showClub={filter?.kind !== 'club'}
+        />
       ))}
     </div>
   )

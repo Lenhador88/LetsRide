@@ -17,6 +17,9 @@ import { SkeletonDetail } from '@/components/ui/Skeleton'
 import { MapAttribution } from '@/components/rides/MapAttribution'
 import { RideMap } from '@/components/rides/RideMap'
 import { getRide } from '@/lib/data/rides'
+import { distanceKm } from '@/lib/location/distance'
+import type { RiderLocation } from '@/lib/location/rider-location'
+import { useRiderPosition } from '@/lib/location/use-rider-position'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
@@ -24,6 +27,7 @@ import {
   cn,
   formatRelativeTime,
   formatRideDateLong,
+  formatRideDistance,
   formatRideTime,
   googleMapsDirectionsUrl,
 } from '@/lib/utils'
@@ -84,6 +88,11 @@ function RideScreen() {
   const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
   const ride = useQuery(queryKeys.rides.detail(id), () => getRide(id))
 
+  // For the location row's `12 km away` (PD-340). Its own read on the shared
+  // key, and it gates nothing: the ride renders whether or not a position ever
+  // lands, and the clause appears beside the meeting point when one does.
+  const { position } = useRiderPosition()
+
   // Covers both "no such ride" and "not yours to see" — see getRide on why the
   // two must stay indistinguishable. A malformed segment lands here too:
   // `getRide` parses the id and returns null rather than letting `22P02` reach
@@ -142,7 +151,7 @@ function RideScreen() {
         {ride.error ? (
           <ErrorState onRetry={ride.refetch} />
         ) : ride.data ? (
-          <RidePlan ride={ride.data} isCrew={isCrew === true} />
+          <RidePlan ride={ride.data} isCrew={isCrew === true} near={position} />
         ) : (
           <SkeletonDetail />
         )}
@@ -155,7 +164,26 @@ function RideScreen() {
   )
 }
 
-function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
+function RidePlan({
+  ride,
+  isCrew,
+  near,
+}: {
+  ride: RideDetail
+  isCrew: boolean
+  near: RiderLocation | null
+}) {
+  // PD-340. `null` at every step is "nothing to say", never zero: the rider has
+  // no position, the ride was never geocoded, or `distanceKm` refuses the pair.
+  // The row then renders exactly as it did before this change — there is no
+  // "distance unknown" state to draw, because that is most rides today.
+  const start =
+    ride.latitude !== null && ride.longitude !== null
+      ? { lat: ride.latitude, lon: ride.longitude }
+      : null
+  const km = distanceKm(near, start)
+  const distance = km === null ? null : formatRideDistance(km)
+
   // Description and route are one paragraph now rather than a blurb and a
   // `Route` heading 200px apart. They are two columns because they are two
   // things an organizer types, not two things a rider reads separately — and a
@@ -221,6 +249,14 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
               Logged. */}
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
             {ride.meeting_point}
+            {/* How far the start is (PD-340), in the same slot and the muted
+                weight the date row gives its relative clause — a qualifier on
+                the place, not a second fact. It is inside the truncating span
+                on purpose: a meeting point long enough to push this off the line
+                has already told the rider more than the distance would, and the
+                alternative is a distance that survives while the address it
+                qualifies is cut to nothing. */}
+            {distance && <span className="font-medium text-muted"> · {distance}</span>}
           </span>
           {/* Past rides get no `Directions`, which the mock draws by omission
               and is worth stating: routing a rider to a meeting point that was

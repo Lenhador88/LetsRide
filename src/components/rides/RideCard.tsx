@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { LocationFilledIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { routes } from '@/lib/routes'
-import { cn, formatRideDate, formatRideTime } from '@/lib/utils'
+import { cn, formatRideCardDay, formatRideDistance, formatRideTime } from '@/lib/utils'
 import type { RideAttendance, RideListItem } from '@/types'
 
 /**
@@ -113,6 +113,14 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
   const [failedTileUrl, setFailedTileUrl] = useState<string | null>(null)
   const showsTile = !!ride.map_card_url && ride.map_card_url !== failedTileUrl
 
+  // **`undefined` is the ordinary state and draws nothing at all** — the rider
+  // has no resolvable position, the ride has never been geocoded, or the read
+  // that produced this row was not asked for a distance. `RideListItem`'s own
+  // comment collapses those three deliberately, and a card can only usefully do
+  // one thing with any of them: say nothing. There is no "distance unknown"
+  // label, because a row that cannot be measured is most of the list today.
+  const distance = ride.distance_km === undefined ? null : formatRideDistance(ride.distance_km)
+
   return (
     <Link
       href={routes.ride(ride.id)}
@@ -159,13 +167,36 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
           <p className="truncate text-base font-semibold text-foreground">{ride.title}</p>
 
           <p className="flex items-center gap-2 text-sm font-medium text-muted">
-            <span>{formatRideDate(ride.departure_at, ride.timezone)}</span>
+            {/* `formatRideCardDay`, not `formatRideDate` (PD-340): the same slot,
+                reading `This Wednesday` inside a fortnight and falling back to
+                `SAT, 16 NOV` outside it. The uppercase went with it — a band
+                word is prose, and `THIS WEDNESDAY` shouts where the date did
+                not. */}
+            <span>{formatRideCardDay(ride.departure_at, ride.timezone)}</span>
             {/* A 3×3 rounded rectangle in the design, i.e. a dot. */}
             <span aria-hidden className="h-[3px] w-[3px] shrink-0 rounded-full bg-muted" />
             <span>{formatRideTime(ride.departure_at, ride.timezone)}</span>
           </p>
 
-          <p className="truncate text-sm font-medium text-muted">{ride.meeting_point}</p>
+          {/* The meeting point, and how far away it is when anything can say
+              (PD-340). One line rather than a fourth: the card's height is the
+              design's and a distance is a qualifier on the place, not a fact of
+              its own.
+
+              **The place truncates and the distance does not.** `min-w-0` plus
+              `truncate` on the name and `shrink-0` on the clause is what makes a
+              long meeting point lose characters instead of pushing `12 km away`
+              off the card — the distance is three or four characters and is the
+              half a rider scanning a list is comparing between rows. */}
+          <p className="flex items-center gap-2 text-sm font-medium text-muted">
+            <span className="min-w-0 truncate">{ride.meeting_point}</span>
+            {distance && (
+              <>
+                <span aria-hidden className="h-[3px] w-[3px] shrink-0 rounded-full bg-muted" />
+                <span className="shrink-0">{distance}</span>
+              </>
+            )}
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
