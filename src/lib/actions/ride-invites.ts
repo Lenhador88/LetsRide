@@ -152,8 +152,11 @@ export async function declineRideInvite(inviteId: string, rideId: string): Promi
 
   invalidate(queryKeys.invites.pending())
   invalidate(queryKeys.notifications.all())
+  // `rides.detail(rideId)` and nothing else in the rides domain: the ride's
+  // invite list is `['rides','detail',id,'invites']`, a strict child, so naming
+  // it too would be a claim justified by nothing — which is exactly the loop
+  // this action's own rule closes.
   invalidate(queryKeys.rides.detail(rideId))
-  invalidate(queryKeys.rides.invites(rideId))
   return { error: null, sent: true }
 }
 
