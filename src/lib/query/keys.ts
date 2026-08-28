@@ -497,12 +497,25 @@ export const queryKeys = {
    * | `['invites']` (`invites.all()`) | **yes** |
    * | `['rides']` (`rides.all()`) | **no** — and that is the point |
    *
-   * So `acceptRideInvite` and `declineRideInvite` name this key themselves.
-   * They also name `rides.detail(id)` and the ride's crew, which `rides.all()`
-   * would have covered — spelled out at the call site rather than widened here,
-   * because the ride key is the one a rider *arrives at* and a missed
-   * invalidation there shows them a ride they have just joined with themselves
-   * absent from the crew.
+   * So `acceptRideInvite` and `declineRideInvite` name this key themselves —
+   * neither is reached by the rides prefix, and that is the whole reason the
+   * domain is separate.
+   *
+   * **What each of them claims in the RIDES domain is decided over there, and
+   * the two answers differ.** `acceptRideInvite` writes a `ride_members` row,
+   * so it takes `rides.all()` — `setRideAttendance`'s claim for the identical
+   * write, and the one that reaches the tab's lists and Explore as well as the
+   * ride and its crew. `declineRideInvite` writes no membership and takes
+   * `rides.detail(rideId)` alone, because what it changes is the ride's
+   * *readability*.
+   *
+   * **An earlier version of this paragraph said both actions named
+   * `rides.detail(id)` and the crew key "rather than widened here", and that
+   * enumeration is what left a just-joined ride out of `Your rides`.** Kept as
+   * a correction rather than deleted, because this file calls itself the
+   * contract and the wrong version reads exactly as careful as the right one:
+   * naming keys is only narrower when the naming is complete, and the check is
+   * this file's stated prefix reach rather than which screen comes to mind.
    */
   invites: {
     all: (): QueryKey => ['invites'],

@@ -281,7 +281,7 @@ new assertion is not finished. Each maps to a scenario in `specs/ride-invites/sp
 - [ ] 7.3 `src/lib/data/ride-invites.ts` through `resolveSupabase`: `getMyPendingInvites()` (excluding
   rides the caller is already crew on, by `not exists` in the query — a query shape, never a status
   check), `getRideInvites(rideId)` (with the live crew join for the joined marker),
-  `getRideInvite(id)`, and `searchRidersToInvite(rideId, query)` (prefix-anchored, capped, ordered by
+  and `searchRidersToInvite(rideId, query)` (prefix-anchored, capped, ordered by
   `username`, excluding existing crew and existing invitees client-side). Return `null` for a decided
   absence; `undefined` is "not yet".
 - [ ] 7.4 `src/lib/actions/ride-invites.ts`: `inviteRiderToRide(rideId, inviteeId)`,
@@ -297,16 +297,25 @@ new assertion is not finished. Each maps to a scenario in `specs/ride-invites/sp
 
 ## 8. Cache keys
 
-- [ ] 8.1 Add `rides.invites(rideId)`, `rides.inviteSearch(rideId, query)` and
-  `invites.pending()` to `src/lib/query/keys.ts`. No key written inline in a component, ever.
+- [ ] 8.1 Add `rides.invites(rideId)`, the picker's search key and `invites.pending()` to
+  `src/lib/query/keys.ts`. No key written inline in a component, ever. **Add no key without a
+  reader** — a `invites.detail(id)` was written for a per-invite read that the notification row
+  turned out not to need, and a key nothing fills is worse than none: it carries an invalidation
+  claim about an entry that never exists.
 - [ ] 8.2 Document in the `keys.ts` header **which prefixes reach the pending-invite key**, stated
   positively. It sits outside the `rides` domain deliberately — it is the *rider's* list, not a
   ride's — so `rides.all()` does not reach it and `invites.all()` does.
-- [ ] 8.3 Wire the invalidations. `acceptRideInvite` moves **five** keys across two domains:
-  `invites.pending()`, `notifications.list()`, `notifications.unread()`, `keys.ride(rideId)` and the
-  ride's crew key. **The ride key is the one that gets missed** — comment it at the call site, because
-  the rider is navigated straight to a screen that reads it. `declineRideInvite` moves three and
-  deliberately not the ride. `inviteRiderToRide` and `revokeRideInvite` move `rides.invites(rideId)`.
+- [ ] 8.3 Wire the invalidations, and **justify every claim against `keys.ts`'s stated prefix reach
+  rather than against intuition**. `acceptRideInvite` writes a `ride_members` row — byte for byte
+  `setRideAttendance`'s state change — so it claims `invites.pending()` and the two notifications
+  keys by name (neither is in the rides domain) and the **whole `rides.all()` prefix** for the rest.
+  An enumeration of `rides.detail(id)` plus the crew key looks narrower and misses
+  `rides.list(filter)` and `rides.explore(...)`, which is what leaves a just-joined ride out of
+  `Your rides`. `declineRideInvite` claims the invite list, the two notifications keys and
+  `rides.detail(rideId)` — the ride's *readability* changes even though no crew row moves — and no
+  list key, because a pending invitee held no `ride_members` row. `inviteRiderToRide` and
+  `revokeRideInvite` move `rides.invites(rideId)` and `invites.all()`, the second because the
+  picker's key hangs off `invites` and the first does not reach it.
 
 ## 9. Screens
 

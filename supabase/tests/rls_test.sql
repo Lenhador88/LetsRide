@@ -19221,10 +19221,18 @@ select assert_eq(
   error_of($$select accept_ride_invite('00000000-0000-0000-0000-0000008300ff')$$),
   '083.14: ... and it is the byte-identical error a nonexistent invite id gives — SQLSTATE and message');
 select set_config('test.uid', '00000000-0000-0000-0000-000000830002', false);
+-- The same anti-vacuity line, for the same reason: this is an equality between
+-- two `error_of` calls and two SUCCESSES compare equal too. Added with the one
+-- above rather than after it, because a defence that exists on one of two
+-- identical assertions in the same block is the shape a later editor copies
+-- from the wrong side.
+select assert_eq(
+  error_of($$select accept_ride_invite('00000000-0000-0000-0000-0000008300f3')$$) <> '<no error>',
+  true, '083.14: a rider answering an invite addressed to somebody else DOES fail — asserted before the comparison, like the blocked case above');
 select assert_eq(
   error_of($$select accept_ride_invite('00000000-0000-0000-0000-0000008300f3')$$),
   error_of($$select accept_ride_invite('00000000-0000-0000-0000-0000008300ff')$$),
-  '083.14: ... and so does a rider answering an invite addressed to somebody else');
+  '083.14: ... and it is the same error, so answering somebody else''s invite is indistinguishable from a nonexistent one');
 
 -- ---------------------------------------------------------------------------
 -- 083.15  decline_ride_invite

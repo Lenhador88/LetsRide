@@ -1,31 +1,42 @@
 ## ADDED Requirements
 
-### Requirement: A mutation that crosses domains SHALL name every key it moves, in every domain
+### Requirement: A mutation that crosses domains SHALL reach every key it moves, in every domain
 
 Where one write changes what more than one domain's screens show, the action SHALL invalidate every
-affected key explicitly and SHALL NOT rely on a domain-wide prefix to reach the others.
+affected key — **through the narrowest claim that provably reaches all of them**, which is a
+domain-wide prefix wherever a write is already in that domain's blast radius.
 
-Accepting an invite is the worked case: one RPC changes the invite list, the notification list, the
-notification unread count, the ride, and the ride's crew. Four of those five are what the rider is
-about to look at, and the fifth — the crew — is the one whose staleness is most visible, because the
-rider lands on a ride they have just joined with themselves absent from it.
+**This requirement was written as "name every key explicitly and SHALL NOT rely on a domain-wide
+prefix", and the `reviewer` pass on the built code is what corrected it** — a rare case of the
+implementation being right and the specification wrong, so it is recorded rather than quietly
+reversed. Enumerating is only safer where the enumeration is complete, and here it was not:
+accepting an invite writes a `ride_members` row, which is byte for byte the state change
+`setRideAttendance` makes, and that action has always invalidated the whole `['rides']` prefix
+because a joined ride is *"always in the blast radius"*. Naming `rides.detail(id)` and the crew key
+instead left `rides.list(filter)` and `rides.explore(...)` untouched, so a rider who accepted from
+the notification panel and returned to the Rides tab inside the stale window found the ride they had
+just joined missing from `Your rides` and a public one still sitting in Explore.
 
-The key that is easiest to miss SHALL be named in the action's own comment: the **ride** key, which
-is neither the key the mutation is "about" nor one under a notifications prefix, and which the
-screen the rider is navigated to reads immediately.
+The rule that survives, and it is the load-bearing half: **a claim SHALL be justified against
+`keys.ts`'s stated prefix reach and never against intuition.** A domain-wide prefix is correct when
+the write is in that domain; it is wrong when it merely looks adjacent — `invites.pending()` is not
+under `['rides']` and must still be named.
 
-#### Scenario: Accepting from the notification list moves all five keys
+#### Scenario: Accepting from the notification list reaches every affected key
 - **WHEN** `acceptRideInvite` succeeds
-- **THEN** the invite list key, the notification list key, the notification unread key, the ride key
-  and the ride crew key SHALL all be invalidated
-- **AND** each SHALL be named through `keys.ts`, never written inline
+- **THEN** the invite list key and the notifications keys SHALL be invalidated by name, being in
+  neither the rides domain nor reachable from it
+- **AND** the rides domain SHALL be claimed by its prefix, which reaches the ride, its crew, its
+  invite list, the tab's own lists and Explore — the last two being what an enumeration missed
+- **AND** every claim SHALL be named through `keys.ts`, never written inline
 
-#### Scenario: Declining moves three and not five
+#### Scenario: Declining claims the ride, and no list
 - **WHEN** `declineRideInvite` succeeds
 - **THEN** the invite list, the notification list and its unread count SHALL be invalidated
-- **AND** the ride and its crew SHALL NOT be, because nothing about either changed — and the ride
-  SHALL become unreadable on the next fetch, which is a server-side outcome the cache SHALL NOT
-  pre-empt by deleting the entry
+- **AND** the **ride** key SHALL be invalidated, because a declined invite grants nothing and the
+  cached ride the rider opened from the notification is an entry they can still read
+- **AND** no rides **list** key is owed, because a pending invitee holds no `ride_members` row, so
+  the ride was never in `Your rides` nor out of Explore
 
 #### Scenario: Revoking moves the invitee's keys through the database, not the cache
 - **WHEN** the organizer revokes an invite
