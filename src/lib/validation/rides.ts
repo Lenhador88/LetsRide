@@ -18,13 +18,18 @@ import type { RideFilter } from '@/types'
  * Bounds for the create-ride form.
  *
  * Like `clubSchema`, these live only here: `001` declares `title`,
- * `description`, `meeting_point` and `route_description` as bare `text` with no
- * CHECK, so the Server Action parsing this is the whole enforcement. 80 / 500 /
- * 120 / 1000 are chosen, not measured — `Create ride` is drawn in the OLD
- * stylesheet and its epic reads **To do**, so the design specifies none of them.
+ * `meeting_point` and `route_description` as bare `text` with no CHECK, so the
+ * action parsing this is the whole enforcement. 80 / 120 / 1000 are chosen, not
+ * measured — `Create ride` is drawn in the OLD stylesheet and its epic reads
+ * **To do**, so the design specifies none of them.
+ *
+ * **There is no `RIDE_DESCRIPTION_MAX` any more (PD-320).** `rides.description`
+ * still exists and existing rows still render it on the ride detail; what left
+ * is the *form field*, so nothing in the app writes the column and there is no
+ * length left to bound. Restoring the constant without restoring a writer would
+ * be a bound over nothing.
  */
 export const RIDE_TITLE_MAX = 80
-export const RIDE_DESCRIPTION_MAX = 500
 export const RIDE_MEETING_POINT_MAX = 120
 export const RIDE_ROUTE_MAX = 1000
 
@@ -190,10 +195,6 @@ export const rideSchema = z.object({
     .trim()
     .min(1, 'Give your ride a title.')
     .max(RIDE_TITLE_MAX, `Keep the title under ${RIDE_TITLE_MAX} characters.`),
-  description: optionalText(
-    RIDE_DESCRIPTION_MAX,
-    `Keep the description under ${RIDE_DESCRIPTION_MAX} characters.`
-  ),
   meeting_point: z
     .string()
     .trim()

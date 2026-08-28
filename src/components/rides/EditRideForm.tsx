@@ -14,7 +14,6 @@ import { emptyActionState, type ActionState } from '@/lib/actions/state'
 import { useRestoreChecked, useRestoreSelection } from '@/lib/actions/retain'
 import { formatRideDepartureInput, rideZone } from '@/lib/utils'
 import {
-  RIDE_DESCRIPTION_MAX,
   RIDE_LOCATION_FIELD_NAMES,
   RIDE_MEETING_POINT_MAX,
   RIDE_TIMEZONE_FIELD_NAME,
@@ -35,6 +34,13 @@ function departureZoneLabel(zone: string | null | undefined): string {
  * `/rides/detail/edit` — PD-101. Composition-is-ours for the same reason
  * `CreateRideForm`'s is (that component's header has the full argument); this
  * shares its field set exactly, per `design.md` §D5.
+ *
+ * **`description` is not one of them any more (PD-320)**, on either form. The
+ * column survives and the ride detail still renders what existing rows hold —
+ * what went is the *editing*, so `updateRide` no longer names the column in its
+ * payload. Re-adding the field here without re-adding it there would post a
+ * value nothing writes; re-adding it there without a field here would write
+ * `null` over every existing description on the next unrelated save.
  *
  * **Controlled, unlike the create forms, and that is a deliberate departure.**
  * `EditProfileForm`'s own header documents the trap: React resets an
@@ -68,7 +74,6 @@ export function EditRideForm({
   useActionRedirect(state)
 
   const [title, setTitle] = useState(ride.title)
-  const [description, setDescription] = useState(ride.description ?? '')
   const [meetingPoint, setMeetingPoint] = useState(ride.meeting_point)
   // Seeded from the stored pick, so an edit that never touches the location
   // saves it back unchanged. Without this an unrelated edit — a new title —
@@ -140,7 +145,6 @@ export function EditRideForm({
     if (!state.error) return
     const parsed = rideSchema.safeParse({
       title,
-      description,
       meeting_point: meetingPoint,
       route_description: routeDescription,
       departure_at: departureAt,
@@ -190,15 +194,6 @@ export function EditRideForm({
           maxLength={RIDE_TITLE_MAX}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-        />
-
-        <Textarea
-          name="description"
-          label="Description"
-          rows={3}
-          maxLength={RIDE_DESCRIPTION_MAX}
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
         />
 
         {/* Same field as Create, same rule: typing throws the pin away. */}
@@ -287,9 +282,24 @@ export function EditRideForm({
             checked={isPublic}
             onChange={(event) => setIsPublic(event.target.checked)}
           />
+          {/* **Word for word `CreateRideForm`'s, and it has to stay that way.**
+              The two forms describe the same checkbox on the same column, so a
+              rider who creates a ride and then edits it reads both. "Riders you
+              invite" is `083`'s fourth `rides` SELECT arm (PD-329), which is
+              what makes the sentence true of a ride with no club.
+
+              **Nothing enforces the match.** The two drifted once already and a
+              read caught it, not a gate. PD-338 rewrites the sentences below
+              and is where an assertion over the pair belongs.
+
+              The `wouldStrand` alert below still argues from the premise `083`
+              retired. It is deliberately NOT edited here: it is the guard's own
+              message, the guard is a written `ride-lifecycle` requirement, and
+              PD-338 owns both. A hint that describes the feature and a refusal
+              that describes the rule are different sentences. */}
           <p className="pl-8 text-xs font-medium text-muted">
-            Anyone signed in can see and join a public ride. A private ride is visible to its
-            club, or to you alone if it has no club.
+            Anyone signed in can see and join a public ride. A private ride is visible to its club,
+            and to riders you invite.
           </p>
         </div>
 

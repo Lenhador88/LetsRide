@@ -168,7 +168,6 @@ export async function createRide(
 
   const parsed = rideSchema.safeParse({
     title: formData.get('title'),
-    description: formData.get('description'),
     meeting_point: formData.get('meeting_point'),
     route_description: formData.get('route_description'),
     departure_at: formData.get('departure_at'),
@@ -211,10 +210,15 @@ export async function createRide(
     .select('id')
     .single()
 
-  // 022 refuses a public ride in a private club. Reachable from the default
-  // path — the audience checkbox ships ticked and the club picker cannot tell a
-  // private club from a public one — so the generic message below would leave
-  // the rider with no route to the fix.
+  // 022 refuses a public ride in a private club. **No longer reachable from the
+  // DEFAULT path — the audience checkbox ships clear since PD-320 — but still
+  // reachable in one tap**, because the club picker cannot tell a private club
+  // from a public one, so a rider who ticks the box has no way to see it coming
+  // and the generic message below would leave them with no route to the fix.
+  //
+  // The flip narrows how often this fires; it does not retire the branch, and
+  // deleting it on the strength of the new default would put that rider back in
+  // front of "That ride could not be created.".
   //
   // Matched on the message rather than on `23514` alone, because 018's text
   // bounds raise the same SQLSTATE and a title-too-long must not be reported as
@@ -371,7 +375,6 @@ export async function updateRide(
 
   const parsed = rideSchema.safeParse({
     title: formData.get('title'),
-    description: formData.get('description'),
     meeting_point: formData.get('meeting_point'),
     route_description: formData.get('route_description'),
     departure_at: formData.get('departure_at'),
@@ -399,7 +402,7 @@ export async function updateRide(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to edit a ride.' }
 
-  const { departure_at, title, description, route_description, meeting_point, is_public, club_id, location } =
+  const { departure_at, title, route_description, meeting_point, is_public, club_id, location } =
     parsed.data
 
   // PD-104 §5.1a. Read fresh rather than taking the paths off `getRideForEdit`'s
@@ -507,7 +510,17 @@ export async function updateRide(
     .from('rides')
     .update({
       title,
-      description,
+      // **`description` is deliberately absent (PD-320), and its absence is
+      // load-bearing rather than tidy-up.** The form no longer renders the
+      // field, so `formData.get('description')` would be `null` — which the
+      // schema's `optionalText` accepts — and naming the column here would
+      // therefore write `null` over an existing description on the next save
+      // that touched nothing but the title. Omitting it leaves what riders
+      // already wrote, which the ride detail still renders.
+      //
+      // `045` still grants UPDATE on the column, so this is the client's
+      // decision rather than the database's. Anything that ever writes it again
+      // needs a field on the form in the same change.
       route_description,
       meeting_point,
       // **The zone the rider was LOOKING at, which is the stored one unless

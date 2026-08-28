@@ -1668,7 +1668,6 @@ async function checkFormRetention() {
 
   const filled = {
     title: 'Retention probe',
-    description: 'Two lines\nof description',
     // **This one is the refusal**, not just a field to retain — see the
     // header. HTML `required` is satisfied by a non-empty string, and the form
     // carries `noValidate` besides, so it reaches the action and is refused
@@ -1678,10 +1677,14 @@ async function checkFormRetention() {
     route_description: 'Along the dyke, back over the bridge',
   }
 
-  // **Every selector is scoped to the form.** A bare `[name="description"]`
-  // matches `<meta name="description">` in the document head first, and
-  // Playwright fills the first match — 30 seconds of waiting for a meta tag to
-  // become editable, then an uncaught timeout that takes the whole walk with it.
+  // **Every selector is scoped to the form**, and the rule outlived the field
+  // that taught it. A bare `[name="description"]` matches `<meta
+  // name="description">` in the document head first, and Playwright fills the
+  // first match — 30 seconds of waiting for a meta tag to become editable, then
+  // an uncaught timeout that takes the whole walk with it. This form has no
+  // `description` since PD-320; `checkClubFormRetention` below still fills one,
+  // and any future field colliding with a `<meta name>` would land the same
+  // way, so the scoping stays on both.
   const field = (name) => `form [name="${name}"]`
 
   await page.goto(`${BASE}/rides/new`, { waitUntil: 'networkidle' })
@@ -1689,19 +1692,28 @@ async function checkFormRetention() {
   for (const [name, value] of Object.entries(filled)) {
     await page.fill(field(name), value)
   }
-  // Ticked by default, so unticking is what proves the restore reads the
-  // submission rather than reinstating the literal default.
+  // **Unticked by default since PD-320, so TICKING it is what proves the
+  // restore reads the submission rather than reinstating the literal default.**
+  // The probe inverted with the default rather than being dropped: the whole
+  // point is that `wasChecked` must disagree with the default, and against a
+  // box that now ships clear, clearing it agrees with the default and would
+  // pass on a build that had lost `retaining` entirely.
   //
-  // **Clicked by its label, which is how a rider clears it too.** `<Checkbox>`
+  // **Clicked by its label, which is how a rider ticks it too.** `<Checkbox>`
   // draws an `sr-only` input beneath a styled span, so Playwright refuses an
   // ordinary click as intercepted and a forced one lands on the span and
   // toggles nothing ("Clicking the checkbox did not change its state"). The
   // label is the control's real hit area — `htmlFor` does the toggling.
-  await page.click('form label:has(input[name="is_public"])')
-  // A precondition, not an assertion about the app: if the box did not clear,
-  // everything below would be measuring the wrong submission.
+  //
+  // A precondition, not an assertion about the app: a build that shipped the
+  // box ticked would leave this phase measuring the wrong submission, so it
+  // is checked before the click rather than inferred after it.
   if (await page.isChecked(field('is_public'))) {
-    throw new Error('could not clear the "public" checkbox — the harness, not the app')
+    throw new Error('the "public" checkbox arrived ticked — PD-320 defaults it off')
+  }
+  await page.click('form label:has(input[name="is_public"])')
+  if (!(await page.isChecked(field('is_public')))) {
+    throw new Error('could not tick the "public" checkbox — the harness, not the app')
   }
 
   const clubOption = await page
@@ -1739,7 +1751,7 @@ async function checkFormRetention() {
   }
 
   const stillPublic = await page.isChecked(field('is_public')).catch(() => null)
-  report(stillPublic === false, 'the cleared "public" box stays cleared', 'it was re-ticked')
+  report(stillPublic === true, 'the ticked "public" box stays ticked', 'it was cleared')
 
   if (clubOption) {
     const club = await page.inputValue(field('club_id')).catch(() => null)
