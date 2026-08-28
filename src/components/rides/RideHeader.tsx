@@ -73,7 +73,17 @@ export function RideHeader({
   /** `undefined` while the ride is still being read — `Header` draws a
    * placeholder bar for it. See that component's `title` prop. */
   title: string | undefined
-  current: 'plan' | 'crew' | 'chat'
+  /**
+   * Which ride screen this is. Two things still hang off it: where **back**
+   * goes, and whether the chat sub-row is drawn.
+   *
+   * `'invite'` (`083`, PD-329) behaves exactly as `'crew'` does — back to the
+   * plan, no sub-row — and is a distinct value rather than a reuse of it so the
+   * prop keeps meaning "which screen" rather than "which back target". The day
+   * a screen needs its own sub-row, the reuse would have been the thing in the
+   * way.
+   */
+  current: 'plan' | 'crew' | 'chat' | 'invite'
   /**
    * Whether this rider is on the ride — organizer, or any RSVP. `undefined`
    * while the ride is still being read, which is why the chat button appears a

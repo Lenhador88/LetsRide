@@ -19,12 +19,15 @@ export type ActionState = {
    * "not submitted yet" from "submitted, nothing to report" — both of which
    * are `error: null` otherwise.
    *
-   * Three actions need it: `requestPasswordReset`, which renders a confirmation
+   * Four actions need it: `requestPasswordReset`, which renders a confirmation
    * in place; `addComment`, which stays on the thread and whose composer clears
-   * itself on it; and `signUp`, when email confirmation is on and the account
-   * exists with no session to navigate anywhere with. Every other action
-   * navigates on success, so its success state is never rendered. If you are
-   * adding a fourth, set this rather than inventing a second success signal —
+   * itself on it; `signUp`, when email confirmation is on and the account
+   * exists with no session to navigate anywhere with; and `sendFeedback`
+   * (`084`, PD-321), which navigates nowhere because there is nowhere to go —
+   * nothing in the app can read a feedback row back, so the sheet's
+   * confirmation is the whole receipt. Every other action navigates on success,
+   * so its success state is never rendered. If you are adding a fifth, set this
+   * rather than inventing a second success signal —
    * and note that consecutive successes are indistinguishable by value, so a
    * screen reacting to it must compare the state object's identity.
    */

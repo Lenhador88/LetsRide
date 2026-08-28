@@ -273,6 +273,28 @@ begin
 end;
 $$;
 
+-- Returns a statement's failure as `SQLSTATE message`, or '<no error>'.
+--
+-- For the case `assert_rejected` cannot express: two refusals that must be
+-- INDISTINGUISHABLE from each other. A SQLSTATE comparison is not enough there
+-- — 083's accept path has two ways to fail that both raise
+-- `insufficient_privilege`, and the whole point is that a blocked invitee
+-- cannot tell them apart, which is a claim about the MESSAGE. Compare two calls
+-- of this rather than asserting either against a literal: a literal has to be
+-- edited when the wording changes and would then stop comparing anything.
+create or replace function error_of(stmt text)
+returns text
+language plpgsql
+as $$
+begin
+  execute stmt;
+  return '<no error>';
+exception
+  when others then
+    return sqlstate || ' ' || sqlerrm;
+end;
+$$;
+
 -- Runs the statement, requires it to succeed, then unwinds the subtransaction so
 -- the write leaves no trace for later assertions.
 --

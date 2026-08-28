@@ -457,6 +457,66 @@ export type RecentRideStart = {
   timezone: string | null
 }
 
+/**
+ * `public.ride_invites.status` (`083`, PD-329) — the answer to the invitation,
+ * and never a copy of `ride_members`.
+ *
+ * A rider who RSVPs to a ride they were also invited to leaves the invite
+ * `pending`, which is the truth: they were invited and never answered. Every
+ * surface that wants to know whether somebody is *riding* reads the crew.
+ *
+ * `pending` and `accepted` both grant read on the ride; `declined` grants
+ * nothing. Decline is terminal against the inviter — no DELETE reaches a
+ * declined row — and reopenable by the invitee alone.
+ */
+export type RideInviteStatus = 'pending' | 'accepted' | 'declined'
+
+/**
+ * One invite as the *invitee* sees it, in the list behind their notification.
+ *
+ * `ride` is embedded rather than fetched per row: the invite is only readable
+ * to somebody the invite itself makes the ride readable to, so the join costs
+ * nothing extra and cannot resolve for a rider the policy would refuse.
+ */
+export type RideInvite = {
+  id: string
+  ride_id: string
+  status: RideInviteStatus
+  created_at: string
+  inviter: PublicProfile | null
+  ride: { id: string; title: string; departure_at: string; timezone: string | null } | null
+}
+
+/**
+ * One row of the *organizer's* invite list on a ride.
+ *
+ * **`is_crew` is read from the live crew, never derived from `status`**, and
+ * that is the one rule this type exists to carry. The two answer different
+ * questions — `status` is what the rider said about the invitation, `is_crew`
+ * is whether they are on the ride — and they legitimately disagree: a rider who
+ * RSVPs without answering is crew with a `pending` invite, and one who accepts
+ * and later leaves is not crew with an `accepted` one.
+ */
+export type RideInviteListItem = {
+  id: string
+  status: RideInviteStatus
+  created_at: string
+  invitee: PublicProfile | null
+  is_crew: boolean
+}
+
+/**
+ * One hit in the rider picker.
+ *
+ * Exactly `PUBLIC_PROFILE_COLUMNS`' shape and no more: the picker searches
+ * `profiles` under the policy that has permitted it since `002`, adds no RPC,
+ * no `security definer` search and no grant, so it can return nothing a signed-in
+ * rider could not already read one id at a time. Blocked riders are absent in
+ * both directions with no filter in the query, and an empty result never
+ * distinguishes a blocked rider from a nonexistent one.
+ */
+export type RiderSearchResult = PublicProfile
+
 export type RideCrewMember = {
   user_id: string
   profile: PublicProfile | null
@@ -1073,6 +1133,18 @@ export type NotificationType =
   | 'ride_joined'
   | 'club_joined'
   | 'ride_created_in_club'
+  // `083` (PD-329). Three types, all carrying `ride_id` ALONE — the same subject
+  // shape as `ride_joined`, which is why `036` §3's per-column resolvability
+  // policy needed no change for them.
+  //
+  // **`ride_invited` is the first notification a rider can ACT on from the
+  // row**, and the Accept/Decline controls read their enabled state from the
+  // live invite, never from this string: a notification is a record of an event
+  // that happened, and the invite may have been answered elsewhere, withdrawn,
+  // or hidden by a block since.
+  | 'ride_invited'
+  | 'ride_invite_accepted'
+  | 'ride_invite_declined'
 
 /**
  * One row from `public.notifications` (`036`), as the notifications screen and

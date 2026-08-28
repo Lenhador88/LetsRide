@@ -1,9 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { LogOutIcon, OptionsIcon, TrashIcon } from '@/components/icons/generated'
+import {
+  ChatBubbleOutlineIcon,
+  LogOutIcon,
+  OptionsIcon,
+  TrashIcon,
+} from '@/components/icons/generated'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { DeleteAccountSheet } from '@/components/profile/DeleteAccountSheet'
+import { FeedbackSheet } from '@/components/profile/FeedbackSheet'
 import { useSignOut } from '@/lib/actions/navigate'
 
 /**
@@ -19,6 +25,14 @@ import { useSignOut } from '@/lib/actions/navigate'
  * earlier revision of this comment claimed "exactly two rows … read from the
  * frame" and was wrong, which is the most expensive kind of wrong claim: it
  * names its own method and still reads as verification to the next person.
+ *
+ * **`Feedback` is a fourth row the frame does not draw at all (PD-321).** It is
+ * an addition rather than a fidelity gap: there is no feedback frame anywhere
+ * in `design/`, and the product owner asked for the row on this menu by name.
+ * It sits above `Sign out` in the same list group, because it is an ordinary
+ * action — the separator and the `Warning/100` tone below are what mark the
+ * destructive one. Its sheet is `FeedbackSheet`, over this same canvas, for the
+ * reason `Delete account`'s is.
  *
  * **`Preferences` is deliberately still not built, and that is a decision
  * rather than an oversight left for later.** There is no `/profile/preferences`
@@ -77,6 +91,7 @@ import { useSignOut } from '@/lib/actions/navigate'
 export function ProfileMenu() {
   const [open, setOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [feedback, setFeedback] = useState(false)
   const { signOut, pending } = useSignOut()
 
   return (
@@ -93,6 +108,25 @@ export function ProfileMenu() {
       </button>
 
       <ContextMenu open={open} onClose={() => setOpen(false)} label="Account options">
+        {/* Above Sign out, per PD-321, and in the same list group: it is an
+            ordinary action, so it gets neither the separator nor the
+            `Warning/100` treatment `Delete account` carries.
+
+            `ChatBubbleOutlineIcon` is the nearest glyph the generated set has —
+            there is no feedback glyph in it, the same gap PD-250 records for
+            postcards, and nothing here is hand-drawn. */}
+        <ContextMenuItem
+          icon={<ChatBubbleOutlineIcon className="h-6 w-6" />}
+          onClick={() => {
+            // Closed before the next opens — see `Delete account` below for why
+            // both sheets cannot be mounted open at once.
+            setOpen(false)
+            setFeedback(true)
+          }}
+        >
+          Feedback
+        </ContextMenuItem>
+
         <ContextMenuItem onClick={signOut} disabled={pending}>
           <span className="flex items-center gap-2">
             <LogOutIcon className="h-6 w-6" />
@@ -123,6 +157,7 @@ export function ProfileMenu() {
         </div>
       </ContextMenu>
 
+      <FeedbackSheet open={feedback} onClose={() => setFeedback(false)} />
       <DeleteAccountSheet open={deleting} onClose={() => setDeleting(false)} />
     </>
   )

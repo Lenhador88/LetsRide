@@ -466,6 +466,71 @@ export const queryKeys = {
      * do not cite the nesting for it.
      */
     unread: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'messages', 'unread'],
+    /**
+     * The organizer's invite list for one ride (`083`, PD-329).
+     *
+     * A child of the ride for the same reason `crew` is: it is scoped to one
+     * ride and dies with it. So `rides.all()` reaches it, which is correct —
+     * deleting a ride takes its invites, and the invalidation that follows a
+     * delete already names that prefix.
+     *
+     * **Not the same key as `invites.pending()` below, and the two are not
+     * redundant.** This one answers "who has the organizer asked", the other
+     * "what has this rider been asked to". They are read on different screens
+     * by different riders and only ever overlap by coincidence.
+     */
+    invites: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'invites'],
+  },
+
+  /**
+   * The invites addressed to the signed-in rider (`083`, PD-329).
+   *
+   * **Its own domain rather than a child of `rides`, deliberately.** It is the
+   * *rider's* list, not a ride's: it spans every ride they have been invited
+   * to, and nesting it under one ride would be a lie about what invalidating
+   * that ride reaches. Stated positively, because a reader will want to know
+   * which prefixes reach it:
+   *
+   * | Prefix | Reaches `invites.pending()`? |
+   * |---|---|
+   * | `[]` (`EVERYTHING`) | yes |
+   * | `['invites']` (`invites.all()`) | **yes** |
+   * | `['rides']` (`rides.all()`) | **no** — and that is the point |
+   *
+   * So `acceptRideInvite` and `declineRideInvite` name this key themselves —
+   * neither is reached by the rides prefix, and that is the whole reason the
+   * domain is separate.
+   *
+   * **What each of them claims in the RIDES domain is decided over there, and
+   * the two answers differ.** `acceptRideInvite` writes a `ride_members` row,
+   * so it takes `rides.all()` — `setRideAttendance`'s claim for the identical
+   * write, and the one that reaches the tab's lists and Explore as well as the
+   * ride and its crew. `declineRideInvite` writes no membership and takes
+   * `rides.detail(rideId)` alone, because what it changes is the ride's
+   * *readability*.
+   *
+   * **An earlier version of this paragraph said both actions named
+   * `rides.detail(id)` and the crew key "rather than widened here", and that
+   * enumeration is what left a just-joined ride out of `Your rides`.** Kept as
+   * a correction rather than deleted, because this file calls itself the
+   * contract and the wrong version reads exactly as careful as the right one:
+   * naming keys is only narrower when the naming is complete, and the check is
+   * this file's stated prefix reach rather than which screen comes to mind.
+   */
+  invites: {
+    all: (): QueryKey => ['invites'],
+    pending: (): QueryKey => ['invites', 'pending'],
+    /**
+     * The rider picker's hits for one ride and one query string (`083`).
+     *
+     * **Keyed on the query as well as the ride**, for `places.search`'s reason:
+     * two different prefixes are two different questions, and sharing an entry
+     * would show whichever answered first to both. Under `invites` rather than
+     * under the ride, because inviting somebody must take them out of the
+     * picker and `inviteRiderToRide` invalidating `rides.invites(id)` would not
+     * reach a key nested there — this one is reached by `invites.all()`.
+     */
+    search: (rideId: string, query: string): QueryKey => ['invites', 'search', rideId, query],
   },
 
   /**

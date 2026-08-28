@@ -1,7 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { DeleteIcon, EditIcon, OptionsIcon, PaperPlaneIcon } from '@/components/icons/generated'
+import {
+  DeleteIcon,
+  EditIcon,
+  OptionsIcon,
+  PaperPlaneIcon,
+  ProfileIcon,
+} from '@/components/icons/generated'
 import { useBanner } from '@/components/ui/Banner'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { DeleteRideSheet } from '@/components/rides/DeleteRideControl'
@@ -26,12 +32,17 @@ import { shareAppLink } from '@/lib/share'
  * unchanged there — because a second route to it is fine and an only-route
  * nobody finds is what this fixes.
  *
- * Three rows, by viewer:
+ * Four rows, by viewer:
  *
  * - **Share ride** — anyone who can see the ride. New here; the app could not
  *   send a ride to anybody before this, which made a private ride organised for
  *   named riders impossible to actually invite them to. `shareAppLink` is the
  *   postcard's own mechanism, extracted rather than reimplemented.
+ * - **Invite riders** — organizer only, into `routes.rideInvite` (`083`,
+ *   PD-329). The in-app half of getting a named rider onto a ride, and the
+ *   thing that makes a private ride organisable at all: before it, a ride
+ *   reached people through a club they already belonged to or through
+ *   `is_public`, and there was nothing in between.
  * - **Edit ride** — organizer only, into `routes.rideEdit`. What used to be the
  *   header's standalone pencil.
  * - **Delete ride** — organizer only, warning tone, opening `DeleteRideSheet`
@@ -83,6 +94,20 @@ export function RideOptionsMenu({
 
         {isOrganizer && (
           <>
+            {/* `083`, PD-329. Organizer only, and ABSENT rather than disabled
+                for everyone else — the row is a display hint and `083`'s INSERT
+                policy is the enforcement, so what this owes is not to offer
+                what the database will refuse. `ProfileIcon` is the nearest
+                glyph the generated set has; there is no "add rider" one, the
+                same gap PD-250 records for postcards. */}
+            <ContextMenuItem
+              href={routes.rideInvite(rideId)}
+              icon={<ProfileIcon className="h-6 w-6" />}
+              onClick={() => setOpen(false)}
+            >
+              Invite riders
+            </ContextMenuItem>
+
             <ContextMenuItem
               href={routes.rideEdit(rideId)}
               icon={<EditIcon className="h-6 w-6" />}

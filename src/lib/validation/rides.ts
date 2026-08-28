@@ -293,6 +293,52 @@ export function parseRideFilter(params: {
 export const rideIdSchema = z.uuid()
 
 /**
+ * A `ride_invites.id`, for the same reason and with the same failure: it comes
+ * out of a notification row rather than out of the URL, but the two RPCs that
+ * consume it take one argument and a malformed value would reach PostgREST as
+ * `22P02` and land the rider on the error boundary rather than on the ordinary
+ * refusal.
+ */
+export const rideInviteIdSchema = z.uuid()
+
+/**
+ * The minimum the rider picker will search on.
+ *
+ * **This bound has NO database counterpart, and saying so is the point.** Every
+ * other schema in this directory mirrors a CHECK, per CLAUDE.md's rule that Zod
+ * owns the message and the database owns the guarantee. There is no CHECK to
+ * mirror here because the thing being bounded is a *query*, not a stored value
+ * — so a rider using the publishable key directly can search on one character,
+ * and the only thing that would change is how much of the directory one
+ * keystroke enumerates. The real defences are the ones the database does carry:
+ * `profiles` SELECT, which has permitted username lookup since `002`, and
+ * `025`'s per-column grants, which cap what a hit can return.
+ *
+ * Two characters, and prefix-anchored at the read (`searchRidersToInvite`).
+ * One character enumerates a thirty-sixth of the platform per keystroke.
+ */
+export const RIDER_SEARCH_MIN_LENGTH = 2
+
+/**
+ * A ceiling as well as a floor, and it is the half that is easy to skip.
+ *
+ * The query is interpolated into a LIKE pattern and travels as a **URL query
+ * parameter**, so an unbounded one is an unbounded URL — and `056` caps a
+ * username at 25 characters anyway, which makes anything past that a search
+ * that cannot match.
+ */
+export const RIDER_SEARCH_MAX_LENGTH = 40
+
+export const riderSearchQuerySchema = z
+  .string()
+  .max(RIDER_SEARCH_MAX_LENGTH, `Keep it under ${RIDER_SEARCH_MAX_LENGTH} characters.`)
+  .transform((value) => value.trim())
+  .refine(
+    (value) => value.length >= RIDER_SEARCH_MIN_LENGTH,
+    `Type at least ${RIDER_SEARCH_MIN_LENGTH} characters.`
+  )
+
+/**
  * Mirrors `ride_messages_body_length` in migration `034`, and the asymmetry is
  * deliberate there so it must be deliberate here: the **floor is on the trimmed
  * length** so a message of nothing but spaces is refused, while the **ceiling is
