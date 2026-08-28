@@ -1821,17 +1821,18 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/ | wc -l          # 89 — DEV at 088, PROD at 079; 089 on neither
+ls supabase/migrations/ | wc -l          # 89 — DEV at 089, PROD at 079
 ```
 
 
-**PROD is NINE behind, and the order inside the gap is not optional.** `080` through `088`, in
-filename order, and **all nine before the promotion build serves** — every one of those is
-additive. **`089` is the exception on this whole list and is on NEITHER project**: its apply must
-follow its own deploy rather than precede it, on `070`'s footing, because `notificationCopy` and
-`NotificationsListItem`'s `describe` are exhaustive switches and one decline landing while an
-older bundle is still serving takes that rider's notifications screen down. Three of them carry a
-reason beyond the ordering rule:
+**PROD is TEN behind, and the order inside the gap is not optional.** `080` through `088`, in
+filename order, and **all nine of those before the promotion build serves** — every one is
+additive. **`089` is the exception on this whole list and goes LAST, after that build is confirmed
+serving**, on `070`'s footing: its apply must follow its own deploy rather than precede it, because
+`notificationCopy` and `NotificationsListItem`'s `describe` are exhaustive switches and one decline
+landing while an older bundle is still serving takes that rider's notifications screen down. It is
+already on DEV in exactly that order — applied once the merge's deployment reached `READY` on the
+merge sha. Three of them carry a reason beyond the ordering rule:
 
 - **`082` renames what `081` creates**, so the reverse errors, and the client calls RPCs that exist
   only after `082` — stopping between them serves `PGRST202` with nothing red.
@@ -1840,7 +1841,10 @@ reason beyond the ordering rule:
   so `036`'s hand-exercise gate fires. It was run on DEV (six paths, rolled back, green) and
   **must be run again on PROD** before that promotion.
 - **`089` hangs a fan-out on the DECLINE path**, which is live, so `036`'s hand-exercise gate
-  fires for it too — a raise inside that trigger takes the admin's own decline down with it.
+  fires for it too — a raise inside that trigger takes the admin's own decline down with it. It was
+  run on DEV (a scratch private club, an ask, a decline, a clear, all rolled back): the decline
+  wrote ONE notification whose `actor_id` equals its `user_id`, the clear retracted it, nothing
+  raised, and zero residue. **Run it again on PROD** before that promotion.
   `088` needs none: three `security definer` RPCs, no trigger and no policy.
 
 `083` was applied by CLAUDE.md's reduction technique and proved by object diff rather than by

@@ -652,15 +652,17 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 89 files; DEV is at `088` and PROD at `079` — measured 2026-08-28, so DEV is
-AHEAD by nine and `080`–`088` are owed to PROD at the next promotion, in filename order.
-`089` is on neither project yet and is owed to BOTH, DEV first**, because it is the one file on
-this branch whose apply must follow its own deploy rather than precede it — its header has the
-reason and it is in the CLIENT rather than the SQL: `notificationCopy` and
-`NotificationsListItem`'s `describe` are exhaustive switches, so one decline landing while an
-older bundle is still serving takes that rider's notifications screen down.
-`080`–`088` are additive, so all nine go to PROD **before** the promotion build serves, per the
-ordering rule below. **`085` is additive and NOT inert**, the same shape `083` has: it rewrites
+**Applied state: 89 files; DEV is at `089` and PROD at `079` — measured 2026-08-28, so DEV is
+AHEAD by ten and `080`–`089` are owed to PROD at the next promotion, in filename order.**
+`080`–`088` are additive, so those nine go to PROD **before** the promotion build serves, per the
+ordering rule below. **`089` is the exception and goes AFTER it is confirmed serving**, on `070`'s
+and `077`'s footing rather than `069`'s — it is additive in SCHEMA and its ordering constraint is
+in the CLIENT: `notificationCopy` and `NotificationsListItem`'s `describe` are exhaustive switches,
+so one decline landing while an older bundle is still serving takes that rider's notifications
+screen down. On DEV it was applied in exactly that order, after the merge's Vercel deployment
+reached `READY` on the merge sha, and `036`'s hand-exercise gate was run against the live decline
+path in the same sitting (one notification written, its actor equal to its recipient, the clear
+retracting it, nothing raised, zero residue). **`085` is additive and NOT inert**, the same shape `083` has: it rewrites
 `private.may_participate` to delegate to a new subject-taking twin — a function `023`'s gate
 trigger calls on sixteen tables — and its `private.join_club_from_request` fires
 `private.notify_club_joined` inside a `security definer` body, so a raise there takes a rider's
