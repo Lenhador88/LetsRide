@@ -15,7 +15,7 @@ import { SkeletonFilterBar, SkeletonList } from '@/components/ui/Skeleton'
 import { getExploreRides, getRideFilters, getRides, withRideDistance } from '@/lib/data/rides'
 import { isNearby } from '@/lib/location/distance'
 import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
-import { useRiderPosition } from '@/lib/location/use-rider-position'
+import { useNearLabel, useRiderPosition } from '@/lib/location/use-rider-position'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { parseRideFilter } from '@/lib/validation/rides'
@@ -164,7 +164,12 @@ function RidesScreen() {
   // them pays nothing and — more importantly — measures from the same
   // coordinates. `useRiderPosition` carries the whole reasoning, including why
   // `settled` is not `!isLoading`.
-  const { position: positionValue, settled: positionSettled, label } = useRiderPosition()
+  const { position: positionValue, settled: positionSettled } = useRiderPosition()
+  // The name of the place the distances were measured FROM, and its own hook
+  // because it costs a second read — this is the one screen that draws the
+  // words. `nearLabel` owns the rule that the name must come from the same
+  // source as the number.
+  const label = useNearLabel(positionValue)
 
   // **Held with a `null` key until the position is DECIDED**, `/clubs`'s rule
   // and the same double fetch it avoids: `position.data` is undefined on the

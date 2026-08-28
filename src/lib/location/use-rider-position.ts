@@ -36,28 +36,40 @@ import { queryKeys } from '@/lib/query/keys'
  * what a caller renders from, and `null` there means "no distance to draw" — not
  * "zero kilometres". `withRideDistance` and `formatStartDistance` both take that
  * reading, so a card with no position simply draws no distance clause.
+ *
+ * The `near <place>` wording is `useNearLabel` below, deliberately not a field
+ * here — it costs a second read that only one screen needs.
  */
 export function useRiderPosition(): {
   position: RiderLocation | null
   settled: boolean
-  /**
-   * What to call the place distances were measured FROM, or `null` when there
-   * is no position — never the profile city beside a device-measured distance.
-   * `nearLabel` owns that rule; this only spares each caller the second read.
-   */
-  label: NearLabel
 } {
   const position = useQuery(queryKeys.riderLocation(), resolveRiderLocation)
-  // The rider's own city, for the `near …` label. Its own read rather than
-  // `getCurrentProfile`, which would sign an avatar and a cover to render one
-  // word.
-  const city = useQuery(queryKeys.profile.location(), getMyLocationText)
-
-  const value = position.data ?? null
 
   return {
-    position: value,
+    position: position.data ?? null,
     settled: position.data !== undefined || !!position.error,
-    label: nearLabel(value, city.data),
   }
+}
+
+/**
+ * What to call the place distances were measured FROM — `near Utrecht`, `near
+ * you`, or nothing.
+ *
+ * **A second hook rather than a third field on the one above**, and the reason
+ * is a round trip rather than tidiness: it reads `profiles.location`, which only
+ * a screen that draws the words needs. One screen does — `/rides`, for the
+ * Explore strip's `near <place>` clause. The four that merely render a distance
+ * would have paid for a column they never draw, on every cold load of a club or
+ * a ride detail by a rider who had not passed through `/rides` first.
+ *
+ * `nearLabel` owns the rule this exists for: the name must come from the same
+ * source as the number, so a device fix reads `near you` rather than borrowing
+ * the profile city it is nowhere near.
+ */
+export function useNearLabel(position: RiderLocation | null): NearLabel {
+  // Its own read rather than `getCurrentProfile`, which would sign an avatar and
+  // a cover to render one word.
+  const city = useQuery(queryKeys.profile.location(), getMyLocationText)
+  return nearLabel(position, city.data)
 }

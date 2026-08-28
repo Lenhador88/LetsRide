@@ -130,8 +130,13 @@ export function useBack(): () => void {
  *
  * ## `chain` is the unmeasured part of this feature, and it is not the numbers
  *
- * `declinesSwipeBack` has fifteen cases over hand-built nodes, and by
- * construction none of them can fail if `chain` feeds it the wrong shape. Every
+ * `declinesSwipeBack` has **six** cases over hand-built nodes — six, not the
+ * fifteen in that file, which is its whole suite including the two geometry
+ * predicates — and by construction none of them can fail if `chain` feeds it the
+ * wrong shape.
+ *
+ * Re-derive rather than trust that:
+ * `npx vitest list --run src/lib/__tests__/swipe-back.test.ts`. Every
  * decline rests on two DOM facts nothing here has executed: that
  * `getComputedStyle(el).overflowX` answers `'auto'` for a Tailwind
  * `overflow-x-auto` element, and that `scrollWidth > clientWidth` is true for a

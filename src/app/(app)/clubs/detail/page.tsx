@@ -21,11 +21,11 @@ import { SkeletonList } from '@/components/ui/Skeleton'
 import { getClub, getClubPreview } from '@/lib/data/clubs'
 import { getClubFeed } from '@/lib/data/postcards'
 import { getRides, withRideDistance } from '@/lib/data/rides'
+import { useRiderPosition } from '@/lib/location/use-rider-position'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 import { formatRideDateLong } from '@/lib/utils'
-import { useRiderPosition } from '@/lib/location/use-rider-position'
 
 /**
  * The club — **one screen now, not the head of a set of four** (the club

@@ -584,8 +584,14 @@ export function formatStartDistance(km: number) {
  * rather than taste.** The chip is 200px with `p-1`, a 48px date block and a
  * 12px gap, leaving 132px for its text column. `14:00 · 12 km away` is 18
  * characters — about 131px at `text-sm` — so the long form truncates the moment
- * the distance reaches three digits, and it eats the *time* rather than the
- * distance because it is the same line.
+ * the distance reaches three digits.
+ *
+ * **What it truncates is the distance, not the time**, and it is worth being
+ * exact because the obvious fear is the other way round: `RideChip` puts
+ * `truncate` on the span wrapping both, and `text-overflow: ellipsis` clips the
+ * tail, so the time — first, and about 35px of the 132 — can never be the
+ * casualty. The long form is refused because `· 1…` is worse than no clause at
+ * all, not because it would cost the rider the departure time.
  *
  * `<1 km` rather than `Under 1 km` for the same reason, and it is the one place
  * in the app that abbreviates it. The rounding is shared, so the two forms can
