@@ -17,6 +17,13 @@ import { SectionHeader } from '@/components/ui/SectionHeader'
  * the label is the only thing a screen reader has; an `aria-label` dropped in a
  * restyle leaves four unnamed links and nothing visibly wrong.
  *
+ * **And they must stay in that order — `(+)` first, `See all` last (PD-346).**
+ * The two survive-together cases above pass with the slots either way round, so
+ * they are blind to exactly the defect PD-346 fixes. It is a one-block-and-one-
+ * class reversal, and it screenshots plausibly either way against a section with
+ * no `See all` — which is the shape PD-343 documented for the card geometry, and
+ * the shape the original order shipped in.
+ *
  * Markup, never pixels — `vitest.config.ts` is `environment: 'node'`, so
  * `renderToStaticMarkup` gives what the browser would have parsed and no layout
  * at all. Whether the control clears the glove floor is a screenshot's job.
@@ -34,6 +41,33 @@ describe('SectionHeader', () => {
     expect(html).toContain('See all')
     expect(html).toContain('href="/postcards"')
     expect(html).toContain('href="/postcards/new"')
+  })
+
+  it('draws the (+) before the See all link, and gives See all the gap', () => {
+    const html = renderToStaticMarkup(
+      <SectionHeader
+        title="Postcards"
+        meta="(7)"
+        action={{ label: 'See all', href: '/postcards' }}
+        create={{ label: 'Add a postcard', href: '/postcards/new' }}
+      />
+    )
+
+    expect(html.indexOf('href="/postcards/new"')).toBeLessThan(html.indexOf('href="/postcards"'))
+    // `ml-auto` is what pushes `See all` to the trailing edge, and it must sit
+    // on that link rather than on the `(+)`, which now hugs the title. Asserted
+    // by element order rather than by attribute order — the latter is React's
+    // to choose, and it does not render them in source order.
+    expect(html.match(/\bml-auto\b/g)).toHaveLength(1)
+    expect(html.indexOf('ml-auto')).toBeGreaterThan(html.indexOf('href="/postcards/new"'))
+  })
+
+  it('gives the (+) no ml-auto even when it is the only trailing slot', () => {
+    const html = renderToStaticMarkup(
+      <SectionHeader title="Club rides" create={{ label: 'Plan a ride', href: '/rides/new' }} />
+    )
+
+    expect(html).not.toContain('ml-auto')
   })
 
   it('names the (+) for a screen reader, since it draws no text', () => {
