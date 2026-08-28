@@ -60,6 +60,10 @@ describe('SectionHeader', () => {
     // to choose, and it does not render them in source order.
     expect(html.match(/\bml-auto\b/g)).toHaveLength(1)
     expect(html.indexOf('ml-auto')).toBeGreaterThan(html.indexOf('href="/postcards/new"'))
+    // Markup order is only visual order while the container lays out in source
+    // order: `flex-row-reverse` on the row, or `order-first` on either link,
+    // keeps every assertion above green and inverts what a rider sees.
+    expect(html).not.toMatch(/\b(flex-row-reverse|order-(first|last|none|\d+))\b/)
   })
 
   it('gives the (+) no ml-auto even when it is the only trailing slot', () => {

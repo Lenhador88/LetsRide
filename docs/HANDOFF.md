@@ -3028,9 +3028,10 @@ behaviour lands as a file change and nothing outside the repo has to move. What 
 and what this section claimed until 2026-08-28, is that merging the change is enough: **the relay goes on executing the copy it cloned when its
 session was created.** Measured 2026-08-28 — its container reported `container_cc_version 2.1.235`
 against 2.1.247+ on every session started that week, so it had not been re-provisioned in ten days.
-**That a relay container is *never* re-provisioned is inferred from that snapshot and one more the
-same day** — read again at 21:15Z, still 2.1.235 — **so n=2, both on the same relay**, and it is
-load-bearing: if some other event rebuilds one, archiving is not the only repair. **A change that the
+**That a relay container is *never* re-provisioned is inferred from that one snapshot**, and
+`PD-345` reports a second reading at 21:15Z the same day, still 2.1.235, **without saying whether
+it came from a `get_session` or off the Routine's run record** — so one measurement plus an
+unconfirmed second, not n=2. It is load-bearing: if some other event rebuilds one, archiving is not the only repair. **A change that the
 relay itself must execute needs the relay archived so it re-clones, and archiving it is part of
 making that change rather than a follow-up** (`queue-dispatch.md` §Editing this file is not finished
 until the relay is archived — PD-345, which also records that no trigger-side signal detects a relay
@@ -3073,7 +3074,9 @@ session id is what says the next firing runs the current `queue-dispatch.md`:
 ```
 # via the CCR MCP: list_triggers -> trig_01WJkMVXGzUVGDcC1njNmaan
 #   persistent_session_id still session_014ncc5vBmsKG9fmfznUoZ48 = not yet rebound
-#   then get_session on whatever it names -> container_cc_version, against a session started today
+#   then get_session on whatever it names: status FIRST — an archived session means the rebind is
+#   pending, so container_cc_version answers "unknown", never "stale". Live and older than a
+#   session started today = it is running a clone from its own creation date.
 ```
 
 Measured 2026-08-24, and these are the two checks worth reusing:
