@@ -130,6 +130,10 @@ export function ClubJoinRequestsSection({
                   size="sm"
                   variant="secondary"
                   onClick={() => answer(request.id, 'decline')}
+                  // `loading` as well as `disabled`: without it a decline on a
+                  // slow connection looks unregistered, because `pending` greys
+                  // BOTH controls and neither says which one is working.
+                  loading={pending === request.id}
                   disabled={!online || pending !== null}
                 >
                   Decline

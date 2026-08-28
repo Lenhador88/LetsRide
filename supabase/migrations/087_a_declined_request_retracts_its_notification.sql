@@ -1,0 +1,101 @@
+-- 087 — A declined request takes its "asked to join" notification with it
+-- ===========================================================================
+--
+-- A defect in `085`, found by review before the branch merged. `085` is already
+-- applied to DEV, so this is a new file rather than an edit — the append-only
+-- rule, and the reason it exists.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT WAS WRONG
+-- ---------------------------------------------------------------------------
+-- `085` hangs `private.retract_club_join_requested` on **DELETE only**. That
+-- covers a withdrawal, an approval (which deletes the row) and a cascade — and
+-- it misses the one exit the story is actually about, because
+-- `public.decline_club_join_request` **UPDATEs** `status` and never deletes.
+-- The surviving row is deliberate: it is how the requester is told, `085`
+-- writing no decline notification at all.
+--
+-- So after a decline the two admin surfaces disagreed, permanently, and only
+-- the wrong one persisted:
+--
+--   * `ClubJoinRequestsSection` reads `status = 'pending'`, so the row left the
+--     club's `Requests` list;
+--   * `ClubJoinRequestActions` reads the same pending-only function, so the
+--     notification's Approve/Decline pair vanished;
+--   * the `club_join_requested` notification row itself SURVIVED, so every
+--     admin kept a permanent "X asked to join" line with no controls and no
+--     way to clear it.
+--
+-- `085`'s own comment names "a decline-then-clear" as the exit, and the Clear
+-- control on a declined row is deliberately PD-326's — so on this branch the
+-- only exit the design offered did not exist.
+--
+-- **`085.26` did not catch it because it asserts the wrong zero**: that a
+-- decline WRITES no notification, which was and is true. Nothing asserted that
+-- it RETRACTS the one already standing. `087.1` is that assertion.
+--
+-- ---------------------------------------------------------------------------
+-- WHY A SECOND TRIGGER RATHER THAN A CHANGE TO THE RPC
+-- ---------------------------------------------------------------------------
+-- The retraction rule lives in one function and should keep living there.
+-- Deleting the rows inside `decline_club_join_request` would put half the rule
+-- in a trigger and half in an RPC, and the next writer of `status` — PD-326's
+-- Clear, or anything else — would have to remember the half that is not
+-- automatic. A trigger on the status transition covers every writer there will
+-- ever be, including ones nobody has written yet.
+--
+-- The function body is unchanged and is reused as-is: it keys on `old.user_id`
+-- and `old.club_id`, both of which are populated on UPDATE exactly as they are
+-- on DELETE.
+--
+-- **It discloses nothing and writes nothing new.** The recipients are the
+-- club's owner and admins, who could already read the row it removes.
+--
+-- ---------------------------------------------------------------------------
+-- ORDERING
+-- ---------------------------------------------------------------------------
+-- Additive and inert: one trigger on a table `085` created on this same branch,
+-- which no deploy has served. `036`'s hand-exercise gate does not fire — the
+-- trigger is on a table whose only writers are `085`'s own RPCs, not on a
+-- shipped write path.
+
+create trigger retract_club_join_requested_on_answer
+  after update of status on public.club_join_requests
+  for each row
+  -- The guard is on the TRANSITION, not on the new value: an UPDATE that leaves
+  -- `status` where it was should retract nothing, and `is distinct from` rather
+  -- than `<>` because either side could be NULL to a future writer even though
+  -- the column is NOT NULL today.
+  when (old.status is distinct from new.status)
+  -- **No `current_user` guard**, and that is the same trap `085` §5.4 names for
+  -- the fan-outs: every GATE trigger in this repo carries
+  -- `when (current_user = 'authenticated')`, and copying it onto a retraction
+  -- whose only writer is a `security definer` RPC would disable it silently —
+  -- which is precisely the bug this file is fixing, arriving by a second route.
+  execute function private.retract_club_join_requested();
+
+comment on function private.retract_club_join_requested() is
+  'Retraction: answering, withdrawing or clearing a request removes exactly the club_join_requested rows the matching insert wrote (085, 087), scoped by type, actor_id and club_id together. The `type` conjunct is what stops an approval deleting the club_join_request_approved row it writes in the same transaction. It runs on TWO triggers: after delete (a withdrawal, an approval, an admin clearing a declined row, a cascade) and — since 087 — after a status transition, which is the DECLINE path. 085 hung it on delete alone and decline_club_join_request updates rather than deletes, so every admin kept a permanent "X asked to join" notification with no controls; 087.1 is the assertion that failed to exist. Also fires on cascaded deletes, which is bounded and redundant rather than wrong.';
+
+-- ---------------------------------------------------------------------------
+-- Verification — run against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+--
+--   select tgname, pg_get_triggerdef(oid) from pg_trigger
+--    where tgrelid = 'public.club_join_requests'::regclass and not tgisinternal
+--    order by tgname;
+--   -- THREE: enforce_participation_gate (before insert, WHEN current_user),
+--   --        notify_club_join_requested (after insert, no WHEN),
+--   --        retract_club_join_requested (after delete, no WHEN),
+--   --        retract_club_join_requested_on_answer (after update of status,
+--   --          WHEN old.status is distinct from new.status)
+--   -- — four, and only the FIRST carries a current_user guard.
+--
+--   select count(*) from pg_trigger
+--    where tgname = 'enforce_participation_gate' and not tgisinternal;
+--   -- 16 — UNCHANGED. This file adds no gate.
+--
+--   select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname = 'private' and p.proname like 'retract\_%';
+--   -- 2 — unchanged; 087 adds a trigger, never a function, so the advisor
+--   --     count does not move either (21).

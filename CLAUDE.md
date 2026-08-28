@@ -151,7 +151,7 @@ first is why it must never be dissolved back into components:
    **The participation gate is narrower than "every write", and stating it broader is how a gap
    gets inherited as covered.** `enforce_participation_gate` is on **sixteen** tables on DEV
    and **eleven** on PROD — measured 2026-08-28, the five-table difference being `081`, `083`,
-   `084` and `085`, all applied to DEV and owed to PROD; PROD was ten until `069` promoted on
+   `084` and `085`, all applied to DEV and owed to PROD (`086` and `087` add no gate); PROD was ten until `069` promoted on
    2026-08-19 —
    `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
@@ -647,10 +647,10 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 86 files; DEV is at `086` and PROD at `079` — measured 2026-08-28, so DEV is
-AHEAD by seven and `080`, `081`, `082`, `083`, `084`, `085` then `086` are owed to PROD at the next
-promotion, in that order.**
-All seven are additive, so all seven go to PROD **before** the promotion build serves, per the
+**Applied state: 87 files; DEV is at `087` and PROD at `079` — measured 2026-08-28, so DEV is
+AHEAD by eight and `080`, `081`, `082`, `083`, `084`, `085`, `086` then `087` are owed to PROD at
+the next promotion, in that order.**
+All eight are additive, so all eight go to PROD **before** the promotion build serves, per the
 ordering rule below. **`085` is additive and NOT inert**, the same shape `083` has: it rewrites
 `private.may_participate` to delegate to a new subject-taking twin — a function `023`'s gate
 trigger calls on sixteen tables — and its `private.join_club_from_request` fires
@@ -727,7 +727,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **2275** assertions — re-derive rather than trust it:
+Suite **2279** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -769,7 +769,7 @@ and `012`'s guards — which begin `if current_user <> 'authenticated' then retu
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
 **Security advisors: twenty-one, and only one is outstanding.** Re-derive rather than trust the number
-— `get_advisors(security)` — but the *shape* is durable, because fourteen of the fifteen are
+— `get_advisors(security)` — but the *shape* is durable, because twenty of the twenty-one are
 things this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |

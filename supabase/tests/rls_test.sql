@@ -6511,12 +6511,33 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where not tgisinternal
       and (tgname like 'notify\_%' or tgname like 'retract\_%')),
-  11, '036/083/085: eleven fan-out triggers exist');
+  12, '036/083/085/087: twelve fan-out triggers exist');
+-- ** 087 CHANGED WHAT THIS ASSERTION HAD TO SAY, AND THE NEW FORM IS THE ONE
+-- THAT WAS ALWAYS MEANT. ** It used to read `tgqual is not null` = 0 — no WHEN
+-- clause at all — because the only WHEN anybody had ever put on one of these
+-- was 023's `current_user` guard, which would fire for nobody: the writers are
+-- security definer RPCs, where `current_user` is the OWNER.
+--
+-- 087's retraction carries a WHEN, and it is not that guard: it fires on
+-- `old.status is distinct from new.status`, which is a guard on the EVENT
+-- rather than on the invoking role, and without it every no-op UPDATE would
+-- retract. So the flat zero would have refused a correct trigger.
+--
+-- The property is therefore restated as what it always meant — **no fan-out or
+-- retraction trigger may gate on the invoking role** — which is strictly
+-- stronger than the old form on the case it was written for, because it also
+-- catches a `current_user` guard smuggled in beside a legitimate one.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where not tgisinternal and tgqual is not null
+      and (tgname like 'notify\_%' or tgname like 'retract\_%')
+      and pg_get_triggerdef(oid) ilike '%current_user%'),
+  0, '036/083/085/087: ... and NOT ONE gates on the INVOKING ROLE — 023''s current_user guard would fire for nobody here, because every writer is a security definer RPC and current_user is then the owner');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where not tgisinternal and tgqual is not null
       and (tgname like 'notify\_%' or tgname like 'retract\_%')),
-  0, '036/083/085: ... and NOT ONE carries a WHEN clause — 023''s CURRENT_USER guard would never fire here');
+  1, '036/083/085/087: exactly ONE of them carries a WHEN clause at all — 087''s retract_club_join_requested_on_answer, guarding the status TRANSITION so a no-op update retracts nothing. A second appearing here is the prompt to check it is not a current_user guard');
 
 -- auth.uid() appears nowhere in a fan-out body, checkable by inspection rather
 -- than inferred from behaviour.
@@ -20405,6 +20426,37 @@ select assert_eq((select count(*)::int from notifications
   where actor_id = '00000000-0000-0000-0000-000000850001'
     and user_id = '00000000-0000-0000-0000-000000850004'), 0,
   '085.26: a decline writes ZERO notifications, and that is deliberate — 036 §3''s club conjunct would make one unreadable to the very rider it addresses');
+
+-- ---------------------------------------------------------------------------
+-- 087.1  ** THE ZERO 085.26 DOES NOT ASSERT. ** A decline RETRACTS the
+--        admins' "asked to join" notification.
+-- ---------------------------------------------------------------------------
+-- 085.26 asserts a decline WRITES nothing, which was true and was not the
+-- question. 085 hung the retraction on DELETE alone, and
+-- decline_club_join_request UPDATEs — so the notification survived, the row
+-- left the club''s pending list, the notification''s Approve/Decline pair
+-- vanished with it, and every admin kept a permanent "X asked to join" line
+-- with no controls and no way to clear it. 087 adds the status-transition
+-- trigger; this is the assertion whose absence let it ship.
+--
+-- ** MUTATION-TEST: drop retract_club_join_requested_on_answer, confirm this
+-- goes red, revert. ** The delete-arm trigger stays in place through that, so a
+-- pass would mean the wrong trigger is doing the work.
+select assert_eq((select count(*)::int from notifications
+  where type = 'club_join_requested'
+    and actor_id = '00000000-0000-0000-0000-000000850004'), 0,
+  '087.1: a DECLINE retracts the admins'' club_join_requested notification — 085 hung the retraction on DELETE alone and decline UPDATEs, so it survived for ever with no control able to clear it');
+-- ... and it took only its own. The other requester's row is untouched, which
+-- is what a scope narrower than (type, actor_id, club_id) would have broken.
+select assert_eq((select count(*)::int from notifications
+  where type = 'club_join_requested'
+    and actor_id = '00000000-0000-0000-0000-000000850009'), 1,
+  '087.1: ... and retracted ONLY that rider''s — a second requester''s notification stands, so the scope is the full event key rather than the club');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.club_join_requests'::regclass and not tgisinternal
+      and tgqual is not null),
+  2, '087.1: exactly TWO triggers on this table carry a WHEN clause — the participation gate''s current_user guard and 087''s status-transition guard. Neither fan-out nor the delete-arm retraction may acquire one: their only writers are security definer RPCs, where current_user is the owner and the guard would disable them silently');
 
 -- ---------------------------------------------------------------------------
 -- 085.14b / 085.15  A refusal sticks against the requester and nobody else

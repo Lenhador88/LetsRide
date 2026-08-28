@@ -785,7 +785,9 @@ comment on function private.retract_club_join_requested() is
 --    where table_schema='public' and table_name='club_join_requests' and grantee='anon';
 --   -- 0
 --
--- 3. ELEVEN new security definer functions, not seven. Enumerate rather than
+-- 3. ELEVEN new security definer functions, plus ONE rewritten — so the query
+--    below returns TWELVE rows, and the twelfth is `private.may_participate`,
+--    which 023 created and this file replaces. Enumerate rather than
 --    count: CLAUDE.md records 078's task list getting exactly this arithmetic
 --    wrong, and a function created without `security definer` would otherwise
 --    be a code review rather than a red footer.
@@ -863,3 +865,16 @@ comment on function private.retract_club_join_requested() is
 --      b. an approval into a private club;
 --      c. an approval into a club whose owner holds no club_members row (054's
 --         ownerless owner, who is an admin under is_club_admin_for).
+--
+--    ** AND THE WIDER HALF, WHICH THE THREE ABOVE DO NOT COVER. ** This file
+--    also rewrites private.may_participate to delegate to its new
+--    subject-taking twin, and public.enforce_participation_gate() calls that
+--    function on every gated INSERT across all SIXTEEN tables — so 085's blast
+--    radius is the whole gate, not only the approval path. It is provably
+--    equivalent (023's body with `candidate` substituted, the same signature
+--    and modifiers, and `create or replace` does not reset the ACL), so the
+--    risk is a bad APPLY rather than a bad rule — which is exactly what a
+--    hand-exercise catches. Two more cases, before the three above:
+--      d. a gated INSERT by an onboarded rider — expect success;
+--      e. a gated INSERT by a rider with onboarding_completed_at set and
+--         terms_accepted_at NULL — expect 23514 and the gate's own message.
