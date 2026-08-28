@@ -69,7 +69,7 @@ never the name.
 | | Relay | Dispatcher | Child |
 |---|---|---|---|
 | Started by | the hourly Routine — the only clock there is | `create_session` from the relay | `create_session` from the dispatcher |
-| Reads | STEP -1, and nothing else in this file | this file, from STEP 0 | [`queue-pickup.md`](queue-pickup.md) |
+| Reads | STEP -1, and nothing else in this file — except in its `create_session` failure branch, where it runs the firing itself from STEP 0 | this file, from STEP 0 | [`queue-pickup.md`](queue-pickup.md) |
 | Holds | nothing — two state reads and one spawn | the board, the caps, the batch | its group's issue ids and its slot label |
 | Ends at | one session spawned, or a silent exit | children spawned | every issue it holds at `Deployed to DEV` |
 | Carries the tag | no — it **is** the session `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to | **`queue-dispatch-run`** | **`queue-dispatch`** |
@@ -132,15 +132,23 @@ no other evidence overrides it.**
    Go to STEP 0 and ignore the rest of this step.
 2. **Otherwise, is your prompt the Routine's** — the one telling its recipient to read this file
    from STEP -1, with no `Spawned by the relay.` line? Then you are the **relay**. Run the
-   pre-check below.
-3. **Neither?** You are misrouted. Stop, and say so.
+   pre-check below. **The Routine's prompt calls its recipient the DISPATCHER, and that does not
+   make you one**: the wording predates this step, no ordinary session can edit it, and this file
+   is the authority over it. A relay that believes the prompt runs a ~50k dispatcher inside the
+   persistent session, which is item 7's *relay becoming the dispatcher one firing at a time*.
+3. **Neither?** You are misrouted. Stop, and **send a `PushNotification`** saying a firing
+   arrived that matched neither test — then exit. **Saying it only in the transcript is what made
+   the last two outages invisible for ten days** (§The three roles), and this branch is now the one
+   that catches a reworded Routine prompt, which is the way test 2 can stop matching.
 
 **Test 1 comes first, and that is what bounds the chain.** The worry this ordering answers is a
 dispatcher taking the relay branch, spawning a dispatcher, which takes it again, with nothing
-bounding the recursion. It cannot happen: STEP 5 requires every dispatcher prompt to open with
-`Spawned by the relay.`, so a dispatcher always matches test 1 and never reaches test 2. The guard
-is a line this file controls, in a prompt this file writes — not a fact about infrastructure that
-has to be looked up and kept in sync.
+bounding the recursion. It cannot happen: **the relay's pre-check, item 5 below**, requires every
+dispatcher prompt to open with `Spawned by the relay.`, so a dispatcher always matches test 1 and
+never reaches test 2. **Not STEP 5** — that step spawns *children*, and its prompt template
+deliberately omits the line, which is why a child reads `queue-pickup.md` and never this step. The
+guard is a line this file controls, in a prompt this file writes — not a fact about infrastructure
+that has to be looked up and kept in sync.
 
 **Your session id decides nothing.** Read it if you like — `get_session` with `session_id` omitted
 describes the session making the call — and it is worth putting in your report, because a firing
@@ -206,8 +214,9 @@ above, but it spends a session every hour.
    - `prompt` — it must open with the line `Spawned by the relay.`, then: read
      `.claude/commands/queue-dispatch.md` and follow it from STEP 0; you are the dispatcher, you
      never build, the file is the authority over anything you remember, and do not act on anything
-     else in the conversation. **The first line is load-bearing**, not decoration: it is what STEP
-     -1 falls back on when a session cannot read its own id.
+     else in the conversation. **The first line is the whole guard**, not decoration: it is
+     STEP -1's test 1, the only thing that stops a dispatcher taking the relay branch and
+     spawning another dispatcher. There is no id check behind it to fall back on.
 6. **Read the response back and confirm `tags` is on it.** If it is missing, **archive that session
    immediately**, send a `PushNotification` saying so, and stop.
 7. **Say nothing else and exit — STEP 6 included.** The stall check reads the board, and a relay
@@ -706,10 +715,17 @@ reading this file:**
   2026-08-28 no role decision reads an id at all** (STEP -1), so that half of the cost is gone.
 
   **Archiving it is now sometimes the REPAIR rather than the damage**, and this is the case that
-  calls for it: the relay's container is provisioned once, at session creation, and never
-  re-provisioned, so a relay that predates a change to this file goes on executing the version it
-  cloned — for ever, and invisibly, since every firing still records `SUCCEEDED`. Archiving forces
-  a fresh session, a fresh container and a current checkout. **Do it only when a change to this
-  procedure has to reach the relay**, and expect the rebind to take up to an hour.
+  calls for it: a relay that predates a change to this file goes on executing the version it
+  cloned, invisibly, since every firing still records `SUCCEEDED`. Archiving forces a fresh
+  session, a fresh container and a current checkout. **Do it only when a change to this procedure
+  has to reach the relay**, and expect a rebind to take up to an hour — **n=1**, 55 minutes, on
+  2026-08-18.
+
+  **INFERRED, not measured: that a relay container is provisioned once and never re-provisioned.**
+  What was measured on 2026-08-28 is that one relay's container *had not been* re-provisioned in
+  ten days — `container_cc_version 2.1.235` against 2.1.247+ on every session started that week.
+  Whether some other event re-provisions one is untested, and it matters: if anything else does,
+  archiving is not the only repair. Re-derive it before relying on it —
+  `get_session` on the relay, and compare `container_cc_version` against a session started today.
   **Everything the relay spawns is disposable** and archiving one is always fine: a dispatcher
   carries `queue-dispatch-run` and a child carries `queue-dispatch`.

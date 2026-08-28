@@ -1980,8 +1980,8 @@ cheapest to get green. The one case that needs no PR is a session that changed n
 - **Don't archive the relay session on your own initiative** — the one
   `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to. **Read which session that is off the trigger, never
   off a line in a file**: `list_triggers` carries the authoritative `persistent_session_id`, and
-  since 2026-08-28 no file in this repo names it, because a copied id stopped the queue for ten
-  days across two separate causes (`.claude/commands/queue-dispatch.md` §The three roles carries
+  since 2026-08-28 no role decision anywhere reads it, because a copied id stopped the queue for
+  ten days across two separate causes (`.claude/commands/queue-dispatch.md` §The three roles carries
   both). `update_trigger` has no `persistent_session_id` parameter, so no session can rebind the
   Routine itself — though the binding did recover on its own within an hour the one time it was
   tested. **It is the only session in the queue that is reused, and since 2026-08-18 it decides

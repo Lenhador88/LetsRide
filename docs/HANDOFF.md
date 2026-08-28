@@ -2851,10 +2851,11 @@ out loud**: the identical command is the documented restore for the irreplaceabl
 **A procedure change needs no trigger edit — but it does NOT reach the relay on its own, and that
 is the correction that cost ten days.** The prompt says *read the file and follow it*, so relay
 behaviour lands as a file change and nothing outside the repo has to move. What does not follow,
-and what this section claimed until 2026-08-28, is that merging the change is enough: **the relay's
-container is provisioned once, at session creation, and never re-provisioned**, so it goes on
-executing the copy it cloned. Measured 2026-08-28 — `container_cc_version 2.1.235` against 2.1.247+
-on every session started that week, and a working branch present in no remote. **A change that the
+and what this section claimed until 2026-08-28, is that merging the change is enough: **the relay goes on executing the copy it cloned when its
+session was created.** Measured 2026-08-28 — its container reported `container_cc_version 2.1.235`
+against 2.1.247+ on every session started that week, so it had not been re-provisioned in ten days.
+**That a relay container is *never* re-provisioned is inferred from that one snapshot**, and it is
+load-bearing: if some other event rebuilds one, archiving is not the only repair. **A change that the
 relay itself must execute needs the relay archived so it re-clones** (`queue-dispatch.md` §Two
 irreversible things); a change only dispatchers and children execute arrives on the merge, because
 each of those is a fresh session with a fresh checkout. That matters because **no ordinary session
@@ -2875,8 +2876,11 @@ correctly stopped, into a transcript nobody reads.
 
 **It then happened a second time, for a different reason, and that is why the id is gone rather
 than corrected.** Repointing the copy on 2026-08-24 changed nothing: the queue dispatched nothing
-for four more days, because the relay was still reading its 2026-08-18 clone, in which the id is
-the *archived* one (`git show d7eff03:.claude/commands/queue-dispatch.md`). Diagnosed 2026-08-28.
+for four more days. The 2026-08-18 clone the relay was running names the *archived* id — verified,
+`git show d7eff03:.claude/commands/queue-dispatch.md` — and its container had not been rebuilt in
+that window. **That this is why each firing refused is inference, not a reading of the relay's own
+transcript**, which no session can reach; it is the only hypothesis consistent with 19-second
+`SUCCEEDED` runs that spawn nothing. Diagnosed 2026-08-28.
 **Since then no role decision reads a session id at all** — STEP -1 keys off the prompt, which is
 handed to the session at firing time and cannot go stale. Do not reintroduce an id comparison as a
 safety check; it is the thing that failed, twice, in both directions.
