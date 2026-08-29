@@ -5992,12 +5992,12 @@ select assert_eq(
       and (has_function_privilege('authenticated', p.oid, 'execute')
         or has_function_privilege('anon', p.oid, 'execute')
         or has_function_privilege('service_role', p.oid, 'execute'))),
-  0, '036/083/085/089: no client role can call any of the thirteen fan-out functions directly');
+  0, '036/083/085/089/090: no client role can call any of the twelve fan-out functions directly');
 select assert_eq(
   (select count(*)::int from pg_proc
     where pronamespace = 'private'::regnamespace
       and (proname like 'notify\_%' or proname like 'retract\_%')),
-  13, '036/083/085/089: ... and there are thirteen of them — 036''s six, 083''s notify_ride_invited, notify_ride_invite_answered and retract_ride_invited, 085''s notify_club_join_requested and retract_club_join_requested, and 089''s notify_club_join_request_declined and retract_club_join_request_declined — so that assertion is not vacuous');
+  12, '036/083/085/089/090: ... and there are twelve of them — 036''s six, 083''s notify_ride_invited and notify_ride_invite_answered, 085''s notify_club_join_requested and retract_club_join_requested, and 089''s notify_club_join_request_declined and retract_club_join_request_declined — so that assertion is not vacuous. TWELVE since 090 dropped 083''s retract_ride_invited; 090.2 is what names the one that went, because a count cannot');
 
 -- ---------------------------------------------------------------------------
 -- 7.5 — blocking, applied TWICE, with A and B exchanged
@@ -6511,7 +6511,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where not tgisinternal
       and (tgname like 'notify\_%' or tgname like 'retract\_%')),
-  14, '036/083/085/087/089: fourteen fan-out triggers exist');
+  13, '036/083/085/087/089/090: thirteen fan-out triggers exist — fourteen until 090 dropped retract_ride_invited, which is named in 090.2 rather than left to this count');
 -- ** 087 CHANGED WHAT THIS ASSERTION HAD TO SAY. ** It used to read
 -- `tgqual is not null` = 0 — no WHEN clause at all — because the only WHEN
 -- anybody had ever put on one of these was 023's `current_user` guard, which
@@ -6570,7 +6570,7 @@ select assert_eq(
     where pronamespace = 'private'::regnamespace
       and (proname like 'notify\_%' or proname like 'retract\_%')
       and prosecdef and proconfig @> array['search_path=""']),
-  13, '036/083/085/089: every fan-out is SECURITY DEFINER with search_path pinned empty');
+  12, '036/083/085/089/090: every fan-out is SECURITY DEFINER with search_path pinned empty');
 
 -- The count must be INVOKER. A definer count steps past the block predicate and
 -- every resolvability conjunct, producing a badge the rider can never clear.
@@ -19474,13 +19474,101 @@ select assert_eq((select count(*)::int from notifications
                      and actor_id = '00000000-0000-0000-0000-000000830001'
                      and type = 'ride_invited'),
   1, '083.20: an insert fans out `ride_invited` to the INVITEE with the INVITER as actor');
--- The retraction, and what it must not touch.
+-- ---------------------------------------------------------------------------
+-- 090.1  ** WITHDRAW, RE-SEND, AND THE INVITEE IS NOTIFIED ONCE **
+-- ---------------------------------------------------------------------------
+-- PD-332. `083` retracted this row on delete, and paired with `036`'s
+-- uniqueness index that made withdraw-then-re-send a way to notify the same
+-- rider once per cycle, without limit and behind no rate limit. `090` drops
+-- the trigger, so the row survives the withdrawal and the re-send collides
+-- with it.
+--
+-- ** Asserted as the FULL cycle rather than as the surviving row alone. ** A
+-- test that only checked the row survives a delete would still pass if the
+-- re-send wrote a second one, which is the half that actually matters.
 delete from ride_invites where id = '00000000-0000-0000-0000-0000008300fa';
 select assert_eq((select count(*)::int from notifications
                    where user_id = '00000000-0000-0000-0000-000000830010'
+                     and actor_id = '00000000-0000-0000-0000-000000830001'
                      and type = 'ride_invited'),
-  0, '083.20: ... and a withdrawal retracts it, rather than leaving a notification for an event that was undone');
+  1, '090.1: a withdrawal LEAVES the `ride_invited` notification standing — 083''s retract_ride_invited is dropped, and a row outliving its invite is the accepted cost of that');
+-- Read, as the invitee would by opening the panel. Written as the owner
+-- because what is being asserted is the VALUE surviving the re-send, not who
+-- is allowed to set it — 036's own UPDATE assertions cover that.
+update notifications set read_at = now()
+ where user_id = '00000000-0000-0000-0000-000000830010'
+   and type = 'ride_invited';
+-- The re-send. A NEW invite row, same ride and same pair, which is exactly what
+-- the organizer's second press writes.
+insert into ride_invites (id, ride_id, invitee_id, inviter_id) values
+  ('00000000-0000-0000-0000-0000008300fb', '00000000-0000-0000-0000-0000008300e1',
+   '00000000-0000-0000-0000-000000830010', '00000000-0000-0000-0000-000000830001');
+select assert_eq((select count(*)::int from notifications
+                   where user_id = '00000000-0000-0000-0000-000000830010'
+                     and actor_id = '00000000-0000-0000-0000-000000830001'
+                     and type = 'ride_invited'),
+  1, '090.1: ... and the RE-SEND writes NO second row — 036''s notifications_event_key absorbs it through notify_ride_invited''s `on conflict do nothing`, so an organizer who withdraws and re-sends notifies the invitee once however many times they cycle it');
+select assert_eq((select count(*)::int from notifications
+                   where user_id = '00000000-0000-0000-0000-000000830010'
+                     and type = 'ride_invited'
+                     and read_at is not null),
+  1, '090.1: ... and the surviving row is still READ, with its original created_at — the absorbed insert writes nothing, so a re-send is silent to a rider who already dismissed the first. The second half of the cost PD-332 bought, asserted rather than remembered');
 rollback to savepoint invite_fanout;
+
+-- ---------------------------------------------------------------------------
+-- 090.2  ** THE TRIGGER AND ITS FUNCTION ARE GONE, BY NAME **
+-- ---------------------------------------------------------------------------
+-- A migration that silently did not run looks exactly like one that did: every
+-- assertion above passes against a database where `retract_ride_invited` still
+-- exists but happens not to have fired in the window being read. These name the
+-- objects.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.ride_invites'::regclass
+      and not tgisinternal and tgname = 'retract_ride_invited'),
+  0, '090.2: the retract_ride_invited TRIGGER is gone from ride_invites');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'retract_ride_invited'),
+  0, '090.2: ... and so is private.retract_ride_invited() — dropped rather than orphaned, so no later trigger can pick it up by name');
+select assert_eq(
+  (select array(select tgname::text from pg_trigger
+                 where tgrelid = 'public.ride_invites'::regclass and not tgisinternal
+                 order by tgname)),
+  array['enforce_participation_gate', 'notify_ride_invite_answered', 'notify_ride_invited'],
+  '090.2: ... leaving THESE THREE on ride_invites, read as a name list rather than a count — 083''s two fan-outs and 023''s gate survive, and the table now carries no `after delete` trigger of any kind');
+select assert_eq(
+  (select array(select p.proname::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                 where n.nspname = 'private' and p.proname like 'retract\_%'
+                 order by p.proname)),
+  array['retract_club_join_request_declined', 'retract_club_join_requested',
+        'retract_postcard_liked'],
+  '090.2: ... and THESE THREE retractions are untouched — 089''s, 085''s and 036''s. 087''s club-join retraction shares only the word with the one 090 dropped, and a count would have read 3 both before 089 and after 090 for different reasons');
+
+-- ---------------------------------------------------------------------------
+-- 090.3  ** DECLINE IS STILL TERMINAL — 083 §4's DELETE SCOPE IS UNTOUCHED **
+-- ---------------------------------------------------------------------------
+-- PD-332 widens how often a PENDING invite may be withdrawn and re-sent. It
+-- must not widen WHICH invites may be withdrawn: `083` §4's DELETE policy stays
+-- scoped to `status = 'pending'`, so a rider who declined cannot be cleared and
+-- asked again. Restated here rather than left to 083.10, because 090 is the
+-- change that makes an unnoticed widening here a treadmill instead of a
+-- one-time defect — the two properties are now load-bearing together.
+savepoint declined_still_terminal_090;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000830001', false);
+delete from ride_invites where id = '00000000-0000-0000-0000-0000008300f3';
+reset role;
+select assert_eq((select count(*)::int from ride_invites
+                   where id = '00000000-0000-0000-0000-0000008300f3'
+                     and status = 'declined'),
+  1, '090.3: the inviter''s delete STILL matches zero rows for a DECLINED invite — 090 drops a trigger and touches no policy, so decline stays terminal against the party the rule constrains');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'ride_invites' and cmd = 'DELETE'
+      and qual like '%pending%'),
+  1, '090.3: ... and the DELETE policy still names `pending` in its USING clause — asserted on the policy as well as on the behaviour, because a widened policy with no declined fixture left to catch it would go green');
+rollback to savepoint declined_still_terminal_090;
 
 -- The blocked pair. The INSERT policy already refuses this through the client,
 -- so the guard exists for the writer no policy binds — a seed, a repair, an
@@ -19509,7 +19597,7 @@ select assert_eq((select count(*)::int from notifications
 select assert_eq((select count(*)::int from notifications
                    where user_id = '00000000-0000-0000-0000-000000830002'
                      and type = 'ride_invited'),
-  1, '083.20: ... and the invitee''s own `ride_invited` row is NOT retracted by an answer — only a withdrawal retracts, and the type is what keeps the two apart');
+  1, '083.20: ... and the invitee''s own `ride_invited` row survives the answer — nothing retracts it since 090, and the type is what kept the answer fan-outs off it even while something did');
 rollback to savepoint invite_fanout_answer;
 
 savepoint invite_fanout_declined;
