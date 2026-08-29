@@ -159,9 +159,33 @@ export async function claimRideInviteLink(
   const { data, error } = await supabase.rpc('claim_ride_invite_link', { t: token })
 
   if (error) {
-    // ONE message, because the RPC has one raise site: expired, revoked,
-    // deleted, departed, blocked in either direction, un-onboarded and simply
-    // guessed are all indistinguishable by design.
+    // ** `23514` is the organizer tapping their OWN link, and it is the one
+    // SQLSTATE that is not the RPC's raise site. ** `ride_invites` carries
+    // `check (invitee_id <> inviter_id)`, so the insert refuses before the
+    // crew row is written — and `091`'s own comment says the surface must not
+    // leave that showing as "no longer valid", which is what it did.
+    //
+    // Normally unreachable: `createRide` puts the organizer in `ride_members`
+    // in the same transaction, so the screen draws "you are already on this
+    // ride" and never offers the button. It is reached by an organizer who
+    // LEFT their own ride — `ride_members` DELETE is own-row and nothing stops
+    // them — and then opened their own link to check it works. They were told
+    // a live link was dead.
+    //
+    // ** It discloses nothing, and the ORDER inside the RPC is why. ** A
+    // guessed or dead token fails `ride_invite_link_reachable_by` first and
+    // gets the single `42501`; this arm is reachable only for a LIVE token on
+    // a ride the caller organizes, which is a rider being told something they
+    // already know about their own ride. The participation gate used to raise
+    // `23514` here too and no longer can — `091` moved it into
+    // `reachable_by`, one call earlier — so this SQLSTATE now has exactly one
+    // meaning.
+    if (error.code === '23514') {
+      return { error: 'This is your own ride — share the link rather than opening it.' }
+    }
+    // ONE message for everything else, because the RPC has one raise site:
+    // expired, revoked, deleted, departed, blocked in either direction,
+    // un-onboarded and simply guessed are all indistinguishable by design.
     //
     // ** There was a `23514` arm here and `091` made it unreachable, which is
     // why it is gone rather than kept as a second line. ** The draft caught the
