@@ -652,10 +652,17 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 89 files; DEV is at `089` and PROD at `079` — measured 2026-08-28, so DEV is
-AHEAD by ten and `080`–`089` are owed to PROD at the next promotion, in filename order.**
+**Applied state: 90 files; DEV is at `090` and PROD at `079` — measured 2026-08-29, so DEV is
+AHEAD by eleven and `080`–`090` are owed to PROD at the next promotion, in filename order.**
 `080`–`088` are additive, so those nine go to PROD **before** the promotion build serves, per the
-ordering rule below. **`089` is the exception and goes AFTER it is confirmed serving**, on `070`'s
+ordering rule below. **`090` is destructive and goes before it too**, which is this file's one
+exception to that rule rather than a violation of it: it drops `083`'s retraction trigger, and its
+header carries the check that earns the exception — the serving client already degrades correctly
+for a `ride_invited` notification whose invite is not live, nothing in `src/` names the trigger or
+its function, and no client role ever held EXECUTE on it, so an older bundle and a newer one behave
+identically against the post-`090` schema. **Read that as the rule working, not as a loophole**:
+the rule asks which side fails safe, and a destructive file whose removed object no bundle can
+observe has no unsafe side. **`089` is the other exception and goes AFTER it is confirmed serving**, on `070`'s
 and `077`'s footing rather than `069`'s — it is additive in SCHEMA and its ordering constraint is
 in the CLIENT: `notificationCopy` and `NotificationsListItem`'s `describe` are exhaustive switches,
 so one decline landing while an older bundle is still serving takes that rider's notifications
@@ -741,7 +748,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **2332** assertions — re-derive rather than trust it:
+Suite **2340** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
