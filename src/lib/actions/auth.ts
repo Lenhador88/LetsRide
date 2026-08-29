@@ -3,6 +3,8 @@ import { canonicalOrigin } from '@/lib/origin'
 import { clearQueryCache } from '@/lib/query'
 import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { clearRiderLocation } from '@/lib/location/rider-location'
+import { clearStashedInviteToken, takeStashedInviteToken } from '@/lib/invites/pending-token'
+import { routes } from '@/lib/routes'
 import { clearSessionStore } from '@/lib/supabase/session-store'
 import { edgeFunctionErrorCode } from '@/lib/supabase/functions'
 import { RECOVERY_EXPIRED_MESSAGE, consumePasswordResetGrant } from '@/lib/auth/recovery'
@@ -32,9 +34,20 @@ export async function signIn(_prev: ActionState, formData: FormData): Promise<Ac
   // Either message tells an attacker which addresses are registered.
   if (error) return { error: 'That email and password do not match an account.' }
 
+  // **A stashed invite token is consumed here** (`091`, PD-330), for the same
+  // reason `setUsername` consumes it: the rider signed in *because of* a link,
+  // and landing them on `/postcards` with a live token in `sessionStorage` and
+  // nothing reading it is the flow dead-ending quietly. An existing rider never
+  // runs the wizard, so this is the only place their detour comes back.
+  //
+  // **It is a navigation and never a claim.** The rider who signs in is not
+  // necessarily the rider who opened the link, so they are returned to the
+  // preview and must tap — see `claimRideInviteLink`.
+  const invite = takeStashedInviteToken()
+
   // The route guard decides the real destination — an un-onboarded rider is
-  // sent to their resume step rather than the home screen.
-  return { error: null, redirectTo: '/postcards' }
+  // sent to their resume step rather than the home screen, from either of these.
+  return { error: null, redirectTo: invite ? routes.joinRide(invite) : '/postcards' }
 }
 
 export async function signUp(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -245,6 +258,13 @@ export async function updatePassword(
  * rather than the query cache's — see `lib/auth/guard-cache.ts` for why it is
  * cleared here as well as by the `SIGNED_OUT` listener.
  *
+ * **`clearStashedInviteToken()` is the fifth** (`091`, PD-330). A stashed
+ * invite token is a trace and a credential at once — it came from a message
+ * rather than from the rider, but leaving it behind means whoever signs in next
+ * on this device inherits a spendable grant. It is a local `sessionStorage` key
+ * with no user id in it, so nothing else would ever clear it, and the URL in the
+ * original message is the durable copy for the rider who actually holds it.
+ *
  * **`clearRiderLocation()` is the fourth**, added with the place-search
  * location provider (`src/lib/location/rider-location.ts`). It holds no user
  * id of its own to check against, so without this call a rider's resolved
@@ -269,6 +289,7 @@ export async function signOut(): Promise<ActionState> {
   clearQueryCache()
   clearGuardCache()
   clearRiderLocation()
+  clearStashedInviteToken()
   await clearSessionStore()
   return { error: null, redirectTo: '/auth/login' }
 }

@@ -8,6 +8,7 @@ import {
   resolveDestination,
   type GuardState,
 } from '@/lib/auth/guard'
+import { RIDE_JOIN_PATH } from '@/lib/routes'
 
 /**
  * The routing rules `proxy.ts` carried, now testable.
@@ -288,5 +289,52 @@ describe('needsOnboardingState', () => {
   // nothing: this route always navigates onward itself.
   it('is false for the emailed-confirmation route', () => {
     expect(needsOnboardingState('/auth/confirm')).toBe(false)
+  })
+})
+
+/**
+ * The invite link's landing route — `091`, PD-330, and the change that needs
+ * **two** edits to `guard.ts` rather than one.
+ *
+ * `/rides/join` goes into `PUBLIC_PATHS` *and* into `needsOnboardingState()`'s
+ * set. The first alone leaves the second answering `false` — its opening line is
+ * `if (!isPublicPath(pathname)) return true` — so the onboarding stamps are
+ * never read, the state stays `{ kind: 'session' }`, the guard answers "stay",
+ * and a rider who has just signed up is parked on the preview tapping a Join
+ * button whose RPC raises `check_violation` for ever, with no route into the
+ * wizard.
+ *
+ * That failure is **invisible to the two cases either side of it**: an
+ * anonymous visitor stays either way, and an onboarded rider stays either way.
+ * Only the middle case moves, which is why all three are asserted together
+ * rather than the one that looks interesting.
+ */
+describe('the invite link landing route', () => {
+  it('lets an anonymous visitor stay, because the page must mount to stash the token', () => {
+    expect(isPublicPath(RIDE_JOIN_PATH)).toBe(true)
+    expect(resolveDestination(RIDE_JOIN_PATH, anonymous)).toBeNull()
+  })
+
+  it('sends a signed-in rider mid-wizard to their resume step', () => {
+    // The case that silently inverts if the route is added to PUBLIC_PATHS
+    // alone: `needsOnboardingState` would answer false, `guardStateFrom` would
+    // hand `resolveDestination` a bare `{ kind: 'session' }`, and this would be
+    // null.
+    expect(needsOnboardingState(RIDE_JOIN_PATH)).toBe(true)
+    expect(resolveDestination(RIDE_JOIN_PATH, rider({ onboarding_completed_at: null }))).toBe(
+      '/onboarding/username'
+    )
+    // Consent first, per 023: a rider with neither stamp goes to the prompt,
+    // not to the wizard's last step.
+    expect(
+      resolveDestination(
+        RIDE_JOIN_PATH,
+        rider({ terms_accepted_at: null, onboarding_completed_at: null })
+      )
+    ).toBe('/onboarding/terms')
+  })
+
+  it('leaves a fully onboarded rider on it, so they can read the preview and tap', () => {
+    expect(resolveDestination(RIDE_JOIN_PATH, rider())).toBeNull()
   })
 })
