@@ -16,11 +16,14 @@ Sections 1–5 are one migration and its assertions; 6 is the gates; 7–9 are t
   riders it admitted and the organizer's only remedy is a block. Ask whether to file
   `remove_ride_member` as its own story. **Owner-only, and it does not block this build** — but
   the Revoke button's copy must not imply a removal that cannot happen.
-- [ ] 0.3 Re-derive the migration number: `list_migrations` on DEV (`fpmrimzxadewsaiwpsel`) and
-  PROD (`zwprydcyryvudhurbnye`) against `ls supabase/migrations/`. Measured 2026-08-29: 89 files,
-  DEV `089`, PROD `079`. This change is **`090` unless PD-332 — building in the same session —
-  has taken it**. Promote the ten-file DEV/PROD gap in filename order per `docs/ENVIRONMENTS.md`
-  §Migrations before adding to it.
+- [ ] 0.3 Re-derive the migration number: `list_migrations` on DEV (`fpmrimzxadewsaiwpsel`)
+  against `ls supabase/migrations/`. Measured 2026-08-29: DEV `089`; PD-332 has since taken `090`
+  in this same session, so **this change is `091`**. Confirm, and stop there.
+  **Do NOT promote the `080`–`089` gap to PROD as part of this story.** That is a release
+  operation with its own ordering rules — `081`/`082`'s create-then-rename pair, `083`'s and
+  `085`'s `036` hand-exercise gates, and `089`'s exception that it applies only after the
+  promotion build is confirmed serving. `docs/ENVIRONMENTS.md` §Migrations owns it, and folding it
+  into a feature's pre-flight is how one of those gates gets skipped.
 - [ ] 0.4 **Assert PD-332 has landed and `retract_ride_invited` is gone**:
   `select tgname from pg_trigger where tgrelid = 'public.ride_invites'::regclass and not
   tgisinternal`. Nothing here depends on that trigger, and a session that finds it still present
@@ -33,11 +36,13 @@ Sections 1–5 are one migration and its assertions; 6 is the gates; 7–9 are t
   count, because a count cannot tell a rename from a loss.
 - [ ] 0.6 Read the **live** comment on `public.enforce_participation_gate()` before writing the
   restamp. Do not take a number from `CLAUDE.md`.
-- [ ] 0.7 Confirm the four facts the design rests on, from the catalog rather than from this file:
-  `pgcrypto` is installed (`extensions` schema on DEV — so `extensions.gen_random_bytes`);
-  `rides.departure_at` is `not null`; `private.join_ride_from_invite` still restates the
-  participation gate and calls `private.can_read_ride`; and `ride_members`' only DELETE policy is
-  still `auth.uid() = user_id`.
+- [ ] 0.7 Re-confirm the four facts the design rests on, from the catalog rather than from this
+  file. **All four were measured against DEV on 2026-08-29 and held** — recorded so a mismatch is
+  visible rather than so the check can be skipped:
+  `pgcrypto` installed in the `extensions` schema (hence `extensions.gen_random_bytes`);
+  `rides.departure_at` `not null`; `private.join_ride_from_invite` still restating the
+  participation gate and calling `private.can_read_ride`; `ride_members` carrying exactly one
+  DELETE policy, `auth.uid() = user_id`. Gate triggers read **16**.
 - [ ] 0.8 Accept or overturn `design.md` §Questions Closed Q1–Q6. **All six are non-blocking and
   all have defaults**; Q1 (the 14-day ceiling) is the product judgement and Q6 is owner-only.
 
@@ -87,8 +92,18 @@ Sections 1–5 are one migration and its assertions; 6 is the gates; 7–9 are t
   `set search_path = ''`, `#variable_conflict error`. Returns the link row joined to its ride where
   `token = t` **and** `revoked_at is null` **and** `now() < expires_at` **and**
   `now() < rides.departure_at`. `revoke all ... from public, anon, authenticated`.
-  **This is the only definition of "live" in the change.**
-- [ ] 3.6 Comment it saying so, and naming its two callers.
+  **The only definition of "live", and a statement about the LINK alone** — it takes no caller and
+  reads no `auth.uid()`.
+- [ ] 3.6 `private.ride_invite_link_reachable_by(t text, uid uuid, lock boolean default false)` —
+  `security definer`, `set search_path = ''`, `#variable_conflict error`. Resolves through 3.5,
+  then **`not private.is_blocked(uid, r.organizer_id)`**, then **both participation stamps on
+  `uid`'s `profiles` row**. `revoke all ... from public, anon, authenticated`.
+  **The only definition of "this caller may use this token", and the RPCs' only entry point.**
+  Neither RPC body may contain an `is_blocked` call or a `profiles` stamp test.
+- [ ] 3.7 When `lock` is true, take **`for share` on the `ride_invite_links` row** while resolving,
+  so a concurrent revoke serialises against an in-flight claim (`design.md` §Revoke has to be
+  atomic with a claim). `for share`, not `for update` — concurrent claims must not block each other.
+- [ ] 3.8 Comment both, naming their callers and stating which half of the question each answers.
 
 ## 4. Migration — the three RPCs
 
@@ -96,15 +111,19 @@ Sections 1–5 are one migration and its assertions; 6 is the gates; 7–9 are t
   `set search_path = ''`, `returns table (...)` with the **eight named columns**: ride id, title,
   `departure_at`, `timezone`, `meeting_point`, organizer username, organizer avatar path, crew
   count. **Never `rides.*`.**
-- [ ] 4.2 In its body: resolve through `private.live_ride_invite_link`, then **restate the block
-  check** — `not private.is_blocked(auth.uid(), r.organizer_id)`. Return zero rows for every
-  failure; **raise nothing.**
+- [ ] 4.2 In its body: resolve through `private.ride_invite_link_reachable_by(t, auth.uid())`
+  and **nothing else** — no `is_blocked` call, no `profiles` stamp test, no direct call to
+  `live_ride_invite_link`. Return zero rows for every failure; **raise nothing.**
+  **The participation gate governs this read**, which is what stops a GoTrue-direct account with
+  no `accept_terms()` from reading a private ride's details off a forwarded token.
 - [ ] 4.3 `public.claim_ride_invite_link(t text)` — `security definer`, `volatile`,
   `set search_path = ''`, `#variable_conflict error`, returns the ride id. **One raise site.**
-- [ ] 4.4 Its body, in this order and no other: `auth.uid()`; resolve liveness; block check;
-  **then** the `ride_invites` upsert; **then** `private.join_ride_from_invite(v_uid, v_ride)`.
-  Every one of the first three failures reaches the **same** raise.
-  See `design.md` §The two orderings — reversing either fails silently.
+- [ ] 4.4 Its body, in this order and no other: `auth.uid()`; **one** call to
+  `private.ride_invite_link_reachable_by(t, v_uid, lock => true)`; **then** the `ride_invites`
+  upsert; **then** `private.join_ride_from_invite(v_uid, v_ride)`. Every unreachable case comes
+  back from that one call and reaches the **same** raise.
+  See `design.md` §The two orderings — reversing the write order fails silently — and
+  §Revoke has to be atomic with a claim for why the lock is not optional here.
 - [ ] 4.5 The upsert: `insert ... (ride_id, invitee_id, inviter_id, status, responded_at, link_id)
   values (v_ride, v_uid, v_link.created_by, 'accepted', now(), v_link.id)
   on conflict (ride_id, invitee_id) do update set status = 'accepted', responded_at = now(),
@@ -131,17 +150,27 @@ Sections 1–5 are one migration and its assertions; 6 is the gates; 7–9 are t
 ## 6. Assertions and gates — before any UI
 
 - [ ] 6.1 Add assertions to `supabase/tests/rls_test.sql`, **one per negative case in
-  `specs/ride-invite-links/`**, labelled `090.N`:
+  `specs/ride-invite-links/`**, labelled `091.N`:
   expired · revoked · deleted ride · departed ride · ride moved earlier · blocked A→B ·
   blocked B→A · already crew · the organizer's own link · malformed token · unmatched token ·
-  un-onboarded claimer · the same rider twice · a claim after a `pending` invite · a claim after a
-  `declined` invite · revoke does not eject · deleting a link nulls `link_id` and keeps the rows ·
+  un-onboarded claimer · **un-onboarded PREVIEWER** · the same rider twice · a claim after a
+  `pending` invite · a claim after a `declined` invite · **a revoke racing an in-flight claim** ·
+  revoke does not eject · deleting a link nulls `link_id` and keeps the rows ·
   no client can name `token`, `expires_at` or `link_id` · no UPDATE grant on either table
   (per grantee, `has_table_privilege`) · `anon` reaches neither table nor any RPC ·
   the preview returns no roster · the preview reaches no second ride ·
   a token holder reads zero rows from `rides` before claiming.
-- [ ] 6.2 Assert the **preview and the claim agree** for the same token in every dead state — this
-  is what pins the one-definition-of-liveness property.
+- [ ] 6.2 Assert the **preview and the claim agree** for the same token in every dead state, **and
+  for a blocked caller and an un-onboarded caller** — this pins both the one-definition-of-liveness
+  and the one-definition-of-reachability properties.
+- [ ] 6.2a Assert **`prosrc` of neither public RPC contains `is_blocked` or a `profiles` stamp
+  test**, so the caller predicate cannot drift back into two bodies.
+- [ ] 6.2b Assert the **preview refuses an un-onboarded caller** (`091.12`) — a caller with a
+  session, no `terms_accepted_at`, and a live token reads zero rows. This is the exposure the
+  first draft shipped: the mint and the claim were gated and the read was not.
+- [ ] 6.2c Assert the **revoke race**: with a claim's reachability resolved and a revoke committed
+  before the claim writes, no `ride_members` row results. `for share` on the link row is what makes
+  it hold, and it matters here because this change ships no eject path.
 - [ ] 6.3 Assert `pg_get_triggerdef(notify_ride_invited)` contains the `WHEN` clause, **by reading
   the definition** and not only by observing that no notification appeared.
 - [ ] 6.4 Assert `public.rides`' SELECT qual is **byte-identical** to its pre-change pinned string
@@ -176,17 +205,31 @@ Sections 1–5 are one migration and its assertions; 6 is the gates; 7–9 are t
 
 ## 8. Screens
 
-- [ ] 8.1 `npm run figma -- ls` **first** — there is no v2 frame for this flow. Assemble from
-  measured components (`RideCard`, the crew rail's avatar stack, `SectionHeader`) rather than
-  inventing and calling it measured. Use `--all` on any `tree`, or a hidden layer ships.
+- [ ] 8.1 `npm run figma -- ls` **first**, and know what it returns before spending time on it.
+  **There is no usable v2 frame for this flow, and the promising hits are traps** (checked
+  2026-08-29): `Invite riders` and `Invite riders - Filled` under `Design · Rides` are
+  **OLD-stylesheet** frames (`Grey (OLD)/*`, `Accent (OLD)/*`) drawing a rider **search** — PD-329's
+  flow, not the link — and `Join ride without account` sits under `Archive` and is out of scope
+  under decision #1 regardless. Assemble from measured components (`RideCard`, the crew rail's
+  avatar stack, `SectionHeader`) rather than inventing and calling it measured. Use `--all` on any
+  `tree`, or a hidden layer ships.
 - [ ] 8.2 The organizer's link surface on `/rides/detail/invite` — create, list with expiry and use
   count, share (`shareAppLink`, unchanged) and revoke. Revoke's confirmation copy **must not imply
   it removes anyone** (0.2).
-- [ ] 8.3 `/rides/join` landing route, token as a **query parameter** — `output: 'export'` forbids
-  a dynamic segment for a secret. All seven states from `specs/ride-invite-links/`'s table.
-- [ ] 8.4 Add `/rides/join` to `PUBLIC_PATHS` in `src/lib/auth/guard.ts` and add guard cases in
-  `src/lib/auth/guard.test.ts`: public with no session, and an un-onboarded rider still routed to
-  their resume step.
+- [ ] 8.3 `/rides/join` landing route, token as a **query parameter**. The reason is the **native**
+  build, not the web one: `output: 'export'` is in `next.config.ts`'s `capacitorConfig` only, and a
+  shared link opens `webConfig`, which runs a server — but the route tree is shared, so a `[token]`
+  segment would need `generateStaticParams` under `CAPACITOR_BUILD=1` and break
+  `npm run build:native`. All seven states from `specs/ride-invite-links/`'s table.
+- [ ] 8.4 **Two edits to `src/lib/auth/guard.ts`, not one**: add `/rides/join` to `PUBLIC_PATHS`
+  **and** to `needsOnboardingState()`'s set. The first alone makes the second return `false` — its
+  opening line is `if (!isPublicPath(pathname)) return true` — so the stamps are never read and a
+  newly signed-up rider is parked on a Join button that always raises.
+  Three cases in `src/lib/auth/__tests__/guard.test.ts`: no session → stay; session + incomplete
+  onboarding → the resume step; session + complete → stay.
+- [ ] 8.4a The post-onboarding landing **consumes the stash and returns the rider to
+  `/rides/join`**. Without it the flow dead-ends at `/postcards` with a live token still in
+  `sessionStorage` and nothing reading it — the same failure one screen later, and quieter.
 - [ ] 8.5 The stash — `sessionStorage`, one key, cleared on sign-out, `history.replaceState` to
   drop the token from the visible URL. **Never `localStorage`.**
 - [ ] 8.6 **The claim is a tap, always.** No effect, guard branch or `onAuthStateChange` listener
@@ -204,8 +247,9 @@ Sections 1–5 are one migration and its assertions; 6 is the gates; 7–9 are t
 - [ ] 9.4 Docs, **main thread not a subagent**: `CLAUDE.md`'s advisor table `+3` and its
   participation-gate paragraph to seventeen; `docs/reference/schema.md` gains `ride_invite_links`
   and `ride_invites.link_id`; `docs/reference/product-scope.md`'s Rides row.
-- [ ] 9.5 PR body states the two things meant to be read rather than discovered: **the link opens
-  the web app, not the shell, until PD-205**, and **revoke does not remove admitted riders and
-  nothing today can**.
+- [ ] 9.5 PR body states the three things meant to be read rather than discovered: **the link opens
+  the web app, not the shell, until PD-205**; **revoke does not remove admitted riders and nothing
+  today can**; and **the token is in Vercel's access log for the landing request**, which is
+  inherent to a capability URL and bounded by expiry and revoke.
 - [ ] 9.6 `reviewer` on the final diff, then merge to `development`, then `Deployed to DEV` on
   PD-330.

@@ -106,13 +106,29 @@ one, and it is not the same widening as `083`'s invite policy.
 **Liveness SHALL re-read `rides.departure_at` at every use** and SHALL NOT rely on `expires_at`
 alone, because a ride may be edited to depart earlier after its link was minted.
 
-Liveness SHALL be defined **once**, in `private.live_ride_invite_link(t text)`, and both the
-preview and the claim SHALL obtain it from there. A link is live when **all** of: the token
-matches a row; `revoked_at` is NULL; `now() < expires_at`; the ride still exists; and
-`now() < rides.departure_at`.
+Liveness SHALL be defined **once**, in `private.live_ride_invite_link(t text)`. A link is live
+when **all** of: the token matches a row; `revoked_at` is NULL; `now() < expires_at`; the ride
+still exists; and `now() < rides.departure_at`. This function SHALL be a statement about the
+**link alone** and SHALL NOT read `auth.uid()` or take a caller.
+
+**Reachability SHALL likewise be defined once**, in
+`private.ride_invite_link_reachable_by(t text, uid uuid)`, which is the **only** entry point the
+two public RPCs use. A token is reachable by a caller when it is live, **and**
+`not private.is_blocked(uid, organizer_id)`, **and** that caller's `profiles` row carries both
+`terms_accepted_at` and `onboarding_completed_at`.
+
+**The caller predicate SHALL NOT be copied into the RPC bodies.** Centralising the link predicate
+while duplicating the caller predicate gives the weaker treatment to the more security-critical
+half, with no policy beneath either copy — and the omission it invites is not hypothetical: the
+first draft of this spec left the participation gate out of the read path entirely.
 
 `expires_at` comparisons SHALL be made on instants. `rides.timezone` (`080`) is not consulted:
 the wall-clock rule governs how a departure is *rendered*, never when it *occurs*.
+
+The claim path SHALL take **`for share` on the `ride_invite_links` row** while resolving
+reachability, and `revoke_ride_invite_link` SHALL update that row, so a revoke and an in-flight
+claim serialise. `for share` and not `for update`: concurrent claims of one link do not conflict
+with each other and SHALL NOT block each other.
 
 #### Scenario: A link for a ride two days out expires with the ride
 - **WHEN** a link is minted for a ride departing in two days
@@ -126,11 +142,30 @@ the wall-clock rule governs how a departure is *rendered*, never when it *occurs
 - **WHEN** a ride is edited to depart before its link's `expires_at`
 - **THEN** the link SHALL stop being live at the new departure, without `expires_at` being rewritten
 
-#### Scenario: The two callers cannot disagree
+#### Scenario: The two callers cannot disagree about the link
 - **WHEN** the liveness predicate is changed
 - **THEN** it SHALL be changed in `private.live_ride_invite_link` alone, and both
   `ride_invite_link_preview` and `claim_ride_invite_link` SHALL be asserted to answer identically
   for the same token in every one of the dead states below
+
+#### Scenario: The two callers cannot disagree about the caller either
+- **WHEN** the block or gate predicate is changed
+- **THEN** it SHALL be changed in `private.ride_invite_link_reachable_by` alone
+- **AND** the preview and the claim SHALL be asserted to answer identically for a blocked caller
+  and for an un-onboarded caller, in the same shape as the dead-state assertion above
+- **AND** no `is_blocked` or `profiles`-stamp test SHALL appear in either RPC body, asserted by
+  reading `prosrc`
+
+#### Scenario: A revoke and an in-flight claim do not both win
+- **WHEN** a claim resolves reachability and a revoke commits before that claim writes
+- **THEN** the claim SHALL NOT admit the rider, because it holds `for share` on the link row and
+  the revoke's UPDATE serialises against it
+- **AND** this matters more here than it would elsewhere, because this change ships no eject path:
+  a rider admitted in that window would be permanent while the organizer's Revoke reported success
+
+#### Scenario: Two riders claiming the same link do not block each other
+- **WHEN** two riders claim one live link concurrently
+- **THEN** both SHALL succeed, since `for share` is shared and they conflict only with a revoke
 
 ### Requirement: A live token SHALL buy exactly two RPC calls and no policy reach
 
@@ -217,8 +252,8 @@ one-raise-site rule would otherwise appear to forbid it.
 - **WHEN** a rider who has blocked the organizer, or whom the organizer has blocked, presents a
   live token
 - **THEN** the preview SHALL return zero rows and the claim SHALL raise the single error
-- **AND** the block SHALL be checked **in the RPC's own body**, since a `security definer`
-  function has no policy beneath it to carry decision #2
+- **AND** the block SHALL be checked in `private.ride_invite_link_reachable_by`, since a
+  `security definer` function has no policy beneath it to carry decision #2
 - **AND** no `ride_invites` row SHALL be written before the check, so no residue remains that a
   later unblock could activate
 
@@ -227,10 +262,30 @@ one-raise-site rule would otherwise appear to forbid it.
 - **THEN** it SHALL use `private.is_blocked`, which is symmetric, and SHALL NOT test a directional
   `blocks` row
 
-### Requirement: A rider who has not completed onboarding SHALL NOT be admitted
+#### Scenario: A rider without both consent stamps
+- **WHEN** a rider whose `terms_accepted_at` or `onboarding_completed_at` is NULL presents a live
+  token to the **preview**
+- **THEN** zero rows SHALL be returned, indistinguishably from every case above
+- **AND** they SHALL learn nothing of the ride's title, meeting point, departure, organizer or
+  crew count
 
-The participation gate SHALL be carried by `private.join_ride_from_invite`, which already restates
-it. `claim_ride_invite_link` SHALL NOT re-implement it and SHALL NOT bypass it.
+### Requirement: A rider who has not completed onboarding SHALL NOT be admitted, and SHALL NOT be shown the ride either
+
+**The gate governs reading as well as writing.** `private.ride_invite_link_reachable_by` SHALL
+require both `terms_accepted_at` and `onboarding_completed_at` on the caller's `profiles` row, so
+the **preview** is gated identically to the claim.
+
+Gating the mint and the claim while leaving the read open is the exposure this requirement exists
+to name: an account created by calling GoTrue's `/auth/v1/signup` directly and never calling
+`accept_terms()` — the precise threat `023` and `join_ride_from_invite` were written for — could
+otherwise hold a forwarded token and read a private ride's title, meeting point, departure,
+organizer and crew count. A `security definer` read has no policy underneath it, so a check absent
+from the body is absent everywhere.
+
+The gate SHALL additionally continue to be carried by `private.join_ride_from_invite` at the
+write. That is **not** redundant: it is the last statement before a `ride_members` row and it
+guards `accept_ride_invite` as well. `claim_ride_invite_link` SHALL NOT re-implement either check
+and SHALL NOT bypass them.
 
 A gate trigger on `ride_members` cannot fire for a `security definer` writer — every gate trigger
 carries `when (current_user = 'authenticated')` and `current_user` inside a definer body is the
@@ -353,12 +408,23 @@ indistinguishable from expiry and revoke.
 
 ### Requirement: The landing route SHALL be public, SHALL render no data without a session, and SHALL define every state
 
-`/rides/join` SHALL be added to `PUBLIC_PATHS` in `src/lib/auth/guard.ts`, which is a denylist of
-public paths — so this is a deliberate opening and the only one this change makes.
+`/rides/join` SHALL be added to **both** `PUBLIC_PATHS` and `needsOnboardingState()`'s set in
+`src/lib/auth/guard.ts`. `PUBLIC_PATHS` is a denylist, so the first is a deliberate opening and
+the only one this change makes; the second is a separate question the guard already keeps separate
+— *may this be reached without a session* versus *must decision #5 be evaluated here*.
 
-**The token SHALL be a query parameter, not a path segment.** `next.config.ts` ships
-`output: 'export'`; a dynamic segment requires `generateStaticParams`, which cannot enumerate
-secrets. This is forced, not preferred.
+**Adding it to the first alone breaks the feature's main flow.** `needsOnboardingState`'s first
+line is `if (!isPublicPath(pathname)) return true`, so a public route answers it `false`, the
+onboarding stamps are never read, the guard answers "stay", and a rider who has just signed up is
+parked on the preview tapping a Join button that raises `check_violation` every time, with no
+route into the wizard.
+
+**The token SHALL be a query parameter, not a path segment**, and the reason SHALL be recorded
+accurately because the obvious one is false. `output: 'export'` lives in `next.config.ts`'s
+`capacitorConfig` **only** — the file ends `isCapacitorBuild ? capacitorConfig : webConfig`, and a
+shared link opens the **web** build, which has no static export and does run a server. The binding
+constraint is that **the route tree is shared between both builds**, so a `[token]` segment would
+require `generateStaticParams` under `CAPACITOR_BUILD=1` and break `npm run build:native`.
 
 With no session the route SHALL render the shell, a generic sentence naming neither the ride nor
 its organizer, and controls to sign in or create an account. It SHALL NOT call either RPC, and
@@ -390,10 +456,26 @@ message.
 - **WHEN** the preview RPC errors, as opposed to returning zero rows
 - **THEN** the screen SHALL offer a retry and SHALL NOT tell the rider the link is invalid
 
-#### Scenario: The guard sends an un-onboarded rider through the wizard first
-- **WHEN** a rider with a session but no completion stamp reaches the landing route
-- **THEN** the route guard SHALL send them to their resume step, per decision #5
-- **AND** the token SHALL survive that journey and return them to the landing route afterwards
+#### Scenario: The guard, with no session
+- **WHEN** an anonymous visitor reaches `/rides/join`
+- **THEN** `resolveDestination` SHALL return `null` — they stay, because the route is public and
+  the page must mount to stash the token
+
+#### Scenario: The guard, session with onboarding incomplete
+- **WHEN** a rider with a session and no completion stamp reaches the landing route
+- **THEN** `resolveDestination` SHALL return their resume step, per decision #5
+- **AND** this SHALL be asserted in `src/lib/auth/__tests__/guard.test.ts`, because it holds only
+  while `/rides/join` is in `needsOnboardingState()`'s set and is silently false if it is not
+
+#### Scenario: The guard, session with onboarding complete
+- **WHEN** an onboarded rider reaches the landing route
+- **THEN** `resolveDestination` SHALL return `null` and the preview SHALL render
+
+#### Scenario: The stash is consumed after the wizard, not abandoned at /postcards
+- **WHEN** a rider completes onboarding with a token stashed
+- **THEN** the screen they land on SHALL consume the stash and return them to `/rides/join`
+- **AND** the flow SHALL NOT end at `/postcards` with a live token still in `sessionStorage` and
+  nothing reading it
 
 ### Requirement: The token SHALL survive the auth round trip without being spendable by another rider
 

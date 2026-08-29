@@ -288,7 +288,18 @@ describe('the cross-references in the real repo', () => {
     // been run on artifacts written by hand. It has since — the change
     // validates — but the citation stays, because the rule it names is what
     // made the gap worth recording rather than passing over.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(24)
+    //
+    // **24 -> 26 on 2026-08-29 (`share-a-ride-invite-link`, PD-330).** Two more,
+    // both the same `Working` collision, both citing the heading they mean.
+    // `§Working With the Product Owner` for the rule that makes that proposal
+    // open with an objection rather than build around it — the brief pointed the
+    // link's revoke at `088`'s remove-rider path, which is club-scoped, so no
+    // such path exists for a ride. `§Working Principles` for *write a claim
+    // beside its command, not beside its history*, which is what that proposal's
+    // `output: 'export'` section is: the web build is not a static export, so the
+    // obvious re-derivation returns a wrong answer and the correction is
+    // load-bearing rather than biography.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(26)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been

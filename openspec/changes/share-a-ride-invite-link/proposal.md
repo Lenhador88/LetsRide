@@ -157,7 +157,9 @@ RPC calls and nothing else:
 | Call `ride_invite_link_preview(token)` and receive **eight named columns** of exactly one ride | Read a `rides` row through RLS — **this change adds no audience arm to any policy** |
 | Call `claim_ride_invite_link(token)` and join that one ride | Read the crew roster, the chat, the club, the club's other rides, or any second ride |
 | | Learn anything at all without a session — both RPCs are granted to `authenticated` only |
+| | Learn anything at all **without both onboarding stamps** — the gate governs the preview as well as the claim |
 | | Defeat a block, in either direction |
+| | Learn the **club's name**, which is not among the eight columns |
 
 **`rides` SELECT is not touched by this change, and neither is `private.can_read_ride`.** After a
 claim the rider's reach comes from the `ride_invites` row they now hold, through `083`'s existing
@@ -173,10 +175,14 @@ the job.
 
 ## What Changes
 
-**One migration.** 89 files in the repo, DEV at `089`, PROD at `079` — measured against DEV's
-`list_migrations` on 2026-08-29. This change is **`090`** *unless* PD-332, building in the same
-session, has taken that number; task 0.3 re-derives rather than trusting this sentence, and
-`CLAUDE.md`'s ten-file DEV/PROD gap is promoted in filename order before anything is added to it.
+**One migration, `091`.** PD-332 took `090` in this same session. Task 0.3 re-derives rather than
+trusting this sentence.
+
+**The DEV/PROD gap is not this story's to close.** `080`–`089` are owed to PROD, and promoting
+them is a release operation with its own ordering rules — `081`/`082`'s create-then-rename pair,
+`083`'s and `085`'s `036` hand-exercise gates, and `089`'s exception that it applies only *after*
+the promotion build is confirmed serving. Folding a ten-migration production promotion into a
+feature's pre-flight is how one of those gets skipped. `docs/ENVIRONMENTS.md` §Migrations owns it.
 
 **It is additive in schema and NOT inert**, for one reason: it re-creates the `notify_ride_invited`
 trigger on `ride_invites`, a live write path since `083`. `036`'s hand-exercise gate therefore
@@ -205,24 +211,47 @@ hoping.
   not delete the riders it admitted, which is decision 3 expressed as a referential action.
 - **`private.live_ride_invite_link(t text)`** — **the single definition of "live"**, returning the
   link row or nothing. `security definer`, `stable`, `set search_path = ''`, granted to no client
-  role. Both public RPCs call it, so expiry, revoke, ride-deletion and ride-departure cannot mean
-  one thing to the preview and another to the claim. `083`'s one-body-two-entry-points property,
-  applied to a definition instead of a subject.
-- **`public.ride_invite_link_preview(t text)`** — `security definer`, returns **zero rows** for
-  every non-live case, so expired, revoked, deleted, departed, blocked and guessed are one
-  outcome. Eight named columns, enumerated in `specs/ride-invite-links/`.
+  role. Expiry, revoke, ride-deletion and ride-departure are decided here and nowhere else. It is
+  a statement about the **link** alone and knows nothing about who is asking.
+- **`private.ride_invite_link_reachable_by(t text, uid uuid)`** — **the single definition of "this
+  caller may use this token"**, and the RPCs' only entry point. Live, **and** not blocked in either
+  direction, **and** both participation stamps present. `security definer`, `stable`,
+  `set search_path = ''`, granted to no client role.
+  **Centralising liveness while leaving the caller predicate copied into two bodies was the
+  original defect**: the more security-critical half got the weaker treatment, with no policy
+  underneath either copy. One predicate, one place, so the preview and the claim cannot disagree
+  about the *caller* any more than they can about the *link*. Asserted by the same
+  equal-answers-in-every-dead-state shape.
+- **`public.ride_invite_link_preview(t text)`** — `security definer`, resolving through
+  `ride_invite_link_reachable_by`, returns **zero rows** for every unreachable case, so expired,
+  revoked, deleted, departed, blocked, un-onboarded and guessed are one outcome. Eight named
+  columns, enumerated in `specs/ride-invite-links/`.
+  **The gate applies to reading, not only to writing.** The original draft gated minting (the
+  trigger) and claiming (`join_ride_from_invite`'s restatement) and left the preview open — so an
+  account created by calling GoTrue's `/auth/v1/signup` directly and never calling
+  `accept_terms()`, the exact threat `023` exists for, could hold a forwarded token and read a
+  private ride's title, meeting point, departure, organizer and crew count. A `security definer`
+  read has no policy beneath it; if the gate is not in the body, it is not anywhere.
 - **`public.claim_ride_invite_link(t text)`** — `security definer`, takes the **token** and never
-  a ride id or a rider id, **one raise site** on `083`'s `accept_ride_invite` footing. Writes the
-  `ride_invites` row, then calls `private.join_ride_from_invite` — **in that order, and the order
-  is load-bearing**; `design.md` §Why the invite row is written first.
+  a ride id or a rider id, **one raise site** on `083`'s `accept_ride_invite` footing. Resolves
+  through `ride_invite_link_reachable_by` **taking `for share` on the link row**, then writes the
+  `ride_invites` row, then calls `private.join_ride_from_invite` — **in that order, and both the
+  order and the lock are load-bearing**; `design.md` §The invite row is written first and
+  §Revoke has to be atomic with a claim.
 - **`public.revoke_ride_invite_link(link uuid)`** — `security definer`, one raise site. Exists as
   an RPC rather than an UPDATE grant because a grant on `(revoked_at)` lets a client un-revoke by
   writing NULL, and `522`'s standing rule is that a table with no designed edit carries no UPDATE
   grant.
-- **A public landing route, `/rides/join`** — added to `PUBLIC_PATHS` in `src/lib/auth/guard.ts`.
-  **The token is a query parameter, not a path segment, and that is forced rather than chosen**:
-  `next.config.ts` ships `output: 'export'`, and a dynamic segment needs `generateStaticParams`,
-  which cannot enumerate secrets.
+- **A public landing route, `/rides/join`** — and the guard change is **two edits, not one**.
+  `PUBLIC_PATHS` says "may be reached without a session"; `needsOnboardingState()` says "must
+  decision #5 be evaluated here". They are separate questions and `src/lib/auth/guard.ts` already
+  keeps them separate, so the route joins **both** sets. Adding it to the first alone makes the
+  second return `false` — its own first line is `if (!isPublicPath(pathname)) return true` — the
+  stamps are then never read, the guard answers "stay", and a newly signed-up rider is parked on a
+  screen whose only button raises `check_violation` for ever. `specs/ride-invite-links/` carries
+  the three guard cases.
+  **The token is a query parameter, not a path segment, and that is forced rather than chosen** —
+  but not for the reason it is easy to give. See §The `output: 'export'` re-derivation trap below.
 
 ### Changed
 
@@ -249,7 +278,32 @@ hoping.
   the shell. **Acceptable, and the one line of it that matters is that nothing is lost.**
 - **Push delivery.** `deliver-push-notifications` owns that surface, and this change adds no type.
 - **Auto-claiming on session establishment.** Refused permanently, and asserted against; see
-  `design.md` §Why the claim is always a tap.
+  `design.md` §A claim is always a tap.
+
+## The `output: 'export'` re-derivation trap
+
+**The token is a query parameter and must stay one — but the obvious reason for it is false, and
+a reader who checks will find it false and "fix" the route back to a path segment.** Written out
+because that is exactly the shape `CLAUDE.md` §Working Principles says to keep a correction for:
+name the command a careful person runs first, and say what it returns.
+
+`grep -n "output:" next.config.ts` shows `output: 'export'` inside **`capacitorConfig` only**, and
+the file ends `export default isCapacitorBuild ? capacitorConfig : webConfig`. A WhatsApp link
+opens the **web** build, which is `webConfig`, which has no `output: 'export'` and does run a
+server on Vercel. So "the web build is a static export" is wrong, and every claim resting on it is
+wrong with it.
+
+**Two consequences, both of which this change gets right for the corrected reason:**
+
+- **The query parameter stands.** The **route tree is shared between both builds**, so a
+  `/rides/join/[token]` segment would need `generateStaticParams` under `CAPACITOR_BUILD=1` and
+  would break `npm run build:native` — a build nobody runs on a feature branch, failing later and
+  somewhere else. The constraint is the native build, not the web one.
+- **The token *does* reach a server on the web path.** `GET /rides/join?token=…` is a real request
+  to Vercel and lands in its access log. An earlier draft claimed the opposite. Nothing about the
+  design changes — a capability URL is logged by whatever serves it, which is why expiry and
+  revoke are the controls — but the claim itself had to go, since a false safety property is worse
+  than a stated exposure.
 
 ## Capabilities
 
@@ -292,7 +346,7 @@ hoping.
 
 ## Impact
 
-**Database** — one migration (`090` unless PD-332 took it) and assertions in
+**Database** — one migration (`091`; PD-332 took `090`) and assertions in
 `supabase/tests/rls_test.sql`. Re-derive the suite size with
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"` and **reconcile by label set, never by
 count** — a count cannot tell a rename from a loss.

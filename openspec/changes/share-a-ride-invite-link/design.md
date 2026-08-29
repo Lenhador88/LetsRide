@@ -1,7 +1,7 @@
 # Design — an invite link for a ride
 
 Companion to `proposal.md`. This file holds the *how*: the token's lifecycle, the auth round
-trip, the two orderings that are load-bearing, and the questions that were closed with a default.
+trip, the orderings and the lock that are load-bearing, and the questions closed with a default.
 
 ## The token lifecycle, end to end
 
@@ -47,7 +47,33 @@ signs in *in this tab* is returned to where they were going.
 | Is **already signed in** when they tap | No round trip at all. Preview renders immediately, one tap claims. |
 | Abandons, and a **different rider** signs in on the same browser | See below — this is the case that decides the next section. |
 
-## Why the claim is always a tap, never automatic
+## The wizard detour costs the rider nothing
+
+`/rides/join` goes into **both** `PUBLIC_PATHS` and `needsOnboardingState()`'s set. The two answer
+different questions — *may this be reached without a session* and *must decision #5 be evaluated
+here* — and `guard.ts` keeps them separate, but `needsOnboardingState`'s first line is
+`if (!isPublicPath(pathname)) return true`, so making the route public silently answers the second
+question `false` unless it is added there too.
+
+**Left at one edit, the feature's main flow dead-ends.** The stamps are never read,
+`guard-cache.ts` never fetches them, the state is `{ kind: 'session' }`, `resolveDestination`
+returns "stay" — and a rider who has just signed up sits on the preview tapping a Join button that
+raises `check_violation` every time, with no route into the wizard and nothing on screen saying
+why.
+
+**The objection to sending them to the wizard is that they lose the ride they were looking at, and
+it does not apply here.** A signed-out visitor already sees no ride data — the preview needs
+`auth.uid()` for its block and gate checks, so there is nothing to render before a session exists
+and nothing to preserve across the wizard. The rider sees the same generic invite copy before
+onboarding as after; only the preview arrives later.
+
+**What must survive is the stash, and that is the part to build deliberately.** The token sits in
+`sessionStorage` across the whole wizard, and the screen the rider lands on when onboarding
+completes consumes it and returns them to `/rides/join`. Without that step the flow ends at
+`/postcards` with a live token still in `sessionStorage` and nothing reading it — which is the
+same dead end one screen further along, and harder to spot because nothing errors.
+
+## A claim is always a tap, never automatic
 
 **Refused permanently: claiming on session establishment.** It is the obvious optimisation — the
 rider signed in *because* of this link, so spend the stash the moment a session appears — and it
@@ -66,7 +92,57 @@ claim is a perfectly valid claim.
 **Corollary the spec asserts:** no effect anywhere may call `claim_ride_invite_link` outside a
 user-initiated event handler.
 
-## Why the invite row is written first
+## The caller predicate belongs beside the link predicate
+
+The first draft centralised **liveness** in `private.live_ride_invite_link` and pinned it with an
+assertion, then wrote the **block check** independently into each of the two RPC bodies — and
+omitted the **participation gate** from the read path altogether. That is the weaker treatment for
+the more security-critical predicate, and the omission it produced was a real exposure: an account
+created by calling GoTrue's `/auth/v1/signup` directly and never calling `accept_terms()` could
+hold a forwarded token and read a private ride.
+
+**Both halves of the question are answered in one place now.** `private.live_ride_invite_link(t)`
+stays as it was and answers *is this link alive* — a fact about the link, knowing nothing about
+who is asking. `private.ride_invite_link_reachable_by(t, uid)` wraps it and answers *may this
+caller use it* — live, **and** `not private.is_blocked(uid, organizer_id)`, **and** both
+participation stamps present. The preview and the claim resolve through the second and never
+through the first.
+
+**Why one function rather than two disciplined copies.** The argument that keeps liveness
+centralised is that the preview and the claim must not disagree about a token; the caller
+predicate has exactly the same property and a worse failure mode. A preview more permissive than
+the claim shows a stranger a private ride they then cannot join — a pure disclosure with no
+product benefit — and a preview less permissive is a rider staring at "no longer valid" for a
+link that works. Neither is visible from either body alone, and there is no policy under either to
+catch it. Splitting a predicate across two `security definer` bodies means the next person to add
+a third caller has two places to copy from and no way to know they missed one.
+
+**The gate is checked at read *and* at write, and the write check is not redundant.**
+`private.join_ride_from_invite` keeps its own restatement — this change does not touch it — because
+it is the last line before a `ride_members` row and it protects `accept_ride_invite` too. The read
+check is not a substitute for it; it closes a different door.
+
+## Revoke has to be atomic with a claim
+
+`private.live_ride_invite_link` is `stable` and takes no lock. Under READ COMMITTED — Postgres's
+default and Supabase's — a claim that resolves liveness a moment before a concurrent
+`revoke_ride_invite_link` commits still goes on to write the invite row and the crew row. The
+organizer's Revoke returns success; a rider is admitted anyway.
+
+**On most features that would be an acceptable race.** Here it is not, and the reason is
+specifically this change's own scope: **there is no eject path** (§The gap revoke leaves open), so
+the rider admitted in that window is permanent, and the organizer has been told the opposite.
+
+`ride_invite_link_reachable_by` therefore takes **`for share` on the `ride_invite_links` row** when
+called from the claim path, and `revoke_ride_invite_link` updates that row — so the two serialise
+and the loser sees the committed outcome. `for share` rather than `for update`: concurrent claims
+of the same link must not block each other, and they do not conflict with one another, only with
+the revoke.
+
+**The residual window is narrower and is stated rather than closed:** a claim that has already
+committed is not undone by a revoke that follows it. That is decision 3 working as intended.
+
+## The invite row is written first
 
 `claim_ride_invite_link` inserts the `ride_invites` row **before** calling
 `private.join_ride_from_invite`, and reversing it silently breaks the private case.
@@ -106,6 +182,26 @@ holds a `pending` or `declined` in-app invite and comes in through the link take
 branch, which fires `notify_ride_invite_answered` and tells the organizer their invite was
 accepted. **That is true** — the organizer did invite them, and they did accept. It stays.
 
+## What the organizer is told, and why it differs by claimer
+
+Not a defect, and written down because it is otherwise re-derived by whoever next reads the
+fan-outs and assumes one event produces one shape.
+
+| Who claims | Branch | The organizer receives |
+|---|---|---|
+| A rider with no prior invite | INSERT, `accepted` | `ride_joined` alone. `notify_ride_invited` is suppressed by its `WHEN` clause. |
+| A rider holding a `pending` or `declined` invite | `ON CONFLICT DO UPDATE` | **`ride_invite_accepted` and `ride_joined`** — two notifications for one tap. |
+
+Both are truthful. In the second case the organizer really did invite that rider by name, and they
+really did accept; the fact that they accepted by following a link rather than by tapping Accept
+is not a distinction the organizer needs. The asymmetry exists because `ride_invite_accepted`
+answers *"did the person I invited reply"*, a question that has no meaning for a stranger.
+
+**Collapsing them would be worse than the asymmetry.** Suppressing `ride_joined` on the conflict
+branch breaks the crew fan-out `055` owns for every other join; suppressing
+`ride_invite_accepted` leaves an outstanding invite in the organizer's list with no notification
+ever answering it.
+
 ## The gap revoke leaves open
 
 Priced here because `proposal.md`'s warning names it and something has to hold the detail.
@@ -140,14 +236,20 @@ not one story.
 
 ## Risks
 
-- **A definer preview that forgets the block check is a block bypass reachable by URL.** There is
-  no policy underneath it. Assertion `090.7` exists for this and for nothing else.
-- **The token in the address bar.** It reaches Vercel's access log for the landing request, the
-  browser's history, and any `Referer` the page emits. Inherent to a capability URL and bounded by
-  expiry and revoke rather than removed. Mitigation: the landing screen calls
-  `history.replaceState` to drop the query string once it has read it, so the token leaves the
-  address bar on a shared screen and does not ride a `Referer`. **It is not in a page request to
-  our own API**: `output: 'export'` means the token reaches Supabase only in an RPC **POST body**.
+- **A definer read with a predicate missing is an exposure reachable by URL.** There is no policy
+  underneath `ride_invite_link_preview`, so every check it does not make is a check nobody makes.
+  This bit twice in the first draft — the block check was written into two bodies instead of one,
+  and the participation gate was left out of the read path entirely. Both are now facts about
+  `private.ride_invite_link_reachable_by`, asserted at `091.7` and `091.12`.
+- **The token in the address bar, and it does reach a server.** `GET /rides/join?token=…` is a
+  real request to Vercel on the web build, so the token lands in its access log, in the browser's
+  history, and in any `Referer` the page emits. Inherent to a capability URL and bounded by expiry
+  and revoke rather than removed. Mitigation: the landing screen calls `history.replaceState` to
+  drop the query string once it has read it. **An earlier draft claimed the token was never in a
+  page request to our own API, on the strength of `output: 'export'`. That was wrong** — see
+  `proposal.md` §The `output: 'export'` re-derivation trap; the export config is the Capacitor build's, not the web
+  build's. Nothing about the design changed, but a false safety property is worse than a stated
+  exposure.
 - **A lazy re-pin.** The suite pins policy quals by equality. This change is not supposed to move
   `rides` SELECT or `private.can_read_ride` at all, so if a pin fails, **the change is wrong** —
   do not re-pin. Task 6.4.
@@ -161,10 +263,17 @@ Each is answerable, none blocks the build, and the default is what gets built if
 
 - **Q1 — the 14-day ceiling.** Default: 14 days. Owner's to change; it is a product judgement.
   Changing it is one interval literal in the trigger. **Non-blocking.**
-- **Q2 — does the preview show the club's name for a ride in a private club?** Default: **yes**.
-  `085`'s `discoverable_private_clubs` already makes a private club's name and avatar discoverable
-  to any signed-in rider, so this discloses nothing new, and a rider deserves to know whose ride
-  they are joining. **Non-blocking.**
+- **Q2 — does the preview show the club's name for a ride in a private club?** **Closed: no.**
+  A private club's name is not something a bearer token should disclose, and the club is not what
+  the rider is deciding about — they are deciding whether to join a ride, which the eight columns
+  already answer. `085`'s `discoverable_private_clubs` is not the precedent it looks like: that
+  function answers a signed-in rider asking about clubs *in general*, under its own page cap and
+  ordering, and it is a deliberate discovery surface. A token is not a discovery surface.
+  **The eight-column list in `specs/ride-invite-links/` is the contract and it carries no club
+  column.** An earlier draft of this file closed Q2 the other way while the column list already
+  said no, which is the contradiction reviewers should keep catching: the requirement says
+  "exactly these named columns", so a prose answer that adds a ninth is not a default, it is a
+  spec that disagrees with itself.
 - **Q3 — does the preview show a crew count?** Default: **yes, a count and never a roster.** It is
   what makes "is this the right ride" answerable. **Non-blocking.**
 - **Q4 — how many live links may one ride have?** Default: **many, and the surface lists them.**

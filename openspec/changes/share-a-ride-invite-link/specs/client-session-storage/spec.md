@@ -14,6 +14,12 @@ the guard is a denylist, so this is the only opening this change makes — and i
 reason: the page must mount in order to stash the token before the auth round trip. It is public
 so it can *hold* a credential, never so it can *show* anything.
 
+**Public SHALL NOT be read as exempt from decision #5.** The route is added to
+`needsOnboardingState()` in the same change, so a signed-in rider mid-wizard is still sent to
+their resume step from it. A route that is public *and* outside that set is one where the guard
+never reads the onboarding stamps at all, which is how a rider ends up parked on a screen whose
+only action the database refuses.
+
 **The temptation this requirement exists to refuse is specific and it is a product one**: an
 invite landing page that names the ride would convert better, and a rider who was sent the link
 "already knows" what it is. Neither is a reason. Anyone can hold a URL, and the ride may be a
