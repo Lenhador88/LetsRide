@@ -1606,6 +1606,43 @@ instance count of `Accent Brand/100` on `White/100` at Poppins/14/Semibold, meas
 against a 4.5:1 bar (14px semibold is not WCAG large). Its cream sibling is already logged at
 3.00:1 under §Ride detail. The accent-on-light pairing wants one decision, not one per button.
 
+### The stamp as a franked postal stamp — built 2026-08-29 (PD-350)
+
+**Product owner**: *"the stamps, can we make them look a bit more motorcyclyy and add the poster
+avatar and name into them?"* There is still **no stamp component in Figma at all** — the section
+above records that for `086`'s ride marker, and nothing in the snapshot has changed since. So this
+extends the same standing entry rather than claiming a measurement.
+
+- [ ] **The postmark on `PostcardStamp`.** A wheel — two rings, eight spokes, a hub — inked over
+      the photo's top-right corner at 36px on a 116px photo, rotated `-14deg`. Drawn in the
+      component from circles and lines rather than added to `generated.tsx`, which is generated
+      and never hand-edited; it is ornament belonging to one component, not a glyph the library
+      owes anyone, and it carries no artwork provenance question of the kind §Design System's
+      fourth rule is about. **It is deliberately not a bike**: `086` already spends `BikeIcon` on
+      the ride marker in the same byline row, where it means *this photo reached the club's strip
+      through one of its rides*, and a second bike meaning something else is worse than no motif.
+      A designer settling this should decide whether the mark belongs at all at tile size, and
+      whether a real cancellation's date belongs in it — that was refused here because the
+      smallest type token is 10px and a date inside a 27px inner ring wants 7.
+- [ ] **The ink is white with a two-layer dark halo**, `0 0 0.5px` at 70% for the edge and
+      `0 1px 2px` at 28% to lift it off the picture. **Measured against three stand-in photos —
+      dark tarmac, bright sky and mid-tone green — rather than one**: a single soft shadow, which
+      is what the first pass drew, renders as a halo rather than an edge over a bright photo and
+      the spokes read as a smudge. That is the case a screenshot of one dark photo cannot see.
+      The pairing is a white-on-photograph one, so no token contrast ratio applies; the mark is
+      `aria-hidden` decoration and carries no information a rider could act on.
+- [ ] **The byline moved INSIDE the frame** — printed on the white paper below the photo rather
+      than sitting as a row under the perforation. The tile's total height is unchanged (6 + 116
+      + 6 + 20 + 6 either way), which is what kept it a one-file change: `STAMP_TILE_WIDTH` sizes
+      the neighbouring `Add` and `Nothing yet` tiles on TWO strips against this height. A scrim
+      pill over the photo stays refused for the reason `PostcardStamp`'s header records — on a
+      116px square it covers a third of the picture.
+- [ ] **`stamp-edge`'s perforation pitch became a fixed length** (`--stamp-pitch: 14px`) where it
+      was `100% / 9`. The frame is no longer square now that it holds the byline, and a
+      percentage pitch spaced the side notches wider than the top ones by exactly the height of
+      that row. `mask-repeat: round` still fits a whole number per axis, so the two now sit
+      within a pixel of each other.
+
 ## Rule for anyone building against this
 
 **Read `design/` first — it is offline and cannot be rate limited.** An inferred composition

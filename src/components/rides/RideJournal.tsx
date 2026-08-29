@@ -129,11 +129,16 @@ function RideJournalStrip({
       // `flex-1` tiles are taller than a stamp on any phone; that mismatch
       // predates the stamp and is the read landing on "no photos", not a
       // resize of the same content.
+      //
+      // It carries `stamp-edge` itself since PD-350, which is what keeps it
+      // honest: the byline is now printed INSIDE the frame, so a placeholder
+      // drawing the row outside one would be a differently-shaped tile that
+      // resolves into the real one with a visible jump.
       <div className="flex items-start gap-2 px-4">
         {[0, 1].map((i) => (
-          <div key={i} className={`${STAMP_TILE_WIDTH} shrink-0`}>
-            <Skeleton className="aspect-square w-full rounded-lg" />
-            <div className="mt-1.5 flex items-center gap-1">
+          <div key={i} className={`stamp-edge block ${STAMP_TILE_WIDTH} shrink-0`}>
+            <Skeleton className="aspect-square w-full rounded-none" />
+            <div className="mt-1.5 flex h-5 items-center gap-1">
               <Skeleton className="h-5 w-5 rounded-full" />
               <Skeleton className="h-3 w-16 rounded" />
             </div>

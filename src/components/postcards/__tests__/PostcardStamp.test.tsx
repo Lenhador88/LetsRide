@@ -21,6 +21,13 @@ import type { Postcard } from '@/types'
  * `PostcardViewer`'s stated fallback contract, and it is invisible in the app
  * because the provider is always mounted, which is exactly why it needs a test.
  *
+ * **The byline is printed INSIDE the frame** since PD-350, and that is a
+ * nesting rather than a class — which is why one of these tests walks tag
+ * depth instead of matching a substring. Every other assertion in this file
+ * passes with the byline back outside the frame, because the same elements are
+ * rendered either way and only their parent differs; a change that undid the
+ * one thing the product owner asked for would go green.
+ *
  * **These assert markup, never pixels.** `vitest.config.ts` is
  * `environment: 'node'`, so `renderToStaticMarkup` gives what the browser would
  * have parsed and no layout at all — the same limit `PostcardAction.test.tsx`
@@ -28,6 +35,37 @@ import type { Postcard } from '@/types'
  * by screenshot rather than by anything here; all this can say is that the
  * class survives to the element that carries the mask.
  */
+
+/**
+ * The markup between the `stamp-edge` element's own tags — the stamp's paper.
+ *
+ * Written out rather than reached for with a DOM, because the environment is
+ * `node` and pulling jsdom in for one nesting question buys a browser this file
+ * does not otherwise need. It walks `<span` / `</span>` depth from the frame's
+ * opening tag, which is exact for this component: the frame and everything in
+ * it is spans, and `renderToStaticMarkup` emits no self-closing spans.
+ */
+function stampPaper(html: string) {
+  const at = html.indexOf('stamp-edge')
+  if (at < 0) throw new Error('no stamp-edge element in the output')
+  const open = html.lastIndexOf('<', at)
+  let i = html.indexOf('>', at) + 1
+  const start = i
+  let depth = 1
+  while (depth > 0) {
+    const nextOpen = html.indexOf('<span', i)
+    const nextClose = html.indexOf('</span', i)
+    if (nextClose < 0) throw new Error('unbalanced spans from ' + html.slice(open, open + 40))
+    if (nextOpen >= 0 && nextOpen < nextClose) {
+      depth += 1
+      i = nextOpen + 5
+    } else {
+      depth -= 1
+      i = nextClose + 6
+    }
+  }
+  return html.slice(start, html.lastIndexOf('</span', i))
+}
 const postcard = (over: Partial<Postcard> = {}): Postcard => ({
   id: '11111111-1111-4111-8111-111111111111',
   author_id: '22222222-2222-4222-8222-222222222222',
@@ -148,5 +186,55 @@ describe('PostcardStamp — the ride marker', () => {
     // the tile twice.
     expect(withViewer(postcard(), true)).toContain('aria-label="pedro: Coffee stop — from a ride"')
     expect(withViewer(postcard())).toContain('aria-label="pedro: Coffee stop"')
+  })
+})
+
+describe('PostcardStamp — the byline is printed on the stamp', () => {
+  /**
+   * PD-350, product owner: *"add the poster avatar and name into them"*. The
+   * byline existed before this change as a row BELOW the perforation, so the
+   * word doing the work is *into*.
+   *
+   * This is the one assertion in the file that a refactor cannot satisfy by
+   * accident, and it is here because the defect it guards is invisible in a
+   * screenshot of a single tile: outside the frame the row sits on cream and
+   * inside it on white paper, six pixels apart, at the same overall height.
+   */
+  it('renders the avatar and username inside the perforated frame, not under it', () => {
+    const paper = stampPaper(withViewer(postcard()))
+    expect(paper).toContain('pedro')
+  })
+
+  it('keeps the photo inside the frame too — the byline did not replace it', () => {
+    // Guards the other direction of the same edit: a byline moved in while the
+    // photo moved out would still put the name on the paper.
+    expect(stampPaper(withViewer(postcard()))).toContain('https://example.test/signed.jpg')
+  })
+})
+
+describe('PostcardStamp — the postmark', () => {
+  /**
+   * The wheel-shaped cancellation (PD-350) — the mark that makes the tile read
+   * as a franked stamp rather than as a photo with a notched border.
+   *
+   * Asserted on the rotation rather than on the circles, for two reasons: the
+   * placeholder branch draws an `ImageIcon` that is also an `svg`, so `svg`
+   * alone cannot tell the two apart, and the rotation is the property whose
+   * loss actually matters — axis-aligned the mark reads as a badge offering to
+   * be tapped instead of as ink pressed onto paper.
+   */
+  it('franks a stamp that has a photo', () => {
+    expect(withViewer(postcard())).toContain('rotate-[-14deg]')
+  })
+
+  it('draws NO postmark over the failed-to-sign placeholder', () => {
+    // A cancellation over an empty slot reads as a broken glyph rather than as
+    // ink, and there is nothing there to frank.
+    expect(withViewer(postcard({ image_url: null }))).not.toContain('rotate-[-14deg]')
+  })
+
+  it('is decoration — it adds no second accessible name to the tile', () => {
+    const out = withViewer(postcard())
+    expect(out.match(/aria-label=/g)).toHaveLength(1)
   })
 })
