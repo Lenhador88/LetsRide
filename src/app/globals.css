@@ -314,6 +314,14 @@ html {
    are all measured rather than inferred. */
 @utility stamp-edge {
   --stamp-notch: 4px;
+  /* The distance between two notches, as PAPER between the bites — the tile the
+     mask repeats is `2 * notch + pitch`. A fixed length rather than a fraction
+     of the box, because the stamp is NOT square: since PD-350 the frame holds
+     the photo and the printed byline, so a percentage pitch would space the
+     side notches wider than the top ones by exactly the height of the byline.
+     `mask-repeat: round` still adjusts this to fit a whole number on each axis,
+     so the two stay within a pixel of each other instead of within six. */
+  --stamp-pitch: 14px;
   padding: 6px;
   background-color: var(--color-surface);
   -webkit-mask-image:
@@ -321,7 +329,7 @@ html {
     conic-gradient(#000 0 0);
   -webkit-mask-position: calc(-1 * var(--stamp-notch)) calc(-1 * var(--stamp-notch)), 0 0;
   -webkit-mask-size:
-    calc(2 * var(--stamp-notch) + 100% / 9) calc(2 * var(--stamp-notch) + 100% / 9),
+    calc(2 * var(--stamp-notch) + var(--stamp-pitch)) calc(2 * var(--stamp-notch) + var(--stamp-pitch)),
     auto;
   -webkit-mask-repeat: round, no-repeat;
   -webkit-mask-clip: border-box, content-box;
@@ -330,7 +338,7 @@ html {
     conic-gradient(#000 0 0);
   mask-position: calc(-1 * var(--stamp-notch)) calc(-1 * var(--stamp-notch)), 0 0;
   mask-size:
-    calc(2 * var(--stamp-notch) + 100% / 9) calc(2 * var(--stamp-notch) + 100% / 9),
+    calc(2 * var(--stamp-notch) + var(--stamp-pitch)) calc(2 * var(--stamp-notch) + var(--stamp-pitch)),
     auto;
   mask-repeat: round, no-repeat;
   mask-clip: border-box, content-box;

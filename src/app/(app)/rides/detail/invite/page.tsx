@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { notFound, useSearchParams } from 'next/navigation'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { RideHeader } from '@/components/rides/RideHeader'
+import { RideInviteLinkSection } from '@/components/rides/RideInviteLinkSection'
 import { RideInviteList } from '@/components/rides/RideInviteList'
 import { RideInvitePicker } from '@/components/rides/RideInvitePicker'
 import { getRide } from '@/lib/data/rides'
@@ -81,6 +82,11 @@ function RideInviteScreen() {
             <>
               <RideInvitePicker rideId={id} />
               <RideInviteList rideId={id} />
+              {/* The link half (`091`, PD-330) sits BELOW the by-name half
+                  rather than above it: naming a rider is the narrower act and
+                  the one an organizer reaches for first, and a bearer token
+                  offered above it would be the default. */}
+              <RideInviteLinkSection rideId={id} rideTitle={ride.data.title} />
             </>
           )
         )}

@@ -1606,6 +1606,87 @@ instance count of `Accent Brand/100` on `White/100` at Poppins/14/Semibold, meas
 against a 4.5:1 bar (14px semibold is not WCAG large). Its cream sibling is already logged at
 3.00:1 under §Ride detail. The accent-on-light pairing wants one decision, not one per button.
 
+### The stamp as a franked postal stamp — built 2026-08-29 (PD-350)
+
+**Product owner**: *"the stamps, can we make them look a bit more motorcyclyy and add the poster
+avatar and name into them?"* There is still **no stamp component in Figma at all** — the section
+above records that for `086`'s ride marker, and nothing in the snapshot has changed since. So this
+extends the same standing entry rather than claiming a measurement.
+
+- [ ] **The postmark on `PostcardStamp`.** A wheel — two rings, eight spokes, a hub — inked over
+      the photo's top-right corner at 36px on a 116px photo, rotated `-14deg`. Drawn in the
+      component from circles and lines rather than added to `generated.tsx`, which is generated
+      and never hand-edited; it is ornament belonging to one component, not a glyph the library
+      owes anyone, and it carries no artwork provenance question of the kind §Design System's
+      fourth rule is about. **It is deliberately not a bike**: `086` already spends `BikeIcon` on
+      the ride marker in the same byline row, where it means *this photo reached the club's strip
+      through one of its rides*, and a second bike meaning something else is worse than no motif.
+      A designer settling this should decide whether the mark belongs at all at tile size, and
+      whether a real cancellation's date belongs in it — that was refused here because the
+      smallest type token is 10px and a date inside a 27px inner ring wants 7.
+- [ ] **The ink is white with a two-layer dark halo**, `0 0 0.5px` at 70% for the edge and
+      `0 1px 2px` at 28% to lift it off the picture. **Measured against three stand-in photos —
+      dark tarmac, bright sky and mid-tone green — rather than one**: a single soft shadow, which
+      is what the first pass drew, renders as a halo rather than an edge over a bright photo and
+      the spokes read as a smudge. That is the case a screenshot of one dark photo cannot see.
+      The pairing is a white-on-photograph one, so no token contrast ratio applies; the mark is
+      `aria-hidden` decoration and carries no information a rider could act on.
+- [ ] **The byline moved INSIDE the frame** — printed on the white paper below the photo rather
+      than sitting as a row under the perforation. The tile's total height is unchanged (6 + 116
+      + 6 + 20 + 6 either way), which is what kept it a one-file change: `STAMP_TILE_WIDTH` sizes
+      the neighbouring `Add` and `Nothing yet` tiles on TWO strips against this height. A scrim
+      pill over the photo stays refused for the reason `PostcardStamp`'s header records — on a
+      116px square it covers a third of the picture.
+- [ ] **`stamp-edge`'s perforation pitch became a fixed length** (`--stamp-pitch: 14px`) where it
+      was `100% / 9`. The frame is no longer square now that it holds the byline, and a
+      percentage pitch spaced the side notches wider than the top ones by exactly the height of
+      that row. `mask-repeat: round` still fits a whole number per axis, so the two now sit
+      within a pixel of each other.
+
+### The ride invite link — built 2026-08-29 (PD-330), from no frame at all
+
+**Two screens with nothing measured behind their composition**, and the `ls` hits are a trap rather
+than a resource. `npm run figma -- ls` returns `Invite riders` and `Invite riders - Filled` under
+`Design · Rides` and `Join ride without account` under `Archive`. The first two are **OLD-stylesheet**
+(`Grey (OLD)/*`, `Accent (OLD)/*`) and draw a rider *search* — PD-329's flow, not this one. The third
+is archived, is out of scope under decision #1, **and draws the full crew roster with names**, which
+a bearer token must never see. So it is unusable on two counts, not one, and a session that reads it
+as a starting point is designing a data leak.
+
+Everything below is assembled from measured components and **none of it is measured**. Every string
+is invented.
+
+- [ ] **`/rides/join` (`RideInviteJoin`).** Page frame `max-w-[390px]`, `px-6`, `pt-[96px]`, `pb-8` —
+      derived from `AuthScreen`'s measured 390 / `px-10` / `pt-[120px]`, narrowed and raised because
+      this screen holds a card rather than a form column. Preview card `rounded-lg bg-surface p-4
+      gap-3` with `border-t border-border pt-3` above the organizer row; the two icon lines inside it
+      (`h-5 w-5`, `gap-2.5`, `text-sm font-semibold`, truncating) are `/rides/detail`'s measured rows,
+      but the card's padding, gap and hairline are invented. The organizer row — `Avatar size="sm"`,
+      "*name* is organizing", right-aligned "N riders" — is an invented composition, with `Rider` as
+      the unreadable-username fallback that `PostcardStamp` already uses.
+- [ ] **The copy on that screen is entirely invented and one line of it is load-bearing**: the dead-link
+      state says *"This link has expired"* and explains that links stop working once the ride departs
+      and that the organizer can turn one off — which is deliberately the SAME wording for a revoked,
+      expired, deleted, departed, blocked or guessed token, because the RPC makes those
+      indistinguishable and copy that guessed between them would be the oracle the schema refuses to
+      be. A designer changing this must not split it by cause.
+- [ ] **`RideInviteLinkSection` on `/rides/detail/invite`.** `SectionHeader title="Invite by link"`
+      plus an invented explanatory paragraph. Link row `rounded-lg bg-surface p-3 gap-3` — the surface
+      and radius are `DeleteRideControl`'s confirmation box (which is `p-4`), the `p-3` and the
+      two-line `text-sm font-semibold` over `text-xs font-medium text-muted` stack are invented.
+      `Share` / `Revoke` are `size="sm" variant="secondary"`, copied from `RideInviteList`'s
+      `Withdraw`; the confirmation row and its `danger` primary are `RideDeleteConfirmation`'s.
+      Status wording (`Expires in 3 days` / `Expired` / `Revoked`) and counts (`N riders joined` /
+      `Nobody has joined through it`) are invented; the relative time reuses `formatRelativeTime`
+      rather than adding a formatter.
+- [ ] **Revoke's confirmation copy is invented AND is a correctness constraint, not a style choice**:
+      *"This stops the link working, so nobody new can join with it. Riders who have already joined
+      stay on the ride."* Nothing in this app can eject a rider from a ride (PD-351), so copy
+      implying otherwise would be a promise the database refuses. A designer rewording it must keep
+      the second sentence's claim.
+- [ ] **Placing the link section BELOW the by-name picker** is an invented ordering, on the reasoning
+      that naming a rider is the narrower act and a bearer token should not be the default.
+
 ## Rule for anyone building against this
 
 **Read `design/` first — it is offline and cannot be rate limited.** An inferred composition

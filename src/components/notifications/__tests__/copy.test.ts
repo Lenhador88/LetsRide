@@ -75,3 +75,43 @@ describe('the other four types ignore the reader', () => {
     expect(notificationCopy(row('club_joined', { club: null }), CREW)).toBe('joined club a club.')
   })
 })
+
+/**
+ * PD-332 makes a `ride_invited` row **outlive its invite**: `090` drops `083`'s
+ * retraction, so withdrawing an invitation no longer clears the notification it
+ * wrote, and `036`'s uniqueness index then absorbs every re-send instead of
+ * ringing the invitee's phone again.
+ *
+ * That trade is only safe while a row whose subject the reader can no longer
+ * reach degrades to a sentence rather than to a crash or a lie. A withdrawn
+ * invite to a PRIVATE ride is exactly that case — `private.can_read_ride` stops
+ * answering yes the moment the invite is gone, so the join returns no ride and
+ * this arm is what the invitee reads. Before `090` it was a rarity; it is now
+ * the ordinary end state of every withdrawal.
+ *
+ * The row's destination degrades in the same breath and is not asserted here:
+ * `NotificationsListItem`'s `describe` returns `href: null` for an unresolved
+ * ride, so the row stops being a link rather than pointing at a screen the
+ * reader would be refused. That is a null guard with its own comment beside it,
+ * inside a component-local function; it is verified by reading rather than by a
+ * test, and it is worth a look if this file ever grows a render.
+ */
+describe('the three invite types survive losing their ride', () => {
+  it.each([
+    ['ride_invited', 'invited you to a ride.'],
+    ['ride_invite_accepted', 'accepted your invite to a ride.'],
+    ['ride_invite_declined', 'declined your invite to a ride.'],
+  ] as const)('%s degrades to a generic ride', (type, expected) => {
+    expect(notificationCopy(row(type, { ride: null }), CREW)).toBe(expected)
+  })
+
+  it.each([
+    ['ride_invited', 'invited you to Ardennes loop.'],
+    ['ride_invite_accepted', 'accepted your invite to Ardennes loop.'],
+    ['ride_invite_declined', 'declined your invite to Ardennes loop.'],
+  ] as const)('%s names the ride when it did resolve', (type, expected) => {
+    // The other half of the same guard: a fallback that had swallowed the title
+    // outright would pass every case above and say "a ride" for ever.
+    expect(notificationCopy(row(type), CREW)).toBe(expected)
+  })
+})

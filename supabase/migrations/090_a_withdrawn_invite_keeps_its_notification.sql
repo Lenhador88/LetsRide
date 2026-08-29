@@ -1,0 +1,177 @@
+-- 090 — A pending ride invite can be withdrawn and re-sent without limit
+-- ===========================================================================
+--
+-- PD-332. Product owner, 2026-08-28: drop `083`'s retraction trigger.
+--
+-- `083` §6e hung `private.retract_ride_invited()` on `after delete on
+-- ride_invites`, so withdrawing a pending invite deleted the `ride_invited`
+-- notification it had written. That is correct in isolation and wrong as a
+-- pair with `036`'s uniqueness index, which is what the organizer meets on the
+-- SECOND send:
+--
+--   * `private.notify_ride_invited()` ends `on conflict do nothing`, against
+--     `notifications_event_key` — unique over `(user_id, type, actor_id,
+--     postcard_id, comment_id, ride_id, club_id)` with `nulls not distinct`.
+--     For this type the key is the recipient, the type, the inviter and the
+--     ride, and all four are identical on a re-send.
+--   * So WITHOUT the retraction the re-send writes no new row, and the
+--     invitee is not notified twice however many times the organizer changes
+--     their mind. **`on conflict do nothing` is what makes that a no-op rather
+--     than a `23505`** — the absorbed duplicate would otherwise be an error
+--     raised inside the organizer's own INSERT and would take the re-invite
+--     down. It is load-bearing here in a way it was not before this file.
+--   * WITH the retraction, a withdraw-then-re-send cycle deleted the row and
+--     wrote it again, so the key never collided and the invitee could be
+--     notified once per cycle, without limit. That is the harassment shape
+--     `036` §8 built the index to prevent, reachable by an organizer with two
+--     buttons.
+--
+-- So the trigger and its function go, and nothing replaces them. There is no
+-- rate limit anywhere in this app; the index is the limit, and it only works
+-- while nothing clears the row underneath it.
+--
+-- ---------------------------------------------------------------------------
+-- ORDERING — this applies BEFORE the code that ships with it is serving
+-- ---------------------------------------------------------------------------
+-- Destructive files in this repo normally go AFTER the promotion build is
+-- confirmed serving (`070`, `077`). This one does not have to, and that is a
+-- checked fact rather than an assumption: **the serving client already
+-- degrades correctly for a `ride_invited` notification whose invite is not
+-- live**, because `083` shipped it that way for the answered-elsewhere and
+-- blocked cases. Verified against the tree on 2026-08-29:
+--
+--   * `src/components/notifications/RideInviteActions.tsx` reads the LIVE
+--     invite through `getMyPendingInvites` and returns `null` when no row
+--     matches (`if (!invite) return null`). A withdrawn invite therefore draws
+--     no Accept/Decline pair — the same nothing an answered or blocked one
+--     draws, which its own header says is deliberate so the three stay
+--     indistinguishable.
+--   * `src/components/notifications/NotificationsListItem.tsx`'s `describe`
+--     returns `{ href: row.ride ? routes.ride(row.ride.id) : null }` for
+--     `ride_invited`, and the component renders the row unwrapped when `href`
+--     is `null`. A row whose ride no longer resolves is plain text, not a dead
+--     link.
+--   * `src/components/notifications/copy.ts` reads
+--     `invited you to ${row.ride?.title ?? 'a ride'}.` — the subject is
+--     resolved live and falls back rather than throwing.
+--
+-- **Nothing in `src/` names the trigger or the function.** They are reachable
+-- only as a trigger, and `083` revoked EXECUTE from `public`, `anon` and
+-- `authenticated`, so no client role could have called the function even by
+-- name. Dropping them changes no interface the bundle knows about; an older
+-- bundle and a newer one behave identically against this schema.
+--
+-- `036`'s hand-exercise gate does NOT fire in the direction it usually does —
+-- this file hangs no new code on a live write path, it REMOVES code from one.
+-- The withdrawal path (`revokeRideInvite`, a plain DELETE under `083` §4's
+-- policy) keeps working and simply does one thing less inside the organizer's
+-- transaction.
+--
+-- ---------------------------------------------------------------------------
+-- THE ACCEPTED COST, NAMED
+-- ---------------------------------------------------------------------------
+-- The product owner accepted a stale notification, and it has two halves.
+-- Both are consequences of the row surviving, and both are the trade rather
+-- than a defect to fix later:
+--
+--   1. **A `ride_invited` row can outlive its invite.** After a withdrawal the
+--      invitee keeps a line saying they were invited to a ride they no longer
+--      hold an invite to. Tapping it opens the ride if they can still read it
+--      and renders as plain text if they cannot — the three bullets above are
+--      what make that a degraded row rather than a broken screen. It clears
+--      the way every other notification does: by being read, and by the
+--      cascades on `ride_id`, `user_id` and `actor_id`.
+--   2. **A re-send is SILENT to a rider who already dismissed the first one.**
+--      The absorbed insert writes nothing, so `notifications.read_at` keeps
+--      whatever value the invitee set and `created_at` keeps the FIRST send's
+--      timestamp — the row does not become unread again and does not move back
+--      up the list. An organizer who withdraws and re-sends gains nothing,
+--      which is the point of the change, and the rider who had already read it
+--      is told nothing new.
+--
+-- The invite ITSELF is unaffected by any of this: `RideInviteActions` reads the
+-- live row, so the re-sent invite is answerable from the standing notification
+-- the moment it exists.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT THIS FILE DELIBERATELY DOES NOT TOUCH
+-- ---------------------------------------------------------------------------
+-- * **`083` §4's DELETE policy stays scoped to `status = 'pending'`.** A
+--   declined invite is terminal against the inviter and must stay so — the
+--   change is about how often a PENDING one may be withdrawn, never about
+--   which invites may be withdrawn at all. `083.10` and this file's own
+--   assertion both hold that line.
+-- * **`087`'s `a_declined_request_retracts_its_notification` is a different
+--   subject.** It retracts a `club_join_requested` notification for a CLUB
+--   JOIN REQUEST. It shares only the word "retraction" with this file and is
+--   untouched, as are `085`'s and `089`'s retractions and `036`'s
+--   `retract_postcard_liked`.
+-- * **`private.notify_ride_invited()` and `private.notify_ride_invite_answered()`
+--   are unchanged**, bodies and triggers both.
+--
+-- Rollback is `083` §6e verbatim: recreate the function, then the `after
+-- delete` trigger, then re-issue its `revoke all ... from public, anon,
+-- authenticated`. It reinstates the unbounded re-notify with it.
+
+drop trigger retract_ride_invited on public.ride_invites;
+
+drop function private.retract_ride_invited();
+
+-- ---------------------------------------------------------------------------
+-- §Verification — run against the project after applying, do not assume
+-- ---------------------------------------------------------------------------
+--
+--   select tgname, pg_get_triggerdef(oid) from pg_trigger
+--    where tgrelid = 'public.ride_invites'::regclass and not tgisinternal
+--    order by tgname;
+--   -- THREE, down from 083's four: enforce_participation_gate (before insert,
+--   --   WHEN current_user), notify_ride_invited (after insert, no WHEN),
+--   --   notify_ride_invite_answered (after update of status, no WHEN).
+--   --   No `after delete` trigger of any kind remains on this table.
+--
+--   select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname = 'private' and p.proname = 'retract_ride_invited';
+--   -- 0
+--
+--   select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname = 'private' and p.proname like 'retract\_%';
+--   -- 3, down from 4 — retract_postcard_liked (036),
+--   --   retract_club_join_requested (085) and
+--   --   retract_club_join_request_declined (089). 087's footer records 3 for a
+--   --   moment in time BEFORE 089 added its own; the number is 3 again for a
+--   --   different reason, so read the NAMES rather than the count.
+--
+--   select count(*) from pg_proc where pronamespace = 'private'::regnamespace
+--     and (proname like 'notify\_%' or proname like 'retract\_%');
+--   -- 12, down from 13.
+--
+--   select count(*) from pg_trigger where not tgisinternal
+--     and (tgname like 'notify\_%' or tgname like 'retract\_%');
+--   -- 13, down from 14.
+--
+--   -- The index that now does the whole job. UNCHANGED by this file, and
+--   -- checked because the change makes it load-bearing.
+--   select indexdef from pg_indexes
+--    where schemaname = 'public' and indexname = 'notifications_event_key';
+--   -- CREATE UNIQUE INDEX ... (user_id, type, actor_id, postcard_id,
+--   --   comment_id, ride_id, club_id) NULLS NOT DISTINCT
+--
+--   -- The `on conflict do nothing` that turns the absorbed duplicate into a
+--   -- no-op rather than a 23505. UNCHANGED, and the reason a re-send succeeds.
+--   select position('on conflict do nothing' in prosrc) > 0 from pg_proc p
+--     join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname = 'private' and p.proname = 'notify_ride_invited';
+--   -- t
+--
+--   select cmd, qual from pg_policies
+--    where schemaname = 'public' and tablename = 'ride_invites' and cmd = 'DELETE';
+--   -- ONE row, still scoped to status = 'pending' — 083 §4, untouched.
+--
+--   select count(*) from pg_trigger
+--    where tgname = 'enforce_participation_gate' and not tgisinternal;
+--   -- 16 — UNCHANGED. This file adds and removes no gate.
+--
+--   -- Advisors: 24, UNCHANGED. The dropped function lived in `private`, which
+--   -- PostgREST does not publish, so it carried no advisor to lose. A count of
+--   -- 23 means something ELSE went with it.
+--   --   mcp__Supabase__get_advisors <ref> security

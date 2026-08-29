@@ -537,6 +537,85 @@ export type RideInviteListItem = {
  */
 export type RiderSearchResult = PublicProfile
 
+/**
+ * One invite link on the organizer's ride — `091`, PD-330.
+ *
+ * **`uses_count` is derived, never stored.** It is the number of `ride_invites`
+ * rows carrying this link's id, read under the organizer's own row security —
+ * so a rider who claimed and later blocked the organizer stops being visible to
+ * them and the number goes **down**. That is decision #2 working as designed,
+ * and it is why no surface may present this as a ledger.
+ *
+ * `token` is readable here because the SELECT policy is the ride's organizer
+ * alone. It is the credential itself: everything this type reaches is a screen
+ * only they can open.
+ */
+export type RideInviteLink = {
+  id: string
+  token: string
+  created_at: string
+  /** `least(ride.departure_at, created_at + 14 days)`, set by the database. */
+  expires_at: string
+  revoked_at: string | null
+  uses_count: number
+  /**
+   * **Not a column** — `expires_at` against the clock at read time, resolved in
+   * the data layer because a component may not read the clock during render.
+   *
+   * It is a display hint and never the authority: liveness is decided in
+   * `private.live_ride_invite_link` at every single use, against the ride's
+   * *current* departure. So a link this flag still calls live can already be
+   * dead — the organizer moved the ride earlier — which is the right way round,
+   * since the database is what refuses and no screen promises on its behalf.
+   */
+  is_expired: boolean
+}
+
+/**
+ * What a token holder is shown before they decide — `public.ride_invite_link_preview`.
+ *
+ * **Exactly the eight columns the RPC returns, plus two the client adds**, and
+ * the boundary matters: `organizer.avatar_url` is signed at read time from the
+ * path (every other type here carries the same pair for the same reason), and
+ * `is_crew` comes from the caller's own `ride_members` row rather than from the
+ * preview, which knows nothing about who is asking beyond whether it may answer
+ * at all.
+ *
+ * **No club.** A private club's name is not something a bearer token discloses,
+ * and the rider is deciding about a ride rather than about a club
+ * (`design.md` §Questions Closed Q2). **No roster either** — a count, never the
+ * riders — so nothing here names anyone but the organizer.
+ */
+export type RideInviteLinkPreview = {
+  ride_id: string
+  title: string
+  departure_at: string
+  timezone: string | null
+  meeting_point: string
+  organizer: {
+    username: string | null
+    avatar_path: string | null
+    /** Not a column — signed from `avatar_path` at read time. */
+    avatar_url: string | null
+  }
+  crew_count: number
+  /**
+   * Is the caller already on this ride? Read from their own `ride_members` row,
+   * so the landing screen can offer a route into the ride rather than a Join
+   * control the claim would treat as a no-op.
+   */
+  is_crew: boolean
+}
+
+/**
+ * What a successful claim answers — the ride the token admitted the rider to.
+ *
+ * The RPC returns a bare uuid; naming it is what lets the landing screen route
+ * on a shape rather than on a cast, and it is deliberately **not** an invite id
+ * or a link id: nothing the rider now holds is addressable by them.
+ */
+export type RideInviteLinkClaim = { ride_id: string }
+
 export type RideCrewMember = {
   user_id: string
   profile: PublicProfile | null

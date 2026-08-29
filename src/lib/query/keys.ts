@@ -518,6 +518,28 @@ export const queryKeys = {
      * by different riders and only ever overlap by coincidence.
      */
     invites: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'invites'],
+    /**
+     * The organizer's invite LINKS for one ride (`091`, PD-330) — the tokens
+     * they have minted, with each one's expiry and use count.
+     *
+     * **No `revalidatePath` maps onto this**, and that is the honest entry for
+     * this file's reconciliation table: the surface did not exist under the
+     * server render, so there is no claim to translate. What it inherits
+     * instead is the *rule* those claims encoded — a write names what it makes
+     * stale — and `createRideInviteLink` and `revokeRideInviteLink` both name
+     * this key.
+     *
+     * A sibling of `invites` rather than a child of it: the two answer
+     * different questions about the same ride (who was asked by name, versus
+     * which tokens are live) and neither write moves the other. Both sit under
+     * the ride, so `rides.all()` reaches them — deleting a ride takes its links
+     * with it, and `deleteRide` already names that prefix.
+     *
+     * **Deliberately NOT keyed by token**, unlike `invites.link` below: this is
+     * the organizer's list of every link on one ride, and keying it per token
+     * would be a cache entry per row of a list that is read whole.
+     */
+    inviteLinks: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'inviteLinks'],
   },
 
   /**
@@ -569,6 +591,29 @@ export const queryKeys = {
      * reach a key nested there — this one is reached by `invites.all()`.
      */
     search: (rideId: string, query: string): QueryKey => ['invites', 'search', rideId, query],
+    /**
+     * What one invite token previews (`091`, PD-330) —
+     * `public.ride_invite_link_preview`.
+     *
+     * **The token is IN the key**, so two links opened in one session cannot
+     * share an entry. They resolve to different rides, and a shared entry would
+     * show the first rider's ride to the second — this file's own collision
+     * warning, in the one shape where the entry is a *capability* rather than a
+     * list.
+     *
+     * Under `invites` so `invites.all()` reaches it, which is what
+     * `claimRideInviteLink` names: after a claim the preview is stale in a way
+     * that matters — `is_crew` has flipped — and the rider's own invite list now
+     * holds an `accepted` row that was not there.
+     *
+     * **No `revalidatePath` maps onto this either**, for the same reason as
+     * `rides.inviteLinks` above. It has one further property no other key here
+     * has: `clearQueryCache()` on sign-out is load-bearing rather than tidy,
+     * because this entry describes a ride the next rider on the device may have
+     * no right to see, and serving it from cache would be an anonymous read with
+     * extra steps.
+     */
+    link: (token: string): QueryKey => ['invites', 'link', token],
   },
 
   /**

@@ -302,6 +302,31 @@ export const rideIdSchema = z.uuid()
  */
 export const rideInviteIdSchema = z.uuid()
 
+/** A `ride_invite_links.id`, for `revoke_ride_invite_link`'s one argument. */
+export const rideInviteLinkIdSchema = z.uuid()
+
+/**
+ * An invite link's token — `091`, PD-330. **32 lowercase hex characters**,
+ * mirroring `ride_invite_links_token_shape`.
+ *
+ * **Zod owns the message and the database owns the guarantee**, and here the
+ * guarantee is unusually strong: `token` takes its value from a column default
+ * and the INSERT grant names `(id, ride_id, created_by)` only, so there is no
+ * statement in which a client can choose one. This schema therefore protects
+ * nothing about *stored* values — it exists so a hand-edited URL or a truncated
+ * paste is refused **before** it reaches PostgREST, where a malformed argument
+ * to a `text` parameter would simply return zero rows and read as a dead link.
+ *
+ * Anchored and case-sensitive on purpose. An uppercased paste is not the same
+ * token: the column stores lowercase and the RPCs compare exactly, so accepting
+ * it here would hand the rider a "no longer valid" for a link that is alive.
+ */
+export const RIDE_INVITE_TOKEN_LENGTH = 32
+
+export const rideInviteTokenSchema = z
+  .string()
+  .regex(new RegExp(`^[0-9a-f]{${RIDE_INVITE_TOKEN_LENGTH}}$`), 'That invite link is not valid.')
+
 /**
  * The minimum the rider picker will search on.
  *

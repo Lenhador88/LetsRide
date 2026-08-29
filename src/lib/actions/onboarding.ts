@@ -3,6 +3,8 @@ import { invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { isUsernameTaken } from '@/lib/data/profile'
 import { USERNAME_TAKEN_MESSAGE, checkUsername } from '@/lib/validation/profile'
 import { consentSchema } from '@/lib/validation/auth'
+import { takeStashedInviteToken } from '@/lib/invites/pending-token'
+import { routes } from '@/lib/routes'
 import type { ActionState } from '@/lib/actions/auth'
 
 /**
@@ -117,7 +119,24 @@ export async function setUsername(
   // raising a unique violation against itself.
   invalidateOnboardingState()
 
-  return { error: null, redirectTo: '/postcards' }
+  // **The stash is consumed HERE, at the end of the wizard** (`091`, PD-330).
+  // A rider who arrived on an invite link with no account is sent to
+  // `/onboarding/terms` and then here by the route guard, because `023` refuses
+  // the claim's write until both stamps are set. Without this line the detour
+  // ends at `/postcards` with a live token still in `sessionStorage` and nothing
+  // reading it — the same dead end one screen later, and quieter, because
+  // nothing errors.
+  //
+  // **This is not a claim and must never become one.** It returns the rider to
+  // the preview, where they tap; see `claimRideInviteLink` for why an automatic
+  // claim on session establishment joins the wrong rider to a private ride.
+  //
+  // `takeStashedInviteToken` clears as it reads, and the destination re-stashes
+  // from its own query string — so the token is never left behind for whoever
+  // signs in next on this device.
+  const invite = takeStashedInviteToken()
+
+  return { error: null, redirectTo: invite ? routes.joinRide(invite) : '/postcards' }
 }
 
 /**

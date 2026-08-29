@@ -55,6 +55,37 @@ import { rideIdSchema } from '@/lib/validation/rides'
 /** The query parameter every detail route reads its id from. */
 export const DETAIL_ID_PARAM = 'id'
 
+/**
+ * The invite link's landing route — `091`, PD-330. **The one public path in
+ * this file**, and the only route in the app that is reachable with no session.
+ *
+ * It is spelled here rather than in `src/lib/auth/guard.ts` so there is one
+ * string: that file adds it to `PUBLIC_PATHS` *and* to
+ * `needsOnboardingState()`, and a literal typed into either of them separately
+ * is a public route that silently stops being public, or one whose onboarding
+ * detour silently stops happening.
+ */
+export const RIDE_JOIN_PATH = '/rides/join'
+
+/**
+ * Which token the landing route is answering for.
+ *
+ * **A query parameter rather than a path segment, and the reason is the NATIVE
+ * build rather than the web one.** `output: 'export'` lives in
+ * `next.config.ts`'s `capacitorConfig` only — the file ends
+ * `isCapacitorBuild ? capacitorConfig : webConfig` — so a link opened from
+ * WhatsApp reaches the web build, which runs a server and would serve a dynamic
+ * segment happily. The binding constraint is that **the route tree is shared
+ * between both builds**: a `/rides/join/[token]` segment would need
+ * `generateStaticParams` under `CAPACITOR_BUILD=1` and break
+ * `npm run build:native`, a build nobody runs on a feature branch.
+ *
+ * The reasoning above this in the file — one prerendered document per route
+ * rather than one per id — applies unchanged, and this parameter is the one
+ * place it is a *credential* rather than an id.
+ */
+export const INVITE_TOKEN_PARAM = 'token'
+
 function detail(path: string, id: string): string {
   return `${path}?${DETAIL_ID_PARAM}=${encodeURIComponent(id)}`
 }
@@ -111,6 +142,16 @@ export const routes = {
   /** Another rider — `view-rider-profile`. Own-id is redirected to `/profile`
    * rather than resolving here; see that route's own redirect. */
   profile: (id: string) => detail(detailPaths.profile, id),
+
+  /**
+   * A ride invite link (`091`, PD-330) — the one URL this app produces that is
+   * meant to be pasted into somebody else's chat.
+   *
+   * `shareAppLink` puts `canonicalOrigin()` in front of it, which is what makes
+   * it a link to something rather than to `https://localhost` inside the shell.
+   */
+  joinRide: (token: string) =>
+    `${RIDE_JOIN_PATH}?${new URLSearchParams({ [INVITE_TOKEN_PARAM]: token })}`,
 
   /** `Plan a ride` from a club — see `CREATE_CLUB_PARAM`. */
   newRideInClub: (clubId: string) => inClub(createPaths.ride, clubId),
