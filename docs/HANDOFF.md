@@ -3079,16 +3079,27 @@ appeared 48 minutes later.** At 22:57Z `list_triggers` still reported
 `trig_01WJkMVXGzUVGDcC1njNmaan` bound to the archived `session_014ncc5vBmsKG9fmfznUoZ48`, with
 `next_run_at` 23:05:51Z — so the 23:05Z firing may land in the gap. **Read this as expected rather
 than as a second failure**: the one prior data point is 55 minutes (2026-08-18), and the field is
-not a countdown. **Re-read it before assuming the queue is healthy again** — a rebind to a *fresh*
-session id is what says the next firing runs the current `queue-dispatch.md`:
+not a countdown. **It did rebind, at 23:08:12Z — 58 minutes**, to `session_01EfJjZAFMoiBvpKo3fNHxLq`,
+which makes the figure two data points (55 and 58) rather than one. **Re-read it before assuming the
+queue is healthy again** — a rebind to a *fresh* session id is what says the next firing runs the
+current `queue-dispatch.md`:
 
 ```
 # via the CCR MCP: list_triggers -> trig_01WJkMVXGzUVGDcC1njNmaan
-#   persistent_session_id still session_014ncc5vBmsKG9fmfznUoZ48 = not yet rebound
-#   then get_session on whatever it names: status FIRST — an archived session means the rebind is
-#   pending, so container_cc_version answers "unknown", never "stale". Live and older than a
-#   session started today = it is running a clone from its own creation date.
+#   then get_session on whatever it names. session_status FIRST, and it answers TWO questions:
+#     ARCHIVED        = a rebind is pending, so container_cc_version answers "unknown", never "stale"
+#     REQUIRES_ACTION = BLOCKED on a permission prompt nobody can answer. Read pending_action.
+#   only then container_cc_version: live and older than a session started today = an old clone.
 ```
+
+**That relay was archived in turn on 2026-08-29 at 11:15Z, and NOT for staleness** — it was
+`REQUIRES_ACTION`, blocked since 11:14Z on `mcp__Linear__list_issue_statuses`, with two stories
+queued and both slots free, while `container_cc_version` read `2.1.251` (current) and the Routine
+read `enabled: true` with a future `next_run_at`. **Every health check in this file said fine.**
+The call it blocked on is granted twice in its own checkout — literally in `permissions.allow` and
+by capability in `autoMode.allow` since 2026-08-07 — so the auto-mode classifier declined a
+pre-authorized call, which makes this intermittent rather than a missing rule.
+`.claude/commands/queue-dispatch.md` §Two irreversible things carries it.
 
 Measured 2026-08-24, and these are the two checks worth reusing:
 
