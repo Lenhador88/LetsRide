@@ -766,14 +766,36 @@ reading this file:**
   ```
   mcp__Claude_Code_Remote__list_triggers   # persistent_session_id on …WJkMV
   mcp__Claude_Code_Remote__get_session  session_id=<that id>
-  #   1. status first: an ARCHIVED session means a rebind is pending — the answer is "unknown,
-  #      read it again later", never "stale".
+  #   1. session_status first, and it answers two different questions before the version does:
+  #        ARCHIVED         -> a rebind is pending: "unknown, read it again later", never "stale"
+  #        REQUIRES_ACTION  -> BLOCKED on a permission prompt. See below. Nothing else matters.
   #   2. then container_cc_version, against the same field on any session started today.
   #      Older, on a LIVE session = it is running a clone from its own creation date, whatever
   #      the repo says.
   ```
   **Everything the relay spawns is disposable** and archiving one is always fine: a dispatcher
   carries `queue-dispatch-run` and a child carries `queue-dispatch`.
+
+  **A BLOCKED relay is the third way this queue stops, and the two checks above both call it
+  healthy.** Measured 2026-08-29: the relay minted the previous night sat in
+  `SESSION_STATUS_REQUIRES_ACTION` / `status_bucket: SESSION_STATUS_BUCKET_BLOCKED` from 11:14Z,
+  its `external_metadata.pending_action` naming `mcp__Linear__list_issue_statuses`, with two
+  stories in `Queued (AI)`, `Development (AI)` empty and both slots free. **`container_cc_version`
+  was `2.1.251` — current** — because this relay was hours old rather than days, so the staleness
+  check answers "fine" while nothing dispatches. The Routine read healthy too; its `last_run` was
+  `ROUTINE_RUN_STATUS_PENDING`, which is a firing that never finishes and is a different shape
+  from the short `SUCCEEDED` in §Why this shape.
+
+  **A trigger-fired session has nobody to approve a prompt**, so a blocked relay stays blocked for
+  ever. `pending_action` names the tool it is waiting on; read it before archiving, because it says
+  what will happen again to the replacement.
+
+  **The prompt is not a missing grant, which is what makes it recur.** That Linear call is
+  pre-authorized twice over in the relay's own checkout — `permissions.allow` names
+  `mcp__Linear__list_issue_statuses` literally, and `permissions.autoMode.allow` has granted Linear
+  reads and writes under any connector name since 2026-08-07 (`44268b1`). The auto-mode classifier
+  declined it anyway. So this is **intermittent and cannot be fixed by adding a rule** — it is worth
+  knowing rather than worth repairing, and the repair is the same archive as everything else here.
 
 ### Editing this file is not finished until the relay is archived
 
