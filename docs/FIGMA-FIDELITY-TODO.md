@@ -1643,6 +1643,50 @@ extends the same standing entry rather than claiming a measurement.
       that row. `mask-repeat: round` still fits a whole number per axis, so the two now sit
       within a pixel of each other.
 
+### The ride invite link — built 2026-08-29 (PD-330), from no frame at all
+
+**Two screens with nothing measured behind their composition**, and the `ls` hits are a trap rather
+than a resource. `npm run figma -- ls` returns `Invite riders` and `Invite riders - Filled` under
+`Design · Rides` and `Join ride without account` under `Archive`. The first two are **OLD-stylesheet**
+(`Grey (OLD)/*`, `Accent (OLD)/*`) and draw a rider *search* — PD-329's flow, not this one. The third
+is archived, is out of scope under decision #1, **and draws the full crew roster with names**, which
+a bearer token must never see. So it is unusable on two counts, not one, and a session that reads it
+as a starting point is designing a data leak.
+
+Everything below is assembled from measured components and **none of it is measured**. Every string
+is invented.
+
+- [ ] **`/rides/join` (`RideInviteJoin`).** Page frame `max-w-[390px]`, `px-6`, `pt-[96px]`, `pb-8` —
+      derived from `AuthScreen`'s measured 390 / `px-10` / `pt-[120px]`, narrowed and raised because
+      this screen holds a card rather than a form column. Preview card `rounded-lg bg-surface p-4
+      gap-3` with `border-t border-border pt-3` above the organizer row; the two icon lines inside it
+      (`h-5 w-5`, `gap-2.5`, `text-sm font-semibold`, truncating) are `/rides/detail`'s measured rows,
+      but the card's padding, gap and hairline are invented. The organizer row — `Avatar size="sm"`,
+      "*name* is organizing", right-aligned "N riders" — is an invented composition, with `Rider` as
+      the unreadable-username fallback that `PostcardStamp` already uses.
+- [ ] **The copy on that screen is entirely invented and one line of it is load-bearing**: the dead-link
+      state says *"This link has expired"* and explains that links stop working once the ride departs
+      and that the organizer can turn one off — which is deliberately the SAME wording for a revoked,
+      expired, deleted, departed, blocked or guessed token, because the RPC makes those
+      indistinguishable and copy that guessed between them would be the oracle the schema refuses to
+      be. A designer changing this must not split it by cause.
+- [ ] **`RideInviteLinkSection` on `/rides/detail/invite`.** `SectionHeader title="Invite by link"`
+      plus an invented explanatory paragraph. Link row `rounded-lg bg-surface p-3 gap-3` — the surface
+      and radius are `DeleteRideControl`'s confirmation box (which is `p-4`), the `p-3` and the
+      two-line `text-sm font-semibold` over `text-xs font-medium text-muted` stack are invented.
+      `Share` / `Revoke` are `size="sm" variant="secondary"`, copied from `RideInviteList`'s
+      `Withdraw`; the confirmation row and its `danger` primary are `RideDeleteConfirmation`'s.
+      Status wording (`Expires in 3 days` / `Expired` / `Revoked`) and counts (`N riders joined` /
+      `Nobody has joined through it`) are invented; the relative time reuses `formatRelativeTime`
+      rather than adding a formatter.
+- [ ] **Revoke's confirmation copy is invented AND is a correctness constraint, not a style choice**:
+      *"This stops the link working, so nobody new can join with it. Riders who have already joined
+      stay on the ride."* Nothing in this app can eject a rider from a ride (PD-351), so copy
+      implying otherwise would be a promise the database refuses. A designer rewording it must keep
+      the second sentence's claim.
+- [ ] **Placing the link section BELOW the by-name picker** is an invented ordering, on the reasoning
+      that naming a rider is the narrower act and a bearer token should not be the default.
+
 ## Rule for anyone building against this
 
 **Read `design/` first — it is offline and cannot be rate limited.** An inferred composition
