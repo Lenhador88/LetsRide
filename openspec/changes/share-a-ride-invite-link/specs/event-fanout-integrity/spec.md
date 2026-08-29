@@ -66,6 +66,9 @@ is true and SHALL be left alone.**
 
 #### Scenario: The type list does not grow
 - **WHEN** `notifications_type_check` is read after this change applies
-- **THEN** it SHALL hold the same eight types `083` left it with
+- **THEN** it SHALL hold the same **eleven** types it held before this change — `083` left it at
+  eight and `085` added three after, so the count this requirement originally named was already a
+  pre-`085` reading. Assert the NAMES, not the number: a count cannot tell an addition from a
+  rename, and it is the absence of a twelfth that this requirement is about
 - **AND** `NotificationType` in `src/types/index.ts` SHALL be unchanged, so no exhaustive `switch`
   in `notificationCopy` or `NotificationsListItem` gains an arm

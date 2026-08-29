@@ -159,17 +159,25 @@ export async function claimRideInviteLink(
   const { data, error } = await supabase.rpc('claim_ride_invite_link', { t: token })
 
   if (error) {
-    // `23514` is the participation gate raising from
-    // `private.join_ride_from_invite` — a fact about the CALLER rather than
-    // about the token, so saying it discloses nothing about the link and is the
-    // one distinction the spec permits. The route guard normally makes it
-    // unreachable by sending a rider mid-wizard to their resume step; this is
-    // the second line, and without it that rider reads "no longer valid" about
-    // a link that is alive.
-    if (error.code === '23514') return { error: 'Finish setting up your profile first.' }
-    // ONE message for everything else, because the RPC has one raise site:
-    // expired, revoked, deleted, departed, blocked in either direction and
-    // simply guessed are indistinguishable by design.
+    // ONE message, because the RPC has one raise site: expired, revoked,
+    // deleted, departed, blocked in either direction, un-onboarded and simply
+    // guessed are all indistinguishable by design.
+    //
+    // ** There was a `23514` arm here and `091` made it unreachable, which is
+    // why it is gone rather than kept as a second line. ** The draft caught the
+    // participation gate raising from `private.join_ride_from_invite` and said
+    // "Finish setting up your profile first." — a fact about the CALLER rather
+    // than about the token, and the one distinction the spec allowed. Then the
+    // review pass moved the gate INTO `private.ride_invite_link_reachable_by`,
+    // where it had to go so the *preview* was gated too, and the caller now
+    // fails one call earlier with the single `42501`. `join_ride_from_invite`
+    // still restates the gate and the suite still pins that, but nothing can
+    // reach it un-onboarded, so the branch would have been dead code reading as
+    // live cover.
+    //
+    // What replaces it is the guard, which is the stronger half anyway:
+    // `/rides/join` is in `needsOnboardingState`, so a rider mid-wizard is sent
+    // to their resume step and never taps this at all.
     return { error: 'This invite link is no longer valid.' }
   }
 
