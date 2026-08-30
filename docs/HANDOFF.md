@@ -1138,10 +1138,10 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — the repo holds 87, DEV is at `087` and PROD at `079`
+## Migrations — 91 files, and both projects are at `091`
 
-**`list_migrations` prints 85 on DEV and 79 on PROD against 82 files, and only ONE of those two
-differences is a gap.** DEV's **surplus rows** are files applied there in increments: `063` in
+**`list_migrations` prints 94 rows on DEV and 91 on PROD against 91 files, and NONE of that
+difference is a gap.** DEV's **surplus rows** are files applied there in increments: `063` in
 three — `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private`, where PROD
 holds the one consolidated file — and `080` in two, `rides_carry_their_meeting_points_zone` plus
 `rides_zone_is_not_cleared_with_the_location_group`. **DEV keeps all three `063` rows even though
@@ -1150,27 +1150,33 @@ claim that its objects survive. **Count rows against files rather than reading a
 and re-derive both rather than trusting the numbers in this heading — they have been wrong here
 before, in the direction of reading one row too few.
 
-**The gap is `080`, `081` and `082`, in that order**, and the order is not a convention: `082`
-renames the objects `081` creates, so the reverse errors outright. `080` (PD-193, a ride's
-meeting-point timezone) was applied to DEV 2026-08-26; `081` (PD-307, club discussions) and `082`
-(PD-313, renaming them to threads) on 2026-08-27. **All three are ADDITIVE** — `080` a nullable
-column, a trigger and two column grants; `081` three new tables, their policies, two `security
-definer` RPCs and a publication membership; `082` a pure rename of `081`'s objects — so all three go
-to PROD **before** the promotion build serves, which is the `069` half of the `069`/`070` rule
-rather than the `070` half.
+```bash
+ls supabase/migrations/*.sql | wc -l    # 91
+```
+```
+mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # PROD — 91 rows, last `ride_invite_links`
+mcp__Supabase__list_migrations fpmrimzxadewsaiwpsel   # DEV  — 94 rows, same last file
+```
 
-**PROD holds none of the three tables today** (measured 2026-08-27 at version `079`), so `081`
-followed by `082` lands as a create-then-rename with no rows in between.
+**`080`–`091` were promoted to PROD on 2026-08-30 around #348's build**, in the grouping
+`CLAUDE.md` §Supabase Rules carries: `080`–`088` and `091` before it served, `090` before it too
+(the destructive exception its own header earns), `089` after `app.letsride.social` was confirmed
+`READY` on the merge sha `191d906` with `aliasError` null.
 
-Nothing breaks if `080` lands late: the column is NULL on every row, and NULL is the fallback every
-ride already had. **`081` and `082` are different, and this is the half a partial promotion gets
-wrong.** The client calls `club_thread_unread`, `moderate_club_thread` and
-`delete_own_club_message`, and the first two exist **only after `082`** — so a promotion that
-applies `080` and `081`, stops, and lets the build serve answers `PGRST202` on every club-thread
-screen, with nothing red anywhere. That is `079`'s lesson on the same shape. Applying to the end of
-the gap is the requirement, not applying "the new ones".
+**Verified by OBJECT rather than by the recorded statement**, per `CLAUDE.md` §Supabase Rules — the
+whole point being that a reduced apply and a real difference look identical in the recorded text.
+Functions (`md5(prosrc)`, `prosecdef`, volatility), triggers, policies across `public` **and**
+`storage`, constraints, and function EXECUTE grants for `anon` and `authenticated` all hash
+identically across the two projects. **One function differs and it is not this promotion's:**
+`sweep_place_search_attempts`, whose PROD body is 946 characters against DEV's 248 — `069`'s
+comment-only reduction, already recorded in `docs/reference/migrations.md`.
 
-Repo 82 files, PROD 79 rows, DEV 85 rows, one chain, **three promotions owed**.
+`036`'s hand-exercise gate was run against PROD for all four non-inert files (`083`, `085`, `091`,
+`089`), in rolled-back transactions as `authenticated`: club and ride creation, an RSVP, an invite
+with its accept and decline, a link minted, claimed and revoked, a join request declined and another
+approved, and promote/demote/remove. Nothing raised, and the fan-outs' rows were counted rather
+than assumed — including the one `089` writes, whose `actor_id` equals its recipient, which the
+admin cannot read and which the clear retracts.
 
 **`078` and `079` both went to PROD on 2026-08-25 BEFORE the #310 promotion build served**, which
 is the additive half of the `069`/`070` rule applied twice in one sitting. `079` in particular had
@@ -1218,13 +1224,12 @@ exactly what §Supabase Rules warns about when reducing a large migration to its
 statements, and it was invisible until somebody diffed the object. Applying it first would be a rider-visible outage for the length of
 a build, which is exactly the window `070`'s header exists to describe.
 
-**`076` (PD-297) is on DEV and not on PROD, and it is the one migration in this file whose
-promotion order does not matter.** It is purely additive and **no code reads it** — the objects
+**`076` (PD-297) went to PROD on 2026-08-25, and it is the one migration in this file whose
+promotion order did not matter.** It is purely additive and **no code reads it** — the objects
 live in `private`, which PostgREST does not route, so no build can call them and no build can
 break for want of them. That is the opposite of `074`, two paragraphs below, where the promotion
-build reads a column and a missing one puts a "try again" panel on five screens. Promote it with
-the next batch, in filename order, and verify it the way every other object here is verified —
-by object rather than by recorded text:
+build reads a column and a missing one puts a "try again" panel on five screens. It was verified the way every other object here is
+verified — by object rather than by recorded text:
 
 ```sql
 -- against PROD, after applying
@@ -1821,37 +1826,33 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/ | wc -l          # 91 — DEV at 091, PROD at 079
+ls supabase/migrations/ | wc -l          # 91 — both projects at 091
 ```
 
 
-**PROD is TWELVE behind, and the order inside the gap is not optional.** `080` through `088`, in
-filename order, and **all nine of those before the promotion build serves** — every one is
-additive. **`090` goes before that build too**, and it is destructive, which makes it the one
-exception on this list in the OTHER direction: it drops `083`'s retraction trigger, and its header
-carries the check that earns it — no bundle can observe the object it removes, because nothing in
-`src/` names the trigger or its function, no client role ever held EXECUTE on it, and the serving
-client already degrades correctly for a `ride_invited` row whose invite is not live. A destructive
-file with no observable side has no unsafe side to order around. **`089` is the exception in the
-usual direction and goes LAST, after that build is confirmed
-serving**, on `070`'s footing: its apply must follow its own deploy rather than precede it, because
-`notificationCopy` and `NotificationsListItem`'s `describe` are exhaustive switches and one decline
-landing while an older bundle is still serving takes that rider's notifications screen down. It is
-already on DEV in exactly that order — applied once the merge's deployment reached `READY` on the
-merge sha. Three of them carry a reason beyond the ordering rule:
+**PROD was TWELVE behind and is level again** — `080`–`091` promoted 2026-08-30 around #348's
+build. The order they went in is the part worth keeping, because the next gap is ordered the same
+way: `080`–`088` and `091` before the build served, every one additive; `090` before it too,
+destructive and the one exception in the OTHER direction, its header carrying the check that earns
+it — no bundle can observe the object it removes, because nothing in `src/` names the trigger or
+its function, no client role ever held EXECUTE on it, and the serving client already degrades
+correctly for a `ride_invited` row whose invite is not live; and `089` LAST, after the build was
+confirmed serving, on `070`'s footing, because `notificationCopy` and `NotificationsListItem`'s
+`describe` are exhaustive switches and one decline landing under an older bundle takes that rider's
+notifications screen down. Three carried a reason beyond the ordering rule:
 
 - **`082` renames what `081` creates**, so the reverse errors, and the client calls RPCs that exist
   only after `082` — stopping between them serves `PGRST202` with nothing red.
 - **`083` is additive in schema and NOT inert.** It replaces `private.can_read_ride`, which every
   existing notification fan-out calls **inside a rider's own RSVP and ride-creation transaction**,
-  so `036`'s hand-exercise gate fires. It was run on DEV (six paths, rolled back, green) and
-  **must be run again on PROD** before that promotion.
-- **`089` hangs a fan-out on the DECLINE path**, which is live, so `036`'s hand-exercise gate
-  fires for it too — a raise inside that trigger takes the admin's own decline down with it. It was
-  run on DEV (a scratch private club, an ask, a decline, a clear, all rolled back): the decline
-  wrote ONE notification whose `actor_id` equals its `user_id`, the clear retracted it, nothing
-  raised, and zero residue. **Run it again on PROD** before that promotion.
-  `088` needs none: three `security definer` RPCs, no trigger and no policy. **`090` needs none
+  so `036`'s hand-exercise gate fires. Run on DEV (six paths, rolled back, green) and again on
+  PROD before the promotion, along with `085`'s and `091`'s.
+- **`089` hangs a fan-out on the DECLINE path**, which is live, so `036`'s gate fires for it too —
+  a raise inside that trigger takes the admin's own decline down with it. Run on both, each time
+  against a scratch private club with an ask, a decline and a clear, all rolled back: the decline
+  wrote ONE notification whose `actor_id` equals its `user_id`, the requester could read it, the
+  admin could not, the clear retracted it, nothing raised, zero residue.
+  `088` needed none: three `security definer` RPCs, no trigger and no policy. **`090` needed none
   either, and for the opposite reason to `088`'s** — it hangs nothing on a live write path, it
   REMOVES something from one, so the withdrawal path simply does one thing less inside the
   organizer's transaction. The gate exists for new code running in a rider's transaction; there is

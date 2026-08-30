@@ -149,11 +149,9 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **seventeen** tables on DEV
-   and **eleven** on PROD — measured 2026-08-29, the six-table difference being `081`, `083`,
-   `084`, `085` and `091`, all applied to DEV and owed to PROD (`086`, `087`, `088`, `089` and `090`
-   add no gate); PROD was ten until `069` promoted on
-   2026-08-19 —
+   gets inherited as covered.** `enforce_participation_gate` is on **seventeen** tables on
+   BOTH projects — measured 2026-08-30, level again at #348's promotion, PROD having been eleven
+   until `081`, `083`, `084`, `085` and `091` went with it (`086`–`090` add no gate) —
    `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
    `postcard_reports`, `ride_messages`, `ride_map_render_attempts`, `place_search_attempts`,
@@ -654,51 +652,51 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 91 files; DEV is at `091` and PROD at `079` — measured 2026-08-29, so DEV is
-AHEAD by twelve and `080`–`091` are owed to PROD at the next promotion, in filename order.**
-`080`–`088` are additive, so those nine go to PROD **before** the promotion build serves, per the
-ordering rule below. **`090` is destructive and goes before it too**, which is this file's one
-exception to that rule rather than a violation of it: it drops `083`'s retraction trigger, and its
-header carries the check that earns the exception — the serving client already degrades correctly
-for a `ride_invited` notification whose invite is not live, nothing in `src/` names the trigger or
-its function, and no client role ever held EXECUTE on it, so an older bundle and a newer one behave
-identically against the post-`090` schema. **Read that as the rule working, not as a loophole**:
-the rule asks which side fails safe, and a destructive file whose removed object no bundle can
-observe has no unsafe side. **`091` is additive and goes before the build like the other nine**,
-with one caveat that is about the CLIENT rather than the schema: it re-creates `notify_ride_invited`
-with a `WHEN` clause, so from the moment it applies every in-app invite runs the narrowed trigger.
-`036`'s hand-exercise gate therefore fires for it, and was run on DEV; run it again on PROD. **`089` is the other exception and goes AFTER it is confirmed serving**, on `070`'s
-and `077`'s footing rather than `069`'s — it is additive in SCHEMA and its ordering constraint is
-in the CLIENT: `notificationCopy` and `NotificationsListItem`'s `describe` are exhaustive switches,
-so one decline landing while an older bundle is still serving takes that rider's notifications
-screen down. On DEV it was applied in exactly that order, after the merge's Vercel deployment
-reached `READY` on the merge sha, and `036`'s hand-exercise gate was run against the live decline
-path in the same sitting (one notification written, its actor equal to its recipient, the clear
-retracting it, nothing raised, zero residue). **`085` is additive and NOT inert**, the same shape `083` has: it rewrites
-`private.may_participate` to delegate to a new subject-taking twin — a function `023`'s gate
-trigger calls on sixteen tables — and its `private.join_club_from_request` fires
-`private.notify_club_joined` inside a `security definer` body, so a raise there takes a rider's
-approval down with it. `036`'s hand-exercise gate applies and was run on DEV; run it again on PROD
-before that promotion. `086` creates one function and hangs no trigger, so it needs none, and neither
-does `088` — three `security definer` RPCs, no trigger and no policy. **`089` DOES need it**: it
-hangs a fan-out on the DECLINE path, which is live, so from the moment it applies every decline
-runs new code inside the admin's own transaction. `081` creates the club-thread tables under their old `discussion` names and
-`082` renames them, so on PROD that pair is a create-then-rename with no rows in between — but the
-**order inside the gap is not optional**, and for two separate reasons that are easy to collapse
-into one: `082` renames objects `081` creates, so the reverse simply errors; and the client calls
-RPCs that exist only after `082`, so stopping *between* them serves `PGRST202` with nothing red.
-**`083` adds a third reason and it is the loudest**: it is additive in schema and NOT inert, because
-it replaces `private.can_read_ride`, which every existing notification fan-out calls inside a
-rider's own RSVP and ride-creation transaction — `036`'s hand-exercise gate, which was run on DEV
-and must be run again on PROD before that promotion. `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
-after it was confirmed serving (destructive), which is the whole ordering rule in one sitting.
-**Level is the exception, not the resting state**: DEV-ahead is where a migration lives between its
-merge and its promotion, and the two were last level on 2026-08-20 at PD-273's promotion and
-briefly on 2026-08-24. **Do not read the count of unpromoted files off this sentence** — it named
-exactly one while two were waiting, which is the same defect as a stale number in a smaller place,
-and the promotion is the one job that reads it. Run `list_migrations` against
-`ls supabase/migrations/` and promote everything the gap contains, in filename order, per step 5 of
-`docs/ENVIRONMENTS.md` §Migrations.
+**Applied state: 91 files; DEV and PROD are BOTH at `091` — measured 2026-08-30, level again at
+#348's promotion.** Count rather than trust it: `list_migrations` against both refs, against
+`ls supabase/migrations/`. **Level is the exception, not the resting state** — DEV-ahead is where a
+migration lives between its merge and its promotion, so read a per-project difference as a pending
+promotion before reading it as a gap, and **do not read the count of unpromoted files off a
+sentence anywhere**: one here named exactly one file while two were waiting, which is the same
+defect as a stale number in a smaller place, and the promotion is the one job that reads it.
+Promote everything the gap contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md`
+§Migrations.
+
+**`080`–`091` went to PROD around #348's build, in three groups, and the GROUPING is the reusable
+part rather than the dates.** `080`–`088` and `091` are additive and went **before** the build
+served. **`090` is destructive and went before it too**, which is this file's one exception to that
+rule rather than a violation of it: it drops `083`'s retraction trigger, and its header carries the
+check that earns the exception — the serving client already degrades correctly for a `ride_invited`
+notification whose invite is not live, nothing in `src/` names the trigger or its function, and no
+client role ever held EXECUTE on it, so an older bundle and a newer one behave identically against
+the post-`090` schema. **Read that as the rule working, not as a loophole**: the rule asks which
+side fails safe, and a destructive file whose removed object no bundle can observe has no unsafe
+side. **`089` went AFTER the build was confirmed serving**, on `070`'s and `077`'s footing rather
+than `069`'s — it is additive in SCHEMA and its ordering constraint is in the CLIENT:
+`notificationCopy` and `NotificationsListItem`'s `describe` are exhaustive switches, so one decline
+landing while an older bundle is still serving takes that rider's notifications screen down. On both
+projects it went in exactly that order, after the merge's Vercel deployment reached `READY` on the
+merge sha with `aliasError` null.
+
+**Four of the twelve are additive and NOT inert, which is what `036`'s hand-exercise gate is for**,
+and all four were exercised by hand on DEV and again on PROD — in a rolled-back transaction, as
+`authenticated`, with the fan-outs' rows counted rather than assumed. `083` replaces
+`private.can_read_ride`, which every existing notification fan-out calls inside a rider's own RSVP
+and ride-creation transaction. `085` rewrites `private.may_participate` to delegate to a new
+subject-taking twin — a function `023`'s gate trigger calls on sixteen tables — and its
+`private.join_club_from_request` fires `private.notify_club_joined` inside a `security definer`
+body, so a raise there takes a rider's approval down with it. `091` re-creates
+`notify_ride_invited` with a `WHEN` clause, so from the moment it applies every in-app invite runs
+the narrowed trigger. `089` hangs a fan-out on the DECLINE path, which is live. `086` creates one
+function and hangs no trigger, so it needs none, and neither does `088` — three `security definer`
+RPCs, no trigger and no policy.
+
+**`081` and `082` are a create-then-rename pair and the order inside it is not optional**, for two
+separate reasons that are easy to collapse into one: `082` renames objects `081` creates, so the
+reverse simply errors; and the client calls RPCs that exist only after `082`, so stopping *between*
+them serves `PGRST202` with nothing red. `076` (PD-297) went to PROD before the promotion build
+(additive) and `077` (PD-293) after it was confirmed serving (destructive), which is the whole
+ordering rule in one sitting.
 
 **`069` and `070` went opposite ways round the same event, and that is the reusable part.** `069`
 is additive and applied to PROD **before** the promotion build served; `070` is destructive and

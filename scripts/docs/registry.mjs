@@ -242,8 +242,11 @@ export const claims = [
     // misbehaving; it is what "budget for it" meant. Three times, as it turned
     // out: `071` (the rides `departure_at` index) went on DEV that evening and
     // this went red a third time. Pinned back to DEV AHEAD, naming both refs.
+    // 2026-08-30: #348 promoted `080`-`091` and the two are level again, so this
+    // went red on cue for the fourth time. Prose and pattern edited together, as
+    // it says — pinned back to LEVEL.
     pattern:
-      /\*\*Applied state: (\d+) files; DEV is at `\d+` and PROD at `\d+` — measured/,
+      /\*\*Applied state: (\d+) files; DEV and PROD are BOTH at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
