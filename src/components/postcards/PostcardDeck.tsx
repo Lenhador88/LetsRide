@@ -3,15 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { armsDrag, remainingPostcards, resolveSwipe } from '@/components/postcards/deck'
+import { claimSwipeCoach, swipeCoachStore } from '@/components/postcards/coachMark'
+import { SwipeCoach } from '@/components/postcards/SwipeCoach'
 import { cn } from '@/lib/utils'
 import type { Postcard } from '@/types'
 import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
+import { SWIPE_BACK_OPT_OUT } from '@/lib/swipe-back'
 
 /**
  * The home screen's card stack — `Postcard Stack` in
  * `Home - Postcards - All new`, measured from the committed snapshot.
  *
- * Three cards sit at the same centre, 342×448, and the two behind the front one
+ * Three cards sit at the same centre — 342 wide, and as tall as the slot allows
+ * since PD-343 rather than the frame's 448 — and the two behind the front one
  * are rotated. The rotations are exact: −2° for the middle card and +2° for the
  * deepest, read from the raw node and now carried in the snapshot (the pruned
  * tree used to drop `rotation`, which made the fan look like three
@@ -37,11 +41,42 @@ import { MarkFeedSeen } from '@/components/postcards/MarkFeedSeen'
  * half its height, so refusing a gesture that began on a control — the shape
  * this deck carried until then — read to a rider as swiping working only on
  * the picture.
+ *
+ * **Nothing drew that gesture until PD-324**, so the deck now coaches it once
+ * per device on first sight of a card — `SwipeCoach` for the overlay,
+ * `./coachMark` for the flag. The overlay takes no pointer input and this
+ * component owns its dismissal, which is what keeps it clear of both
+ * behaviours above and of PD-316's tap-to-open photo button.
  */
 const BEHIND = [
   { rotate: -2, scale: 1, z: 20 },
   { rotate: 2, scale: 1, z: 10 },
 ]
+
+/**
+ * How long the swipe coach mark stays up with nothing touching the deck
+ * (PD-324). Long enough to be read at a glance on a screen the rider has just
+ * arrived at, short enough that it is gone before it becomes furniture — and it
+ * is a *ceiling*, not a duration: any pointer on the card takes it away sooner.
+ */
+const COACH_TIMEOUT = 4000
+
+/**
+ * How long after the first card the pill appears. `/postcards` gives this deck
+ * `motion-safe:animate-fade-in` (230ms), so a hint drawn immediately lands on a
+ * card still fading up.
+ */
+const COACH_ARRIVE = 400
+
+/** The pill's fade-out, matching `SwipeCoach`'s own `duration-200`. */
+const COACH_FADE = 200
+
+/**
+ * `shown` is the pill up and animating; `leaving` is the fade a dismissal
+ * starts, kept mounted so the pill fades rather than vanishing under the
+ * finger that dismissed it.
+ */
+type CoachPhase = 'hidden' | 'shown' | 'leaving'
 
 /**
  * `offset` is the authority on where the card is, and `dx` is its mirror for
@@ -111,6 +146,61 @@ export function PostcardDeck({
    */
   const suppressClick = useRef(false)
 
+  // The one-time swipe coach mark (PD-324). `hidden` is both the initial state
+  // and the resting one: the pill is decided in an effect, never during render,
+  // because the first render is the SSR/prerender pass where there is no
+  // `localStorage` to read the flag out of.
+  const [coach, setCoach] = useState<CoachPhase>('hidden')
+  /**
+   * The pending arrival, so a touch can cancel a pill that has not appeared
+   * yet — see `dismissCoach`. `null` whenever nothing is scheduled.
+   */
+  const coachArrival = useRef<number | null>(null)
+  /**
+   * Set once this mount has decided — the arrival firing, whether or not the
+   * device's flag was still there to claim, or a touch cancelling it before it
+   * fired. The effect below re-runs whenever the deck goes
+   * from having no card to having one, and "Start over" at the end of the deck
+   * is exactly that transition — without this, finishing the deck and starting
+   * over would coach the rider a second time on a gesture they just used.
+   *
+   * Deliberately **not** set before the arrival timer fires, which is what
+   * makes the effect safe to run twice: React StrictMode runs every effect
+   * twice in development — mount, cleanup, mount — and a flag set up front
+   * would let the cleanup cancel the only scheduled pill while the second pass
+   * declined to schedule another, so the coach mark would never appear in
+   * `npm run dev` while being correct in production.
+   */
+  const coachDecided = useRef(false)
+
+  /**
+   * Takes the coach mark away on the rider's first touch, whatever that touch
+   * turns out to be — a tap that opens the postcard, or the first millimetre of
+   * the swipe it is teaching.
+   *
+   * **The overlay has no pointer surface of its own**, so this is the only
+   * route: `SwipeCoach` is `pointer-events-none` precisely so it cannot take
+   * the tap that PD-316's photo button and this deck's own controls are
+   * expecting. That is also what makes the issue's *"never require a second
+   * interaction to get past"* true by construction — the dismissing touch is
+   * never spent on the dismissal.
+   *
+   * **It cancels a pill that has not arrived yet as well as one that has**, and
+   * that half is not symmetry for its own sake: without it a rider who touches
+   * the card inside `COACH_ARRIVE` gets told how to swipe ~400ms *after*
+   * swiping, and then waits out the full `COACH_TIMEOUT` because their one
+   * touch is already spent. The flag is deliberately left unclaimed on that
+   * path — nothing was shown, so nothing should be recorded as shown.
+   */
+  const dismissCoach = useCallback(() => {
+    if (coachArrival.current !== null) {
+      window.clearTimeout(coachArrival.current)
+      coachArrival.current = null
+      coachDecided.current = true
+    }
+    setCoach((phase) => (phase === 'shown' ? 'leaving' : phase))
+  }, [])
+
   /**
    * `frontId` is captured at the call rather than read when the timeout fires.
    * A revalidation landing mid-animation can change which card is at the front,
@@ -135,6 +225,70 @@ export function PostcardDeck({
   // immediately rather than at the next swipe.
   const remaining = remainingPostcards(postcards, dismissed)
   const front = remaining[0]
+
+  /**
+   * First sight of a card is what the coach mark is for, so this is gated on
+   * there being one rather than on mounting: the empty state and the
+   * end-of-deck state both draw no card, and coaching a gesture over "There are
+   * no new postcards, yet!" would spend the one showing this device ever gets
+   * on a screen with nothing to swipe.
+   *
+   * **The pill arrives a beat after the card does**, which is `COACH_ARRIVE`
+   * and is two things at once. It reads better — `/postcards` hands this deck
+   * `motion-safe:animate-fade-in`, and a hint drawn during that fade lands on a
+   * card that is not there yet — and it is what keeps `setCoach` out of an
+   * effect body, which `react-hooks/set-state-in-effect` rejects for the
+   * cascading render it causes.
+   *
+   * **`claimSwipeCoach` is called inside the timer, not beside it, and the
+   * difference is the whole once-per-device guarantee.** It both answers and
+   * spends (see its header for why the flag is written at first sight rather
+   * than at dismissal) — so calling it here in the effect body would spend the
+   * device's one showing `COACH_ARRIVE` before anything is drawn, and every
+   * teardown inside that window would leave the flag written and the rider
+   * coached zero times, for ever: a filter tap, which remounts this deck
+   * because `/postcards` keys it on the filter; a bottom-bar tap, on what is
+   * the first screen after sign-in; or the last card leaving. Claiming when the
+   * pill actually goes up makes the cancelled cases cost nothing. For a pill
+   * that is shown, the flag is still spent before any of the three dismissal
+   * routes can reach it; for one cancelled during the beat it is never spent at
+   * all, which is `dismissCoach`'s half of this and is the point of it.
+   *
+   * Keyed on *whether* there is a card rather than on which one, so a
+   * revalidation swapping the front postcard does not run this cleanup at all.
+   */
+  const hasCard = front !== undefined
+  useEffect(() => {
+    if (coachDecided.current || !hasCard) return
+    const timer = window.setTimeout(() => {
+      coachArrival.current = null
+      coachDecided.current = true
+      if (claimSwipeCoach(swipeCoachStore())) setCoach('shown')
+    }, COACH_ARRIVE)
+    coachArrival.current = timer
+    return () => {
+      window.clearTimeout(timer)
+      coachArrival.current = null
+    }
+  }, [hasCard])
+
+  /**
+   * The pill's own clock: up to `COACH_TIMEOUT` on screen, then
+   * `COACH_FADE` fading, then gone. One timer at a time and cleared on unmount,
+   * so a rider who leaves the screen mid-hint does not have `setCoach` called
+   * on a component that no longer exists.
+   *
+   * A dismissal from `dismissCoach` re-enters this effect at `leaving`, which
+   * cancels the timeout above rather than racing it.
+   */
+  useEffect(() => {
+    if (coach === 'hidden') return
+    const timer = window.setTimeout(
+      () => setCoach(coach === 'shown' ? 'leaving' : 'hidden'),
+      coach === 'shown' ? COACH_TIMEOUT : COACH_FADE
+    )
+    return () => window.clearTimeout(timer)
+  }, [coach])
 
   /**
    * The front card can be replaced *under an active drag* — `useQuery` refetches
@@ -199,6 +353,12 @@ export function PostcardDeck({
   }, [])
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    // Ahead of every guard below, because the coach mark goes away on the
+    // rider's first touch of the card whether or not that touch becomes a
+    // gesture this deck accepts — a second finger, or a press while the last
+    // card is animating out, still means they have found the deck.
+    dismissCoach()
+
     // A second finger landing must not re-anchor the gesture: overwriting the
     // drag state moves `startX` to the new touch while the card keeps the first
     // one's offset, which makes the card jump.
@@ -359,9 +519,33 @@ export function PostcardDeck({
 
   return (
     <div className={cn('relative flex h-full items-center justify-center px-6', className)}>
-      {/* The stack is 342×448 in a 390 frame — 24px either side. Capped rather
-          than fixed so it still fits a 320px phone. */}
-      <div className="relative aspect-[342/448] w-full max-w-[342px]">
+      {/* 342 wide in a 390 frame — 24px either side, capped rather than fixed so
+          it still fits a 320px phone.
+
+          **Height is the slot's, not the design's 448 (PD-343).** The frame's
+          ratio left ~44px of this screen's deck slot unused on the 844 device
+          it is drawn for, and more on anything taller — dead space above and
+          below a card whose photo the product owner had just called too small.
+          `h-full` hands all of it to the card, and `PostcardCard`'s `fill` mode
+          hands it on to the photo.
+
+          `max-h-[36rem]` keeps it card-shaped where the slot is unusually tall
+          — a tablet, or a phone in a browser with no chrome — rather than
+          letting a 342px-wide card stretch to 700. */}
+      {/* PD-341: this deck owns left/right through the pointer handlers below,
+          so the edge-swipe-back gesture must decline anywhere inside it. The
+          attribute rather than the geometry test that catches every other
+          horizontal surface in the app — the deck does not scroll, so there is
+          no overflow for `declinesSwipeBack` to notice.
+
+          Nothing renders it on a screen with a back control today (`/postcards`
+          is a tab root, and the viewer is a modal, which the gesture refuses
+          outright). It is here because the ownership is a property of the
+          component, not of where it currently sits. */}
+      <div
+        {...{ [SWIPE_BACK_OPT_OUT]: 'off' }}
+        className="relative h-full max-h-[36rem] w-full max-w-[342px]"
+      >
         {visible.map((postcard, depth) => {
           const isFront = depth === 0
           const behind = BEHIND[depth - 1]
@@ -395,13 +579,24 @@ export function PostcardDeck({
             </div>
           )
         })}
+
+        {/* Inside the stack rather than beside it, so the pill is positioned
+            against the card it describes and not against the padded row the
+            card sits in. Kept mounted through its own fade — `coach` reaches
+            `hidden` only after it. */}
+        {coach !== 'hidden' && <SwipeCoach leaving={coach === 'leaving'} />}
       </div>
 
       {/* Keyboard and screen-reader path to the same action: the deck is a drag
           gesture, which is unreachable without a pointer. */}
       <button
         type="button"
-        onClick={() => advance(1, front.id)}
+        onClick={() => {
+          // The pointer route dismisses from `onPointerDown`; this is the same
+          // dismissal for the route that never produces one.
+          dismissCoach()
+          advance(1, front.id)
+        }}
         className="sr-only focus:not-sr-only focus:absolute focus:bottom-0 focus:rounded-lg focus:bg-foreground focus:px-4 focus:py-2 focus:text-sm focus:text-white"
       >
         Next postcard

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getRideChatUnread, groupMessages } from '@/lib/data/ride-messages'
+import { groupMessages } from '@/lib/data/chat'
+import { getRideChatUnread } from '@/lib/data/ride-messages'
 import type { RideMessage } from '@/types'
 
 /**

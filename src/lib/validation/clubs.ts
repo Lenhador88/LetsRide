@@ -181,3 +181,61 @@ export type ClubInput = z.infer<typeof clubSchema>
  * so this leaks nothing new.
  */
 export const clubIdSchema = z.uuid()
+
+/**
+ * Mirrors `club_threads_title_length` and `club_messages_body_length` in
+ * `081`, and the asymmetry inside each is deliberate there so it is deliberate
+ * here: the **floor is on the trimmed value** so a title or body of nothing but
+ * whitespace is refused, while the **ceiling is on the raw length** so padding
+ * cannot smuggle a longer value past a trimmed check.
+ *
+ * Zod's `.trim()` transforms before validating, so a naive `.trim().min(1).max()`
+ * would check the ceiling against the *trimmed* string and disagree with the
+ * database. The raw length is checked first, exactly as `rideMessageBodySchema`
+ * does for the identical constraint shape.
+ *
+ * **The database's floor is `~ '\S'`, not `length(btrim(...)) >= 1`** — `btrim`
+ * with no second argument strips spaces only, so the btrim form accepts a title
+ * of newlines while `.trim()` here refuses it: the client stricter than the
+ * database, which is the inversion CLAUDE.md's "no new integrity rule may live
+ * only in a Zod schema" exists to prevent. `081` uses `~ '\S'` for that reason,
+ * so these two agree with it exactly.
+ *
+ * 80 is `rides_title_length`'s bound from `018` (design.md §Questions Closed,
+ * D5); 1000 matches `ride_messages`. Per CLAUDE.md these own the **message**,
+ * never the guarantee.
+ */
+export const CLUB_THREAD_TITLE_MAX = 80
+export const CLUB_MESSAGE_MAX_LENGTH = 1000
+
+export const clubThreadTitleSchema = z
+  .string()
+  .max(CLUB_THREAD_TITLE_MAX, `Keep the title under ${CLUB_THREAD_TITLE_MAX} characters.`)
+  .transform((value) => value.trim())
+  .refine((value) => value.length >= 1, 'Give the thread a title.')
+
+export const clubMessageBodySchema = z
+  .string()
+  .max(CLUB_MESSAGE_MAX_LENGTH, `Must be ${CLUB_MESSAGE_MAX_LENGTH} characters or fewer.`)
+  .transform((value) => value.trim())
+  .refine((value) => value.length >= 1, 'Write something first.')
+
+/**
+ * A thread id out of the URL, untrusted like any other query parameter —
+ * `clubIdSchema`'s reasoning, applied to the thread screen's own `?id=`. A
+ * malformed id means "no such thread", and 404 is the honest answer.
+ */
+export const clubThreadIdSchema = z.uuid()
+
+/**
+ * A join-request id, on the way into `approve_club_join_request` and
+ * `decline_club_join_request` — `085`, PD-325.
+ *
+ * `clubIdSchema`'s reasoning again, and the RPCs take the REQUEST id rather
+ * than a rider's for a reason worth stating here too: the subject is the row,
+ * so "we check the id belongs to your club" is one refactor away from not
+ * doing that. Zod owns the message; the RPC's single raise site owns the
+ * guarantee, and a malformed id reaching it would be a 400 on the error
+ * boundary where a refusal belongs.
+ */
+export const clubJoinRequestIdSchema = z.uuid()

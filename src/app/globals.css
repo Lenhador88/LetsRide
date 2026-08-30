@@ -129,6 +129,17 @@
      `animate-fade-in` utility used below, always behind `motion-safe:` —
      the same guard `Skeleton.tsx`'s own `animate-pulse` already uses. */
   --animate-fade-in: fade-in 230ms ease-out;
+
+  /* The deck's one-time swipe coach mark (PD-324) — `SwipeCoach`. Registered
+     here in the same `--animate-*` namespace as `fade-in` above, so the call
+     site reads `motion-safe:animate-swipe-hint` and the timing lives with the
+     other one rather than as a bespoke keyframe next to a component.
+
+     1.6s and 8px either side of centre: slow enough and small enough to read as
+     a hint about the card rather than as something demanding a tap, and it runs
+     for the few seconds the deck keeps the pill up. `infinite` because the
+     deck, not the animation, decides when it ends. */
+  --animate-swipe-hint: swipe-hint 1600ms ease-in-out infinite;
 }
 
 /* **Applying this class to an element that is already on screen is enough to
@@ -152,6 +163,21 @@
 @keyframes fade-in {
   from {
     opacity: 0;
+  }
+}
+
+/* Both ends are stated, unlike `fade-in`'s `from`-only shape above, and the
+   reason is the opposite property: this element has no resting transform worth
+   inheriting, and an implicit final keyframe synthesized from `translateX(0)`
+   would make the drift asymmetric — out to +8px and back to centre, rather than
+   the even sweep either side of it that says "this moves both ways". */
+@keyframes swipe-hint {
+  0%,
+  100% {
+    transform: translateX(-8px);
+  }
+  50% {
+    transform: translateX(8px);
   }
 }
 
@@ -260,4 +286,60 @@ html {
 }
 .pb-rsvp-bar-extra {
   padding-bottom: var(--ride-rsvp-bar);
+}
+
+/* The postage-stamp edge on a Journal tile — a white frame around the photo with
+   circular notches bitten out of its perimeter, and nothing bitten out of the
+   photo itself.
+
+   **Two mask layers, and neither is optional.** The first repeats a transparent
+   circle across the whole border box, which alone would punch holes through the
+   picture as well as the frame; the second is a solid fill clipped to the
+   content box, and mask layers composite additively, so it restores exactly the
+   photo and leaves the perforations to the 6px band around it. Written as one
+   utility rather than a pile of arbitrary properties at the call site because
+   the two layers have to keep agreeing about which box each is clipped to.
+
+   `mask-repeat: round` is what makes the notches symmetric: it scales the tile
+   so a whole number of them fits each axis, so the last notch lands on the edge
+   instead of being clipped mid-circle at whatever width the tile happens to be.
+   The tile is `2r + 100%/9`, which is a notch count rather than a pitch — a
+   stamp keeps its perforation *count* as it scales, where a fixed pitch would
+   give a 112px tile and a 160px one visibly different teeth.
+
+   `-webkit-mask-*` is still emitted alongside: iOS WKWebView is a target of the
+   native shell and unprefixed `mask-image` is only unflagged there from 17.4.
+   Verified in Chromium 2026-08-27 against a standalone repro, screenshotted —
+   the notches, the corners and the drop shadow following the notched silhouette
+   are all measured rather than inferred. */
+@utility stamp-edge {
+  --stamp-notch: 4px;
+  /* The distance between two notches, as PAPER between the bites — the tile the
+     mask repeats is `2 * notch + pitch`. A fixed length rather than a fraction
+     of the box, because the stamp is NOT square: since PD-350 the frame holds
+     the photo and the printed byline, so a percentage pitch would space the
+     side notches wider than the top ones by exactly the height of the byline.
+     `mask-repeat: round` still adjusts this to fit a whole number on each axis,
+     so the two stay within a pixel of each other instead of within six. */
+  --stamp-pitch: 14px;
+  padding: 6px;
+  background-color: var(--color-surface);
+  -webkit-mask-image:
+    radial-gradient(var(--stamp-notch) at var(--stamp-notch) var(--stamp-notch), #0000 99%, #000),
+    conic-gradient(#000 0 0);
+  -webkit-mask-position: calc(-1 * var(--stamp-notch)) calc(-1 * var(--stamp-notch)), 0 0;
+  -webkit-mask-size:
+    calc(2 * var(--stamp-notch) + var(--stamp-pitch)) calc(2 * var(--stamp-notch) + var(--stamp-pitch)),
+    auto;
+  -webkit-mask-repeat: round, no-repeat;
+  -webkit-mask-clip: border-box, content-box;
+  mask-image:
+    radial-gradient(var(--stamp-notch) at var(--stamp-notch) var(--stamp-notch), #0000 99%, #000),
+    conic-gradient(#000 0 0);
+  mask-position: calc(-1 * var(--stamp-notch)) calc(-1 * var(--stamp-notch)), 0 0;
+  mask-size:
+    calc(2 * var(--stamp-notch) + var(--stamp-pitch)) calc(2 * var(--stamp-notch) + var(--stamp-pitch)),
+    auto;
+  mask-repeat: round, no-repeat;
+  mask-clip: border-box, content-box;
 }

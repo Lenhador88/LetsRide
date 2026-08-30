@@ -116,6 +116,74 @@ export const BENIGN_ORIGINS = new Set(['http://localhost:9999'])
 export const MIN_FILES = 100
 
 /**
+ * Is the bundle about to be submitted allowed to run under the minimum it will
+ * itself be measured against?
+ *
+ * **The failure this closes is the update gate eating its own fix.** Ship a
+ * broken bundle reporting `0.1.0`, raise the published minimum to `0.1.1` to
+ * stop it, then build the fix — and if `package.json`'s `version` was not
+ * bumped, the fix reports `0.1.0` too and is blocked by the gate that was
+ * raised to stop the break. Every rider taps "update", installs a build that is
+ * also blocked, and there is no way out from inside the app: `app-version.json`
+ * says so in its own first line. Nothing else in the repo requires a bump —
+ * no CI job, no release step — so the one place that can catch it is here,
+ * immediately before the submission that makes it permanent.
+ *
+ * **Fails CLOSED, which is the opposite of the runtime gate and deliberate.**
+ * `src/lib/version.ts` treats anything it cannot parse as "do not block",
+ * because there the cost of being wrong is a rider locked out of a working app.
+ * Here the cost of being wrong is a store binary that cannot be recalled, so an
+ * unreadable version is a refusal.
+ *
+ * Kept as its own small comparison rather than importing `src/lib/version.ts`:
+ * this is a `.mjs` build script and that is TypeScript compiled into the client
+ * bundle. `__tests__/release-version.test.mjs` runs both over one table and
+ * asserts they agree, so the duplication cannot drift silently.
+ */
+export function compareReleaseVersions(a, b) {
+  const parse = (value) => {
+    if (typeof value !== 'string') return null
+    const parts = value.split('.')
+    if (parts.length === 0) return null
+    const numbers = parts.map((part) => (/^\d+$/.test(part) ? Number(part) : NaN))
+    return numbers.some((n) => !Number.isSafeInteger(n)) ? null : numbers
+  }
+  const left = parse(a)
+  const right = parse(b)
+  if (!left || !right) return null
+  const length = Math.max(left.length, right.length)
+  for (let i = 0; i < length; i += 1) {
+    const diff = (left[i] ?? 0) - (right[i] ?? 0)
+    if (diff !== 0) return diff < 0 ? -1 : 1
+  }
+  return 0
+}
+
+/** The problems, if any, with submitting `bundleVersion` while
+ * `publishedMinimum` is what the deployed `app-version.json` carries. */
+export function releaseVersionProblems(bundleVersion, publishedMinimum) {
+  const comparison = compareReleaseVersions(bundleVersion, publishedMinimum)
+  if (comparison === null) {
+    return [
+      `cannot compare this bundle's version (${JSON.stringify(bundleVersion)}) against the ` +
+        `published minimum (${JSON.stringify(publishedMinimum)}). Both must be dot-separated ` +
+        'integers, e.g. 0.2.0. The runtime gate treats an unreadable version as "do not block"; ' +
+        'a submission cannot afford the same benefit of the doubt.',
+    ]
+  }
+  if (comparison < 0) {
+    return [
+      `this bundle reports version ${bundleVersion}, which is BELOW the published minimum ` +
+        `${publishedMinimum} — so the update gate would block the very build you are about to ` +
+        'submit, and every rider who installs it. Bump "version" in package.json (src/lib/' +
+        'version.ts follows it, and its test enforces that), or lower "minimum" in ' +
+        'public/app-version.json if it was raised in error.',
+    ]
+  }
+  return []
+}
+
+/**
  * Walks every emitted file and reports what the bundle would ship with.
  *
  * Every file, not a glob of one extension: the inlined values land in a JS

@@ -1,13 +1,18 @@
+'use client'
+
 import { Header } from '@/components/layout/Header'
 import { Avatar } from '@/components/ui/Avatar'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { ClubOptionsMenu } from '@/components/clubs/ClubOptionsMenu'
+import { useSwipeBack } from '@/lib/actions/navigate'
 import { routes } from '@/lib/routes'
-import type { ClubDetail } from '@/types'
+import type { ClubDetail, ClubPreview } from '@/types'
 
-/** The three screens that still render this header — the merged detail
- * itself, plus the two roster/list sub-pages `See all` still reaches. */
-export type ClubScreen = 'detail' | 'members' | 'rides'
+/** The four screens that render this header — the merged detail itself, plus
+ * the three list sub-pages `See all` reaches. `threads` joined them with
+ * `081` (PD-307); the *thread* screen is not one of them, because its back
+ * control returns to that list rather than to the club. */
+export type ClubScreen = 'detail' | 'members' | 'rides' | 'threads'
 
 /**
  * The chrome the three remaining club screens share — `v2 / Component /
@@ -57,15 +62,38 @@ export function ClubDetailHeader({
   current,
 }: {
   clubId: string
-  /** `undefined` while the club is still being read — `Header` draws a
-   * placeholder bar for the title. See that component's `title` prop. */
-  club: ClubDetail | undefined
+  /**
+   * `undefined` while the club is still being read — `Header` draws a
+   * placeholder bar for the title. See that component's `title` prop.
+   *
+   * **The narrow arm is `085`'s reduced screen** (PD-325), where a non-member
+   * of a private club has a name and an avatar and nothing else. It is a
+   * `ClubPreview` rather than a partial `ClubDetail` on purpose: `viewer_role`
+   * and `viewer_is_owner` are the DISCRIMINANT below, so a shape that carried
+   * them as optionals would let the options menu render for a rider who is not
+   * in the club at all.
+   */
+  club: ClubDetail | Pick<ClubPreview, 'name' | 'avatar_url'> | undefined
   current: ClubScreen
 }) {
+  // Every entry in the menu — Leave, Edit, Delete — is a member or owner
+  // action, so it is absent on the preview branch rather than empty. `in` is
+  // the discriminant because the preview shape structurally cannot carry it.
+  const full = club && 'viewer_role' in club ? club : undefined
+
+  const backHref = current === 'detail' ? '/clubs' : routes.club(clubId)
+
+  // PD-341, and the same value the arrow gets so the two cannot diverge. It
+  // reaches the detail, members, rides and threads screens — every club screen
+  // that renders this header. The club's own postcard carousel and the ride
+  // strip both scroll horizontally and decline the gesture on their own
+  // geometry; see `swipe-back.ts`.
+  useSwipeBack(backHref)
+
   return (
     <Header
       title={club?.name}
-      backHref={current === 'detail' ? '/clubs' : routes.club(clubId)}
+      backHref={backHref}
       titleLeading={
         club ? (
           <Avatar
@@ -81,11 +109,11 @@ export function ClubDetailHeader({
         )
       }
       action={
-        club ? (
+        full ? (
           <ClubOptionsMenu
             clubId={clubId}
-            viewerRole={club.viewer_role}
-            isOwner={club.viewer_is_owner}
+            viewerRole={full.viewer_role}
+            isOwner={full.viewer_is_owner}
           />
         ) : undefined
       }

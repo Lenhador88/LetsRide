@@ -9,13 +9,17 @@ import { RideAttendanceBar } from '@/components/rides/RideAttendanceBar'
 import { RideChatRow } from '@/components/rides/RideChatRow'
 import { RideCrewRail } from '@/components/rides/RideCrewRail'
 import { RideHeader } from '@/components/rides/RideHeader'
-import { RideJournalEmpty } from '@/components/rides/RideJournal'
+import { RideJournal } from '@/components/rides/RideJournal'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { ExpandableText } from '@/components/ui/ExpandableText'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonDetail } from '@/components/ui/Skeleton'
+import { MapAttribution } from '@/components/rides/MapAttribution'
 import { RideMap } from '@/components/rides/RideMap'
 import { getRide } from '@/lib/data/rides'
+import { distanceKm } from '@/lib/location/distance'
+import type { RiderLocation } from '@/lib/location/rider-location'
+import { useRiderPosition } from '@/lib/location/use-rider-position'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
@@ -23,6 +27,7 @@ import {
   cn,
   formatRelativeTime,
   formatRideDateLong,
+  formatStartDistance,
   formatRideTime,
   googleMapsDirectionsUrl,
 } from '@/lib/utils'
@@ -83,6 +88,11 @@ function RideScreen() {
   const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
   const ride = useQuery(queryKeys.rides.detail(id), () => getRide(id))
 
+  // For the location row's `12 km away` (PD-340). Its own read on the shared
+  // key, and it gates nothing: the ride renders whether or not a position ever
+  // lands, and the clause appears beside the meeting point when one does.
+  const { position } = useRiderPosition()
+
   // Covers both "no such ride" and "not yours to see" — see getRide on why the
   // two must stay indistinguishable. A malformed segment lands here too:
   // `getRide` parses the id and returns null rather than letting `22P02` reach
@@ -141,7 +151,7 @@ function RideScreen() {
         {ride.error ? (
           <ErrorState onRetry={ride.refetch} />
         ) : ride.data ? (
-          <RidePlan ride={ride.data} isCrew={isCrew === true} />
+          <RidePlan ride={ride.data} isCrew={isCrew === true} near={position} />
         ) : (
           <SkeletonDetail />
         )}
@@ -154,7 +164,26 @@ function RideScreen() {
   )
 }
 
-function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
+function RidePlan({
+  ride,
+  isCrew,
+  near,
+}: {
+  ride: RideDetail
+  isCrew: boolean
+  near: RiderLocation | null
+}) {
+  // PD-340. `null` at every step is "nothing to say", never zero: the rider has
+  // no position, the ride was never geocoded, or `distanceKm` refuses the pair.
+  // The row then renders exactly as it did before this change — there is no
+  // "distance unknown" state to draw, because that is most rides today.
+  const start =
+    ride.latitude !== null && ride.longitude !== null
+      ? { lat: ride.latitude, lon: ride.longitude }
+      : null
+  const km = distanceKm(near, start)
+  const distance = km === null ? null : formatStartDistance(km)
+
   // Description and route are one paragraph now rather than a blurb and a
   // `Route` heading 200px apart. They are two columns because they are two
   // things an organizer types, not two things a rider reads separately — and a
@@ -162,6 +191,12 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
   // space rather than a blank line because `ExpandableText` renders a single
   // `<p>` with no `whitespace-pre-line`, so a newline would collapse to exactly
   // this anyway and only the source would suggest otherwise.
+  //
+  // **`description` is read-only now (PD-320) and still read.** Both ride forms
+  // dropped the field, so nothing writes the column any more — but the rows that
+  // already carry text keep rendering it here, which is the decision that story
+  // left to the build. Dropping the read too would silently delete prose riders
+  // wrote and, with no field left, could never retype.
   const blurb = [ride.description, ride.route_description].filter(Boolean).join(' ')
 
   return (
@@ -193,15 +228,16 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
         <p className="flex items-center gap-2.5">
           <CalendarIcon className="h-5 w-5 shrink-0 text-muted" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-            {formatRideDateLong(ride.departure_at)}, {formatRideTime(ride.departure_at)}{' '}
+            {formatRideDateLong(ride.departure_at, ride.timezone)},{' '}
+            {formatRideTime(ride.departure_at, ride.timezone)}{' '}
             {/* The marker a calendar date does not carry: "Sunday, 24 Aug" is
                 only useful to a rider who already knows what today is.
                 `formatRelativeTime` rather than a formatter of this screen's
                 own — the naming rule exists because each design draws a
                 different *shape*, and this draws exactly the shape it already
                 produces. It needs no timezone: it measures the distance between
-                two instants, which is the same everywhere, so it is unaffected
-                by the wall-clock question `APP_TIME_ZONE` is standing in for. */}
+                two instants, which is the same everywhere, so it is the one
+                stamp on this screen that `rides.timezone` does not reach. */}
             <span className="font-medium text-muted">· {formatRelativeTime(ride.departure_at)}</span>
           </span>
         </p>
@@ -213,6 +249,14 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
               Logged. */}
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
             {ride.meeting_point}
+            {/* How far the start is (PD-340), in the same slot and the muted
+                weight the date row gives its relative clause — a qualifier on
+                the place, not a second fact. It is inside the truncating span
+                on purpose: a meeting point long enough to push this off the line
+                has already told the rider more than the distance would, and the
+                alternative is a distance that survives while the address it
+                qualifies is cut to nothing. */}
+            {distance && <span className="font-medium text-muted"> · {distance}</span>}
           </span>
           {/* Past rides get no `Directions`, which the mock draws by omission
               and is worth stating: routing a rider to a meeting point that was
@@ -233,6 +277,15 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
       </div>
 
       <RideMap meetingPoint={ride.meeting_point} tileUrl={ride.map_detail_url} />
+      {/* Beneath the panel rather than in its corner — PD-236. The tile carries
+          no burned-in credit any more (`ATTRIBUTION_MODE`), so this is what
+          discharges the obligation, and it is page furniture rather than an
+          overlay because the joined string is ~350px against a panel that is
+          288 wide at 320px viewport. Keyed on the ride HAVING a tile, not on
+          one currently drawing: `RideMap` falls back to the pin on an
+          `onError`, and the credit is owed while the vendor's imagery is in the
+          app rather than while a particular `<img>` is healthy. */}
+      {!!ride.map_detail_url && <MapAttribution />}
 
       {blurb && <ExpandableText className="px-6">{blurb}</ExpandableText>}
 
@@ -242,9 +295,11 @@ function RidePlan({ ride, isCrew }: { ride: RideDetail; isCrew: boolean }) {
           hiding the section was the UI inventing a rule the policy does not
           have. `canAdd` carries the half that IS a database rule: tagging wants
           `private.is_ride_crew`, so only the crew is offered the tile. */}
+      {/* No `SectionHeader` here — `RideJournal` draws its own since PD-342,
+          because the `(+)` beside the title is gated on whether the section has
+          photos and only that component knows. */}
       <section className="flex flex-col gap-2">
-        <SectionHeader title="Journal" className="py-0" />
-        <RideJournalEmpty canAdd={isCrew} />
+        <RideJournal rideId={ride.id} canAdd={isCrew} />
       </section>
 
       {/* The count this rail draws is the one that was removed from this screen

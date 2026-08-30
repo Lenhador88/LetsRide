@@ -32,6 +32,19 @@ export const postcardClubIdSchema = z
   .pipe(z.uuid('Choose a valid club.').nullable())
 
 /**
+ * `''` from the composer's "No ride" option becomes null; anything else must
+ * be a well-formed uuid. Shape only, mirroring `postcardClubIdSchema` exactly
+ * — "is the caller actually crew of that ride" is `041`'s INSERT policy, not
+ * this schema, and restating it here would be the re-filtering trap
+ * `postcardClubIdSchema`'s own comment already names.
+ */
+export const postcardRideIdSchema = z
+  .string()
+  .nullable()
+  .transform((value) => (value ? value : null))
+  .pipe(z.uuid('Choose a valid ride.').nullable())
+
+/**
  * A postcard id as it arrives from a URL segment — shape only.
  *
  * Unlike the club id above, this is not guarding a trust boundary: a route
@@ -158,6 +171,7 @@ export const createPostcardSchema = z
     imagePath: postcardImagePathSchema,
     caption: postcardCaptionSchema,
     clubId: postcardClubIdSchema,
+    rideId: postcardRideIdSchema,
     takenAt: postcardTakenAtSchema,
     takenAtOffsetMinutes: postcardTakenAtOffsetSchema,
     takenLatitude: postcardLatitudeSchema,

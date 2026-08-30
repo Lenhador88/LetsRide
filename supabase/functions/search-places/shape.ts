@@ -358,6 +358,20 @@ export type AutocompleteFeature = {
      * country column this schema has and it is uppercase-only.
      */
     country_code?: unknown
+    /**
+     * The IANA zone the place is in, `080`'s half of PD-193. Geoapify documents
+     * a `timezone` object on every geocoding feature, of which only `name` is
+     * read here — the offsets and abbreviations beside it are derivable from the
+     * name and go stale with the tz database, so storing one would be storing a
+     * fact with an expiry date.
+     *
+     * Documentation-derived and **unverified against a live response**, like
+     * every other constant in this file: `*.geoapify.com` is egress-blocked from
+     * the build container. A shape guessed wrong degrades to `null` — which is
+     * the column's own "we do not know" — rather than to a wrong clock.
+     * <https://apidocs.geoapify.com/docs/geocoding/address-autocomplete/>
+     */
+    timezone?: unknown
   }
 }
 
@@ -375,6 +389,9 @@ export type PlaceResult = {
   /** The ISO-3166-1 alpha-2 country, or `null` when the vendor sent none —
    *  PD-279's flag half. Uppercased here, never left to the caller. */
   countryCode: string | null
+  /** The IANA zone, or `null` — PD-193's half. What lets a PICKED ride store
+   *  its meeting point's clock in the same INSERT as its departure time. */
+  timezone: string | null
 }
 
 /**
@@ -432,6 +449,15 @@ export const ID_NAMESPACE = 'geoapify:'
  */
 export const MAX_PLACE_ID_CHARS = 512
 
+/**
+ * `080`'s `rides_timezone_is_bounded`, restated here for the same reason
+ * `MAX_PLACE_ID_CHARS` restates the id bound: a value that overruns the CHECK
+ * reaches the rider as a tappable result that raises `23514` at write time on
+ * something they can neither see nor shorten. The longest name in the IANA
+ * database is `America/Argentina/ComodRivadavia` at 32 characters.
+ */
+export const MAX_TIMEZONE_CHARS = 64
+
 const asFiniteNumber = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 
@@ -485,6 +511,36 @@ const asCountryCode = (value: unknown): string | null => {
 }
 
 /**
+ * A zone name the destination column will accept, or `null`.
+ *
+ * **Shape only, never membership.** Whether a name is a REAL zone is decided by
+ * `080`'s `enforce_ride_timezone` against `pg_timezone_names`, and there is no
+ * list here to compare against — this file cannot import one and a hardcoded
+ * copy would go stale with every tz release. What this bounds is the two things
+ * that would reach the rider as a raw error instead of a missing clock:
+ * `rides_timezone_is_bounded`'s 64 characters, and anything that is not an
+ * `Area/Location` name at all.
+ *
+ * Malformed degrades to `null` rather than dropping the feature, exactly as
+ * `asCountryCode` does and for the same reason: a place whose zone the vendor
+ * sent oddly is still a place worth picking, and `APP_TIME_ZONE` is what it
+ * falls back to — which is what every ride did before this existed.
+ *
+ * `UTC` and `Etc/GMT+3` are deliberately accepted: both are in
+ * `pg_timezone_names` and both are legitimate answers for somewhere at sea.
+ */
+const asTimeZoneName = (value: unknown): string | null => {
+  const raw = asNonEmptyString(
+    value && typeof value === 'object'
+      ? (value as { name?: unknown }).name
+      : value,
+  )
+  if (!raw) return null
+  if (raw.length > MAX_TIMEZONE_CHARS) return null
+  return /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/.test(raw) ? raw : null
+}
+
+/**
  * Maps one vendor feature to this repo's own shape, or **drops it**.
  *
  * Dropping rather than coercing is the whole contract. A feature with no
@@ -523,8 +579,9 @@ export function toPlaceResult(feature: AutocompleteFeature): PlaceResult | null 
   const meta = rawMeta && rawMeta !== label ? rawMeta : null
 
   const countryCode = asCountryCode(properties.country_code)
+  const timezone = asTimeZoneName(properties.timezone)
 
-  return { id, label, meta, lat: coordinate.lat, lon: coordinate.lon, countryCode }
+  return { id, label, meta, lat: coordinate.lat, lon: coordinate.lon, countryCode, timezone }
 }
 
 /** The vendor's order is preserved — this proxy does not re-rank. */

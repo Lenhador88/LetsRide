@@ -1,8 +1,8 @@
-import { resolveSupabase } from '@/lib/supabase/resolve'
+import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { CLUB_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
-import type { NotificationCursor, NotificationRow } from '@/types'
+import type { EmbeddedClub, NotificationCursor, NotificationRow } from '@/types'
 
 /**
  * How much of the list one read returns. Bounded for the reason every other
@@ -24,8 +24,25 @@ export const NOTIFICATIONS_PAGE_SIZE = 30
  * and this embed only resolves for a ride `036` §3's SELECT policy already lets
  * this reader see.
  */
+/**
+ * `089`, PD-335. The one type whose club does NOT arrive through the embed
+ * below, and the reason it does not is the whole of that change: the embed
+ * runs under the reader's own RLS on `clubs`, and a declined requester of a
+ * private club reads nothing there — which is exactly why `085` wrote no such
+ * notification at all. `089` makes the ROW resolve with a type-scoped disjunct
+ * on `036` §3's club conjunct; it deliberately does NOT widen `clubs` SELECT,
+ * because `016`'s two storage policies delegate to that expression and an arm
+ * there would ship the club's cover, which the product owner excluded.
+ *
+ * So the club comes from `public.discoverable_private_clubs` — `085`'s
+ * accessor, the one path by which a non-member reads a private club, and the
+ * one this rider already reaches every other way (the Explore card, the reduced
+ * club screen).
+ */
+const DECLINED_TYPE = 'club_join_request_declined'
+
 const NOTIFICATION_SELECT = `
-  id, type, created_at, read_at,
+  id, type, created_at, read_at, club_id,
   actor:profiles!actor_id(${PUBLIC_PROFILE_COLUMNS}),
   postcard:postcards(id, image_path),
   ride:rides(id, title, organizer_id),
@@ -34,6 +51,8 @@ const NOTIFICATION_SELECT = `
 
 type NotificationRawRow = Omit<NotificationRow, 'postcard'> & {
   postcard: { id: string; image_path: string } | null
+  /** `089`'s decline needs the raw column, because its embed cannot resolve. */
+  club_id: string | null
 }
 
 /**
@@ -87,12 +106,99 @@ export async function getNotificationsPage(
   )
   await resolveAvatarUrls([...rows.map((row) => row.actor), ...rows.map((row) => row.club)], supabase)
 
+  const declinedClubs = await resolveDeclinedClubs(rows, supabase)
+
   return rows.map((row) => ({
     ...row,
     postcard: row.postcard
       ? { ...row.postcard, image_url: imageUrls.get(row.postcard.image_path) ?? null }
       : null,
+    // Only for the one type, and only when the embed came back empty — which
+    // for a private club is always. A row whose club the reader CAN see keeps
+    // the embed's answer, so this never overwrites a live join with a second
+    // read of the same thing.
+    club: row.club ?? declinedClubs.get(row.id) ?? null,
   }))
+}
+
+/**
+ * The clubs behind this page's decline notifications, by notification id.
+ *
+ * **One call per distinct club, in parallel, rather than one call for all of
+ * them.** `discoverable_private_clubs` takes a single `target_club` or none at
+ * all, and the un-narrowed form is page-capped at 100 — so a single unnarrowed
+ * call would silently MISS a club beyond that cap and draw the row with no
+ * name, which is the failure mode a cap must never have. A new accessor
+ * returning only the caller's own declined clubs would be one round trip and
+ * one more permanent `authenticated_security_definer_function_executable`
+ * advisor; declines are rare and a page holds at most `NOTIFICATIONS_PAGE_SIZE`
+ * of them, so the round trips are the cheaper side of that trade.
+ *
+ * A failure costs the club's NAME and never the list: the row still renders,
+ * degrading to "A club" through `notificationCopy`'s own fallback, exactly as
+ * every other type degrades when its subject does not resolve.
+ */
+async function resolveDeclinedClubs(
+  rows: NotificationRawRow[],
+  supabase: DataClient
+): Promise<Map<string, EmbeddedClub>> {
+  const wanted = new Map<string, string[]>()
+  for (const row of rows) {
+    if (row.type !== DECLINED_TYPE || row.club) continue
+    // **`NOTIFICATION_SELECT` asks for the raw `club_id` as well as the embed,
+    // and that column is on the select FOR THIS.** Every other type reads its
+    // club through the embed alone; a decline's embed is null by construction,
+    // because it runs under the reader's own RLS on `clubs` and a private club
+    // refuses them — which is the whole reason `085` wrote no such notification
+    // at all. `089`'s policy is what returns the ROW; the column is what says
+    // which club it is about.
+    const clubId = row.club_id
+    if (!clubId) continue
+    wanted.set(clubId, [...(wanted.get(clubId) ?? []), row.id])
+  }
+  if (wanted.size === 0) return new Map()
+
+  const resolved = new Map<string, EmbeddedClub>()
+  const clubs = await Promise.all(
+    [...wanted.keys()].map(async (clubId) => {
+      const { data, error } = await supabase.rpc('discoverable_private_clubs', {
+        target_club: clubId,
+      })
+      if (error || !data) return null
+      const club = (data as DiscoverableClubRow[])[0]
+      return club ? { clubId, club } : null
+    })
+  )
+
+  const found = clubs.filter((entry): entry is { clubId: string; club: DiscoverableClubRow } => !!entry)
+  const embedded = found.map(({ club }) => ({
+    id: club.id,
+    name: club.name,
+    avatar_path: club.avatar_path,
+    avatar_url: null as string | null,
+  }))
+  // `089` part 2 is what makes this sign at all: before it, `016`'s policy
+  // refused a private club's avatar object to a non-member and every attempt
+  // was a round trip spent on a guaranteed null.
+  await resolveAvatarUrls(embedded, supabase)
+
+  found.forEach(({ clubId }, index) => {
+    for (const notificationId of wanted.get(clubId) ?? []) {
+      resolved.set(notificationId, embedded[index] as EmbeddedClub)
+    }
+  })
+  return resolved
+}
+
+/** The seven columns `public.discoverable_private_clubs` returns — `085`. */
+type DiscoverableClubRow = {
+  id: string
+  name: string
+  avatar_path: string | null
+  location_name: string | null
+  latitude: number | null
+  longitude: number | null
+  members_count: number
 }
 
 /**

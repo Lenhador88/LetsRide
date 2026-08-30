@@ -153,7 +153,15 @@ export type RideMember = {
 }
 
 /**
- * Which slice of the rides list is showing. `undefined` is "All rides".
+ * Which slice of the rides list is showing. `undefined` is the `From clubs`
+ * tile — the rides belonging to a club this rider has joined.
+ *
+ * **`undefined` meant "every ride RLS allows" until 2026-08-27**, and the
+ * change is a narrowing rather than a rename: the unfiltered tab overlapped
+ * `Your rides` almost entirely, since a ride you organise is a ride you can
+ * see. Discovery is `/rides/explore` now, and it is a route rather than a
+ * fourth member of this union — a segment cannot be malformed, which is the
+ * same argument `/clubs/explore` was built on.
  *
  * The design's filter bar also draws a *rider* tile ("itchyboots") beside the
  * club ones, which would mean "rides organised by that rider". It is not built:
@@ -179,6 +187,16 @@ export type RideListItem = {
   meeting_point: string
   departure_at: string
   /**
+   * The IANA zone the meeting point is in (`080`, PD-193), or `null` when the
+   * ride does not carry one — every ride created before that column, and any
+   * place whose provider sent no zone.
+   *
+   * **Every `formatRide*` call on this row takes it.** `null` is not an omission
+   * there: it resolves to `APP_TIME_ZONE`, which is what these times meant
+   * before the column existed.
+   */
+  timezone: string | null
+  /**
    * The chip above the title. Null for a ride that belongs to no club.
    *
    * Name only, no image: `RideCard` draws this as a text chip. The ride *detail*
@@ -199,6 +217,23 @@ export type RideListItem = {
    */
   latitude: number | null
   longitude: number | null
+  /**
+   * How far the meeting point is from the rider, in kilometres — filled by
+   * `getExploreRides` alone, and `undefined` everywhere else.
+   *
+   * Three different "no" collapse to `undefined` and that is deliberate: the
+   * rider has no resolvable position, the ride has no coordinate, or the read
+   * was not asked for a distance. A screen can only usefully do one thing with
+   * any of them, and `isNearby(undefined)` is false — so a ride nothing can
+   * measure is never counted as near. `ClubListItem.distance_km` is the same
+   * field with the same contract.
+   *
+   * **Nothing renders the number.** It sections `ExploreRidesList` and it
+   * decides the strip's `near <place>` clause; a precise kilometre figure to a
+   * meeting point the rider has not opened yet is false precision, which is the
+   * same call the clubs side made.
+   */
+  distance_km?: number
   /** Drawn first in the avatar row, with the brand ring. */
   organizer: PublicProfile | null
   /** Organizer first, then the crew — capped at RIDE_AVATAR_LIMIT. */
@@ -274,10 +309,36 @@ export type RideDetail = {
   route_description: string | null
   meeting_point: string
   departure_at: string
+  /**
+   * The IANA zone the meeting point is in (`080`, PD-193), or `null` when the
+   * ride does not carry one — every ride created before that column, and any
+   * place whose provider sent no zone.
+   *
+   * **Every `formatRide*` call on this row takes it.** `null` is not an omission
+   * there: it resolves to `APP_TIME_ZONE`, which is what these times meant
+   * before the column existed.
+   */
+  timezone: string | null
   club_id: string | null
   organizer_id: string
   organizer: PublicProfile | null
   club: EmbeddedClub | null
+  /**
+   * `051`'s pair for the meeting point, so this screen can say how far away it
+   * is (PD-340) — the same columns `RideListItem` already carried, arriving
+   * here for the same reason: the distance is measured against the row rather
+   * than fetched with it, so `getRide` stays keyed on the ride id alone.
+   *
+   * **Still not a map.** Decision #3 is a static thumbnail plus a deeplink, so
+   * there is no client-side map to hand a coordinate to and `map_detail_url` is
+   * unaffected. This pair is read by `distanceKm` and nothing else.
+   *
+   * **NULL is the ordinary case**, not a fault: every ride created before
+   * `resolve-ride-location` deployed carries one, and so does any ride whose
+   * geocode failed. Such a ride simply draws no distance.
+   */
+  latitude: number | null
+  longitude: number | null
   /** This viewer's own RSVP. The organizer reads as `going` without a row. */
   attendance: RideAttendance
   /**
@@ -325,17 +386,31 @@ export type RideDetail = {
 
 /**
  * One ride, as `/rides/detail/edit` renders it — PD-101. The editable field
- * set only: `description D5` lists exactly these eight columns as what the
- * schema actually has, against the five drawn fields the v1 frame has no
- * column for.
+ * set only: `description D5` lists these columns as what the schema actually
+ * has, against the five drawn fields the v1 frame has no column for.
+ *
+ * **`description` came off this type with the field (PD-320)**, and it is the
+ * one column here that `rides` still has. `RideDetail` keeps it, because the
+ * detail screen still renders what existing rows hold; this type is the
+ * *editable* set, and a field nothing edits on a type nothing else reads is how
+ * a dead column comes back looking live.
  */
 export type RideForEdit = {
   id: string
   title: string
-  description: string | null
   route_description: string | null
   meeting_point: string
   departure_at: string
+  /**
+   * The IANA zone the meeting point is in (`080`, PD-193), or `null` when the
+   * ride does not carry one — every ride created before that column, and any
+   * place whose provider sent no zone.
+   *
+   * **Every `formatRide*` call on this row takes it.** `null` is not an omission
+   * there: it resolves to `APP_TIME_ZONE`, which is what these times meant
+   * before the column existed.
+   */
+  timezone: string | null
   is_public: boolean
   club_id: string | null
   /**
@@ -391,7 +466,155 @@ export type RecentRideStart = {
   placeId: string
   lat: number
   lon: number
+  /**
+   * The zone that place was in on the ride it is remembered from (`080`,
+   * PD-193), or `null` for a start remembered before the column existed.
+   *
+   * Carried so re-picking a recent start is the same write as picking it fresh
+   * out of the search sheet. Without it a rider's most-used meeting point would
+   * be the one place that never learns its own clock.
+   */
+  timezone: string | null
 }
+
+/**
+ * `public.ride_invites.status` (`083`, PD-329) — the answer to the invitation,
+ * and never a copy of `ride_members`.
+ *
+ * A rider who RSVPs to a ride they were also invited to leaves the invite
+ * `pending`, which is the truth: they were invited and never answered. Every
+ * surface that wants to know whether somebody is *riding* reads the crew.
+ *
+ * `pending` and `accepted` both grant read on the ride; `declined` grants
+ * nothing. Decline is terminal against the inviter — no DELETE reaches a
+ * declined row — and reopenable by the invitee alone.
+ */
+export type RideInviteStatus = 'pending' | 'accepted' | 'declined'
+
+/**
+ * One invite as the *invitee* sees it, in the list behind their notification.
+ *
+ * `ride` is embedded rather than fetched per row: the invite is only readable
+ * to somebody the invite itself makes the ride readable to, so the join costs
+ * nothing extra and cannot resolve for a rider the policy would refuse.
+ */
+export type RideInvite = {
+  id: string
+  ride_id: string
+  status: RideInviteStatus
+  created_at: string
+  inviter: PublicProfile | null
+  ride: { id: string; title: string; departure_at: string; timezone: string | null } | null
+}
+
+/**
+ * One row of the *organizer's* invite list on a ride.
+ *
+ * **`is_crew` is read from the live crew, never derived from `status`**, and
+ * that is the one rule this type exists to carry. The two answer different
+ * questions — `status` is what the rider said about the invitation, `is_crew`
+ * is whether they are on the ride — and they legitimately disagree: a rider who
+ * RSVPs without answering is crew with a `pending` invite, and one who accepts
+ * and later leaves is not crew with an `accepted` one.
+ */
+export type RideInviteListItem = {
+  id: string
+  status: RideInviteStatus
+  created_at: string
+  invitee: PublicProfile | null
+  is_crew: boolean
+}
+
+/**
+ * One hit in the rider picker.
+ *
+ * Exactly `PUBLIC_PROFILE_COLUMNS`' shape and no more: the picker searches
+ * `profiles` under the policy that has permitted it since `002`, adds no RPC,
+ * no `security definer` search and no grant, so it can return nothing a signed-in
+ * rider could not already read one id at a time. Blocked riders are absent in
+ * both directions with no filter in the query, and an empty result never
+ * distinguishes a blocked rider from a nonexistent one.
+ */
+export type RiderSearchResult = PublicProfile
+
+/**
+ * One invite link on the organizer's ride — `091`, PD-330.
+ *
+ * **`uses_count` is derived, never stored.** It is the number of `ride_invites`
+ * rows carrying this link's id, read under the organizer's own row security —
+ * so a rider who claimed and later blocked the organizer stops being visible to
+ * them and the number goes **down**. That is decision #2 working as designed,
+ * and it is why no surface may present this as a ledger.
+ *
+ * `token` is readable here because the SELECT policy is the ride's organizer
+ * alone. It is the credential itself: everything this type reaches is a screen
+ * only they can open.
+ */
+export type RideInviteLink = {
+  id: string
+  token: string
+  created_at: string
+  /** `least(ride.departure_at, created_at + 14 days)`, set by the database. */
+  expires_at: string
+  revoked_at: string | null
+  uses_count: number
+  /**
+   * **Not a column** — `expires_at` against the clock at read time, resolved in
+   * the data layer because a component may not read the clock during render.
+   *
+   * It is a display hint and never the authority: liveness is decided in
+   * `private.live_ride_invite_link` at every single use, against the ride's
+   * *current* departure. So a link this flag still calls live can already be
+   * dead — the organizer moved the ride earlier — which is the right way round,
+   * since the database is what refuses and no screen promises on its behalf.
+   */
+  is_expired: boolean
+}
+
+/**
+ * What a token holder is shown before they decide — `public.ride_invite_link_preview`.
+ *
+ * **Exactly the eight columns the RPC returns, plus two the client adds**, and
+ * the boundary matters: `organizer.avatar_url` is signed at read time from the
+ * path (every other type here carries the same pair for the same reason), and
+ * `is_crew` comes from the caller's own `ride_members` row rather than from the
+ * preview, which knows nothing about who is asking beyond whether it may answer
+ * at all.
+ *
+ * **No club.** A private club's name is not something a bearer token discloses,
+ * and the rider is deciding about a ride rather than about a club
+ * (`design.md` §Questions Closed Q2). **No roster either** — a count, never the
+ * riders — so nothing here names anyone but the organizer.
+ */
+export type RideInviteLinkPreview = {
+  ride_id: string
+  title: string
+  departure_at: string
+  timezone: string | null
+  meeting_point: string
+  organizer: {
+    username: string | null
+    avatar_path: string | null
+    /** Not a column — signed from `avatar_path` at read time. */
+    avatar_url: string | null
+  }
+  crew_count: number
+  /**
+   * Is the caller already on this ride? Read from their own `ride_members` row,
+   * so the landing screen can offer a route into the ride rather than a Join
+   * control the claim would treat as a no-op.
+   */
+  is_crew: boolean
+}
+
+/**
+ * What a successful claim answers — the ride the token admitted the rider to.
+ *
+ * The RPC returns a bare uuid; naming it is what lets the landing screen route
+ * on a shape rather than on a cast, and it is deliberately **not** an invite id
+ * or a link id: nothing the rider now holds is addressable by them.
+ */
+export type RideInviteLinkClaim = { ride_id: string }
 
 export type RideCrewMember = {
   user_id: string
@@ -504,11 +727,32 @@ export type RideFilterOption = {
  * comment. See RIDE_FILTER_SCAN_LIMIT for what is actually guaranteed.
  */
 export type RideFilters = {
-  /** Upcoming rides this viewer organises or has RSVP'd to. */
+  /**
+   * Upcoming rides this viewer organises or has RSVP'd to — the union of the
+   * two, deduplicated, because organising a ride and RSVPing to it is one ride.
+   */
   mine: number
-  /** Every upcoming ride in the window. */
-  total: number
-  /** Up to four organizer avatars, for the "All rides" tile's 2×2. */
+  /**
+   * Upcoming rides belonging to a club this viewer has joined — the `From
+   * clubs` tile.
+   *
+   * **Not "every upcoming ride", which is what it counted until 2026-08-27.**
+   * The tab's unfiltered view is now the rider's clubs rather than the whole
+   * app; discovery moved to `/rides/explore`, which has no tile and no count
+   * here at all.
+   */
+  fromClubs: number
+  /**
+   * **Nothing reads this.** PD-323 made the `From clubs` tile a single
+   * `ClubsIcon` glyph, so the 2×2 collage this fed is not drawn — the field is
+   * still computed and still signed, and is dead. PD-331 removes it along with
+   * `collageClubImages`; it was left in place because that function lives in
+   * `src/lib/data/rides.ts`, which another build session held at the time.
+   *
+   * Up to four club images while it lasted — a cover where the club had one,
+   * else its avatar; organizer faces until 2026-08-27, when the tile stopped
+   * meaning "every ride" and started meaning "these clubs".
+   */
   collage: string[]
   clubs: RideFilterOption[]
 }
@@ -635,6 +879,86 @@ export type ClubListItem = {
    * as though it meant zero would float every unlocated club to the top.
    */
   distance_km?: number
+  /**
+   * The viewer's own outstanding ask, for a PRIVATE club they can see through
+   * `discoverable_private_clubs` (`085`, PD-325). `null` on every public club
+   * and on every private one they have not asked about.
+   *
+   * It decides the card's trailing control and nothing else: `'pending'` draws
+   * `Requested` as plain text, `'declined'` draws nothing at all, and `null`
+   * draws `Request to join`. A declined club deliberately STAYS in Explore —
+   * `private.club_takes_join_requests_for` has no declined conjunct — because
+   * the reduced club screen is the only surface on which a refusal can be
+   * rendered, and removing the row would leave the request readable from psql
+   * and from nowhere in the product.
+   */
+  request_status?: ClubJoinRequestStatus | null
+}
+
+/** `085`. Two values, not three: an APPROVED request is deleted and the
+ * `club_members` row is the record — a surviving `approved` row beside
+ * `unique (club_id, user_id)` would make a club a rider LEFT unreachable. */
+export type ClubJoinRequestStatus = 'pending' | 'declined'
+
+/**
+ * One row of `public.club_join_requests` (`085`, PD-325), as the requester
+ * reads their own.
+ *
+ * **There is no `responded_by` and there never was.** The requester can read
+ * every column on their own row, so such a column would tell them which
+ * individual admin refused them — and a club refuses as a club. `status` and
+ * `responded_at` are the whole answer.
+ */
+export type ClubJoinRequest = {
+  id: string
+  club_id: string
+  user_id: string
+  status: ClubJoinRequestStatus
+  created_at: string
+  responded_at: string | null
+}
+
+/**
+ * A pending request as the club's owner or admins read it — the row plus the
+ * rider who made it, for the `Requests` section on the club detail.
+ *
+ * The profile embed is what the section draws; the id is what
+ * `approveClubJoinRequest` and `declineClubJoinRequest` take. **They take the
+ * REQUEST id and never the rider's** — the subject is the row, and "we check
+ * the id matches" is one refactor away from not doing that.
+ */
+export type ClubJoinRequestListItem = ClubJoinRequest & {
+  requester: PublicProfile | null
+}
+
+/**
+ * A private club as a NON-MEMBER may see it — the seven columns
+ * `public.discoverable_private_clubs` returns, plus the signed avatar URL the
+ * rest of the app expects (`085`, PD-325).
+ *
+ * **The seven columns are the whole disclosure**, and the accessor's return
+ * list is pinned by `085.4` so an eighth is a red test rather than a code
+ * review. Nothing here describes the club's rides, postcards, threads,
+ * messages, roster, description, cover, owner or age.
+ *
+ * **`avatar_url` is null today and that is correct, not a bug.** `016`'s
+ * storage policy runs its own `EXISTS` against `clubs` under the reader's own
+ * RLS, so a non-member cannot read the object and `signImagePaths` answers
+ * null — the card and the reduced screen both fall back to the club's
+ * initials. `avatar_path` is still returned so the day a storage arm lands,
+ * nothing else has to change.
+ */
+export type ClubPreview = {
+  id: string
+  name: string
+  avatar_path: string | null
+  avatar_url: string | null
+  location_name: string | null
+  latitude: number | null
+  longitude: number | null
+  members_count: number
+  /** The viewer's own ask, so the screen can say what happened to it. */
+  request_status: ClubJoinRequestStatus | null
 }
 
 /**
@@ -788,6 +1112,26 @@ export type Postcard = {
   is_liked?: boolean
   /** This viewer authored it — decides which overflow menu the card shows. */
   is_own?: boolean
+  /**
+   * This postcard reached the club's strip through the club's RIDE rather than
+   * because it was posted to the club (`086`, PD-328). `PostcardStamp` draws a
+   * small ride glyph when it is true.
+   *
+   * **Optional, and the default is false everywhere else on purpose.** Only
+   * `getClubFeed` can answer it — the flag comes from
+   * `public.club_stamp_postcard_ids`, which is the only reader of
+   * `postcards.ride_id` a client has, `062` having revoked the column. Every
+   * other read path constructs a `Postcard` with no way to compute it, so a
+   * required field would force those to write a literal `false` they have not
+   * measured. `undefined` here means "this read did not ask", which is the
+   * honest answer for the Journal, the home deck and a profile.
+   *
+   * **It names no ride, deliberately.** `062`'s column comment records that
+   * there is no postcard -> ride read and that a badge naming one "needs its
+   * own accessor"; this is a boolean rather than that accessor, so the marker
+   * says a ride was involved and never which.
+   */
+  from_ride?: boolean
   // A short-lived signed URL for `image_path`, attached by the read functions in
   // lib/data/postcards.ts. The `media` bucket is private (010), so this is the
   // only way a postcard image renders — `image_path` alone is not fetchable.
@@ -988,6 +1332,41 @@ export type NotificationType =
   | 'ride_joined'
   | 'club_joined'
   | 'ride_created_in_club'
+  // `083` (PD-329). Three types, all carrying `ride_id` ALONE — the same subject
+  // shape as `ride_joined`, which is why `036` §3's per-column resolvability
+  // policy needed no change for them.
+  //
+  // **`ride_invited` is the first notification a rider can ACT on from the
+  // row**, and the Accept/Decline controls read their enabled state from the
+  // live invite, never from this string: a notification is a record of an event
+  // that happened, and the invite may have been answered elsewhere, withdrawn,
+  // or hidden by a block since.
+  | 'ride_invited'
+  | 'ride_invite_accepted'
+  | 'ride_invite_declined'
+  // `085` (PD-325). Two types, both carrying `club_id` ALONE — the same subject
+  // shape as `club_joined`, which is again why `036` §3's per-column policy
+  // needed no change.
+  | 'club_join_requested'
+  | 'club_join_request_approved'
+  // `089` (PD-335). The third, and the only one in this union whose `actor` is
+  // its own RECIPIENT.
+  //
+  // `085` deliberately wrote no such type: `036` §3's SELECT policy conjuncts
+  // `club_id is null or exists (select 1 from clubs …)` under the READER's own
+  // row security, and a declined requester holds no `club_members` row for a
+  // private club — so the row would be written and then never returned and
+  // never counted, silently, for ever. The product owner decided on 2026-08-28
+  // that the rider IS told, and `089` makes it resolve with a TYPE-SCOPED
+  // disjunct on that conjunct rather than by widening it.
+  //
+  // **Two things follow for anything rendering this type.** The `actor` is the
+  // reader themselves and must never be drawn — a club refuses as a club, and
+  // the actor being the recipient is what makes the row disclose nothing about
+  // which admin pressed Decline. And `club` does NOT arrive through the row's
+  // own `clubs` embed, which returns null for a club the reader cannot see:
+  // `getNotificationsPage` fills it from `discoverable_private_clubs`.
+  | 'club_join_request_declined'
 
 /**
  * One row from `public.notifications` (`036`), as the notifications screen and
@@ -1109,6 +1488,22 @@ export type PlaceSearchResult = {
    * clubs and rides ignore it, and it costs them nothing to carry.
    */
   countryCode: string | null
+  /**
+   * The IANA zone the place is in, or `null` when the vendor sent none —
+   * `search-places/shape.ts`'s `toPlaceResult` (`080`, PD-193).
+   *
+   * **The whole reason a PICKED ride never needs its clock corrected.** The
+   * client holds this at submit, so it goes into the same INSERT as
+   * `departure_at` and `wallClockToUtc` resolves against it at the one moment
+   * the rider is looking at the number. A typed start has no zone until
+   * `resolve-ride-location` geocodes it, which is after the insert by
+   * requirement — hence `080`'s wall-clock-preserving trigger.
+   *
+   * Null on every result until `search-places` is REDEPLOYED: the repo's copy
+   * reads this field, and neither project runs the repo's copy. A picked ride
+   * falls back to `APP_TIME_ZONE` until then, which is what it did before.
+   */
+  timezone: string | null
 }
 
 /**
@@ -1143,4 +1538,82 @@ export type LocalityCentroid = {
   lat: number
   /** `lon`, not `lng` — matching `Place.lon` and `PlaceSearchResult.lon`. */
   lon: number
+}
+
+/**
+ * A club's titled thread — `081`, PD-307.
+ *
+ * **No `updated_at` and no `edited` flag, for `RideMessage`'s reason and one
+ * more.** `081` grants no UPDATE and declares no UPDATE policy on either
+ * content table, so neither a title nor a body can change; a title is the
+ * worse of the two to make mutable, because a title that changes after forty
+ * riders have replied retitles their replies too.
+ */
+export type ClubThread = {
+  id: string
+  club_id: string
+  author_id: string
+  title: string
+  created_at: string
+}
+
+/**
+ * One row of the Threads list — the thread plus its byline.
+ *
+ * `author` is nullable for the reason every other embed's is: the `profiles`
+ * SELECT policy hides a row with a NULL username, so a thread opened by a rider
+ * still mid-onboarding resolves to `null` rather than to a name. The unread mark
+ * is **not** on this type: it comes from `club_thread_unread`, a separate
+ * read under its own key, so that a failed unread call leaves the list rendering
+ * unmarked rather than not rendering.
+ */
+export type ClubThreadListItem = ClubThread & {
+  author: Pick<PublicProfile, 'id' | 'username'> | null
+}
+
+/** The keyset cursor the Threads list pages on — `(created_at, id)`, for
+ * `NotificationCursor`'s reason: `created_at` is not a total order. */
+export type ClubThreadCursor = { createdAt: string; id: string }
+
+/** One message inside a club thread (`081`). `author` is narrower than
+ * `PublicProfile` for `RideMessage`'s reason — a bubble draws no avatar. */
+export type ClubMessage = {
+  id: string
+  thread_id: string
+  author_id: string
+  body: string
+  created_at: string
+  author: Pick<PublicProfile, 'id' | 'username'> | null
+}
+
+/**
+ * What `ChatThread` draws, for either stream.
+ *
+ * The three flags are `RideChatMessage`'s, described there at length: `mine` is
+ * resolved once in the read because the viewer's id is a read concern,
+ * `startsGroup`/`startsDay` are properties of the *sequence*, and `pending` is
+ * only ever set on a message this viewer just sent.
+ *
+ * **Structural rather than a shared base**, so `RideChatMessage` keeps its
+ * `ride_id` and `ClubChatMessage` its `thread_id` while both satisfy the one
+ * component. A bubble renders neither column, which is why neither is here.
+ */
+export type ChatBubbleMessage = {
+  id: string
+  author_id: string
+  body: string
+  created_at: string
+  author: Pick<PublicProfile, 'id' | 'username'> | null
+  mine: boolean
+  startsGroup: boolean
+  startsDay: boolean
+  pending?: boolean
+}
+
+/** A club thread's messages as the thread screen renders them. */
+export type ClubChatMessage = ClubMessage & {
+  mine: boolean
+  startsGroup: boolean
+  startsDay: boolean
+  pending?: boolean
 }

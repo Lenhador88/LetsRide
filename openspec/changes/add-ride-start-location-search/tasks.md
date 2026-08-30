@@ -107,8 +107,12 @@
 - [ ] 5.6 `updateRide`: send all three location columns on every update — present on a pick, NULL when
       cleared — so "the rider cleared it" is a real edit. Note the tile-object delete ordering already
       documented there is unchanged.
-- [ ] 5.7 `requestRideMapRender` is **not** called when the write carried a pick (§D6), so no vendor
-      call is paid and no object is orphaned by D4's silent override.
+- [x] 5.7 ~~`requestRideMapRender` is **not** called when the write carried a pick (§D6), so no vendor
+      call is paid and no object is orphaned by D4's silent override.~~ **SUPERSEDED BY 6.5 — do not
+      re-add this guard.** It was correct only against the build deployed until 2026-08-27, which
+      geocoded unconditionally. The build now live skips the geocode for a picked ride and renders
+      from the stored coordinate, and nothing else invokes the function, so reinstating the guard
+      gives exactly the rides carrying the best coordinates no map at all.
 - [ ] 5.8 Types: add `start_place_id`, `latitude`, `longitude` where the ride shapes need them in
       `src/types/index.ts`, and to `getRideForEdit`'s select so the edit form can seed. Do **not** add
       them to `RIDE_SELECT` unless a list screen renders them.
@@ -117,23 +121,23 @@
 
 ## 6. The Edge Function (owner deploy)
 
-- [ ] 6.1 `supabase/functions/resolve-ride-location/index.ts`: read `start_place_id` with the ride,
+- [x] 6.1 `supabase/functions/resolve-ride-location/index.ts`: read `start_place_id` with the ride,
       and when it is present skip the geocode and the three gates, render both tiles from the stored
       coordinate, and write **only** the two path columns.
-- [ ] 6.1a **Guard the step-8 UPDATE with `.is('start_place_id', null)`** on the geocoded path. 6.1
+- [x] 6.1a **Guard the step-8 UPDATE with `.is('start_place_id', null)`** on the geocoded path. 6.1
       cannot cover the race: a pick that arrives *after* the ride was read but *before* the UPDATE
       lands makes `protect_picked_ride_location` NULL the path columns while the statement still
       **succeeds**, so the compensating delete never runs and two JPEGs of the wrong place are
       orphaned. The guard turns that into a zero-row result, which the existing `!written` branch
       already handles — delete the uploads, return `noTile('column_write_refused')`. Add the case to
       the function's own §8 comment.
-- [ ] 6.2 Keep every decision in `gates.ts`, where `src/__tests__/ride-geocode-gates.test.ts` can
+- [x] 6.2 Keep every decision in `gates.ts`, where `src/__tests__/ride-geocode-gates.test.ts` can
       reach it — a decision that moves into `index.ts` leaves the test suite.
-- [ ] 6.3 Add a test for the skip branch alongside the existing gate tests.
-- [ ] 6.4 **Ask the owner to deploy**, and say plainly in the PR that until they do, a picked ride
+- [x] 6.3 Add a test for the skip branch alongside the existing gate tests.
+- [x] 6.4 **Ask the owner to deploy**, and say plainly in the PR that until they do, a picked ride
       carries an exact coordinate and no tile. Do not claim the function is current; verify with
       `list_edge_functions` against both refs and the `updated_at`-vs-commit-date check.
-- [ ] 6.5 **Reinstate `requestRideMapRender` for picked writes, in the same PR as the deploy.**
+- [x] 6.5 **Reinstate `requestRideMapRender` for picked writes, in the same PR as the deploy.**
       5.7 suppresses the call because the *currently deployed* build would orphan two objects on a
       picked ride — the condition is about which build is live, not about picks. Once 6.1 is
       deployed that build is the only thing that ever renders a picked ride's tile, and nothing else

@@ -11,6 +11,7 @@ import {
   isSearchable,
   MAX_PLACE_ID_CHARS,
   MAX_TERM_CHARS,
+  MAX_TIMEZONE_CHARS,
   MIN_TERM_CHARS,
   parseRequest,
   PER_RIDER_DAILY,
@@ -227,6 +228,71 @@ describe('mapping a vendor feature to this repo own shape', () => {
     lon: 5.69,
   })
 
+  /**
+   * `080` (PD-193). The zone arrives on a response the proxy already pays for,
+   * which is what made that story cheap enough to build. Everything here is
+   * DOCUMENTATION-DERIVED: `*.geoapify.com` is egress-blocked from the build
+   * container, so no session has seen this field on a live response. What these
+   * pin is the DEGRADATION — that a shape guessed wrong yields `null` rather
+   * than a wrong clock or a dropped result.
+   */
+  describe('the place’s timezone', () => {
+    it('carries the IANA name through, which is all a ride stores', () => {
+      const withZone = feature({
+        place_id: 'abc',
+        formatted: 'Rua Augusta, Lisboa',
+        lat: 38.71,
+        lon: -9.14,
+        timezone: { name: 'Europe/Lisbon', offset_STD: '+00:00', abbreviation_STD: 'WET' },
+      })
+      expect(toPlaceResult(withZone)?.timezone).toBe('Europe/Lisbon')
+    })
+
+    it('accepts the names that are legitimately not Area/Location', () => {
+      // Both are in `pg_timezone_names` and both are real answers for somewhere
+      // at sea, so a regex that demanded a slash would drop them.
+      for (const name of ['UTC', 'Etc/GMT+3', 'America/Argentina/ComodRivadavia']) {
+        expect(toPlaceResult(feature({ ...full.properties, timezone: { name } }))?.timezone).toBe(
+          name
+        )
+      }
+    })
+
+    it('degrades a malformed zone to null WITHOUT dropping the place', () => {
+      // The asymmetry that matters: a bad id or a bad coordinate drops the
+      // feature, because neither can be stored. A bad zone is a place worth
+      // picking whose clock falls back to APP_TIME_ZONE — which is what every
+      // ride did before this field existed.
+      for (const timezone of [
+        undefined,
+        null,
+        {},
+        { name: '' },
+        { name: '   ' },
+        { name: 42 },
+        'Europe/Lisbon; drop table rides',
+        { name: 'a'.repeat(MAX_TIMEZONE_CHARS + 1) },
+      ]) {
+        const result = toPlaceResult(feature({ ...full.properties, timezone }))
+        expect(result).not.toBeNull()
+        expect(result?.timezone).toBeNull()
+      }
+    })
+
+    it('bounds the length at the column’s CHECK, not at the longest known name', () => {
+      // `rides_timezone_is_bounded` is 64. A value one character over reaches
+      // the rider as a tappable result that raises 23514 at write time.
+      const ok = `Europe/${'a'.repeat(MAX_TIMEZONE_CHARS - 7)}`
+      expect(ok).toHaveLength(MAX_TIMEZONE_CHARS)
+      expect(toPlaceResult(feature({ ...full.properties, timezone: { name: ok } }))?.timezone).toBe(
+        ok
+      )
+      expect(
+        toPlaceResult(feature({ ...full.properties, timezone: { name: `${ok}a` } }))?.timezone
+      ).toBeNull()
+    })
+  })
+
   it('maps to exactly the fields the client already consumes', () => {
     expect(toPlaceResult(full)).toEqual({
       id: `${ID_NAMESPACE}514533f150acfb1e4059b3e2`,
@@ -235,6 +301,7 @@ describe('mapping a vendor feature to this repo own shape', () => {
       lat: 50.85,
       lon: 5.69,
       countryCode: null,
+      timezone: null,
     })
   })
 

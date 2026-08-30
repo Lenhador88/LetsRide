@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { LocationFilledIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { routes } from '@/lib/routes'
-import { cn, formatRideDate, formatRideTime } from '@/lib/utils'
+import { cn, formatRideCardDay, formatStartDistance, formatRideTime } from '@/lib/utils'
 import type { RideAttendance, RideListItem } from '@/types'
 
 /**
@@ -41,48 +41,44 @@ import type { RideAttendance, RideListItem } from '@/types'
  * unavailable" message — the pin container it has always drawn is the answer,
  * and a tile that fails to load falls back to exactly that.
  *
- * **Attribution — PD-104 §6.2, and the credit this strip carries is the one
- * burned into the tile.** The Static Maps response arrives with map-style
- * attribution rendered into the image itself, bottom-right, which is *composed
- * into the strip* per tile and survives a scroll — exactly what the spec means by
- * refusing a single shared credit elsewhere on the screen. Two consequences for
- * this file, and both are load-bearing rather than tidy:
+ * **Attribution — PD-236, and this strip carries none of it.** The Static Maps
+ * response used to arrive with the credit burned into the image, bottom-right;
+ * `ATTRIBUTION_MODE` now sends `attribution=none`, so the tile is clean and
+ * `MapAttribution` discharges the obligation once per screen. Two consequences
+ * for this file, and both are load-bearing rather than tidy:
  *
- * - **Nothing suppresses it.** The render request passes no attribution,
- *   watermark or logo parameter, and `ride-geocode-gates.test.ts` asserts their
- *   absence. Suppressing the credit would not remove the obligation, it would
- *   move it onto 80px of width that cannot carry `© OpenStreetMap contributors`
- *   at this design system's smallest token.
- * - **`object-right-bottom`, so a crop cannot take it.** The tile is rendered at
- *   80×148, which is this strip in the ordinary 156-tall card. On the
- *   club-filtered screen the card is 128 tall and the strip is 120, and a centred
- *   `object-cover` would crop 14px off the bottom — precisely where the credit
- *   sits. Anchoring bottom-right moves the whole crop to the top.
+ * - **The tile carries no credit at all** — PD-236. `ATTRIBUTION_MODE` sends
+ *   `attribution=none`, so the obligation is discharged by `MapAttribution` at
+ *   the end of the rides list, once for every tile on the screen. The strip is
+ *   80px wide and the credit is roughly 240px at the smallest token, so it never
+ *   could have carried the string; what changed is that it no longer has to.
+ * - **The crop is CENTRED, and that is a consequence of the above.** This strip
+ *   used to be `object-right-bottom`, anchored so a crop could not take the
+ *   credit burned into the bottom-right — on the 128-tall club-filtered card a
+ *   centred `object-cover` removes 14px off the bottom, which was precisely
+ *   where the credit sat.
  *
- *   **The horizontal half of that class is a no-op *here* and is not decoration.**
- *   The strip is `w-20` against an 80-wide tile, so the cover scale is exactly 1
- *   and nothing crops sideways — today. `RideMap` uses the same class where it is
- *   very much not a no-op: its panel is *narrower* than its 358-wide tile below a
- *   390px viewport, and a bottom-only anchor truncated `© OpenStreetMap
- *   contributors` mid-string at 375 and 360. **So if you widen this strip past
- *   `w-20`, that is the failure you inherit** — the credit is burned bottom-RIGHT,
- *   and the horizontal axis becomes load-bearing the moment the scale factor
- *   leaves 1.
+ *   With nothing burned in, that anchor stopped protecting anything and started
+ *   costing something: **the tile is rendered centred on the meeting point, and
+ *   the pin disc below is `m-auto`** — dead centre of the strip. Anchoring the
+ *   image bottom-right put the map's centre somewhere the pin was not, so the
+ *   marker pointed at the wrong part of its own map. Centred is what puts the
+ *   two back on top of each other.
  *
- * `Powered by Geoapify` — the Free plan's separate, *service*-level obligation —
- * is not here. It has one legible home, on `RideMap`'s 358×160 panel; that string
- * is not the tile's data attribution, so the spec's rejection of a shared credit
- * does not reach it.
+ * **That open half is answered and it is why this file changed.** *"Is the
+ * burned-in credit legible at 80×148"* was measured on DEV 2026-08-16: it is
+ * not — the credit is a fixed absolute size and spanned the whole 160-wide
+ * render, clipping at both edges. `specs/ride-map-tiles`' *A credit that cannot
+ * fit means no tile* was the specified outcome, and PD-236 took the other route
+ * the spec did not anticipate: make the tile carry no credit at all. **The
+ * refusals that framed it still stand** — do not resolve any future version of
+ * this by shrinking type below the system's floor, clipping, or truncating the
+ * vendor's name.
  *
- * **The open half, stated rather than assumed: whether the burned-in credit is
- * legible at 80×148.** If it is not, `specs/ride-map-tiles`' *A credit that cannot
- * fit means no tile* applies and this strip must render the pin fallback with no
- * tile — which is a specified outcome and not a failure, and is one condition on
- * `showsTile` below. It could not be measured when this was written:
- * `*.geoapify.com` is egress-blocked from the build container, so no tile existed
- * to look at. Task 8.4 answers it against a real one. Do not resolve it by
- * shrinking type below the system's floor, clipping, or truncating the vendor's
- * name.
+ * **What this strip does NOT do is render the credit itself**, and that is a
+ * screen-level decision rather than this component's: see `MapAttribution`,
+ * which carries both the arithmetic (the joined string is ~350px against 80px of
+ * strip) and the spec requirement it is currently in tension with.
  *
  * The pin gains a `White/100` disc **only** over a tile. Bare `Grey/100` on a
  * neutral `Grey/10%` container is 13.82:1 — `bg-border` is `#0000001A`, 10.196%
@@ -117,6 +113,14 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
   const [failedTileUrl, setFailedTileUrl] = useState<string | null>(null)
   const showsTile = !!ride.map_card_url && ride.map_card_url !== failedTileUrl
 
+  // **`undefined` is the ordinary state and draws nothing at all** — the rider
+  // has no resolvable position, the ride has never been geocoded, or the read
+  // that produced this row was not asked for a distance. `RideListItem`'s own
+  // comment collapses those three deliberately, and a card can only usefully do
+  // one thing with any of them: say nothing. There is no "distance unknown"
+  // label, because a row that cannot be measured is most of the list today.
+  const distance = ride.distance_km === undefined ? null : formatStartDistance(ride.distance_km)
+
   return (
     <Link
       href={routes.ride(ride.id)}
@@ -134,14 +138,10 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
             // Decorative: the meeting point this tile is centred on is the
             // third line of the card, in text, right beside it.
             alt=""
-            // `object-right-bottom` — see the header. The vendor's credit is
-            // burned into the bottom-RIGHT of the tile, and a centred crop
-            // removes it on the 128-tall club-filtered card. The horizontal half
-            // is a no-op here (the strip is `w-20` against an 80-wide tile, so
-            // there is no horizontal crop) and is written anyway to match
-            // `RideMap`, where it is not a no-op at all, and so that a future
-            // change to the strip's width cannot silently start truncating it.
-            className="absolute inset-0 h-full w-full object-cover object-right-bottom"
+            // Centred, so the map's centre lands under the pin disc that marks
+            // it — see the header. This was `object-right-bottom` while the
+            // vendor burned a credit into that corner.
+            className="absolute inset-0 h-full w-full object-cover"
             onError={() => setFailedTileUrl(ride.map_card_url ?? null)}
             loading="lazy"
             draggable={false}
@@ -167,13 +167,36 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
           <p className="truncate text-base font-semibold text-foreground">{ride.title}</p>
 
           <p className="flex items-center gap-2 text-sm font-medium text-muted">
-            <span>{formatRideDate(ride.departure_at)}</span>
+            {/* `formatRideCardDay`, not `formatRideDate` (PD-340): the same slot,
+                reading `This Wednesday` inside a fortnight and falling back to
+                `SAT, 16 NOV` outside it. The uppercase went with it — a band
+                word is prose, and `THIS WEDNESDAY` shouts where the date did
+                not. */}
+            <span>{formatRideCardDay(ride.departure_at, ride.timezone)}</span>
             {/* A 3×3 rounded rectangle in the design, i.e. a dot. */}
             <span aria-hidden className="h-[3px] w-[3px] shrink-0 rounded-full bg-muted" />
-            <span>{formatRideTime(ride.departure_at)}</span>
+            <span>{formatRideTime(ride.departure_at, ride.timezone)}</span>
           </p>
 
-          <p className="truncate text-sm font-medium text-muted">{ride.meeting_point}</p>
+          {/* The meeting point, and how far away it is when anything can say
+              (PD-340). One line rather than a fourth: the card's height is the
+              design's and a distance is a qualifier on the place, not a fact of
+              its own.
+
+              **The place truncates and the distance does not.** `min-w-0` plus
+              `truncate` on the name and `shrink-0` on the clause is what makes a
+              long meeting point lose characters instead of pushing `12 km away`
+              off the card — the distance is three or four characters and is the
+              half a rider scanning a list is comparing between rows. */}
+          <p className="flex items-center gap-2 text-sm font-medium text-muted">
+            <span className="min-w-0 truncate">{ride.meeting_point}</span>
+            {distance && (
+              <>
+                <span aria-hidden className="h-[3px] w-[3px] shrink-0 rounded-full bg-muted" />
+                <span className="shrink-0">{distance}</span>
+              </>
+            )}
+          </p>
         </div>
 
         <div className="flex items-center gap-2">

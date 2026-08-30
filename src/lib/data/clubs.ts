@@ -9,7 +9,9 @@ import type {
   ClubDeletionImpact,
   ClubDetail,
   ClubForEdit,
+  ClubJoinRequestStatus,
   ClubListItem,
+  ClubPreview,
   ClubRosterMember,
   PublicProfile,
 } from '@/types'
@@ -112,8 +114,17 @@ export function toClubListItem(row: ClubListRow, unread?: number): ClubListItem 
   }
 }
 
-/** The club ids this rider belongs to. Both sub-pages need it, from opposite sides. */
-async function myClubIds(supabase: DataClient, userId: string): Promise<string[]> {
+/**
+ * The club ids this rider belongs to. Both sub-pages need it, from opposite
+ * sides, and since the `From clubs` filter (`getRides`, `getRideFilters`) the
+ * rides tab needs it too — which is why it is exported rather than local.
+ *
+ * Bounded by `CLUB_MEMBERSHIP_LIMIT` with no `order by`, so past that many
+ * memberships the answer is an arbitrary subset. Every caller must therefore
+ * degrade to *fewer* rows and never to *wrong* ones — see `getExploreClubs`
+ * for the defect that rule was written after.
+ */
+export async function myClubIds(supabase: DataClient, userId: string): Promise<string[]> {
   const rows = unwrapList(
     await supabase
       .from('club_members')
@@ -310,14 +321,195 @@ export async function getExploreClubs(near?: RiderPosition | null): Promise<Club
     for (const membership of memberships) joined.add(membership.club_id)
   }
 
-  // No unread. The design puts `Join club` in the slot the counter occupies,
-  // and 015 refuses a watermark for a club you have not joined anyway.
-  const items = rows
-    .filter((row) => !joined.has(row.id))
-    .map((row) => withDistance(toClubListItem(row), near))
+  /**
+   * **The private half — `085`, PD-325.** A second read rather than a
+   * relaxation of the first, because `.eq('is_public', true)` above is the
+   * PUBLIC HALF'S DEFINITION and not a re-filter of RLS. Removing it would be
+   * the defect this file already records twice (`/rides` and `/clubs`
+   * subtracting from a policy that already unions public with owned and
+   * joined) — and it would not work anyway, since a private club is not in the
+   * `clubs` policy's answer to be removed FROM.
+   *
+   * `public.discoverable_private_clubs` returns SEVEN columns and no roster, so
+   * these rows carry an empty `riders` array and a `members_count` computed
+   * inside the function. It already excludes membership, ownership, public
+   * clubs, the default club and anyone blocked with the owner, so no JS filter
+   * is applied to it here.
+   *
+   * **`CLUBS_PAGE_SIZE` therefore bounds each half rather than the union**, and
+   * the honest description of what ships is *the newest fifty public clubs plus
+   * the newest fifty requestable private ones, nearest first*. The recency-window
+   * note above applies unchanged to both halves.
+   */
+  const previews = unwrapList(
+    await supabase.rpc('discoverable_private_clubs', { page_size: CLUBS_PAGE_SIZE }),
+    'private clubs to explore',
+  ) as unknown as DiscoverableClubRow[]
+
+  const requestStatus = await myRequestStatuses(supabase, user.id, previews.map((row) => row.id))
+
+  // No unread on either half. The design puts `Join club` in the slot the
+  // counter occupies, and 015 refuses a watermark for a club you have not
+  // joined anyway.
+  const items = [
+    ...rows.filter((row) => !joined.has(row.id)).map(toClubListItem),
+    ...previews.map((row) => toDiscoverableListItem(row, requestStatus.get(row.id) ?? null)),
+  ]
+    .map((item) => withDistance(item, near))
     .sort(near ? byDistanceThenName : byName)
+
   await Promise.all([signRiderAvatars(items, supabase), signClubImages(items, supabase)])
   return items
+}
+
+/** The seven columns `public.discoverable_private_clubs` returns. */
+type DiscoverableClubRow = {
+  id: string
+  name: string
+  avatar_path: string | null
+  location_name: string | null
+  latitude: number | null
+  longitude: number | null
+  members_count: number
+}
+
+/**
+ * The viewer's own outstanding asks, scoped to the private clubs on THIS page.
+ *
+ * Bounded by the page for exactly the reason the membership read above is —
+ * that read's header records the defect a membership-scoped list caused — and
+ * read under the caller's own SELECT policy with no accessor, because these are
+ * their own rows.
+ *
+ * A failure costs the trailing control on those cards and never the list, which
+ * is why it lands as an empty map rather than an exception: a rider who cannot
+ * see whether they already asked is better served by a card than by an error
+ * screen, and the duplicate ask they might then make is refused by `23505`.
+ */
+async function myRequestStatuses(
+  supabase: DataClient,
+  userId: string,
+  clubIds: string[]
+): Promise<Map<string, ClubJoinRequestStatus>> {
+  if (clubIds.length === 0) return new Map()
+
+  const { data, error } = await supabase
+    .from('club_join_requests')
+    .select('club_id, status')
+    .eq('user_id', userId)
+    .in('club_id', clubIds)
+
+  if (error || !data) return new Map()
+  return new Map(
+    (data as { club_id: string; status: ClubJoinRequestStatus }[]).map((row) => [
+      row.club_id,
+      row.status,
+    ])
+  )
+}
+
+/**
+ * A discoverable private club as a `ClubListItem`, so `ClubCard` draws one
+ * component rather than two.
+ *
+ * **`riders` is empty and stays empty** — the accessor returns no roster at
+ * all, so the card falls back to the member COUNT with no faces, which is the
+ * design's own empty treatment rather than a degraded one.
+ *
+ * **`avatar_url` is null HERE and is filled in by `signClubImages` below**,
+ * which is a change from `085`: that policy refused a private club's avatar
+ * object to a non-member and the card drew initials. `089` (PD-335) adds the
+ * third disjunct on `016`'s avatar policy, on the product owner's decision of
+ * 2026-08-28, so the same batched signing pass the public half already goes
+ * through now returns a URL for these rows too. The cover is still null and is
+ * still not asked for.
+ *
+ * `is_public` is `false` by construction — the accessor returns nothing else —
+ * so the card's `Private club` type line is right without asking.
+ */
+function toDiscoverableListItem(
+  row: DiscoverableClubRow,
+  requestStatus: ClubJoinRequestStatus | null
+): ClubListItem {
+  return {
+    id: row.id,
+    name: row.name,
+    is_public: false,
+    avatar_path: row.avatar_path,
+    cover_image_path: null,
+    avatar_url: null,
+    cover_image_url: null,
+    riders: [],
+    members_count: row.members_count,
+    location_name: row.location_name,
+    // The accessor deliberately does not return it. `066` calls it provenance
+    // rather than a join key and nothing renders it, so leaving it out of the
+    // seven columns keeps the disclosure narrower for free.
+    location_place_id: null,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    request_status: requestStatus,
+  }
+}
+
+/**
+ * One private club, for the reduced club screen — `085`, PD-325.
+ *
+ * The same accessor as Explore, narrowed to one club. `null` means "no such
+ * club, or not one you may discover", deliberately conflated exactly as
+ * `getClub` conflates its own two cases: distinguishing them would confirm a
+ * private club exists to somebody the accessor is refusing.
+ *
+ * **The request status comes with it**, and it is still what the screen's own
+ * sentence is drawn from. It is no longer the ONLY way a declined rider learns
+ * the answer — `089` (PD-335) writes them a notification, on the product
+ * owner's decision of 2026-08-28 — but the two agree by construction, because
+ * that notification's destination is this very screen. `private.club_takes_join_requests_for`
+ * still has no declined conjunct: the club has to stay discoverable for this
+ * screen to be reachable at all, and `089`'s policy disjunct now depends on
+ * that same property.
+ */
+export async function getClubPreview(id: string): Promise<ClubPreview | null> {
+  // Before `resolveSupabase()`, following `getClub` and `getRideForEdit`: a
+  // non-uuid reaches the RPC as `22P02`, PostgREST turns it into a 400 and
+  // `unwrap` throws, so the rider gets the error boundary where a not-found
+  // belongs (PD-142).
+  if (!clubIdSchema.safeParse(id).success) return null
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const rows = unwrapList(
+    await supabase.rpc('discoverable_private_clubs', { target_club: id }),
+    'that club',
+  ) as unknown as DiscoverableClubRow[]
+
+  const row = rows[0]
+  if (!row) return null
+
+  const status = await myRequestStatuses(supabase, user.id, [row.id])
+
+  const preview = {
+    id: row.id,
+    name: row.name,
+    avatar_path: row.avatar_path,
+    // **Signed since `089`** (PD-335), where it used to be null by design. The
+    // product owner decided on 2026-08-28 that a private club's avatar is
+    // readable to every rider who can discover it, so `016`'s avatar policy now
+    // carries a third disjunct and this attempt is no longer a round trip spent
+    // on a guaranteed null. **The COVER is still not readable and is not asked
+    // for** — an avatar is the club's identity, a cover is its content.
+    avatar_url: null as string | null,
+    location_name: row.location_name,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    members_count: row.members_count,
+    request_status: status.get(row.id) ?? null,
+  }
+
+  await resolveAvatarUrls([preview], supabase)
+  return preview
 }
 
 /**

@@ -1,7 +1,7 @@
 ---
 name: realtime
 description: Use for anything that updates without a page load — direct messages, per-ride group chat, the notification feed, unread counters, and presence. Also use when a screen shows stale data that should have refreshed, or when a Supabase Realtime subscription leaks or fires twice.
-tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__apply_migration, mcp__Supabase__get_logs, mcp__Supabase__get_advisors, mcp__Supabase__generate_typescript_types, mcp__Supabase__search_docs
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__list_tables, mcp__Supabase__execute_sql, mcp__Supabase__apply_migration, mcp__Supabase__get_logs, mcp__Supabase__get_advisors, mcp__Supabase__generate_typescript_types, mcp__Supabase__search_docs, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_tables, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__execute_sql, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__apply_migration, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_logs, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_advisors, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__generate_typescript_types, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__search_docs
 model: sonnet
 ---
 
@@ -13,10 +13,19 @@ agent that owns Realtime that the tables it was about to touch did not exist.
 
 - **Per-ride group chat — SHIPPED** 2026-08-07 (`034`, `PD-115`). `ride_messages`, in the
   `supabase_realtime` publication, `/rides/detail/chat?id=`, and `src/lib/realtime/useRideMessageStream`
-  — **the app's only Realtime subscription, so it is your worked example rather than a greenfield
+  — **one of the app's two Realtime subscriptions, so it is your worked example rather than a greenfield
   question.** Read `034`'s header before touching its audience rule: the visibility is an
   *intersection* of "can see the ride" and "is on the crew", and using the `security definer`
   crew helper alone steps past the block and private-club arms. That bug has already shipped once.
+- **Club threads — SHIPPED** 2026-08-27 (`081`, `PD-307`). `club_messages`, in the publication;
+  `club_threads` deliberately is **not**, and `081` says why in the file rather than leaving a
+  channel that reports `SUBSCRIBED` and never fires. `src/lib/realtime/useClubThreadStream` is
+  the second subscription and diverges from the ride chat's in exactly one way — it refetches on
+  **foreground** as well as on re-join, so a phone that slept through a conversation comes back to
+  it. **The audience inversion is the thing to read before touching it**: a club's audience is
+  `private.is_club_member` ALONE, the parent `EXISTS` against `clubs` being the redundant half, which
+  is the *opposite* of `ride_messages` above. On a public club that `EXISTS` admits every signed-in
+  rider, so a policy carrying only it ships the whole platform's riders into every club's threads.
 - **Notifications — SHIPPED** 2026-08-07 (`036`, `PD-118`). A `notifications` table written
   **only** by six `private` fan-out triggers; `authenticated` holds no INSERT and no DELETE grant.
   The screen is `/notifications`, reached from a `MailboxIcon` in the header of the four tab-root

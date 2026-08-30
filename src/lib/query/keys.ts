@@ -22,6 +22,22 @@
  * correctness — so where a `revalidatePath` claim was ambiguous, this file
  * widens rather than narrows, and says so at the site.
  *
+ * **One key is not reached by its own domain's *detail* prefix, and it is the
+ * only one: `clubs.threadMessages(threadId)`** (`081`, PD-307). Stated
+ * positively, because the reach is real and a flat "no prefix reaches it" is
+ * false:
+ *
+ * | Prefix | Reaches `clubs.threadMessages(d)`? |
+ * |---|---|
+ * | `[]` (`EVERYTHING`) | yes |
+ * | `['clubs']` (`clubs.all()`) | **yes** — `keyStartsWith` matches structurally |
+ * | `['clubs','detail',clubId]` and everything under it | **no** — the key is `['clubs','threads',d,'messages']` |
+ *
+ * So a write that moves one thread's messages names that key itself, and a
+ * write that removes a thread names the list key **and** the messages key. See
+ * the key's own docstring for why it hangs off the thread id rather than
+ * the club's.
+ *
  * ## The count
  *
  * There were **33** `revalidatePath` call sites, not the 41 quoted in
@@ -60,7 +76,7 @@
  * | `addComment` / `deleteComment` — `/postcards`, `` `/postcards/${id}` `` | `postcards.all()`. **`deleteComment`'s is now unconditional**, which closes a recorded KNOWN GAP for free: the path needed an id the caller could not always read |
  * | `hidePostcard` / `unhidePostcard` — `/postcards` | `postcards.all()` |
  * | `likePostcard` / `unlikePostcard` — `/postcards`, `` `/postcards/${id}` ``, `` `/clubs/${club}` `` | `postcards.all()` + `clubs.detail(club)` |
- * | `createPostcard` — same three | same |
+ * | `createPostcard` — same three | same. `postcards.journal(ride_id)` (PD-256) needs **no** extra call: `invalidate` matches by prefix, and the journal key sits under `postcards`, so `postcards.all()` already reaches it — as it does for `deletePostcard`, `hidePostcard` and `likePostcard` |
  * | `deletePostcard` — same three | same |
  * | `updateProfile`, `setProfileImage`, `addCountry`, `removeCountry` — `/profile` ×4 | `profile.all()` ×4 |
  * | `setRideAttendance` — `/rides`, `` `/rides/${id}` ``, `` `/rides/${id}/crew` `` | `rides.all()` — **wider**: it also reaches `rides.filters()`, whose attendee collage an RSVP moves and which `revalidatePath('/rides')` only covered by accident of rendering on that route |
@@ -192,6 +208,44 @@ export const queryKeys = {
      */
     edit: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'edit'],
     /**
+     * `085`, PD-325. What `getClubPreview` returns for the reduced screen a
+     * non-member of a private club lands on.
+     *
+     * **A child of `detail` rather than a sibling**, on `edit`'s precedent
+     * directly above and for the identical reason: `ClubPreview` is a narrower
+     * shape than `ClubDetail`, so sharing `detail`'s own key would serve
+     * whichever landed first — but a CHILD key cannot collide, and being inside
+     * the `['clubs','detail',id]` prefix is what lets anything narrower than
+     * `clubs.all()` reach it.
+     *
+     * Both reads are live at once on that route: the page issues `getClub`
+     * first and only enables this one once that has DECIDED it saw nothing.
+     */
+    preview: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'preview'],
+    /**
+     * The pending join requests an owner or admin answers on the club detail
+     * (`085`, PD-325). A child of `detail` like `members`, and for the same
+     * reason: scoped to one club and dying with it, so an approval claiming
+     * `clubs.all()` reaches it without enumerating anything.
+     *
+     * **PD-326 absorbs this key along with the section it feeds.** It should
+     * reuse it rather than introduce a second one for the same rows.
+     */
+    joinRequests: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'joinRequests'],
+    /**
+     * The DECLINED requests an admin can clear — `088`, PD-326. Its own leaf
+     * rather than a segment on `joinRequests`, because the two lists are read
+     * by two components on one screen and a shared key would serve whichever
+     * landed first: `keys.ts`'s own header calls that the collision to avoid,
+     * and `edit`/`preview` are already here for the same reason.
+     */
+    declinedRequests: (clubId: string): QueryKey => [
+      'clubs',
+      'detail',
+      clubId,
+      'declinedRequests',
+    ],
+    /**
      * The delete confirmation's live counts (`club-lifecycle`'s delete
      * requirement). Nested under `detail` so `updateClub`/`deleteClub`'s
      * existing `clubs.all()` invalidation reaches it for free, and read only
@@ -210,6 +264,59 @@ export const queryKeys = {
       clubId,
       'publicRideCount',
     ],
+    /**
+     * A club's threads (`081`, PD-307) — a child of the club for the
+     * same reason `members` is: scoped to one club and dying with it. Page one
+     * only, matching `notifications.list()`; the list screen appends later pages
+     * in local state.
+     */
+    threads: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'threads'],
+    /**
+     * Which of those threads hold a message this rider has not read
+     * (`club_thread_unread`). **A child of `threads`, deliberately**, and
+     * the asymmetry runs one way, exactly as `rides.unread` sits under
+     * `rides.messages`: invalidating the list reaches the marks, and
+     * `markClubThreadSeen` naming this key alone does not refetch the list.
+     */
+    threadsUnread: (clubId: string): QueryKey => [
+      'clubs',
+      'detail',
+      clubId,
+      'threads',
+      'unread',
+    ],
+    /**
+     * One thread itself — its title, its author and the club it sits in
+     * (`getClubThread`). Keyed by the thread id for the same reason its
+     * messages are, and **the parent of that key**: invalidating the thread
+     * reaches its messages, while a message cannot move a title `081` grants no
+     * UPDATE on.
+     */
+    thread: (threadId: string): QueryKey => ['clubs', 'threads', threadId],
+    /**
+     * One thread's messages (`081`).
+     *
+     * **This is the first key in this file that its own domain's detail prefix
+     * does not reach, and the header table above says which prefixes do.** It is
+     * keyed by the *thread* id because the thread screen holds only that —
+     * the club id arrives with the thread itself — so nesting it under
+     * `['clubs','detail',clubId]` would mean building a key from a value the
+     * screen does not have when it mounts.
+     *
+     * `['clubs']` (`clubs.all()`) **does** reach it: `invalidate` matches
+     * structurally on prefix (`keyStartsWith` in `queryClient.ts`), and this key
+     * starts with `'clubs'`. `['clubs','detail',clubId]` does not. So
+     * `sendClubMessage` and `deleteClubMessage` name this key explicitly, and
+     * `deleteClubThread`/`moderateClubThread` name **both** it and the
+     * list — carrying the club id into the action rather than re-reading it
+     * after the row is gone.
+     */
+    threadMessages: (threadId: string): QueryKey => [
+      'clubs',
+      'threads',
+      threadId,
+      'messages',
+    ],
   },
 
   /**
@@ -227,6 +334,28 @@ export const queryKeys = {
     filters: (): QueryKey => ['postcards', 'filters'],
     detail: (postcardId: string): QueryKey => ['postcards', 'detail', postcardId],
     comments: (postcardId: string): QueryKey => ['postcards', 'detail', postcardId, 'comments'],
+    /**
+     * A ride's Journal (`041`, PD-256) — the postcards tagged to one ride,
+     * read by `getRideJournal` through `ride_journal_postcard_ids`.
+     *
+     * **Under `postcards`, not nested in `rides.detail` beside `crew` and
+     * `messages`.** Those are ride-owned resources reached by a ride's own
+     * mutations; a Journal entry is a `postcards` row a ride id merely filters,
+     * and its only writer is `createPostcard` — which already invalidates
+     * `postcards.all()` on every insert, tagged or not.
+     *
+     * **So this key needs no call site of its own, and adding one would be
+     * dead code.** `invalidate` matches structurally by prefix
+     * (`queryClient.ts`'s `keyStartsWith`), so `['postcards']` reaches
+     * `['postcards', 'journal', rideId]` — which is also why `deletePostcard`,
+     * `hidePostcard` and `likePostcard` keep a ride's Journal honest for free.
+     * The first draft of PD-256 added an explicit `invalidate(journal(rideId))`
+     * on the reasoning that a key "keyed by a ride id rather than nested under
+     * it" was out of reach. It is not, and that sentence is worth contradicting
+     * here rather than deleting quietly: it is the wrong model of this cache,
+     * and the next author to hold it will add a call site too.
+     */
+    journal: (rideId: string): QueryKey => ['postcards', 'journal', rideId],
   },
 
   /**
@@ -241,6 +370,41 @@ export const queryKeys = {
     all: (): QueryKey => ['rides'],
     list: (filter: string | null): QueryKey => ['rides', 'list', filter],
     filters: (): QueryKey => ['rides', 'filters'],
+    /**
+     * `/rides/explore` — public rides the viewer is not already on.
+     *
+     * Position-keyed for exactly `clubs.explore`'s reason, one field down: the
+     * read attaches a distance per row, so a list measured from Utrecht is not
+     * the list for the same rider in Maastricht and a bare `['rides','explore']`
+     * would serve the first from cache to the second with nothing to tell them
+     * apart.
+     *
+     * **`/rides` and `/rides/explore` must keep hitting the SAME entry.** The
+     * tab root reads this to decide whether its strip may say `near <place>`,
+     * and the destination reads it to draw the `Near <place>` section — so a
+     * second entry is a row promising something the screen behind it does not
+     * show. They agree because both resolve the position through
+     * `resolveRiderLocation`, which rounds to two decimals before anything sees
+     * it and memoises the answer behind **a TTL, not a page load** — that
+     * component's own header retired the page-load framing, because a Capacitor
+     * WebView is not reloaded between screens. So past the TTL a device-sourced
+     * rider can re-resolve and land on a second entry. That is a cache miss and
+     * never a disagreement: both screens still read whatever the current
+     * position resolves to, under one key.
+     *
+     * `null` — no resolvable position — is its own segment rather than an
+     * omitted one, so an unmeasured list cannot silently share an entry with a
+     * measured one.
+     *
+     * Under `rides`, so `setRideAttendance`'s existing `rides.all()` reaches it:
+     * RSVPing to a ride from this screen is precisely what must take that ride
+     * off it.
+     */
+    explore: (near?: { lat: number; lon: number } | null): QueryKey => [
+      'rides',
+      'explore',
+      near ? `${near.lat},${near.lon}` : 'unlocated',
+    ],
     /**
      * The rider's own last picked start locations, offered by the place field
      * on focus — PD-274, `getRecentRideStarts`.
@@ -262,6 +426,27 @@ export const queryKeys = {
      * device from being shown these.
      */
     recentStarts: (): QueryKey => ['rides', 'recentStarts'],
+    /**
+     * The postcard composer's Ride select (PD-256), `getCrewRides` — the same
+     * role `clubs.mine()` plays for the Club select, kept a separate leaf
+     * rather than reusing `list(filterSegment.mine())`: that key answers a
+     * different question (the paginated upcoming/past `/rides?mine` screen)
+     * in a different shape, and sharing one cache entry between the two is
+     * exactly the collision this file's header warns about.
+     *
+     * **No call site is added for it, matching `recentStarts` above.** Under
+     * `rides` because `rides.all()` is what can actually move the set — a
+     * ride created, joined or left — and `createRide`/`setRideAttendance`
+     * already invalidate that prefix.
+     *
+     * **`only` is part of the key because it is part of the answer.**
+     * `getCrewRides(only)` unions in the deep-linked ride when the scan window
+     * missed it, so two calls with different `only` return different sets and
+     * must not share a cache entry — the collision this file's header warns
+     * about, in the one shape that would look like a stale list rather than a
+     * wrong one.
+     */
+    crewOptions: (only: string | null): QueryKey => ['rides', 'crewOptions', only],
     detail: (rideId: string): QueryKey => ['rides', 'detail', rideId],
     crew: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'crew'],
     /**
@@ -319,6 +504,116 @@ export const queryKeys = {
      * do not cite the nesting for it.
      */
     unread: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'messages', 'unread'],
+    /**
+     * The organizer's invite list for one ride (`083`, PD-329).
+     *
+     * A child of the ride for the same reason `crew` is: it is scoped to one
+     * ride and dies with it. So `rides.all()` reaches it, which is correct —
+     * deleting a ride takes its invites, and the invalidation that follows a
+     * delete already names that prefix.
+     *
+     * **Not the same key as `invites.pending()` below, and the two are not
+     * redundant.** This one answers "who has the organizer asked", the other
+     * "what has this rider been asked to". They are read on different screens
+     * by different riders and only ever overlap by coincidence.
+     */
+    invites: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'invites'],
+    /**
+     * The organizer's invite LINKS for one ride (`091`, PD-330) — the tokens
+     * they have minted, with each one's expiry and use count.
+     *
+     * **No `revalidatePath` maps onto this**, and that is the honest entry for
+     * this file's reconciliation table: the surface did not exist under the
+     * server render, so there is no claim to translate. What it inherits
+     * instead is the *rule* those claims encoded — a write names what it makes
+     * stale — and `createRideInviteLink` and `revokeRideInviteLink` both name
+     * this key.
+     *
+     * A sibling of `invites` rather than a child of it: the two answer
+     * different questions about the same ride (who was asked by name, versus
+     * which tokens are live) and neither write moves the other. Both sit under
+     * the ride, so `rides.all()` reaches them — deleting a ride takes its links
+     * with it, and `deleteRide` already names that prefix.
+     *
+     * **Deliberately NOT keyed by token**, unlike `invites.link` below: this is
+     * the organizer's list of every link on one ride, and keying it per token
+     * would be a cache entry per row of a list that is read whole.
+     */
+    inviteLinks: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'inviteLinks'],
+  },
+
+  /**
+   * The invites addressed to the signed-in rider (`083`, PD-329).
+   *
+   * **Its own domain rather than a child of `rides`, deliberately.** It is the
+   * *rider's* list, not a ride's: it spans every ride they have been invited
+   * to, and nesting it under one ride would be a lie about what invalidating
+   * that ride reaches. Stated positively, because a reader will want to know
+   * which prefixes reach it:
+   *
+   * | Prefix | Reaches `invites.pending()`? |
+   * |---|---|
+   * | `[]` (`EVERYTHING`) | yes |
+   * | `['invites']` (`invites.all()`) | **yes** |
+   * | `['rides']` (`rides.all()`) | **no** — and that is the point |
+   *
+   * So `acceptRideInvite` and `declineRideInvite` name this key themselves —
+   * neither is reached by the rides prefix, and that is the whole reason the
+   * domain is separate.
+   *
+   * **What each of them claims in the RIDES domain is decided over there, and
+   * the two answers differ.** `acceptRideInvite` writes a `ride_members` row,
+   * so it takes `rides.all()` — `setRideAttendance`'s claim for the identical
+   * write, and the one that reaches the tab's lists and Explore as well as the
+   * ride and its crew. `declineRideInvite` writes no membership and takes
+   * `rides.detail(rideId)` alone, because what it changes is the ride's
+   * *readability*.
+   *
+   * **An earlier version of this paragraph said both actions named
+   * `rides.detail(id)` and the crew key "rather than widened here", and that
+   * enumeration is what left a just-joined ride out of `Your rides`.** Kept as
+   * a correction rather than deleted, because this file calls itself the
+   * contract and the wrong version reads exactly as careful as the right one:
+   * naming keys is only narrower when the naming is complete, and the check is
+   * this file's stated prefix reach rather than which screen comes to mind.
+   */
+  invites: {
+    all: (): QueryKey => ['invites'],
+    pending: (): QueryKey => ['invites', 'pending'],
+    /**
+     * The rider picker's hits for one ride and one query string (`083`).
+     *
+     * **Keyed on the query as well as the ride**, for `places.search`'s reason:
+     * two different prefixes are two different questions, and sharing an entry
+     * would show whichever answered first to both. Under `invites` rather than
+     * under the ride, because inviting somebody must take them out of the
+     * picker and `inviteRiderToRide` invalidating `rides.invites(id)` would not
+     * reach a key nested there — this one is reached by `invites.all()`.
+     */
+    search: (rideId: string, query: string): QueryKey => ['invites', 'search', rideId, query],
+    /**
+     * What one invite token previews (`091`, PD-330) —
+     * `public.ride_invite_link_preview`.
+     *
+     * **The token is IN the key**, so two links opened in one session cannot
+     * share an entry. They resolve to different rides, and a shared entry would
+     * show the first rider's ride to the second — this file's own collision
+     * warning, in the one shape where the entry is a *capability* rather than a
+     * list.
+     *
+     * Under `invites` so `invites.all()` reaches it, which is what
+     * `claimRideInviteLink` names: after a claim the preview is stale in a way
+     * that matters — `is_crew` has flipped — and the rider's own invite list now
+     * holds an `accepted` row that was not there.
+     *
+     * **No `revalidatePath` maps onto this either**, for the same reason as
+     * `rides.inviteLinks` above. It has one further property no other key here
+     * has: `clearQueryCache()` on sign-out is load-bearing rather than tidy,
+     * because this entry describes a ride the next rider on the device may have
+     * no right to see, and serving it from cache would be an anonymous read with
+     * extra steps.
+     */
+    link: (token: string): QueryKey => ['invites', 'link', token],
   },
 
   /**

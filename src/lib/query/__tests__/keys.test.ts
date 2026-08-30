@@ -163,12 +163,35 @@ describe('the invalidation claims keys.ts maps', () => {
     const writesWithoutInvalidation = sources
       .filter(([name]) => name !== 'state.ts' && name !== 'navigate.ts')
       .filter(([, source]) => /\.from\(|\.rpc\(|auth\.signOut/.test(source))
-      .filter(([, source]) => !/\binvalidate\(|clearQueryCache\(/.test(source))
+      // `invalidateClubMembership` is named EXPLICITLY rather than matched by a
+      // widened `invalidate[A-Za-z]*\(` pattern, and the difference is measured
+      // rather than stylistic: that wider form also matches
+      // `invalidateOnboardingState`, which is the GUARD cache (`guard-cache.ts`)
+      // and not this one — so it would silently drop `onboarding.ts` off the
+      // deliberate-silence list below and read a module that claims nothing as
+      // one that claims something.
+      //
+      // `club-members.ts` (`088`) claims through the helper `clubs.ts` exports
+      // and `joinClub`/`leaveClub` already share; pasting a second copy of that
+      // rule into it is exactly what the shared helper exists to prevent.
+      .filter(
+        ([, source]) =>
+          !/\binvalidate\(|\binvalidateClubMembership\(|clearQueryCache\(/.test(source)
+      )
       .map(([name]) => name)
 
-    // onboarding.ts writes the two profile stamps through RPCs and navigates
+    // Two deliberate silences, and they are silent for different reasons.
+    //
+    // `onboarding.ts` writes the two profile stamps through RPCs and navigates
     // away from every screen that could show them, so it claims nothing.
-    expect(writesWithoutInvalidation).toEqual(['onboarding.ts'])
+    //
+    // `feedback.ts` (`084`, PD-321) has nothing to claim: `authenticated` holds
+    // INSERT on four columns of `feedback` and NO SELECT grant, and there is no
+    // SELECT policy either — so no screen reads the table, there is no key for
+    // it in `keys.ts`, and adding one to invalidate would be a freshness claim
+    // about a read that does not exist. **If a reading story is ever built, it
+    // arrives with a key and this list gets shorter.**
+    expect(writesWithoutInvalidation).toEqual(['feedback.ts', 'onboarding.ts'])
   })
 
   // PD-177. `notifications.list()` had no writer at all: `markNotificationsRead`

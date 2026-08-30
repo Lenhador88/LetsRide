@@ -1,7 +1,7 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { decorateChat } from '@/lib/data/chat'
 import { unwrapList } from '@/lib/data/unwrap'
 import { rideIdSchema } from '@/lib/validation/rides'
-import { rideZoneDayKey } from '@/lib/utils'
 import type { RideChatMessage, RideMessage } from '@/types'
 
 /**
@@ -90,62 +90,6 @@ export async function getRideMessages(rideId: string): Promise<RideChatMessage[]
 }
 
 /**
- * Adds the two positional flags the bubbles render from — pure, exported, and
- * tested directly.
- *
- * Separate from the query for the reason `withOrganizer` is separate from
- * `getRideCrew`: it encodes presentation *rules* rather than a fetch, and a rule
- * that can be checked without a database is one that gets checked.
- *
- * `startsGroup` is the design's `Section` — consecutive messages from one rider
- * draw the author's name once, on the first. `startsDay` is the separator this
- * screen adds. Both are properties of a message's *position* in the list, which
- * is why they are computed over the sequence rather than by each bubble asking
- * about its neighbour.
- *
- * A day boundary always starts a group too, even from the same rider: a run of
- * messages spanning midnight with the name drawn only above the pre-midnight one
- * puts the name on the far side of a separator from the messages it labels.
- *
- * **It is exported because the screen re-runs it**, which is the whole reason it
- * is a separate function rather than a loop inside the read. A message being
- * sent is drawn before the database has it, so the rendered list is the fetched
- * one plus the optimistic rows — and grouping computed over the fetched list
- * alone would give the *first* optimistic message no name when it should have
- * one, or a redundant one when it should not. Recomputing over the list actually
- * being drawn is the only version that is right in both cases.
- */
-export function groupMessages(
-  rows: readonly (RideMessage & { mine: boolean; pending?: boolean })[]
-): RideChatMessage[] {
-  let previousAuthor: string | null = null
-  let previousDay: string | null = null
-
-  return rows.map((row) => {
-    // **Not `row.author_id`**, and the difference is load-bearing for the one
-    // case this function is re-run for. An optimistic row is built before the
-    // server has said anything, so it has no `author_id` to carry — the screen
-    // knows only that the message is the viewer's. Keying on the raw column
-    // therefore broke every optimistic message out of its own run, and the unit
-    // test asserting otherwise passed only because its fixture invented an
-    // `author_id` the screen never has.
-    //
-    // "Mine" is a complete author identity for grouping: two consecutive `mine`
-    // rows are the same rider by definition, and a `mine` row can never be the
-    // same rider as one that is not.
-    const author = row.mine ? '@me' : row.author_id
-    const day = rideZoneDayKey(row.created_at)
-    const startsDay = day !== previousDay
-    const startsGroup = startsDay || author !== previousAuthor
-
-    previousAuthor = author
-    previousDay = day
-
-    return { ...row, startsGroup, startsDay }
-  })
-}
-
-/**
  * Does this ride's chat hold a message this rider has not read (`061`)?
  *
  * One RPC, one boolean. Everything that decides the answer lives in
@@ -179,11 +123,12 @@ export async function getRideChatUnread(rideId: string): Promise<boolean> {
   return !error && data === true
 }
 
-/** Resolves "is this mine" once per read, then groups. See `groupMessages`. */
+/**
+ * Resolves "is this mine" once per read, then groups — `decorateChat` typed to
+ * this table's row. The grouping itself lives in `lib/data/chat.ts` since `081`,
+ * shared with the club thread; this wrapper is what keeps
+ * `getRideMessages`' return type exactly `RideChatMessage[]`.
+ */
 export function decorate(rows: RideMessage[], viewerId: string | undefined): RideChatMessage[] {
-  return groupMessages(
-    // `false` for a signed-out viewer rather than crashing, though this read
-    // returns nothing for one anyway: `anon` holds zero grants on the table.
-    rows.map((row) => ({ ...row, mine: !!viewerId && row.author_id === viewerId }))
-  )
+  return decorateChat(rows, viewerId)
 }

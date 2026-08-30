@@ -12,23 +12,35 @@ import { RECENT_STARTS } from '@/components/rides/recentStarts'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState, type ActionState } from '@/lib/actions/state'
 import { useRestoreChecked, useRestoreSelection } from '@/lib/actions/retain'
-import { APP_TIME_ZONE, formatRideDepartureInput } from '@/lib/utils'
+import { formatRideDepartureInput, rideZone } from '@/lib/utils'
 import {
-  RIDE_DESCRIPTION_MAX,
   RIDE_LOCATION_FIELD_NAMES,
   RIDE_MEETING_POINT_MAX,
+  RIDE_TIMEZONE_FIELD_NAME,
   RIDE_ROUTE_MAX,
   RIDE_TITLE_MAX,
+  resolveDepartureZone,
   rideSchema,
 } from '@/lib/validation/rides'
 import type { RideForEdit } from '@/types'
 
-const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') ?? APP_TIME_ZONE
+/** See `CreateRideForm`'s copy of this for why the label follows the pick. */
+function departureZoneLabel(zone: string | null | undefined): string {
+  const resolved = rideZone(zone)
+  return resolved.split('/').pop()?.replace(/_/g, ' ') ?? resolved
+}
 
 /**
  * `/rides/detail/edit` — PD-101. Composition-is-ours for the same reason
  * `CreateRideForm`'s is (that component's header has the full argument); this
  * shares its field set exactly, per `design.md` §D5.
+ *
+ * **`description` is not one of them any more (PD-320)**, on either form. The
+ * column survives and the ride detail still renders what existing rows hold —
+ * what went is the *editing*, so `updateRide` no longer names the column in its
+ * payload. Re-adding the field here without re-adding it there would post a
+ * value nothing writes; re-adding it there without a field here would write
+ * `null` over every existing description on the next unrelated save.
  *
  * **Controlled, unlike the create forms, and that is a deliberate departure.**
  * `EditProfileForm`'s own header documents the trap: React resets an
@@ -62,7 +74,6 @@ export function EditRideForm({
   useActionRedirect(state)
 
   const [title, setTitle] = useState(ride.title)
-  const [description, setDescription] = useState(ride.description ?? '')
   const [meetingPoint, setMeetingPoint] = useState(ride.meeting_point)
   // Seeded from the stored pick, so an edit that never touches the location
   // saves it back unchanged. Without this an unrelated edit — a new title —
@@ -76,11 +87,41 @@ export function EditRideForm({
           lon: ride.longitude,
           // Never stored on a ride — see `PlaceValue.countryCode`'s own note.
           countryCode: null,
+          // Unlike the country, this IS stored on a ride (`080`) — so seeding it
+          // is what stops an edit that never touches the location from posting a
+          // pick with no zone and dropping one the ride already had.
+          timezone: ride.timezone,
         }
       : null
   )
   const [routeDescription, setRouteDescription] = useState(ride.route_description ?? '')
-  const [departureAt, setDepartureAt] = useState(formatRideDepartureInput(ride.departure_at))
+  // **The zone this form is TYPING IN, which follows the pick and falls back to
+  // the ride's stored one** (`080`, PD-193). `updateRide` reconstructs the same
+  // answer server-side, through the same `resolveDepartureZone`, so an untouched
+  // departure field resolves back to the instant already stored and
+  // `enforce_ride_timezone` is left to hold the wall-clock. Read that action's
+  // comment before changing either half; they have to agree.
+  //
+  // **One window where the LABEL goes stale, and it is a label rather than a
+  // wrong write.** This reads `ride.timezone` off the cached `getRideForEdit`
+  // row; the action re-reads it fresh. If `resolve-ride-location` lands a zone
+  // while the form is open, the hint still names the old one — so a rider who
+  // then changes the time is shown "Amsterdam" while the instant is stored
+  // against the real zone. The STORED value is the correct one (wall-clock at
+  // the meeting point), and the untouched-time case is unaffected because the
+  // trigger moved `departure_at` with the zone, so the same digits still
+  // reproduce the same instant. Closing it means re-reading the ride on submit
+  // and re-labelling under the rider mid-edit, which is a worse trade than a
+  // hint that is briefly one zone behind.
+  const departureZone = resolveDepartureZone(startPlace, ride.timezone)
+
+  // Seeded ONCE, from the ride's own zone. It is deliberately not re-derived
+  // when `departureZone` changes: the digits the rider is looking at are what
+  // they mean, so picking a place in another zone re-labels the field rather
+  // than rewriting it — which is the same thing the hint below now says.
+  const [departureAt, setDepartureAt] = useState(
+    formatRideDepartureInput(ride.departure_at, ride.timezone)
+  )
   const [isPublic, setIsPublic] = useState(ride.is_public)
   const [clubId, setClubId] = useState(ride.club_id ?? '')
   // **Controlled is not enough for either of these, and here it costs data
@@ -104,7 +145,6 @@ export function EditRideForm({
     if (!state.error) return
     const parsed = rideSchema.safeParse({
       title,
-      description,
       meeting_point: meetingPoint,
       route_description: routeDescription,
       departure_at: departureAt,
@@ -156,15 +196,6 @@ export function EditRideForm({
           onChange={(event) => setTitle(event.target.value)}
         />
 
-        <Textarea
-          name="description"
-          label="Description"
-          rows={3}
-          maxLength={RIDE_DESCRIPTION_MAX}
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-        />
-
         {/* Same field as Create, same rule: typing throws the pin away. */}
         <div className="flex flex-col gap-1.5">
           <PlaceSearchField
@@ -176,6 +207,13 @@ export function EditRideForm({
             freeText={{ text: meetingPoint, onTextChange: setMeetingPoint, required: true }}
             recents={RECENT_STARTS}
             disabled={pending}
+          />
+          {/* Rendered here rather than by `PlaceSearchField` — see
+              `RIDE_TIMEZONE_FIELD_NAME`. */}
+          <input
+            type="hidden"
+            name={RIDE_TIMEZONE_FIELD_NAME}
+            value={startPlace?.timezone ?? ''}
           />
           <p className="px-1 text-xs text-muted">
             Typing a meeting point is fine — search just adds a map and a pin.
@@ -192,7 +230,7 @@ export function EditRideForm({
             onChange={(event) => setDepartureAt(event.target.value)}
           />
           <p className="px-1 text-xs text-muted">
-            {`Times are in ${DEPARTURE_ZONE_LABEL} time, whatever zone you're riding in.`}
+            {`Times are in ${departureZoneLabel(departureZone)} time, whatever zone you're reading this in.`}
           </p>
         </div>
 
@@ -244,9 +282,24 @@ export function EditRideForm({
             checked={isPublic}
             onChange={(event) => setIsPublic(event.target.checked)}
           />
+          {/* **Word for word `CreateRideForm`'s, and it has to stay that way.**
+              The two forms describe the same checkbox on the same column, so a
+              rider who creates a ride and then edits it reads both. "Riders you
+              invite" is `083`'s fourth `rides` SELECT arm (PD-329), which is
+              what makes the sentence true of a ride with no club.
+
+              **Nothing enforces the match.** The two drifted once already and a
+              read caught it, not a gate. PD-338 rewrites the sentences below
+              and is where an assertion over the pair belongs.
+
+              The `wouldStrand` alert below still argues from the premise `083`
+              retired. It is deliberately NOT edited here: it is the guard's own
+              message, the guard is a written `ride-lifecycle` requirement, and
+              PD-338 owns both. A hint that describes the feature and a refusal
+              that describes the rule are different sentences. */}
           <p className="pl-8 text-xs font-medium text-muted">
-            Anyone signed in can see and join a public ride. A private ride is visible to its
-            club, or to you alone if it has no club.
+            Anyone signed in can see and join a public ride. A private ride is visible to its club,
+            and to riders you invite.
           </p>
         </div>
 

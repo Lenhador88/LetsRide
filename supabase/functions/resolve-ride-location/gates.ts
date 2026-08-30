@@ -28,21 +28,33 @@
  * ---------------------------------------------------------------------------
  * What is measured here and what is assumed — read this before trusting a value
  * ---------------------------------------------------------------------------
- * `*.geoapify.com` is egress-blocked from the build container, so **not one
- * request in this file has ever been issued.** Per `CLAUDE.md`'s rule that an
- * inferred value must never pass silently as a known one, each constant below
- * says which it is. The three that are genuinely assumed:
+ * Per `CLAUDE.md`'s rule that an inferred value must never pass silently as a
+ * known one, each constant below says which it is.
  *
- *   - `MAP_STYLE`, `SCALE_FACTOR` and the static-map endpoint's parameter names
- *     are taken from the vendor's documentation as this repo understands it and
- *     have not been exercised. A wrong parameter name is a fail-open case here:
- *     `index.ts` treats every non-2xx as "no tile", so the ride still saves.
+ * **Both halves of this file have now been exercised against the live vendor**
+ * — DEV, 2026-08-27, one picked ride and one typed one, both returning
+ * `{"rendered":true}` with two objects in Storage and both path columns
+ * written. So the static-map endpoint, its parameter names, `MAP_STYLE` and
+ * `SCALE_FACTOR` are MEASURED rather than assumed — which matters more than the
+ * text they replace allowed, because a **misspelled query parameter on this API
+ * is IGNORED rather than rejected**. A wrong `scaleFactor` would have returned
+ * 200 with a 1× image and stored it, not a non-2xx and no tile. Only a wrong
+ * *endpoint* fails open through `index.ts`'s "every non-2xx is no tile" path.
+ *
+ * Two things remain genuinely unmeasured, and both are about the *vocabulary*
+ * of a response rather than the shape of a request — one successful geocode
+ * cannot enumerate either:
+ *
  *   - `STREET_LEVEL_RESULT_TYPES` is an **allowlist** precisely because the
  *     vocabulary is unmeasured — see its own comment.
- *   - `CONFIDENCE_FLOOR`'s scale. One observation of the value `1` is equally
+ *   - `CONFIDENCE_FLOOR`'s scale. Two observations of the value `1` are equally
  *     consistent with 0–1, 0–10 and 0–100.
  *
- * Task 8.4's live exercise is where those stop being assumptions.
+ * `*.geoapify.com` was egress-blocked from the build container when this file
+ * was written, which is why so much of it was inferred. **It is not blocked
+ * now** — `apidocs.geoapify.com` and `www.geoapify.com` both answer 200 as of
+ * 2026-08-27, so a session can read the vendor's own documentation rather than
+ * a search summary of it. Check before inheriting the older claim.
  */
 
 /* -------------------------------------------------------------------------- */
@@ -52,13 +64,14 @@
 /** Geocoding. The measured response in `tasks.md` §0.8 came from this endpoint. */
 export const GEOCODE_ENDPOINT = 'https://api.geoapify.com/v1/geocode/search'
 
-/** Static Maps. UNEXERCISED — see the header. */
+/** Static Maps. Exercised 2026-08-27 — see the header. */
 export const STATIC_MAP_ENDPOINT = 'https://maps.geoapify.com/v1/staticmap'
 
 /**
- * ASSUMED, not measured. A light OSM raster style; the two containers put text
- * over the tile (`RideMap`'s `bg-scrim`, `RideCard`'s `White/100` pin disc), so
- * the style only has to be neutral, not chosen.
+ * MEASURED 2026-08-27: the style exists and renders. It was chosen unmeasured,
+ * and the reason it could be is unchanged — a light OSM raster style, with both
+ * containers putting text over the tile (`RideMap`'s `bg-scrim`, `RideCard`'s
+ * `White/100` pin disc), so the style only has to be neutral, not chosen.
  */
 export const MAP_STYLE = 'osm-bright'
 
@@ -66,20 +79,106 @@ export const MAP_STYLE = 'osm-bright'
  * 2× device pixel ratio, `design.md` §D4: an 80×148 CSS-pixel tile drawn 1:1 on
  * a 3× phone is mush.
  *
- * **Expressed as `scaleFactor` rather than by doubling `width`/`height`, and the
- * difference is load-bearing for §6.** Doubling the pixel dimensions doubles the
- * *map area* at a fixed zoom and leaves the vendor's burned-in attribution at
- * its original size — which then displays at **half** its natural size once the
- * browser scales the tile back down to 80 CSS px, dropping it below the design
- * system's 10px floor and putting the strip straight into the spec's
- * *A credit that cannot fit means no tile* branch. `scaleFactor` renders the
- * same map area at twice the resolution, labels and credit included, so the
- * credit lands back at its natural apparent size.
+ * **Expressed as `scaleFactor` rather than by doubling `width`/`height`.**
+ * Doubling the pixel dimensions doubles the *map area* at a fixed zoom;
+ * `scaleFactor` renders the same map area at twice the resolution. MEASURED on
+ * DEV 2026-08-16: `80×148 scaleFactor=2` returned 160×296 and `358×160
+ * scaleFactor=2` returned 716×320. The documented range is **1..2**, "greater
+ * values available on request", so 2 is the ceiling as well as the choice.
  *
- * ASSUMED: that the parameter exists and takes `2`. If it does not, the request
- * fails and the ride saves with no tile, which is the fail-open path.
+ * **It does NOT scale the vendor's burned-in credit**, which was a fixed
+ * absolute size independent of both the dimensions and the factor — so the
+ * credit spanned and clipped the 160-wide card image while remaining legible on
+ * the 716-wide detail panel. That is recorded because it is the trap: raising
+ * `scaleFactor` is the obvious lever and it moves the credit the *opposite* way
+ * from the one that helps, making it occupy less of the tile and so less
+ * legible, which is the axis the obligation is measured on.
+ *
+ * It is history rather than a live constraint now — `ATTRIBUTION_MODE` means
+ * nothing is burned in at all — and it becomes live again the moment anyone
+ * sets that back to `default`.
  */
 export const SCALE_FACTOR = 2
+
+/**
+ * **`attribution=none` — the credit is ours to render, and this constant is one
+ * half of a two-part obligation.** The other half is `MapAttribution` in
+ * `src/components/rides/`, drawn once on each of the THREE screens that display
+ * a tile — `/rides`, `/rides/detail` and `/clubs/detail/rides` — never per tile
+ * and never over one. **A new surface rendering `map_card_url` or
+ * `map_detail_url` owes one and nothing enforces that**, so re-derive the set
+ * with `git grep -l "map_card_url\|map_detail_url" -- 'src/app' 'src/components'`
+ * rather than trusting the count here. Neither half may
+ * ship without the other, and the ORDER matters in one direction only: the app
+ * gaining a credit before the image loses one is a harmless duplicate, while the
+ * image losing one before the app gains one is a breach. So deploy this function
+ * AFTER the app change is serving, never before.
+ *
+ * MEASURED, twice. The parameter is real — Geoapify's own OpenAPI spec at
+ * `apidocs.geoapify.com/assets/openapi/specs/static-maps-api-openapi-specs.json`
+ * declares it `in: query`, `enum: [default, mandatory, none]`, `default:
+ * default` — and the product owner rendered a tile with it on the upgraded
+ * account: *"no more text on top of the image."* PD-236 carries both.
+ *
+ * **`mandatory` is the third mode and we are deliberately not using it.** Its
+ * name suggests it renders whatever the caller's plan legally requires, which
+ * would be a smaller burned-in block rather than none — and a smaller block is
+ * still a block the 80-wide strip cannot carry legibly. `none` plus our own
+ * credit is the only combination that gets a clean card.
+ *
+ * What the account being a paid package changes is the *content* of the credit,
+ * never whether one is shown: White Label drops `Powered by Geoapify`, while the
+ * OpenStreetMap (ODbL 1.0) and OpenMapTiles credits survive every plan and every
+ * OSM-based vendor. `MapAttribution` holds the exact strings.
+ */
+export const ATTRIBUTION_MODE = 'none'
+
+/**
+ * **The pin on the detail panel.** Product owner, 2026-08-27: *"on the ride
+ * details I do not see the pin on the map highlighting the meeting point."*
+ * They were right and it had never been sent — the tile was centred on the
+ * meeting point and nothing marked it, which reads as a map of nowhere in
+ * particular. `TILE_SPECS`'s zoom table is why it now matters more than it did:
+ * at z7 the panel covers a couple of hundred kilometres.
+ *
+ * **`color` MUST be LOWERCASE hex. Uppercase A–F is a 400.** This is the whole
+ * bug that took every render on both projects down for an afternoon, and it is
+ * undocumented: the schema types `color` as `string, minLength 3, maxLength 10`,
+ * which cannot express it, and the vendor's examples happen to be lowercase
+ * without saying why. Measured against the live API 2026-08-27:
+ *
+ *   color:#ff5050  200      color:#FF5050  400
+ *   color:#abcdef  200      color:#ABCDEF  400
+ *   color:#111111  200      (digits only — no letters to case)
+ *
+ * **`Grey/100` is written `#1A1A1A` everywhere else in this design system**, so
+ * the trap is that copying the token in is the natural thing to do and is wrong
+ * here alone. `ride-geocode-gates.test.ts` asserts the absence of uppercase hex
+ * for exactly that reason — a future tidy-up that "matches the tokens" turns
+ * every ride's map off, silently, with the only symptom a `nothing_to_write` in
+ * a log nobody reads.
+ *
+ * **The error message names the property by INDEX and reading it wrongly cost
+ * two attempts.** `"marker[0][1]" does not match any of the allowed types` is
+ * marker 0, property 1 — counting from `lonlat` at 0 — so it was always naming
+ * `color`. It was read first as `icon` and then, on the strength of `size` being
+ * the schema's only `oneOf`, as `size`. Both were wrong and both were plausible.
+ * **Bisect against the API instead**: send one property at a time.
+ *
+ * Two things measured on the way that contradict what this file used to say.
+ * `size` accepts a plain integer as well as the named enum — `size:40` renders
+ * 200 on its own — so the `oneOf` was never the problem. And **a bogus `icon`
+ * name does NOT 400, it renders a default**, so an unknown icon fails silently
+ * rather than loudly; that is a reason to distrust `icon`, but not the reason
+ * this was broken.
+ *
+ * What ships is a plain teardrop — `type` defaults to `material`, `whitecircle`
+ * to `yes` — in `Grey/100`. That IS the v2 pin the card strip already draws in
+ * HTML, so the glyph was never load-bearing. A glyph does work
+ * (`icontype:material;icon:place` renders), and adding one still wants a real
+ * render behind it because of the silent-fallback above.
+ */
+export const MARKER_STYLE = 'color:#1a1a1a;size:x-large'
 
 /* -------------------------------------------------------------------------- */
 /* The three gates                                                             */
@@ -160,6 +259,15 @@ export const STREET_LEVEL_RESULT_TYPES: readonly string[] = ['building', 'amenit
  */
 export const SEPARATION_THRESHOLD_METRES = 500
 
+/**
+ * `080`'s `rides_timezone_is_bounded`, restated for the same reason
+ * `search-places/shape.ts` restates it: a value that overruns the CHECK turns a
+ * good geocode into `column_write_refused`, which deletes both freshly uploaded
+ * tiles. The longest name in the IANA database is
+ * `America/Argentina/ComodRivadavia` at 32 characters.
+ */
+export const MAX_TIMEZONE_CHARS = 64
+
 /* -------------------------------------------------------------------------- */
 /* The two tiles                                                               */
 /* -------------------------------------------------------------------------- */
@@ -169,6 +277,8 @@ export type TileSpec = {
   readonly width: number
   readonly height: number
   readonly zoom: number
+  /** Burn a pin into the tile. False where the container draws its own. */
+  readonly marker: boolean
 }
 
 /**
@@ -178,13 +288,38 @@ export type TileSpec = {
  * there", which needs the town in frame.
  *
  * The dimensions are the containers' own: `RideCard`'s strip is `w-20` (80) by
- * 148, `RideMap`'s panel is `h-40` (160) across the page's 358. Matching them
- * exactly is what keeps `object-cover` from cropping the vendor's burned-in
- * credit out of the bottom of the image on the ordinary card.
+ * 148, `RideMap`'s panel is `h-40` (160) across the page's 358.
+ *
+ * **Both zooms are 7, and both are marked "to try" rather than settled.**
+ * Product owner, 2026-08-27, on the first tiles they could actually see —
+ * *"zoom 7 seems okay to try"* for the card, then *"Both maps seem to be very
+ * zoomed in. Can we zoom out to 7?"* for both. They were 13 and 15, and neither
+ * had ever been judged against a visible map: the burned-in credit covered the
+ * card and nobody had questioned the panel.
+ *
+ * **What z7 actually shows, MEASURED against real renders rather than derived.**
+ * The obvious calculation is wrong here and wrong in the alarming direction:
+ * Web-Mercator's `156543.03 / 2^zoom` metres per pixel, times `cos(52°)`, says a
+ * 358px panel covers ~270 km at z7 — country scale, useless. Real renders on
+ * 2026-08-27 put it nearer **65 km**, about 4× tighter, because `scaleFactor`
+ * and this vendor's zoom origin both cut against the naive figure.
+ *
+ * So, from images rather than arithmetic, at 358×160 `scaleFactor=2`:
+ *
+ *   z7  → Alkmaar to Utrecht, coast to Lelystad — the city AND its region
+ *   z11 → central Amsterdam, canals and district names
+ *   z13 → streets
+ *
+ * And at the 80×148 card, z7 keeps two town names legible, which is the strip's
+ * whole job — "this ride starts over there".
+ *
+ * **Do not re-derive this from the formula.** It is the trap this comment
+ * exists for: the number it gives looks measured, is four times too big, and
+ * argues for a zoom nobody wants.
  */
 export const TILE_SPECS = {
-  card: { width: 80, height: 148, zoom: 13 },
-  detail: { width: 358, height: 160, zoom: 15 },
+  card: { width: 80, height: 148, zoom: 7, marker: false },
+  detail: { width: 358, height: 160, zoom: 7, marker: true },
 } as const satisfies Record<string, TileSpec>
 
 export type TileKind = keyof typeof TILE_SPECS
@@ -226,14 +361,19 @@ export function buildGeocodeUrl(meetingPoint: string, apiKey: string): string {
 }
 
 /**
- * **Nothing here suppresses the vendor's attribution, and that is a decision
- * rather than an omission.** The Static Maps response carries map-style
- * attribution burned into the image, bottom-right, and that is what discharges
- * the OpenStreetMap obligation in practice (`tasks.md` §0.2, obligation 1 —
- * required *always*, on every plan, so there is no upgrade that removes it).
- * Suppressing it would not remove the obligation, it would move it onto a 80px
- * strip that cannot carry the string. `ride-geocode-gates.test.ts` asserts the
- * absence of every suppression parameter this vendor is known to offer.
+ * **This sends `attribution=none`, so the tile carries no credit and the app
+ * carries it instead.** The obligation is unchanged and undischargeable by any
+ * plan — Geoapify's own instruction is that *"you need to care about
+ * attributions yourself when you hide the automatically added attribution"* —
+ * and `MapAttribution` is where this repo takes it. See `ATTRIBUTION_MODE`.
+ *
+ * Until 2026-08-27 this comment said the opposite, on the reasoning that
+ * suppression *"would move the obligation onto an 80px strip that cannot carry
+ * the string"*. The premise was right and the conclusion was not: the string
+ * does not have to sit inside the image. Rendered as HTML over the tile it is
+ * legible at any tile size, which is the Leaflet pattern the vendor's own
+ * guidance names — *"the credit should typically appear in the corner of the
+ * map"*.
  */
 export function buildTileUrl(
   spec: TileSpec,
@@ -250,8 +390,17 @@ export function buildTileUrl(
   // for a plausible-looking place somewhere else entirely.
   url.searchParams.set('center', `lonlat:${coordinate.longitude},${coordinate.latitude}`)
   url.searchParams.set('zoom', String(spec.zoom))
+  // The card draws its own pin in HTML over the tile — see `MARKER_STYLE`.
+  if (spec.marker) {
+    url.searchParams.set(
+      'marker',
+      `lonlat:${coordinate.longitude},${coordinate.latitude};${MARKER_STYLE}`,
+    )
+  }
   // JPEG, never PNG — see `buildRideMapPath`.
   url.searchParams.set('format', 'jpeg')
+  // Ships with `MapAttribution` or not at all — see `ATTRIBUTION_MODE`.
+  url.searchParams.set('attribution', ATTRIBUTION_MODE)
   url.searchParams.set('apiKey', apiKey)
   return url.toString()
 }
@@ -284,6 +433,23 @@ export type GeocodeFeature = {
       /** Corroboration only — never the primary granularity test. */
       confidence_street_level?: unknown
     }
+    /**
+     * The IANA zone the point is in — PD-193's half, and the reason that story
+     * could be built at all: it arrives on a call this function already makes
+     * and already pays for.
+     *
+     * **Only `name` is read.** The vendor documents `offset_STD`, `offset_DST`
+     * and two abbreviations beside it; all four are derivable from the name and
+     * all four go stale with the tz database, so storing one would be storing a
+     * fact with an expiry date. Absent from the type for the same reason
+     * `rank.importance` is: reaching for one does not compile.
+     *
+     * Documentation-derived and unverified against a live response —
+     * `*.geoapify.com` is egress-blocked from the build container. A shape
+     * guessed wrong yields `null`, which is `rides.timezone`'s own "we do not
+     * know" and the clock every ride had before this.
+     */
+    timezone?: { name?: unknown }
   }
 }
 
@@ -295,10 +461,25 @@ export type Candidate = {
   confidence: number
   resultType: string
   streetLevelConfidence: number | null
+  /**
+   * **Not a gate, and it must never become one.** Every other field on a
+   * candidate can refuse it; this one is carried through the gates and read off
+   * the winner. A missing or malformed zone is a ride on `APP_TIME_ZONE`, which
+   * is where every ride was until `080` — refusing a good coordinate over it
+   * would trade a map for a clock.
+   */
+  timezone: string | null
 }
 
 export type GeocodeVerdict =
-  | { resolved: true; latitude: number; longitude: number; confidence: number }
+  | {
+      resolved: true
+      latitude: number
+      longitude: number
+      confidence: number
+      /** The winner's zone, or `null`. See `Candidate.timezone`. */
+      timezone: string | null
+    }
   | {
       resolved: false
       /**
@@ -327,12 +508,27 @@ function toCandidate(feature: GeocodeFeature): Candidate | null {
   // catching them here means the refusal costs no render rather than two.
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null
 
+  // Shape only, never membership: whether this names a REAL zone is `080`'s
+  // `enforce_ride_timezone`, against `pg_timezone_names`. What is bounded here
+  // is the two things that would reach the rider as a refused write rather than
+  // a missing clock — `rides_timezone_is_bounded`'s 64 characters, and anything
+  // that is not an `Area/Location` name at all.
+  const zone = properties?.timezone?.name
+  const timezone =
+    typeof zone === 'string' &&
+    zone.trim().length > 0 &&
+    zone.trim().length <= MAX_TIMEZONE_CHARS &&
+    /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/.test(zone.trim())
+      ? zone.trim()
+      : null
+
   return {
     latitude,
     longitude,
     confidence,
     resultType,
     streetLevelConfidence: isFiniteNumber(streetLevel) ? streetLevel : null,
+    timezone,
   }
 }
 
@@ -423,6 +619,7 @@ export function resolveCoordinate(response: GeocodeResponse | null | undefined):
     latitude: best.latitude,
     longitude: best.longitude,
     confidence: best.confidence,
+    timezone: best.timezone,
   }
 }
 

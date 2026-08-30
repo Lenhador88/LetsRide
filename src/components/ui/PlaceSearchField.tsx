@@ -126,6 +126,17 @@ export type PlaceValue = {
    * same way both already ignore `meta`.
    */
   countryCode?: string | null
+  /**
+   * The IANA zone the place is in, or `null` — carried straight through from
+   * `PlaceSearchResult.timezone` (`080`, PD-193). **Optional** for the same
+   * reason `countryCode` is: `RecentRideStart` and the club form's seeded value
+   * have no zone to offer, so an omitted property is a caller that never had
+   * one rather than a bug.
+   *
+   * Read by the two RIDE forms, which post it as `start_timezone`; the club and
+   * postcard callers ignore it, exactly as clubs and rides ignore `countryCode`.
+   */
+  timezone?: string | null
 }
 
 /** How long the field waits after the last keystroke before it searches. */
@@ -928,5 +939,6 @@ function toPlaceValue(place: PlaceSearchResult, maxNameLength?: number): PlaceVa
     lat: place.lat,
     lon: place.lon,
     countryCode: place.countryCode,
+    timezone: place.timezone,
   }
 }

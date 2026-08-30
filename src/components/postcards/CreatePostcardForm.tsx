@@ -16,6 +16,8 @@ import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { useRestoreSelection } from '@/lib/actions/retain'
 import { seedClubId } from '@/lib/clubs/seed-club-id'
+import { seedRideId } from '@/lib/rides/seed-ride-id'
+import type { RideOption } from '@/lib/data/rides'
 
 // The caption is controlled already; the audience was not, and it is the one
 // that matters most here. A refusal reset this select to its first option —
@@ -80,13 +82,33 @@ type Upload =
  */
 export function CreatePostcardForm({
   clubs,
+  rides,
   initialClubId,
+  initialRideId,
 }: {
   clubs: ClubOption[]
+  /** Rides this rider is crew of — exactly `041`'s write gate, per `getCrewRides`. */
+  rides: RideOption[]
   /** See `clubId` below. */
   initialClubId?: string | null
+  /** See `rideId` below. */
+  initialRideId?: string | null
 }) {
   const [state, formAction, pending] = useActionState(createPostcard, emptyActionState)
+  /**
+   * Which ride this composer was opened from, or null (PD-256) — `seedClubId`'s
+   * rule, applied through `seedRideId`: seeded only when the id names a ride
+   * this rider is actually crew of, so an unknown id in the URL cannot show one
+   * ride and submit another.
+   *
+   * **Read before `clubId` below, and the order matters**: `clubId`'s own
+   * initializer reads this ride's `club_id` to prefill the audience selector,
+   * so a rider opening the composer from a ride's Journal is not asked to
+   * re-pick a club they have already implied.
+   */
+  const [rideId, setRideId] = useState(() => seedRideId(rides, initialRideId))
+  const rideRef = useRef<HTMLSelectElement>(null)
+  useRestoreSelection(rideRef, rideId, state)
   /**
    * The club this composer was opened from, or null (PD-283).
    *
@@ -97,8 +119,25 @@ export function CreatePostcardForm({
    * reporting the unmatched id, so an unknown id in the URL would show one club
    * and submit another. Unmatched falls back to no club, which is the same
    * state as arriving here from the tab.
+   *
+   * **Opened from a ride, this also tries that ride's own `club_id` first**
+   * (PD-256) — the product owner's complaint was partly that the composer asks
+   * for an audience it could have inferred from the ride already picked. This
+   * is a one-time prefill at mount, not a live link between the two selects:
+   * both stay independently editable and a rider who changes the ride
+   * afterwards does not have the club silently follow it. Keeping the two
+   * selects from ever fighting over who owns the value was worth more than the
+   * extra "moves with you until touched" behaviour, which would need its own
+   * dirty-tracking state for a control that already has a sensible default.
    */
-  const [clubId, setClubId] = useState(() => seedClubId(clubs, initialClubId))
+  const [clubId, setClubId] = useState(() => {
+    const openedFrom = rideId ? rides.find((ride) => ride.id === rideId) : undefined
+    if (openedFrom?.club_id) {
+      const fromRide = seedClubId(clubs, openedFrom.club_id)
+      if (fromRide) return fromRide
+    }
+    return seedClubId(clubs, initialClubId)
+  })
   const clubRef = useRef<HTMLSelectElement>(null)
   useRestoreSelection(clubRef, clubId, state)
   useActionRedirect(state)
@@ -376,13 +415,16 @@ export function CreatePostcardForm({
             'flex w-full items-center justify-center overflow-hidden rounded-lg bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50',
             !preview && 'border-2 border-dashed border-border-strong',
           )}
-          // The design's own box — 358x224 inside a 390-wide frame, so a ratio
-          // rather than a height, and it survives a wider screen. It is also
-          // what the FEED draws (`PostcardCard`, 334/200): the previous
-          // `aspect-4/5` showed the rider a tall crop of a photo that posts
-          // landscape, so shrinking this made the preview honest as well as
-          // smaller.
-          style={{ aspectRatio: '358 / 224' }}
+          // **The preview's job is to show the crop the photo will actually
+          // get**, which is the standard this box has been held to twice now.
+          // It was `aspect-4/5`, a tall crop of a photo that posts landscape;
+          // it became the design's 358×224 to match what the feed drew at
+          // 334/200; and PD-343 moved the feed to a square, so it is square.
+          // The deck's photo has no fixed ratio at all any more — it takes what
+          // the card has left — but the popup and `/postcards/detail` are
+          // exactly this, and the deck lands near it, so a square is the
+          // honest single answer.
+          style={{ aspectRatio: '1 / 1' }}
         >
           {preview ? (
             // eslint-disable-next-line @next/next/no-img-element -- a blob: object URL, not a remote asset next/image can optimise
@@ -462,6 +504,32 @@ export function CreatePostcardForm({
           {clubs.map((club) => (
             <option key={club.id} value={club.id}>
               {club.name} (members only)
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Ride tag, not a second audience — `club_id` above still decides who
+          can see this. `041`'s write gate only admits rides this rider is
+          crew of, which is exactly the list `rides` already is, so every
+          option here is one the database will actually accept. */}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="rideId" className="text-sm font-medium text-muted">
+          Ride
+        </label>
+        <select
+          id="rideId"
+          ref={rideRef}
+          name="rideId"
+          value={rideId}
+          onChange={(event) => setRideId(event.target.value)}
+          className="h-14 w-full rounded-lg border-2 border-border bg-surface px-4 text-base text-foreground transition-colors focus:border-accent focus:outline-none"
+        >
+          {/* '' is no ride — postcardRideIdSchema turns it into null. */}
+          <option value="">No ride</option>
+          {rides.map((ride) => (
+            <option key={ride.id} value={ride.id}>
+              {ride.title}
             </option>
           ))}
         </select>

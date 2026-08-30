@@ -10,8 +10,8 @@ src/
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed bottom tabs); each page renders its own <Header>
 │   │   ├── error.tsx       # The app's only error boundary
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/detail (one card + its comment thread)
-│   │   ├── rides/          # /rides, /rides/new, /rides/detail (Ride plan), /rides/detail/crew, /rides/detail/chat, /rides/detail/edit (PD-101)
-│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/detail (merged 2026-08-18) + /rides, /members, /edit (PD-101)
+│   │   ├── rides/          # /rides (From clubs), /rides/explore, /rides/new, /rides/detail (Ride plan), /rides/detail/crew, /rides/detail/chat, /rides/detail/edit (PD-101)
+│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/detail (merged 2026-08-18) + /rides, /members, /edit (PD-101), /threads, /threads/new, /thread (PD-307), /manage (PD-326)
 │   │   ├── notifications/  # /notifications — PD-118. Becomes /inbox/notifications when the tab returns
 │   │   └── profile/        # /profile (your own), /profile/detail (another rider's — view-rider-profile)
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
@@ -25,9 +25,10 @@ src/
 │   ├── icons/              # generated.tsx — the 53 Figma icons. GENERATED, don't edit
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout) — plus username-verdict.ts, pure + tested, the postcards/deck.ts shape rather than a fifth component
-│   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, MarkRideChatSeen, RideAttendanceBar, RideCard, RideChatButton, RideChatComposer, RideChatRow, RideChatThread, RideChip, RideCrewRail, RideFilterBar, RideHeader, RideJournal, RideMap, RideOptionsMenu, NearbyRidesStrip, recentStarts
-│   ├── clubs/              # ClubCard, ClubCreateRideRow, ClubDetailHeader, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPostcardCarousel, CreateClubForm, DeleteClubControl, EditClubForm, ExploreClubsStrip, JoinClubButton, MarkClubSeen
-│   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, ShareButton
+│   ├── chat/              # ChatComposer, ChatThread, MarkChatSeen — shared by the ride chat and club threads since 081
+│   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, RideAttendanceBar, RideCard, RideChatButton, RideChatRow, RideChip, RideCrewRail, RideFilterBar, RideHeader, RideJournal, RideMap, RideOptionsMenu, ExploreRidesList, ExploreRidesStrip, recentStarts
+│   ├── clubs/              # ClubCard, ClubCreateRideRow, ClubDetailHeader, ClubThreadRow, ClubThreadsSection, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPostcardCarousel, CreateClubForm, CreateThreadForm, DeleteClubControl, EditClubForm, ExploreClubsList, ExploreClubsStrip, JoinClubButton, MarkClubSeen, clubTimeline
+│   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, PostcardStamp, PostcardViewer, ShareButton, SwipeCoach, coachMark, deck, locationCopy, viewerContext
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem, NotificationsPanel
 │   └── profile/            # CountryFlags, EditProfileForm, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu
 ├── lib/
@@ -45,12 +46,12 @@ src/
 │   ├── query/              # useQuery, invalidate, keys.ts — the cache contract
 │   ├── routes.ts           # every href that names a resource id — /rides/detail?id= and its nine siblings (PD-142)
 │   ├── back-navigation.ts  # where a back control goes on a screen with several entry points — /notifications carries its origin in ?from= (PD-209)
-│   ├── realtime/           # useRideMessageStream — the app's only Supabase Realtime subscription
+│   ├── realtime/           # useRideMessageStream, useClubThreadStream — the app's two Supabase Realtime subscriptions (081)
 │   ├── location/           # rider-location.ts (where the rider is — device, then profile city; never prompts), distance.ts (haversine + NEARBY_RADIUS_KM, PD-259), near-label.ts (what to CALL that place — never the profile city beside a device fix)
-│   ├── rides/              # nearby.ts — which of the rides on screen are within NEARBY_RADIUS_KM (PD-260). A pure predicate over a fetched list, not a query
+│   ├── rides/              # seed-ride-id.ts. `nearby.ts` went with the near-you filter on 2026-08-27 — `/rides/explore` sections on `isNearby(distance_km)` from `lib/location/distance`, which is where that predicate now lives for both tabs
 │   ├── clubs/              # seed-club-id.ts — the default club every rider joins on completing onboarding (058)
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
-│   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatRideMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
+│   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatChatMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
 capacitor.config.ts         # The native shell's config. See docs/HANDOFF.md §The shell
@@ -78,7 +79,9 @@ docs/
 │   ├── design-system.md    #   v2 tokens, type scale, geometry, the icon set
 │   ├── migrations.md       #   the ordering chain, the rollback SQL, what reads as drift
 │   ├── repo-layout.md      #   this file
-│   └── product-scope.md    #   what is built per domain, against the Figma
+│   ├── product-scope.md    #   what is built per domain, against the Figma
+│   ├── analytics.md        #   the product questions, and which are already SQL
+│   └── observability.md    #   what we see when it breaks, and the 24h expiry on it
 └── specs/                  # Implementation specs (login-onboarding.md)
 design/                     # Committed Figma snapshot — READ THIS, don't call the API
 ├── README.md               # Why it exists, how to refresh it, how to query it
@@ -90,7 +93,11 @@ design/                     # Committed Figma snapshot — READ THIS, don't call
 └── icons/                  # index.json + exported SVGs
 scripts/figma/              # The snapshot pipeline (pull -> extract -> query)
 scripts/docs/               # docs:check — the numeric doc-claims registry + runner (PD-155)
+scripts/db/                 # drift + seed checks, the analytics queries, the error-log reader
 scripts/native/             # the two build-shape guards — the bundle carries no rider data, the web build is not an export (PD-142)
+scripts/probes/             # hand-run probes — the confirmation-on signup arm, which no automated gate may reach (PD-252)
+scripts/brand/              # favicon + OG card generation
+scripts/storage/            # sweep-orphans — Storage objects with no row pointing at them
 openspec/                   # config.yaml, plus:
 ├── specs/                  # Standing capability specs — the current contract
 └── changes/                # Active proposals; archive/ holds shipped ones

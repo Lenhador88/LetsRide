@@ -1,3 +1,4 @@
+import { RIDE_JOIN_PATH } from '@/lib/routes'
 import type { OnboardingState } from '@/types'
 
 /**
@@ -51,6 +52,20 @@ export const PUBLIC_PATHS = [
   // session may still be confirming a second device's link, and bouncing them
   // would spend the token with nothing to show for it.
   '/auth/confirm',
+  // The ride invite link's landing route (`091`, PD-330) — the first public
+  // path that is not an auth screen or static copy, and the only opening this
+  // change makes to a denylist that exists to keep decision #1 true by default.
+  //
+  // **It is public so it can HOLD a credential, never so it can SHOW
+  // anything.** The screen behind it renders no ride data at all without a
+  // session: the preview RPC needs `auth.uid()` for its block check and its
+  // participation-gate check, so there is nothing to render before a session
+  // exists and nothing anonymous to leak. What the page needs is to *mount*, so
+  // it can stash the token before the rider is sent through sign-up.
+  //
+  // **It is in `needsOnboardingState` below as well, and that is not
+  // duplication** — see that function.
+  RIDE_JOIN_PATH,
 ]
 
 /**
@@ -219,10 +234,26 @@ export function resolveDestination(pathname: string, state: GuardState): string 
  * Split out so the guard can skip a round trip on the legal pages and the whole
  * recovery flow, exactly as `proxy.ts` did — and so the skip is testable rather
  * than being an early `return` buried in the middle of the decision.
+ *
+ * **This is a different question from `isPublicPath`, and the first line is why
+ * a public route has to be named here as well.** *May this be reached without a
+ * session* and *must decision #5 be evaluated here* are separate, and
+ * `!isPublicPath(pathname) → true` means adding a route to `PUBLIC_PATHS` alone
+ * silently answers this one `false`: the stamps are never read, the state stays
+ * `{ kind: 'session' }`, and `resolveDestination` answers "stay". For the legal
+ * pages and the recovery flow that is correct and deliberate. For the invite
+ * landing route it is the feature's main flow dead-ending — a rider who has
+ * just signed up sits on the preview tapping a Join button that raises
+ * `check_violation` every time, with no route into the wizard and nothing on
+ * screen saying why.
  */
 export function needsOnboardingState(pathname: string): boolean {
   if (!isPublicPath(pathname)) return true
   if (AUTH_ENTRY_PATHS.includes(pathname)) return true
+  // A signed-in rider on an invite link must still be sent to their resume step
+  // — `023` refuses the claim's write until both stamps are set, so the wizard
+  // is the only thing standing between them and the ride. See the note above.
+  if (pathname === RIDE_JOIN_PATH) return true
   // The splash has to know where to send a signed-in rider, which is the resume
   // step when they are mid-wizard.
   return pathname === '/'

@@ -122,6 +122,28 @@ being called done.
       **Heart Filled in Pink/100 `#F23071`** when liked. That settles the
       "Pink/100 — purpose not established" note in `CLAUDE.md`: it is the liked heart, and
       nothing else uses it.
+- [ ] **The photo is bigger than the frame draws it — deviation, adopted 2026-08-28 (PD-343).**
+      A product decision on record, not drift. Product owner: *"The actual image of the
+      postcard is too small. Can we make the image take substantial more space on the
+      postcard?"* The frame is unchanged and still draws 334×200; the shipped card gives the
+      photo **1:1** in flow (the popup and `/postcards/detail`) and lets it take whatever the
+      card has left in the deck's `fill` mode, where the caption is capped at four lines and
+      scrolls instead of absorbing the growth. The deck's stack also stops honouring the
+      frame's 342×448 ratio and takes its slot's full height, which is what there was to give.
+      **1:1 rather than the 4:5 the other candidate offered**: `object-cover` keeps
+      `target ÷ source` of the width, so 4:5 against this frame's 5:3 keeps `0.8 ÷ 1.667` =
+      **48%** of a landscape photo, and a ride photo is landscape far more often than not.
+      **The `fill` photo has a 200px floor** — the height it had before this entry — because
+      without one it draws at `card − 188` and a 667pt phone (iPhone SE 2/3, 8) would have
+      rendered it *smaller* than before, on the smallest supported device, from a change made
+      to enlarge it.
+      **Five surfaces, not the two that are obvious.** The deck is the `fill` one; the popup,
+      `/postcards/detail` **and the postcard lists on `/profile` and `/profile/detail`** are
+      flow, and those last two are the ones a reader forgets — each draws a vertical list of
+      these cards, so every card there gains ~134px.
+      → `src/components/postcards/PostcardCard.tsx`, `PostcardDeck.tsx`, `Skeleton.tsx`,
+      `CreatePostcardForm.tsx` (the composer's preview follows the crop, as it has twice
+      before).
 - [ ] **An uncounted action control is the owner's 6/6 box, 8px under the glove floor —
       deviation, adopted 2026-08-17.** Same status as the photo-box entry under §Create
       postcard: a design question on record, not drift. All eight
@@ -431,15 +453,22 @@ is a drawn value this repo no longer builds:
       rides moved to lead the screen (with a `Plan a ride` create affordance, `ClubCreateRideRow`,
       when the club has none and the viewer can create one), and Members and Postcards swapped
       from what an earlier revision of this same conversation had settled. **Postcards is a
-      horizontally-scrolling strip of square tiles** (`ClubPostcardCarousel`), not the stacked
+      horizontally-scrolling strip of stamps** (`ClubPostcardCarousel`), not the stacked
       `PostcardCard` list `AI / Club detail merged / 2026-08-17` draws and this section drew
-      until today — modelled on the ride detail's `RideJournal`, whose own tiles are still
-      unbuilt (PD-257), so this is the first *real* tile carousel in the app rather than a copy
-      of an existing one. The trade is deliberate and product-owner-approved: a tile shows only
-      the photo, not the byline, caption, likes or comment count `PostcardCard` drew in place —
-      a rider taps through to the postcard's own thread for those. No frame draws this shape at
-      all, so there is nothing in `design/` to diff it against; the geometry (112px tiles, 8px
-      gap) is read off `RideJournalEmpty`'s own tokens rather than measured from Figma.
+      until 2026-08-18 — and **it is now literally the same tile as the ride detail's**, both
+      strips rendering one `PostcardStamp` element apiece. It was the first real tile carousel
+      in the app when it shipped, ahead of the Journal's; the shared component arrived on
+      2026-08-27 and the Journal's own *screen* is still unbuilt (PD-257, which is the route
+      `/rides/detail/journal` rather than the tile). The trade is deliberate and
+      product-owner-approved: a tile does not
+      show the caption, likes or comment count `PostcardCard` drew in place. **It does show the
+      byline as of 2026-08-27** (PD-316 and its follow-up) — both strips draw `PostcardStamp`,
+      a perforated postage-stamp frame with the author's avatar and username beneath it, and a
+      tap opens the postcard as a popup rather than navigating. No frame draws any of this: the
+      stamp is the product owner's word rather than a Figma component (`npm run figma -- ls |
+      grep -i stamp` is empty), so there is nothing in `design/` to diff it against and the
+      geometry — 128px tiles, 6px frame, 8px gap — is this app's own. The 112px it read before
+      was `RideJournalEmpty`'s tokens; the tile grew to give the byline a readable width.
 
 Blocked on schema, same as the ride detail: `formatRideTime` on `RideChip` renders one
 instant because `rides` has no end-time column — see that entry rather than repeating it.
@@ -561,14 +590,27 @@ heading that claims nothing was guessed is exactly where a guess goes unnoticed.
 - [ ] **`10:00 - 15:00` is a range; the schema has one timestamp.** `rides.departure_at` has no
       `ends_at` beside it, so the card renders a single departure time. Adding an end time is a
       small migration and would complete the design as drawn.
-- [ ] **The "All rides" tile's 2×2 collage has no ride photos to show.** *Chose:* the
-      organizers' avatars — real data in the right shape. The design's own empty frame draws
-      four `Grey/10%` quadrants, which is the fallback when there are no avatars either.
+- [ ] **The `From clubs` tile's 2×2 collage has no ride photos to show.** *Chose:* since
+      2026-08-27, the **clubs' own covers** (falling back to their avatars) — the tile stopped
+      meaning "every ride" that day and started meaning "these clubs", so the organizers' faces
+      it drew until then were filler for a question it no longer asks. The design's own empty
+      frame draws four `Grey/10%` quadrants, which is still the fallback when no club has an
+      image. Note `FilterCollage` repeats what it is given to fill four quadrants, so one club
+      draws its cover four times.
 - [ ] **The filter bar draws a rider tile ("itchyboots") among the clubs.** It would mean
       "rides organised by that rider". **Not built** — the product owner specified three tiles
-      for this screen: yours, all, and one per club. One question for the designer: is the
-      rider tile intended here, or carried over from the Postcards bar it shares a component
-      set with?
+      for this screen: yours, **from clubs** (the "all" tile until 2026-08-27, when it narrowed
+      to the rider's own clubs and took their square shape), and one per club. One question for
+      the designer: is the rider tile intended here, or carried over from the Postcards bar it
+      shares a component set with? It has become the likelier of the two — the owner wants
+      rides from connected riders on this bar in future, and a rider tile is the shape that
+      would arrive in.
+- [ ] **`/rides/explore` has no v2 frame at all.** `npm run figma -- ls xplore` finds
+      `Clubs - Explore` and nothing else, so every choice on that screen is *borrowed* from it
+      rather than measured: the titled header with a back button, the `Near <place>` / `More
+      rides` sectioning, and the two placeholder treatments in their slots. Deliberate — the two
+      screens are one idea on two tabs — but it is convention, not fidelity, and a designer
+      should see it before it hardens.
 - [ ] **The `Maybe` pill is `#E58F17`, and it is an unnamed fill.** Every other colour in
       `globals.css` inherits a Figma paint style name; this one has none, so `--color-maybe` is
       ours. Worth asking whether it should join the palette properly.
@@ -711,7 +753,7 @@ measurement as current.
   - [ ] **A day separator was ADDED that the design does not draw.** Every bubble carries
         `HH:mm` and nothing else, which is unambiguous for the single-day conversation the
         frame mocks and silently wrong for a ride planned three weeks out — "08:18" on a
-        message from last Tuesday reads as this morning. `formatRideMessageDay` draws `TODAY` /
+        message from last Tuesday reads as this morning. `formatChatMessageDay` draws `TODAY` /
         `YESTERDAY` / `SAT, 16 NOV`, uppercased to match `formatRideDate`. **A question for the
         designer**, and the one thing here that is an addition rather than an omission.
   - [ ] **The bubble tail is not drawn.** Each `Text Balloon` carries an 8×12 `Corner` vector.
@@ -1523,6 +1565,127 @@ item.
       open"* and *"we never show other riders where you are"* must both stay true of the code —
       nothing in `src/` uses `watchPosition`, and a device fix leaves the device only as a
       ~1 km-rounded proximity bias. A designer rewording this needs to keep both.
+
+### Private clubs in Explore, and the ride marker on a stamp — built 2026-08-28 (PD-325, PD-328)
+
+**Three surfaces the design has no frame for**, and the first two exist because `085` made a
+state occur that the design was drawn assuming could not.
+
+- [ ] **`ClubCard`'s fourth variant — `Private + not Joined`.** `v2 / Component / List / Club`
+      draws THREE, the product of `is Private Club` and `is Joined`, and the fourth is absent
+      because a private club you had not joined used to be invisible. `ClubCard`'s own header
+      said so in as many words until this change replaced it. Assembled from measured pieces
+      rather than invented: the same 358×112 card on `White/100` at radius 8, the same type row,
+      and the trailing slot's `Button / Link / Primary` (65×32, `Accent Brand/100`,
+      Poppins/14/Semibold) with different words. **Two things it draws that no frame covers**:
+      the member COUNT with no avatar faces, because `discoverable_private_clubs` returns an
+      aggregate and no roster, and the club's INITIALS in place of its avatar, because `016`'s
+      storage policy refuses the object to a non-member. Both are the honest thing the card
+      knows; a designer settling this should decide whether a faceless count belongs in the
+      avatar row at all, or whether that row should collapse.
+- [ ] **The reduced club screen** (`ClubPreviewScreen`), which a non-member lands on when they
+      tap a private club. No frame — `Clubs / View private club` holds Timeline, Rides, Members,
+      About and Sub Pages, all member-facing. Built from `ClubDetailHeader` plus the club
+      detail's own muted type line, `Lock2Icon` and `LocationOutlineIcon` at 24, and
+      `ClubMembershipButton`'s full-width `Button / Regular` at `lg`. **Its copy is invented and
+      is the part worth a designer's eye**: *"This club is private. Its rides, postcards,
+      threads and members are for its members."* and, for a refused rider, *"You asked to join.
+      The club said no."* The second is the ONLY place in the product a decline is told — `085`
+      can write no notification for it — so its tone is load-bearing rather than cosmetic.
+- [ ] **The ride marker on `PostcardStamp`** (`086`). There is **no stamp component in Figma at
+      all**, and `v2 / Component / Postcard`'s only provenance row is `User name · in · Club
+      name`. A `BikeIcon` at `h-3 w-3` in `text-muted`, `shrink-0`, at the end of the byline
+      row — measured icon at a measured type scale. Two placements were refused for structural
+      reasons rather than taste, and a redesign has to answer both: a corner badge is bitten by
+      `stamp-edge`'s mask and falls outside the `filter: drop-shadow` that follows the notch,
+      and a third row changes a tile height that sizes neighbours on TWO different strips.
+
+**Contrast, carried forward rather than introduced.** `RequestToJoinButton` reuses
+`JoinClubButton`'s class string byte for byte, so no new pairing ships — but it raises the
+instance count of `Accent Brand/100` on `White/100` at Poppins/14/Semibold, measured **3.52:1**
+against a 4.5:1 bar (14px semibold is not WCAG large). Its cream sibling is already logged at
+3.00:1 under §Ride detail. The accent-on-light pairing wants one decision, not one per button.
+
+### The stamp as a franked postal stamp — built 2026-08-29 (PD-350)
+
+**Product owner**: *"the stamps, can we make them look a bit more motorcyclyy and add the poster
+avatar and name into them?"* There is still **no stamp component in Figma at all** — the section
+above records that for `086`'s ride marker, and nothing in the snapshot has changed since. So this
+extends the same standing entry rather than claiming a measurement.
+
+- [ ] **The postmark on `PostcardStamp`.** A wheel — two rings, eight spokes, a hub — inked over
+      the photo's top-right corner at 36px on a 116px photo, rotated `-14deg`. Drawn in the
+      component from circles and lines rather than added to `generated.tsx`, which is generated
+      and never hand-edited; it is ornament belonging to one component, not a glyph the library
+      owes anyone, and it carries no artwork provenance question of the kind §Design System's
+      fourth rule is about. **It is deliberately not a bike**: `086` already spends `BikeIcon` on
+      the ride marker in the same byline row, where it means *this photo reached the club's strip
+      through one of its rides*, and a second bike meaning something else is worse than no motif.
+      A designer settling this should decide whether the mark belongs at all at tile size, and
+      whether a real cancellation's date belongs in it — that was refused here because the
+      smallest type token is 10px and a date inside a 27px inner ring wants 7.
+- [ ] **The ink is white with a two-layer dark halo**, `0 0 0.5px` at 70% for the edge and
+      `0 1px 2px` at 28% to lift it off the picture. **Measured against three stand-in photos —
+      dark tarmac, bright sky and mid-tone green — rather than one**: a single soft shadow, which
+      is what the first pass drew, renders as a halo rather than an edge over a bright photo and
+      the spokes read as a smudge. That is the case a screenshot of one dark photo cannot see.
+      The pairing is a white-on-photograph one, so no token contrast ratio applies; the mark is
+      `aria-hidden` decoration and carries no information a rider could act on.
+- [ ] **The byline moved INSIDE the frame** — printed on the white paper below the photo rather
+      than sitting as a row under the perforation. The tile's total height is unchanged (6 + 116
+      + 6 + 20 + 6 either way), which is what kept it a one-file change: `STAMP_TILE_WIDTH` sizes
+      the neighbouring `Add` and `Nothing yet` tiles on TWO strips against this height. A scrim
+      pill over the photo stays refused for the reason `PostcardStamp`'s header records — on a
+      116px square it covers a third of the picture.
+- [ ] **`stamp-edge`'s perforation pitch became a fixed length** (`--stamp-pitch: 14px`) where it
+      was `100% / 9`. The frame is no longer square now that it holds the byline, and a
+      percentage pitch spaced the side notches wider than the top ones by exactly the height of
+      that row. `mask-repeat: round` still fits a whole number per axis, so the two now sit
+      within a pixel of each other.
+
+### The ride invite link — built 2026-08-29 (PD-330), from no frame at all
+
+**Two screens with nothing measured behind their composition**, and the `ls` hits are a trap rather
+than a resource. `npm run figma -- ls` returns `Invite riders` and `Invite riders - Filled` under
+`Design · Rides` and `Join ride without account` under `Archive`. The first two are **OLD-stylesheet**
+(`Grey (OLD)/*`, `Accent (OLD)/*`) and draw a rider *search* — PD-329's flow, not this one. The third
+is archived, is out of scope under decision #1, **and draws the full crew roster with names**, which
+a bearer token must never see. So it is unusable on two counts, not one, and a session that reads it
+as a starting point is designing a data leak.
+
+Everything below is assembled from measured components and **none of it is measured**. Every string
+is invented.
+
+- [ ] **`/rides/join` (`RideInviteJoin`).** Page frame `max-w-[390px]`, `px-6`, `pt-[96px]`, `pb-8` —
+      derived from `AuthScreen`'s measured 390 / `px-10` / `pt-[120px]`, narrowed and raised because
+      this screen holds a card rather than a form column. Preview card `rounded-lg bg-surface p-4
+      gap-3` with `border-t border-border pt-3` above the organizer row; the two icon lines inside it
+      (`h-5 w-5`, `gap-2.5`, `text-sm font-semibold`, truncating) are `/rides/detail`'s measured rows,
+      but the card's padding, gap and hairline are invented. The organizer row — `Avatar size="sm"`,
+      "*name* is organizing", right-aligned "N riders" — is an invented composition, with `Rider` as
+      the unreadable-username fallback that `PostcardStamp` already uses.
+- [ ] **The copy on that screen is entirely invented and one line of it is load-bearing**: the dead-link
+      state says *"This link has expired"* and explains that links stop working once the ride departs
+      and that the organizer can turn one off — which is deliberately the SAME wording for a revoked,
+      expired, deleted, departed, blocked or guessed token, because the RPC makes those
+      indistinguishable and copy that guessed between them would be the oracle the schema refuses to
+      be. A designer changing this must not split it by cause.
+- [ ] **`RideInviteLinkSection` on `/rides/detail/invite`.** `SectionHeader title="Invite by link"`
+      plus an invented explanatory paragraph. Link row `rounded-lg bg-surface p-3 gap-3` — the surface
+      and radius are `DeleteRideControl`'s confirmation box (which is `p-4`), the `p-3` and the
+      two-line `text-sm font-semibold` over `text-xs font-medium text-muted` stack are invented.
+      `Share` / `Revoke` are `size="sm" variant="secondary"`, copied from `RideInviteList`'s
+      `Withdraw`; the confirmation row and its `danger` primary are `RideDeleteConfirmation`'s.
+      Status wording (`Expires in 3 days` / `Expired` / `Revoked`) and counts (`N riders joined` /
+      `Nobody has joined through it`) are invented; the relative time reuses `formatRelativeTime`
+      rather than adding a formatter.
+- [ ] **Revoke's confirmation copy is invented AND is a correctness constraint, not a style choice**:
+      *"This stops the link working, so nobody new can join with it. Riders who have already joined
+      stay on the ride."* Nothing in this app can eject a rider from a ride (PD-351), so copy
+      implying otherwise would be a promise the database refuses. A designer rewording it must keep
+      the second sentence's claim.
+- [ ] **Placing the link section BELOW the by-name picker** is an invented ordering, on the reasoning
+      that naming a rider is the narrower act and a bearer token should not be the default.
 
 ## Rule for anyone building against this
 

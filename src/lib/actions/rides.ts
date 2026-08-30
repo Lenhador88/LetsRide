@@ -3,7 +3,7 @@ import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
 import { routes } from '@/lib/routes'
-import { readRideLocation, rideSchema } from '@/lib/validation/rides'
+import { readRideLocation, resolveDepartureZone, rideSchema } from '@/lib/validation/rides'
 import { wallClockToUtc } from '@/lib/utils'
 import type { ActionState } from '@/lib/actions/state'
 import type { RideAttendance } from '@/types'
@@ -168,7 +168,6 @@ export async function createRide(
 
   const parsed = rideSchema.safeParse({
     title: formData.get('title'),
-    description: formData.get('description'),
     meeting_point: formData.get('meeting_point'),
     route_description: formData.get('route_description'),
     departure_at: formData.get('departure_at'),
@@ -195,16 +194,31 @@ export async function createRide(
     .insert({
       ...rest,
       ...(location ?? {}),
-      departure_at: wallClockToUtc(departure_at),
+      // **The zone is known here for a PICKED start and not for a typed one,
+      // and that asymmetry is the whole design** (`080`, PD-193). The client
+      // holds the picked place's zone at submit, so the instant is resolved
+      // against it at the only moment that matters and no correction is ever
+      // needed. A typed start has no zone yet — it comes from the geocode, and
+      // `resolve-ride-location` is fire-and-forget below — so it resolves
+      // against `APP_TIME_ZONE` and `enforce_ride_timezone` shifts it to
+      // preserve this wall-clock when the real zone lands.
+      //
+      // `null` as the stored zone because there is no ride yet to have one.
+      departure_at: wallClockToUtc(departure_at, resolveDepartureZone(location, null)),
       organizer_id: user.id,
     })
     .select('id')
     .single()
 
-  // 022 refuses a public ride in a private club. Reachable from the default
-  // path — the audience checkbox ships ticked and the club picker cannot tell a
-  // private club from a public one — so the generic message below would leave
-  // the rider with no route to the fix.
+  // 022 refuses a public ride in a private club. **No longer reachable from the
+  // DEFAULT path — the audience checkbox ships clear since PD-320 — but still
+  // reachable in one tap**, because the club picker cannot tell a private club
+  // from a public one, so a rider who ticks the box has no way to see it coming
+  // and the generic message below would leave them with no route to the fix.
+  //
+  // The flip narrows how often this fires; it does not retire the branch, and
+  // deleting it on the strength of the new default would put that rider back in
+  // front of "That ride could not be created.".
   //
   // Matched on the message rather than on `23514` alone, because 018's text
   // bounds raise the same SQLSTATE and a title-too-long must not be reported as
@@ -236,21 +250,18 @@ export async function createRide(
   // the ride, and a render already in flight against a deleted ride would spend
   // a ledger row on a ride that no longer exists.
   //
-  // **Not called when the write carried a pick** — PD-114 §D6, and the
-  // condition is about WHICH BUILD IS DEPLOYED rather than about picks.
+  // **Unconditional, and it must stay that way — PD-267.** An `if (!location)`
+  // guard stood here while the deployed build geocoded unconditionally: against
+  // a picked ride that build spent a geocode and two renders, uploaded both
+  // JPEGs, and had its column write silently overridden by
+  // `protect_picked_ride_location` — succeeding, so its own compensating delete
+  // never ran and two objects were orphaned with nothing naming them.
   //
-  // The function deployed today geocodes unconditionally. Against a picked
-  // ride it would spend a geocode and two renders, upload both JPEGs, and then
-  // have its column write silently overridden by
-  // `protect_picked_ride_location` — succeeding, so its own compensating
-  // delete never runs, and two objects are orphaned with nothing naming them.
-  //
-  // **Reinstate this call the moment `tasks.md` §6.1 is deployed** (§6.5). That
-  // build skips the geocode for a picked ride and renders from the stored
-  // coordinate, which is the only thing that ever gives a picked ride a tile —
-  // nothing else invokes the function. Left as-is, the feature ships and the
-  // map silently never appears for exactly the rides with the best coordinates.
-  if (!location) requestRideMapRender(supabase, ride.id)
+  // The build this merges against skips the geocode for a picked ride and
+  // renders from the stored coordinate. **Nothing else invokes this function**,
+  // so restoring the guard gives exactly the rides carrying the best
+  // coordinates no map at all — silently, with no error and no red gate.
+  requestRideMapRender(supabase, ride.id)
 
   invalidate(queryKeys.rides.all())
   // A ride created into a club appears on that club's Rides sub-page, which
@@ -364,7 +375,6 @@ export async function updateRide(
 
   const parsed = rideSchema.safeParse({
     title: formData.get('title'),
-    description: formData.get('description'),
     meeting_point: formData.get('meeting_point'),
     route_description: formData.get('route_description'),
     departure_at: formData.get('departure_at'),
@@ -392,7 +402,7 @@ export async function updateRide(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to edit a ride.' }
 
-  const { departure_at, title, description, route_description, meeting_point, is_public, club_id, location } =
+  const { departure_at, title, route_description, meeting_point, is_public, club_id, location } =
     parsed.data
 
   // PD-104 §5.1a. Read fresh rather than taking the paths off `getRideForEdit`'s
@@ -401,7 +411,7 @@ export async function updateRide(
   // its previous image paths the same way and for the same reason.
   const { data: previous } = await supabase
     .from('rides')
-    .select('meeting_point, start_place_id, map_card_path, map_detail_path')
+    .select('meeting_point, start_place_id, map_card_path, map_detail_path, timezone')
     .eq('id', rideId)
     .maybeSingle()
 
@@ -431,6 +441,21 @@ export async function updateRide(
   // resupplied, so the rider removed it.
   const pickCleared = !!previous && previous.start_place_id !== null && location === null
 
+  // **A pick REPLACED by a different pick, with the text left identical.**
+  // `addressChanged` compares `meeting_point` alone and `pickCleared` requires
+  // `location === null`, so swapping pick A for pick B under the same label
+  // satisfies neither — while `clear_ride_map_tiles` fires on the `start_place_id`
+  // change regardless and NULLs both path columns.
+  //
+  // Reachable rather than theoretical: `PlaceSearchField` writes the chosen
+  // place's name into the meeting-point input and `toPlaceValue` truncates it, so
+  // two places whose labels truncate alike collide — as do genuine duplicates in
+  // the geocoder's own results. Without this the ride keeps B's coordinate, loses
+  // both tiles, orphans the two objects nothing now names, and can never
+  // re-render short of an edit that happens to change the text.
+  const pickChanged =
+    !!previous && location !== null && location.start_place_id !== previous.start_place_id
+
   // Omitted, not NULLed, when there is nothing to say. An omitted column keeps
   // its value; a NULL erases it, and only one of those is what "the rider did
   // not touch the location" means.
@@ -444,6 +469,7 @@ export async function updateRide(
           // a confidence beside one. NULLing it is what makes "the rider chose
           // this" and "a geocoder guessed it" different rows.
           geocode_confidence: null,
+          timezone: location.timezone,
         }
       : pickCleared
         ? {
@@ -451,6 +477,14 @@ export async function updateRide(
             latitude: null,
             longitude: null,
             geocode_confidence: null,
+            // **`timezone` is deliberately NOT cleared here** (`080` §3). The
+            // four columns above are provenance for a POINT; the ride still
+            // meets at the place the TEXT names, and that place still has a
+            // clock. Clearing it would also pull the zone out from under the
+            // `departure_at` this same statement resolved against it — the
+            // defect measured on DEV before `080` merged, where a save that
+            // changed both the address and the time rendered an hour the rider
+            // never typed.
           }
         : {}
 
@@ -476,10 +510,39 @@ export async function updateRide(
     .from('rides')
     .update({
       title,
-      description,
+      // **`description` is deliberately absent (PD-320), and its absence is
+      // load-bearing rather than tidy-up.** The form no longer renders the
+      // field, so `formData.get('description')` would be `null` — which the
+      // schema's `optionalText` accepts — and naming the column here would
+      // therefore write `null` over an existing description on the next save
+      // that touched nothing but the title. Omitting it leaves what riders
+      // already wrote, which the ride detail still renders.
+      //
+      // `045` still grants UPDATE on the column, so this is the client's
+      // decision rather than the database's. Anything that ever writes it again
+      // needs a field on the form in the same change.
       route_description,
       meeting_point,
-      departure_at: wallClockToUtc(departure_at),
+      // **The zone the rider was LOOKING at, which is the stored one unless
+      // this save carries a new pick** (`080`, PD-193). The edit form renders
+      // the departure input as wall-clock in `ride.timezone`, so resolving the
+      // string back against that same zone is what makes an untouched field
+      // mean an unchanged instant.
+      //
+      // Read fresh above rather than taken from the form, and the race that
+      // looks like a problem is not one: if `resolve-ride-location` landed a
+      // zone mid-edit, `enforce_ride_timezone` shifted `departure_at` with it,
+      // so the "09:00" on the rider's screen is still 09:00 in the NEW zone and
+      // the fresh read is the one that reproduces it.
+      //
+      // Through `resolveDepartureZone` rather than inline, because
+      // `EditRideForm` has to reach the same answer to LABEL the field and a
+      // second copy of the rule is how the two drift. Read that function's
+      // header before touching either side.
+      departure_at: wallClockToUtc(
+        departure_at,
+        resolveDepartureZone(location, previous?.timezone ?? null)
+      ),
       is_public,
       club_id,
       // In the SAME statement as `meeting_point` on purpose: `067`'s
@@ -533,11 +596,11 @@ export async function updateRide(
   // paths, so gating the re-render on the text alone left the ride with no map
   // and no route back to one short of editing the address into something
   // different.
-  if (addressChanged || pickCleared) {
+  if (addressChanged || pickCleared || pickChanged) {
     await removeRideMapTiles(supabase, [previous!.map_card_path, previous!.map_detail_path])
-    // Not when the save carried a pick — same condition as `createRide`, same
-    // reason, and the same reinstatement when §6.1 deploys. See the note there.
-    if (!location) requestRideMapRender(supabase, rideId)
+    // Unconditional, for `createRide`'s reason and with the same warning
+    // against reintroducing a pick guard. See the note there.
+    requestRideMapRender(supabase, rideId)
   }
 
   // `rides.all()`, not `rides.detail(rideId)` alone: `club_id` and

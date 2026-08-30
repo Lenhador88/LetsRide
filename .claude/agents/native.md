@@ -65,11 +65,24 @@ is the check that distinguishes them.
 
 **What is left is what needs a compiler**: signing, a build, a simulator or device run, and the
 archive. Plus `cap add android`, which is unblocked and simply not asked for.
-A device check that a cold start at a non-root URL lands on its screen is still owed. `src/lib/native/boot-restore.ts`
-is the client half of that and is unit-tested; the premise underneath it — that Capacitor
-answers every extensionless path with the root `index.html` — is read from `Router.swift` and
-`WebViewLocalServer.java` at the pinned 8.5.0 and is **written and unverified** until a platform
-runs.
+A device check that a cold start at a non-root URL lands on its screen is still owed, and
+`src/lib/native/boot-restore.ts` is the client half of it — unit-tested, and **written and
+unverified** until a platform runs.
+
+**Read Capacitor's Swift from `node_modules/@capacitor/ios`** — all 46 files, at the version the
+build links, offline. Do not go to the network for `capacitor-swift-pm`: it ships binary
+xcframeworks, so a grep of *that repo* finds nothing, but the source is already in the tree and a
+session has burned a download and a disassembly rediscovering that.
+
+**The premise underneath `boot-restore.ts` splits, and one half is now known WRONG for deep links**
+(measured 2026-08-25; `docs/HANDOFF.md` §The shell carries the commands). `CapacitorRouter.route(for:)`
+does map every extensionless path to the root `index.html` — but a deep-link cold start never
+reaches it: `loadWebView()` loads `appStartServerURL`, so the webview boots at `/`, and a universal
+link is posted to `NotificationCenter` with nothing in Capacitor's core observing it to navigate.
+So the restore fires on a **webview process restore**, not on a deep link. Deep links need app-side
+work either way (PD-205) — no Associated Domains entitlement, and nothing in `src/` listens.
+The Android half is still read from `WebViewLocalServer.java` and is **written and unverified**;
+`android/` is not generated, so nothing there can be checked yet either way.
 
 **The *read in an effect, never during render* rule does not go away, and this brief used to
 say it would.** It said "when it is gone, say so plainly, because that rule can then be

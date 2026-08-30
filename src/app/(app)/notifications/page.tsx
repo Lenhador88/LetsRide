@@ -9,7 +9,7 @@ import { ErrorState } from '@/components/ui/ErrorState'
 import { useOnlineStatus } from '@/components/ui/OfflineState'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
-import { useBack } from '@/lib/actions/navigate'
+import { useBack, useSwipeBack } from '@/lib/actions/navigate'
 import { getNotificationsPage, NOTIFICATIONS_PAGE_SIZE } from '@/lib/data/notifications'
 import { getCurrentProfile } from '@/lib/data/profile'
 import { combineQueries, useQuery } from '@/lib/query'
@@ -55,6 +55,12 @@ const SECTIONS = ['Today', 'Yesterday', 'This week', 'All time'] as const
  */
 export default function NotificationsPage() {
   const goBack = useBack()
+  // PD-341. The handler rather than an href, because this screen's whole
+  // problem is that it has four ways in — `useBack` resolves the carried origin
+  // and `back-navigation.ts` owns why that is not `router.back()`. Passing the
+  // same function the arrow calls is what makes the gesture and the arrow one
+  // control with two ways to reach it.
+  useSwipeBack(goBack)
 
   return (
     <>

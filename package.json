@@ -25,7 +25,8 @@
     "db:seed:check": "./scripts/db/check-seed.sh",
     "docs:check": "node scripts/docs/check.mjs",
     "docs:check:cheap": "node scripts/docs/check.mjs --cheap",
-    "figma:measure": "node scripts/figma/measure-icons.mjs"
+    "figma:measure": "node scripts/figma/measure-icons.mjs",
+    "logs:errors": "node scripts/db/logs-errors.mjs"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.0",

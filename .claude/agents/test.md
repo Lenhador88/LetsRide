@@ -1,7 +1,7 @@
 ---
 name: test
 description: Use to write tests for a feature after it's built, to extend the test infrastructure (Vitest and the RLS suite are in place; Playwright is not), and to verify a change by actually running the app against DEV — the walk, its fixtures, and anything that needs a real browser. Also use when a bug is found — write the failing test first, then fix.
-tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__execute_sql, mcp__Supabase__list_projects, mcp__Supabase__get_publishable_keys
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__execute_sql, mcp__Supabase__list_projects, mcp__Supabase__get_publishable_keys, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__execute_sql, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_projects, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_publishable_keys
 model: sonnet
 ---
 

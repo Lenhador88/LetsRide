@@ -237,7 +237,69 @@ describe('the cross-references in the real repo', () => {
     // one — which is the rule the task is applying, so the citation is the point
     // of the sentence rather than decoration. Same `Working` collision again, so
     // `firstWords` still admits no new kind.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(12)
+    //
+    // **12 -> 15 on 2026-08-27 (the two postcard-composer proposals).** Three
+    // new ones, all the same `Working` collision and all citing the heading they
+    // actually mean: `postcard-location-defaults-to-a-region`'s `design.md` and
+    // `postcard-audience-follows-its-entry-point`'s `proposal.md` cite
+    // `CLAUDE.md §Working Principles` and `§Working With the Product Owner` for
+    // the rule each is obeying — an objection raised once, the decision
+    // reaffirmed, recorded rather than re-argued. Both proposals record such an
+    // objection, so the citation is the load-bearing half of the sentence.
+    // `firstWords` above still reads `['Before', 'Working']`, which is the
+    // assertion that would have caught a new KIND of collision arriving with
+    // them.
+    //
+    // **15 -> 17 on 2026-08-27 (invite-riders-to-a-ride).** Two new ones, both
+    // in that change's `proposal.md` and both the same `Working` collision:
+    // `§Working Principles` for the rule that an inferred value must never pass
+    // silently as a measured one — which that proposal is obeying literally,
+    // having been written with two connectors absent and marking every
+    // second-hand claim — and `§Working With the Product Owner` for the rule a
+    // squad agent follows when it surfaces an objection rather than building
+    // around it, which is the section the two deliberate departures are
+    // recorded under. Both cite the heading they actually mean. `firstWords`
+    // above still reads `['Before', 'Working']`.
+    //
+    // **17 -> 23 on 2026-08-28 (the two clubs proposals, PD-325 and PD-328).**
+    // Six new ones, all the same `Working` collision and all citing the heading
+    // they actually mean. `show-private-clubs-and-request-to-join` accounts for
+    // five and `club-stamps-include-its-rides` for one; both cite
+    // `CLAUDE.md §Working Principles` for the rule that a wrong claim is
+    // REPLACED rather than narrated — each change has to overwrite a comment
+    // that is about to become false (`ClubCard`'s "the state cannot occur" and
+    // the club detail's shared-cache-key note) — and `§Working With the Product
+    // Owner` for the rule a proposal follows when it surfaces an objection
+    // rather than building around it, which is where PD-325's undeliverable
+    // decline notification is recorded.
+    //
+    // **A NEW kind was caught here and fixed rather than pinned**, which is the
+    // whole point of the `firstWords` assertion above: PD-325's design.md
+    // originally carried a `§What the requester may learn` heading, whose
+    // one-word match collided with four `What …` siblings in the same change.
+    // It was RENAMED to `§Disclosure to the requester` — first word unique — so
+    // this test's `firstWords` still reads `['Before', 'Working']` because the
+    // collision is gone, not because the ceiling absorbed it.
+    //
+    // **23 -> 24 on 2026-08-28 (`manage-club-riders`, PD-326 and PD-335).** One
+    // more, the same `Working` collision and citing the heading it means:
+    // `CLAUDE.md §Working Principles` for *fix the tool, don't route around
+    // it*, which that proposal cites to record that `openspec validate` had not
+    // been run on artifacts written by hand. It has since — the change
+    // validates — but the citation stays, because the rule it names is what
+    // made the gap worth recording rather than passing over.
+    //
+    // **24 -> 26 on 2026-08-29 (`share-a-ride-invite-link`, PD-330).** Two more,
+    // both the same `Working` collision, both citing the heading they mean.
+    // `§Working With the Product Owner` for the rule that makes that proposal
+    // open with an objection rather than build around it — the brief pointed the
+    // link's revoke at `088`'s remove-rider path, which is club-scoped, so no
+    // such path exists for a ride. `§Working Principles` for *write a claim
+    // beside its command, not beside its history*, which is what that proposal's
+    // `output: 'export'` section is: the web build is not a static export, so the
+    // obvious re-derivation returns a wrong answer and the correction is
+    // load-bearing rather than biography.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(26)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been

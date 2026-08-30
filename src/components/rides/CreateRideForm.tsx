@@ -12,20 +12,35 @@ import { RECENT_STARTS } from '@/components/rides/recentStarts'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { retaining, seedRetained, useRestoreSelection, wasChecked } from '@/lib/actions/retain'
-import { APP_TIME_ZONE, defaultRideDepartureInput } from '@/lib/utils'
+import { defaultRideDepartureInput, rideZone } from '@/lib/utils'
 import {
-  RIDE_DESCRIPTION_MAX,
   RIDE_LOCATION_FIELD_NAMES,
   RIDE_MEETING_POINT_MAX,
   RIDE_ROUTE_MAX,
+  RIDE_TIMEZONE_FIELD_NAME,
   RIDE_TITLE_MAX,
   readRideLocation,
+  resolveDepartureZone,
   rideSchema,
 } from '@/lib/validation/rides'
 
-// "Europe/Amsterdam" -> "Amsterdam", so the hint can never name a different
-// city than the zone `wallClockToUtc` actually resolves against.
-const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') ?? APP_TIME_ZONE
+/**
+ * "Europe/Amsterdam" -> "Amsterdam", so the hint can never name a different city
+ * than the zone `wallClockToUtc` actually resolves against.
+ *
+ * **It follows the picked place now, not the app** (`080`, PD-193). A ride
+ * carries the zone of its meeting point, so a rider who picks a start in Lisbon
+ * is typing Lisbon time — and the hint is the only thing on screen that says
+ * which clock the number they typed is on. Leaving it pinned to the app's zone
+ * would make the form state, in words, the opposite of what it does.
+ *
+ * Resolved through `rideZone` rather than off the raw value, so the label and
+ * the write can never disagree about an unusable zone.
+ */
+function departureZoneLabel(zone: string | null | undefined): string {
+  const resolved = rideZone(zone)
+  return resolved.split('/').pop()?.replace(/_/g, ' ') ?? resolved
+}
 
 /**
  * `Create ride`.
@@ -55,12 +70,16 @@ const DEPARTURE_ZONE_LABEL = APP_TIME_ZONE.split('/').pop()?.replace(/_/g, ' ') 
  * and no screen has ever set it, so a club's Rides sub-page could only ever be
  * empty — a hole the club detail made visible.
  */
-// Every field on the form. This is the screen with the most to lose: six
+// Every field on the form. This is the screen with the most to lose: five
 // answers and two defaults, all of which React's post-action `form.reset()`
 // used to erase on any refusal. See lib/actions/retain.ts.
+//
+// **`description` left with the field (PD-320)**, not with the column —
+// `rides.description` is still there and the ride detail still renders what
+// existing rows hold. Retaining a name this form no longer renders would put an
+// entry in `state.retained` that nothing reads and no refusal could ever fill.
 const RIDE_FIELDS = [
   'title',
-  'description',
   'meeting_point',
   'departure_at',
   'route_description',
@@ -103,6 +122,21 @@ export function CreateRideForm({
    * state as arriving here from the tab.
    */
   const [clubId, setClubId] = useState(() => seedClubId(clubs, initialClubId))
+  /**
+   * The club this composer was opened *inside*, or null (PD-320).
+   *
+   * **Resolved through `seedClubId` rather than a bare `find`, so the picker and
+   * this branch can never disagree about the same id.** That function is the one
+   * definition of "is this id one of the rider's own clubs", and an unmatched id
+   * falls back to no club — which here means the ordinary form with the picker,
+   * exactly as arriving from the Rides tab does.
+   *
+   * When it resolves, the `<select>` does not render at all: asking which club a
+   * rider is planning in, on a screen they reached *from* that club, is a
+   * question with one answer. The club is stated instead, and posted by the
+   * hidden input beside it so the action still receives `club_id`.
+   */
+  const seededClub = clubs.find((club) => club.id === seedClubId(clubs, initialClubId)) ?? null
   // The meeting point is controlled now that it shares a field with the place
   // picker, so it survives a refused submit the way `CreateClubForm`'s name and
   // location do — component state, not `retaining`. `retaining` restores a
@@ -158,7 +192,6 @@ export function CreateRideForm({
     const rawClub = (data.get('club_id') as string)?.trim()
     const parsed = rideSchema.safeParse({
       title: data.get('title'),
-      description: data.get('description'),
       meeting_point: data.get('meeting_point'),
       route_description: data.get('route_description'),
       departure_at: data.get('departure_at'),
@@ -191,14 +224,6 @@ export function CreateRideForm({
         defaultValue={state.retained.title}
       />
 
-      <Textarea
-        name="description"
-        label="Description"
-        rows={3}
-        maxLength={RIDE_DESCRIPTION_MAX}
-        defaultValue={state.retained.description}
-      />
-
       {/* Free text with search on top, never search instead of free text —
           "the layby past the second roundabout" is a real meeting point and a
           picker that refuses it is worse than the bare field it replaced.
@@ -214,6 +239,14 @@ export function CreateRideForm({
           recents={RECENT_STARTS}
           disabled={pending}
         />
+        {/* Rendered here rather than by `PlaceSearchField`, which writes exactly
+            the four inputs `RIDE_LOCATION_FIELD_NAMES` names and is asserted on
+            that set per mode. See `RIDE_TIMEZONE_FIELD_NAME`. */}
+        <input
+          type="hidden"
+          name={RIDE_TIMEZONE_FIELD_NAME}
+          value={startPlace?.timezone ?? ''}
+        />
         {/* place-search's own requirement: a ride SHALL remain creatable while
             lookup is unavailable, and nothing on screen said a typed meeting
             point was fine before this line. */}
@@ -225,9 +258,11 @@ export function CreateRideForm({
       <div className="flex flex-col gap-1.5">
         {/*
           `datetime-local` sends a zone-less string, which the action resolves as
-          wall-clock in APP_TIME_ZONE — see wallClockToUtc. Sending an ISO string
-          from here instead would put the browser's zone into the write, which is
-          the write-side half of the bug #37 fixed on the read side.
+          wall-clock in the PICKED START'S zone — or APP_TIME_ZONE when the rider
+          typed one, since a typed start has no zone until the geocode lands
+          (`080`, PD-193). See wallClockToUtc. Sending an ISO string from here
+          instead would put the browser's zone into the write, which is the
+          write-side half of the bug #37 fixed on the read side.
         */}
         <Input
           name="departure_at"
@@ -245,7 +280,7 @@ export function CreateRideForm({
             is the cheaper of two ways to write the same string, not a fix for
             a live bug. */}
         <p className="px-1 text-xs text-muted">
-          {`Times are in ${DEPARTURE_ZONE_LABEL} time, whatever zone you're riding in.`}
+          {`Times are in ${departureZoneLabel(resolveDepartureZone(startPlace, null))} time, whatever zone you're reading this in.`}
         </p>
       </div>
 
@@ -257,43 +292,67 @@ export function CreateRideForm({
         defaultValue={state.retained.route_description}
       />
 
-      {clubs.length > 0 && (
-        <label className="flex flex-col gap-1.5">
+      {seededClub ? (
+        /* Opened from a club (PD-320): stated, not asked. A `<div>` rather than
+           a disabled `<select>` — a disabled control invites the rider to try
+           it, and there is nothing here to choose between. The hidden input is
+           what actually posts the club; `017`'s INSERT policy still decides
+           whether it may, exactly as it does for a picked one. */
+        <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-muted">Club</span>
-          {/* A plain select: there is no v2 select in the library, and adding
-              one to serve a single unbuilt screen would be inventing a
-              component the design has not drawn. It inherits the Input
-              treatment so it does not read as a different system. */}
-          <select
-            ref={clubRef}
-            name="club_id"
-            value={clubId}
-            onChange={(event) => setClubId(event.target.value)}
-            className="h-12 rounded-lg border-2 border-border-strong bg-surface px-4 text-base text-foreground"
-          >
-            <option value="">No club</option>
-            {clubs.map((club) => (
-              <option key={club.id} value={club.id}>
-                {club.name}
-              </option>
-            ))}
-          </select>
-        </label>
+          <div className="flex h-12 items-center rounded-lg border-2 border-border-strong bg-surface px-4 text-base text-foreground">
+            {seededClub.name}
+          </div>
+          <input type="hidden" name="club_id" value={seededClub.id} />
+        </div>
+      ) : (
+        clubs.length > 0 && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-muted">Club</span>
+            {/* A plain select: there is no v2 select in the library, and adding
+                one to serve a single unbuilt screen would be inventing a
+                component the design has not drawn. It inherits the Input
+                treatment so it does not read as a different system. */}
+            <select
+              ref={clubRef}
+              name="club_id"
+              value={clubId}
+              onChange={(event) => setClubId(event.target.value)}
+              className="h-12 rounded-lg border-2 border-border-strong bg-surface px-4 text-base text-foreground"
+            >
+              <option value="">No club</option>
+              {clubs.map((club) => (
+                <option key={club.id} value={club.id}>
+                  {club.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )
       )}
 
-      {/* Public by default, matching 001's column default and the v1 form. */}
+      {/* **Private by default now (PD-320), against `001`'s column default of
+          `true`** — so the checkbox is the one control on this form that no
+          longer agrees with the schema, and that is deliberate rather than an
+          oversight. Publishing to every signed-in rider is a decision, and a
+          decision should be taken rather than defaulted into.
+
+          It ships behind `083`'s ride invites (PD-329) and could not have
+          shipped before them: a private ride with no club used to be visible to
+          its organizer alone with no way to let anyone else in. */}
       <div className="flex flex-col gap-1">
         {/* `wasChecked` and not `defaultChecked` alone: an unticked box sends
             nothing, so restoring the literal default would silently re-publish
-            a ride the rider had just made private. */}
+            a ride the rider had just made private — and now, in the other
+            direction, would silently un-publish one they had just ticked. */}
         <Checkbox
           name="is_public"
           label="Make this ride public"
-          defaultChecked={wasChecked(state.retained, 'is_public', true)}
+          defaultChecked={wasChecked(state.retained, 'is_public', false)}
         />
         <p className="pl-8 text-xs font-medium text-muted">
           Anyone signed in can see and join a public ride. A private ride is visible to its club,
-          or to you alone if it has no club.
+          and to riders you invite.
         </p>
       </div>
 

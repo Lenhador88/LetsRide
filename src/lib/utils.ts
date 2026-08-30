@@ -6,35 +6,68 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * The zone every ride time is rendered in.
+ * The zone a ride time falls back to when the ride does not carry one of its own.
  *
- * Ride dates and times are formatted on the **server**, so without this they
- * render in the server's zone — which on Vercel is UTC. A ride departing at
- * 20:00 in Amsterdam was being drawn as `18:00`, two hours wrong, on the one
- * screen where the hour is the single fact a rider acts on. The unit tests
- * missed it because `vitest.config.ts` pins `TZ=UTC`, so the environment that
- * hid the bug in production was also the one asserting the behaviour.
+ * **It stopped being the rule on 2026-08-26 (`080`, PD-193) and is now the
+ * fallback.** A ride's meeting point has a clock, and `rides.timezone` is it: a
+ * ride in Lisbon reads 09:00 to everyone, wherever they are looking from. NULL
+ * there means "we do not know" — every ride created before that column, and any
+ * place whose provider sent no zone — and this is what those resolve to, which
+ * is exactly the behaviour they had before.
  *
- * **This is an interim, and a deliberate one.** The correct answer is the wall
- * clock *at the meeting point* — a ride in Lisbon reads 10:00 to everyone,
- * wherever they are looking from — and that needs a zone column on `rides`
- * beside the timestamp. Until it exists, a fixed European zone is right for the
- * whole current user base where UTC is wrong for all of it, and it is one
- * constant to delete when the column lands. It is not the viewer's zone either:
- * `Intl.DateTimeFormat().resolvedOptions().timeZone` would be per-viewer correct
- * and would also make the server and client render different strings, which is a
- * hydration mismatch on every ride card.
+ * **It is still not the viewer's zone, and that is not a leftover.** The SSR
+ * pass runs on Vercel, so `Intl.DateTimeFormat().resolvedOptions().timeZone`
+ * would render the server's zone into the HTML and the rider's on hydration —
+ * a mismatch on every ride card. It is also not what a rider wants: the number
+ * they act on is the clock at the meeting point, not the clock where they are
+ * reading.
  *
- * Applies to the three `formatRide*` helpers, which after this change are the
- * only zone-dependent formatters left — `formatPostcardDate` is a photo stamp
- * and `formatRelativeTime` works on elapsed instants, which no zone changes.
+ * Reached through `rideZone()` below rather than referenced directly by any
+ * formatter, so an unusable stored zone degrades here rather than throwing.
+ * `formatPostcardDate` is a photo stamp and `formatRelativeTime` measures
+ * elapsed instants, so neither takes a zone at all.
  */
 export const APP_TIME_ZONE = 'Europe/Amsterdam'
 
-/** What `APP_TIME_ZONE` was offset from UTC at a given instant, in milliseconds. */
-function zoneOffsetMs(instant: Date): number {
+/**
+ * A zone `Intl` can actually format in, or `APP_TIME_ZONE`.
+ *
+ * **Every `formatRide*` helper resolves its zone through this and none of them
+ * may skip it.** `rides.timezone` is written from a third party's geocode, and
+ * ICU's zone table is not Postgres's — `080`'s trigger validates against
+ * `pg_timezone_names`, which is the server's, so a name can pass there and still
+ * be unknown here. An unknown `timeZone` makes `Intl.DateTimeFormat` **throw a
+ * RangeError**, and from inside a ride card that takes down every screen the
+ * ride appears on. Falling back is the same answer the column already gives for
+ * NULL: we do not know, so use the app's zone.
+ *
+ * Memoised because these helpers run once per ride per render and constructing a
+ * formatter to find out is the expensive half.
+ */
+const zoneCache = new Map<string, string>()
+
+export function rideZone(zone: string | null | undefined): string {
+  if (!zone) return APP_TIME_ZONE
+
+  const known = zoneCache.get(zone)
+  if (known) return known
+
+  let resolved = APP_TIME_ZONE
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone: zone }).format(0)
+    resolved = zone
+  } catch {
+    // A zone this runtime cannot format in. `resolved` already holds the answer.
+  }
+
+  zoneCache.set(zone, resolved)
+  return resolved
+}
+
+/** What `zone` was offset from UTC at a given instant, in milliseconds. */
+function zoneOffsetMs(instant: Date, zone: string): number {
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: APP_TIME_ZONE,
+    timeZone: zone,
     hour12: false,
     year: 'numeric',
     month: '2-digit',
@@ -62,8 +95,9 @@ function zoneOffsetMs(instant: Date): number {
 }
 
 /**
- * Turns a zone-less `datetime-local` value into the UTC instant it names **in
- * `APP_TIME_ZONE`**.
+ * Turns a zone-less `datetime-local` value into the UTC instant it names in the
+ * ride's own zone — `rides.timezone`, or `APP_TIME_ZONE` when the ride does not
+ * carry one (`080`, PD-193).
  *
  * This is the write-side half of the bug #37 fixed on the read side. `new
  * Date('2026-08-16T10:00')` resolves in whatever zone the runtime is in — the
@@ -86,28 +120,36 @@ function zoneOffsetMs(instant: Date): number {
  *   is no instant to return, so it lands on 03:30 — the conventional choice, and
  *   the only input in the year that does not round-trip.
  *
- * Both are pinned by tests. A ride departing in either hour is not a scenario
- * worth more machinery than this; a zone column on `rides` is the real answer
- * and it changes this function anyway.
+ * Both are pinned by tests, and both are properties of the ZONE rather than of
+ * `APP_TIME_ZONE`, so they move with the argument rather than going away.
  *
- * The correct long-term model is a zone column on `rides` — a ride meets
- * somewhere, and that somewhere has a clock. This keeps writes consistent with
- * the three `formatRide*` readers until that exists.
+ * **`zone` is required and `null` is a real answer**, not a default worth
+ * omitting. Every caller either knows the ride's zone or knows it does not have
+ * one, and a call site that could quietly leave it off is a call site that keeps
+ * the bug this parameter exists to fix.
+ *
+ * **The database is what makes a wrong choice here survivable.** `080`'s
+ * `enforce_ride_timezone` shifts `departure_at` whenever a statement moves the
+ * zone without moving the instant, so the organizer's wall-clock is held by the
+ * one writer that sees both halves. This function decides what the rider MEANT
+ * when they typed a time; the trigger decides what happens when the zone
+ * arrives afterwards.
  */
-export function wallClockToUtc(local: string): string {
+export function wallClockToUtc(local: string, zone: string | null): string {
   // `Z` makes the parse deterministic instead of runtime-dependent; the result
   // is then corrected by the zone's real offset rather than trusted.
   const naive = new Date(`${local.length === 16 ? `${local}:00` : local}Z`)
   if (Number.isNaN(naive.getTime())) return new Date(local).toISOString()
 
-  const firstPass = naive.getTime() - zoneOffsetMs(naive)
-  const corrected = naive.getTime() - zoneOffsetMs(new Date(firstPass))
+  const resolved = rideZone(zone)
+  const firstPass = naive.getTime() - zoneOffsetMs(naive, resolved)
+  const corrected = naive.getTime() - zoneOffsetMs(new Date(firstPass), resolved)
   return new Date(corrected).toISOString()
 }
 
 /**
  * The inverse of `wallClockToUtc` — renders a stored instant back into a
- * `datetime-local` value, as `APP_TIME_ZONE` wall-clock.
+ * `datetime-local` value, as wall-clock in the ride's own zone.
  *
  * An edit screen has a round trip a create screen does not: `CreateRideForm`
  * only ever writes `departure_at`, but `/rides/detail/edit` has to read the
@@ -121,9 +163,9 @@ export function wallClockToUtc(local: string): string {
  * `toLocaleString`, matching `zoneOffsetMs`'s own reasoning: a `datetime-local`
  * value has one required shape (`YYYY-MM-DDTHH:mm`) and no locale of its own.
  */
-export function formatRideDepartureInput(date: string): string {
+export function formatRideDepartureInput(date: string, zone: string | null): string {
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: APP_TIME_ZONE,
+    timeZone: rideZone(zone),
     hour12: false,
     year: 'numeric',
     month: '2-digit',
@@ -284,7 +326,7 @@ export function countryFlagEmoji(code: string | null | undefined): string | null
  * this list shows and wrong the day it shows history; noted in
  * docs/FIGMA-FIDELITY-TODO.md rather than pre-emptively "fixed" past the design.
  */
-export function formatRideDate(date: string) {
+export function formatRideDate(date: string, zone: string | null) {
   // Assembled from parts rather than taken whole from `toLocaleDateString`,
   // because en-GB's short date is "Sat 16 Nov" and the design draws a comma
   // after the weekday. The parts still come from Intl, so the weekday and month
@@ -293,7 +335,7 @@ export function formatRideDate(date: string) {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
-    timeZone: APP_TIME_ZONE,
+    timeZone: rideZone(zone),
   }).formatToParts(new Date(date))
 
   const find = (type: Intl.DateTimeFormatPartTypes) =>
@@ -307,27 +349,30 @@ export function formatRideDate(date: string) {
  * time column, so a single departure time is all there is to render — recorded
  * in docs/FIGMA-FIDELITY-TODO.md as blocked on schema, not on the design.
  */
-export function formatRideTime(date: string) {
+export function formatRideTime(date: string, zone: string | null) {
   return new Date(date).toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: APP_TIME_ZONE,
+    timeZone: rideZone(zone),
   })
 }
 
 /**
  * The two-line date block on `RideChip`'s `Collection / Ride` (`2059:5732`)
- * chip — day number over month abbreviation, `APP_TIME_ZONE` like every other
- * `formatRide*` helper. An object rather than a string, unlike its siblings:
+ * chip — day number over month abbreviation, in the ride's own zone like every
+ * other `formatRide*` helper. An object rather than a string, unlike its siblings:
  * the frame draws these as two separate text nodes stacked on top of each
  * other (`Poppins/16/Semibold` over `Poppins/12/Semibold`), not one string a
  * component would have to split back apart.
  */
-export function formatRideChipDate(date: string): { day: string; month: string } {
+export function formatRideChipDate(
+  date: string,
+  zone: string | null
+): { day: string; month: string } {
   const parts = new Intl.DateTimeFormat('en-GB', {
     day: 'numeric',
     month: 'short',
-    timeZone: APP_TIME_ZONE,
+    timeZone: rideZone(zone),
   }).formatToParts(new Date(date))
 
   const find = (type: Intl.DateTimeFormatPartTypes) =>
@@ -372,22 +417,196 @@ export function formatRideChipDate(date: string): { day: string; month: string }
  *
  * Same `en-GB`, same parts-assembly, and same reason — see `formatRideDate`.
  *
- * Rendered in `APP_TIME_ZONE`, not the server's. It used to be the server's,
- * which meant UTC on Vercel and every ride drawn two hours early in summer; see
- * that constant for why the fix is a fixed zone rather than the viewer's.
+ * Rendered in the ride's own zone, never the server's and never the viewer's —
+ * see `APP_TIME_ZONE` for why the viewer's is a hydration mismatch rather than a
+ * kindness.
  */
-export function formatRideDateLong(date: string) {
+export function formatRideDateLong(date: string, zone: string | null) {
   const parts = new Intl.DateTimeFormat('en-GB', {
     weekday: 'long',
     day: 'numeric',
     month: 'short',
-    timeZone: APP_TIME_ZONE,
+    timeZone: rideZone(zone),
   }).formatToParts(new Date(date))
 
   const find = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value ?? ''
 
   return `${find('weekday')}, ${find('day')} ${find('month')}`
+}
+
+/**
+ * Which calendar day an instant falls on in `zone`, as a count of days since the
+ * epoch — the unit `formatRideCardDay` subtracts.
+ *
+ * **A day *number*, not a duration.** "Tomorrow" is a calendar fact, not
+ * twenty-four hours: a ride leaving at 08:00 tomorrow is 14 hours away at 18:00
+ * tonight and 26 hours away at 06:00 this morning, and it is "Tomorrow" in both.
+ * Dividing an instant difference by 86,400,000 answers the wrong question and is
+ * wrong twice a year besides, on the two days that are 23 and 25 hours long.
+ *
+ * Assembled from `Intl` parts rather than from an offset calculation, the same
+ * trick `rideZoneDayKey` uses and for the same reason: the zone's own rules —
+ * DST, historical offsets, the half-hour zones — are ICU's to apply, not ours.
+ */
+function zoneDayNumber(instant: Date, zone: string): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(instant)
+
+  const find = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value)
+
+  // `Date.UTC` on the zone's own calendar parts, so the result is a plain day
+  // index with no offset left in it — two of these subtract to a day count.
+  return Math.floor(Date.UTC(find('year'), find('month') - 1, find('day')) / 86_400_000)
+}
+
+/**
+ * The ride card's day, in the words a rider actually uses — `Today`,
+ * `Tomorrow`, `This Wednesday`, `Next Wednesday`, and `SAT, 16 NOV` beyond
+ * that (PD-340).
+ *
+ * Product owner, 2026-08-28: *"'smart date' for eg. \"This Wednesday at 14h\""*.
+ * The card used to draw `formatRideDate` alone, which makes the rider do
+ * arithmetic the app already has the numbers for: `SAT, 16 NOV` only means
+ * something to someone who knows what today is.
+ *
+ * ## The bands, and where each boundary sits
+ *
+ * | Days ahead, in the ride's own zone | Reads |
+ * |---|---|
+ * | `-1` | `Yesterday` |
+ * | `0` | `Today` |
+ * | `1` | `Tomorrow` |
+ * | `2`–`6` | `This ⟨weekday⟩` |
+ * | `7`–`13` | `Next ⟨weekday⟩` |
+ * | anything else, past or future | `formatRideDate` — `SAT, 16 NOV` |
+ *
+ * **`This`/`Next` is a decision, not a convention, because English has none.**
+ * "This Wednesday" said on a Monday means two days away to most people and next
+ * week's to some; the split here is *the next occurrence* versus *the one after
+ * it*, which is the reading that never leaves a rider with two candidate dates.
+ * It is safe precisely because the two bands cannot overlap: at 7–13 days the
+ * nearer occurrence has already been named `This`, so `Next` can only mean the
+ * far one.
+ *
+ * **Past days beyond yesterday get the plain date and that is deliberate.**
+ * `RideCard` draws past rides too — the "Went" pill exists for them — and
+ * `Last Wednesday` competes with `Yesterday` for the same week in a way
+ * nothing on the card resolves. A date is unambiguous, and history is read
+ * rather than planned against.
+ *
+ * ## The zone is the ride's, for both halves of the comparison
+ *
+ * `now` is bucketed in `rideZone(zone)` too, never in the runtime's zone. Every
+ * other thing this card says about the ride is its meeting point's wall clock
+ * (`080`, PD-193), so a card reading `Tomorrow · 09:00` must mean nine
+ * tomorrow *there*. Bucketing `now` locally would let a rider in Lisbon see
+ * `Today · 01:00` for a ride that has already left Berlin.
+ *
+ * `now` is injectable for the tests, which is the only way to assert a band:
+ * `vitest.config.ts` pins `TZ=UTC`, so a fixed clock is what distinguishes a
+ * real zone lookup from a string comparison that happens to agree.
+ */
+export function formatRideCardDay(date: string, zone: string | null, now: Date = new Date()) {
+  const resolved = rideZone(zone)
+  const departure = new Date(date)
+  const days = zoneDayNumber(departure, resolved) - zoneDayNumber(now, resolved)
+
+  if (days === -1) return 'Yesterday'
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Tomorrow'
+  if (days < 0 || days > 13) return formatRideDate(date, zone)
+
+  const weekday = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    timeZone: resolved,
+  }).format(departure)
+
+  return `${days < 7 ? 'This' : 'Next'} ${weekday}`
+}
+
+/**
+ * How far a ride's meeting point is from the rider — `12 km away` (PD-340).
+ *
+ * **Not `formatRide*`, deliberately.** That prefix carries a rule in
+ * `CLAUDE.md` — every one of them takes `rides.timezone` as a required argument
+ * — and this formatter has no instant in it at all, so joining the family by
+ * name would make that rule read as false at a glance and invite the next
+ * session to "fix" it by adding a zone parameter nothing could use. It is still
+ * named for what it serves: the distance to a ride's start, on the card and on
+ * the detail's location row.
+ *
+ * Takes kilometres, which is what `distanceKm` returns and what
+ * `RideListItem.distance_km` carries; a caller with `undefined` has no distance
+ * to draw and must render nothing rather than call this with a fallback.
+ *
+ * **Whole kilometres, and never a decimal.** The rider's own position is
+ * rounded to two decimal places — roughly a kilometre — before it reaches any
+ * distance calculation (PD-151), and the meeting point's own coordinate is a
+ * geocode of a free-text address. `11.6 km away` would render four significant
+ * figures onto an input good for two, which is the "unlabelled guess passing as
+ * a known value" this repo refuses everywhere else.
+ *
+ * **`Under 1 km away` rather than `0 km away`** for anything below a kilometre.
+ * Rounding to zero states something false — the ride is not *here* — and it is
+ * the one bucket where the ±1 km input error is the whole of the number.
+ *
+ * No further bucketing above that: the error is ~1 km at every distance, so the
+ * kilometre digit is exactly as honest at 400 km as at 4, and rounding a long
+ * distance to the nearest ten would be a display preference with nothing behind
+ * it.
+ *
+ * `en-GB` grouping, so a genuinely distant ride reads `1,240 km away` rather
+ * than as a raw integer — the same locale every other `formatRide*` helper uses.
+ */
+export function formatStartDistance(km: number) {
+  if (!Number.isFinite(km) || km < 0) return null
+  if (km < 1) return 'Under 1 km away'
+  return `${Math.round(km).toLocaleString('en-GB')} km away`
+}
+
+/**
+ * The same distance for `RideChip`, the club detail's 200px rides strip —
+ * `12 km`, `<1 km`.
+ *
+ * **A second formatter rather than a flag on the one above, which is this
+ * file's own rule**: each screen writes what it draws, and a `compact` boolean
+ * would read as a preference at the call site when it is really "which screen
+ * is this". `formatRideDate` and `formatRideDateLong` are the same pair for the
+ * same reason.
+ *
+ * **The chip genuinely has no room for the long form, and that is arithmetic
+ * rather than taste.** The chip is 200px with `p-1`, a 48px date block and a
+ * 12px gap, leaving 132px for its text column. `14:00 · 12 km away` is 18
+ * characters — about 131px at `text-sm` — so the long form truncates the moment
+ * the distance reaches three digits.
+ *
+ * **What it truncates is the distance, not the time**, and it is worth being
+ * exact because the obvious fear is the other way round: `RideChip` puts
+ * `truncate` on the span wrapping both, and `text-overflow: ellipsis` clips the
+ * tail, so the time — first, and about 35px of the 132 — can never be the
+ * casualty.
+ *
+ * The overflow is a character or two rather than a collapse: at the same 7.3px
+ * per character, `14:00 · 123 km away` is ~138px against 132, so it renders
+ * about `14:00 · 123 km aw…`. **That is still the reason the long form is
+ * refused** — a clause that trails off mid-word says less than a complete
+ * `123 km` — but it is not the departure time that is lost, and stating it as a
+ * near-total truncation would overstate a real cost into an unreachable one.
+ *
+ * `<1 km` rather than `Under 1 km` for the same reason, and it is the one place
+ * in the app that abbreviates it. The rounding is shared, so the two forms can
+ * never disagree about the number.
+ */
+export function formatStartDistanceShort(km: number) {
+  if (!Number.isFinite(km) || km < 0) return null
+  if (km < 1) return '<1 km'
+  return `${Math.round(km).toLocaleString('en-GB')} km`
 }
 
 /**
@@ -419,10 +638,17 @@ export function rideZoneDayKey(date: string): string {
  * the same evening reads as a day that is already over. It moves at midnight,
  * once, for everyone.
  *
- * Pinned to `APP_TIME_ZONE` for the reason every other ride surface is: the
- * boundary has to be the same one `formatRideDate` draws its dates in, or a
- * rider in Lisbon sees a ride filed under a day the date beside it contradicts.
- * The rider's own zone is not the answer here any more than it is there.
+ * **Pinned to `APP_TIME_ZONE`, and this is the one ride surface that cannot
+ * follow `rides.timezone`.** The boundary is a single instant handed to a
+ * `gte` in one query, so it has to be one clock for the whole list; there is no
+ * per-row zone available to a predicate the rows have not been read for yet.
+ *
+ * The cost is a known and bounded one, stated rather than left to be
+ * rediscovered: a ride whose own zone is far from `APP_TIME_ZONE` can sit on the
+ * far side of this boundary from the date `formatRideDate` draws beside it, for
+ * the few hours a day the two zones disagree about. That is a smaller error than
+ * the alternative — reading every ride to decide which day it is on — and it is
+ * the same shape as the fixed zone this whole surface used to have.
  *
  * Built from the two halves that already exist — the day in that zone, then the
  * instant that wall-clock names — so the DST correction lives in exactly one
@@ -431,11 +657,20 @@ export function rideZoneDayKey(date: string): string {
  * `wallClockToUtc` do not reach this caller.
  */
 export function rideDayStartUtc(now: number = Date.now()): string {
-  return wallClockToUtc(`${rideZoneDayKey(new Date(now).toISOString())}T00:00`)
+  // `null` is the zone, not a missing argument: this boundary is deliberately
+  // the app's clock rather than any one ride's — see above.
+  return wallClockToUtc(`${rideZoneDayKey(new Date(now).toISOString())}T00:00`, null)
 }
 
 /**
- * A ride chat's day separator — `Today`, `Yesterday`, or `Sat, 16 Nov`.
+ * A chat's day separator — `Today`, `Yesterday`, or `Sat, 16 Nov`.
+ *
+ * **Named for the surface rather than for the ride since `081`** (PD-307): both
+ * the ride chat and a club thread draw this exact separator, so a second
+ * function with the same body would be this file's per-screen rule read as its
+ * letter against its reason — the same argument the bubble clock below already
+ * makes for reusing `formatRideTime`. A club thread has no timezone at all,
+ * so its callers pass `null` and mean it.
  *
  * **The design draws no separator at all**, and this is a deliberate addition
  * rather than a fidelity miss. `Ride - Chat` (`2226:4999`) stamps every bubble
@@ -460,7 +695,7 @@ export function rideDayStartUtc(now: number = Date.now()): string {
  * `formatDateTime` fixed. Pinned until the zone column lands and moves all of
  * them together.
  */
-export function formatRideMessageDay(date: string, now: Date = new Date()): string {
+export function formatChatMessageDay(date: string, now: Date = new Date()): string {
   const key = rideZoneDayKey(date)
   // Uppercased to match `formatRideDate`, which is the branch below and which
   // the design uppercases on the ride card. Mixing `Today` with `SAT, 16 NOV`
@@ -470,7 +705,10 @@ export function formatRideMessageDay(date: string, now: Date = new Date()): stri
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
   if (key === rideZoneDayKey(yesterday.toISOString())) return 'YESTERDAY'
 
-  return formatRideDate(date)
+  // `null`, not the ride's zone: this is a CHAT day separator, and the whole
+  // thread has to split on one clock or two riders see the divider in different
+  // places. `rideZoneDayKey` above already decided that clock.
+  return formatRideDate(date, null)
 }
 
 const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [

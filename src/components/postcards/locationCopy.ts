@@ -53,11 +53,15 @@ export const LOCATION_MODES: {
     value: 'place',
     label: 'Region',
     lead: 'Only the place you name is saved.',
-    // Says nothing about a ride. The old string read "Enough to place it on the
-    // ride" — and this form has no ride field at all, so `ride_id` is NULL on
-    // every postcard it has ever written. The product owner reported it as
-    // wrong from a club; it was wrong from everywhere, which is why the fix is
-    // one context-free sentence rather than three conditional ones.
+    // Says nothing about a ride, and that survives PD-256 rather than being
+    // undone by it. The old string read "Enough to place it on the ride"; the
+    // product owner reported it as wrong from a club, and it was wrong from
+    // everywhere, which is why the fix was one context-free sentence rather
+    // than three conditional ones. The form now HAS a ride field — so the
+    // reason has changed and the copy has not: this line describes what is
+    // stored about the *photo*, and the ride tag is a different fact about the
+    // postcard. Re-coupling them would reintroduce a sentence that is wrong
+    // whenever the two disagree.
     //
     // **"the place you named", not "the town"** — the review pass caught the
     // overclaim. The typeahead is a geocoder and returns streets as readily as

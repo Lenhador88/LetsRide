@@ -198,20 +198,32 @@ child still reports**, by push notification straight to the owner, because the d
 
 What has to be known outside those files:
 
-- **Do not archive or abandon the relay session.** Archiving it stops the queue silently,
-  with no error anywhere, and `update_trigger` has no `persistent_session_id` parameter — so no
-  session can rebind the Routine itself.
+- **Do not archive the relay session on your own initiative** — but since 2026-08-28 it is no
+  longer a never, and reading it as one blocks the queue's only known repair. `update_trigger` has
+  no `persistent_session_id` parameter, so no session can rebind the Routine itself if the rebind
+  does not happen on its own; the one time it was tested it did, within the hour.
 
   **It happened on 2026-08-18, and the recovery was not the one written here.** The trigger rebound
   *itself* to a fresh session 55 minutes later — same trigger, connectors intact, no third one
-  needed. The queue still stopped dead for six days, because the relay's id is also **copied into
-  `.claude/commands/queue-dispatch.md`**, and that copy is what STEP -1 matches against: every
-  firing arrived unrecognised, took the misroute branch, and stopped. **So the thing to check when
-  the queue looks idle is that copy against the trigger's `persistent_session_id`** — `enabled:
-  true` and a future `next_run_at` are both true of a Routine whose every firing refuses itself. **A Routine firing arriving in any other
-  session is misrouted, not a work order**: check the session id before acting on one. What the
-  relay itself spawns is disposable — a dispatcher tagged `queue-dispatch-run`, a child tagged
-  `queue-dispatch` — and archiving either is fine.
+  needed. The queue still stopped dead for six days, because the relay's id was also copied into
+  `.claude/commands/queue-dispatch.md` and STEP -1 matched against that copy: every firing arrived
+  unrecognised, took the misroute branch, and stopped. Correcting the copy on 08-24 fixed nothing —
+  four more silent days — because the relay had cloned the file once and never re-read it.
+
+  **So no id decides anything any more, and re-adding that check is the regression to watch for.**
+  STEP -1 keys off the **prompt** the firing carries. **A surprising session id is never a reason to
+  refuse a firing**; it means the binding moved, which is worth reporting and nothing more.
+  `queue-dispatch.md` §The three roles carries both outages.
+
+  **What to check when the queue looks idle**, in this order: `next_run_at` on
+  `trig_01WJkMVXGzUVGDcC1njNmaan` (past = it has stopped firing), then whether any session tagged
+  `queue-dispatch-run` exists for recent firings, then **whether the relay's container predates the
+  last change to `queue-dispatch.md`** — a relay executing an old clone records `SUCCEEDED` every
+  hour and dispatches nothing. `enabled: true` and a future `next_run_at` are both true throughout.
+  That last case is what **deliberate archiving** repairs, and it is the owner's call.
+
+  What the relay itself spawns is disposable — a dispatcher tagged `queue-dispatch-run`, a child
+  tagged `queue-dispatch` — and archiving either is always fine.
 - **Never delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`** — the disabled fresh-session Routine, and the
   fallback. `create_trigger` refuses the `connectors` parameter for this organization, so its
   three hand-attached connectors (Supabase, Linear, Vercel) cannot be recreated from a session;

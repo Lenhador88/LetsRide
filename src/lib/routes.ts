@@ -50,9 +50,41 @@
  */
 
 import { clubIdSchema } from '@/lib/validation/clubs'
+import { rideIdSchema } from '@/lib/validation/rides'
 
 /** The query parameter every detail route reads its id from. */
 export const DETAIL_ID_PARAM = 'id'
+
+/**
+ * The invite link's landing route — `091`, PD-330. **The one public path in
+ * this file**, and the only route in the app that is reachable with no session.
+ *
+ * It is spelled here rather than in `src/lib/auth/guard.ts` so there is one
+ * string: that file adds it to `PUBLIC_PATHS` *and* to
+ * `needsOnboardingState()`, and a literal typed into either of them separately
+ * is a public route that silently stops being public, or one whose onboarding
+ * detour silently stops happening.
+ */
+export const RIDE_JOIN_PATH = '/rides/join'
+
+/**
+ * Which token the landing route is answering for.
+ *
+ * **A query parameter rather than a path segment, and the reason is the NATIVE
+ * build rather than the web one.** `output: 'export'` lives in
+ * `next.config.ts`'s `capacitorConfig` only — the file ends
+ * `isCapacitorBuild ? capacitorConfig : webConfig` — so a link opened from
+ * WhatsApp reaches the web build, which runs a server and would serve a dynamic
+ * segment happily. The binding constraint is that **the route tree is shared
+ * between both builds**: a `/rides/join/[token]` segment would need
+ * `generateStaticParams` under `CAPACITOR_BUILD=1` and break
+ * `npm run build:native`, a build nobody runs on a feature branch.
+ *
+ * The reasoning above this in the file — one prerendered document per route
+ * rather than one per id — applies unchanged, and this parameter is the one
+ * place it is a *credential* rather than an id.
+ */
+export const INVITE_TOKEN_PARAM = 'token'
 
 function detail(path: string, id: string): string {
   return `${path}?${DETAIL_ID_PARAM}=${encodeURIComponent(id)}`
@@ -70,10 +102,24 @@ export const detailPaths = {
   rideCrew: '/rides/detail/crew',
   rideChat: '/rides/detail/chat',
   rideEdit: '/rides/detail/edit',
+  /** The organizer's rider picker and invite list — `083`, PD-329. */
+  rideInvite: '/rides/detail/invite',
   club: '/clubs/detail',
   clubRides: '/clubs/detail/rides',
   clubMembers: '/clubs/detail/members',
+  /** The roster an owner or admin acts on — `088`, PD-326. Takes a CLUB id.
+   * Separate from `clubMembers`, which is the read-only roster every member
+   * sees: one screen serving both would have to hide half of itself from most
+   * of its readers, and `viewer_role` is a display hint rather than the
+   * authority (`ClubDetail`'s own docstring). The RPCs decide either way. */
+  clubManage: '/clubs/detail/manage',
   clubEdit: '/clubs/detail/edit',
+  /** A club's threads — `081`, PD-307. The segment says which
+   * entity the `id` names, matching `/rides/detail/chat?id=`: `threads`
+   * takes a CLUB id, `thread` takes a THREAD id. */
+  clubThreads: '/clubs/detail/threads',
+  clubThread: '/clubs/detail/thread',
+  newClubThread: '/clubs/detail/threads/new',
   profile: '/profile/detail',
 } as const
 
@@ -83,18 +129,36 @@ export const routes = {
   rideCrew: (id: string) => detail(detailPaths.rideCrew, id),
   rideChat: (id: string) => detail(detailPaths.rideChat, id),
   rideEdit: (id: string) => detail(detailPaths.rideEdit, id),
+  rideInvite: (id: string) => detail(detailPaths.rideInvite, id),
   club: (id: string) => detail(detailPaths.club, id),
   clubRides: (id: string) => detail(detailPaths.clubRides, id),
   clubMembers: (id: string) => detail(detailPaths.clubMembers, id),
+  clubManage: (id: string) => detail(detailPaths.clubManage, id),
   clubEdit: (id: string) => detail(detailPaths.clubEdit, id),
+  clubThreads: (clubId: string) => detail(detailPaths.clubThreads, clubId),
+  /** Takes the THREAD's id, not the club's — see `detailPaths`. */
+  clubThread: (threadId: string) => detail(detailPaths.clubThread, threadId),
+  newClubThread: (clubId: string) => detail(detailPaths.newClubThread, clubId),
   /** Another rider — `view-rider-profile`. Own-id is redirected to `/profile`
    * rather than resolving here; see that route's own redirect. */
   profile: (id: string) => detail(detailPaths.profile, id),
+
+  /**
+   * A ride invite link (`091`, PD-330) — the one URL this app produces that is
+   * meant to be pasted into somebody else's chat.
+   *
+   * `shareAppLink` puts `canonicalOrigin()` in front of it, which is what makes
+   * it a link to something rather than to `https://localhost` inside the shell.
+   */
+  joinRide: (token: string) =>
+    `${RIDE_JOIN_PATH}?${new URLSearchParams({ [INVITE_TOKEN_PARAM]: token })}`,
 
   /** `Plan a ride` from a club — see `CREATE_CLUB_PARAM`. */
   newRideInClub: (clubId: string) => inClub(createPaths.ride, clubId),
   /** `Add a postcard` from a club — see `CREATE_CLUB_PARAM`. */
   newPostcardInClub: (clubId: string) => inClub(createPaths.postcard, clubId),
+  /** `Add` from a ride's Journal — see `CREATE_RIDE_PARAM`. PD-256. */
+  newPostcardInRide: (rideId: string) => inRide(createPaths.postcard, rideId),
 } as const
 
 /**
@@ -117,6 +181,18 @@ export const routes = {
  */
 export const CREATE_CLUB_PARAM = 'club'
 
+/**
+ * Which ride a create screen was opened from — the same job as
+ * `CREATE_CLUB_PARAM`, one param later (PD-256). Only the postcard composer
+ * reads it: `RideJournal`'s `Add` tile — drawn by it or by `RideJournalEmpty`,
+ * whichever the ride's postcards currently render — is the one place a
+ * create screen is reached from a ride rather than a club, and it seeds the
+ * composer's Ride `<select>` and the club that ride belongs to
+ * (`seedRideId`), plus the header's back destination through
+ * `backFromCreateScreen` below.
+ */
+export const CREATE_RIDE_PARAM = 'ride'
+
 const createPaths = {
   ride: '/rides/new',
   postcard: '/postcards/new',
@@ -126,20 +202,33 @@ function inClub(path: string, clubId: string): string {
   return `${path}?${new URLSearchParams({ [CREATE_CLUB_PARAM]: clubId })}`
 }
 
+function inRide(path: string, rideId: string): string {
+  return `${path}?${new URLSearchParams({ [CREATE_RIDE_PARAM]: rideId })}`
+}
+
 /**
  * The pure half: whatever the URL carried in, an app pathname out, always.
  *
  * A malformed or absent id falls back to the tab root the screen belongs to,
  * because the alternative is a back button that lands on a 404 — worse than the
- * blunt answer it replaces. The parse is `clubIdSchema` rather than a regex of
- * this file's own, so there is one definition of "a club id" and it is the one
- * `getClub` already refuses on.
+ * blunt answer it replaces. The parse is `clubIdSchema`/`rideIdSchema` rather
+ * than a regex of this file's own, so there is one definition of each kind of
+ * id and it is the one `getClub`/`getRide` already refuse on.
  *
- * It never asks whether the club EXISTS or is VISIBLE, and it does not need to:
- * a rider sent to a club they cannot read gets that route's ordinary
+ * It never asks whether the club or ride EXISTS or is VISIBLE, and it does not
+ * need to: a rider sent to one they cannot read gets that route's ordinary
  * `notFound()`, which is the same answer they would get by typing the URL.
+ *
+ * **`ride` wins when both are present.** Only the postcard composer can ever
+ * carry both — a ride's own club is a prefill (`seedRideId`), never a second
+ * "opened from", so a rider who tagged a photo from a ride's Journal goes back
+ * to that ride rather than to the club it happens to belong to.
  */
-export function backFromCreateScreen(club: string | null | undefined, fallback: string): string {
-  if (!club || !clubIdSchema.safeParse(club).success) return fallback
-  return routes.club(club)
+export function backFromCreateScreen(
+  ids: { club?: string | null | undefined; ride?: string | null | undefined },
+  fallback: string
+): string {
+  if (ids.ride && rideIdSchema.safeParse(ids.ride).success) return routes.ride(ids.ride)
+  if (ids.club && clubIdSchema.safeParse(ids.club).success) return routes.club(ids.club)
+  return fallback
 }

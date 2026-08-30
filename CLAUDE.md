@@ -149,16 +149,24 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **eleven** tables on BOTH
-   projects — measured 2026-08-25; it was ten on PROD until `069` promoted on 2026-08-19 — `postcards`,
+   gets inherited as covered.** `enforce_participation_gate` is on **seventeen** tables on DEV
+   and **eleven** on PROD — measured 2026-08-29, the six-table difference being `081`, `083`,
+   `084`, `085` and `091`, all applied to DEV and owed to PROD (`086`, `087`, `088`, `089` and `090`
+   add no gate); PROD was ten until `069` promoted on
+   2026-08-19 —
+   `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
-   `postcard_reports`, `ride_messages`, `ride_map_render_attempts`, plus `place_search_attempts`,
-   which `069` added — and **not** on `profiles` UPDATE, `profile_countries`,
-   `blocks`, `postcard_hides`, `feed_reads`, `push_devices` or any `storage.objects` policy, which
-   check the path prefix only. **`push_devices` is the one omission whose safety depends on the
+   `postcard_reports`, `ride_messages`, `ride_map_render_attempts`, `place_search_attempts`,
+   which `069` added, plus `club_threads` and `club_messages`, which `081` added, `ride_invites`
+   (`083`), `feedback` (`084`), `club_join_requests` (`085`) and `ride_invite_links` (`091`, so a
+   rider who has not accepted the terms cannot mint a capability URL into their own ride) — and **not**
+   on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`, `feed_reads`,
+   `club_thread_reads`, `push_devices` or any `storage.objects` policy, which
+   check the path prefix only. **A per-project split is the ordinary state between a merge and its
+   promotion**, so read a difference as a pending promotion before reading it as a gap. **`push_devices` is the one omission whose safety depends on the
    gate being restated INSIDE its RPC** (`078`): a trigger there could never fire, because every
    gate trigger carries `when (current_user = 'authenticated')` and `current_user` inside a
-   `security definer` function is the owner — so adding one would raise the count to twelve and
+   `security definer` function is the owner — so adding one would raise the count by one and
    make coverage read complete while gating nothing. `078.9` asserts the absence for that reason. So an account created by calling GoTrue's `/auth/v1/signup` directly, never
    calling `accept_terms()`, **can still set a username, write a bio and upload an avatar with
    `terms_accepted_at` NULL**. Count it rather than read it, because a table added without one
@@ -291,7 +299,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (46 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests. **Three** component tests exist — `PostcardAction` (asserting the class list rather than any measured size) and `PlaceSearchField` (asserting which inputs each of its three modes writes — the contract its callers' actions read back off `FormData`, and for the composer's nameless mode the contract that it writes *nothing* — plus `resolveComboboxKey`, the pure half of its keyboard, split out for exactly the reason `guard.ts` was), and `NearbyRidesStrip` (asserting which states the near-you row draws in and which it stays silent for — including the one where it must render *despite* having nothing to count, because it is then the only control that turns the filter back off). A fourth, `WaveFilledIcon`, went with the filled glyph when PD-287 reverted it. All three render through `renderToStaticMarkup`; the environment is still `node`, and jsdom is the answer only when something needs a layout or an event |
+| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (50 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests. **Ten** component tests exist — `PostcardAction` (asserting the class list rather than any measured size) and `PlaceSearchField` (asserting which inputs each of its three modes writes — the contract its callers' actions read back off `FormData`, and for the composer's nameless mode the contract that it writes *nothing* — plus `resolveComboboxKey`, the pure half of its keyboard, split out for exactly the reason `guard.ts` was), and `ExploreRidesStrip` (asserting that the door to `/rides/explore` renders in every state — it is the only route to that screen — and that its `near <place>` clause appears only when the position resolved *and* something behind the row is actually near it). It replaced `NearbyRidesStrip`'s test when that filter became a door, and the invariants inverted with it: the old one asserted which states the row stayed silent for. The fourth is `PostcardStamp` (asserting the byline the Journal tile gained on 2026-08-27 — including the `Rider` fallback for an author the profiles policy withholds — and that the tile is a `<button>` under a `PostcardViewerProvider` and an `<a href>` without one, which is the only place that fallback branch is reachable, since the provider is always mounted in the app; and since PD-350 that the byline is *inside* the perforated frame and that a photo is franked while the failed-to-sign placeholder is not. The nesting case is the only one in this file that walks tag depth rather than matching a substring, and it is why: every other assertion there renders identically with the byline back outside the frame, so the one thing the product owner asked for could have been undone green. Verified both ways per §Working Principles — moving the byline out fails exactly that case, removing the postmark exactly the franking one). The fifth is `CreateRideForm` (PD-320, asserting the three questions the composer stopped asking: that a resolved `?club=` removes the `<select>` entirely while a hidden input posts `club_id` in its place, that an unresolved one falls back to the picker, that `description` is gone while `route_description` stays, and that `is_public` renders unchecked in and out of a club). The sixth is `SwipeCoach` (PD-324's one-time swipe hint, asserting the one invariant another change can silently break: that the overlay is still `pointer-events-none`, so the tap underneath it reaches PD-316's photo button and the deck's own controls — plus that only the *motion* is behind `motion-safe:`, the sentence itself being what the reduced-motion path is owed). The seventh is `SectionHeader` (PD-342, asserting that the `See all` link and the new `(+)` survive *together* — every call site draws both in the same state, so a refactor collapsing the two trailing slots into one looks right in any single screenshot and removes the entrance to four lists — plus that the icon keeps an accessible name, it having no text of its own, and since PD-346 that the two stay in *that order*, `(+)` hugging the title and `ml-auto` on `See all` alone. Those first two cases pass with the slots either way round, which is what made them blind to the order defect; asserted by element order rather than attribute order, React not rendering attributes in source order, plus that nothing reverses the row's own flex direction, since markup order is visual order only while it does not. Verified both ways per §Working Principles: the old order fails two of its five cases, and a `flex-row-reverse` container fails one). The eighth is `PostcardCard` (PD-343, asserting the *direction* of the card's growth rather than any size: the photo is `flex-1` and the caption capped in the deck's `fill` mode, the photo a square and the caption unbounded in flow. One class either way, it reverses silently, and both directions screenshot plausibly against a short caption — which is the state the original defect shipped in for months. Verified both ways per §Working Principles: reintroducing the old geometry fails two of its three cases). The ninth is `RideCard` (PD-340, asserting that the new distance clause is ABSENT — dot included — when `distance_km` is `undefined`, which is every row until a position resolves and every row for ever for a rider who grants no location; that the meeting point is the span that truncates and the distance the one that does not, `PostcardCard`'s reversible-in-silence shape at a shared line rather than at a photo; and that the day cell calls `formatRideCardDay` at all, which the formatter's own tests structurally cannot see). The tenth is `RideInviteJoin` (PD-330, and the only one here that asserts an ABSENCE in the source rather than in the markup: that no `useEffect`, no `onAuthStateChange` listener and no second call site can spend an invite token, because a capability URL claimed by a render is claimed by a rider who never chose to join — plus that the signed-out screen renders no ride data for any token it is handed. Its source assertions run on COMMENT-STRIPPED source, the component's own docstring saying "there is no `useEffect` in this file", which failed the first version against a correct file. Verified both ways per §Working Principles: inserting a real claiming effect fails all four of its cases). An earlier one, `WaveFilledIcon`, went with the filled glyph when PD-287 reverted it. All ten render through `renderToStaticMarkup`; the environment is still `node`, and jsdom is the answer only when something needs a layout or an event. **Four** carry a `vi.mock` of `next/navigation` — count them rather than trust it, `grep -rl "vi.mock('next/navigation'" src/components | wc -l`, because this sentence has now been wrong twice in the same direction. They are `PostcardAction` (which has had one all along), `CreateRideForm`, because `useActionRedirect` calls `useRouter`, `PostcardCard`, because its own `PostcardMenu` calls `useRouter` and `usePathname`, and `RideInviteJoin`, which calls both itself — the tap navigates to the ride it just joined. All four stand in for a provider rather than for behaviour, and no effect runs under a static render anyway. `PostcardCard`'s also mounts the real `BannerProvider`, `PostcardMenu` calling `useBanner`, which throws outside one |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Refuses a sign-in and checks the email survives it, signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. It then refuses a create and an edit and checks every field and choice of each survives. With `WALK_FIXTURES=1` it **creates** the ride and club the detail routes need, through the app's own forms; a shrunken `N/N` is a skip, not a pass. Writes are refused unless the session's own project is on the allowlist |
 | End-to-end | Playwright | Still deferred as a full suite. **The walk is not the gap being filled**: it asks one question per route — did this render — and asserts behaviour only in its six named phases, each covering a defect no other gate here can see (PD-196's cleared email, PD-199's cleared create form and its silently-rewritten edit form, PD-111's navigation cost, the guard's redirects, what sign-out leaves behind). Adding a phase means adding a reason, not broadening a remit |
 
@@ -321,29 +329,69 @@ whichever `npm install` runs first, and would also silently change what a `cap a
 
 **Dates: `Intl` only, no date library.** All in `src/lib/utils.ts`, and every formatter is
 **named for the screen it serves** — `formatPostcardDate`, `formatRideDate`,
-`formatRideDateLong`, `formatRideTime` — because each design draws a genuinely different
-shape. There is deliberately no generic `formatDate`/`formatDateTime` — both existed, both
+`formatRideCardDay`, `formatRideDateLong`, `formatRideTime` — because each design draws a
+genuinely different shape. `formatStartDistance` and `formatStartDistanceShort` (PD-340) are the
+two that are not dates at all, and both sit deliberately outside the `formatRide*` prefix: that
+prefix carries the zone rule below, and a member of it holding no instant makes the rule read as
+false at a glance. They are a pair for the ordinary reason — the ride card has room for `12 km
+away` and `RideChip`'s 132px text column does not — and they share their rounding, so the two
+surfaces cannot disagree about the number. There is deliberately no generic `formatDate`/`formatDateTime` — both existed, both
 hardcoded `en-US`, and a generic formatter is how a two-locale split gets back in. Write the
 screen's own formatter and let its name say where it belongs.
 
-**Ride times are pinned to `APP_TIME_ZONE`** (`Europe/Amsterdam`), and the client render did not
-lift that. **The SSR pass still runs on Vercel**, so an unpinned formatter renders the server's
-zone into the HTML and the rider's zone on hydration — the viewer's own zone is not the answer
-for exactly that reason, it is a hydration mismatch. It stays a documented **interim**: the
-correct model is wall-clock at the meeting point, which needs a zone column on `rides`.
-`formatRelativeTime` needs no zone (it measures elapsed instants) and keeps `en-US` because it
-produces English prose, not a date format.
+**A ride's times are wall-clock at its meeting point** — `rides.timezone`, `080` (PD-193) — and
+`APP_TIME_ZONE` (`Europe/Amsterdam`) is now the **fallback** rather than the rule. Every
+`formatRide*` helper and `wallClockToUtc` take the zone as a **required** argument, `null` meaning
+"we do not know": a call site that could quietly omit it is a call site that keeps the bug. The
+one ride surface that cannot follow it is `rideDayStartUtc`, the upcoming/past boundary, because
+that is one instant handed to one `gte` and there is no per-row zone available to a predicate the
+rows have not been read for yet.
 
-**`wallClockToUtc` is the write-side half of the same rule.** A `datetime-local` input sends a
-zone-less string, and `new Date(that)` resolves in whatever zone the runtime is in — now always
-the rider's browser, so the same typed time means a different instant for an organizer in Lisbon
-than for one in Berlin, and neither matches what `formatRideTime` draws back. It resolves the
-string as wall-clock in `APP_TIME_ZONE`, in two passes so the two DST days a year are right, and
-its tests assert offsets rather than strings — `TZ=UTC` in `vitest.config.ts` would let a naive
-implementation pass.
+**The viewer's own zone is still not the answer**, and that is not a leftover: the SSR pass runs on
+Vercel, so an unpinned formatter renders the server's zone into the HTML and the rider's on
+hydration. `formatRelativeTime` takes no zone at all (it measures elapsed instants) and keeps
+`en-US` because it produces English prose, not a date format.
 
-**Deliberately undecided** — raise these rather than inventing an answer: error tracking,
-analytics, i18n, and email delivery beyond Supabase's built-in auth mails.
+**The invariant, and the reason this is a database rule rather than a client one:** *the wall-clock
+the organizer typed is preserved; the zone says which instant that names.* A PICKED start knows its
+zone at submit, so `wallClockToUtc` resolves against it in the same INSERT. A TYPED one does not and
+structurally cannot — the zone comes from the geocode, which needs the key, which lives only in
+`resolve-ride-location`'s secret store, and that call is fire-and-forget **after** the insert. So
+`080`'s `enforce_ride_timezone` shifts `departure_at` whenever a statement moves the zone and leaves
+the instant alone, using `AT TIME ZONE` because it is exact across a DST boundary. Without it a
+Lisbon ride typed as 09:00 silently redraws as 08:00 minutes after Save.
+
+**Two guards, and neither makes the other redundant.** Postgres validates against
+`pg_timezone_names` and stores anything else as NULL; `rideZone()` in `src/lib/utils.ts` falls back
+for anything `Intl` cannot format in — ICU's zone table is not Postgres's, and an unknown `timeZone`
+throws a `RangeError` that would take down every screen the ride appears on.
+
+`wallClockToUtc` still runs two passes so the two DST days a year are right, and **its tests assert
+offsets rather than strings** — `TZ=UTC` in `vitest.config.ts` would let a naive implementation pass
+a string comparison, so the summer/winter pairs are what prove the offset is looked up per instant.
+
+**Deliberately undecided** — raise these rather than inventing an answer: **client-side error
+reporting**, i18n, and email delivery beyond Supabase's built-in auth mails.
+
+**Analytics is not on that list, and the reason is the reusable part: most of it is already
+recorded.** `profiles` holds `created_at`, `terms_accepted_at`, `username` and
+`onboarding_completed_at`, so the onboarding funnel is four counts against one table. Eight of the
+ten questions worth asking are SQL today —
+[`docs/reference/analytics.md`](docs/reference/analytics.md), `scripts/db/analytics.sql`, which
+also carries the three definitions that decide whether the numbers mean anything.
+
+**Failed requests are readable too, and for 24 hours only.** Every call the app makes reaches
+Supabase's log stream — `npm run logs:errors`,
+[`docs/reference/observability.md`](docs/reference/observability.md). There is no backfill, so a
+day nobody reads is gone: the Discussions→Threads rename left 64 404s there during the ~50 minutes
+`082` was ahead of its deploy, and nothing said so.
+
+**What is still undecided is narrower than "error tracking": a client-side JavaScript error
+reaches no log anywhere.** The boundaries contain the failure and at most `console.error` it into
+the rider's own console — `global-error.tsx` does not even do that — so a component that throws is
+invisible, which in a client-rendered bundle is most rider-visible breakage. It carries a tenth
+runtime dependency, a consent question separate from the T&C stamp, and a store privacy label, so
+it wants a proposal (PD-315) rather than a passing choice.
 
 ## Repo Layout
 
@@ -367,7 +415,7 @@ the exported function must be named `proxy`, and do not add a `middleware.ts`.
 Routing decisions live in **three** places, split so the decision can be tested:
 
 - **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
-  `null` means stay; a string is where to go. 46 cases in `__tests__/guard.test.ts`.
+  `null` means stay; a string is where to go. 50 cases in `__tests__/guard.test.ts`.
 - **`src/lib/auth/guard-cache.ts`** — what the decision reads: the session and the onboarding
   stamps, **held for the page load rather than fetched per route**, with `onAuthStateChange` as
   the single writer for the session half. This is where the reads live now, and the reason it
@@ -386,6 +434,13 @@ background gradient included — and made a tab tap read as a page reload.
 `invalidateOnboardingState()`; `signOut` calls `clearGuardCache()`. Miss one and the rider
 finishes a step and is sent straight back into it. `npm run walk` has a phase that measures this
 — see `docs/HANDOFF.md` §The walk.
+
+**Necessary, and never sufficient — an invalidation cannot reach a round trip that has already
+left.** All four writers do call it, and PD-304 still happened: `signUp` establishes the session,
+the guard's effect wakes and asks `my_onboarding_state()`, `accept_terms()` commits *while that
+read is out*, and the read then refills the cache it had just cleared with `terms_accepted_at:
+NULL`. `guard-cache.ts` carries a generation counter for this — a read discards its own answer if
+the stamps moved underneath it — so a **new** writer owes the invalidation and nothing more.
 
 **An unmatched URL still reaches it, and that is measured rather than assumed.** `not-found.tsx`
 sits at `(app)/`, so a path outside that group — `/onboarding/*`, say — falls to Next's built-in
@@ -461,36 +516,50 @@ To Do's "don't introduce a service-role key into the app" — **the function is 
   and `include` is `**/*.ts`; without the exclusion `npx tsc --noEmit` fails and takes CI's
   Type Check job with it. It is the least-guarded code in the repo.
 
-**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, and NOT ONE of the
-three is current against its file. Two of the three have an equal `ezbr_sha256` across the
-projects and `search-places` does NOT** — measured 2026-08-24: PROD runs **v7**
-(`9510589d…`, deployed 12:04Z) against DEV's **v3** (`dcc59ceb…`, 2026-08-20), so **DEV is behind
-PROD for that one function**, which is the opposite of this repo's usual direction and is worth
-knowing before debugging a DEV-only search failure. PROD's v7 is the redeploy that ended PD-276's
-four-day production outage; DEV never needed it, so DEV never got it. **Both are now stale against
-the file again** — PD-279 added `country_code` to `shape.ts`, so `taken_country_code` stores NULL
-on every postcard until each project is redeployed, and the flag falls back to the pin.
-The rest of this paragraph is measured 2026-08-19:
-`delete-account` deployed 2026-08-17 against a file that moved 2026-08-19 (comments only, so the
-behaviour is current — and that date moves with every header edit, which is why it is read off
-the command rather than trusted here); `resolve-ride-location` deployed 2026-08-16 against a file that moved
-2026-08-19 with `067` — real code, so a **picked** ride start renders no map tile on either
-project; and `search-places` was deployed 15:51Z/15:52Z against `71053cd` (#273, PR 1 of three) and
-that is the build **DEV still runs** — real code behind it, including `classifyLedgerError`, so
-DEV reports a `23514` participation-gate refusal to the rider as **502 `unavailable`**: search is
-broken, not "you hit a limit". `isPolicyRefusal` matches `42501` only, and the gate raises
-`23514`, so it falls to the outage branch. **Count the undeployed commits rather than reading a
-list here** — an enumeration goes stale on the next merge, and this one already has:
-`TZ=UTC git log --oneline --since=<deploy timestamp> -- supabase/functions/search-places/`. **`git log -1` on the
-directory tells you the file is newer than the deploy and never by how many commits** — list the
-directory's history against the deploy timestamp, or a three-commit gap reads as one.
-PD-267 is the first redeploy,
-and it has a second half: the guard in `src/lib/actions/rides.ts` must come out in the same PR.
-**The newest function going stale within two hours of its first deploy is the point** — a
-deployed function is drift the moment anyone edits its file, and this section has already read
-"both" while three were deployed. **Cross-project equality is not what establishes currency**: it says
-the two projects agree, never that either matches the repo, so currency is the
-`updated_at`-against-commit-date check below.
+**All THREE are deployed to both projects and `ACTIVE`, `verify_jwt` true, ALL THREE now carry an
+equal `ezbr_sha256` across the projects, and exactly ONE is stale** — measured 2026-08-27.
+**Version numbers still differ per project and always will**, because they count deploys to that
+project rather than builds, so the sha is what says the two agree.
+
+- **`search-places` is current** — redeployed 14:28Z, DEV v5 / PROD v9, `97ae3134…`, against a
+  directory whose last commit is 2026-08-26T22:48Z.
+- **`delete-account`'s behaviour is current** — v5 / v9, `9793933d…`, with newer commits that are
+  COMMENTS ONLY. That date moves with every header edit, which is why it is read off the command
+  rather than trusted here.
+- **`resolve-ride-location` is the stale one, again.** Redeployed 14:41Z (DEV v6 / PROD v5,
+  `c09a0474…`) and stale by 15:27Z the same day, its directory's last commit being PD-236's marker
+  fix. **It is owed a redeploy**, and the fix it carries is not cosmetic: without it the marker is
+  a 400 and *no tile renders at all*.
+
+**Three long-standing staleness claims died today and all three are worth knowing, because
+debugging against a dead one wastes a session.** `search-places` had run **DEV v3 against PROD v7**
+since 2026-08-24 — DEV behind PROD, the opposite of this repo's usual direction, because PROD's v7
+ended PD-276's four-day production outage and DEV never needed it. PD-279's `country_code` was
+undeployed on both, so `taken_country_code` stored NULL on every postcard and the flag fell back to
+the pin. And DEV's old `search-places` build predated `classifyLedgerError`, so a `23514`
+participation-gate refusal reached the rider as **502 `unavailable`** — search reported as broken
+rather than as a limit, because `isPolicyRefusal` matches `42501` only. All three are closed;
+reinstating that last mapping's absence is the **regression to watch for**, not a thing still to fix.
+
+**One redeploy in this repo has an ORDERING rule that runs the OPPOSITE way to `069`/`070`, and it
+is the worked example to reach for when the next one does.** PD-236 makes the deployed function
+send `attribution=none`, so the tile stops carrying its burned-in credit and the app's own
+`MapAttribution` becomes the only thing discharging the obligation. The app must therefore be
+**SERVING before the function is deployed**, never after — a duplicate credit for the length of a
+deploy is harmless, an absent one is a licence breach. The additive-first rule is about which side
+fails safe, not about a fixed order.
+
+**Count the undeployed commits rather than reading a list anywhere** — an enumeration goes stale on
+the next merge, and this section's has twice:
+`TZ=UTC git log --oneline --since=<deploy timestamp> -- supabase/functions/<name>/`. **`git log -1`
+on the directory tells you the file is newer than the deploy and never by how many commits**, so
+list the history against the deploy timestamp or a three-commit gap reads as one.
+
+**A function going stale within two hours of its own redeploy is the point** — which is what
+`resolve-ride-location` did today, twice. A deployed function is drift the moment anyone edits its
+file. And **cross-project equality is not what establishes currency**: it says the two projects
+agree, never that either matches the repo, so currency is the `updated_at`-against-commit-date
+check below.
 Deploying is an **owner action** — there is no
 `supabase` CLI in the build container, and the
 MCP server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list, which
@@ -523,12 +592,13 @@ mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
   ceiling makes every reviewer flag a legitimate file:
 
   ```bash
-  grep -rln "from '@/lib/supabase/client'" src/ | grep -v "src/lib/supabase/"   # 6
+  grep -rln "from '@/lib/supabase/client'" src/ | grep -v "src/lib/supabase/"   # 7
   ```
 
   What earns a place on that list is a **session or transport** concern, not a read: the guard
   cache, the three auth routes that exchange or verify an emailed credential, the Storage upload,
-  and the Realtime subscription. Anything that is a *query* belongs in `lib/data/` no matter how
+  and the two Realtime subscriptions — PD-313's club threads joined the ride-messages one, which is
+  what took this from 6 to 7. Anything that is a *query* belongs in `lib/data/` no matter how
   short the list gets.
 - `@/lib/supabase/server` **no longer exists**. Neither does `@supabase/ssr`.
 
@@ -538,10 +608,14 @@ mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
 `profiles`, `rides`, `ride_members`, `clubs`, `club_members`, `postcards`, `postcard_likes`,
 `postcard_comments`, `postcard_hides`, `postcard_reports`, `blocks`, `profile_countries`,
 `feed_reads`, `ride_reads`, `place_search_attempts`, `ride_messages`, `push_devices`,
+`club_threads`, `club_messages`, `club_thread_reads`,
 `clubs` (media), and the dropped `friendships` and `places`. Read it before touching any of them: it carries the per-column
 grants, the cascade behaviour and the audience predicate for each, and several are counter-intuitive
 (a club outlives its owner; `postcards.ride_id` is a tag rather than a second audience;
-`ride_messages`' audience is an intersection and neither half alone is it).
+`ride_messages`' audience is an intersection and neither half alone is it; and `081`'s three invert
+that last one — a club's audience is the membership helper ALONE, the parent `EXISTS` being the
+redundant half there, which is the opposite of `ride_messages` and the trap `081` was written to
+close).
 
 **`places` — the self-hosted Overture Maps index the place typeahead used to search — is RETIRED
 (`070`, PD-273), and gone from BOTH projects as of 2026-08-19.** It was 96% of everything this app
@@ -580,8 +654,43 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 79 files; DEV is at `079` and PROD at `077` — measured 2026-08-25, so DEV is TWO
-AHEAD and BOTH `078` (PD-301) and `079` (PD-270) are owed to PROD, in that order.** `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
+**Applied state: 91 files; DEV is at `091` and PROD at `079` — measured 2026-08-29, so DEV is
+AHEAD by twelve and `080`–`091` are owed to PROD at the next promotion, in filename order.**
+`080`–`088` are additive, so those nine go to PROD **before** the promotion build serves, per the
+ordering rule below. **`090` is destructive and goes before it too**, which is this file's one
+exception to that rule rather than a violation of it: it drops `083`'s retraction trigger, and its
+header carries the check that earns the exception — the serving client already degrades correctly
+for a `ride_invited` notification whose invite is not live, nothing in `src/` names the trigger or
+its function, and no client role ever held EXECUTE on it, so an older bundle and a newer one behave
+identically against the post-`090` schema. **Read that as the rule working, not as a loophole**:
+the rule asks which side fails safe, and a destructive file whose removed object no bundle can
+observe has no unsafe side. **`091` is additive and goes before the build like the other nine**,
+with one caveat that is about the CLIENT rather than the schema: it re-creates `notify_ride_invited`
+with a `WHEN` clause, so from the moment it applies every in-app invite runs the narrowed trigger.
+`036`'s hand-exercise gate therefore fires for it, and was run on DEV; run it again on PROD. **`089` is the other exception and goes AFTER it is confirmed serving**, on `070`'s
+and `077`'s footing rather than `069`'s — it is additive in SCHEMA and its ordering constraint is
+in the CLIENT: `notificationCopy` and `NotificationsListItem`'s `describe` are exhaustive switches,
+so one decline landing while an older bundle is still serving takes that rider's notifications
+screen down. On DEV it was applied in exactly that order, after the merge's Vercel deployment
+reached `READY` on the merge sha, and `036`'s hand-exercise gate was run against the live decline
+path in the same sitting (one notification written, its actor equal to its recipient, the clear
+retracting it, nothing raised, zero residue). **`085` is additive and NOT inert**, the same shape `083` has: it rewrites
+`private.may_participate` to delegate to a new subject-taking twin — a function `023`'s gate
+trigger calls on sixteen tables — and its `private.join_club_from_request` fires
+`private.notify_club_joined` inside a `security definer` body, so a raise there takes a rider's
+approval down with it. `036`'s hand-exercise gate applies and was run on DEV; run it again on PROD
+before that promotion. `086` creates one function and hangs no trigger, so it needs none, and neither
+does `088` — three `security definer` RPCs, no trigger and no policy. **`089` DOES need it**: it
+hangs a fan-out on the DECLINE path, which is live, so from the moment it applies every decline
+runs new code inside the admin's own transaction. `081` creates the club-thread tables under their old `discussion` names and
+`082` renames them, so on PROD that pair is a create-then-rename with no rows in between — but the
+**order inside the gap is not optional**, and for two separate reasons that are easy to collapse
+into one: `082` renames objects `081` creates, so the reverse simply errors; and the client calls
+RPCs that exist only after `082`, so stopping *between* them serves `PGRST202` with nothing red.
+**`083` adds a third reason and it is the loudest**: it is additive in schema and NOT inert, because
+it replaces `private.can_read_ride`, which every existing notification fan-out calls inside a
+rider's own RSVP and ride-creation transaction — `036`'s hand-exercise gate, which was run on DEV
+and must be run again on PROD before that promotion. `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
 after it was confirmed serving (destructive), which is the whole ordering rule in one sitting.
 **Level is the exception, not the resting state**: DEV-ahead is where a migration lives between its
 merge and its promotion, and the two were last level on 2026-08-20 at PD-273's promotion and
@@ -644,7 +753,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **1816** assertions — re-derive rather than trust it:
+Suite **2479** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -685,13 +794,13 @@ rider with a NULL stamp no way out of the wizard. Inside a `security definer` fu
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: thirteen, and only one is outstanding.** Re-derive rather than trust the number
-— `get_advisors(security)` — but the *shape* is durable, because twelve of the thirteen are
+**Security advisors: twenty-seven, and only one is outstanding.** Re-derive rather than trust the number
+— `get_advisors(security)` — but the *shape* is durable, because twenty-six of the twenty-seven are
 things this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 10 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away), `register_push_device`, `release_push_device` (`078`, because no client role holds any grant on `push_devices`). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders, and the two push RPCs each write or remove exactly one row for their caller, take no user id and return nothing. Narrowness is the defence. **This advisor fires once per such function, so a migration adding two adds two** — reading `078`'s sweep as "one new advisor" is what its own task list got wrong |
+| 24 | `authenticated_security_definer_function_executable` (WARN) | `accept_terms`, `complete_onboarding`, `my_onboarding_state` (`021`, because `025` takes the column grant away), `has_password_reset_grant`, `consume_password_reset_grant` (`026`), `moderate_comment` (`011` §1b), `delete_own_club_message`, `moderate_club_thread`, `delete_owned_club` (`043`), `ride_journal_postcard_ids` (`062`, because it takes the `postcards.ride_id` column grant away), `register_push_device`, `release_push_device` (`078`, because no client role holds any grant on `push_devices`), `accept_ride_invite`, `decline_ride_invite` (`083`, because the status change and the `ride_members` row must be one statement and no client holds UPDATE on `ride_invites`), and `ride_invite_link_preview`, `claim_ride_invite_link`, `revoke_ride_invite_link` (`091`, the invite link's three — the only RPCs in the schema whose caller is authorised by a SECRET rather than by their identity, which is why all three resolve reach through ONE `private` predicate and why neither of the first two may test a block or a stamp in its own body). Every one is `security definer` **by design**, and each is narrow on purpose — `moderate_comment` deletes exactly one comment on a postcard the caller authored, `delete_owned_club` deletes exactly one club the caller owns, `ride_journal_postcard_ids` returns ids and never a row, so RLS still decides every postcard that renders, the two push RPCs each write or remove exactly one row for their caller, take no user id and return nothing, and `081`'s pair delete exactly one thread the caller's club owns and exactly one message the caller wrote — the second existing at all because `club_messages` holds no DELETE grant or policy for anyone, and `083`'s pair answer exactly one invite addressed to the caller, taking an invite id and never a rider id, with ONE raise site each so a caller learns nothing about an invite that is not theirs. `085` adds three — `discoverable_private_clubs`, which returns SEVEN named columns of a private club and no roster, ordered and page-capped in SQL, and `approve_club_join_request` / `decline_club_join_request`, which answer exactly one request for a club the caller administers, taking a REQUEST id and never a rider id, again with ONE raise site each; `086` adds `club_stamp_postcard_ids`, which like `ride_journal_postcard_ids` returns ids and never a row; and `088` (PD-326) adds THREE — `remove_club_member`, `promote_club_member` and `demote_club_admin`, each taking a CLUB and a RIDER and no role argument at all, so `019`'s property that `admin` is claimable by no client survives the first write path that ever sets it. **`089` adds NONE**, both of its functions being in `private`, and neither does `090`, which drops one. **`091` adds THREE**, and its own three `private` helpers add none — the same shape `085` and `083` have, and the reason the count moves by the number of PUBLIC functions rather than by the number of functions. **`085`'s EIGHT `private` functions add NO advisor between them** — `is_club_admin`/`is_club_admin_for`, `club_takes_join_requests`/`club_takes_join_requests_for`, `may_participate_for`, `join_club_from_request` and the two fan-outs all live in `private`, which is why `085` took the count up by three rather than eleven. **`083`'s three `private` functions add NO advisor** — `has_live_ride_invite`, `has_live_ride_invite_for` and `join_ride_from_invite` live in `private`, which PostgREST does not publish, which is why the count went up by two rather than five. Narrowness is the defence. **Count them off `get_advisors` rather than off this cell** — it read ten while twelve were live, which is the same defect a stale number anywhere else in this file is, and it fed a wrong verification gate into two proposals. **This advisor fires once per such function, so a migration adding two adds two** — reading `078`'s sweep as "one new advisor" is what its own task list got wrong |
 | 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design in both cases: `026` and `078` revoke everything on their table from `anon` and `authenticated`, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
@@ -887,10 +996,65 @@ then call it*, as `.claude/commands/queue-pickup.md` STEP 0 does. `No such tool 
 the name is **absent**, which is what a rotation does: on 2026-08-08 every MCP server
 re-registered under a UUID prefix and `mcp__Supabase__*` stopped resolving, silently, an absent
 tool being no error. A keyword search (`+execute_sql supabase`) tells them apart and **buys
-diagnosis, not recovery** — probed 2026-08-09, a tool absent from the allowlist is refused
-outright, so a UUID-prefixed name it finds is very likely refused too (untested against a real
-rotation). **The fix is therefore the *report***, an agent naming the passes that did not run;
-restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
+diagnosis, not recovery**.
+
+**Measured against a real rotation on 2026-08-27, and the mechanism is worse than "refused":
+in a SUBAGENT, `ToolSearch` is filtered by that agent's own `tools:` line before it searches, so
+a rotated tool is never surfaced at all.** Both `reviewer` passes that day probed `select:` and
+keyword for Supabase and Linear and found nothing — the keyword search for Linear returned a
+*GitHub* tool, GitHub being the one connector then resolving under its friendly name. **So a
+subagent cannot recover from inside itself, and a brief that tells it to try is describing an
+escape hatch behind the door it is meant to open.** That was `PD-154`'s chosen remedy, and it is
+why this recurred after that issue closed.
+
+**The scope of that is the whole of it, and reading it wider stops the queue.** A **main thread
+has no `tools:` line**, so nothing filters its search and a keyword lookup *does* recover a
+rotated connector there — `PD-154`'s own 2026-08-09 comment records `+list_issues linear` doing
+exactly that. So `.claude/commands/queue-pickup.md` STEP 0 and `queue-dispatch.md` are **right** to
+say a `select:` miss means "search again by keyword", and this paragraph does not overrule them:
+a dispatcher that reads "there is no recovery", skips the keyword search and sends the
+cannot-reach-Linear push has abandoned a recovery known to work, and halted the queue to do it.
+
+**The fix is the `tools:` line carrying BOTH spellings**, which every brief reaching Supabase,
+Linear or Figma now does — the friendly name and the UUID-prefixed one. **The UUIDs identify a
+connector, not a session.** `PD-154`'s 2026-08-09 comment records all four prefixes verbatim —
+Supabase, Linear, Figma and Vercel — and the three this repo twins are byte-identical to what the
+briefs now carry. **Supabase is the one corroborated at BOTH ends**: `.claude/settings.json`
+recorded it on 2026-08-07 and it was unchanged on 2026-08-27, twenty days. Linear's and Figma's
+second observation is this session's and is written down nowhere checkable, so treat those two as
+one dated record plus a live sighting rather than as two.
+
+**`src/__tests__/agent-briefs.test.ts` is the check, and no grep is.** Every twin sits on one
+`tools:` line, so `grep -c` counts *lines* and answers 1 however many are there — a boolean
+wearing a count's clothes, and this file's own §Working Principles trap in miniature. The test
+asserts a friendly tool with no twin, and fails on a connector it has never heard of. **The
+orphan direction — a twin left behind by a deleted tool — is covered only while no `tools:` line
+repeats an entry**, because that half compares counts rather than sets and one duplicate masks
+one orphan. Latent today (no brief has a duplicate) and it is **PD-336**:
+
+```bash
+npx vitest run src/__tests__/agent-briefs.test.ts
+grep -o "mcp__[0-9a-f]\{8\}-" .claude/agents/reviewer.md | wc -l   # 8, if you want the number
+```
+
+**Two things this does NOT fix, and reading it as complete is how the next one gets inherited:**
+
+- **`github` has no twin on any brief**, because it held its friendly name through both observed
+  rotations and no UUID for it has ever been seen. `reviewer`'s four `mcp__github__*` tools —
+  PR reading and CI logs, the delta re-review path — are exposed to a rotation that has not
+  happened yet. The test names the exclusion rather than skipping it silently, so a fifth
+  connector fails loudly.
+- **`.claude/settings.json`'s `permissions.allow` carries the identical defect and fails
+  harder.** Those literal names are name-matched too —
+  **45** of them, `jq -r '.permissions.allow[]' .claude/settings.json | grep -c '^mcp__'`, being
+  Linear 23, github 13 and Vercel 9 — and `PD-154`'s 2026-08-09 comment measured the result: a rotated
+  `mcp__Vercel__list_deployments` came back `MCP error -32003: MCP tool call requires approval`,
+  which in an unattended firing is a hard stop rather than a degraded run. **Pasting UUIDs there
+  is not the obvious fix** — `autoMode.allow` deliberately chose capability-prose over literal
+  ids for this exact reason, and widening a permission surface is the owner's call. Open.
+
+**The report is still owed when a connector arrives under a third spelling nobody has recorded** —
+an agent naming the passes that did not run; restoring the call is the owner's. Every brief reaching **Supabase** carries `ToolSearch` and a
 §Reaching Supabase block (`reviewer`'s leads its file as §First), and a new one needing the
 database gets both; `design-system` is out, its connector being Figma and its *answers* coming
 from the committed `design/` snapshot with reads over the API forbidden — which is a rule about
@@ -1072,9 +1236,20 @@ agents on unrelated stories barely touch the same source, but they share:
   agent's server slides to the next free one while its walk still calls `:3000` — it signs in,
   walks the **first** agent's tree, and reports **green**.
 
-Both are overridable — `TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=`, `next dev -p`. Set them per agent
-or serialise the verification step. The database half fails loudly; the port half passes, which is
-why it is the dangerous one.
+- **One working tree, and the main thread is a writer too.** Measured 2026-08-26: a `test` agent was
+  driving the app against DEV while this thread applied `reviewer`'s findings to the same checkout.
+  It reported files changing underneath it and `next build` processes it had not started — correctly,
+  and it could not tell a colliding writer from a compromised machine. **This one is not
+  agent-versus-agent**: the two rules above are about a second *build*, and this fires with one agent
+  and a main thread that never stopped editing. The verifying agent is reading the tree, so anything
+  that writes it while a run is in flight makes the report describe a commit that no longer exists.
+  Commit and stand still for the length of a verification run, or hand the agent
+  `isolation: "worktree"`.
+
+The first two are overridable — `TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=`, `next dev -p`. Set them per
+agent or serialise the verification step. The database half fails loudly; the port half passes, which
+is why it is the dangerous one. The tree half is the one that wastes an agent's whole run rather than
+returning a wrong answer.
 
 **The docs spine collides even when the code does not** — §Working Principles already carries the
 measurement and the command, so re-derive it there rather than trusting a second copy. What
@@ -1889,15 +2064,31 @@ cheapest to get green. The one case that needs no PR is a session that changed n
   this organization, so no session can recreate it; `update_trigger enabled: true` restores it
   whole. `…WJkMV` is the cheap hourly one, `…Gzy8e` is the irreplaceable one — keep them straight
   in both directions. Detail in [`docs/reference/linear.md`](docs/reference/linear.md).
-- **Don't archive or abandon the relay session** — the one
-  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to, **currently
-  `session_014ncc5vBmsKG9fmfznUoZ48`, and read it off the trigger rather than off this line**:
-  `list_triggers` carries the authoritative `persistent_session_id`, and this id is also copied
-  into `.claude/commands/queue-dispatch.md`, where a stale one silently stops the queue while
-  every health signal stays green. Archiving the relay stops the queue with no error
-  anywhere, and `update_trigger` has no `persistent_session_id` parameter, so no session can
-  rebind the Routine itself. **It is the only session in the queue that is reused, and
-  since 2026-08-18 it decides nothing**: a firing spawns a fresh dispatcher and exits, so
-  everything it spawns is disposable and archiving one is fine — a dispatcher carries
-  `queue-dispatch-run` and a child carries `queue-dispatch`, which is how the three are told
-  apart. `.claude/commands/queue-dispatch.md` STEP -1 is the procedure.
+- **Don't archive the relay session on your own initiative** — the one
+  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to. **Read which session that is off the trigger, never
+  off a line in a file**: `list_triggers` carries the authoritative `persistent_session_id`, and
+  since 2026-08-28 no role decision anywhere reads it, because a copied id stopped the queue for
+  ten days across two separate causes (`.claude/commands/queue-dispatch.md` §The three roles carries
+  both). `update_trigger` has no `persistent_session_id` parameter, so no session can rebind the
+  Routine itself — though the binding did recover on its own within an hour the one time it was
+  tested. **It is the only session in the queue that is reused, and since 2026-08-18 it decides
+  nothing**: a firing spawns a fresh dispatcher and exits, so everything it spawns is disposable
+  and archiving one is always fine — a dispatcher carries `queue-dispatch-run` and a child carries
+  `queue-dispatch`, which is how the three are told apart.
+
+  **A build child archiving ITSELF is a different act, and the owner permitted it on 2026-08-28** —
+  *"feel free to close the session and archive it straight away"* — when a firing's work is done and
+  nothing is left for them to read. Permission, not obligation: a session that keeps itself has not
+  done anything wrong, and `.claude/commands/queue-pickup.md` STEP 7 carries the test for which one
+  a given run is. The two acts stay apart without a check, because `archive_session` is called with
+  the id `get_session` returns for the caller, and a firing is never told the relay's id — so it has
+  none to pass. This bullet is about archiving the session someone *else* is bound to; a firing
+  cannot name one. **That is an absence of any way to learn the id, not a refusal**, so a future
+  change that hands a child `list_sessions` or `list_triggers` puts a reachable id in front of it
+  and this sentence stops being true.
+
+  **Archiving it deliberately is the one documented repair, and it is the owner's call.** The
+  relay's container is provisioned once and never re-provisioned, so a relay older than a change to
+  `queue-dispatch.md` keeps executing the copy it cloned, silently, with every firing still
+  recording `SUCCEEDED`. Archiving is what forces a fresh clone. `queue-dispatch.md` STEP -1 is the
+  procedure and §Two irreversible things is the rule.

@@ -18,13 +18,18 @@ import type { RideFilter } from '@/types'
  * Bounds for the create-ride form.
  *
  * Like `clubSchema`, these live only here: `001` declares `title`,
- * `description`, `meeting_point` and `route_description` as bare `text` with no
- * CHECK, so the Server Action parsing this is the whole enforcement. 80 / 500 /
- * 120 / 1000 are chosen, not measured — `Create ride` is drawn in the OLD
- * stylesheet and its epic reads **To do**, so the design specifies none of them.
+ * `meeting_point` and `route_description` as bare `text` with no CHECK, so the
+ * action parsing this is the whole enforcement. 80 / 120 / 1000 are chosen, not
+ * measured — `Create ride` is drawn in the OLD stylesheet and its epic reads
+ * **To do**, so the design specifies none of them.
+ *
+ * **There is no `RIDE_DESCRIPTION_MAX` any more (PD-320).** `rides.description`
+ * still exists and existing rows still render it on the ride detail; what left
+ * is the *form field*, so nothing in the app writes the column and there is no
+ * length left to bound. Restoring the constant without restoring a writer would
+ * be a bound over nothing.
  */
 export const RIDE_TITLE_MAX = 80
-export const RIDE_DESCRIPTION_MAX = 500
 export const RIDE_MEETING_POINT_MAX = 120
 export const RIDE_ROUTE_MAX = 1000
 
@@ -41,9 +46,17 @@ const optionalText = (max: number, message: string) =>
 export const RIDE_START_PLACE_ID_MAX = 512
 
 /**
- * The place a rider picked for the ride's start, or none — `067`, PD-114.
+ * `080`'s `rides_timezone_is_bounded`, restated for the message. The longest
+ * name in the IANA database is `America/Argentina/ComodRivadavia` at 32
+ * characters, so this is headroom rather than a fit.
+ */
+export const RIDE_TIMEZONE_MAX = 64
+
+/**
+ * The place a rider picked for the ride's start, or none — `067`, PD-114,
+ * carrying its zone since `080` (PD-193).
  *
- * **Only three fields, where a club's location has four.** A club's location
+ * **Only three POSITIONAL fields, where a club's location has four.** A club's location
  * *is* a place, so its name comes from the picker. A ride's start is free text
  * the rider may have typed — `meeting_point` above owns that string and is
  * `NOT NULL` — so what a pick adds is the coordinate and its provenance, never
@@ -65,6 +78,25 @@ export const rideLocationSchema = z
       .max(RIDE_START_PLACE_ID_MAX, 'That place could not be attached.'),
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
+    /**
+     * The IANA zone the picked place is in (`080`, PD-193), or `null`.
+     *
+     * **Nullable INSIDE a pick, unlike the three above.** All-or-nothing is
+     * `067`'s coupling rule about the coordinate; a zone is an enrichment the
+     * provider may simply not have sent, and refusing the whole pick over it
+     * would cost the rider their coordinate to save their clock.
+     *
+     * The bound matches `rides_timezone_is_bounded`. Zod owns the message and
+     * the database owns the guarantee: `080`'s trigger normalises anything it
+     * cannot resolve to NULL, so a name that passes here and is unknown to
+     * Postgres is stored as "we do not know" rather than as itself.
+     */
+    timezone: z
+      .string()
+      .trim()
+      .min(1)
+      .max(RIDE_TIMEZONE_MAX, 'That place could not be attached.')
+      .nullable(),
   })
   .nullable()
 
@@ -84,6 +116,47 @@ export const RIDE_LOCATION_FIELD_NAMES = {
   lat: 'latitude',
   lon: 'longitude',
 } as const
+
+/**
+ * The zone input, which is **not** in the map above and must not be.
+ *
+ * `PlaceSearchField` renders exactly the four inputs `RIDE_LOCATION_FIELD_NAMES`
+ * names, and `place-search-field.test.tsx` asserts that set per mode — including
+ * the composer's nameless mode, where it must write *nothing*. Adding a fifth
+ * would change a contract three callers share to serve one of them. The two ride
+ * forms render this input themselves, from the same `PlaceValue` they hand the
+ * field.
+ */
+export const RIDE_TIMEZONE_FIELD_NAME = 'start_timezone'
+
+/**
+ * Which zone a ride form's `datetime-local` string means — the one rule, in one
+ * place, because FOUR call sites have to give the same answer and two of them
+ * are on opposite sides of the network (`080`, PD-193).
+ *
+ * `CreateRideForm` and `EditRideForm` use it to label the field ("Times are in
+ * Lisbon time"); `createRide` and `updateRide` use it to resolve the string
+ * through `wallClockToUtc`. **A rider must never be told one zone and have
+ * another one stored**, and before this was extracted the two sides were a pair
+ * of one-liners with a comment saying they had to agree.
+ *
+ * **The pick WINS whenever there is one, including when its zone is `null`, and
+ * that is the whole reason this is not `pick?.timezone ?? stored`.** A place
+ * whose provider sent no zone is an ordinary case — it is every place until
+ * `search-places` is redeployed — and `??` falls through it to the ride's
+ * stored zone. On an edit that would label the field `APP_TIME_ZONE` while the
+ * action resolved it against the ride's old zone, so a rider who also changed
+ * the time would get back an hour they never typed.
+ *
+ * `stored` is the ride's own `timezone` on an edit and `null` on a create,
+ * where there is no ride yet to have one.
+ */
+export function resolveDepartureZone(
+  pick: { timezone?: string | null } | null | undefined,
+  stored: string | null
+): string | null {
+  return pick ? (pick.timezone ?? null) : stored
+}
 
 /**
  * The pick, read back off `FormData` as one nullable object.
@@ -108,7 +181,12 @@ export function readRideLocation(formData: FormData): RideLocationInput {
   const longitude = Number(lon)
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
 
-  return { start_place_id: placeId, latitude, longitude }
+  // Deliberately NOT part of the all-or-nothing test above: a pick with no zone
+  // is a place whose provider sent none, which is ordinary, and dropping the
+  // whole pick for it would lose the coordinate too.
+  const zone = (formData.get(RIDE_TIMEZONE_FIELD_NAME) as string | null)?.trim() ?? ''
+
+  return { start_place_id: placeId, latitude, longitude, timezone: zone || null }
 }
 
 export const rideSchema = z.object({
@@ -117,10 +195,6 @@ export const rideSchema = z.object({
     .trim()
     .min(1, 'Give your ride a title.')
     .max(RIDE_TITLE_MAX, `Keep the title under ${RIDE_TITLE_MAX} characters.`),
-  description: optionalText(
-    RIDE_DESCRIPTION_MAX,
-    `Keep the description under ${RIDE_DESCRIPTION_MAX} characters.`
-  ),
   meeting_point: z
     .string()
     .trim()
@@ -138,8 +212,12 @@ export const rideSchema = z.object({
    * half of that bug: an organizer in Amsterdam and one in London would mean
    * different instants by the same string.
    *
-   * The correct model is still a zone column on `rides` — see CLAUDE.md. This
-   * keeps the write consistent with `formatRide*` until that lands.
+   * **`080` (PD-193) is that zone column, and this comment is now about which
+   * zone rather than whether there is one.** The string is still zone-less and
+   * still parsed as wall-clock; what decides the instant is `rides.timezone`
+   * when the rider picked their start, and `APP_TIME_ZONE` when they typed it
+   * and the geocode has not landed yet. The action passes it; see
+   * `wallClockToUtc`.
    */
   departure_at: z
     .string()
@@ -159,37 +237,20 @@ export const rideSchema = z.object({
 
 export type RideInput = z.infer<typeof rideSchema>
 
+/**
+ * **`near` is gone from this schema (2026-08-27), and a stale `?near=1` in a
+ * bookmark is now simply ignored** — an unknown key is not an error here, so
+ * such a link lands on the unfiltered tab rather than failing. That is the
+ * right outcome: the near-you *filter* it named (PD-260) became the door to
+ * `/rides/explore`, and there is nothing left on this screen for it to turn on.
+ */
 export const rideSearchParamsSchema = z.object({
   filter: z.literal('mine').optional().catch(undefined),
   club: z.string().uuid().optional().catch(undefined),
-  /**
-   * The near-you toggle (PD-260). A separate axis from `filter`/`club` rather
-   * than a third `RideFilter` kind, because it composes with both — "my rides,
-   * near me" and "this club's rides, near me" are the states a rider asks for,
-   * and a discriminated union cannot hold them at once.
-   *
-   * It is also why it stays out of `parseRideFilter`: `RideFilter` is what the
-   * list *query* is keyed on, and this predicate is applied to the rows that
-   * query already returned. Folding it in would give the same rows two cache
-   * entries and refetch on every toggle.
-   */
-  near: z.literal('1').optional().catch(undefined),
 })
 
 /**
- * Is the near-you filter on?
- *
- * A single literal rather than a boolean coercion: `?near=0` and `?near=false`
- * both read as *on* under `Boolean(param)`, which is the trap that makes "turn
- * it off" links silently no-ops. Only the value this app's own strip writes
- * counts, and anything else is off.
- */
-export function parseRideNear(params: { near?: string }): boolean {
-  return rideSearchParamsSchema.pick({ near: true }).parse(params).near === '1'
-}
-
-/**
- * `undefined` is the "All rides" tile.
+ * `undefined` is the "From clubs" tile.
  *
  * "Mine" and a club at once is not a state the design has, and intersecting
  * them would quietly return nothing — first one wins, as on /postcards. An
@@ -231,6 +292,77 @@ export function parseRideFilter(params: {
  * this leaks nothing new.
  */
 export const rideIdSchema = z.uuid()
+
+/**
+ * A `ride_invites.id`, for the same reason and with the same failure: it comes
+ * out of a notification row rather than out of the URL, but the two RPCs that
+ * consume it take one argument and a malformed value would reach PostgREST as
+ * `22P02` and land the rider on the error boundary rather than on the ordinary
+ * refusal.
+ */
+export const rideInviteIdSchema = z.uuid()
+
+/** A `ride_invite_links.id`, for `revoke_ride_invite_link`'s one argument. */
+export const rideInviteLinkIdSchema = z.uuid()
+
+/**
+ * An invite link's token — `091`, PD-330. **32 lowercase hex characters**,
+ * mirroring `ride_invite_links_token_shape`.
+ *
+ * **Zod owns the message and the database owns the guarantee**, and here the
+ * guarantee is unusually strong: `token` takes its value from a column default
+ * and the INSERT grant names `(id, ride_id, created_by)` only, so there is no
+ * statement in which a client can choose one. This schema therefore protects
+ * nothing about *stored* values — it exists so a hand-edited URL or a truncated
+ * paste is refused **before** it reaches PostgREST, where a malformed argument
+ * to a `text` parameter would simply return zero rows and read as a dead link.
+ *
+ * Anchored and case-sensitive on purpose. An uppercased paste is not the same
+ * token: the column stores lowercase and the RPCs compare exactly, so accepting
+ * it here would hand the rider a "no longer valid" for a link that is alive.
+ */
+export const RIDE_INVITE_TOKEN_LENGTH = 32
+
+export const rideInviteTokenSchema = z
+  .string()
+  .regex(new RegExp(`^[0-9a-f]{${RIDE_INVITE_TOKEN_LENGTH}}$`), 'That invite link is not valid.')
+
+/**
+ * The minimum the rider picker will search on.
+ *
+ * **This bound has NO database counterpart, and saying so is the point.** Every
+ * other schema in this directory mirrors a CHECK, per CLAUDE.md's rule that Zod
+ * owns the message and the database owns the guarantee. There is no CHECK to
+ * mirror here because the thing being bounded is a *query*, not a stored value
+ * — so a rider using the publishable key directly can search on one character,
+ * and the only thing that would change is how much of the directory one
+ * keystroke enumerates. The real defences are the ones the database does carry:
+ * `profiles` SELECT, which has permitted username lookup since `002`, and
+ * `025`'s per-column grants, which cap what a hit can return.
+ *
+ * Two characters, and prefix-anchored at the read (`searchRidersToInvite`).
+ * One character enumerates a thirty-sixth of the platform per keystroke.
+ */
+export const RIDER_SEARCH_MIN_LENGTH = 2
+
+/**
+ * A ceiling as well as a floor, and it is the half that is easy to skip.
+ *
+ * The query is interpolated into a LIKE pattern and travels as a **URL query
+ * parameter**, so an unbounded one is an unbounded URL — and `056` caps a
+ * username at 25 characters anyway, which makes anything past that a search
+ * that cannot match.
+ */
+export const RIDER_SEARCH_MAX_LENGTH = 40
+
+export const riderSearchQuerySchema = z
+  .string()
+  .max(RIDER_SEARCH_MAX_LENGTH, `Keep it under ${RIDER_SEARCH_MAX_LENGTH} characters.`)
+  .transform((value) => value.trim())
+  .refine(
+    (value) => value.length >= RIDER_SEARCH_MIN_LENGTH,
+    `Type at least ${RIDER_SEARCH_MIN_LENGTH} characters.`
+  )
 
 /**
  * Mirrors `ride_messages_body_length` in migration `034`, and the asymmetry is

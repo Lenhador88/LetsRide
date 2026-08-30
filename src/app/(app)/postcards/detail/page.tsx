@@ -15,6 +15,7 @@ import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM } from '@/lib/routes'
 import { postcardIdSchema } from '@/lib/validation/postcards'
+import { useSwipeBack } from '@/lib/actions/navigate'
 
 /**
  * What the header says. A literal rather than the author's username or the
@@ -104,6 +105,15 @@ function PostcardThread() {
     () => getPostcardComments(id)
   )
   const profile = useQuery(queryKeys.profile.me(), getCurrentProfile)
+
+  // PD-341, to the same place the arrow goes. The comment composer is a
+  // textarea and `declinesSwipeBack` refuses a gesture that starts in one, so
+  // the reply half of this screen is unaffected.
+  //
+  // Above the `notFound()` for the reason the comment fifteen lines up already
+  // gives about the reads: hooks cannot live behind a conditional return, and
+  // `notFound()` throws during render like any other one.
+  useSwipeBack('/postcards')
 
   if (!valid) notFound()
 
