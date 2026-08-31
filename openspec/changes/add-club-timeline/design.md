@@ -329,14 +329,44 @@ rediscover it: *the day any club passes roughly a thousand members,
 
 Every one carries a recommended default so the build can proceed and be corrected later.
 
-**Status after the build (2026-08-31).** Q2, Q4 and Q5 took their defaults and are closed.
-Q3 is closed a third way, better than either option it offered: the entrance is `All photos`
-on the **timeline's own section header**, so it sits beside the content it opens, the action
-layer stays three actions wide, and PD-125's requirement is met without the row growing a
-destination among its actions. Q1 is **still open and still the owner's**, and the build shipped
-its default — creation ordering, with the aggregate mark on the Threads tile. It is the one
-thing in this change that could still be wrong on purpose rather than by accident, and it is
-raised to the owner in the session's own reply rather than left here.
+**Status after the build (2026-08-31).** Q2 and Q5 took their defaults and are closed.
+
+**Q3 is closed a third way, better than either option it offered**: the entrance is `All
+photos` on the **timeline's own section header**, so it sits beside the content it opens, the
+action layer stays three actions wide, and PD-125's requirement is met without the row growing
+a destination among its actions. It is drawn only when the club has posted any — being a member
+is not the same as having photos, and this file's own reachability rule cuts both ways.
+
+**Q4 is MOOT rather than defaulted, and the difference is worth the line.** Its default was
+*"render 'This club was created.' until the roster read has landed"*, which presumes the
+founding entry can render before that read. It cannot: `joins` is one of the four stream
+sources, not a side read, so `ClubTimeline` gates the whole section on it and the entry never
+renders early. The reasoning behind the default was right and the situation it guarded against
+does not arise.
+
+**Q1 is still open and still the owner's**, and the build shipped its default — creation
+ordering, with the aggregate mark on the Threads tile. It is the one thing in this change that
+could still be wrong on purpose rather than by accident, and it is raised to the owner in the
+session's own reply rather than left here.
+
+### Two places the build deviates from this document
+
+**The display cap is 20, not §D7's `TIMELINE_MAX = 40`, and the source bounds are 30 / 30 / 20 /
+60 rather than a uniform 20.** Q2 sanctions unequal per-source limits as the lever, so the
+source half is covered by an answered question; the halved display cap is not, and it has a
+consequence §D7 does not describe. **Under these numbers the coherence horizon is inert**: every
+source reads at least as many rows as the timeline draws, so a truncated source's oldest row
+already has twenty newer events above it and the filter can never remove a rendered one. The
+horizon is defence in depth here rather than a live filter. That is stated at
+`CLUB_TIMELINE_LIMIT` with its proof, and `club-timeline.test.ts` asserts the relationship
+directly so that lowering a bound — two of the four belong to other screens — or raising the cap
+switches the guard on deliberately rather than silently.
+
+**Task 1.1's rename became a deletion.** `clubTimeline.ts` was to become `clubRideStrip.ts` with
+`CLUB_TIMELINE_RIDES` → `CLUB_RIDE_STRIP_RIDES`; instead the module is deleted outright and the
+name reused for this change's own read bound. PD-319 widened the ride strip to carry past rides
+*because there was no timeline to put them on*, so with one built the split helper has no caller
+and no reason to exist. The collision the task existed to prevent is gone either way.
 
 ### Q1 — Should a thread's timeline entry be placed by its creation or by its last message? — **BLOCKING · product owner**
 

@@ -427,24 +427,35 @@ is a drawn value this repo no longer builds:
 - [ ] **A SECOND failing pairing arrived with the same commit and is a different one:
       `text-muted` on `bg-track`.** `#666666` on `#E5DACF` measures **4.17:1** against a 4.5:1
       bar, and both new instances are 12px — so neither is WCAG large text and neither passes.
-      They are `ClubCreateRideRow`'s second line and the carousel's `Add` label; the same
+      They were `ClubCreateRideRow`'s second line and the carousel's `Add` label; the same
       pairing already ships unlogged on `RideJournalEmpty`'s `Add`, and this entry's own
       unselected-RSVP-button line logs it at the same ratio. Recorded because the commit that
       added them re-counted the *accent* pairing carefully and said nothing about this one,
       which left this file asserting a complete contrast sweep it had not done.
 
-      **A same-line grep finds one of the two, not both**, which is the trap worth recording:
-      the carousel's `Add` label is a bare `text-xs font-semibold` span that **inherits**
-      `text-muted` from the `Link` wrapping it, so the pairing is spread across two lines and
-      only the row's own second line matches. List the token and read the sizes off the hits:
+      **A THIRD instance arrived with the club timeline on 2026-08-31**, and is the same
+      4.17:1 for the same reason: `ClubTimelineEventRow`'s `Time Since` is `text-xs
+      font-normal text-muted` inside the `bg-track` event block. It is **left exactly as
+      drawn** under the standing policy at the head of this section — the frame specifies
+      `Poppins/12/Regular` `Grey/80` — so what was missing was the measurement, not the
+      colour. The same commit deleted `ClubPostcardCarousel`, which took the second instance
+      with it; the count is unchanged at two live instances plus the unlogged Journal one.
+
+      **A same-line grep finds one of them, not all**, which is the trap worth recording: the
+      carousel's `Add` label was a bare `text-xs font-semibold` span that **inherited**
+      `text-muted` from the `Link` wrapping it, so the pairing was spread across two lines and
+      only the row's own second line matched. That shape survives the carousel's deletion —
+      any wrapper carrying the token over a differently-sized child has it. List the token and
+      read the sizes off the hits:
 
       ```bash
       grep -n "text-muted\|text-xs" src/components/clubs/ClubCreateRideRow.tsx \
-        src/components/clubs/ClubPostcardCarousel.tsx
+        src/components/clubs/ClubTimelineEventRow.tsx
       ```
 
-      `text-foreground` on `bg-track` is fine at **12.65:1** and is what the row's title uses;
-      the failure is confined to the muted supporting lines. Same PD-176 designer question.
+      `text-foreground` on `bg-track` is fine at **12.65:1** and is what both the row's title
+      and the timeline event's sentence use; the failure is confined to the muted supporting
+      lines. Same PD-176 designer question.
 
 - [x] **The club detail is a TIMELINE as of 2026-08-31 (`add-club-timeline`, PD-299 #4), and it
       is the first version of this screen that is MEASURED rather than composed.** Every entry

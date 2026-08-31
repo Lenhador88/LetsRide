@@ -60,8 +60,32 @@ export type ClubJoin = Omit<ClubRosterMember, 'profile'> & {
  * timeline is a merge of four independently-bounded reads, so paging it would
  * mean four cursors advancing at four different rates — see `mergeClubTimeline`
  * for why the tail of such a merge is incoherent. Twenty is enough to say what
- * a club has been doing; the full lists are one tap away from the sections and
- * the action row above it.
+ * a club has been doing; the full lists are one tap away from the heading, the
+ * action row and the foot.
+ *
+ * ## Its relationship to the four source bounds is the real invariant, and it
+ * ## is what makes the horizon inert today
+ *
+ * **Every source bound is `>=` this number, and while that holds the horizon in
+ * `mergeClubTimeline` can never remove a row that would have been drawn.** The
+ * proof is short: the source that sets the horizon is truncated, so it returned
+ * at least its own bound of rows, and every one of them is newer than the
+ * horizon it set. If that bound is `>= 20`, any event older than the horizon
+ * already has twenty strictly-newer events above it and cannot survive
+ * `slice(0, 20)` anyway.
+ *
+ * So the horizon is **defence in depth rather than a live filter**, and saying
+ * so here is the point: the alternative is a guard that looks load-bearing,
+ * that no test exercises at the numbers that ship, and that a reader assumes is
+ * doing work it is not.
+ *
+ * **It becomes live the moment the invariant breaks, and one of the four bounds
+ * is not ours.** `CLUB_THREADS_PAGE_SIZE` belongs to the Threads list screen
+ * and `FEED_PAGE_SIZE` to the postcard feed; either could be lowered by someone
+ * who has never opened this file, and raising this number has the same effect
+ * from the other side. `club-timeline.test.ts` asserts the relationship
+ * directly for that reason — it is the one test here whose failure means *the
+ * horizon just started mattering*, not *the horizon is broken*.
  */
 export const CLUB_TIMELINE_LIMIT = 20
 
@@ -330,13 +354,13 @@ function horizonOf<T>(source: ClubTimelineSource<T>, at: (row: T) => string): st
 export async function getClubJoins(
   clubId: string,
   limit = CLUB_TIMELINE_JOINS
-): Promise<ClubJoin[]> {
+): Promise<ClubTimelineSource<ClubJoin>> {
   // The guard every club read carries: a non-uuid reaches `.eq('club_id', …)`
   // as `22P02`, PostgREST turns it into a 400 and `unwrapList` throws, which
   // would put a rider on an error boundary offering `Try again` on an address
   // that can never succeed (PD-142). `[]` here rather than `null`, because the
   // page has already resolved the club through `getClub` by the time this runs.
-  if (!clubIdSchema.safeParse(clubId).success) return []
+  if (!clubIdSchema.safeParse(clubId).success) return { rows: [], truncated: false }
 
   const supabase = await resolveSupabase()
 
@@ -352,7 +376,19 @@ export async function getClubJoins(
 
   const members = rows.filter((member): member is ClubJoin => !!member.profile?.username)
   await resolveAvatarUrls(members.map((member) => member.profile), supabase)
-  return members
+
+  // **`truncated` is measured on `rows`, before the filter, and that is the
+  // whole reason this function returns the flag rather than letting the caller
+  // derive it from the array's length.** The filter above drops rows Postgres
+  // already counted against the limit, so one member with a NULL username in
+  // the newest sixty turns a saturated read into `members.length === 59` — and
+  // a caller comparing that against the bound would answer "not truncated",
+  // which tells `mergeClubTimeline` this read reaches back to the club's
+  // founding when it stops at whoever joined sixtieth.
+  //
+  // The other three sources return exactly what their bound returned and so
+  // need no equivalent; this is the only read here that post-filters.
+  return { rows: members, truncated: rows.length >= limit }
 }
 
 /**

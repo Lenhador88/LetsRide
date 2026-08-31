@@ -183,8 +183,8 @@ const TEXT_ENTRY_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
  *
  * Three reasons, and each covers a case the others cannot see:
  *
- * - **It scrolls horizontally.** `RideJournal`, the club's ride strip, the
- *   club detail's ride strip, `FilterTile` — and anything added later, which is
+ * - **It scrolls horizontally.** `RideJournal`, the club detail's ride strip,
+ *   `FilterTile` — and anything added later, which is
  *   the point of testing the geometry rather than keeping a list of component
  *   names that goes stale silently. This list had gone stale before it was
  *   written: see the header. A scroller already at its left end still

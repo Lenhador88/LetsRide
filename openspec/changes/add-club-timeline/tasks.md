@@ -5,6 +5,12 @@ assertions with migrations, so §6 is client assertions instead — and §6.1 is
 the whole correctness of the change. The rename in §1 goes first, before any new file takes the
 name it frees.
 
+> **Built 2026-08-31.** Two tasks resolved differently from what is written below, and both
+> are recorded in `design.md` §Two places the build deviates from this document rather than
+> edited away here: **1.1's rename became a deletion** (`clubTimeline.ts` has no caller once a
+> real timeline exists), and the **source bounds and display cap** differ from §D7's, which is
+> what makes the coherence horizon inert at the numbers that ship.
+
 ## 0. Pre-flight — resolve before writing code
 
 - [ ] 0.1 Re-read **PD-299**, body **and** comments. Read on 2026-08-31: status `Needs decision`,

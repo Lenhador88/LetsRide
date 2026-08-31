@@ -7,7 +7,6 @@ import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getClubThreadUnread, getClubThreads, CLUB_THREADS_PAGE_SIZE } from '@/lib/data/club-threads'
 import {
-  CLUB_TIMELINE_JOINS,
   CLUB_TIMELINE_RIDES,
   getClubJoins,
   getClubRideAnnouncements,
@@ -97,37 +96,35 @@ export function ClubTimeline({
     getClubThreadUnread(clubId)
   )
 
+  const photosHref = `/postcards?club=${encodeURIComponent(clubId)}`
+
   /**
-   * `All photos` is the club's postcard feed — the same rows this timeline
-   * draws, with the pictures at full size.
+   * The heading, with no destination on it until there is one to offer.
    *
-   * **It is here because the dissolve took its only other entrance.**
-   * `ClubPostcardCarousel`'s `See all` was what reached
-   * `/postcards?club=<id>`, and nothing else in the app links to it; leaving it
-   * unreachable is PD-125's defect — a screen nobody can get to. The timeline
-   * is the honest place for it: a lens on the same content rather than a
-   * different list, which is what makes `Timeline … All photos` read as a pair
-   * rather than as a section header pointing somewhere else.
+   * `All photos` — the club's postcard feed — is here because the dissolve took
+   * its only other entrance: `ClubPostcardCarousel`'s `See all` was what
+   * reached `/postcards?club=<id>` and nothing else in the app links to it.
+   * Leaving it unreachable is PD-125's defect, a screen nobody can get to.
    *
-   * Member-only in effect as well as in placement: `009`'s postcards SELECT
-   * policy returns a club's photos to its members, so this link is only ever
-   * drawn on the branch that has them.
+   * **But an entrance to an EMPTY list is the same defect wearing the other
+   * face, and this screen has a standing policy against it** — the ride
+   * section on the club detail withholds its own `See all` when the sub-page
+   * has nothing on it, and the carousel this replaces gated this very link on
+   * `postcards.data.length > 0`. Being a member is not the same as having
+   * photos: the qualifying condition is the club having posted any, not the
+   * rider being allowed to see them if it had.
    */
-  const header = (
-    <SectionHeader
-      title="Timeline"
-      action={{ label: 'All photos', href: `/postcards?club=${encodeURIComponent(clubId)}` }}
-      className="px-4 py-0"
-    />
+  const heading = (action?: { label: string; href: string }) => (
+    <SectionHeader title="Timeline" action={action} className="px-4 py-0" />
   )
 
   if (!isMember) {
     return (
       <section className="flex flex-col gap-2">
-        {/* No `All photos` here: `009` returns a non-member none of them, so the
-            link would open a blank screen. Its own header rather than the one
-            above, for that one difference. */}
-        <SectionHeader title="Timeline" className="px-4 py-0" />
+        {/* No `All photos` here either, for a second reason on top of the one
+            above: `009` returns a non-member none of them, so the link would
+            open a blank screen whatever the club has posted. */}
+        {heading()}
         <p className="px-4 text-sm font-medium text-muted">
           Join the club to follow its rides, postcards and threads.
         </p>
@@ -143,7 +140,7 @@ export function ClubTimeline({
   if (gate.error)
     return (
       <section className="flex flex-col gap-2">
-        {header}
+        {heading()}
         <ErrorState onRetry={gate.refetch} />
       </section>
     )
@@ -157,7 +154,7 @@ export function ClubTimeline({
   if (!postcards.data || !rides.data || !joins.data || threads.data === undefined)
     return (
       <section className="flex flex-col gap-2">
-        {header}
+        {heading()}
         <SkeletonList rows={3} />
       </section>
     )
@@ -175,13 +172,37 @@ export function ClubTimeline({
       rows: threads.data ?? [],
       truncated: (threads.data ?? []).length >= CLUB_THREADS_PAGE_SIZE,
     },
-    joins: { rows: joins.data, truncated: joins.data.length >= CLUB_TIMELINE_JOINS },
+    // Straight through: `getClubJoins` answers the flag itself, because it
+    // post-filters its rows and a length measured here would under-report.
+    joins: joins.data,
     unread: unread.data ?? {},
   })
 
+  // Gated on the club having posted any, not on the rider being allowed to see
+  // them if it had — see `heading`.
+  const hasPhotos = postcards.data.length > 0
+
+  /**
+   * The foot's destinations, and every one of them is gated on holding
+   * something — except Members, which cannot be empty (the rider reading this
+   * is in it) and is what guarantees the foot always has somewhere to go.
+   *
+   * Members is here because the spec asks for four and the first draft shipped
+   * three: `See all postcards · All rides · All threads · All members`. It is
+   * also the only one that can be offered unconditionally, which is what stops
+   * the gating above from ever producing a foot that says "older activity
+   * lives in" and then names nowhere.
+   */
+  const handoff = [
+    hasPhotos && { label: 'photos', href: photosHref },
+    rides.data.length > 0 && { label: 'rides', href: routes.clubRides(clubId) },
+    (threads.data ?? []).length > 0 && { label: 'threads', href: routes.clubThreads(clubId) },
+    { label: 'members', href: routes.clubMembers(clubId) },
+  ].filter((link): link is { label: string; href: string } => !!link)
+
   return (
     <section className="flex flex-col gap-2">
-      {header}
+      {heading(hasPhotos ? { label: 'All photos', href: photosHref } : undefined)}
 
       {/* 16px between blocks — the frame's `Divider` spine, drawn as the gap
           rather than as a rule: the `Grey/10` event blocks and the white
@@ -191,10 +212,10 @@ export function ClubTimeline({
       <div className="flex flex-col gap-4 px-4">
         {groupClubTimeline(timeline.events).map((group) =>
           group.kind === 'postcard' ? (
-            // `fill={false}` — the flow mode: a square photo and an unbounded
-            // caption. The deck's `fill` divides a fixed height it does not
-            // have here, and a photo in a flow context would render at no
-            // height at all. See `PostcardCard`.
+            // `fill` is left at its default of false — the flow mode: a square
+            // photo and an unbounded caption. The deck's `fill` divides a fixed
+            // height it does not have here, and a photo in a flow context would
+            // render at no height at all. See `PostcardCard`.
             <PostcardCard key={group.key} postcard={group.event.postcard} />
           ) : (
             <div key={group.key} className="overflow-hidden rounded-lg bg-track">
@@ -216,24 +237,24 @@ export function ClubTimeline({
           `club-created` entry above — and needs nothing more; a cut one must
           not pretend to, so it says so and points at the lists that hold the
           rest. Reading the difference off `complete` rather than off a length:
-          a stream of exactly twenty entries can be either. */}
+          a stream of exactly twenty entries can be either.
+
+          Every link is gated on its list holding something, which is the same
+          policy the heading applies and the ride section on the club detail
+          already applied — an entrance to an empty screen is PD-125's defect
+          with the sign flipped. `handoff` can never come back empty, because
+          Members is ungated and cannot be. */}
       {!timeline.complete && (
         <p className="px-4 pt-1 text-sm font-medium text-muted">
           Older activity lives in{' '}
-          <Link
-            href={`/postcards?club=${encodeURIComponent(clubId)}`}
-            className="font-semibold text-accent"
-          >
-            photos
-          </Link>
-          ,{' '}
-          <Link href={routes.clubRides(clubId)} className="font-semibold text-accent">
-            rides
-          </Link>{' '}
-          and{' '}
-          <Link href={routes.clubThreads(clubId)} className="font-semibold text-accent">
-            threads
-          </Link>
+          {handoff.map((link, i) => (
+            <span key={link.href}>
+              {i > 0 && (i === handoff.length - 1 ? ' and ' : ', ')}
+              <Link href={link.href} className="font-semibold text-accent">
+                {link.label}
+              </Link>
+            </span>
+          ))}
           .
         </p>
       )}

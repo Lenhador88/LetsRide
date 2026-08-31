@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { CLUB_THREADS_PAGE_SIZE } from '@/lib/data/club-threads'
+import { FEED_PAGE_SIZE } from '@/lib/data/postcards'
 import {
+  CLUB_TIMELINE_JOINS,
+  CLUB_TIMELINE_LIMIT,
+  CLUB_TIMELINE_RIDES,
   groupClubTimeline,
   mergeClubTimeline,
   type ClubJoin,
@@ -366,6 +371,76 @@ describe('groupClubTimeline', () => {
 
   it('is empty for an empty stream', () => {
     expect(groupClubTimeline([])).toEqual([])
+  })
+})
+
+/**
+ * The relationship between the display cap and the four source bounds.
+ *
+ * **This is the one assertion here whose failure is not a bug report.** While
+ * every source reads at least as many rows as the timeline draws, the horizon
+ * in `mergeClubTimeline` cannot remove a row that would have been rendered —
+ * the proof is in `CLUB_TIMELINE_LIMIT`'s own docstring. Break the
+ * relationship and the horizon starts deciding what a rider sees, which is
+ * exactly what it is there for; the test exists so that switch is deliberate
+ * and visible in a diff rather than a side effect of tuning a page size.
+ *
+ * **Two of the four bounds are not this module's.** `CLUB_THREADS_PAGE_SIZE`
+ * belongs to the Threads list screen and `FEED_PAGE_SIZE` to the postcard feed,
+ * so the number that breaks this can be changed by someone who never opens
+ * `club-timeline.ts`. That is the whole reason it is pinned from here rather
+ * than trusted to a comment.
+ */
+describe('the display cap against the source bounds', () => {
+  it('reads at least as many rows of every source as it draws', () => {
+    const bounds = {
+      rides: CLUB_TIMELINE_RIDES,
+      postcards: FEED_PAGE_SIZE,
+      threads: CLUB_THREADS_PAGE_SIZE,
+      joins: CLUB_TIMELINE_JOINS,
+    }
+
+    for (const [source, bound] of Object.entries(bounds)) {
+      expect(
+        bound,
+        `${source} reads ${bound} rows but the timeline draws ${CLUB_TIMELINE_LIMIT}. ` +
+          'Below the display cap the coherence horizon becomes live — which is what it ' +
+          'is for, so this is a decision rather than a defect. Read CLUB_TIMELINE_LIMIT ' +
+          'before changing either number.'
+      ).toBeGreaterThanOrEqual(CLUB_TIMELINE_LIMIT)
+    }
+  })
+
+  it('cuts the stream once a source reads FEWER rows than the timeline draws', () => {
+    // The configuration the assertion above forbids, exercised so the guard is
+    // known to work at the moment it starts being needed rather than only in
+    // the small fixtures above: a source truncated at 3 against a display cap
+    // of 10 drops the older events of every other source.
+    const merged = mergeClubTimeline(
+      sources({
+        joins: {
+          rows: [
+            join('u1', '2026-08-12T10:00:00Z'),
+            join('u2', '2026-08-11T10:00:00Z'),
+            join('u3', '2026-08-10T10:00:00Z'),
+          ],
+          truncated: true,
+        },
+        rides: {
+          rows: [ride('r1', '2026-08-11T12:00:00Z'), ride('r2', '2026-06-01T10:00:00Z')],
+          truncated: false,
+        },
+      }),
+      10
+    )
+
+    expect(merged.events.map((event) => event.key)).toEqual([
+      'join:u1',
+      'ride:r1',
+      'join:u2',
+      'join:u3',
+    ])
+    expect(merged.complete).toBe(false)
   })
 })
 
