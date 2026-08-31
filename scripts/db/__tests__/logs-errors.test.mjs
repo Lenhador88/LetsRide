@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { classify, formatSummary, isAlerting, parseRows } from '../logs-errors.mjs'
+import { readFileSync } from 'node:fs'
+import { classify, formatSummary, isAlerting, parseRows, sanitisePath } from '../logs-errors.mjs'
 
 /**
  * The transport in `logs-errors.mjs` cannot be tested here — it needs a
@@ -81,6 +82,18 @@ describe('classify', () => {
     expect(other).toContain(rows[3])
   })
 
+  it('catches a PostgREST 404 whose path arrives absolute', () => {
+    // The shape of `request.path` under a 4xx is UNOBSERVED — the filtered query
+    // returns no rows on either project, so the one measured row is a 200. If it
+    // ever arrives absolute, an anchored prefix test would classify PD-313's 404s
+    // as unremarkable and the digest would stay green through the exact outage it
+    // was built for. This is the case that pins `includes` over `startsWith`.
+    const absolute = [
+      { n: 64, path: 'https://fpmrimzxadewsaiwpsel.supabase.co/rest/v1/club_discussions', status: 404 },
+    ]
+    expect(isAlerting(classify(absolute))).toBe(true)
+  })
+
   it('does not treat a 404 outside /rest/v1/ as a schema mismatch', () => {
     // A missing Storage object is a missing file, not a relation the deployed
     // code can no longer see. Widening the prefix is the easy way to make this
@@ -131,5 +144,59 @@ describe('formatSummary', () => {
     const summary = formatSummary('letsride-dev (DEV)', rows, classify(rows))
     expect(summary).toContain('/rest/v1/club_discussions')
     expect(summary).toContain('letsride-dev (DEV)')
+  })
+})
+
+
+describe('sanitisePath', () => {
+  it('never lets a query string reach the summary', () => {
+    // A job summary is readable by anyone with repo read access and is kept for
+    // 90 days — far longer than the window it describes — so a token in one has
+    // been published. A 4xx on either of these is exactly a row this digest
+    // reports, and GitHub's secret masking cannot mask what it was never told.
+    expect(sanitisePath('/auth/v1/verify?token=pkce_abc123')).toBe('/auth/v1/verify')
+    expect(sanitisePath('/storage/v1/object/sign/media/a.jpg?token=eyJhbGciOi')).toBe(
+      '/storage/v1/object/sign/media/a.jpg',
+    )
+  })
+
+  it('leaves an ordinary path alone', () => {
+    // The measured row, verbatim. Over-stripping would quietly blank the column.
+    expect(sanitisePath('/storage/v1/object/sign/media')).toBe('/storage/v1/object/sign/media')
+    expect(sanitisePath('/rest/v1/club_discussions')).toBe('/rest/v1/club_discussions')
+  })
+
+  it('escapes what would otherwise break the markdown table', () => {
+    expect(sanitisePath('/rest/v1/a|b')).toBe('/rest/v1/a\\|b')
+    expect(sanitisePath('/rest/v1/`x`')).toBe("/rest/v1/'x'")
+  })
+
+  it('survives a null path', () => {
+    expect(sanitisePath(null)).toBe('')
+  })
+})
+
+describe('formatSummary', () => {
+  it('strips a credential-bearing query out of the published table', () => {
+    const rows = [{ n: 2, path: '/auth/v1/verify?token=pkce_abc123', status: 401 }]
+    const summary = formatSummary('letsride (PRODUCTION)', rows, classify(rows))
+    expect(summary).not.toContain('pkce_abc123')
+    expect(summary).toContain('/auth/v1/verify')
+  })
+})
+
+describe('the workflow runs this without npm ci, so it must import only builtins', () => {
+  it('has no non-builtin import', () => {
+    // .github/workflows/log-digest.yml deliberately omits `npm ci` because this
+    // script needs no node_modules. Nothing else can catch a regression: vitest
+    // runs with node_modules present, so an added dependency stays green here
+    // and first appears as a red digest at 06:00 UTC — which, until the exit
+    // codes were split, was indistinguishable from a production 5xx.
+    const source = readFileSync(new URL('../logs-errors.mjs', import.meta.url), 'utf8')
+    const specifiers = [...source.matchAll(/^import[^'"]*['"]([^'"]+)['"]/gm)].map((m) => m[1])
+    expect(specifiers.length).toBeGreaterThan(0)
+    for (const specifier of specifiers) {
+      expect(specifier.startsWith('node:')).toBe(true)
+    }
   })
 })

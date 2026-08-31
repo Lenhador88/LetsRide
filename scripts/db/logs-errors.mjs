@@ -51,9 +51,8 @@
  *
  *     {"result":[{"n":571,"path":"/storage/v1/object/sign/media","status":200}],"error":null}
  *
- * The HTTP transport here is still NOT verified, and NO SESSION CAN VERIFY IT —
- * which is a stronger statement than the missing token this file used to cite,
- * and the reason not to spend an afternoon on it. `api.supabase.com:443` is a
+ * The HTTP transport here is still NOT verified, and NO SESSION CAN VERIFY IT,
+ * which is the reason not to spend an afternoon on it. `api.supabase.com:443` is a
  * policy denial at the agent proxy: the gateway answers 403 to CONNECT, so
  * `fetch` reports the uninformative "fetch failed" and curl reports status 000.
  * Re-derive rather than trusting this line, because a network policy is exactly
@@ -73,7 +72,21 @@
  *
  *   SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors           # DEV
  *   SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors -- --prod
- *   SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors -- --ci   # exit 1 if alerting
+ *   SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors -- --ci
+ *
+ * THREE EXIT CODES, because "the monitor is broken" and "something is broken"
+ * are different news and a single non-zero cannot tell them apart. A missing
+ * token, a dead transport and an unreadable envelope are all states where this
+ * script knows NOTHING about the projects — reporting them the same way as a
+ * PROD 5xx is how the alert stops being read:
+ *
+ *   0  ran, and nothing in the window is ours
+ *   1  ran, and there is a 5xx or a /rest/v1/ 404 to look at
+ *   2  could not run — no token, no transport, or an envelope it cannot read
+ *
+ * Under `--ci` the reason is written to $GITHUB_STEP_SUMMARY in every one of the
+ * three cases, including 2. Without that a broken run is a red job with an EMPTY
+ * summary, which is the least legible way to say "I did not look".
  *
  * Behind the agent proxy, prefix with NODE_USE_ENV_PROXY=1.
  */
@@ -104,11 +117,21 @@ limit 50
 // PostgREST serves every table read and write the app makes. A 404 here is not
 // a missing row — PostgREST answers those 200 with an empty array — it is a
 // missing *relation*, which means the deployed bundle and the schema disagree.
-const REST_PREFIX = '/rest/v1/'
+const REST_SEGMENT = '/rest/v1/'
 
 const isServerError = (row) => Number(row.status) >= 500
+
+// `includes` rather than `startsWith`, and the difference is a silent miss of
+// the exact case this exists to catch. Whether `request.path` arrives relative
+// (`/rest/v1/rides`) or absolute (`https://<ref>.supabase.co/rest/v1/rides`) is
+// UNOBSERVED for a 4xx: the filtered query returned no rows on either project,
+// so the one measured row is a 200 from the unfiltered query. Anchored to the
+// start, an absolute path would classify PD-313's 404s as unremarkable and the
+// digest would stay green through the outage it was built for. No path that is
+// not PostgREST contains this substring, so the looser test costs no false
+// positives.
 const isSchemaMismatch = (row) =>
-  Number(row.status) === 404 && String(row.path ?? '').startsWith(REST_PREFIX)
+  Number(row.status) === 404 && String(row.path ?? '').includes(REST_SEGMENT)
 
 /**
  * Pull the rows out of the Management API envelope, or throw.
@@ -160,6 +183,31 @@ export function isAlerting({ serverErrors, schemaMismatch }) {
   return serverErrors.length > 0 || schemaMismatch.length > 0
 }
 
+/**
+ * Make a logged path safe to publish in a job summary.
+ *
+ * A GitHub job summary is readable by anyone with repo read access and is kept
+ * for 90 days — far longer than the ~24h window it describes — so anything that
+ * lands in one has effectively been published. Two things follow:
+ *
+ * A QUERY STRING IS NEVER PRINTED. `/auth/v1/verify?token=...` and a signed
+ * Storage URL both carry a live rider credential in the query, and a 4xx on
+ * either is exactly the row this digest would report. GitHub's secret masking
+ * cannot help: these are not registered secrets. Whether `request.path` ever
+ * includes the query is unobserved, which is the reason to strip it now rather
+ * than to find out from a summary that already published one.
+ *
+ * The pipe and backtick escaping is only cosmetic — an unescaped pipe breaks
+ * the markdown table it sits in.
+ */
+export function sanitisePath(path) {
+  return String(path ?? '')
+    .split('?')[0]
+    .split('#')[0]
+    .replaceAll('|', '\\|')
+    .replaceAll('`', "'")
+}
+
 /** One markdown table for the GitHub job summary. */
 export function formatSummary(label, rows, classified) {
   const lines = [`## ${label}`, '']
@@ -170,7 +218,7 @@ export function formatSummary(label, rows, classified) {
   if (isAlerting(classified)) {
     lines.push(
       `**${classified.serverErrors.length} path(s) returned 5xx** and ` +
-        `**${classified.schemaMismatch.length} returned 404 under \`${REST_PREFIX}\`**.`,
+        `**${classified.schemaMismatch.length} returned 404 under \`${REST_SEGMENT}\`**.`,
       '',
     )
   } else {
@@ -178,18 +226,40 @@ export function formatSummary(label, rows, classified) {
   }
   lines.push('| n | status | path |', '| --: | --- | --- |')
   for (const row of rows) {
-    lines.push(`| ${row.n} | ${row.status} | \`${row.path}\` |`)
+    lines.push(`| ${row.n} | ${row.status} | \`${sanitisePath(row.path)}\` |`)
   }
   lines.push('')
   return lines.join('\n')
 }
 
+// Set once `--ci` is known, so `fail` can write the summary a red run owes.
+let ciMode = false
+
+/**
+ * The monitor could not run. Exit 2, never 1.
+ *
+ * Exit 1 means "I looked and found something". Everything routed here means "I
+ * did not look" — no token, no transport, an envelope I cannot read. Collapsing
+ * the two is what turns a missing repository secret into four red jobs a day
+ * that look exactly like a production 5xx, and an alert that cries wolf on
+ * day one is the failure this whole design argues against.
+ */
 function fail(message) {
   console.error(`\n  ${message}\n`)
-  process.exit(1)
+  writeSummary(`## Digest did not run\n\n${message}\n\nThis is exit 2 — the monitor could not read the window, which is NOT the same as a clean day and NOT the same as an alert.\n`)
+  process.exit(2)
+}
+
+function writeSummary(markdown) {
+  if (ciMode && process.env.GITHUB_STEP_SUMMARY) {
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown)
+  }
 }
 
 async function main() {
+  // Before the token check, so a missing token still writes its reason out.
+  ciMode = process.argv.includes('--ci')
+
   const token = process.env.SUPABASE_ACCESS_TOKEN
   if (!token) {
     fail(
@@ -203,7 +273,6 @@ async function main() {
     )
   }
 
-  const ci = process.argv.includes('--ci')
   const project = process.argv.includes('--prod') ? PROJECTS.prod : PROJECTS.dev
 
   const end = new Date()
@@ -258,20 +327,23 @@ async function main() {
     }
     if (classified.schemaMismatch.length > 0) {
       console.log(
-        `  ${classified.schemaMismatch.length} path(s) returned 404 under ${REST_PREFIX} — the\n` +
+        `  ${classified.schemaMismatch.length} path(s) returned 404 under ${REST_SEGMENT} — the\n` +
           '  schema and the deployed code disagree. Check the migration/deploy order.',
       )
     }
     console.log('')
   }
 
-  if (ci && process.env.GITHUB_STEP_SUMMARY) {
-    appendFileSync(process.env.GITHUB_STEP_SUMMARY, formatSummary(project.label, rows, classified))
-  }
+  writeSummary(formatSummary(project.label, rows, classified))
 
-  // Silence when there is nothing is the requirement, so a non-alerting run
-  // exits 0 and the scheduled job stays green with its detail in the summary.
-  process.exit(ci && isAlerting(classified) ? 1 : 0)
+  // `exitCode` rather than `exit()`: on a runner stdout is a pipe, and
+  // `process.exit()` does not flush pending async writes to one — so the table
+  // printed above can be truncated, partially, silently, and only in CI. Letting
+  // the module end flushes it.
+  //
+  // Silence when there is nothing is the requirement, so a non-alerting run is 0
+  // and the scheduled job stays green with its detail in the summary.
+  process.exitCode = ciMode && isAlerting(classified) ? 1 : 0
 }
 
 // Only when invoked directly, so the pure helpers above can be imported and

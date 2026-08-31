@@ -38,6 +38,11 @@ jobs:
     name: ${{ matrix.label }}
     runs-on: ubuntu-latest
 
+    # The job reads one HTTP endpoint. undici's 300s header timeout bounds most
+    # of the risk, but the default ceiling is 360 MINUTES, which sits oddly
+    # beside a step below that skips `npm ci` to save 40 seconds.
+    timeout-minutes: 5
+
     strategy:
       # PROD is the half with riders. Without this, a red DEV cancels the PROD
       # job and the run reports a failure about the environment nobody uses
@@ -70,10 +75,22 @@ jobs:
           # ships.
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
-      # WHAT RED MEANS HERE, and why it is narrow. `--ci` exits 1 only for a 5xx
-      # or a 404 under /rest/v1/ — the two shapes that are always ours. A 401 on
+      # WHAT RED MEANS HERE, and it is two different pieces of news rather than
+      # one. The script exits 1 for a 5xx or a 404 under /rest/v1/ — the shapes
+      # that are always ours — and exits 2 when it could not look at all: no
+      # token, no transport, an envelope it cannot read. Both redden the job,
+      # deliberately; what matters is that the job summary always says which,
+      # because a red run with an empty summary is the least legible way to
+      # report "I did not look".
+      #
+      # Everything else is reported and never alerts. A 401 on
       # `has_password_reset_grant` is the guard working and a 403 is usually RLS
-      # refusing correctly; both are printed into the job summary and neither
-      # turns the run red. An alert that fires on correct behaviour is one
+      # refusing correctly. An alert that fires on correct behaviour is one
       # nobody reads by the second week, which would leave this no better than
       # the nothing it replaces.
+      #
+      # THE FIRST RED WILL PROBABLY BE EXIT 2, and that is expected rather than
+      # a defect: `SUPABASE_ACCESS_TOKEN` is an owner action (PD-352), and until
+      # it exists every run says so in its summary. That is the whole reason the
+      # two codes are separate — without the split, a missing secret would
+      # produce four red jobs a day indistinguishable from a production 5xx.
