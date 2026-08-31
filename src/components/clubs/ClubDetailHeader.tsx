@@ -117,6 +117,7 @@ export function ClubDetailHeader({
             isPublic={full.is_public}
             viewerRole={full.viewer_role}
             isOwner={full.viewer_is_owner}
+            membersCount={full.members_count}
           />
         ) : undefined
       }

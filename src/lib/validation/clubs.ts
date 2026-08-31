@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { CLUB_AVATAR_PATH_RE, CLUB_COVER_PATH_RE } from '@/lib/media/constants'
+import { reportNoteSchema, reportReasonSchema } from '@/lib/validation/comments'
 
 /**
  * Club name and description bounds.
@@ -226,6 +227,24 @@ export const clubMessageBodySchema = z
  * malformed id means "no such thread", and 404 is the honest answer.
  */
 export const clubThreadIdSchema = z.uuid()
+
+/**
+ * What `reportClubThread` sends — `094`, PD-348, `011`'s `reportPostcardSchema`
+ * with the subject renamed. **`reason` and `note` are imported, not copied**:
+ * `REPORT_REASONS` is `postcard_reports`' six-value enum, kept in step with
+ * `club_thread_reports`' identical CHECK by hand (`design.md` D5's stated
+ * cost), so importing rather than re-declaring is the one thing this file can
+ * do to keep the two from drifting further apart than that.
+ *
+ * Per CLAUDE.md, this owns the **message**; the CHECK constraint, the
+ * `unique (reporter_id, thread_id)` index and `enforce_participation_gate`
+ * own the guarantee.
+ */
+export const reportClubThreadSchema = z.object({
+  threadId: z.uuid('That thread could not be found.'),
+  reason: reportReasonSchema,
+  note: reportNoteSchema,
+})
 
 /**
  * A join-request id, on the way into `approve_club_join_request` and

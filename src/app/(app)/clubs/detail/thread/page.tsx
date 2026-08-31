@@ -1,23 +1,19 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useState, useTransition } from 'react'
-import { notFound, useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useState } from 'react'
+import { notFound, useSearchParams } from 'next/navigation'
 import { ChatComposer } from '@/components/chat/ChatComposer'
 import { ChatThread } from '@/components/chat/ChatThread'
 import { MarkChatSeen } from '@/components/chat/MarkChatSeen'
-import { DeleteIcon, OptionsIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
 import { useBanner } from '@/components/ui/Banner'
-import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { useOnlineStatus } from '@/components/ui/OfflineState'
 import { SkeletonList } from '@/components/ui/Skeleton'
-import { ClubShareOrInviteItem } from '@/components/clubs/ClubShareOrInviteItem'
+import { ThreadOptions } from '@/components/clubs/ThreadOptions'
 import {
-  deleteClubThread,
   deleteClubMessage,
   markClubThreadSeen,
-  moderateClubThread,
   sendClubMessage,
 } from '@/lib/actions/club-threads'
 import { groupMessages } from '@/lib/data/chat'
@@ -32,7 +28,7 @@ import { queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 import { useClubThreadStream } from '@/lib/realtime/useClubThreadStream'
 import { CLUB_MESSAGE_MAX_LENGTH } from '@/lib/validation/clubs'
-import type { ClubChatMessage, ClubDetail } from '@/types'
+import type { ClubChatMessage } from '@/types'
 import { useSwipeBack } from '@/lib/actions/navigate'
 
 /**
@@ -136,10 +132,16 @@ function ClubThreadScreen() {
               isPublic={club.data.is_public}
               viewerRole={club.data.viewer_role}
               // `viewer_is_owner` is `clubs.owner_id`, NOT `viewer_role ===
-              // 'owner'` — `moderate_club_thread` gates on the column, and
-              // an owner holding no roster row is a reachable state. Gating the
-              // row on the role would hide it from exactly that owner.
+              // 'owner'` — `ClubShareOrInviteItem`'s own invite/manage branch
+              // gates on the column, and an owner holding no roster row is a
+              // reachable state. Gating on the role would hide it from
+              // exactly that owner.
               isOwner={club.data.viewer_is_owner}
+              // `094` widens `moderate_club_thread` to
+              // `private.is_club_admin_for` — the owner arm OR an admin's
+              // roster row. Not `viewer_role === 'owner' || …`, which drops
+              // the same ownerless owner `isOwner` above exists to catch.
+              canModerate={club.data.viewer_is_owner || club.data.viewer_role === 'admin'}
             />
           ) : undefined
         }
@@ -350,113 +352,6 @@ function ThreadBody({
         maxLength={CLUB_MESSAGE_MAX_LENGTH}
         placeholder="Message the club"
       />
-    </>
-  )
-}
-
-/**
- * The thread's own ⋯ menu — `ClubShareOrInviteItem`, plus deletion for who may.
- *
- * **`Share club` / `Invite riders`, never a thread link — `design.md` §Q1,
- * ANSWERED 2026-08-31: option B.** The product owner was offered "no share on
- * a thread" and "a thread capability URL" alongside this and chose this one:
- * the row shares or invites into the CLUB, labelled as the club. **This used
- * to be a SECOND caller of a known-broken path and is now fixed by the same
- * component `ClubOptionsMenu` mounts** (`093`, PD-360) — the annotation this
- * docstring used to carry, that `shareAppLink(routes.club(clubId), …)` hands
- * out a URL RLS refuses to a non-member of a PRIVATE club, is why the branch
- * had to live in one shared place rather than be copied here a second time.
- * See `ClubShareOrInviteItem`'s own docstring for the three states and why
- * the label is the safety property.
- *
- * **No Edit row, and its absence is the enforcement rather than an omission.**
- * `081` grants no UPDATE and declares no UPDATE policy on either content table,
- * so a title cannot change; drawing an edit affordance would be a control that
- * always fails. The stated remedy for a thread a rider regrets is deletion and
- * re-creation.
- *
- * Two different writes behind the Delete row, because they are two different
- * rights: an author deletes through `081`'s DELETE policy, while the **club
- * owner** goes through `moderate_club_thread` — a `security definer` RPC,
- * because RLS filters a DELETE by what the caller may READ and an owner who
- * blocked the author cannot see the row, so a policy-arm delete would match
- * zero rows and report success.
- */
-function ThreadOptions({
-  threadId,
-  clubId,
-  isAuthor,
-  isPublic,
-  viewerRole,
-  isOwner,
-}: {
-  threadId: string
-  clubId: string
-  isAuthor: boolean
-  isPublic: boolean
-  viewerRole: ClubDetail['viewer_role']
-  isOwner: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  const [, startTransition] = useTransition()
-  const showBanner = useBanner()
-  const router = useRouter()
-
-  function onDelete() {
-    setOpen(false)
-    startTransition(async () => {
-      // The author's own delete first: it is the narrower right, and an owner
-      // who also authored the thread reaches the same outcome through it.
-      // `moderate_club_thread` is the owner's path to somebody ELSE's
-      // thread, and it must not be the path to their own — a definer function
-      // is the wider hammer, so the policy is used wherever it suffices.
-      const result = isAuthor
-        ? await deleteClubThread(threadId, clubId)
-        : await moderateClubThread(threadId, clubId)
-
-      if (result.error) {
-        showBanner(result.error, 'error')
-        return
-      }
-      showBanner('Thread deleted')
-      // `replace`, not `push`: the thread this was invoked from no longer
-      // exists, so Back must not return to a screen that now 404s.
-      router.replace(routes.clubThreads(clubId))
-    })
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label="Thread options"
-        className="flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border"
-      >
-        <OptionsIcon className="h-6 w-6" />
-      </button>
-
-      <ContextMenu open={open} onClose={() => setOpen(false)} label="Thread options">
-        <ClubShareOrInviteItem
-          clubId={clubId}
-          isPublic={isPublic}
-          viewerRole={viewerRole}
-          isOwner={isOwner}
-          onDone={() => setOpen(false)}
-        />
-
-        {(isAuthor || isOwner) && (
-          <ContextMenuItem
-            icon={<DeleteIcon className="h-6 w-6" />}
-            variant="warning"
-            onClick={onDelete}
-          >
-            Delete thread
-          </ContextMenuItem>
-        )}
-      </ContextMenu>
     </>
   )
 }

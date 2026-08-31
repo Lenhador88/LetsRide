@@ -44,6 +44,9 @@ import { queryKeys } from '@/lib/query/keys'
  * construction.
  */
 export function DeleteClubControl({ clubId }: { clubId: string }) {
+  // No `reason` from this entry point — the edit screen's own foot control is
+  // never the fallback for a refused `Leave club`, so there is no context to
+  // add above the counts here.
   const [confirming, setConfirming] = useState(false)
   const online = useOnlineStatus()
 
@@ -81,20 +84,29 @@ export function DeleteClubControl({ clubId }: { clubId: string }) {
  * `Delete club` row (PD-280). `DeleteRideSheet`'s header has why this is a
  * sheet rather than `PostcardMenu`'s two-tap row; the argument is stronger
  * here, because the numbers below are a specified deliverable.
+ *
+ * **`reason` — `095`, PD-194.** This sheet is also where a refused `Leave
+ * club` lands: `leave_owned_club` performs a transfer or nothing, so the
+ * client's response to any refusal is to open this exact sheet rather than
+ * invent a second deletion route. `reason` is rendered above the counts,
+ * never instead of them (`design.md` §D11: zero *other members* the owner
+ * can see does not mean zero other riders' postcards).
  */
 export function DeleteClubSheet({
   clubId,
   open,
   onClose,
+  reason,
 }: {
   clubId: string
   open: boolean
   onClose: () => void
+  reason?: string
 }) {
   return (
     <ContextMenu open={open} onClose={onClose} label="Delete this club">
       <div className="p-2">
-        <ClubDeleteConfirmation clubId={clubId} onCancel={onClose} />
+        <ClubDeleteConfirmation clubId={clubId} onCancel={onClose} reason={reason} />
       </div>
     </ContextMenu>
   )
@@ -105,7 +117,16 @@ export function DeleteClubSheet({
  * confirming, which is what gates the impact read — that used to be
  * `confirming ? key : null` and is now the same gate by construction.
  */
-function ClubDeleteConfirmation({ clubId, onCancel }: { clubId: string; onCancel: () => void }) {
+function ClubDeleteConfirmation({
+  clubId,
+  onCancel,
+  reason,
+}: {
+  clubId: string
+  onCancel: () => void
+  /** Context above the counts, never instead of them — see `DeleteClubSheet`. */
+  reason?: string
+}) {
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const router = useRouter()
@@ -130,6 +151,9 @@ function ClubDeleteConfirmation({ clubId, onCancel }: { clubId: string; onCancel
 
   return (
     <div className="flex flex-col gap-3">
+      {reason && (
+        <p className="text-sm font-medium text-foreground">{reason}</p>
+      )}
       {impact.error ? (
         <p role="alert" className="text-sm text-danger">
           What this would destroy could not be counted. Try again before deleting.
