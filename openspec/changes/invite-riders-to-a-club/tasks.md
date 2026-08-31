@@ -4,12 +4,11 @@
 changing a policy is paired with a task adding assertions to `supabase/tests/rls_test.sql`. §0 is
 pre-flight and §8 is the ordering, which is the one part that cannot be reordered for convenience.
 
-> **Q6 in `design.md` §Open questions is BLOCKING for §4.5 ALONE and is the product owner's** —
-> whether a link claim
-> may admit a rider without a per-rider approval. It is marked blocking because an additive migration
-> cannot undo it: by the time it is reversed, riders are members. **Everything else proceeds** — the
-> tables, the in-app invite, the link, the preview, the revoke and every policy are unaffected by the
-> answer.
+> **Nothing here is blocked.** Q1 and Q6 were answered by the product owner on 2026-08-31 — the
+> ceiling is **14 days**, and the claim **admits directly, with no admin approval**, subject to the
+> browse-then-join refinement in `design.md` §The landing screen is the club's own preview screen.
+> Q2–Q5 are closed with the defaults; Q5's gap is filed as **PD-361** and nothing is built for it
+> here.
 
 ## 0. Pre-flight — resolve before writing SQL
 
@@ -82,7 +81,14 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
   section or its landing screen — `091` found only `Invite riders` / `Invite riders - Filled` on the
   OLD stylesheet and an archived `Join ride without account`. Assemble from measured components and
   say so in the PR rather than calling it measured.
-- [ ] 0.10 Read `src/components/clubs/ClubOptionsMenu.tsx` and the club thread screen's menu **at the
+- [ ] 0.10 Read the three files this change **reuses rather than rebuilds** —
+  `src/components/clubs/ClubPreviewScreen.tsx`, `ClubDetailHeader.tsx` and `ClubPreview` in
+  `src/types/index.ts`. Measured 2026-08-31: the screen draws the header, a `Private club` line, the
+  location, `N riders`, the private-club sentence and one action block driven by `request_status`;
+  it renders **neither latitude nor longitude**, which is why §4.6 drops them; and
+  `ClubDetailHeader` mounts `ClubOptionsMenu` only on its `ClubDetail` arm, so a token holder gets no
+  options menu for free.
+- [ ] 0.11 Read `src/components/clubs/ClubOptionsMenu.tsx` and the club thread screen's menu **at the
   moment you start** — both are being edited by concurrent work (a `Threads` row landed 2026-08-31),
   so the file is not what any earlier reading of it said.
 
@@ -204,7 +210,7 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
 - [ ] 4.4 `public.my_live_club_invites()` — the invitee's answerable invites, filtered by 2.4. A fixed
   list of **named columns**, never `club_invites.*` or `clubs.*`. Assert it discloses nothing
   `discoverable_private_clubs` does not already give that rider.
-- [ ] 4.5 **[BLOCKING — Q6, `design.md` §Open questions]** `public.claim_club_invite_link(t text)` — resolves through
+- [ ] 4.5 `public.claim_club_invite_link(t text)` — resolves through
   `club_invite_link_reachable_by(t, uid, lock => true)` and nothing else, then calls 4.1 with the
   link's `created_by` as admitter, writing `club_members.invite_link_id`. **One raise site.** Takes
   the token and never a club id or a rider id.
@@ -212,6 +218,11 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
   `avatar_path`, `location_name`, `members_count`, `is_public`. `returns table`, never `setof
   public.clubs`. Zero rows for every dead state, **raises nothing**. `t` compared as text, so a
   malformed string matches no row rather than confirming the format.
+  **Reconcile the list against `discoverable_private_clubs`' seven in the migration comment**, per
+  `design.md` §The landing screen is the club's own preview screen: both feed the same screen, both
+  are `security definer` with no policy underneath, so a difference between them is a **disclosure
+  decision** and not a mapping detail. This one drops `latitude`/`longitude` (the screen draws
+  neither) and adds `is_public` (the accessor's predicate implies it; a token can outlive a flip).
 - [ ] 4.7 `public.revoke_club_invite_link(link uuid)` — an RPC rather than an UPDATE grant, because a
   grant on `(revoked_at)` lets a client un-revoke by writing NULL. One raise site. Its comment states
   that it **removes nobody** and that `088`'s removal does **not** bar re-entry through a live token.
@@ -338,10 +349,26 @@ Each is a statement about a **role** and a **resource**. Verify every one **both
   bounce. **Two guard edits**: `PUBLIC_PATHS` **and** `needsOnboardingState()`.
 - [ ] 7.6 Generalise `src/lib/invites/pending-token.ts` to hold **two** keys, one per token kind, and
   make `signOut` clear the module rather than a named key.
-- [ ] 7.7 `ClubInviteJoin` — the landing screen. **No `useEffect`, no auth-state listener, one claim
-  call site, inside a handler.** Signed out renders a generic screen naming neither club nor minter
-  and issues no RPC. `undefined` is a skeleton, `null` is one dead-link message, a thrown read is an
-  error with a retry.
+- [ ] 7.7 The landing screen **is `ClubPreviewScreen`**, not a bespoke invite card — the product
+  owner's browse-then-join refinement, `design.md` §The landing screen is the club's own preview
+  screen. Four parts, and each fails silently if missed:
+  - **7.7a** The signed-in branch renders `ClubPreviewScreen` fed by `club_invite_link_preview`.
+    The screen gains **one optional `action` prop**; `085`'s call site passes nothing and is
+    unchanged. On the token path the action is `Join club`, and it must win over `request_status`
+    entirely — a rider holding **both** a pending request and a token sees `Join club`, because the
+    claim is the immediate route and it clears the request.
+  - **7.7b** The `Private club` line and the private-club sentence become **conditional on
+    `is_public`**. They are unconditional today and correct today, because `085`'s accessor cannot
+    return a public club; a token can, if the club flipped after the link was minted.
+  - **7.7c** `Join club` sits in a **sticky bottom action of the screen's own** — **not** the
+    Navbar's 152px slot, which renders only inside `(app)`. Mounting the app shell on this public
+    route would draw four tabs that all bounce to the login screen for the visitor the route exists
+    for.
+  - **7.7d** **No `useEffect`, no auth-state listener, one claim call site, inside a handler.**
+    Signed out renders a generic screen naming neither club nor minter, mounts **no**
+    `ClubPreviewScreen` (there is nothing to show and its back arrow would bounce) and issues no RPC.
+    `undefined` is a skeleton, `null` is one dead-link message, a thrown read is an error with a
+    retry.
 - [ ] 7.8 `ClubInviteActions` on the notification row reads the **live** invite through
   `my_live_club_invites()` and renders `null` when there is none — `RideInviteActions`' shape, and
   what makes `090`'s standing notification degrade to plain text.
@@ -385,16 +412,25 @@ Each is a statement about a **role** and a **resource**. Verify every one **both
 - [ ] 9.2 A component test for `ClubShareOrInviteItem` asserting the **absence** of any row for a
   private club's ordinary member, and that both callers render the same three states. An assertion
   that something renders cannot see a row that should not.
-- [ ] 9.3 A component test for `ClubInviteJoin` on `RideInviteJoin`'s model, asserting in
-  **comment-stripped source** that there is no `useEffect`, no `onAuthStateChange` listener and
-  exactly one claim call site — and in markup that the signed-out screen renders no club data for any
-  token. Verify both ways: inserting a real claiming effect must fail it.
-- [ ] 9.4 A unit test that `signOut` clears **both** stashes, asserted by reading the storage keys
+- [ ] 9.3 A component test for the landing screen on
+  `src/components/rides/__tests__/RideInviteJoin.test.tsx`'s model — the one test in the repo that
+  asserts an **absence in the source** — checking on **comment-stripped source** that there is no
+  `useEffect`, no `onAuthStateChange` listener and exactly one claim call site, and in markup that
+  the signed-out screen renders no club data for any token. **Strip the comments first**: that
+  component's own docstring says "there is no `useEffect` in this file", which failed the first
+  version of its test against a correct file. Verify both ways — inserting a real claiming effect
+  must fail every source case.
+- [ ] 9.4 A component test for `ClubPreviewScreen`'s two new behaviours: that the `action` slot
+  replaces the request block entirely (asserted as the **absence** of `Request to join club` when an
+  action is supplied), and that the `Private club` line is **absent** for `is_public: true`. Both are
+  one-line reversals that screenshot plausibly against a private club, which is every club `085`
+  sends to that screen.
+- [ ] 9.5 A unit test that `signOut` clears **both** stashes, asserted by reading the storage keys
   rather than by calling the accessors.
-- [ ] 9.5 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
-- [ ] 9.6 `npm run walk` reaches `/clubs/detail` and `/clubs/join`; confirm both render. The landing
+- [ ] 9.6 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
+- [ ] 9.7 `npm run walk` reaches `/clubs/detail` and `/clubs/join`; confirm both render. The landing
   route is public, so the walk's signed-out phase can reach it.
-- [ ] 9.7 `npm run docs:check` after §10.
+- [ ] 9.8 `npm run docs:check` after §10.
 
 ## 10. Documentation
 

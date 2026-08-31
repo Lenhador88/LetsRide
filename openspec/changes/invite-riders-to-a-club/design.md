@@ -227,12 +227,87 @@ branch for a private club is exactly the bug being fixed.
    different URL, not a different mechanism. The rider's own phone sends the message.
 3. **Opened.** `/clubs/join?token=…` is **public**. With no session it renders the shell, a generic
    sentence naming **neither the club nor its minter**, and two buttons. With a session it renders
-   the six-column preview.
-4. **Claimed.** One tap → `claim_club_invite_link(token)` → a `club_members` row carrying
-   `invite_link_id` → the rider lands on `/clubs/detail?id=…`.
+   **`ClubPreviewScreen`** — the club's own screen, not a bespoke card — fed by the six-column
+   preview.
+4. **Claimed.** The rider reads the club, then taps `Join club` in the sticky bottom action →
+   `claim_club_invite_link(token)` → a `club_members` row carrying `invite_link_id` → the rider
+   lands on `/clubs/detail?id=…`.
 5. **Dead.** At `created_at + 14 days`, at revoke, when the club is deleted, or when the minter's
    authority ends — whichever comes first. Death is a property of the link; the riders it admitted
    are unaffected.
+
+## The landing screen is the club's own preview screen
+
+**Product owner, 2026-08-31**, and it is the acceptance criterion rather than a styling note:
+
+> "Its also a bit weird that I open a link and all of a sudden I am in a club that I havent even may
+> know for sure what is it about. So maybe the invitee gets the chance to browse the club and only
+> then can click 'join club' on the bottom bar?"
+
+**So `/clubs/join?token=…` renders `ClubPreviewScreen` — `085`'s own screen, built for exactly this
+rider** — and not a bespoke invite card. That screen already exists for a non-member looking at a
+private club: `ClubDetailHeader`, a `Private club` line, the location, `N riders`, the sentence
+saying what a private club withholds, and one action. What changes on the token path is the **feed**
+and the **action**, and nothing else.
+
+### What the two feeds must agree on, and what they may not
+
+`ClubPreviewScreen` takes `ClubPreview`, filled today by `getClubPreview` from
+`public.discoverable_private_clubs`' **seven** columns. On the token path it is filled by
+`public.club_invite_link_preview`'s **six**. Both are `security definer` reads with **no policy
+underneath them**, so a disagreement between the two lists is a **disclosure decision, never a
+rendering detail** — which is why they are reconciled here column by column rather than left to
+whoever writes the mapping:
+
+| Column | `discoverable_private_clubs` | `club_invite_link_preview` | Why |
+|---|---|---|---|
+| `id` / `club_id` | yes | yes | the screen needs it to claim and to navigate |
+| `name` | yes | yes | the whole question the rider is answering |
+| `avatar_path` | yes | yes | **signs for neither** — `016`'s storage policy runs its own `EXISTS` against `clubs`, so both draw initials |
+| `location_name` | yes | yes | "the club I was told about" is usually a place |
+| `members_count` | yes | yes | an aggregate, **never a roster**, in both |
+| `latitude` / `longitude` | yes | **no** | the preview screen renders neither; a token must not disclose a club's coordinates for a field nothing draws |
+| `is_public` | no — implied `false` by its predicate | **yes** | the accessor only ever returns private clubs, so it needs no flag; a **token can outlive a flip** and the screen would otherwise assert something false |
+| `request_status` | not a column — the rider's own `club_join_requests` row | **no** | see the action slot below |
+
+**Two of those six are the owner's sentence made testable**, and they are promoted out of this file
+into `specs/club-invite-links/` as requirements: `members_count` and `is_public`. Without the first
+the rider cannot tell a club of four from a club of four hundred; without the second the screen
+either drops the `Private club` line for every club or claims it for a club that is now public.
+
+### Three ways the screen must change, all of which are silent if missed
+
+1. **`is_public` has to branch the copy.** The screen hardcodes the `Private club` line and *"This
+   club is private. Its rides, postcards, threads and members are for its members."* Both are true
+   for every rider `085` sends here, because that accessor cannot return a public club. A **token
+   can**, if the club flipped after the link was minted — so on the token path both lines are
+   conditional, and the failure is a screen confidently telling a rider something false.
+2. **The action is a slot, not a second screen.** Today the action block is driven by
+   `request_status`: declined, requested, or a `Request to join club` button calling
+   `requestToJoinClub`. On the token path all three are wrong — the rider is not asking, and a rider
+   who holds **both** a pending request and a token must see `Join club`, because the claim is the
+   immediate route and it clears the request. So `ClubPreviewScreen` gains one optional `action`
+   prop; `085`'s call site passes nothing and is unchanged.
+3. **"Bottom bar" here is a sticky action, not the tab bar.** The Navbar's 152px variant carries a
+   screen's sticky primary *above the four tabs*, and it renders only inside `(app)`. `/clubs/join`
+   is a public top-level route beside `/rides/join` — **mounting the app shell there would draw four
+   tabs that all bounce to the login screen for the visitor this route exists for**. The Join control
+   therefore sits in a sticky bottom action of the screen's own, matching the design's geometry and
+   carrying no tabs.
+
+**One thing that is already right and must stay right**: `ClubDetailHeader` renders
+`ClubOptionsMenu` only on its `ClubDetail` arm, so a token holder gets **no options menu and no
+share row** — which is the same answer §The share row is one component with three callers gives a
+non-member, reached by a different route. Its back arrow goes to `/clubs`, which is a real
+destination for the signed-in rider this screen is for; the **signed-out** screen must not mount this
+component at all, because it has no club to show and `/clubs` would bounce.
+
+### What the refinement does NOT change
+
+The claim still writes a membership **directly** — no approval, no `club_join_requests` row. The
+refinement is about what the rider understands before they tap, and §A claim is always a tap is what
+guarantees the tap exists at all. Both halves have to hold together: a preview nobody reads is a
+redemption with extra steps, and a tap without a preview is the thing the owner objected to.
 
 ## Where the credential lives, and why there are now two stashes
 
@@ -281,13 +356,22 @@ The remedies, in order: **revoke the link** (which is one tap and is what the su
 at the moment of removal), and **block**, which is decision #2's sledgehammer and removes the two
 riders from each other's feeds, search, chat and member lists everywhere.
 
-**Closing it properly costs something this change should not spend.** The three candidates were
-weighed: a trigger on `club_members` DELETE that clears invites (hangs new code on a live write path,
-`036`'s gate, and it would also delete an invite when a rider merely *leaves*); an edit to `088`'s
-RPC (a live path, and it would only cover one of the two doors); or a removal tombstone table (a new
-table with its own retention question, which is a different story). **PD-351's precedent is exact** —
-the owner chose to leave `091`'s equivalent gap open, named, rather than build a second visibility
-mechanism beside blocks. Q5 asks whether to file it.
+**Closing it properly costs something this change should not spend, and it is now its own story —
+PD-361.** Nothing is built for it here. The three candidates were weighed: a trigger on
+`club_members` DELETE that clears invites (hangs new code on a live write path, `036`'s gate, and it
+would also delete an invite when a rider merely *leaves*); an edit to `088`'s RPC (a live path, and
+it would only cover one of the two doors); or a record of the removal that the claim path consults.
+**PD-351's precedent is exact** — the owner chose to leave `091`'s equivalent gap open, named, rather
+than build a second visibility mechanism beside blocks.
+
+**PD-361 asks what a removal *records*, and this design has one sentence of opinion on it, offered as
+input rather than as a specification: the narrow `club_removals` row is the one that fits what is
+built here**, because every door this change opens is already funnelled through
+`private.join_club_from_invite`, so a single `not exists (a removal for this pair)` conjunct in that
+one body closes the invite, the link claim and any future admission path at once — whereas a
+club-level ban has to reach `085`'s request predicate and this change's admissibility trigger too,
+and it is a *person*-shaped answer to a *membership*-shaped problem, which is the same conflation
+that makes blocking the wrong remedy today.
 
 ## A link on a club that has become public
 
@@ -369,11 +453,30 @@ Each was open, each is answered here, and each carries what it would take to reo
 
 - **Q — one table or two?** **Two.** Reopen if a third direction of ask appears, or if the two
   status domains ever diverge such that both tables need a `case` anyway. §One table or two.
-- **Q — does a link claim bypass `085`'s approval?** **Yes.** Reopen if the owner decides a private
-  club's admission must always be per-rider — which would make the token a deep link to a request
-  and, by decision 1's own test, not worth building. Also reopen if `discoverable_private_clubs` is
-  ever narrowed so that private clubs stop being universally requestable, because that is the fact
-  the argument rests on. `proposal.md` decision 4.
+- **Q — does a link claim bypass `085`'s approval?** **Yes — decided by the product owner
+  2026-08-31, with the browse-then-join refinement** in §The landing screen is the club's own preview
+  screen. No admin approval; the tap admits directly; the landing reads as deciding rather than as
+  redeeming. Reopen if the owner decides a private club's admission must always be per-rider — which
+  would make the token a deep link to a request and, by decision 1's own test, not worth building.
+  Also reopen if `discoverable_private_clubs` is ever narrowed so that private clubs stop being
+  universally requestable, because that is the fact the argument rests on. `proposal.md` decision 4.
+- **Q — how long does a link live?** **14 days, decided 2026-08-31.** Absolute, written by the
+  database, re-checked at every use. Reopen with a number, not with a mechanism: the shape stays.
+- **Q — may an admin clear a co-admin's *declined* invite and re-send it?** **Yes, decided
+  2026-08-31**, mirroring `085`'s "a refusal is clearable by the club". Bounded by the unique key
+  (one invite row per pair at a time) and by `notifications_event_key` (a re-send by the *same* admin
+  writes no new notification). The residual — N admins can each notify once — is bounded by the admin
+  count and accepted. Reopen if a club ever has enough admins for that to be a harassment vector.
+- **Q — does the club timeline get an entry when an invite is accepted?** **No, decided 2026-08-31.**
+  PD-355's timeline already draws a `join` event from `club_members.joined_at`, so an invite entry
+  would draw the same fact twice. Reopen only inside `club-timeline-engagement`, which owns that
+  surface.
+- **Q — how does an admin find a rider to invite?** **Username search only, decided 2026-08-31** —
+  `RideInvitePicker`'s contract exactly, including its two-character minimum, prefix anchor and
+  20-row cap, and `083`'s recorded reason that this is a sequential scan of `profiles` with no index
+  that can serve `ILIKE`. Fine at this size, not at thousands: PD-333.
+- **Q — should "a removed rider walks back in through a live link" be closed here?** **No — filed as
+  PD-361 and nothing is built for it in this change.** See §What removal does not do.
 - **Q — who may mint a link?** **Owners and admins, on a private club only.** Reopen if members are
   ever given the power to approve join requests, since the two sets are deliberately the same one.
 - **Q — who may send an in-app invite?** **Admins on a private club; any member on a public one.**
@@ -398,32 +501,18 @@ Each was open, each is answered here, and each carries what it would take to reo
   group; withholding that makes the decision worse rather than the club safer. Reopen if the six
   columns are ever reduced.
 
-## Open questions, each with the default that gets built
+  **Both of those are now REQUIREMENTS rather than closed questions**, in
+  `specs/club-invite-links/`, because the owner's browse-then-decide refinement makes them the thing
+  the rider decides with: without the count they cannot tell a club of four from a club of four
+  hundred, and without the boolean the screen either drops its `Private club` line for everyone or
+  asserts it for a club that is now public.
 
-Marked blocking or not, and who can answer.
+## Open questions
 
-- **Q1 — the 14-day ceiling.** Default: **14 days**. A product judgement; one interval literal.
-  **Non-blocking.** Product owner's.
-- **Q2 — may an admin clear another admin's *declined* invite, and re-send it?** Default: **yes**,
-  mirroring `085`'s "a refusal is clearable by the club". The bound is the unique key (one invite row
-  per pair at a time) plus `notifications_event_key` (a re-send by the *same* admin writes nothing
-  new). The residual is that N admins can each notify once, which is bounded by the admin count and
-  accepted. **Non-blocking.** Product owner's.
-- **Q3 — does the club's *timeline* get an entry for an invite accepted?** Default: **no**. PD-355's
-  timeline already draws a `join` event from `club_members.joined_at`, so an invite entry would draw
-  the same fact twice. **Non-blocking**, and it belongs to `club-timeline-engagement` rather than
-  here.
-- **Q4 — should the in-app invite reach a rider by *username search* only?** Default: **yes**, the
-  `RideInvitePicker` contract exactly, including its two-character minimum, prefix anchor and 20-row
-  cap — and `083`'s recorded reason that this is a sequential scan of `profiles` with no index that
-  can serve `ILIKE`, fine at this size and not at thousands (PD-333). **Non-blocking.** Engineering.
-- **Q5 — should "a removed rider walks back in through a live link" be filed as its own story?**
-  Default: **file it, build nothing here.** PD-351's precedent. **Non-blocking here** — the answer
-  changes nothing in this change — but it is the honest counterpart to the Remove button and only
-  the product owner can decide it. §What removal does not do.
-- **Q6 — BLOCKING for §4 only: is the approval bypass acceptable?** Default: **yes**, built as
-  decision 4 describes. It is marked blocking because it is the one decision that an additive
-  migration cannot undo: by the time it is reversed, riders are already members, and unwinding that
-  means removing people from a club they were legitimately told they had joined. **Everything except
-  the claim's terminal write can proceed while it is open** — the table, the in-app invite, the link,
-  the preview, the revoke and every policy are unaffected by the answer. Product owner's alone.
+**None.** Q1 and Q6 were answered by the product owner on 2026-08-31 and Q2–Q5 closed with their
+defaults on the same day; all six are recorded above with what would reopen each. **Nothing in this
+change is blocked**, and the one decision still outstanding anywhere near it belongs to **PD-361**
+rather than here: what a club removal *records*.
+
+Two things stay owner-only and neither gates the build: the 14-day number, which is a product
+judgement and one interval literal, and PD-361's shape.

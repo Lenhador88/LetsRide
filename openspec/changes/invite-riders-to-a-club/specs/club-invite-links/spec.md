@@ -166,9 +166,22 @@ this function.
 It SHALL return **a member count and never a roster**, no description, no cover, no owner, no
 `created_at`, no rides and no threads.
 
-`is_public` SHALL be returned because a rider deciding whether to join is deciding whether their
-presence and content become visible to a closed group; withholding it makes the decision worse rather
-than the club safer.
+**`members_count` and `is_public` are required rather than incidental, and the acceptance criterion
+is the product owner's own, 2026-08-31**: *"Its also a bit weird that I open a link and all of a
+sudden I am in a club that I havent even may know for sure what is it about. So maybe the invitee
+gets the chance to browse the club and only then can click 'join club'…"* A rider SHALL be able to
+answer **"is this the club I was told about"** *before* anything is spent.
+
+- **`members_count`** — without it a rider cannot tell a club of four from a club of four hundred,
+  which is most of what "what is it about" means when the name is ambiguous.
+- **`is_public`** — the screen states, in words, that the club is private and that its rides,
+  postcards, threads and members are for its members. That sentence is unconditional today because
+  `085`'s accessor cannot return a public club; **a token can**, if the club flipped after the link
+  was minted. Without the flag the screen either drops the sentence for every club or asserts it for
+  a club where it is false.
+
+A rider deciding whether to join is also deciding whether their own presence and content become
+visible to a closed group, which is the second reason the flag is disclosed rather than withheld.
 
 `avatar_path` SHALL be returned and SHALL NOT sign for a non-member, `016`'s storage policy running
 its own `EXISTS` against `clubs` under the reader's row security — so the card draws initials,
@@ -183,6 +196,54 @@ deliberately, exactly as `085` left it.
 - **WHEN** a token holder previews a club with members
 - **THEN** they SHALL receive a count and no rider id, username or avatar
 
+### Requirement: The landing screen SHALL be the club's own preview screen, and the two feeds SHALL be reconciled explicitly
+
+`/clubs/join?token=…` SHALL render **`ClubPreviewScreen`** for a signed-in rider — `085`'s existing
+screen for a non-member looking at a private club — and SHALL NOT introduce a second, bespoke
+description of a club. What differs on the token path is the **feed** and the **action**.
+
+**Both feeds are `security definer` reads with no policy underneath them**, so any difference between
+`public.club_invite_link_preview`'s six columns and `public.discoverable_private_clubs`' seven is a
+**disclosure decision and never a rendering detail**, and SHALL be reconciled column by column in the
+migration:
+
+| Column | `discoverable_private_clubs` | `club_invite_link_preview` |
+|---|---|---|
+| `id` / `club_id`, `name`, `avatar_path`, `location_name`, `members_count` | yes | yes |
+| `latitude`, `longitude` | yes | **no** — the screen renders neither, and a token discloses no coordinates for a field nothing draws |
+| `is_public` | no — implied `false` by its own predicate | **yes** — a token can outlive a flip |
+
+The action SHALL be a **slot**. `085`'s call site SHALL pass nothing and SHALL be unchanged; the
+token path SHALL pass `Join club`, which SHALL take precedence over the screen's `request_status`
+states — a rider holding **both** a pending request and a live token SHALL see `Join club`, because
+the claim is the immediate route and it clears the request.
+
+`Join club` SHALL sit in a sticky bottom action **of the screen's own**, not in the Navbar's sticky
+slot: that component renders only inside `(app)`, and mounting the app shell on this public route
+would draw four tabs that all bounce to the login screen for the visitor the route exists for.
+
+#### Scenario: A token holder browses before anything is spent
+- **WHEN** a signed-in rider opens a live link
+- **THEN** they SHALL see the club's name, avatar fallback, location and member count, and the
+  screen's private-club sentence where it applies
+- **AND** nothing SHALL be written until they tap
+
+#### Scenario: A club that flipped public is not described as private
+- **WHEN** the token's club has `is_public = true`
+- **THEN** the `Private club` line and the private-club sentence SHALL be absent
+- **AND** this SHALL be asserted as an **absence**, because both render plausibly against every club
+  `085` sends to that screen
+
+#### Scenario: A pending request does not replace the Join control
+- **WHEN** the rider holds a pending `club_join_requests` row for the same club and opens the link
+- **THEN** the screen SHALL offer `Join club` rather than "You have asked to join"
+- **AND** claiming SHALL delete that pending request
+
+#### Scenario: The token holder gets no options menu
+- **WHEN** the screen renders for a token holder
+- **THEN** no ⋯ menu, share row or invite row SHALL appear, which `ClubDetailHeader` already
+  guarantees by mounting `ClubOptionsMenu` only on its member-shaped arm
+
 ### Requirement: A claim SHALL write one membership row, SHALL be idempotent, and SHALL bypass the join-request approval
 
 `public.claim_club_invite_link(t)` SHALL take the **token** and never a club id or a rider id — the
@@ -192,10 +253,16 @@ It SHALL resolve through `private.club_invite_link_reachable_by(t, uid, lock => 
 else, then write the membership through `private.join_club_from_invite`, which restates the
 participation gate. The written `club_members` row SHALL carry `invite_link_id`.
 
-**A claim SHALL NOT create a `club_join_requests` row and SHALL NOT wait for an approval.** The
-admin's act of minting is the club's consent, given in advance; `085`'s approval step gates a
-**rider-initiated** join, and since `085` every private club is already discoverable and requestable
-by every signed-in rider, so a request-only token would grant nothing the app grants for free.
+**A claim SHALL NOT create a `club_join_requests` row and SHALL NOT wait for an approval** —
+decided by the product owner, 2026-08-31. The admin's act of minting is the club's consent, given in
+advance; `085`'s approval step gates a **rider-initiated** join, and since `085` every private club
+is already discoverable and requestable by every signed-in rider, so a request-only token would grant
+nothing the app grants for free.
+
+**The refinement that came with that decision is a requirement of the screen, not of the RPC**: the
+rider browses the club and then decides, per the requirement above. A preview nobody reads is a
+redemption with extra steps; a tap without a preview is what the owner objected to. Both halves hold
+together or neither does.
 
 A pending `club_join_requests` row for the same pair SHALL be deleted in the same transaction, after
 the membership is written, so the existing retraction trigger clears the admins' notification.
@@ -290,6 +357,16 @@ club's admins. At the database layer that is a perfectly valid claim, so **no as
   claim, inside a handler
 - **AND** the source SHALL be stripped of comments first, because a docstring saying "there is no
   `useEffect` in this file" fails a naive assertion against a correct file
+- **AND** the test SHALL follow `src/components/rides/__tests__/RideInviteJoin.test.tsx`, the one
+  test in this repo that asserts an absence in the source rather than in the markup, and SHALL be
+  verified both ways: inserting a real claiming effect must fail every one of its source cases
+
+#### Scenario: The refinement does not weaken this
+- **WHEN** the landing screen becomes the club's own preview screen, which reads more and renders
+  more
+- **THEN** the number of claim call sites SHALL still be exactly one and it SHALL still be a handler
+- **AND** neither the preview read nor the screen's own effects SHALL be permitted to spend the
+  token
 
 #### Scenario: A second rider signing into the same tab claims nothing
 - **WHEN** rider A opens a link, abandons sign-up, and rider B signs in in the same tab
@@ -305,8 +382,10 @@ answers "stay", and a rider who has just signed up sits on a screen whose only b
 `check_violation` for ever.
 
 With no session the screen SHALL render the shell, a **generic** sentence naming neither the club nor
-its minter, and the two auth buttons. It SHALL call **neither RPC**. Decision #1 is untouched and no
-`anon` grant SHALL be added to make this screen richer.
+its minter, and the two auth buttons. It SHALL call **neither RPC**, and SHALL NOT mount
+`ClubPreviewScreen` — there is no club to show, and that component's back arrow goes to `/clubs`,
+which bounces a visitor to the login screen. Decision #1 is untouched and no `anon` grant SHALL be
+added to make this screen richer.
 
 The token SHALL be a **query parameter**, not a path segment: the route tree is shared with the
 Capacitor build, where `output: 'export'` would require `generateStaticParams` for a dynamic segment

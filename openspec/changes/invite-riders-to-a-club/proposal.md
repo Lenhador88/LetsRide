@@ -148,7 +148,21 @@ it is used rather than by a column on the row.
 
 ### 4. A link claim admits the rider directly — it does NOT go through `085`'s approval
 
-**Yes, it bypasses the approval step**, and the defence is in three parts.
+**Decided by the product owner, 2026-08-31: the bypass is accepted, with one refinement.** Put to
+them as "straight in" versus "into the approval queue", they answered:
+
+> "Its also a bit weird that I open a link and all of a sudden I am in a club that I havent even may
+> know for sure what is it about. So maybe the invitee gets the chance to browse the club and only
+> then can click 'join club' on the bottom bar?"
+
+So there is **no admin approval** — the tap admits directly — and the landing must read as *browsing
+a club and deciding*, never as a token being redeemed. That makes two things load-bearing rather
+than incidental, and both are requirements rather than design notes: the preview must let a rider
+answer **"is this the club I was told about"** *before* anything is spent, and the token must be
+spent by a **tap** and never by a render. `design.md` §The landing screen is the club's own preview
+screen carries the shape.
+
+**The defence for the bypass itself is in three parts.**
 
 - **The approval step exists to gate a rider-initiated join.** `085`'s request is a stranger asking;
   the admin's decision is the club's consent. A link is the club **initiating** — an admin's
@@ -174,19 +188,20 @@ nothing in the schema could. Here something can.
 
 **One gap that removal does NOT close, and it is named rather than discovered**: a removed rider who
 still holds the token can walk straight back in, because nothing records the removal. The admin's
-remedy is to revoke the link (and to block, which is decision #2's sledgehammer). See `design.md`
-§What removal does not do, and Q5.
+remedy is to revoke the link (and to block, which is decision #2's sledgehammer). **Filed as
+PD-361**; nothing here builds it. See `design.md` §What removal does not do.
 
-### 5. Expiry — an absolute **14 days**, revoke, a derived use count, no max-uses cap
+### 5. Expiry — an absolute **14 days** (decided), revoke, a derived use count, no max-uses cap
 
 **`091`'s `least(departure, 14 days)` has no club analogue for its first argument**: a club has no
 departure and therefore no natural death, which `share-a-ride-invite-link`'s own design.md names as
 one of the two genuinely club-specific pieces. So the ceiling is absolute and it is the whole
 control.
 
-Fourteen days for `091`'s reason, unchanged: two weekends plus a slip, re-issuing is one tap, and a
-longer window stops being a bound. **The number is the thing to push on; the shape — a ceiling
-written by the database, re-checked at every use — is what must not change.**
+**Fourteen days, decided by the product owner 2026-08-31**, for `091`'s reason unchanged: two
+weekends plus a slip, re-issuing is one tap, and a longer window stops being a bound. The shape — a
+ceiling written by the database, re-checked at every use — is what must not change if the number
+ever does.
 
 **No max-uses ceiling**, on PD-293's precedent (`077` dropped the ride capacity because an invisible
 cap is worse than none): the rider who hits it is a stranger who just installed the app, and the
@@ -309,8 +324,9 @@ rider's notifications screen down. So the bundle serves first and `093` applies 
 - **Any change to `club_join_requests`' policies or to `085`'s two RPCs.** The two mechanisms are
   made deterministic by refusing an invite while a request stands and by the claim clearing a
   request it has made moot — both of which live in `093`'s own objects.
-- **Making a removal stick against a live token.** Named as a gap, with its two remedies, on
-  PD-351's precedent. Q5.
+- **Making a removal stick against a live token.** Named as a gap and **filed as its own story,
+  PD-361**, on PD-351's precedent. Nothing is built for it here, and the decision it needs first —
+  what a removal *records* — is that story's, not this one's.
 - **A retraction trigger for `club_invited`.** `090` removed the ride one for a measured reason —
   with the retraction, withdraw-and-re-send re-notifies without limit, because the deleted row
   never collides with `notifications_event_key`. Not repeating it is a decision, and it comes with
@@ -403,11 +419,13 @@ owns the **message**; the CHECK and the absent INSERT grant own the **guarantee*
 **Types** — `ClubInvite`, `ClubInviteLink`, `ClubInviteLinkPreview` and `ClubInviteClaim` in
 `src/types/index.ts`; `NotificationType` gains two members.
 
-**Design** — **no v2 frame exists for a club invite, its link section or its landing screen.** Task
-8.1's first command is `npm run figma -- ls "*nvite*"`, read offline; the composition is assembled
+**Design** — **no v2 frame exists for a club invite or its link section**, so those are assembled
 from measured components (`ContextMenu`, `SectionHeader`, `Avatar`, `Button`, and `RideInvitePicker`
-/ `RideInviteLinkSection` as built precedents) rather than invented and called measured. Primary
-buttons are near-black `Grey/100`, never green.
+/ `RideInviteLinkSection` as built precedents) rather than invented and called measured; task 0.9's
+first command is `npm run figma -- ls "*nvite*"`, read offline. **The landing screen is not in that
+category and must not be designed at all**: it is `ClubPreviewScreen`, which `085` already built for
+this exact rider, gaining one `action` slot and one `is_public` branch. Primary buttons are near-black
+`Grey/100`, never green.
 
 **Dependencies** — none added. Nine runtime dependencies before and after
 (`node -p "Object.keys(require('./package.json').dependencies).length"`).
