@@ -8,7 +8,6 @@ import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { ClubPreviewScreen } from '@/components/clubs/ClubPreviewScreen'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
 import { ClubMemberRail } from '@/components/clubs/ClubMemberRail'
-import { ClubThreadsRow } from '@/components/clubs/ClubThreadsRow'
 import { ClubTimeline } from '@/components/clubs/ClubTimeline'
 import { MarkClubSeen } from '@/components/clubs/MarkClubSeen'
 import { RideChip } from '@/components/rides/RideChip'
@@ -59,6 +58,22 @@ import { cn, formatRideDateLong } from '@/lib/utils'
  *   top"*. **`/clubs/detail/members` keeps its entrance** — the `See all` at the
  *   foot of the rail's expanded panel — so this is not PD-125's defect; it
  *   costs one tap, and the panel it costs is the roster itself.
+ * - **`ClubThreadsRow` is deleted and the description moved above the rail**
+ *   (product owner, 2026-08-31: *"I would like to remove the section 'threads'
+ *   under the members. And the club description goes above the members."*).
+ *   The row was two days old and existed to close PD-125 on
+ *   `/clubs/detail/threads`, so **its entrance had to go somewhere rather than
+ *   nowhere**: it is a `Threads` row on `ClubOptionsMenu` now. The timeline's
+ *   own foot link is NOT that entrance and cannot be — it renders only when the
+ *   stream is cut, so a club whose whole timeline fits on screen would have
+ *   none at all, which is the exact defect the row was written for.
+ *
+ *   What did not survive the move is the row's **aggregate** unread dot. The
+ *   timeline's thread and reply entries still carry per-thread marks, so a
+ *   conversation that moved today is marked where it happened; a thread that
+ *   has sunk below the fold is not, and nothing on the screen now says
+ *   *go look*. That is a real loss and it is the owner's to reverse — a dot on
+ *   the ⋯ button is the cheap version.
  *
  * There is no v2 Figma frame for any of this. Composition is ours and is logged
  * in docs/FIGMA-FIDELITY-TODO.md §Club detail.
@@ -284,18 +299,13 @@ function ClubScreen() {
             )}
           </div>
 
-          {/* No `Members` heading over it any more — see this file's docstring
-              for why that is not PD-125's defect. The rail is identity here
-              rather than a section: it says how many riders and who, and it
-              opens the roster in place. */}
-          <ClubMemberRail clubId={id} />
-
-          {/* Members and Threads are the club's two rosters — who is in it and
-              what it is saying — so they share a shape and sit together. A
-              non-member reads zero threads (`081`), so the row would be an
-              entrance to a screen that refuses them. */}
-          {isMember && <ClubThreadsRow clubId={id} />}
-
+          {/* Above the rail as of 2026-08-31, at the product owner's ask:
+              *"the club description goes above the members"*. It is the
+              club's answer to the question a rider arriving here has first —
+              what is this — and the roster answers a later one. The empty
+              sentence moves with it rather than being dropped: a club with no
+              description is a club that has not said what it is, which is
+              news, unlike the missing location above. */}
           {club.data.description ? (
             <ExpandableText className="px-4">{club.data.description}</ExpandableText>
           ) : (
@@ -303,6 +313,12 @@ function ClubScreen() {
               This club has not written a description, yet!
             </p>
           )}
+
+          {/* No `Members` heading over it any more — see this file's docstring
+              for why that is not PD-125's defect. The rail is identity here
+              rather than a section: it says how many riders and who, and it
+              opens the roster in place. */}
+          <ClubMemberRail clubId={id} />
         </div>
 
         {/* Join is the non-member's one action and stays on the page. A member

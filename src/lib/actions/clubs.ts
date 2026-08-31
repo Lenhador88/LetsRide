@@ -332,17 +332,27 @@ export async function joinClub(clubId: string): Promise<ActionState> {
 }
 
 /**
- * Leaves a club.
+ * Leaves a club — for anyone but the club's **owner**, who leaves through
+ * `leaveOwnedClub` below instead (`095`, PD-194). `ClubOptionsMenu`'s owner
+ * branch never calls this.
  *
- * The row goes, and 015's FK cascade takes the watermark with it — so rejoining
- * later reads as "everything since you rejoined" rather than resurfacing a
- * year of history. That is a consequence of `on delete cascade` rather than a
- * decision made here, and it is the behaviour you would have chosen.
+ * **The row goes, and the watermark does NOT go with it** — this docstring
+ * used to claim the opposite (`015's FK cascade takes the watermark with
+ * it`). `feed_reads` carries exactly two foreign keys, to `clubs` and to
+ * `profiles`, and `club_members` has no child tables at all, so leaving a
+ * club leaves the watermark standing: rejoining later reads as "everything
+ * since you first joined", not "everything since you rejoined" — the
+ * behaviour the old text described never happens (`095`'s `design.md`
+ * §Context measured it off `pg_constraint` rather than assuming it).
  *
- * No guard against the owner leaving their own club, which would orphan it.
- * `clubs.owner_id` has no such guard either — the design draws no ownership
- * transfer, and inventing one in an action while the database permits it would
- * put the rule in the weakest of the two places. Registered rather than fixed.
+ * **A club's owner-membership row can no longer be removed by any plain
+ * DELETE.** `095` hangs `private.protect_club_owner_membership` on
+ * `club_members` `BEFORE DELETE`: it refuses removing the row whose
+ * `user_id` is `clubs.owner_id`, `23514`, whenever the parent `clubs` row is
+ * still there. This function does not special-case that — the guard is the
+ * real boundary, not this action — but a caller who somehow reached this as
+ * the owner is now refused rather than silently orphaning the club, which
+ * used to be reachable and is the gap `095` closes.
  */
 export async function leaveClub(clubId: string): Promise<ActionState> {
   const supabase = await resolveSupabase()
@@ -356,6 +366,97 @@ export async function leaveClub(clubId: string): Promise<ActionState> {
     .eq('user_id', user.id)
 
   if (error) return { error: 'You could not be removed from that club.' }
+
+  invalidateClubMembership(clubId)
+  return { error: null }
+}
+
+/**
+ * The `is_default` club's refusal — `leave_owned_club`'s `is_default` arm
+ * (`design.md` §D5). Its own message may be specific: the caller already
+ * holds SELECT on `clubs.is_default` (`058` §2's grant), so naming the
+ * reason discloses nothing new, exactly as `059` argues for
+ * `delete_owned_club`'s identical refusal.
+ */
+export const CLUB_IS_DEFAULT_LEAVE_MESSAGE = 'This club cannot be left.'
+
+/**
+ * `leave_owned_club`'s one message for arm 2 (no other members) **and** arm
+ * 3 (members but no other admin) together — `design.md` §D7's one-bit-leak
+ * defence, restated at the client. **This string must never be forked into a
+ * more specific one per arm.** The database already collapsed both refusals
+ * into one raise site so that an owner blocked with their club's only member
+ * cannot infer that a member exists whom they cannot see; inventing a
+ * client-side "no members" vs "no admin" branch on top of it would reopen
+ * exactly the leak the single raise site exists to close. Exported so
+ * `ClubOptionsMenu` can compare against it rather than matching a substring a
+ * second time.
+ */
+export const CLUB_NEEDS_ANOTHER_ADMIN_MESSAGE =
+  'This club has no other admin to take it on. Promote another rider to admin, or delete the club.'
+
+/**
+ * An owner leaving their own club — `095`, PD-194, `design.md` §D1. Performs
+ * **arm 1 only**: transfers ownership to the longest-standing admin and
+ * deletes the leaver's own roster row, in one statement inside
+ * `leave_owned_club`. Arms 2 and 3 are refused rather than performed — see
+ * that function's own comment for why a function that could also delete a
+ * club is a function a stale client count could aim at one with members
+ * still in it.
+ *
+ * **Same return shape as `deleteClub`, for the same reason**: the transfer
+ * clears the club's avatar and cover (`016` pins both paths to the *current*
+ * `owner_id`, so any ownership change must clear them in the same statement),
+ * and the leaver is the only rider whose Storage policy can remove those
+ * objects, being the uid the path used to sit under.
+ *
+ * **The two message substrings below are checked against
+ * `supabase/migrations/095_an_owner_leaves_their_club.sql` as written to this
+ * checkout by `data` in the same session** (`raise exception 'the club
+ * carrying clubs.is_default cannot be left; …' using errcode =
+ * 'insufficient_privilege'` and `raise exception 'this club has no other
+ * admin to take it on; …' using errcode = 'check_violation'`), **not against
+ * a live database** — `095` is not applied anywhere this session can read
+ * back, so this is verified-against-source rather than measured-against-a-
+ * response. Re-check both substrings if that file changes before it is
+ * applied; a mismatch fails safe into the generic branch below rather than
+ * into either two-word banner, so the cost of being wrong here is a worse
+ * message, never a wrong action.
+ */
+export async function leaveOwnedClub(clubId: string): Promise<ActionState> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to do that.' }
+
+  const { data: orphaned, error } = await supabase.rpc('leave_owned_club', {
+    p_club_id: clubId,
+  })
+
+  if (error) {
+    // Matched on the MESSAGE, not the SQLSTATE alone — `018`'s text bounds
+    // raise `23514` on other RPCs too (`createRide` already matches this
+    // way), and `016`'s own avatar/cover CHECKs would raise `23514` here as
+    // well if the transfer statement were ever malformed, which must not
+    // read back as an ordinary "promote or delete" refusal.
+    if (error.code === '42501' && error.message.includes('is_default')) {
+      return { error: CLUB_IS_DEFAULT_LEAVE_MESSAGE }
+    }
+    if (error.code === '23514' && error.message.includes('no other admin')) {
+      return { error: CLUB_NEEDS_ANOTHER_ADMIN_MESSAGE }
+    }
+    return { error: 'That club could not be left. Try again.' }
+  }
+
+  // The club's own avatar and cover, returned because they sit under the
+  // LEAVER's uid prefix — `deleteClub`'s identical sweep, for the identical
+  // reason. Cascade-deleted content belongs to other riders and is out of
+  // scope here exactly as it is there.
+  const paths = ((orphaned ?? []) as { object_path: string }[])
+    .map((row) => row.object_path)
+    .filter(Boolean)
+  if (paths.length > 0) {
+    await supabase.storage.from(MEDIA_BUCKET).remove(paths)
+  }
 
   invalidateClubMembership(clubId)
   return { error: null }

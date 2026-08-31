@@ -134,6 +134,24 @@ removes its owner arm rather than leaving a policy branch nothing exercises.
 
 ### D3 — The invariant has two halves, and the second one is the one the brief was not about
 
+> **AMENDED 2026-08-31 — the CLUB half of this section ships in `095`, not here.** Everything below
+> is unchanged and is still the argument; what moved is which migration carries it.
+> `an-owner-leaves-their-club` (PD-194) took the `club_members` guard because that change decides
+> what an owner leaving *means* — a transfer to the longest-standing other admin, a deletion when
+> nobody else is on the roster, or a refusal — and therefore owns the guard's two exceptions.
+> Shipping the guard here, without them, would only have to be undone there.
+>
+> **This change keeps the ride half in full** (`protect_ride_organizer_membership`), both seeding
+> triggers, the backfill and `019`'s dead owner arm. Q2 below answered **no** to the ride question
+> and called the asymmetry with Q1 deliberate, so the ride guard has no exceptions to wait for.
+>
+> **Neither change blocks the other, in either direction, and that is checked rather than
+> asserted** — a club with no owner-membership row has nothing for `095`'s guard to refuse, and
+> this change's seed and backfill are INSERTs and UPDATEs that its guard cannot see. That change's
+> `design.md` §D8 walks both orders. Rule 2 below is what makes it work at all, so do not
+> "simplify" it: `095`'s transfer is `security definer` and passes through the `WHEN` clause
+> exactly as the account-deletion cascade does.
+
 Seeding closes the create window. It does nothing about the *other* door:
 
 ```
@@ -306,6 +324,10 @@ Neither change blocks the other. This one is smaller and should land first.
   with them. Today they have a route that silently breaks the club, so
   this is a strictly better failure. **Decided rather than open** (Q1, 2026-08-11): the refusal
   ships, and the route back — leaving as a transfer — is deferred to PD-194 rather than declined.
+  **That route is now built** (`095`, 2026-08-31), and the club-side guard went with it, so on the
+  club side this trade-off has expired: an owner has a non-destructive exit whenever another admin
+  exists. It stands unchanged for **rides**, which is this change's remaining half and where Q2
+  answered no.
 - **Backfilling re-adds an owner who deliberately left.** Only reachable by hand-rolled request
   today; the invariant declares that state illegal, so re-adding is consistent. Q7 offers the
   alternative.
@@ -320,11 +342,35 @@ give it.
 **Blocking**
 
 - ~~**Q1 — product owner. May a club owner leave their own club?**~~ **ANSWERED 2026-08-11: NO,
-  not for now.** The default stands and `029` contains the delete guard. The answer came with the
-  eventual behaviour attached — *"eventually yes a club owner can leave the club, other admins of
+  not for now.** **RE-ANSWERED 2026-08-31: YES, under three arms** — *"an owner can only leave a
+  club if there is at least one more admin associated with it, or if it has no members"*, and the
+  no-members case **deletes the club, with a confirmation**. `an-owner-leaves-their-club` (`095`,
+  PD-194) is that change and it is written; this change's delete guard for `club_members` moved into
+  it (§D3's amendment note). What remains true below is the derivation, and **three parts of it are
+  now stale** — flagged inline rather than deleted, because the wrong version is re-derivable from
+  the same files:
+  1. *"Other admins can still maintain the club" has an unbuilt prerequisite* — **built.** `088`
+     (PD-326) shipped `promote_club_member` and `demote_club_admin` on 2026-08-30. The
+     UPDATE-**policy** count is still 0, which is the half `036` §7.6 relies on; `088` writes
+     through a definer RPC instead.
+  2. *"every leave falls to the tenure rung"* — **no longer the rule.** A voluntary leave is
+     admin-only and refuses when no admin remains; only the account-deletion path falls back to a
+     member. The two candidate sets differ **by product decision**.
+  3. *"The successor `select` is extracted from `032`, never copied"* — **declined, knowingly.**
+     Because of (2) the two rules differ in candidate set, so a shared function would need a mode
+     flag, which is the shape `088` spent a section refusing. `095`'s §D3 keeps the ordering
+     identical and **asserts** the agreement on a fixture where the sets coincide, which is the
+     testable version of the same intent. This paragraph's stated fear — *"a club would then inherit
+     differently depending on why its owner left"* — is now the decided behaviour rather than a
+     hazard.
+
+  The rest of this answer stands and was reused verbatim by `095`: the three barriers, the `016`
+  CHECKs, and §D3 rule 2's escape being what costs the future nothing.
+
+  The original answer, kept because it is what the deferral rested on:
+  *"eventually yes a club owner can leave the club, other admins of
   the club can still maintain the club, if no left admins, admin is passed by to the rider who
-  joined the longest time ago"* — so leaving will one day be a **transfer** rather than a refusal.
-  It is deferred, not declined: **PD-194** carries it.
+  joined the longest time ago"*.
 
   **What `032` supplies is the successor *selection*, not the transfer** — recording it as "this
   is already implemented" would hand PD-194 a wrong premise, so state the three divergences
@@ -372,6 +418,11 @@ give it.
 
   The empty case — an owner leaving a club with no other member — was not covered by the answer
   and is that change's question, not this one's. `043`'s *Delete club* is the obvious route.
+  **ANSWERED 2026-08-31: it is exactly that route.** The Leave row becomes the existing Delete-club
+  confirm sheet, worded for the case, and `095` deliberately adds **no** deletion SQL — arm 2 calls
+  `public.delete_owned_club` unchanged, inheriting its ownership re-check, `059`'s `is_default`
+  refusal, `032` §2's rule that only `is_public = false` rides go with the club, and its returned
+  Storage paths.
 - ~~**Q2 — product owner. May a ride organizer take themselves off their own crew?**~~
   **ANSWERED 2026-08-11: NO.** The default stands, `maybe` remains how an organizer expresses
   uncertainty, and the ride half of §D3 is unchanged. **The asymmetry with Q1's eventual answer

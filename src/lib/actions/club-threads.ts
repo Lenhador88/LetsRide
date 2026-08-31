@@ -2,7 +2,12 @@ import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
-import { clubThreadTitleSchema, clubMessageBodySchema } from '@/lib/validation/clubs'
+import { REPORT_REASON_WHEN_UNDRAWN } from '@/lib/validation/comments'
+import {
+  clubThreadTitleSchema,
+  clubMessageBodySchema,
+  reportClubThreadSchema,
+} from '@/lib/validation/clubs'
 import type { ActionState } from '@/lib/actions/state'
 
 /**
@@ -134,6 +139,55 @@ export async function moderateClubThread(
 
   invalidateThread(threadId, clubId)
   return { error: null, redirectTo: routes.clubThreads(clubId) }
+}
+
+/**
+ * Reports a thread — `094`, PD-348, `reportPostcard`'s shape exactly.
+ *
+ * **Sends `REPORT_REASON_WHEN_UNDRAWN`, always** — there is no reason-picker
+ * frame for a thread report either (`design.md` Q2, `docs/FIGMA-FIDELITY-TODO.md`
+ * beside the identical postcard entry), so `reason` carries no signal while
+ * this is the only caller.
+ *
+ * **Goes nowhere anyone in the club can read.** `private.club_thread_report_queue`
+ * is the only reader, revoked from every client role including `service_role`
+ * — not the thread's author, not the club's owner, not its admin
+ * (`design.md` D7, the `076` question). `invalidate` is deliberately not
+ * called: nothing this rider — or anyone else — can read changes.
+ *
+ * A duplicate report is a no-op rather than an error, `unique (reporter_id,
+ * thread_id)` being the anti-brigading mechanism and the reporter already
+ * able to read their own row regardless.
+ */
+export async function reportClubThread(threadId: string): Promise<ActionState> {
+  const parsed = reportClubThreadSchema.safeParse({
+    threadId,
+    reason: REPORT_REASON_WHEN_UNDRAWN,
+    note: null,
+  })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'That thread could not be found.' }
+  }
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to do that.' }
+
+  const { error } = await supabase
+    .from('club_thread_reports')
+    .upsert(
+      {
+        reporter_id: user.id,
+        thread_id: parsed.data.threadId,
+        reason: parsed.data.reason,
+        note: parsed.data.note,
+      },
+      { onConflict: 'reporter_id,thread_id', ignoreDuplicates: true }
+    )
+
+  if (error) return { error: 'Could not send that report. Try again.' }
+
+  return { error: null }
 }
 
 /**

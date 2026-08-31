@@ -1,22 +1,19 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useState, useTransition } from 'react'
-import { notFound, useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useState } from 'react'
+import { notFound, useSearchParams } from 'next/navigation'
 import { ChatComposer } from '@/components/chat/ChatComposer'
 import { ChatThread } from '@/components/chat/ChatThread'
 import { MarkChatSeen } from '@/components/chat/MarkChatSeen'
-import { DeleteIcon, OptionsIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
 import { useBanner } from '@/components/ui/Banner'
-import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { useOnlineStatus } from '@/components/ui/OfflineState'
 import { SkeletonList } from '@/components/ui/Skeleton'
+import { ThreadOptions } from '@/components/clubs/ThreadOptions'
 import {
-  deleteClubThread,
   deleteClubMessage,
   markClubThreadSeen,
-  moderateClubThread,
   sendClubMessage,
 } from '@/lib/actions/club-threads'
 import { groupMessages } from '@/lib/data/chat'
@@ -132,11 +129,19 @@ function ClubThreadScreen() {
               threadId={id}
               clubId={thread.data.club_id}
               isAuthor={thread.data.author_id === me.data.id}
+              isPublic={club.data.is_public}
+              viewerRole={club.data.viewer_role}
               // `viewer_is_owner` is `clubs.owner_id`, NOT `viewer_role ===
-              // 'owner'` — `moderate_club_thread` gates on the column, and
-              // an owner holding no roster row is a reachable state. Gating the
-              // row on the role would hide it from exactly that owner.
-              canModerate={club.data.viewer_is_owner}
+              // 'owner'` — `ClubShareOrInviteItem`'s own invite/manage branch
+              // gates on the column, and an owner holding no roster row is a
+              // reachable state. Gating on the role would hide it from
+              // exactly that owner.
+              isOwner={club.data.viewer_is_owner}
+              // `094` widens `moderate_club_thread` to
+              // `private.is_club_admin_for` — the owner arm OR an admin's
+              // roster row. Not `viewer_role === 'owner' || …`, which drops
+              // the same ownerless owner `isOwner` above exists to catch.
+              canModerate={club.data.viewer_is_owner || club.data.viewer_role === 'admin'}
             />
           ) : undefined
         }
@@ -347,92 +352,6 @@ function ThreadBody({
         maxLength={CLUB_MESSAGE_MAX_LENGTH}
         placeholder="Message the club"
       />
-    </>
-  )
-}
-
-/**
- * The thread's own ⋯ menu — deletion and nothing else.
- *
- * **No Edit row, and its absence is the enforcement rather than an omission.**
- * `081` grants no UPDATE and declares no UPDATE policy on either content table,
- * so a title cannot change; drawing an edit affordance would be a control that
- * always fails. The stated remedy for a thread a rider regrets is deletion and
- * re-creation.
- *
- * Two different writes behind one row, because they are two different rights:
- * an author deletes through `081`'s DELETE policy, while the **club owner** goes
- * through `moderate_club_thread` — a `security definer` RPC, because RLS
- * filters a DELETE by what the caller may READ and an owner who blocked the
- * author cannot see the row, so a policy-arm delete would match zero rows and
- * report success.
- */
-function ThreadOptions({
-  threadId,
-  clubId,
-  isAuthor,
-  canModerate,
-}: {
-  threadId: string
-  clubId: string
-  isAuthor: boolean
-  canModerate: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  const [, startTransition] = useTransition()
-  const showBanner = useBanner()
-  const router = useRouter()
-
-  // A sheet with no rows in it is worse than no control at all —
-  // `ClubOptionsMenu`'s own rule, and here the sheet would be empty for every
-  // member who is neither the author nor the owner.
-  if (!isAuthor && !canModerate) return null
-
-  function onDelete() {
-    setOpen(false)
-    startTransition(async () => {
-      // The author's own delete first: it is the narrower right, and an owner
-      // who also authored the thread reaches the same outcome through it.
-      // `moderate_club_thread` is the owner's path to somebody ELSE's
-      // thread, and it must not be the path to their own — a definer function
-      // is the wider hammer, so the policy is used wherever it suffices.
-      const result = isAuthor
-        ? await deleteClubThread(threadId, clubId)
-        : await moderateClubThread(threadId, clubId)
-
-      if (result.error) {
-        showBanner(result.error, 'error')
-        return
-      }
-      showBanner('Thread deleted')
-      // `replace`, not `push`: the thread this was invoked from no longer
-      // exists, so Back must not return to a screen that now 404s.
-      router.replace(routes.clubThreads(clubId))
-    })
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label="Thread options"
-        className="flex h-10 w-10 items-center justify-center rounded-lg text-foreground transition-colors active:bg-border"
-      >
-        <OptionsIcon className="h-6 w-6" />
-      </button>
-
-      <ContextMenu open={open} onClose={() => setOpen(false)} label="Thread options">
-        <ContextMenuItem
-          icon={<DeleteIcon className="h-6 w-6" />}
-          variant="warning"
-          onClick={onDelete}
-        >
-          Delete thread
-        </ContextMenuItem>
-      </ContextMenu>
     </>
   )
 }

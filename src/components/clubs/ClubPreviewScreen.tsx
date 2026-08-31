@@ -5,6 +5,7 @@ import { Lock2Icon, LocationOutlineIcon } from '@/components/icons/generated'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { Button } from '@/components/ui/Button'
 import { requestToJoinClub } from '@/lib/actions/club-join-requests'
+import { cn } from '@/lib/utils'
 import type { ClubPreview } from '@/types'
 
 /**
@@ -50,8 +51,45 @@ import type { ClubPreview } from '@/types'
  * record, and this screen is what renders it. That is also why
  * `private.club_takes_join_requests_for` has no declined conjunct: the club has
  * to stay discoverable for this screen to be reachable at all.
+ *
+ * ## The token path — `093`, PD-360, and two props rather than a second screen
+ *
+ * A claimed invite link (`/clubs/join?token=…`) lands here too, fed by
+ * `club_invite_link_preview` instead of `getClubPreview` — the product owner's
+ * own refinement, 2026-08-31: *"maybe the invitee gets the chance to browse
+ * the club and only then can click 'join club'."* `085`'s call site
+ * (`/clubs/detail`) passes neither new prop and is byte-for-byte unchanged.
+ *
+ * **`isPublic` branches the two lines above that are otherwise unconditional.**
+ * `getClubPreview`'s accessor can only ever return a private club, so this
+ * screen has always been correct to assert `Private club` for free — a token
+ * can outlive a flip to public, so the token path passes the live answer
+ * rather than the implied one.
+ *
+ * **`action` replaces the request block entirely, never sits beside it.** A
+ * rider who reaches this screen through a token is not asking — the claim
+ * admits them directly — and a rider holding BOTH a pending request and a
+ * live token must see `Join club`, because the claim is the immediate route
+ * and it clears the request in the same transaction
+ * (`design.md` §The two mechanisms meet). It renders in a sticky bar of this
+ * screen's own rather than the Navbar's 152px slot, because `/clubs/join` is
+ * a public top-level route outside `(app)` and mounts no Navbar at all.
  */
-export function ClubPreviewScreen({ club }: { club: ClubPreview }) {
+export function ClubPreviewScreen({
+  club,
+  isPublic = false,
+  action,
+}: {
+  club: Pick<ClubPreview, 'id' | 'name' | 'avatar_url' | 'location_name' | 'members_count'> &
+    Partial<Pick<ClubPreview, 'request_status'>>
+  /** Whether the club is public **right now** — `093`, PD-360. Defaults to
+   * `false`, matching `085`'s own call site, whose accessor cannot return a
+   * public club in the first place. */
+  isPublic?: boolean
+  /** The token path's `Join club` control. `undefined` on `085`'s own call
+   * site, which keeps the request-block behaviour below unchanged. */
+  action?: React.ReactNode
+}) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [asked, setAsked] = useState(false)
@@ -61,21 +99,26 @@ export function ClubPreviewScreen({ club }: { club: ClubPreview }) {
 
   return (
     <>
-      {/* `avatar_url` is null by construction — 016's storage policy refuses
-          the object to a non-member — so the header draws the club's initials.
-          Correct rather than missing; see `ClubPreview`. */}
+      {/* `avatar_url` is null by construction for a private club — 016's
+          storage policy refuses the object to a non-member — so the header
+          draws the club's initials. A public club reached through a token
+          may sign, exactly as the full detail screen does. */}
       <ClubDetailHeader
         clubId={club.id}
         club={{ name: club.name, avatar_url: club.avatar_url }}
         current="detail"
       />
 
-      <div className="flex flex-col gap-4 pt-4 motion-safe:animate-fade-in">
+      {/* `pb-24` only when a sticky action is about to cover the foot of this
+          content — `085`'s own call site renders no action and needs none. */}
+      <div className={cn('flex flex-col gap-4 pt-4 motion-safe:animate-fade-in', action && 'pb-24')}>
         <div className="flex flex-col gap-1 px-4">
-          <p className="flex items-center gap-1 text-sm font-medium text-muted">
-            <Lock2Icon className="h-6 w-6 shrink-0" />
-            <span className="min-w-0 truncate">Private club</span>
-          </p>
+          {!isPublic && (
+            <p className="flex items-center gap-1 text-sm font-medium text-muted">
+              <Lock2Icon className="h-6 w-6 shrink-0" />
+              <span className="min-w-0 truncate">Private club</span>
+            </p>
+          )}
           {club.location_name && (
             <p className="flex items-center gap-1 text-sm font-medium text-muted">
               <LocationOutlineIcon className="h-6 w-6 shrink-0" />
@@ -89,50 +132,62 @@ export function ClubPreviewScreen({ club }: { club: ClubPreview }) {
 
         {/* The sentence the card cannot say, and the whole reason this branch
             exists rather than the row simply not navigating. It names the
-            state without claiming anything about the club's contents. */}
-        <p className="px-4 text-sm text-foreground">
-          This club is private. Its rides, postcards, threads and members are for
-          its members.
-        </p>
+            state without claiming anything about the club's contents — and it
+            is false for a club a token has caught up to since it flipped
+            public, so it goes with the lock icon above. */}
+        {!isPublic && (
+          <p className="px-4 text-sm text-foreground">
+            This club is private. Its rides, postcards, threads and members are for
+            its members.
+          </p>
+        )}
 
-        <div className="px-4">
-          {declined ? (
-            // The refusal, told once and plainly, in the only place it can be
-            // told. No admin is named: there is deliberately no `responded_by`
-            // column, because a club refuses as a club and the requester can
-            // read every column on their own row.
-            <p role="status" className="text-sm text-muted">
-              You asked to join. The club said no.
-            </p>
-          ) : requested ? (
-            <p role="status" className="text-sm text-muted">
-              You have asked to join. The club&rsquo;s admins will answer.
-            </p>
-          ) : (
-            <>
-              <Button
-                onClick={() => {
-                  setError(null)
-                  startTransition(async () => {
-                    const result = await requestToJoinClub(club.id)
-                    if (result.error) setError(result.error)
-                    else setAsked(true)
-                  })
-                }}
-                loading={pending}
-                variant="primary"
-                size="lg"
-                className="w-full"
-              >
-                Request to join club
-              </Button>
-              <p role="status" aria-live="polite" className="mt-2 text-sm text-danger empty:hidden">
-                {error}
+        {!action && (
+          <div className="px-4">
+            {declined ? (
+              // The refusal, told once and plainly, in the only place it can be
+              // told. No admin is named: there is deliberately no `responded_by`
+              // column, because a club refuses as a club and the requester can
+              // read every column on their own row.
+              <p role="status" className="text-sm text-muted">
+                You asked to join. The club said no.
               </p>
-            </>
-          )}
-        </div>
+            ) : requested ? (
+              <p role="status" className="text-sm text-muted">
+                You have asked to join. The club&rsquo;s admins will answer.
+              </p>
+            ) : (
+              <>
+                <Button
+                  onClick={() => {
+                    setError(null)
+                    startTransition(async () => {
+                      const result = await requestToJoinClub(club.id)
+                      if (result.error) setError(result.error)
+                      else setAsked(true)
+                    })
+                  }}
+                  loading={pending}
+                  variant="primary"
+                  size="lg"
+                  className="w-full"
+                >
+                  Request to join club
+                </Button>
+                <p role="status" aria-live="polite" className="mt-2 text-sm text-danger empty:hidden">
+                  {error}
+                </p>
+              </>
+            )}
+          </div>
+        )}
       </div>
+
+      {action && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background px-4 pt-4 pb-safe">
+          {action}
+        </div>
+      )}
     </>
   )
 }

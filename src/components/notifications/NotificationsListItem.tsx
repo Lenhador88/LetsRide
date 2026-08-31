@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notificationCopy } from '@/components/notifications/copy'
+import { ClubInviteActions } from '@/components/notifications/ClubInviteActions'
 import { ClubJoinRequestActions } from '@/components/notifications/ClubJoinRequestActions'
 import { RideInviteActions } from '@/components/notifications/RideInviteActions'
 import { NotificationRow } from '@/components/ui/NotificationRow'
@@ -69,6 +70,10 @@ export function NotificationsListItem({ row, viewerId }: NotificationsListItemPr
       // `085`. Same shape and same reasoning as the invite pair: the enabled
       // state is read from the live request, never from this row.
       <ClubJoinRequestActions clubId={row.club?.id} actorId={row.actor?.id} />
+    ) : row.type === 'club_invited' ? (
+      // `093`, PD-360. `RideInviteActions`' exact shape: the enabled state is
+      // read from the live invite, never from this row.
+      <ClubInviteActions clubId={row.club?.id} />
     ) : null
 
   if (!href) {
@@ -138,8 +143,22 @@ function describe(row: NotificationRowData): {
     // group.** It draws the club in the ACTOR slot rather than the trailing
     // one, and it takes no controls: an admin can lift a refusal from Manage
     // riders, and the rider it addresses can do nothing about it from here.
+    // `092`, PD-356. Identical subject shape to `club_joined` and the same
+    // destination — a join wave is addressed to the joiner, who reads it the
+    // same way they read having joined at all.
     case 'club_joined':
+    case 'club_waved':
     case 'club_join_request_approved':
+    // `093`, PD-360. Both destinations are the club, exactly like
+    // `club_joined`: for `club_invited` the invitee is deciding whether to
+    // accept, and tapping the row shows the same reduced preview Explore
+    // already offers them (`design.md` §The invitee needs no new read
+    // path) — accepting itself happens through `ClubInviteActions` beside
+    // the row, never by navigating here. For `club_invite_declined` the
+    // inviter is ordinarily still a member, so this is their usual route
+    // into the club.
+    case 'club_invited':
+    case 'club_invite_declined':
       return { href: row.club ? routes.club(row.club.id) : null, trailing: clubThumbnail(row) }
     // **Split off from its two siblings by `088` (PD-326), because its
     // destination moved.** `085` put the pending-requests section on the club

@@ -100,29 +100,32 @@ describe('the restore does not step past the route guard', () => {
     // guard, not the screen; that is correct behaviour and the link needs a
     // post-auth destination, not a new public path."
     //
-    // **`routes.joinRide` is the one exclusion, and it is NAMED rather than
-    // skipped by a widened matcher** — the same shape `agent-briefs.test.ts`
-    // uses for its own carve-out, so a *second* public route added to
-    // `routes.ts` still fails here loudly.
+    // **`routes.joinRide` and `routes.joinClub` are the two exclusions, and
+    // each is NAMED rather than skipped by a widened matcher** — the same
+    // shape `agent-briefs.test.ts` uses for its own carve-out, so a *third*
+    // public route added to `routes.ts` still fails here loudly.
     //
     // It is not the case this rule refuses. That case is a link into a
     // protected screen answered by opening the screen; `/rides/join` (`091`,
-    // PD-330) is a route that exists in order to be reachable with no session,
-    // and it holds no content at all until there is one — the preview needs
-    // `auth.uid()` for its block and gate checks, so a visitor sees a generic
-    // sentence and two buttons. And it is the rule's own remedy rather than an
-    // exemption from it: the token is stashed and the rider is returned here
-    // after signing in, which is precisely the "post-auth destination" the
-    // sentence above asks for.
-    const publicByDesign = new Set([routes.joinRide('x').split('?')[0]])
+    // PD-330) and `/clubs/join` (`093`, PD-360) are routes that exist in
+    // order to be reachable with no session, and each holds no content at all
+    // until there is one — the preview needs `auth.uid()` for its block and
+    // gate checks, so a visitor sees a generic sentence and two buttons. And
+    // it is the rule's own remedy rather than an exemption from it: the token
+    // is stashed and the rider is returned here after signing in, which is
+    // precisely the "post-auth destination" the sentence above asks for.
+    const publicByDesign = new Set([
+      routes.joinRide('x').split('?')[0],
+      routes.joinClub('x').split('?')[0],
+    ])
 
     for (const path of Object.values(routes).map((build) => build('x').split('?')[0])) {
       if (publicByDesign.has(path)) continue
       expect(PUBLIC_PATHS, path).not.toContain(path)
     }
 
-    // The exclusion is a claim about one route, so it is asserted rather than
-    // assumed: if `/rides/join` ever stops being public, this line says so
+    // The exclusion is a claim about two routes, so it is asserted rather
+    // than assumed: if either ever stops being public, this line says so
     // instead of the skip quietly covering a route that no longer needs it.
     for (const path of publicByDesign) expect(PUBLIC_PATHS).toContain(path)
   })

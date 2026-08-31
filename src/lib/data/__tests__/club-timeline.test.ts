@@ -413,6 +413,48 @@ describe('mergeClubTimeline', () => {
 })
 
 /**
+ * `092` (PD-356) added two wave tables and NOTHING to this file's function —
+ * `mergeClubTimeline` is task 8.4's "unchanged", pinned rather than merely
+ * true by omission. The regression this guards: a wave read acquiring a
+ * `horizon` field and being folded into the `horizons` array above, which
+ * would let a DECORATION on an entry — never a source of one — truncate the
+ * stream it is meant only to decorate. `attachClubWaveState` (`lib/data/
+ * club-waves.ts`) declares no `ClubTimelineSource` and contributes no
+ * `ClubTimelineEvent`, so `ClubTimelineSources` itself is the thing this
+ * pins: it still has exactly the five source keys `sources()` has always
+ * built, plus `club`, `unread` and `activity`, never a sixth `waves` key.
+ */
+describe('mergeClubTimeline stays undecorated after club-timeline-engagement (092)', () => {
+  it('the sources object carries no sixth "waves" source', () => {
+    expect(Object.keys(sources()).sort()).toEqual(
+      ['activity', 'club', 'joins', 'postcards', 'replies', 'rides', 'threads', 'unread'].sort()
+    )
+  })
+
+  it('a full JOIN source still sets the horizon that cuts the stream, unmoved by any wave decoration', () => {
+    // The exact scenario `cuts the timeline at a full source's oldest row`
+    // asserts above, restated here under this change's own name: nothing a
+    // wave read could contribute reaches this call at all, so the cut is
+    // still the join source's own horizon and nothing else's.
+    const merged = mergeClubTimeline(
+      sources({
+        joins: {
+          rows: [join('u1', '2026-08-12T10:00:00Z'), join('u2', '2026-08-10T10:00:00Z')],
+          horizon: '2026-08-10T10:00:00Z',
+        },
+        rides: {
+          rows: [ride('r1', '2026-08-11T10:00:00Z'), ride('r2', '2026-06-01T10:00:00Z')],
+          horizon: null,
+        },
+      })
+    )
+
+    expect(merged.events.map((event) => event.key)).toEqual(['join:u1', 'ride:r1', 'join:u2'])
+    expect(merged.complete).toBe(false)
+  })
+})
+
+/**
  * `groupClubTimeline` — the run boundaries the frame draws.
  *
  * `Private club - Timeline` (`2043:10604`) puts consecutive events in ONE
