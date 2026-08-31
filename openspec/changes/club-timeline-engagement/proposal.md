@@ -42,6 +42,19 @@ a full `RideCard`, and the thread event showing a thread icon with participants 
 count. Both are presentation with no schema and are being built in the same session. Named here so
 a reader of this file does not conclude they were forgotten.
 
+**5. One clause of the owner's ask is already shipped, and saying so is cheaper than building it
+twice.** *"maybe instead of the thread icon it should be the person who joined avatar's?"* is
+conditional on a join becoming a thread — and a join entry **already draws the joiner's face**.
+`ClubTimelineEventRow`'s `join` branch returns
+`avatar: { name: rider.username, avatarUrl: rider.avatar_url }`, and it is the only branch that
+returns one; `thread`, `reply`, `ride` and `club-created` all return `null`, matching the frame,
+which draws its ride event with no avatar. So the sub-ask is satisfied by the screen as merged this
+morning, and declining the auto-thread (§D2) costs nothing against it.
+
+```bash
+grep -n "avatar:" src/components/clubs/ClubTimelineEventRow.tsx   # one non-null, in `case 'join'`
+```
+
 ## Why
 
 `add-club-timeline` made the club detail a stream of things that happened. **Every entry on it is
