@@ -427,19 +427,21 @@ is a drawn value this repo no longer builds:
 - [ ] **A SECOND failing pairing arrived with the same commit and is a different one:
       `text-muted` on `bg-track`.** `#666666` on `#E5DACF` measures **4.17:1** against a 4.5:1
       bar, and both new instances are 12px — so neither is WCAG large text and neither passes.
-      They were `ClubCreateRideRow`'s second line and the carousel's `Add` label; the same
+      They were `ClubCreateRideRow`'s second line and the carousel's `Add` label — **both
+      components are now deleted** (the carousel with the club timeline, the row with the
+      create bar on 2026-08-31), so ONE live instance remains, plus the unlogged Journal one;
+      the same
       pairing already ships unlogged on `RideJournalEmpty`'s `Add`, and this entry's own
       unselected-RSVP-button line logs it at the same ratio. Recorded because the commit that
       added them re-counted the *accent* pairing carefully and said nothing about this one,
       which left this file asserting a complete contrast sweep it had not done.
 
-      **A THIRD instance arrived with the club timeline on 2026-08-31**, and is the same
+      **The live instance arrived with the club timeline on 2026-08-31**, and is the same
       4.17:1 for the same reason: `ClubTimelineEventRow`'s `Time Since` is `text-xs
       font-normal text-muted` inside the `bg-track` event block. It is **left exactly as
       drawn** under the standing policy at the head of this section — the frame specifies
       `Poppins/12/Regular` `Grey/80` — so what was missing was the measurement, not the
-      colour. The same commit deleted `ClubPostcardCarousel`, which took the second instance
-      with it; the count is unchanged at two live instances plus the unlogged Journal one.
+      colour.
 
       **A same-line grep finds one of them, not all**, which is the trap worth recording: the
       carousel's `Add` label was a bare `text-xs font-semibold` span that **inherited**
@@ -449,8 +451,8 @@ is a drawn value this repo no longer builds:
       read the sizes off the hits:
 
       ```bash
-      grep -n "text-muted\|text-xs" src/components/clubs/ClubCreateRideRow.tsx \
-        src/components/clubs/ClubTimelineEventRow.tsx
+      grep -n "text-muted\|text-xs" src/components/clubs/ClubTimelineEventRow.tsx \
+        src/components/rides/RideJournal.tsx
       ```
 
       `text-foreground` on `bg-track` is fine at **12.65:1** and is what both the row's title
@@ -477,9 +479,21 @@ is a drawn value this repo no longer builds:
 
       - **The identity band** — the type/started line, the member rail and the description, at
         the top. The frame draws none of it; the product owner asked for it on 2026-08-31.
-      - **The action layer** — `ClubActionRow`. The frame puts a single `Create postcard` primary
-        button in the navigation bar instead, which is a different composition of the same
-        intent, and this screen has three entrances to carry rather than one.
+      - **The create bar** — `ClubCreateBar`, which moved TOWARDS the frame on 2026-08-31 and
+        does not reach it. The first pass drew a three-tile action band in the scroll and called
+        the frame's own arrangement a deviation; the product owner then asked for *"a bottom bar
+        like the one create club on the club list"*, which is the `Button Container` the frame
+        draws. So the slot, the 358×40 primary and the geometry are now the frame's.
+
+        **What is still ours is that it is a SIBLING of the navigation bar rather than part of
+        it.** The frame's `v2 / Component / Navigation / Bar` is one 390×152 component with the
+        button container inside it, under a single `Grey/10%` top stroke — the `STICKY_ACTIONS`
+        construction. This bar cannot be that, because `STICKY_ACTIONS` is keyed on pathname and
+        this one is member-gated, so it is positioned against the nav bar instead and **draws no
+        border of its own** so the two still read as one. If that action slot ever learns a
+        predicate, this belongs inside it. It also holds one primary opening a sheet rather than
+        the frame's `Create postcard`, because the screen has three things to create and the
+        frame predates two of them.
       - **The thread event.** The frame predates `081` (PD-307) entirely, so a club had no
         threads when it was drawn.
 
@@ -496,7 +510,8 @@ is a drawn value this repo no longer builds:
       new top-to-bottom order in conversation rather than in a redrawn frame: Upcoming rides,
       Postcards, Members, the `Private club · Started …` line, then the description — Upcoming
       rides moved to lead the screen (with a `Plan a ride` create affordance, `ClubCreateRideRow`,
-      when the club has none and the viewer can create one), and Members and Postcards swapped
+      when the club has none and the viewer can create one — both that component and the
+      affordance are gone as of 2026-08-31; every create is in `ClubCreateBar`), and Members and Postcards swapped
       from what an earlier revision of this same conversation had settled. **Postcards is a
       horizontally-scrolling strip of stamps** (`ClubPostcardCarousel`), not the stacked
       `PostcardCard` list `AI / Club detail merged / 2026-08-17` draws and this section drew

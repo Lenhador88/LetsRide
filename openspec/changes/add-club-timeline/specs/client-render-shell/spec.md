@@ -10,13 +10,13 @@ decisions and leaves one. It SHALL be made deliberately, for all seven states.
 
 | State | Behaviour |
 |---|---|
-| Empty | **unreachable by construction** for a member: a brand-new club always holds its owner's `club_members` row and the club's own `created_at`, so the shortest stream is two entries. The screen SHALL therefore have no empty state and SHALL render the shortest stream under the action layer, which reads as a beginning rather than as a failure |
+| Empty | **unreachable by construction** for a member: a brand-new club always holds its owner's `club_members` row and the club's own `created_at`, so the shortest stream is two entries. The screen SHALL therefore have no empty state and SHALL render the shortest stream under the club's own band, which reads as a beginning rather than as a failure |
 | Loading | gate on the **data**, never on `isLoading` — `useQuery` starts its fetch in an effect, so the first render pass has no data *and* no fetch in flight. A skeleton stream, and the identity band and rides strip SHALL be allowed to paint ahead of it rather than being held behind one gate |
 | Error | a failed timeline read SHALL show a retryable error **in place of the stream only**. It SHALL NOT take the club down: the identity band, the rides strip and the Members rail SHALL still render, the same call `ClubMemberRail` and `ClubThreadsSection` already make |
 | Offline | the stream SHALL render from cache when there is one, unchanged and unmarked, and SHALL show the same retryable error as any failed read when there is not. Nothing here is queued: every entry is a record of something that already happened |
 | Permission denied | **a refusal, never an empty stream.** For a non-member of a public club the reads SHALL NOT be issued at all, so the refusal is reachable without a round trip and is not an interpretation of an empty result. See the `club-timeline` capability |
 | Partial | **the normal case, and the one that must not be silent.** One source failing SHALL NOT blank the stream; the stream SHALL render from the sources that answered **and SHALL be treated as saturated at that point**, so the coherence horizon truncates rather than the merge silently omitting a source's whole history |
-| Stale | the stream is read on load and SHALL NOT subscribe. A write made from the action layer SHALL invalidate it — see the `client-cache-invalidation` delta |
+| Stale | the stream is read on load and SHALL NOT subscribe. A write made from the create bar SHALL invalidate it — see the `client-cache-invalidation` delta |
 
 #### Scenario: One failed source does not silently delete a kind of event
 - **WHEN** the threads read fails and the other three answer

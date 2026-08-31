@@ -37,9 +37,9 @@ import type { ClubTimelineEvent } from '@/lib/data/club-timeline'
  */
 export function ClubTimelineEventRow({ event }: { event: ClubTimelineEvent }) {
   const parts = describe(event)
-  // Only a thread carries one; every other kind is a fact about the past with
-  // nothing to catch up on.
-  const unread = event.kind === 'thread' && event.unread
+  // Only the two thread-shaped kinds carry one; every other event is a fact
+  // about the past with nothing to catch up on.
+  const unread = (event.kind === 'thread' || event.kind === 'reply') && event.unread
 
   const body = (
     <>
@@ -125,11 +125,26 @@ function describe(event: ClubTimelineEvent): {
       const organizer = event.ride.organizer?.username
       return {
         sentence: organizer
-          ? `${organizer} planned a ride: ${event.ride.title}.`
-          : `A ride was planned: ${event.ride.title}.`,
+          ? `${organizer} planned a ride: ${event.ride.title}`
+          : `A ride was planned: ${event.ride.title}`,
         href: routes.ride(event.ride.id),
         // No face, matching the frame's own ride event — a ride is the club's,
         // not one rider's, and the crew it belongs to is on the ride screen.
+        avatar: null,
+      }
+    }
+
+    case 'reply': {
+      const { reply } = event
+      return {
+        // No full stop: the sentence ends in a title the rider wrote, and
+        // `Winter tyres?.` is what a period does to it. Every sentence here
+        // ending in user text drops the stop for the same reason; the ones
+        // ending in the app's own words keep it, which is the frame's voice.
+        sentence: reply.author
+          ? `${reply.author} replied in ${reply.thread_title}`
+          : `There is a new message in ${reply.thread_title}`,
+        href: routes.clubThread(reply.thread_id),
         avatar: null,
       }
     }
@@ -138,8 +153,8 @@ function describe(event: ClubTimelineEvent): {
       const author = event.thread.author?.username
       return {
         sentence: author
-          ? `${author} started a thread: ${event.thread.title}.`
-          : `A thread was started: ${event.thread.title}.`,
+          ? `${author} started a thread: ${event.thread.title}`
+          : `A thread was started: ${event.thread.title}`,
         href: routes.clubThread(event.thread.id),
         avatar: null,
       }

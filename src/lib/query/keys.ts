@@ -301,6 +301,27 @@ export const queryKeys = {
       'unread',
     ],
     /**
+     * The newest message in each of the club's recently-active threads — the
+     * timeline's reply events (`getClubThreadReplies`).
+     *
+     * **A child of `threads` like `threadsUnread`, and invalidated the same
+     * way — by name.** The asymmetry `threadsUnread` documents does NOT reach
+     * this key on its own: a message lives under
+     * `['clubs','threads',threadId,'messages']`, which does not prefix
+     * `['clubs','detail',clubId,…]`, so posting one cannot invalidate this by
+     * inheritance. `sendClubMessage` and `deleteClubMessage` take the club id
+     * and name this key explicitly for that reason; without it a rider posts in
+     * a thread, taps back, and the timeline does not show the reply they just
+     * wrote until it goes stale.
+     */
+    threadReplies: (clubId: string): QueryKey => [
+      'clubs',
+      'detail',
+      clubId,
+      'threads',
+      'replies',
+    ],
+    /**
      * One thread itself — its title, its author and the club it sits in
      * (`getClubThread`). Keyed by the thread id for the same reason its
      * messages are, and **the parent of that key**: invalidating the thread

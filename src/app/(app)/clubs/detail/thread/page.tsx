@@ -228,7 +228,7 @@ function ThreadBody({
       }
       setSending((current) => [...current, optimistic])
 
-      const result = await sendClubMessage(threadId, body, messageId)
+      const result = await sendClubMessage(threadId, body, messageId, clubId)
 
       if (result.error) {
         // Withdrawn, not left dimmed for ever: a message must never be left
@@ -241,7 +241,7 @@ function ThreadBody({
       }
       return null
     },
-    [threadId, setSending, online]
+    [threadId, clubId, setSending, online]
   )
 
   /**
@@ -257,7 +257,7 @@ function ThreadBody({
    */
   const deleteMessage = useCallback(
     async (messageId: string) => {
-      const result = await deleteClubMessage(messageId, threadId)
+      const result = await deleteClubMessage(messageId, threadId, clubId)
       if (result.error) {
         // Offline is reported as offline rather than as a refusal, matching
         // `send` — the RPC failing because there is no network is not the same
@@ -269,7 +269,7 @@ function ThreadBody({
         )
       }
     },
-    [threadId, online, showBanner]
+    [threadId, clubId, online, showBanner]
   )
 
   const markSeen = useCallback(
