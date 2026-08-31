@@ -104,16 +104,16 @@ that touches SQL is paired with its assertion task, per `openspec/config.yaml`.
   **asserted with RLS bypassed**, per `design.md` §D7. An assertion written under the suite's
   ambient `authenticated` role is a defect: it passes on a database full of orphans owned by riders
   the runner is blocked from.
-- [ ] 2.8 `public.protect_club_owner_membership()` — `before delete on public.club_members for each
-  row when (current_user = 'authenticated')`, `023`'s shape rather than `022`'s, so
-  `add-account-deletion`'s privileged transfer is still possible. Raises `check_violation` when
-  `old.user_id` is the club's `owner_id`; returns `old` when the `clubs` row no longer exists, so
-  deleting a club still cascades.
-- [ ] 2.9 Assertions for 2.8, one per branch: the owner cannot delete their own row; a member can
-  still leave; an admin cannot delete the owner's row; a non-member cannot delete anything; the
-  owner deleting the whole club succeeds and takes the roster with it; a delete issued by a role
-  other than `authenticated` succeeds. The SQLSTATE is asserted as `23514`, not "any error" — a
-  test that accepts `42501` passes when the wrong rule fired.
+- [x] 2.8 ~~`public.protect_club_owner_membership()`~~ **MOVED 2026-08-31 to
+  `openspec/changes/an-owner-leaves-their-club/` (`095`, PD-194) §3.** That change decides what an
+  owner leaving means, so it owns the guard's two exceptions — the voluntary transfer and the club's
+  own deletion — and shipping the guard here without them would only have to be undone there.
+  `design.md` §D3's amendment note carries the split; that change's §D8 shows neither change blocks
+  the other in either order. **Do not re-add it here**: two files creating the same trigger is a
+  collision, and `095`'s §0.4 re-derives the trigger inventory precisely to catch it.
+- [x] 2.9 ~~Assertions for 2.8~~ **MOVED with it**, to `095` §3.5 and §3.6, which additionally
+  assert the two exceptions and that the parent-is-gone probe is not visibility-dependent.
+  The ride-side equivalents stay here, at 2.10 and 2.11.
 - [ ] 2.10 `public.protect_ride_organizer_membership()` — the same on `ride_members` against
   `rides.organizer_id`.
 - [ ] 2.11 Assertions for 2.10: the organizer cannot delete their own crew row; the organizer
@@ -128,12 +128,12 @@ that touches SQL is paired with its assertion task, per `openspec/config.yaml`.
   `ride_members`' own `NOT private.is_blocked(auth.uid(), user_id)` arm, once isolating the
   `EXISTS` against `rides`. Two predicates currently hide the same row; one assertion cannot say
   which, so removing one later would leave the suite green.
-- [ ] 2.11b **All four functions are `security definer`** — the two seeding *and* the two
-  guarding. For the guards this is correctness, not convention: rule 3 ("allow when the parent
-  is already gone") probes `select 1 from public.clubs where id = old.club_id`, and under
-  invoker rights "invisible to me" and "does not exist" are the same empty result, so the guard
-  would **fail open**. Assert the security context from `pg_proc.prosecdef`, and assert
-  `has_function_privilege('authenticated', …, 'EXECUTE')` is false for all four.
+- [ ] 2.11b **All three functions are `security definer`** — the two seeding *and* the ride guard
+  (the club guard moved to `095`, 2.8). For the guard this is correctness, not convention: rule 3
+  ("allow when the parent is already gone") probes `select 1 from public.rides where id =
+  old.ride_id`, and under invoker rights "invisible to me" and "does not exist" are the same empty
+  result, so the guard would **fail open**. Assert the security context from `pg_proc.prosecdef`, and
+  assert `has_function_privilege('authenticated', …, 'EXECUTE')` is false for all three.
 - [ ] 2.12 Assertions for the participation gate, which 0.5(b) predicts stops firing on the seeded
   row: an un-onboarded rider cannot create a club or a ride at all, and holds no `club_members` or
   `ride_members` row afterwards. This is invisible in a positive test, which is `023` §2's own
@@ -145,11 +145,13 @@ that touches SQL is paired with its assertion task, per `openspec/config.yaml`.
   change adds no UPDATE policy.
 - [ ] 2.14 Footer: the `§Verification` block, in `016`/`022`/`023`'s style — every expected number
   with the query that produces it, including `select count(*) from pg_trigger where tgname in (…)
-  and not tgisinternal` = 4, and the orphan counts expected to be 0.
+  and not tgisinternal` = 3 (the club-side guard moved to `095`, task 2.8 — re-derive the number
+  from the file rather than from this line, which has now been wrong once), and the orphan counts
+  expected to be 0.
 - [ ] 2.15 `PGPASSWORD=postgres npm test` green, and re-derive the assertion total rather than
   quoting it: `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`.
 - [ ] 2.16 Apply to the hosted project, run the footer queries against it, and **check the security
-  advisors**. Expect the count and identity to be **unchanged** — four new definer functions, all
+  advisors**. Expect the count and identity to be **unchanged** — three new definer functions, all
   revoked from `authenticated`, so none should appear. A new
   `authenticated_security_definer_function_executable` finding means a `revoke` did not land, and
   `021`'s footer explains why the file and the database can silently disagree: `apply_migration`
@@ -217,7 +219,7 @@ documentation-claims audit `reviewer` runs.
 ## 6. Review and merge
 
 - [ ] 6.1 Run `reviewer` before the PR, on this change rather than on its own work — including the
-  RLS and data-exposure audit. The four new definer functions and the `019` narrowing are what it
+  RLS and data-exposure audit. The three new definer functions and the `019` narrowing are what it
   is for.
 - [ ] 6.2 One PR per step is wrong here; the branch carries all four steps and the **applies** are
   what sequence them. Say plainly in the PR body which migrations are applied and which are not, and
