@@ -299,7 +299,16 @@ describe('the cross-references in the real repo', () => {
     // `output: 'export'` section is: the web build is not a static export, so the
     // obvious re-derivation returns a wrong answer and the correction is
     // load-bearing rather than biography.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(26)
+    //
+    // **26 -> 27 on 2026-08-31 (`add-club-timeline`, PD-299 #4).** One more, the
+    // same `Working` collision and citing the heading it means: that change's
+    // `tasks.md` cites `CLAUDE.md §Working Principles` for *verify it both ways*,
+    // on the two pure functions behind the club timeline. Both are the kind the
+    // rule exists for — the horizon and the run grouping each return a
+    // plausible, well-ordered, wrong answer that `tsc`, ESLint and `next build`
+    // all pass, so an assertion that never fails against the defect is the
+    // failure mode, and the task says to break each one and watch it go red.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(27)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been

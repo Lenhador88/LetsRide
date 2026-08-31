@@ -446,6 +446,40 @@ is a drawn value this repo no longer builds:
       `text-foreground` on `bg-track` is fine at **12.65:1** and is what the row's title uses;
       the failure is confined to the muted supporting lines. Same PD-176 designer question.
 
+- [x] **The club detail is a TIMELINE as of 2026-08-31 (`add-club-timeline`, PD-299 #4), and it
+      is the first version of this screen that is MEASURED rather than composed.** Every entry
+      below it describes the stacked-sections screen that preceded it and is history; this one
+      supersedes them. The frame is `Private club - Timeline` (`2043:10604`) — which existed
+      the whole time and which two successive rebuilds of this screen did not read, on the
+      belief that no timeline frame existed. Check before assuming again:
+      `npm run figma -- ls Timeline`.
+
+      What is measured from it: the `Upcoming rides` scroller leading the stream; **full
+      postcard cards interleaved with event groups**, not a uniform list of rows; the event row
+      itself at 44px on `Grey/10` with a 28px avatar, the sentence at `Poppins/14/Regular` and a
+      `Time Since` at `Poppins/12/Regular` `Grey/80`; the run grouping (consecutive events share
+      one block with 8px dividers, blocks separated by the 16px `Divider` spine); and the
+      sentences' voice — *"Ron Wilson joined the club."*, *"Pedro Abreu created the club."*
+
+      Three things are **ours** and are deviations rather than omissions, each because the frame
+      predates the thing:
+
+      - **The identity band** — the type/started line, the member rail and the description, at
+        the top. The frame draws none of it; the product owner asked for it on 2026-08-31.
+      - **The action layer** — `ClubActionRow`. The frame puts a single `Create postcard` primary
+        button in the navigation bar instead, which is a different composition of the same
+        intent, and this screen has three entrances to carry rather than one.
+      - **The thread event.** The frame predates `081` (PD-307) entirely, so a club had no
+        threads when it was drawn.
+
+      Two deliberate departures from the frame's own drawing, both recorded so a later pass does
+      not read them as drift: the 16px `Divider` is the **gap** between blocks rather than a
+      literal 2×16 rectangle (the `Grey/10` blocks and white cards already separate themselves,
+      and the rule read as an artefact of how the frame was assembled), and the section heading
+      uses `SectionHeader` rather than the frame's `Poppins/14/Medium` `Grey/80` title —
+      deviating from every other section heading in the app inside one screen is the worse of
+      the two inconsistencies.
+
 - [ ] **The section order and the Postcards section itself deviate further from the approved
       mock, 2026-08-18 (`club-details-dropdown-removal`, PD-262).** The product owner settled a
       new top-to-bottom order in conversation rather than in a redrawn frame: Upcoming rides,

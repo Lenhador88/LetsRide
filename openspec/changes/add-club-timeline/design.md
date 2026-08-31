@@ -329,6 +329,15 @@ rediscover it: *the day any club passes roughly a thousand members,
 
 Every one carries a recommended default so the build can proceed and be corrected later.
 
+**Status after the build (2026-08-31).** Q2, Q4 and Q5 took their defaults and are closed.
+Q3 is closed a third way, better than either option it offered: the entrance is `All photos`
+on the **timeline's own section header**, so it sits beside the content it opens, the action
+layer stays three actions wide, and PD-125's requirement is met without the row growing a
+destination among its actions. Q1 is **still open and still the owner's**, and the build shipped
+its default — creation ordering, with the aggregate mark on the Threads tile. It is the one
+thing in this change that could still be wrong on purpose rather than by accident, and it is
+raised to the owner in the session's own reply rather than left here.
+
 ### Q1 — Should a thread's timeline entry be placed by its creation or by its last message? — **BLOCKING · product owner**
 
 **Default: creation, with the aggregate mark in the action layer as the compensation (§D5).**
