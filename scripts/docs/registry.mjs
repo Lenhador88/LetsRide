@@ -258,8 +258,13 @@ export const claims = [
     // 2026-08-30: #348 promoted `080`-`091` and the two are level again, so this
     // went red on cue for the fourth time. Prose and pattern edited together, as
     // it says — pinned back to LEVEL.
+    // 2026-08-31: the club batch (`092`-`095`, PD-356/PD-360/PD-348/PD-194)
+    // applied to DEV alone after its bundle was confirmed serving, so this went
+    // red on cue for the fifth time. Pinned back to DEV AHEAD, naming BOTH refs
+    // so the direction cannot be inferred from the count alone. It goes red
+    // again on the promotion, which is the mechanism rather than a defect.
     pattern:
-      /\*\*Applied state: (\d+) files; DEV and PROD are BOTH at `\d+` — measured/,
+      /\*\*Applied state: (\d+) files; DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
