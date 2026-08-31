@@ -1,6 +1,8 @@
 'use client'
 
 import { ClubTimelineEventRow } from '@/components/clubs/ClubTimelineEventRow'
+import { ClubTimelineRideCard } from '@/components/clubs/ClubTimelineRideCard'
+import { ClubTimelineThreadRow } from '@/components/clubs/ClubTimelineThreadRow'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SectionHeader } from '@/components/ui/SectionHeader'
@@ -10,12 +12,12 @@ import {
   CLUB_TIMELINE_RIDES,
   boundedHorizon,
   getClubJoins,
-  getClubRideAnnouncements,
   getClubThreadReplies,
   groupClubTimeline,
   mergeClubTimeline,
 } from '@/lib/data/club-timeline'
 import { FEED_PAGE_SIZE, getClubFeed } from '@/lib/data/postcards'
+import { getClubRideAnnouncements } from '@/lib/data/rides'
 import Link from 'next/link'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
@@ -193,6 +195,9 @@ export function ClubTimeline({
     // know how far back they looked.
     joins: joins.data,
     replies: replies.data,
+    // Who is in each thread and how big it is, off the same window the reply
+    // events came from — one read, two answers.
+    activity: replies.data.activity,
     unread: unread.data ?? {},
   })
 
@@ -228,14 +233,55 @@ export function ClubTimeline({
           literal 2×16 rectangle between them was the one part of the frame that
           reads as an artefact of how it was assembled. */}
       <div className="flex flex-col gap-4 px-4">
-        {groupClubTimeline(timeline.events).map((group) =>
-          group.kind === 'postcard' ? (
+        {groupClubTimeline(timeline.events).map((group) => {
+          if (group.kind === 'postcard') {
             // `fill` is left at its default of false — the flow mode: a square
             // photo and an unbounded caption. The deck's `fill` divides a fixed
             // height it does not have here, and a photo in a flow context would
             // render at no height at all. See `PostcardCard`.
-            <PostcardCard key={group.key} postcard={group.event.postcard} />
-          ) : (
+            return <PostcardCard key={group.key} postcard={group.event.postcard} />
+          }
+
+          if (group.kind === 'ride') {
+            return (
+              <ClubTimelineRideCard
+                key={group.key}
+                ride={group.event.ride}
+                at={group.event.at}
+              />
+            )
+          }
+
+          if (group.kind === 'thread') {
+            const event = group.event
+            return event.kind === 'thread' ? (
+              <ClubTimelineThreadRow
+                key={group.key}
+                threadId={event.thread.id}
+                title={event.thread.title}
+                lead={`Started by ${event.thread.author?.username ?? 'a rider'}`}
+                at={event.at}
+                unread={event.unread}
+                activity={event.activity}
+              />
+            ) : (
+              <ClubTimelineThreadRow
+                key={group.key}
+                threadId={event.reply.thread_id}
+                title={event.reply.thread_title}
+                lead={
+                  event.reply.author
+                    ? `${event.reply.author} replied`
+                    : 'There is a new message'
+                }
+                at={event.at}
+                unread={event.unread}
+                activity={event.activity}
+              />
+            )
+          }
+
+          return (
             <div key={group.key} className="overflow-hidden rounded-lg bg-track">
               {group.events.map((event, i) => (
                 <div key={event.key}>
@@ -248,7 +294,7 @@ export function ClubTimeline({
               ))}
             </div>
           )
-        )}
+        })}
       </div>
 
       {/* The foot. A complete stream ends on the club's own founding — the

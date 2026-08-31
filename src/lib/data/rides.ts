@@ -141,7 +141,7 @@ export const RIDE_CREW_LIMIT = 200
  * never be counted as though it were.
  */
 const RIDE_SELECT = `
-  id, title, meeting_point, departure_at, timezone, organizer_id, map_card_path,
+  id, title, meeting_point, departure_at, created_at, timezone, organizer_id, map_card_path,
   latitude, longitude,
   organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
   club:clubs(id, name),
@@ -153,6 +153,8 @@ export type RideRow = {
   title: string
   meeting_point: string
   departure_at: string
+  /** When the ride was ANNOUNCED — see `RideListItem.created_at`. */
+  created_at: string
   /** `080`'s zone for the meeting point, NULL when the ride does not carry one.
    *  Every `formatRide*` call on this row takes it — see `rideZone`. */
   timezone: string | null
@@ -201,6 +203,7 @@ export function toRideListItem(
     title: row.title,
     meeting_point: row.meeting_point,
     departure_at: row.departure_at,
+    created_at: row.created_at,
     timezone: row.timezone,
     club: row.club,
     latitude: row.latitude,
@@ -1310,4 +1313,64 @@ export async function getCrewRides(only?: string | null): Promise<RideOption[]> 
   return [...byId.values()]
     .sort((a, b) => new Date(b.departure_at).getTime() - new Date(a.departure_at).getTime())
     .map(({ id, title, club_id }) => ({ id, title, club_id }))
+}
+
+/**
+ * The rides one club has ANNOUNCED, newest announcement first — the club
+ * timeline's ride source.
+ *
+ * **Not `getRides({ kind: 'club', id })`, and the difference is the ORDER
+ * rather than the columns.** That read splits and bounds on `departure_at` for
+ * the strip at the top of the club screen: what is coming, and what the club
+ * has already ridden. This one asks when each ride was *planned*, which is where
+ * the timeline places it — so it orders and bounds on `created_at`, and that is
+ * what makes its coherence horizon mean anything. Bounded by `departure_at`,
+ * the rides withheld could have been created at any moment, including this
+ * morning, so "the oldest row we were handed" would guarantee nothing.
+ *
+ * **It lives here rather than in `club-timeline.ts` because it returns a full
+ * `RideListItem`** — the timeline draws `RideCard` under its own label since
+ * 2026-08-31 — and everything that takes a `RideRow` the rest of the way is in
+ * this module: `RIDE_SELECT`, `toRideListItem`, the avatar and map-tile signing,
+ * and `rideDayStartUtc`, which has to be read once per list so every card on one
+ * screen agrees where the upcoming/past boundary is.
+ *
+ * No audience predicate: `022`'s `rides` SELECT policy owns it, so a private
+ * club's rides come back for its members and nobody else.
+ */
+export async function getClubRideAnnouncements(
+  clubId: string,
+  limit = RIDES_PAGE_SIZE
+): Promise<RideListItem[]> {
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const dayStartMs = new Date(rideDayStartUtc()).getTime()
+
+  const rows = unwrapList(
+    await supabase
+      .from('rides')
+      .select(RIDE_SELECT)
+      .eq('club_id', clubId)
+      // `id` as the tiebreak for `getClubThreads`' reason: two rides sharing a
+      // `now()` would otherwise page in an order Postgres does not promise, so
+      // the bound could drop one and repeat the other.
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(limit),
+    "this club's rides",
+  ) as unknown as RideRow[]
+
+  // Before mapping, for the reason `getRides` gives at its own call: the mapper
+  // copies profile references into `riders`, and signing afterwards would sign
+  // the originals while the card rendered the copies.
+  await Promise.all([
+    resolveAvatarUrls(
+      rows.flatMap((row) => [row.organizer, ...(row.riders ?? []).map((member) => member.profile)]),
+      supabase
+    ),
+    resolveRideMapUrls(rows, supabase),
+  ])
+
+  return rows.map((row) => toRideListItem(row, user?.id, dayStartMs))
 }

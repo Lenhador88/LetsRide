@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
-import { NotificationDot } from '@/components/ui/NotificationDot'
 import { routes } from '@/lib/routes'
 import { formatRelativeTime } from '@/lib/utils'
 import type { ClubTimelineEvent } from '@/lib/data/club-timeline'
@@ -37,9 +36,6 @@ import type { ClubTimelineEvent } from '@/lib/data/club-timeline'
  */
 export function ClubTimelineEventRow({ event }: { event: ClubTimelineEvent }) {
   const parts = describe(event)
-  // Only the two thread-shaped kinds carry one; every other event is a fact
-  // about the past with nothing to catch up on.
-  const unread = (event.kind === 'thread' || event.kind === 'reply') && event.unread
 
   const body = (
     <>
@@ -56,8 +52,6 @@ export function ClubTimelineEventRow({ event }: { event: ClubTimelineEvent }) {
       ) : null}
 
       <span className="min-w-0 flex-1 text-sm font-normal text-foreground">{parts.sentence}</span>
-
-      {unread && <NotificationDot className="shrink-0" />}
 
       <span className="shrink-0 text-xs font-normal text-muted">
         {/* Elapsed time, so no zone at all — see `formatRelativeTime`. The
@@ -80,10 +74,11 @@ export function ClubTimelineEventRow({ event }: { event: ClubTimelineEvent }) {
   return (
     <Link
       href={parts.href}
-      // The row is one label for assistive tech: the avatar is decorative and
-      // `NotificationDot` is `aria-hidden` by construction, so the unread state
-      // has to be in words or it is invisible to everyone not looking at it.
-      aria-label={unread ? `${parts.sentence}, unread messages` : parts.sentence}
+      // The row is one label for assistive tech — the avatar is decorative.
+      // **No unread state here**: threads and replies are the only events with
+      // anything to catch up on, and both draw `ClubTimelineThreadRow` instead,
+      // which carries the mark and says so in words.
+      aria-label={parts.sentence}
       className={className}
     >
       {body}
@@ -121,45 +116,6 @@ function describe(event: ClubTimelineEvent): {
       }
     }
 
-    case 'ride': {
-      const organizer = event.ride.organizer?.username
-      return {
-        sentence: organizer
-          ? `${organizer} planned a ride: ${event.ride.title}`
-          : `A ride was planned: ${event.ride.title}`,
-        href: routes.ride(event.ride.id),
-        // No face, matching the frame's own ride event — a ride is the club's,
-        // not one rider's, and the crew it belongs to is on the ride screen.
-        avatar: null,
-      }
-    }
-
-    case 'reply': {
-      const { reply } = event
-      return {
-        // No full stop: the sentence ends in a title the rider wrote, and
-        // `Winter tyres?.` is what a period does to it. Every sentence here
-        // ending in user text drops the stop for the same reason; the ones
-        // ending in the app's own words keep it, which is the frame's voice.
-        sentence: reply.author
-          ? `${reply.author} replied in ${reply.thread_title}`
-          : `There is a new message in ${reply.thread_title}`,
-        href: routes.clubThread(reply.thread_id),
-        avatar: null,
-      }
-    }
-
-    case 'thread': {
-      const author = event.thread.author?.username
-      return {
-        sentence: author
-          ? `${author} started a thread: ${event.thread.title}`
-          : `A thread was started: ${event.thread.title}`,
-        href: routes.clubThread(event.thread.id),
-        avatar: null,
-      }
-    }
-
     case 'club-created':
       return {
         sentence: event.founder ? `${event.founder} created the club.` : 'The club was created.',
@@ -167,10 +123,16 @@ function describe(event: ClubTimelineEvent): {
         avatar: null,
       }
 
-    // A postcard is a card, not a row — see this file's header. Unreachable
-    // from `ClubTimeline`, and typed rather than thrown so the exhaustiveness
-    // above stays a compile-time check.
+    // Three kinds draw their own shape and never reach this row: a postcard is
+    // a `PostcardCard`, a ride is a `RideCard` under a label, and a thread —
+    // created or replied to — is a `ClubTimelineThreadRow`. `groupClubTimeline`
+    // routes all three away, so these arms are unreachable; they are typed
+    // rather than thrown so the exhaustiveness above stays a compile-time check
+    // and a sixth event kind is still an error here.
     case 'postcard':
+    case 'ride':
+    case 'thread':
+    case 'reply':
       return { sentence: '', href: null, avatar: null }
   }
 }

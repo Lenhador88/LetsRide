@@ -474,8 +474,19 @@ is a drawn value this repo no longer builds:
       one block with 8px dividers, blocks separated by the 16px `Divider` spine); and the
       sentences' voice — *"Ron Wilson joined the club."*, *"Pedro Abreu created the club."*
 
-      Three things are **ours** and are deviations rather than omissions, each because the frame
-      predates the thing:
+      **The stream carries FOUR row shapes as of 2026-08-31, and only two are the frame's.**
+      The product owner asked for a visual distinction between kinds — *"when someone creates a
+      ride, maybe we could add the ride overview (like in ride list screen), but still keep the
+      label on top"*, and *"a thread should also be clearly visible"* — so a ride draws its full
+      `RideCard` under a muted `X planned a ride` label, and a thread draws a 72px row of its own
+      with the thread glyph, its participants' faces and its reply count. Both left the `Grey/10`
+      run to do it. What stays measured is the run itself and the postcard card: a join and the
+      club's founding are facts that happened once, and they still collect into the frame's
+      `Events` block. **The frame has no thread at all** (it predates `081`) and draws its rides
+      only in the scroller at the top, so neither new shape had one to follow.
+
+      Three further things are **ours** and are deviations rather than omissions, each because
+      the frame predates the thing:
 
       - **The identity band** — the type/started line, the member rail and the description, at
         the top. The frame draws none of it; the product owner asked for it on 2026-08-31.

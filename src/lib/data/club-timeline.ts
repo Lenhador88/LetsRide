@@ -1,54 +1,17 @@
 import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { RIDES_PAGE_SIZE } from '@/lib/data/rides'
 import { resolveAvatarUrls } from '@/lib/data/media'
 import { unwrapList } from '@/lib/data/unwrap'
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { clubIdSchema } from '@/lib/validation/clubs'
-import type { ClubRosterMember, ClubThreadListItem, Postcard, PublicProfile } from '@/types'
+import type {
+  ClubRosterMember,
+  ClubThreadListItem,
+  Postcard,
+  PublicProfile,
+  RideListItem,
+} from '@/types'
 
-/**
- * A ride as the timeline draws it — the announcement, not the ride.
- *
- * **Five columns rather than `RideListItem`, and the narrowness is the point.**
- * A timeline entry says *a ride was planned, and it leaves on this day*; it
- * draws no organizer, no crew avatars, no map tile and no RSVP. Reusing
- * `RideListItem` would mean embedding two profile joins and a `ride_members`
- * fan-out per row to render a title and a date, and — the reason that matters
- * rather than being merely wasteful — it would mean widening the shared
- * `RIDE_SELECT` with a `created_at` that every other ride surface in the app
- * pays for and none of them reads.
- *
- * `created_at` is server-owned: `045` revoked INSERT and UPDATE on it, so an
- * organizer cannot backdate a ride onto the timeline or float an old one to the
- * top of it.
- */
-export type ClubRideAnnouncement = {
-  id: string
-  title: string
-  departure_at: string
-  created_at: string
-  /** `080`'s zone for the meeting point, NULL when the ride carries none. Every
-   *  `formatRide*` call on this row takes it — see `rideZone`. */
-  timezone: string | null
-  /** The name in the event's sentence. Null when the `profiles` policy hides
-   *  the row — the entry still draws, with the actor dropped from the sentence
-   *  rather than the ride dropped from the club's history. */
-  organizer: Pick<PublicProfile, 'id' | 'username'> | null
-}
-
-/**
- * A join, with a rider this screen can actually name.
- *
- * **Both halves of the narrowing are load-bearing and neither is redundant.**
- * `ClubRosterMember.profile` is null when the `profiles` SELECT policy hides
- * the row, and `PublicProfile.username` is null in its own right for a rider
- * who has not finished onboarding step 1 — the trigger creates the profile the
- * instant the auth user exists. `getClubJoins` drops both, because an entry
- * reading "someone joined the club" is not an event, it is a shrug, and
- * `${null} joined the club` renders the word "null" with nothing red anywhere.
- *
- * It is what lets the row render a name and a face with no impossible branch to
- * write and never exercise.
- */
 export type ClubJoin = Omit<ClubRosterMember, 'profile'> & {
   profile: PublicProfile & { username: string }
 }
@@ -69,6 +32,35 @@ export type ClubJoin = Omit<ClubRosterMember, 'profile'> & {
  * messages and would bury everything else under one conversation; the stream
  * carries the fact that a thread is alive, not a transcript of it.
  */
+/**
+ * What a thread looks like from outside — who is in it and how big it is
+ * (product owner, 2026-08-31: *"a thread should somehow show who is involved,
+ * and how many messages it has"*).
+ *
+ * **`messages` counts REPLIES, not posts.** `createClubThread` writes a title
+ * and no opening message, so a thread with three replies has three
+ * `club_messages` rows and the number means what a rider expects.
+ *
+ * **`partial` is the honesty flag and it must be drawn.** All of this is
+ * derived from the club-wide message window the reply events already read, so
+ * on a club whose window filled, the count is a floor rather than a total —
+ * exactly the page-length-as-a-total trap `ClubThreadsRow` had to drop a number
+ * over. Here the number survives because the flag lets the row say `12+`.
+ */
+export type ClubThreadActivity = {
+  messages: number
+  /** Distinct authors, newest-first by their latest message, capped for the
+   *  avatar row. Null-username authors are dropped — the `profiles` policy
+   *  hides them and a faceless initial says nothing. */
+  participants: PublicProfile[]
+  partial: boolean
+}
+
+/** How many faces a thread row draws before it becomes `+N`. `CLUB_AVATAR_LIMIT`
+ *  is the club rail's five; a thread row is narrower and carries a count and a
+ *  time beside them. */
+export const THREAD_PARTICIPANT_LIMIT = 3
+
 export type ClubThreadReply = {
   /** The MESSAGE's id — the reply is the event, so two replies in one thread
    *  across a refetch are the same entry only if they are the same message. */
@@ -129,17 +121,14 @@ export const CLUB_TIMELINE_JOINS = 60
 /**
  * How many ride announcements the timeline reads.
  *
- * **This is a read of its own rather than a slice of `getRides`, and the reason
- * is the horizon rather than the columns.** `getRides` bounds its two halves by
- * `departure_at` — the soonest thirty ahead, the latest twenty behind — so the
- * rides it withholds can have been created at *any* moment, including this
- * morning. That makes "the oldest `created_at` we were handed" meaningless as a
- * horizon: the missing ride could be newer than every ride in the answer, and
- * `mergeClubTimeline` would cut at a date that guarantees nothing. Ordering the
- * timeline's own read by the field the timeline sorts on is what makes the rule
- * sound for this source as it is for the other three.
+ * The read itself is `getClubRideAnnouncements` in `lib/data/rides.ts`, which
+ * is where it has to live: the timeline draws a full `RideCard` under its label
+ * (2026-08-31), so it needs `RIDE_SELECT`, `toRideListItem` and the avatar and
+ * map-tile signing, none of which belong here. This constant stays because it
+ * is the number the horizon is compared against, and that comparison is the
+ * timeline's business.
  */
-export const CLUB_TIMELINE_RIDES = 30
+export const CLUB_TIMELINE_RIDES = RIDES_PAGE_SIZE
 
 /**
  * How many of the club's recent messages the timeline reads, before they are
@@ -175,14 +164,28 @@ export const CLUB_TIMELINE_REPLIES = 200
  * change.
  *
  * **`at` is when the thing HAPPENED, which for a ride is not when it departs.**
- * `rides.created_at`, never `departure_at` — see `ClubRideAnnouncement`.
+ * `rides.created_at`, never `departure_at` — see `RideListItem.created_at`.
  */
 export type ClubTimelineEvent =
-  | { kind: 'ride'; at: string; key: string; ride: ClubRideAnnouncement }
+  | { kind: 'ride'; at: string; key: string; ride: RideListItem }
   | { kind: 'postcard'; at: string; key: string; postcard: Postcard }
-  | { kind: 'thread'; at: string; key: string; thread: ClubThreadListItem; unread: boolean }
+  | {
+      kind: 'thread'
+      at: string
+      key: string
+      thread: ClubThreadListItem
+      unread: boolean
+      activity: ClubThreadActivity | null
+    }
   | { kind: 'join'; at: string; key: string; member: ClubJoin }
-  | { kind: 'reply'; at: string; key: string; reply: ClubThreadReply; unread: boolean }
+  | {
+      kind: 'reply'
+      at: string
+      key: string
+      reply: ClubThreadReply
+      unread: boolean
+      activity: ClubThreadActivity | null
+    }
   /**
    * The club itself — `clubs.created_at`, the oldest thing that can be on this
    * stream and therefore its floor.
@@ -245,7 +248,7 @@ export type ClubTimeline = { events: ClubTimelineEvent[]; complete: boolean }
 export type ClubTimelineSources = {
   /** The club's own founding, for the floor entry. */
   club: { created_at: string; owner_id: string }
-  rides: ClubTimelineSource<ClubRideAnnouncement>
+  rides: ClubTimelineSource<RideListItem>
   postcards: ClubTimelineSource<Postcard>
   threads: ClubTimelineSource<ClubThreadListItem>
   joins: ClubTimelineSource<ClubJoin>
@@ -254,6 +257,9 @@ export type ClubTimelineSources = {
    *  read (`false`), which is what makes a failed unread call render the
    *  timeline unmarked rather than not render it. */
   unread: Record<string, boolean>
+  /** `thread id -> who is in it and how big it is`. A thread with no replies
+   *  has no entry, which is the same thing as zero. */
+  activity: Record<string, ClubThreadActivity>
 }
 
 /**
@@ -322,6 +328,7 @@ export function mergeClubTimeline(
         key: `thread:${thread.id}`,
         thread,
         unread: sources.unread[thread.id] ?? false,
+        activity: sources.activity[thread.id] ?? null,
       })
     ),
     ...sources.joins.rows.map(
@@ -338,10 +345,11 @@ export function mergeClubTimeline(
         at: reply.created_at,
         key: `reply:${reply.id}`,
         reply,
-        // The same map the thread's own entry reads, so a thread with unread
-        // messages is marked wherever it appears rather than only at the point
-        // it was started — which is usually the one below the fold.
+        // The same maps the thread's own entry reads, so a thread is marked and
+        // described identically wherever it appears rather than only at the
+        // point it was started — which is usually the one below the fold.
         unread: sources.unread[reply.thread_id] ?? false,
+        activity: sources.activity[reply.thread_id] ?? null,
       })
     ),
   ]
@@ -465,45 +473,6 @@ export async function getClubJoins(
   return { rows: members, horizon: boundedHorizon(rows, limit, (row) => row.joined_at) }
 }
 
-/**
- * The rides this club has announced, newest announcement first.
- *
- * **Not `getRides({ kind: 'club', id })`**, which answers a different question:
- * that read splits on `departure_at` for the strip at the top of the club
- * screen — what is coming, and what the club has already ridden — and bounds
- * each half in that order. This one asks when each ride was *planned*. See
- * `CLUB_TIMELINE_RIDES` for why reusing the other read would leave the merge
- * cutting at a date that proves nothing.
- *
- * No audience predicate and no club-visibility check: `022`'s `rides` SELECT
- * policy owns both, so a private club's rides come back for its members and for
- * nobody else. Restating it here would be a second copy of a policy, free to
- * drift.
- */
-export async function getClubRideAnnouncements(
-  clubId: string,
-  limit = CLUB_TIMELINE_RIDES
-): Promise<ClubRideAnnouncement[]> {
-  if (!clubIdSchema.safeParse(clubId).success) return []
-
-  const supabase = await resolveSupabase()
-
-  return unwrapList(
-    await supabase
-      .from('rides')
-      .select(
-        'id, title, departure_at, created_at, timezone, organizer:profiles!organizer_id(id, username)'
-      )
-      .eq('club_id', clubId)
-      // `id` as the tiebreak for the reason `getClubThreads` carries one: two
-      // rides sharing a `now()` would otherwise page in an order Postgres does
-      // not promise, so the bound could drop one and repeat the other.
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(limit),
-    "this club's rides",
-  ) as unknown as ClubRideAnnouncement[]
-}
 
 /**
  * What the frame actually lays out: a postcard is its own card, and a **run of
@@ -516,17 +485,45 @@ export async function getClubRideAnnouncements(
  * function for the reason `clubRailSummary` is: the run boundaries are the
  * thing a refactor silently gets wrong (one block per event, or one block for
  * the whole stream) and neither misgrouping is visible to any other gate.
+ *
+ * **Rides and threads left the run on 2026-08-31**, on the product owner's ask
+ * for a visual distinction: a ride draws its full `RideCard` under a label and
+ * a thread draws a row of its own, so neither can sit inside a shared grey
+ * block. The frame predates both — it has no thread at all and draws its rides
+ * only in the scroller at the top — so this part is ours. What stays measured
+ * is the run itself: a join and the club's founding are facts that happened
+ * once, and they still collect.
  */
 export type ClubTimelineGroup =
   | { kind: 'postcard'; key: string; event: Extract<ClubTimelineEvent, { kind: 'postcard' }> }
+  | { kind: 'ride'; key: string; event: Extract<ClubTimelineEvent, { kind: 'ride' }> }
+  | {
+      kind: 'thread'
+      key: string
+      event: Extract<ClubTimelineEvent, { kind: 'thread' | 'reply' }>
+    }
   | { kind: 'events'; key: string; events: ClubTimelineEvent[] }
 
 export function groupClubTimeline(events: ClubTimelineEvent[]): ClubTimelineGroup[] {
   const groups: ClubTimelineGroup[] = []
 
   for (const event of events) {
+    // Three kinds draw their own block: a postcard is a card, a ride is a card
+    // under a label, and a thread is its own row. Only joins and the club's
+    // founding — facts that happened once and are never returned to — collect
+    // into the grey run the frame draws.
     if (event.kind === 'postcard') {
       groups.push({ kind: 'postcard', key: event.key, event })
+      continue
+    }
+
+    if (event.kind === 'ride') {
+      groups.push({ kind: 'ride', key: event.key, event })
+      continue
+    }
+
+    if (event.kind === 'thread' || event.kind === 'reply') {
+      groups.push({ kind: 'thread', key: event.key, event })
       continue
     }
 
@@ -541,12 +538,23 @@ export function groupClubTimeline(events: ClubTimelineEvent[]): ClubTimelineGrou
   return groups
 }
 
+/**
+ * The reply source plus the per-thread summary derived from the same window —
+ * one read, two answers, which is why they travel together rather than as two
+ * reads that could disagree about which messages they saw.
+ */
+export type ClubReplySource = ClubTimelineSource<ClubThreadReply> & {
+  activity: Record<string, ClubThreadActivity>
+}
+
 /** One `club_messages` row as the read selects it, before the collapse. */
 export type ClubMessageRow = {
   id: string
   created_at: string
   thread_id: string
-  author: { username: string | null } | null
+  /** The full public profile rather than a username, because the thread row
+   *  draws faces — see `ClubThreadActivity.participants`. */
+  author: PublicProfile | null
   thread: { club_id: string; title: string } | null
 }
 
@@ -569,24 +577,56 @@ export type ClubMessageRow = {
 export function collapseToNewestPerThread(
   rows: ClubMessageRow[],
   limit: number
-): ClubTimelineSource<ClubThreadReply> {
+): ClubReplySource {
   const newestPerThread = new Map<string, ClubThreadReply>()
+  const counts = new Map<string, number>()
+  const participants = new Map<string, Map<string, PublicProfile>>()
+
+  // The window came back full only if it hit its bound, and then every count
+  // below is a floor rather than a total — `partial` is what lets the row say
+  // so instead of asserting a number it cannot know.
+  const partial = rows.length >= limit
 
   for (const row of rows) {
-    if (!row.thread || newestPerThread.has(row.thread_id)) continue
-    newestPerThread.set(row.thread_id, {
-      id: row.id,
-      created_at: row.created_at,
-      thread_id: row.thread_id,
-      thread_title: row.thread.title,
-      author: row.author?.username ?? null,
-    })
+    if (!row.thread) continue
+
+    if (!newestPerThread.has(row.thread_id)) {
+      newestPerThread.set(row.thread_id, {
+        id: row.id,
+        created_at: row.created_at,
+        thread_id: row.thread_id,
+        thread_title: row.thread.title,
+        author: row.author?.username ?? null,
+      })
+    }
+
+    counts.set(row.thread_id, (counts.get(row.thread_id) ?? 0) + 1)
+
+    // Insertion order IS newest-first, because the window is: a rider's first
+    // appearance in it is their latest message, so the avatar row leads with
+    // whoever spoke most recently. A `Map` keyed on the id de-duplicates
+    // without disturbing that order.
+    if (row.author?.username) {
+      const seen = participants.get(row.thread_id) ?? new Map<string, PublicProfile>()
+      if (!seen.has(row.author.id)) seen.set(row.author.id, row.author)
+      participants.set(row.thread_id, seen)
+    }
+  }
+
+  const activity: Record<string, ClubThreadActivity> = {}
+  for (const [threadId, messages] of counts) {
+    activity[threadId] = {
+      messages,
+      participants: [...(participants.get(threadId)?.values() ?? [])],
+      partial,
+    }
   }
 
   return {
     rows: [...newestPerThread.values()],
     // From the WINDOW, never from the survivors — see this function's header.
     horizon: boundedHorizon(rows, limit, (row) => row.created_at),
+    activity,
   }
 }
 
@@ -618,15 +658,17 @@ export function collapseToNewestPerThread(
 export async function getClubThreadReplies(
   clubId: string,
   limit = CLUB_TIMELINE_REPLIES
-): Promise<ClubTimelineSource<ClubThreadReply>> {
-  if (!clubIdSchema.safeParse(clubId).success) return { rows: [], horizon: null }
+): Promise<ClubReplySource> {
+  if (!clubIdSchema.safeParse(clubId).success) return { rows: [], horizon: null, activity: {} }
 
   const supabase = await resolveSupabase()
 
   const rows = unwrapList(
     await supabase
       .from('club_messages')
-      .select('id, created_at, thread_id, author:profiles!author_id(username), thread:club_threads!inner(club_id, title)')
+      .select(
+        `id, created_at, thread_id, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}), thread:club_threads!inner(club_id, title)`
+      )
       .eq('thread.club_id', clubId)
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })
@@ -634,5 +676,14 @@ export async function getClubThreadReplies(
     "this club's replies",
   ) as unknown as ClubMessageRow[]
 
-  return collapseToNewestPerThread(rows, limit)
+  const summary = collapseToNewestPerThread(rows, limit)
+
+  // After the collapse, so only the faces a row can draw are signed rather than
+  // every author in a two-hundred-message window.
+  await resolveAvatarUrls(
+    Object.values(summary.activity).flatMap((thread) => thread.participants),
+    supabase
+  )
+
+  return summary
 }

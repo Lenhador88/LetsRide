@@ -187,6 +187,17 @@ export type RideListItem = {
   meeting_point: string
   departure_at: string
   /**
+   * When the ride was **announced**, never when it leaves.
+   *
+   * The club timeline places a ride at the moment its organizer created it —
+   * `departure_at` would put a ride planned today for next month a month into
+   * the future on a feed of things that have already happened. The two sit far
+   * apart on the club screen for that reason: upcoming rides run across the top
+   * ordered by `departure_at`, and the card announcing one sits below ordered
+   * by this.
+   */
+  created_at: string
+  /**
    * The IANA zone the meeting point is in (`080`, PD-193), or `null` when the
    * ride does not carry one — every ride created before that column, and any
    * place whose provider sent no zone.
