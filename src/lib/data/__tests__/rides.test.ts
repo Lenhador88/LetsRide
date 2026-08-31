@@ -37,6 +37,7 @@ function row(overrides: Partial<RideRow> = {}): RideRow {
     title: 'Weekend cruise',
     meeting_point: 'Leiderdorp',
     departure_at: '2026-08-16T10:00:00Z',
+    created_at: '2026-08-01T09:00:00Z',
     timezone: null,
     organizer_id: ORGANIZER.id,
     // NULL on every ride in both databases until the render function ships.

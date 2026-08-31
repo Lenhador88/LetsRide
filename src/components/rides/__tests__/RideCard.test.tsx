@@ -42,6 +42,7 @@ const ride = (over: Partial<RideListItem> = {}): RideListItem => ({
   // past can only fall in the plain-date band, so these assertions do not move
   // with the clock the way a `Tomorrow` fixture would.
   departure_at: '2024-11-16T10:00:00Z',
+  created_at: '2024-11-01T10:00:00Z',
   timezone: null,
   club: null,
   latitude: 52.38,

@@ -10,12 +10,11 @@ import {
   groupClubTimeline,
   mergeClubTimeline,
   type ClubJoin,
-  type ClubRideAnnouncement,
   type ClubMessageRow,
   type ClubThreadReply,
   type ClubTimelineSources,
 } from '@/lib/data/club-timeline'
-import type { ClubThreadListItem, Postcard } from '@/types'
+import type { ClubThreadListItem, Postcard, PublicProfile, RideListItem } from '@/types'
 
 /**
  * `mergeClubTimeline` — the club timeline's ordering and, above all, its
@@ -37,14 +36,8 @@ import type { ClubThreadListItem, Postcard } from '@/types'
  * returned nothing hides nothing`.
  */
 
-const ride = (id: string, at: string): ClubRideAnnouncement => ({
-  id,
-  created_at: at,
-  title: `Ride ${id}`,
-  departure_at: at,
-  timezone: null,
-  organizer: null,
-})
+const ride = (id: string, at: string): RideListItem =>
+  ({ id, created_at: at, title: `Ride ${id}`, departure_at: at }) as RideListItem
 
 const postcard = (id: string, at: string): Postcard =>
   ({ id, created_at: at }) as Postcard
@@ -84,6 +77,7 @@ function sources(over: Partial<ClubTimelineSources> = {}): ClubTimelineSources {
     joins: { rows: [], horizon: null },
     replies: { rows: [], horizon: null },
     unread: {},
+    activity: {},
     ...over,
   }
 }
@@ -106,7 +100,7 @@ describe('mergeClubTimeline', () => {
     // The ride leaves next year; it was announced before the postcard was
     // posted, so it sits below it. A merge keying on `departure_at` would put
     // it at the top of a feed of things that have already happened.
-    const upcoming: ClubRideAnnouncement = {
+    const upcoming: RideListItem = {
       ...ride('r1', '2026-08-01T10:00:00Z'),
       departure_at: '2027-01-01T10:00:00Z',
     }
@@ -380,6 +374,39 @@ describe('mergeClubTimeline', () => {
     expect(merged.complete).toBe(false)
   })
 
+  it('renders a thread CREATION\'s reply count as exact, never as a floor', () => {
+    // The horizon is what makes this true rather than optimistic: the stream is
+    // cut at the newest source horizon, and the reply source's is the oldest
+    // message it read — so a creation row that survives the cut was created
+    // after that instant and every one of its replies is inside the window.
+    // Carrying the window's `partial` here renders `2+ replies` on a thread
+    // that has exactly two.
+    const merged = eventsOf(
+      sources({
+        threads: { rows: [thread('t1', '2026-08-04T10:00:00Z')], horizon: null },
+        activity: { t1: { messages: 2, participants: [], partial: true } },
+      })
+    )
+
+    const event = merged.find((e) => e.kind === 'thread')
+    expect(event?.kind === 'thread' && event.activity?.partial).toBe(false)
+    expect(event?.kind === 'thread' && event.activity?.messages).toBe(2)
+  })
+
+  it('leaves a REPLY row\'s floor flag alone, where it is earned', () => {
+    // An old thread's earlier messages can genuinely fall outside the window,
+    // so a reply row's count is a floor and the row says `12+`.
+    const merged = eventsOf(
+      sources({
+        replies: { rows: [reply('m1', '2026-08-04T10:00:00Z', 't1')], horizon: null },
+        activity: { t1: { messages: 12, participants: [], partial: true } },
+      })
+    )
+
+    const event = merged.find((e) => e.kind === 'reply')
+    expect(event?.kind === 'reply' && event.activity?.partial).toBe(true)
+  })
+
   it('is empty for a club with nothing in it', () => {
     expect(eventsOf(sources())).toEqual([])
   })
@@ -433,6 +460,47 @@ describe('groupClubTimeline', () => {
     const groups = groupClubTimeline([...events('event', 'event')])
 
     expect(groups[0].key).toBe('j0')
+  })
+
+  it('gives a ride and a thread each their own block, out of the run', () => {
+    // 2026-08-31: a ride draws a full `RideCard` under a label and a thread
+    // draws its own row, so neither can sit inside the shared grey block. A
+    // refactor that puts them back collects four events into one block and
+    // screenshots plausibly — every row is still there, in the right order.
+    const groups = groupClubTimeline([
+      { kind: 'join', at: '4', key: 'j0', member: join('u0', '4') },
+      { kind: 'ride', at: '3', key: 'r0', ride: ride('r0', '3') },
+      {
+        kind: 'reply',
+        at: '2',
+        key: 'm0',
+        reply: reply('m0', '2'),
+        unread: false,
+        activity: null,
+      },
+      { kind: 'join', at: '1', key: 'j1', member: join('u1', '1') },
+    ])
+
+    expect(groups.map((group) => group.kind)).toEqual(['events', 'ride', 'thread', 'events'])
+    expect(groups[0].kind === 'events' && groups[0].events).toHaveLength(1)
+    expect(groups[3].kind === 'events' && groups[3].events).toHaveLength(1)
+  })
+
+  it('groups a thread CREATION the same way as a reply', () => {
+    // Two event kinds, one row shape — the timeline draws the same thread from
+    // two angles and both are threads to look at.
+    const groups = groupClubTimeline([
+      {
+        kind: 'thread',
+        at: '2',
+        key: 't0',
+        thread: thread('t0', '2'),
+        unread: false,
+        activity: null,
+      },
+    ])
+
+    expect(groups.map((group) => group.kind)).toEqual(['thread'])
   })
 
   it('is empty for an empty stream', () => {
@@ -562,7 +630,7 @@ describe('collapseToNewestPerThread', () => {
     id,
     created_at: at,
     thread_id: threadId,
-    author: { username: 'ana' },
+    author: { id: 'ana', username: 'ana' } as PublicProfile,
     thread: { club_id: 'c1', title: `Thread ${threadId}` },
   })
 

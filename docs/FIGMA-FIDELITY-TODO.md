@@ -436,9 +436,16 @@ is a drawn value this repo no longer builds:
       added them re-counted the *accent* pairing carefully and said nothing about this one,
       which left this file asserting a complete contrast sweep it had not done.
 
-      **The live instance arrived with the club timeline on 2026-08-31**, and is the same
-      4.17:1 for the same reason: `ClubTimelineEventRow`'s `Time Since` is `text-xs
-      font-normal text-muted` inside the `bg-track` event block. It is **left exactly as
+      **THREE live instances arrived with the club timeline over 2026-08-31**, all the same
+      4.17:1 for the same reason — `text-muted` on `bg-track`, at a size WCAG does not count as
+      large: `ClubTimelineEventRow`'s `Time Since` (12px), and `ClubTimelineThreadRow`'s own
+      `Time Since` (12px) and its lead/reply-count line (14px medium). **The third is the one
+      that is load-bearing**, because it carries the reply count rather than a timestamp.
+
+      An earlier revision of this entry said "ONE live instance remains" and was made wrong by
+      the very next commit, which is this entry's own recorded failure mode repeating: a commit
+      counted the accent pairing carefully and said nothing about this one. Re-derive rather than
+      trusting the number. It is **left exactly as
       drawn** under the standing policy at the head of this section — the frame specifies
       `Poppins/12/Regular` `Grey/80` — so what was missing was the measurement, not the
       colour.
@@ -452,7 +459,7 @@ is a drawn value this repo no longer builds:
 
       ```bash
       grep -n "text-muted\|text-xs" src/components/clubs/ClubTimelineEventRow.tsx \
-        src/components/rides/RideJournal.tsx
+        src/components/clubs/ClubTimelineThreadRow.tsx src/components/rides/RideJournal.tsx
       ```
 
       `text-foreground` on `bg-track` is fine at **12.65:1** and is what both the row's title
@@ -474,8 +481,29 @@ is a drawn value this repo no longer builds:
       one block with 8px dividers, blocks separated by the 16px `Divider` spine); and the
       sentences' voice — *"Ron Wilson joined the club."*, *"Pedro Abreu created the club."*
 
-      Three things are **ours** and are deviations rather than omissions, each because the frame
-      predates the thing:
+      **The stream carries FOUR row shapes as of 2026-08-31, and only two are the frame's.**
+      The product owner asked for a visual distinction between kinds — *"when someone creates a
+      ride, maybe we could add the ride overview (like in ride list screen), but still keep the
+      label on top"*, and *"a thread should also be clearly visible"* — so a ride draws its full
+      `RideCard` under a muted `X planned a ride` label, and a thread draws a 72px row of its own
+      with the thread glyph, its participants' faces and its reply count. Both left the `Grey/10`
+      run to do it. What stays measured is the run itself and the postcard card: a join and the
+      club's founding are facts that happened once, and they still collect into the frame's
+      `Events` block.
+
+      **The frame has no thread at all** — it predates `081`, and that half is verified. **It
+      DOES draw a ride-derived row in the stream**, though, and an earlier revision of this entry
+      said otherwise: `Events` → *"Pedro Abreu and Julia Windfield went on a ride!"*, `326×64`,
+      inside the `Grey/10` run. It is a **different event** — post-hoc, about a ride that
+      happened, with its crew named — where the timeline's is the announcement at
+      `rides.created_at`. Nothing in the schema answers "who went" for a past ride, so the
+      frame's row is UNBUILT rather than replaced (`add-club-timeline`'s proposal already logs it
+      as a non-goal), and the card composition is ours because the frame has no announcement to
+      follow. Read the frame before offering it as evidence: `npm run figma -- tree "Private club
+      - Timeline"`.
+
+      Three further things are **ours** and are deviations rather than omissions, each because
+      the frame predates the thing:
 
       - **The identity band** — the type/started line, the member rail and the description, at
         the top. The frame draws none of it; the product owner asked for it on 2026-08-31.
