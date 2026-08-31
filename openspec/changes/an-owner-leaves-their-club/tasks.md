@@ -17,7 +17,7 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
 
 ## 0. Pre-flight — re-derive rather than trust, before writing SQL
 
-- [ ] 0.1 **The migration number.** This file says **095** because `092`, `093` and `094` are held by
+- [x] 0.1 **The migration number.** This file says **095** because `092`, `093` and `094` are held by
   three concurrent changes; the last file on disk is `091`. Re-derive both halves — a number is the
   claim this repo has had wrong in both directions:
   ```bash
@@ -27,7 +27,7 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
   mcp__Supabase__list_migrations fpmrimzxadewsaiwpsel   # DEV
   mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # PROD
   ```
-- [ ] 0.2 **Which arm every club falls to, run with RLS bypassed** (`design.md` §D7 — under
+- [x] 0.2 **Which arm every club falls to, run with RLS bypassed** (`design.md` §D7 — under
   `authenticated` this undercounts by exactly the rows a block hides). Record the result in `095`'s
   header the way `013`, `019`, `022` and `043` do. Measured 2026-08-31: **DEV** 12 clubs, 0 with
   another admin, 9 where the owner is the only member; **PROD** 1 club, which is the welcome club.
@@ -39,7 +39,7 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
            where m.club_id = c.id and m.user_id <> c.owner_id and m.role='admin')   as other_admins
     from public.clubs c order by c.name;
   ```
-- [ ] 0.3 **The ownerless-owner count, both projects.** `design.md` §D2 walks that state through all
+- [x] 0.3 **The ownerless-owner count, both projects.** `design.md` §D2 walks that state through all
   three arms and §Q7 declines to repair it here. Expect **0 / 0**; a non-zero means
   `enforce-creator-membership`'s backfill has become urgent and this change should say so rather than
   quietly work around it.
@@ -49,7 +49,7 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
    where not exists (select 1 from public.club_members m
                       where m.club_id = c.id and m.user_id = c.owner_id);
   ```
-- [ ] 0.4 **The trigger inventory on `club_members` and `clubs`, with events and WHEN clauses.** Two
+- [x] 0.4 **The trigger inventory on `club_members` and `clubs`, with events and WHEN clauses.** Two
   facts in `design.md` §D2 depend on it and both are easy to get wrong from memory: the participation
   gate is **INSERT only**, and `notify_club_joined` is **AFTER INSERT**, so neither fires on the
   transfer's UPDATEs. Also confirms there is still **no DELETE trigger** on `club_members`, so §3's is
@@ -61,7 +61,7 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
    where tgrelid in ('public.clubs'::regclass,'public.club_members'::regclass)
      and not tgisinternal order by 1, 2;
   ```
-- [ ] 0.5 **Measure three Postgres behaviours on a scratch database**, `021` §3's style, and record
+- [x] 0.5 **Measure three Postgres behaviours on a scratch database**, `021` §3's style, and record
   the observations in the migration header rather than the recollection:
   **(a)** `LockRows` sits below `Limit`, so `select … order by … limit 1 for update of m, p` skips a
   candidate that stops matching under a concurrently-committed change rather than misreading it as
@@ -71,14 +71,14 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
   function issues; **(c)** when a `clubs` row is deleted, the RI cascade into `club_members` fires
   *after* the parent row is gone, so a `BEFORE DELETE` guard can tell "the owner is leaving" from "the
   club is being deleted".
-- [ ] 0.6 **The advisor baseline, both projects.** Expect **24**. §7.4 asserts 25 afterwards, and an
+- [x] 0.6 **The advisor baseline, both projects.** Expect **24**. §7.4 asserts 25 afterwards, and an
   after-count means nothing without this.
   ```sql
   select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prosecdef
      and has_function_privilege('authenticated', p.oid, 'execute');
   ```
-- [ ] 0.7 **Read `032`'s successor `select` and `088`'s three RPCs before writing §2.** `design.md`
+- [x] 0.7 **Read `032`'s successor `select` and `088`'s three RPCs before writing §2.** `design.md`
   §D3 declines `enforce-creator-membership` §Q1's instruction to extract a shared selector, and that
   refusal only holds if the two bodies are actually diffable. Read `pg_get_functiondef` for
   `private.transfer_owned_clubs` on the live project, not the migration file — `032` replaced `029`'s
@@ -88,26 +88,26 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
 
 ## 1. `095` — the header
 
-- [ ] 1.1 The pre-flight counts from 0.2 and 0.3, re-run at apply time and dated.
-- [ ] 1.2 The three measurements from 0.5, as observations.
-- [ ] 1.3 The three arms, as a table, with the product owner's own sentence quoted.
-- [ ] 1.4 **Why this is an RPC and not a policy**, naming all four barriers in order — `045`'s absent
+- [x] 1.1 The pre-flight counts from 0.2 and 0.3, re-run at apply time and dated.
+- [x] 1.2 The three measurements from 0.5, as observations.
+- [x] 1.3 The three arms, as a table, with the product owner's own sentence quoted.
+- [x] 1.4 **Why this is an RPC and not a policy**, naming all four barriers in order — `045`'s absent
   `owner_id` column grant (the one a policy-level fix misses, and it fails `42501` before any policy
   runs), `clubs` UPDATE's `with check`, `club_members`' absent UPDATE policy, and PostgREST having no
   transaction.
-- [ ] 1.5 **`016`'s two path CHECKs fire on the happy path.** State that any `update clubs set
+- [x] 1.5 **`016`'s two path CHECKs fire on the happy path.** State that any `update clubs set
   owner_id` raises `23514` while either image path is non-null, and that §2.4 clears both in the same
   statement.
-- [ ] 1.6 The `036` hand-exercise warning: this file hangs a trigger on a live write path, and which
+- [x] 1.6 The `036` hand-exercise warning: this file hangs a trigger on a live write path, and which
   paths (`leaveClub` for every rider, `delete_owned_club`'s cascade).
-- [ ] 1.7 The ordering: **additive against the shipped bundle**, applies **before** the deploy that
+- [x] 1.7 The ordering: **additive against the shipped bundle**, applies **before** the deploy that
   serves the new row, nothing destructive, no post-deploy step. Say why it is safe before the deploy —
   `ClubOptionsMenu` renders `Leave club` only for a non-owner today, so the guard refuses nothing the
   deployed app does, and an older bundle never calls the new function.
 
 ## 2. `095` — the transfer
 
-- [ ] 2.1 `private.pick_club_admin_successor(target_club uuid, departing uuid) returns uuid` —
+- [x] 2.1 `private.pick_club_admin_successor(target_club uuid, departing uuid) returns uuid` —
   `security definer`, `set search_path = ''`, `revoke all … from public, anon, authenticated`. In
   `private`, so it adds **no** advisor and `005`'s absent USAGE makes that structural rather than
   dependent on the revoke surviving `apply_migration`'s string round trip.
@@ -117,15 +117,15 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
   keeps this body diffable against `032`'s, which is the whole of §D3's answer to "extract, never
   copy". Comment both locks: `p` is `032`'s (a candidate mid-account-deletion is skipped rather than
   misread as absent), `m` is new and is what `088`'s three RPCs race over.
-- [ ] 2.2 `comment on function` for 2.1, stating that it is **admin-only on purpose** and that
+- [x] 2.2 `comment on function` for 2.1, stating that it is **admin-only on purpose** and that
   `private.transfer_owned_clubs` deliberately falls back to a member because an account deletion has
   nobody to ask and its alternative is destroying the club.
-- [ ] 2.3 `public.leave_owned_club(p_club_id uuid) returns table (object_path text)` — `security
+- [x] 2.3 `public.leave_owned_club(p_club_id uuid) returns table (object_path text)` — `security
   definer`, `set search_path = ''`, `#variable_conflict error`, every column reference
   alias-qualified. `revoke all … from public, anon`, `grant execute … to authenticated`. Parameter
   named `p_club_id` to match `delete_owned_club`, whose sibling constraints this function inherits;
   `043`'s reason (`club_id` is a column on five tables) is unchanged.
-- [ ] 2.4 The body, in this order, and the order is load-bearing:
+- [x] 2.4 The body, in this order, and the order is load-bearing:
   1. `auth.uid()` null → `insufficient_privilege`.
   2. One `select … from public.clubs where id = p_club_id and owner_id = v_uid for update` reading
      `owner_id`, `is_default`, `avatar_path`, `cover_image_path`. `if not found` → **one** raise site,
@@ -143,12 +143,12 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
   8. `delete from public.club_members where club_id = p_club_id and user_id = v_uid` — **delete, not
      demote**, per §Q1's default and §D2. Deleting zero rows is correct for `054`'s ownerless owner and
      SHALL NOT raise.
-- [ ] 2.5 `comment on function public.leave_owned_club(uuid)` — takes a club and **no rider id**, so
+- [x] 2.5 `comment on function public.leave_owned_club(uuid)` — takes a club and **no rider id**, so
   a successor cannot be proposed; the ownership re-check in the body is the entire access control
   because RLS does not apply inside it; the leaver's row is deleted rather than demoted and why that
   differs from `032`; the `is_default` refusal and its `059` precedent; three post-session raise
   sites and the argument for each.
-- [ ] 2.6 **Assertions for 2.1–2.5** in `supabase/tests/rls_test.sql`. Each is a statement about a
+- [x] 2.6 **Assertions for 2.1–2.5** in `supabase/tests/rls_test.sql`. Each is a statement about a
   **role** and a **resource**, and each is verified **both ways** per `CLAUDE.md` §Working Principles
   — confirm it fails against the mistake it names:
   - The owner of a club with one other admin leaves; afterwards `clubs.owner_id` is that admin, their
@@ -165,34 +165,34 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
     `23514`, which is the happy-path trap.)
   - A club with a non-null avatar transfers **without** raising, which is the assertion that proves
     the clearing is in the same statement.
-- [ ] 2.7 **Assertions for the two refusals**, SQLSTATE-exact:
+- [x] 2.7 **Assertions for the two refusals**, SQLSTATE-exact:
   - Only members remain → `23514`, nothing transferred, nothing deleted, roster unchanged.
   - **No other rider at all** → `23514` with the **same message string**, asserted by equality. This
     is §D7's leak defence and it is the assertion that fails the moment somebody "improves" the copy.
   - The `is_default` club → `insufficient_privilege`, both with and without another admin present.
-- [ ] 2.8 **Assertion: `054`'s ownerless owner can still leave.** A club whose `owner_id` holds no
+- [x] 2.8 **Assertion: `054`'s ownerless owner can still leave.** A club whose `owner_id` holds no
   roster row, with another admin present → the transfer succeeds and deletes zero roster rows.
 
 ## 3. `095` — the guard
 
-- [ ] 3.1 `private.protect_club_owner_membership()` — `security definer`, `set search_path = ''`,
+- [x] 3.1 `private.protect_club_owner_membership()` — `security definer`, `set search_path = ''`,
   `revoke all … from public, anon, authenticated`, and **in `private`** rather than
   `enforce-creator-membership`'s drafted `public` + revoke (§D4). Raises `check_violation` when
   `old.user_id` equals the club's `owner_id`; returns `old` when no `clubs` row with `old.club_id`
   exists.
-- [ ] 3.2 `create trigger protect_club_owner_membership before delete on public.club_members for each
+- [x] 3.2 `create trigger protect_club_owner_membership before delete on public.club_members for each
   row when (current_user = 'authenticated') execute function
   private.protect_club_owner_membership()`. **The `WHEN` clause is not decoration** — `023`'s shape,
   not `022`'s. It is what lets §2's definer transfer and the account-deletion cascade through, and
   copying `022`'s no-escape shape would make this change unimplementable without `disable trigger`.
-- [ ] 3.3 Comment the three rules, and comment rule 3 as a **correctness** requirement for
+- [x] 3.3 Comment the three rules, and comment rule 3 as a **correctness** requirement for
   `security definer` rather than a convention: under invoker rights the parent probe cannot tell
   "invisible to me" from "does not exist", and its answer to the second is to permit the delete — a
   guard that fails open.
-- [ ] 3.4 The guard keys on `clubs.owner_id`, **never** on `club_members.role`. Comment why, citing
+- [x] 3.4 The guard keys on `clubs.owner_id`, **never** on `club_members.role`. Comment why, citing
   `054` and PD-128: the two are permitted to disagree, and a role-keyed guard would both let an
   ownerless owner delete a row the invariant needs and refuse a delete on a stale `owner` row.
-- [ ] 3.5 **Assertions for 3.1–3.4**, one per branch, each verified both ways:
+- [x] 3.5 **Assertions for 3.1–3.4**, one per branch, each verified both ways:
   - The owner cannot delete their own roster row → `23514`, not `42501`. A test accepting "any error"
     passes when the wrong rule fires.
   - A `member` can still leave; an `admin` can still leave. Both for a public club and a private one.
@@ -207,14 +207,14 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
     **again** by confirming `prosecdef` is true, since an invoker-rights version would be refused by
     its own guard and the failure would look like a policy problem.
   - A club whose owner holds no roster row: nothing is refused.
-- [ ] 3.6 **Assertion: the guard's parent probe is not visibility-dependent.** With RLS in force for
+- [x] 3.6 **Assertion: the guard's parent probe is not visibility-dependent.** With RLS in force for
   the caller, delete a `club_members` row for a club the caller cannot see through `009`'s predicate
   and confirm the guard's behaviour is unchanged. Verify both ways: an invoker-rights version of the
   function must fail this.
 
 ## 4. `095` — the footer
 
-- [ ] 4.1 A `§Verification` block in `016`/`022`/`023`/`043`'s style — every expected number with the
+- [x] 4.1 A `§Verification` block in `016`/`022`/`023`/`043`'s style — every expected number with the
   query that produces it, to be run against each project after applying:
   - `prosecdef` and `proconfig` for all three new functions. Expect `t` and `{search_path=""}` **with
     the literal quotes**, which is how Postgres stores it; matching on `search_path=` finds nothing
@@ -233,67 +233,67 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
     tgisinternal` → 1, and the gate count unchanged at **17**.
   - The advisor count: **25**, up from 24, the one new finding being
     `authenticated_security_definer_function_executable` on `public.leave_owned_club`.
-- [ ] 4.2 A rollback note: `drop trigger`, `drop function` ×3. Nothing else moved, so the rollback is
+- [x] 4.2 A rollback note: `drop trigger`, `drop function` ×3. Nothing else moved, so the rollback is
   complete rather than approximate.
 
 ## 5. RLS assertions — the cross-cutting ones
 
 Paired with §§2–4 per `openspec/config.yaml`. These are the ones that are not about a single object.
 
-- [ ] 5.1 **Every assertion about the invariant runs with RLS bypassed or as the club's owner** —
+- [x] 5.1 **Every assertion about the invariant runs with RLS bypassed or as the club's owner** —
   `reset role` / `set role postgres` around the check, never the suite's ambient `set role
   authenticated` (§D7). An assertion written under `authenticated` passes on a database full of
   orphans owned by riders the runner is blocked from, and that is a defect rather than a style note.
-- [ ] 5.2 **A blocked admin still inherits**, asserted in **both** block directions — owner blocks
+- [x] 5.2 **A blocked admin still inherits**, asserted in **both** block directions — owner blocks
   admin, and admin blocks owner. Two cases, not one; blocking is symmetric but the row is directional
   and only one of the two is the obvious fixture.
-- [ ] 5.3 **A block cannot trap an owner.** The club's only other admin blocks the owner; the owner's
+- [x] 5.3 **A block cannot trap an owner.** The club's only other admin blocks the owner; the owner's
   leave still succeeds. This is §D9's adversarial case and the reason blocking does not filter the
   candidate set.
-- [ ] 5.4 **The departing owner's reach afterwards**, per role-matrix scenario: for a **private** club
+- [x] 5.4 **The departing owner's reach afterwards**, per role-matrix scenario: for a **private** club
   they read zero of the club, its roster, its rides, its postcards, its threads and its messages —
   **including postcards and threads they wrote themselves**; for a **public** one they read it as a
   non-member does.
-- [ ] 5.5 **The departing owner's content survives**: their postcards keep `club_id`, their rides keep
+- [x] 5.5 **The departing owner's content survives**: their postcards keep `club_id`, their rides keep
   `club_id`, their `ride_members` rows are untouched, and their `feed_reads` watermark **survives** —
   `feed_reads` cascades from `clubs` and `profiles` and never from `club_members`, and there is no
   DELETE trigger on `club_members` doing it either.
-- [ ] 5.6 **The successor's reach afterwards**: `delete_owned_club` accepts them, `088`'s three RPCs
+- [x] 5.6 **The successor's reach afterwards**: `delete_owned_club` accepts them, `088`'s three RPCs
   accept them including against another **admin**, `081`'s `moderate_club_thread` accepts them, and
   `085`'s approval accepts them. Assert `private.is_club_admin_for(successor, club)` is true by both
   of its arms.
-- [ ] 5.7 **The remaining roster is unchanged**: a non-chosen admin keeps `admin`, a member keeps
+- [x] 5.7 **The remaining roster is unchanged**: a non-chosen admin keeps `admin`, a member keeps
   `member`, and neither can remove or demote the new owner.
-- [ ] 5.8 **Nothing moved in the visibility layer**: policy counts and commands for `clubs` and
+- [x] 5.8 **Nothing moved in the visibility layer**: policy counts and commands for `clubs` and
   `club_members` unchanged, every policy still `to authenticated`, `anon` still holds zero grants, and
   `club_members` SELECT still carries its block predicate.
-- [ ] 5.9 **`anon` holds no EXECUTE on `leave_owned_club`**, and a call without a session raises.
+- [x] 5.9 **`anon` holds no EXECUTE on `leave_owned_club`**, and a call without a session raises.
   Decision #1 asserted as a negative, not implied.
-- [ ] 5.10 **No notification row is written by a transfer.** Count `notifications` before and after.
+- [x] 5.10 **No notification row is written by a transfer.** Count `notifications` before and after.
   This is §Q3's deferral, asserted so that adding one later is a deliberate change with a red test
   rather than a silent one.
-- [ ] 5.11 **The participation gate does not fire on the transfer**, asserted from the trigger's
+- [x] 5.11 **The participation gate does not fire on the transfer**, asserted from the trigger's
   events and WHEN clause rather than from the transfer succeeding — a positive test cannot see this
   (`023` §2's own warning). And a rider with a NULL `terms_accepted_at` still cannot own a club at all.
-- [ ] 5.12 **Concurrency, two orders.** (a) The owner's transfer and `demote_club_admin` against the
+- [x] 5.12 **Concurrency, two orders.** (a) The owner's transfer and `demote_club_admin` against the
   only admin: whichever commits first, the other is refused or finds no successor, and no club ends up
   owned by a rider whose roster row says `member`. (b) The owner's transfer and that admin's own
   `leaveClub`: if the transfer wins, the admin's delete meets the new guard and is refused with
   `23514`, because they are now the owner.
-- [ ] 5.13 **Arm 2 through the real path.** A club whose owner is its only member: `leave_owned_club`
+- [x] 5.13 **Arm 2 through the real path.** A club whose owner is its only member: `leave_owned_club`
   raises, and `delete_owned_club` then succeeds and takes the roster, the postcards, the threads and
   the private rides. Assert a **public** ride in that club survives with `club_id` NULL, keeping its
   crew — `032` §2's rule, which arm 2 inherits and must not silently lose.
-- [ ] 5.14 **The two succession rules agree where their candidate sets coincide.** A roster whose
+- [x] 5.14 **The two succession rules agree where their candidate sets coincide.** A roster whose
   non-owner members are all admins: `private.pick_club_admin_successor` and
   `private.transfer_owned_clubs` name the same rider. This is §D3's testable substitute for the shared
   function `enforce-creator-membership` §Q1 asked for, and it is what would catch the tie-break
   drifting apart.
-- [ ] 5.15 **Arm 2 destroys other riders' postcards even with an empty roster.** Fixture: a rider
+- [x] 5.15 **Arm 2 destroys other riders' postcards even with an empty roster.** Fixture: a rider
   joins a public club, posts, leaves; the owner then deletes it. Assert the postcard is gone. `020`'s
   seed already carries this shape (`...00e5`, *"Posted before I left"*). This is what §D11 and the
   confirmation copy rest on.
-- [ ] 5.16 Re-run the whole suite and **compare label sets, not counts** — a count cannot tell a
+- [x] 5.16 Re-run the whole suite and **compare label sets, not counts** — a count cannot tell a
   rename from a loss, which is what `038` did to one of `036`'s assertions.
 
 ## 6. Client
@@ -365,7 +365,7 @@ a missing step reads as an omission.
 
 ## 8. Documentation
 
-- [ ] 8.1 `docs/reference/schema.md` — the `clubs` and `club_members` rows gain the leave rule, the
+- [x] 8.1 `docs/reference/schema.md` — the `clubs` and `club_members` rows gain the leave rule, the
   guard, the three arms, the `is_default` refusal, and the fact that the guard keys on `owner_id`
   rather than `role`. The `clubs` row already carries `059`'s known gap about inherited rename and
   imagery rights; amend it, because a voluntary leave now cannot reach it.
@@ -377,9 +377,9 @@ a missing step reads as an omission.
   below it, which stops being true.
 - [ ] 8.3 `docs/reference/product-scope.md` — the Clubs row, for what leaving now covers and what it
   deliberately does not (no successor notification, no hand-picked successor, no step-down).
-- [ ] 8.4 Do **not** edit `CLAUDE.md` or `docs/HANDOFF.md` from an agent; the main thread owns both.
+- [x] 8.4 Do **not** edit `CLAUDE.md` or `docs/HANDOFF.md` from an agent; the main thread owns both.
   The advisor count moves 24 → 25 and the migration count moves, and both are that thread's to write.
-- [ ] 8.5 `npm run docs:check`, and `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs` — this
+- [x] 8.5 `npm run docs:check`, and `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs` — this
   change adds `§`-pointers into `enforce-creator-membership` and that check is what catches a moved
   section.
 
