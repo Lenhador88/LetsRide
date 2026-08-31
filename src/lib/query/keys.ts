@@ -199,6 +199,21 @@ export const queryKeys = {
     detail: (clubId: string): QueryKey => ['clubs', 'detail', clubId],
     members: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'members'],
     /**
+     * The club's most recent joins, for the timeline — `getClubJoins`.
+     *
+     * **A separate key from `members`, not a slice of it.** The two read the
+     * same table under the same policy from opposite ends: the roster is
+     * `joined_at` ASC capped at 200 (the founding members first) and this is
+     * DESC capped at `CLUB_TIMELINE_JOINS`. On any club past that cap they hold
+     * disjoint sets of riders, so sharing a key would serve whichever loaded
+     * first to the other screen — a roster starting at the newest member, or a
+     * timeline showing only the club's founders.
+     *
+     * A child of `detail` like `members`, so leaving or deleting the club
+     * reaches both.
+     */
+    joins: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'joins'],
+    /**
      * PD-101. `getClubForEdit` returns a narrower shape than `getClub` — no
      * `owner` embed, no `viewer_role` — so it gets its own leaf under
      * `detail` rather than reusing that key: two shapes sharing one cache
@@ -369,6 +384,24 @@ export const queryKeys = {
   rides: {
     all: (): QueryKey => ['rides'],
     list: (filter: string | null): QueryKey => ['rides', 'list', filter],
+    /**
+     * The rides one club has ANNOUNCED, newest announcement first — the club
+     * timeline's ride source (`getClubRideAnnouncements`).
+     *
+     * **Under `rides`, not under `clubs.detail`, and the placement is what keeps
+     * it fresh.** Every mutation in `lib/actions/rides.ts` invalidates
+     * `rides.all()`, so a ride created, edited or deleted reaches this key with
+     * nothing added at those three call sites; hung under the club it would
+     * have needed a fourth thing to remember, and the failure of forgetting is
+     * a timeline that keeps claiming a deleted ride was planned.
+     *
+     * **Not `list(filterSegment.club(id))`, which is a different question over
+     * the same rows**: that one is split and bounded by `departure_at` for the
+     * strip at the top of the club screen, this one is ordered and bounded by
+     * `created_at`. Two shapes under one key would serve whichever screen
+     * loaded first to the other — see `getClubRideAnnouncements`.
+     */
+    clubAnnouncements: (clubId: string): QueryKey => ['rides', 'club-announcements', clubId],
     filters: (): QueryKey => ['rides', 'filters'],
     /**
      * `/rides/explore` — public rides the viewer is not already on.

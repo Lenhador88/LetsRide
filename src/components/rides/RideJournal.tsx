@@ -30,10 +30,12 @@ import type { Postcard } from '@/types'
  *
  * **It passes no `fromRide` flag, and the asymmetry is deliberate** (`086`,
  * PD-328): every stamp here is from THIS ride by construction, so the marker
- * `ClubPostcardCarousel` draws would be on every tile and would say nothing.
+ * a club surface draws would be on every tile here and would say nothing.
  * The flag distinguishes a mixed strip, and this one is not mixed.
  *
- * The ride-side twin of `ClubPostcardCarousel`: both draw `PostcardStamp`, so
+ * The ride-side twin of the club's own postcard surface — which is the club
+ * timeline's `PostcardCard` since 2026-08-31, the strip this used to pair with
+ * having been dissolved into it. Both draw a postcard's provenance, so
  * both strips look the same and open a postcard the same way. What keeps them
  * two components rather than one is their empty state — crew-gated `Add` here,
  * membership-gated messaging there.
