@@ -204,8 +204,8 @@ which is evaluated under the caller's session, so a blocked rider's wave is abse
 
 1. **Two members of one club see different totals on the same thread**, and neither is told why.
    A count is a number riders compare, and this one is not comparable between them.
-2. **A rider blocked by every other member of a club still sees `1`.** The own-row arm
-   (`user_id = auth.uid() or not is_blocked(…)`) means their own wave always counts, so a wave
+2. **A rider blocked by every other member of a club still sees `1`.** The own-row branch
+   (a disjunct of the whole SELECT policy — §D7) means their own wave always counts, so a wave
    nobody can see reads back as acknowledged. This is the sharpest instance of the general shape
    and it is invisible from the client.
 3. **The obvious fix leaks.** A global count tells the viewer that a hidden rider exists and acted,
@@ -223,19 +223,52 @@ third would be caught by a reviewer reading a migration.
 
 **The author, and nobody else** — `using (user_id = auth.uid())`, with **no visibility
 requirement**, which is `009`'s exact rule and its exact reason: *"a rider must be able to withdraw
-a like from a postcard that has since gone out of view, or the row is stranded."* A rider who waves
-a thread and is then blocked by its author can still withdraw the wave, because the DELETE names
-its own row by both key columns and the policy does not ask whether the parent is still visible.
+a like from a postcard that has since gone out of view, or the row is stranded."*
 
-**A caveat worth carrying, and it is why the wave tables are NOT `club_messages`.** `081` measured
-that RLS applies the SELECT policy to a `DELETE … where id = …`, so a row the caller owns but
-cannot *see* survives its own delete, silently, with PostgREST reporting success — which is why
-`club_messages` has no DELETE policy at all and a definer RPC instead. **The wave tables do not
-inherit that problem, and the reason is the block arm's own-row escape hatch**: `user_id =
-auth.uid()` is a disjunct of the SELECT policy, so a rider can always see their own wave whoever
-has blocked them, and the attached SELECT never hides the row the DELETE is aiming at. That is a
-property to assert, not to assume, because removing the own-row arm would break the delete path
-silently while looking like a tightening.
+**But the DELETE policy is not what delivers that, and the first draft of this section was wrong
+about which policy does.** `081` measured that RLS applies the **SELECT** policy to a
+`DELETE … where` naming a column, so a row the caller owns but cannot *see* survives its own
+delete, silently, with PostgREST reporting success — which is why `club_messages` has no DELETE
+policy at all and a definer RPC instead. Relaxing the DELETE policy cannot repair that, because
+SELECT is applied first.
+
+**This section originally claimed the wave tables escaped it "because `user_id = auth.uid()` is a
+disjunct of the SELECT policy". It was not a disjunct of the policy**, and the correction is the
+part worth carrying:
+
+- In the shape first specified — `<parent EXISTS> and (user_id = auth.uid() or not
+  is_blocked(…))` — the own-row test sits inside the **block conjunct**, where it is a **no-op**:
+  `blocks_no_self_block` (`009` §1) already refuses a self-block, so `is_blocked(x, x)` is false
+  for every `x` and the second half of that disjunction is *already* true whenever the first is.
+  It reads as a protection and is not one, which is exactly how it survived review — and how it
+  shipped in `postcard_likes`, which carries the identical latent defect today.
+- The **parent `EXISTS` therefore still dominates**. Measured on the real chain: a rider blocked by
+  a thread's author, **and** a rider who has merely *left the club* — no block anywhere — both read
+  zero of their own waves and both get `DELETE 0` with the row surviving, while every remaining
+  member goes on seeing it and the rider's own optimistic toggle reports success.
+
+**Decision, product owner, 2026-08-31: the policy was wrong, not the requirement.** The own-row
+branch is hoisted to a disjunct of the **whole** SELECT policy — `009`'s `postcards` shape, whose
+own comment gives the identical reason (*"so a rider can always reach their own postcards —
+including ones posted to a club they have since left, which they would otherwise lose access to
+without ever being told"*):
+
+```sql
+using ( user_id = auth.uid()
+        or ( <parent EXISTS> and not private.is_blocked(auth.uid(), user_id) ) )
+```
+
+**It widens nothing**, and that is measured rather than argued: the added branch returns only rows
+where `user_id = auth.uid()`, the INSERT policy pins that column to the caller and no other writer
+exists, so every row it admits is one the caller wrote and already knows about. The rider still
+cannot read the parent and still reads no other rider's wave. Against the full RLS suite the hoist
+moves **exactly four assertions and nothing else**, all four being the ones that described the old
+behaviour.
+
+`092.6` is the un-hoist detector: three cases that go red the moment the branch is moved back
+inside the block conjunct, including the one with no block in it at all. The narrower point is what
+makes the assertion necessary — *removing* the own-row arm looks like a tightening, and its cost is
+invisible from the DELETE policy alone.
 
 **No owner or admin moderation verb.** A wave is one bit from one rider with no text in it, so
 there is nothing to moderate; the remedies that exist already reach it — a block removes the

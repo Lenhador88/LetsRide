@@ -13,7 +13,9 @@
 
 ## ⚠ Read this first
 
-**1. One objection, and it is about the `share` icon rather than the wave.** The product owner's
+**1. One objection, and it is about the `share` icon rather than the wave. ANSWERED — read the
+banner above first; the paragraph below is the objection as it was raised, kept because it is what
+makes option B defensible, and it is no longer the change's position.** The product owner's
 second ask is *"maybe threads have the same wave, comment and share icons below?"* Two thirds of
 that is good and is specified below. **The share third produces a wrong result and this change
 refuses to build it.** `shareAppLink(routes.clubThread(id))` hands a URL to a screen `081`'s
@@ -121,9 +123,11 @@ select prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 
 ## What Changes
 
-**One migration, `092`.** Two tables, four policies each, two participation-gate triggers, one
-fan-out, one retraction, one new notification type, and the RLS assertions `openspec/config.yaml`
-requires beside them.
+**One migration, `092`.** Two tables, **three policies each — SELECT, INSERT, DELETE, six in
+total** — two participation-gate triggers, one fan-out, one retraction, one new notification type,
+and the RLS assertions `openspec/config.yaml` requires beside them. There is deliberately **no
+UPDATE policy and no UPDATE grant** on either table (a wave has no mutable column), which is why
+the count is six rather than eight; `092.9` asserts it.
 
 ### The two tables
 
@@ -161,12 +165,33 @@ NOT hold a copy of a visibility decision"* exists to refuse. See §D5.
 
 ### Visibility is inherited, never restated
 
-Each SELECT policy is `postcard_likes`' two conjuncts with the noun swapped:
+Each SELECT policy is the rider's **own row**, or else the parent `EXISTS` and the block arm:
 
-| Table | Parent EXISTS (evaluated under the caller's own RLS) | Block arm |
-|---|---|---|
-| `club_thread_waves` | `exists (select 1 from public.club_threads t where t.id = thread_id)` | `user_id = auth.uid() or not private.is_blocked(auth.uid(), user_id)` |
-| `club_join_waves` | `exists (select 1 from public.club_members m where m.club_id = … and m.user_id = subject_user_id)` | identical |
+```sql
+using ( user_id = auth.uid()
+        or ( <parent EXISTS> and not private.is_blocked(auth.uid(), user_id) ) )
+```
+
+| Table | Parent EXISTS (evaluated under the caller's own RLS) |
+|---|---|
+| `club_thread_waves` | `exists (select 1 from public.club_threads t where t.id = club_thread_waves.thread_id)` |
+| `club_join_waves` | `exists (select 1 from public.club_members m where m.club_id = club_join_waves.club_id and m.user_id = club_join_waves.subject_user_id)` |
+
+**The own-row branch is a disjunct of the WHOLE policy and not of the block arm, and that shape is
+load-bearing rather than stylistic** — `postcard_likes` has it in the wrong place and this change
+does not copy the mistake. §D7 carries the measurement; the short version is that inside the block
+arm it is a *no-op* (`blocks_no_self_block` already makes `is_blocked(x, x)` false) and the parent
+`EXISTS` still dominates, so a rider who is blocked by a thread's author — or who has merely left
+the club — cannot read, and therefore cannot delete, the wave they placed. `092.6` is the un-hoist
+detector.
+
+**Both sides of every `EXISTS` are table-qualified**, which is also load-bearing: `club_members`
+has a column called `club_id` and one called `user_id`, so an unqualified comparison deparses to
+`m.club_id = m.club_id` and the subquery degenerates into *"can I read any roster row anywhere"*.
+`092.2` and `092.5` catch one half each behaviourally; `092.7` pins both structurally.
+
+The INSERT policies use the **same** parent `EXISTS` and no own-row branch — a rider may only
+create a wave on something they can currently see.
 
 **Neither policy names membership, club visibility or a block on the subject**, because both
 parents already do — measured, one policy at a time:
@@ -246,7 +271,7 @@ be read as still literally true.
 ## Non-Goals
 
 - **No auto-created thread on a join.** Declined on the merits, not deferred — §D2.
-- **No share affordance on a thread.** §Q1, and the objection at the top of this file.
+- **No thread CAPABILITY URL.** §Q1 was answered on 2026-08-31 and the thread's share row ships, sharing the **club** and labelled `Share club` — so this is no longer "no share affordance", and the banner at the top of this file is the current position. What stays out of scope is a URL addressing a *thread*, which would need `091`'s whole apparatus (expiry, revoke, use count, secret-authorised RPCs) and must not arrive because a share button needed something to do.
 - **No wave on a ride announcement, a postcard entry or the club's founding.** A ride already has
   an RSVP, which is a stronger signal than a wave and would sit beside it saying something weaker;
   a postcard entry is a `PostcardCard`, which **already carries the wave** through `LikeButton`;
@@ -273,9 +298,10 @@ be read as still literally true.
   `src/components/clubs/ClubTimeline.tsx`, `ClubTimelineEventRow.tsx`, `CreateThreadForm.tsx`,
   `src/components/ui/` (the extracted wave toggle), `src/lib/query/keys.ts`, `src/types/index.ts`,
   `docs/reference/schema.md`, `docs/reference/product-scope.md`.
-- **Affected database** — `092`: two tables, eight policies, two participation-gate triggers
-  (taking the count from **17** to **19**), one fan-out trigger, one retraction trigger, one
-  widened `notifications` type CHECK and one widened `notifications_subject_shape`.
+- **Affected database** — `092`: two tables, **six** policies (three per table; no UPDATE policy
+  on either, per §D7 and `092.9`), two participation-gate triggers (taking the count from **17** to
+  **19**), one fan-out trigger, one retraction trigger, one widened `notifications` type CHECK and
+  one widened `notifications_subject_shape`.
 
 ```sql
 -- 17 today; 19 after 092. Count it rather than read it — a table added without one
