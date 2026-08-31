@@ -113,6 +113,19 @@ const NUMBER_WORDS = {
   ten: 10,
   eleven: 11,
   twelve: 12,
+  // Extended to twenty on 2026-08-31: the component-test count reached
+  // seventeen and the claim SKIPPED rather than failed, which is the
+  // outcome this table's own comment below calls the one thing the tool
+  // exists to prevent. A word past the end reads as unrecognized, not as
+  // wrong, so the ceiling has to move ahead of the counts it reads.
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  twenty: 20,
 }
 
 /**

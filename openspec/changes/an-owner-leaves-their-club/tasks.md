@@ -385,26 +385,33 @@ a missing step reads as an omission.
 
 ## 9. `enforce-creator-membership` — the amendment this change owes it
 
+**All five landed with the PROPOSAL rather than with the build** (commit `cf1b2cc`,
+2026-08-31) — the agent that wrote this change amended that one in the same pass, which is why the
+boxes are ticked before `095` exists. Verified against the files rather than the report: the banner
+names all three colliding changes and records this one as deliberately not a fourth, §Open Questions
+Q1 is re-answered with its three stale derivations flagged inline, §Impact reads three trigger
+functions, tasks 2.8/2.9 are pointers here, and the delete-guard scenario names both exceptions.
+
 `design.md` §D8 is the argument; these are the edits. **Amend, do not rewrite** — its reasoning is
 why the guard in §3 is shaped the way it is.
 
-- [ ] 9.1 Move the club-side delete guard out: `tasks.md` 2.8 and 2.9 become pointers to this change,
+- [x] 9.1 Move the club-side delete guard out: `tasks.md` 2.8 and 2.9 become pointers to this change,
   its `proposal.md` §Impact drops from **four** new trigger functions to **three**, and `design.md`
   §D3 keeps its whole argument while recording that the club half ships in `095`.
-- [ ] 9.2 Its `design.md` §Open Questions **Q1 is now answered further**: not "no, not for now" but
+- [x] 9.2 Its `design.md` §Open Questions **Q1 is now answered further**: not "no, not for now" but
   "yes, under three arms". Record the answer, the date, and that this change **declines** Q1's
   instruction to extract a shared `private.pick_club_successor` — with §D3's reason, since that
   instruction was written before `088` made admins writable and before the two candidate sets were
   decided to differ.
-- [ ] 9.3 **Its coordination banner is stale and understates the collision.** It names
+- [x] 9.3 **Its coordination banner is stale and understates the collision.** It names
   `add-account-deletion` as the other change modifying `Club membership role SHALL NOT be
   self-assignable`; `manage-club-riders` modifies it too, so **three** unarchived deltas now replace
   that requirement wholesale. Extend the banner to name all three, and record that this change is
   deliberately **not** a fourth.
-- [ ] 9.4 Its `database-enforced-integrity` delta's scenario *"The owner cannot leave their own
+- [x] 9.4 Its `database-enforced-integrity` delta's scenario *"The owner cannot leave their own
   club"* now has two exceptions. Amend it in place to name them — the transfer and the club's
   deletion — pointing at this change rather than restating the arms, so the two files cannot drift.
-- [ ] 9.5 **Do not touch anything else under `openspec/changes/`.** Three other changes hold `092`,
+- [x] 9.5 **Do not touch anything else under `openspec/changes/`.** Three other changes hold `092`,
   `093` and `094` and are being written concurrently.
 
 ## 10. Review and merge
