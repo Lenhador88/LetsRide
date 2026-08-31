@@ -4,10 +4,10 @@
 changing SQL is paired with a task adding assertions to `supabase/tests/rls_test.sql`. §0 is
 pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered for convenience.
 
-> **`design.md` §Q1 is BLOCKING and is the product owner's**: does leaving mean the departing owner's
-> roster row is **deleted**, or **demoted to `member`** so they stay in the club they handed over?
-> The default is deleted — "leave" means out — and it is a one-line difference in §2.4 now and a
-> migration later. Everything else has a default and can proceed.
+> **`design.md` §Q1 is ANSWERED — 2026-08-31, the product owner: the roster row is DELETED.**
+> "Leave" means out. §2.4 stands as written, §D2 needs no revision, and nothing in this file is
+> blocked. Stepping down — hand the club over and stay as a member — is a separate affordance
+> nobody has asked for.
 
 > **`036`'s hand-exercise gate FIRES on this change.** §3 hangs a trigger on a live write path:
 > every ordinary member leaving any club will run new code inside their own transaction from the
@@ -82,8 +82,8 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
   refusal only holds if the two bodies are actually diffable. Read `pg_get_functiondef` for
   `private.transfer_owned_clubs` on the live project, not the migration file — `032` replaced `029`'s
   body and a third file could have replaced it again.
-- [ ] 0.8 **Answer `design.md` §Q1** — deleted or demoted. It is the only blocking question and it is
-  the product owner's.
+- [x] 0.8 **`design.md` §Q1 is answered — DELETED.** Product owner, 2026-08-31. Nothing here is
+  blocked; build §2.4 as written.
 
 ## 1. `095` — the header
 

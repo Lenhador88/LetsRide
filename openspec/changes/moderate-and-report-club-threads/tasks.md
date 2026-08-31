@@ -4,7 +4,9 @@
 changing a policy is paired with a task adding assertions to `supabase/tests/rls_test.sql`. §0 is
 pre-flight and §7 is the ordering, which is the one part that cannot be reordered for convenience.
 
-> **`design.md` Q1 is BLOCKING and is the product owner's.** It is whether a report reaches the
+> **Q1 is ANSWERED — 2026-08-31, the product owner: a report reaches NOBODY in the club.** The
+> operator queue is the only reader, exactly as D7 specifies, so nothing here is blocked. The
+> question as it was put, for the record: it is whether a report reaches the
 > club's admins in any form. Everything else has a default and can proceed. **Do not build the
 > admin-visible half on a guess** — a rider who reports under "nobody in my club sees this" cannot
 > un-report under a different rule.

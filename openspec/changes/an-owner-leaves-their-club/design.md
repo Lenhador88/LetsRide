@@ -539,10 +539,17 @@ with no reopening condition is a decision, not an answer.
 
 Each carries a recommended default so the build is never blocked, and names who can answer it.
 
-**Blocking — one, and it is the product owner's**
+**Blocking — one, and it is the product owner's. ANSWERED 2026-08-31: the roster row is DELETED.**
 
-- **Q1 — product owner. Does an owner who leaves keep their membership of the club, as an ordinary
-  member?** The decision says *"an owner can only leave a club"*, and "leave" plainly means out. But
+- **Q1 — ANSWERED. Does an owner who leaves keep their membership of the club, as an ordinary
+  member?** **No.** Put the two readings to the product owner on 2026-08-31 and they chose *they
+  leave*: the membership row goes with the transfer, "Leave club" does what it says, and an owner
+  who wants out of a club is out of it. If they want back in they join like anyone else. That is
+  the default below, so §2.4 stands as written and §D2 needs no revision. **Stepping down — hand
+  the club over and stay — is a separate affordance nobody has asked for**; it is not this row
+  under a different name, and building it later means a new row rather than a changed one.
+
+  The reasoning as it was put, kept because it is what makes the answer defensible: The decision says *"an owner can only leave a club"*, and "leave" plainly means out. But
   the alternative reading — *step down: hand the club over and stay as a member* — is a different and
   arguably kinder product, and it is what `032` does for a deleted account.
   **Default: leave means leave. The roster row is deleted** (§D2), and stepping down is a separate

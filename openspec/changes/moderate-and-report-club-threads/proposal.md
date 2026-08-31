@@ -231,7 +231,13 @@ assertion in `supabase/tests/rls_test.sql`.
 Every one carries a recommended default so the build is never blocked. **Q1 is the only blocking
 one and it is the product owner's.**
 
-- **Q1 — product owner, BLOCKING. Does a report reach the club's admins in any form?** The owner's
+- **Q1 — ANSWERED 2026-08-31, and the answer is the default: NO.** Put to the product owner as
+  three options — operator only, an unattributed flag for owners and admins, or the report with the
+  reporter named — they chose **operator only, nothing in-app**. So D7 stands: not the author, not
+  the owner, not the admin. Build it as specified. The original framing, kept because it is what
+  makes the answer defensible:
+
+- **Q1 (as put) — product owner, was BLOCKING. Does a report reach the club's admins in any form?** The owner's
   sentence says riders can report a thread and does not say who reads it. This change routes reports
   to the platform operator alone (D7). The alternative — an unattributed "this thread has been
   reported" flag for owners and admins — is one boolean away and is **not** reversible once shipped,
