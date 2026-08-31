@@ -652,12 +652,16 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 95 files; DEV and PROD are BOTH at `091` — measured 2026-08-31, so `092`–`095`
-are UNAPPLIED on both.** Count rather than trust it: `list_migrations` against both refs, against
-`ls supabase/migrations/`. Those four are the club batch (PD-356, PD-360, PD-348, PD-194) and
-**their apply order relative to the deploy is not free**: `092` and `093` each widen an exhaustive
-client switch, so the bundle carrying the new notification types must be confirmed serving first —
-each change's `tasks.md` §7 carries its own ordering. **Level is the exception, not the resting state** — DEV-ahead is where a
+**Applied state: 95 files; DEV is at `095` and PROD at `091` — measured 2026-08-31, so `092`–`095`
+are DEV-ONLY and awaiting promotion.** Count rather than trust it: `list_migrations` against both
+refs, against `ls supabase/migrations/`. Those four are the club batch (PD-356, PD-360, PD-348,
+PD-194), and **all four are additive**, so the promotion applies them to PROD **before** its build
+serves — with one condition that is not optional and is the reverse of the usual worry: `092` and
+`093` each widen an exhaustive client switch (`notificationCopy` and `NotificationsListItem`'s
+`describe`), so PROD must not receive a `club_waved`, `club_invited` or `club_invite_declined` row
+while an older bundle is still serving. On DEV they went **after** the merge's deployment reached
+`READY` on the merge sha with `aliasError` null, which is `089`'s rule and is the order to repeat.
+Each change's `tasks.md` §7 carries its own. **Level is the exception, not the resting state** — DEV-ahead is where a
 migration lives between its merge and its promotion, so read a per-project difference as a pending
 promotion before reading it as a gap, and **do not read the count of unpromoted files off a
 sentence anywhere**: one here named exactly one file while two were waiting, which is the same

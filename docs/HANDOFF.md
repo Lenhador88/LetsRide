@@ -1138,10 +1138,11 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — 95 files, and both projects are at `091`
+## Migrations — 95 files; DEV is at `095` and PROD at `091`
 
-**`list_migrations` prints 94 rows on DEV and 91 on PROD against 95 files. Four of that gap IS a
-gap — `092`–`095`, unapplied on both, see below — and none of the rest is.** DEV's **surplus rows** are files applied there in increments: `063` in
+**`list_migrations` prints 98 rows on DEV and 91 on PROD against 95 files, and NONE of the DEV
+surplus is a gap.** DEV is level with the repo at `095` — every file has a recorded row, reconciled
+name by name on 2026-08-31. PROD is at `091`, so `092`–`095` are the four awaiting promotion. DEV's **surplus rows** are files applied there in increments: `063` in
 three — `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private`, where PROD
 holds the one consolidated file — and `080` in two, `rides_carry_their_meeting_points_zone` plus
 `rides_zone_is_not_cleared_with_the_location_group`. **DEV keeps all three `063` rows even though
@@ -1826,7 +1827,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/ | wc -l          # 95 — both projects at 091, so 092-095 are unapplied
+ls supabase/migrations/ | wc -l          # 95 — DEV at 095, PROD at 091: 092-095 await promotion
 ```
 
 
