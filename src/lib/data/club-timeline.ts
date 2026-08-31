@@ -91,29 +91,27 @@ export type ClubThreadReply = {
  * a club has been doing; the full lists are one tap away from the heading, the
  * action row and the foot.
  *
- * ## Its relationship to the four source bounds is the real invariant, and it
- * ## is what makes the horizon inert today
+ * ## The horizon is live for one source and inert for the other four
  *
- * **Every source bound is `>=` this number, and while that holds the horizon in
- * `mergeClubTimeline` can never remove a row that would have been drawn.** The
- * proof is short: the source that sets the horizon is truncated, so it returned
- * at least its own bound of rows, and every one of them is newer than the
- * horizon it set. If that bound is `>= 20`, any event older than the horizon
- * already has twenty strictly-newer events above it and cannot survive
- * `slice(0, 20)` anyway.
+ * The four sources whose rows ARE their window — rides, postcards, threads,
+ * joins — each read at least as many rows as this number, and while that holds
+ * their horizons can never remove a row that would have been drawn. The proof
+ * is short: such a source sets its horizon at the oldest row it read, and
+ * everything it read is newer, so anything older already has twenty newer
+ * events above it and cannot survive `slice(0, 20)` anyway.
+ * `club-timeline.test.ts` asserts that relationship directly, because two of
+ * those bounds belong to other screens — `CLUB_THREADS_PAGE_SIZE` to the
+ * Threads list and `FEED_PAGE_SIZE` to the feed — and can be lowered by someone
+ * who never opens this file.
  *
- * So the horizon is **defence in depth rather than a live filter**, and saying
- * so here is the point: the alternative is a guard that looks load-bearing,
- * that no test exercises at the numbers that ship, and that a reader assumes is
- * doing work it is not.
- *
- * **It becomes live the moment the invariant breaks, and one of the four bounds
- * is not ours.** `CLUB_THREADS_PAGE_SIZE` belongs to the Threads list screen
- * and `FEED_PAGE_SIZE` to the postcard feed; either could be lowered by someone
- * who has never opened this file, and raising this number has the same effect
- * from the other side. `club-timeline.test.ts` asserts the relationship
- * directly for that reason — it is the one test here whose failure means *the
- * horizon just started mattering*, not *the horizon is broken*.
+ * **`CLUB_TIMELINE_REPLIES` is deliberately NOT in that argument**, and it is
+ * the exception that makes the horizon real rather than ceremonial: that read
+ * collapses its window to one row per thread, so sixty messages can return one
+ * row while having looked back only an hour. Its horizon is genuinely live, it
+ * genuinely cuts, and on a club with a runaway conversation the stream is
+ * SHORT — correctly, because we cannot see which other threads were alive
+ * beneath it. The window is sized (see that constant) so this is rare rather
+ * than impossible; when it happens the foot says so.
  */
 export const CLUB_TIMELINE_LIMIT = 20
 
@@ -147,14 +145,25 @@ export const CLUB_TIMELINE_RIDES = 30
  * How many of the club's recent messages the timeline reads, before they are
  * collapsed to one entry per thread.
  *
- * **The collapse is why this is larger than it looks.** Forty messages in one
- * argument about tyre pressure yield ONE entry, so the number that matters is
- * how many distinct threads the window is likely to span rather than how many
- * rows come back. Sixty covers a club whose busiest thread has run away with
- * the week without hiding the quieter threads underneath it — and the bound
- * still joins the invariant every source here holds, `>= CLUB_TIMELINE_LIMIT`.
+ * **This is the one bound whose horizon genuinely bites**, so it is sized to
+ * make that rare rather than to match the others. The collapse means the number
+ * that matters is how many distinct threads the window spans, not how many rows
+ * come back: forty messages in one argument about tyre pressure yield ONE
+ * entry, and a window that ends inside that argument reports a horizon an hour
+ * old — cutting the club's rides, postcards and joins with it, correctly,
+ * because nothing here can see which other threads were alive underneath.
+ *
+ * Two hundred rather than a number near the display cap for exactly that
+ * reason. The rows are small — five scalar columns and two narrow embeds — and
+ * the cost of reading more of them is far below the cost of a club's busiest
+ * week erasing its own history from the screen.
+ *
+ * It is deliberately **excluded** from `CLUB_TIMELINE_LIMIT`'s inertness
+ * argument and from the bound assertion in `club-timeline.test.ts`, because it
+ * cannot satisfy it: no bound on messages guarantees a row count after the
+ * collapse.
  */
-export const CLUB_TIMELINE_REPLIES = 60
+export const CLUB_TIMELINE_REPLIES = 200
 
 /**
  * One thing that happened in a club.
@@ -190,15 +199,37 @@ export type ClubTimelineEvent =
    */
   | { kind: 'club-created'; at: string; key: string; founder: string | null }
 
+/** What each source contributed, and how far back it looked. */
+export type ClubTimelineSource<T> = {
+  rows: T[]
+  /**
+   * The instant below which THIS source's picture is incomplete, or `null` when
+   * it reaches back to the club's beginning.
+   *
+   * **It is the oldest row the READ returned, which is not always the oldest
+   * row in `rows`.** That distinction is the whole reason this is a field the
+   * source declares rather than something `mergeClubTimeline` derives: a read
+   * that post-processes its window — `getClubJoins` drops riders it cannot
+   * name, `getClubThreadReplies` collapses a conversation to one entry — knows
+   * how far back it actually looked, and the merge, holding only the survivors,
+   * does not. Deriving it from `rows` made a sixty-message window in one thread
+   * report a horizon at that thread's latest message, and cut the club's whole
+   * history to the last hour.
+   */
+  horizon: string | null
+}
+
 /**
- * What each source contributed, and whether it was cut short.
+ * The horizon for a read that returns exactly what it fetched, in the order it
+ * sorts on: full means there is more behind, and the last row is how far back
+ * we looked.
  *
- * `truncated` is the load-bearing half. It means *this read came back full, so
- * older rows of this kind exist that we did not fetch* — which is what
- * `mergeClubTimeline` needs to know to avoid drawing a timeline that silently
- * omits one kind of event below a certain date.
+ * Only for sources whose `rows` ARE the window. A read that filters or collapses
+ * must compute its own from the rows it discarded — see `ClubTimelineSource`.
  */
-export type ClubTimelineSource<T> = { rows: T[]; truncated: boolean }
+export function boundedHorizon<T>(rows: T[], bound: number, at: (row: T) => string): string | null {
+  return rows.length >= bound && rows.length > 0 ? at(rows[rows.length - 1]) : null
+}
 
 /**
  * What the screen draws, and whether it is the whole story.
@@ -316,11 +347,11 @@ export function mergeClubTimeline(
   ]
 
   const horizons = [
-    horizonOf(sources.rides, (ride) => ride.created_at),
-    horizonOf(sources.postcards, (postcard) => postcard.created_at),
-    horizonOf(sources.threads, (thread) => thread.created_at),
-    horizonOf(sources.joins, (member) => member.joined_at),
-    horizonOf(sources.replies, (reply) => reply.created_at),
+    sources.rides.horizon,
+    sources.postcards.horizon,
+    sources.threads.horizon,
+    sources.joins.horizon,
+    sources.replies.horizon,
   ].filter((at): at is string => at !== null)
 
   // Lexicographic on ISO-8601 rather than parsed: both are UTC strings from
@@ -382,13 +413,6 @@ function byNewestThenKey(a: ClubTimelineEvent, b: ClubTimelineEvent): number {
   return a.at === b.at ? a.key.localeCompare(b.key) : a.at < b.at ? 1 : -1
 }
 
-/** The oldest row a full read returned, or `null` for a read that was not cut
- *  short and so hides nothing behind it. */
-function horizonOf<T>(source: ClubTimelineSource<T>, at: (row: T) => string): string | null {
-  if (!source.truncated || source.rows.length === 0) return null
-  return source.rows.reduce<string>((oldest, row) => (at(row) < oldest ? at(row) : oldest), at(source.rows[0]))
-}
-
 /**
  * The club's most recent joins, for the timeline.
  *
@@ -416,7 +440,7 @@ export async function getClubJoins(
   // would put a rider on an error boundary offering `Try again` on an address
   // that can never succeed (PD-142). `[]` here rather than `null`, because the
   // page has already resolved the club through `getClub` by the time this runs.
-  if (!clubIdSchema.safeParse(clubId).success) return { rows: [], truncated: false }
+  if (!clubIdSchema.safeParse(clubId).success) return { rows: [], horizon: null }
 
   const supabase = await resolveSupabase()
 
@@ -433,18 +457,12 @@ export async function getClubJoins(
   const members = rows.filter((member): member is ClubJoin => !!member.profile?.username)
   await resolveAvatarUrls(members.map((member) => member.profile), supabase)
 
-  // **`truncated` is measured on `rows`, before the filter, and that is the
-  // whole reason this function returns the flag rather than letting the caller
-  // derive it from the array's length.** The filter above drops rows Postgres
-  // already counted against the limit, so one member with a NULL username in
-  // the newest sixty turns a saturated read into `members.length === 59` — and
-  // a caller comparing that against the bound would answer "not truncated",
-  // which tells `mergeClubTimeline` this read reaches back to the club's
-  // founding when it stops at whoever joined sixtieth.
-  //
-  // The other three sources return exactly what their bound returned and so
-  // need no equivalent; this is the only read here that post-filters.
-  return { rows: members, truncated: rows.length >= limit }
+  // The horizon comes from `rows`, before the filter — see
+  // `ClubTimelineSource.horizon`. The filter drops rows Postgres already
+  // counted against the limit, so one member with a NULL username in the newest
+  // sixty would otherwise make a saturated read look short and report no
+  // horizon at all.
+  return { rows: members, horizon: boundedHorizon(rows, limit, (row) => row.joined_at) }
 }
 
 /**
@@ -523,6 +541,55 @@ export function groupClubTimeline(events: ClubTimelineEvent[]): ClubTimelineGrou
   return groups
 }
 
+/** One `club_messages` row as the read selects it, before the collapse. */
+export type ClubMessageRow = {
+  id: string
+  created_at: string
+  thread_id: string
+  author: { username: string | null } | null
+  thread: { club_id: string; title: string } | null
+}
+
+/**
+ * The collapse, and the horizon that has to survive it — **a pure function for
+ * the reason `boundedHorizon` and `resolveComboboxKey` are**: it is the half of
+ * this read that can be wrong in a way nothing else in the repo can see.
+ *
+ * The defect it exists to pin: sixty messages in ONE argument collapse to one
+ * row, and a horizon taken from that row claims the club's picture stops at that
+ * thread's latest message — cutting every ride, postcard and join older than an
+ * hour off a timeline with room for them. `tsc`, ESLint and `next build` are all
+ * green on it; the merge is green on it too, because the defect is HERE and not
+ * there; and on any club with fewer messages than the bound the wrong version
+ * and the right one return exactly the same thing.
+ *
+ * First-seen wins: the window arrives `created_at DESC, id DESC`, a total order,
+ * so the first row seen for a thread IS its newest.
+ */
+export function collapseToNewestPerThread(
+  rows: ClubMessageRow[],
+  limit: number
+): ClubTimelineSource<ClubThreadReply> {
+  const newestPerThread = new Map<string, ClubThreadReply>()
+
+  for (const row of rows) {
+    if (!row.thread || newestPerThread.has(row.thread_id)) continue
+    newestPerThread.set(row.thread_id, {
+      id: row.id,
+      created_at: row.created_at,
+      thread_id: row.thread_id,
+      thread_title: row.thread.title,
+      author: row.author?.username ?? null,
+    })
+  }
+
+  return {
+    rows: [...newestPerThread.values()],
+    // From the WINDOW, never from the survivors — see this function's header.
+    horizon: boundedHorizon(rows, limit, (row) => row.created_at),
+  }
+}
+
 /**
  * The newest message in each of the club's recently-active threads.
  *
@@ -543,16 +610,16 @@ export function groupClubTimeline(events: ClubTimelineEvent[]): ClubTimelineGrou
  * ordered newest-first, so the first message seen for a thread IS its newest
  * and every later one is dropped.
  *
- * **`truncated` is measured before the collapse**, for `getClubJoins`' reason
- * one step further along: the collapse can turn sixty rows into one, and a
- * caller comparing that one against the bound would report a read that reaches
- * back to the club's first message.
+ * **The horizon is measured on the window, before the collapse** — see the note
+ * at the return. This is where `getClubJoins`' rule stops being a nicety: that
+ * read drops a handful of rows, so deriving its horizon from the survivors was
+ * merely inexact; this one can drop fifty-nine of sixty.
  */
 export async function getClubThreadReplies(
   clubId: string,
   limit = CLUB_TIMELINE_REPLIES
 ): Promise<ClubTimelineSource<ClubThreadReply>> {
-  if (!clubIdSchema.safeParse(clubId).success) return { rows: [], truncated: false }
+  if (!clubIdSchema.safeParse(clubId).success) return { rows: [], horizon: null }
 
   const supabase = await resolveSupabase()
 
@@ -565,27 +632,7 @@ export async function getClubThreadReplies(
       .order('id', { ascending: false })
       .limit(limit),
     "this club's replies",
-  ) as unknown as {
-    id: string
-    created_at: string
-    thread_id: string
-    author: { username: string | null } | null
-    thread: { club_id: string; title: string } | null
-  }[]
+  ) as unknown as ClubMessageRow[]
 
-  const newestPerThread = new Map<string, ClubThreadReply>()
-  for (const row of rows) {
-    // First seen wins: the window is newest-first, so this is the thread's
-    // latest message and the rest of its history is not an event.
-    if (!row.thread || newestPerThread.has(row.thread_id)) continue
-    newestPerThread.set(row.thread_id, {
-      id: row.id,
-      created_at: row.created_at,
-      thread_id: row.thread_id,
-      thread_title: row.thread.title,
-      author: row.author?.username ?? null,
-    })
-  }
-
-  return { rows: [...newestPerThread.values()], truncated: rows.length >= limit }
+  return collapseToNewestPerThread(rows, limit)
 }

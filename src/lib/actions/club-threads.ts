@@ -152,7 +152,22 @@ export async function moderateClubThread(
 export async function sendClubMessage(
   threadId: string,
   body: string,
-  messageId: string
+  messageId: string,
+  /**
+   * The club the thread sits in, for the timeline's reply entry.
+   *
+   * **A parameter rather than a read**, because this action has the thread id
+   * and the club timeline's key is hung under the CLUB — `['clubs','detail',
+   * clubId,'threads','replies']` — which `threadMessages`'
+   * `['clubs','threads',threadId,'messages']` does not prefix. Without it a
+   * rider posts in a thread, taps back, and the timeline does not show the
+   * reply they just wrote until the entry goes stale.
+   *
+   * Optional so a caller that genuinely has no club to hand still sends; the
+   * thread screen reads it off `getClubThread`, which returns `club_id` for
+   * exactly this class of reason.
+   */
+  clubId?: string
 ): Promise<ActionState> {
   if (!threadId) return { error: 'That thread could not be found.' }
 
@@ -181,14 +196,25 @@ export async function sendClubMessage(
     // evaluates WITH CHECK before the index insert, so a non-member is refused
     // `42501` and never reaches a duplicate-key error.
     if (error.code === '23505') {
-      invalidate(queryKeys.clubs.threadMessages(threadId))
+      invalidateThreadMessage(threadId, clubId)
       return { error: null, sent: true }
     }
     return { error: 'Could not send that message. You may no longer be in this club.' }
   }
 
-  invalidate(queryKeys.clubs.threadMessages(threadId))
+  invalidateThreadMessage(threadId, clubId)
   return { error: null, sent: true }
+}
+
+/**
+ * What a message appearing or disappearing moves: the thread's own list, and —
+ * when the caller knows which club — the club timeline's reply entry, whose key
+ * is hung under the club rather than the thread and so is reached by neither
+ * `threadMessages` nor `thread`.
+ */
+function invalidateThreadMessage(threadId: string, clubId?: string) {
+  invalidate(queryKeys.clubs.threadMessages(threadId))
+  if (clubId) invalidate(queryKeys.clubs.threadReplies(clubId))
 }
 
 /**
@@ -208,7 +234,11 @@ export async function sendClubMessage(
  */
 export async function deleteClubMessage(
   messageId: string,
-  threadId: string
+  threadId: string,
+  /** The club, for the timeline's reply entry — see `sendClubMessage`. Deleting
+   *  the newest message in a thread changes which message that entry names, or
+   *  removes it. */
+  clubId?: string
 ): Promise<ActionState> {
   if (!messageId || !threadId) return { error: 'That message could not be found.' }
 
@@ -218,7 +248,7 @@ export async function deleteClubMessage(
 
   if (error) return { error: 'That message could not be deleted.' }
 
-  invalidate(queryKeys.clubs.threadMessages(threadId))
+  invalidateThreadMessage(threadId, clubId)
   return { error: null }
 }
 

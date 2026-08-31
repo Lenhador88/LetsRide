@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/ui/Skeleton'
 import { getClubThreadUnread, getClubThreads, CLUB_THREADS_PAGE_SIZE } from '@/lib/data/club-threads'
 import {
   CLUB_TIMELINE_RIDES,
+  boundedHorizon,
   getClubJoins,
   getClubRideAnnouncements,
   getClubThreadReplies,
@@ -29,8 +30,8 @@ import type { ClubDetail } from '@/types'
  * starts, and then we show chronologically what's been going on. For eg. a new
  * discussion created, someone created a postcard, rider joining the club."*
  * The Postcards carousel and the Threads section were dissolved into it in the
- * same change — they are entries here now, and `ClubActionRow` above carries
- * the entrances they used to own.
+ * same change — they are entries here now, and `ClubCreateBar` carries the creates and
+ * `ClubThreadsRow` the entrance they used to own.
  *
  * ## The non-member branch is the one rule that is not cosmetic
  *
@@ -98,7 +99,7 @@ export function ClubTimeline({
   const threads = useQuery(isMember ? queryKeys.clubs.threads(clubId) : null, () =>
     getClubThreads(clubId)
   )
-  // Shares its key — and so its request — with `ClubActionRow`'s aggregate dot.
+  // Shares its key — and so its request — with `ClubThreadsRow`'s aggregate dot.
   const unread = useQuery(isMember ? queryKeys.clubs.threadsUnread(clubId) : null, () =>
     getClubThreadUnread(clubId)
   )
@@ -168,23 +169,29 @@ export function ClubTimeline({
 
   const timeline = mergeClubTimeline({
     club: { created_at: club.created_at, owner_id: club.owner_id },
-    // `truncated` means *this read came back full, so older rows of this kind
-    // exist that we did not fetch* — the input `mergeClubTimeline` cuts the
-    // stream on. Compared against each read's own bound rather than a literal,
-    // so raising one of them cannot leave a stale number here claiming a full
-    // page was a short one.
-    rides: { rows: rides.data, truncated: rides.data.length >= CLUB_TIMELINE_RIDES },
-    postcards: { rows: postcards.data, truncated: postcards.data.length >= FEED_PAGE_SIZE },
+    // These three ARE their window, so the horizon is the oldest row a full
+    // read returned — see `boundedHorizon`. Compared against each read's own
+    // bound rather than a literal, so raising one cannot leave a stale number
+    // here calling a full page a short one.
+    rides: {
+      rows: rides.data,
+      horizon: boundedHorizon(rides.data, CLUB_TIMELINE_RIDES, (ride) => ride.created_at),
+    },
+    postcards: {
+      rows: postcards.data,
+      horizon: boundedHorizon(postcards.data, FEED_PAGE_SIZE, (card) => card.created_at),
+    },
     threads: {
       rows: threads.data ?? [],
-      truncated: (threads.data ?? []).length >= CLUB_THREADS_PAGE_SIZE,
+      horizon: boundedHorizon(
+        threads.data ?? [],
+        CLUB_THREADS_PAGE_SIZE,
+        (thread) => thread.created_at
+      ),
     },
-    // Straight through: `getClubJoins` answers the flag itself, because it
-    // post-filters its rows and a length measured here would under-report.
+    // These two declare their own: both post-process their window, so only they
+    // know how far back they looked.
     joins: joins.data,
-    // Straight through for `joins`' reason one step further along: the read
-    // collapses its window to one row per thread, so a length measured here
-    // would report sixty messages in one argument as a short read.
     replies: replies.data,
     unread: unread.data ?? {},
   })

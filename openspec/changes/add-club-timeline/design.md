@@ -344,10 +344,22 @@ sources, not a side read, so `ClubTimeline` gates the whole section on it and th
 renders early. The reasoning behind the default was right and the situation it guarded against
 does not arise.
 
-**Q1 is still open and still the owner's**, and the build shipped its default — creation
-ordering, with the aggregate mark on the Threads tile. It is the one thing in this change that
-could still be wrong on purpose rather than by accident, and it is raised to the owner in the
-session's own reply rather than left here.
+**Q1 is ANSWERED, and a third way — like Q3.** The owner approved it on 2026-08-31 and it
+shipped the same session. The question offered a binary: place a thread's entry by its creation,
+or by its last message. The build takes neither. The thread's entry keeps its creation placement,
+which is the honest one, and activity arrives as a **separate `reply` event** at the instant of a
+thread's newest message. A busy thread surfaces at the top, which is what the second option
+wanted, without dating *"ana started a thread"* to today, which is what that option cost.
+
+**Its blocking rationale was wrong, and that is the part worth keeping.** Q1 read: *"Placing it
+by activity needs a `last_message_at` the client cannot ask for without an RPC, and an RPC is a
+migration this change does not have… should be re-scoped before any code is written — which is
+why it is blocking rather than a follow-up."* Only the **aggregate** needs an RPC. A bounded
+window of recent messages is an ordinary read: `081` grants `authenticated` SELECT on
+`club_messages` and its policy restates the club's whole audience, verified against DEV as a
+member before any code was written. No migration, no re-scope. The lesson is the one this repo
+already has a rule for — *test the block before reporting it* — applied to a schema claim rather
+than a connector.
 
 ### Two places the build deviates from this document
 

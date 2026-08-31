@@ -61,7 +61,7 @@ row.
 - **WHEN** the rider named in `clubs.owner_id` opens the club having left it
 - **THEN** every source read SHALL return their club's rows, because
   `private.is_club_member_for` carries an owner disjunct
-- **AND** the action layer SHALL be present
+- **AND** the create bar SHALL be present
 
 #### Scenario: A signed-out visitor reaches nothing
 - **WHEN** a request for any of the four tables arrives with no session
@@ -112,7 +112,7 @@ timeline goes because 3 of 300 events says the opposite of what is true.
   `/clubs/detail/members` and on the rides strip
 - **AND** nothing SHALL be disclosed that was not already reachable
 
-#### Scenario: The action layer is absent rather than inert
+#### Scenario: The create bar is absent rather than inert
 - **WHEN** a non-member opens a public club
 - **THEN** no create-ride, add-postcard or threads control SHALL be rendered
 - **AND** this SHALL hold because each is a write `017`, `009` and `081` refuse them, per the
@@ -193,7 +193,7 @@ SHALL NOT leave that mark as the only carrier of the signal.
 
 1. **Each thread entry in the timeline SHALL carry its own unread dot**, from
    `getClubThreadUnread`'s existing `(thread_id, has_unread)` map.
-2. **The action layer's Threads tile SHALL carry an aggregate mark** derived from that same map,
+2. **The club's Threads entrance SHALL carry an aggregate mark** derived from that same map,
    with no additional read.
 
 (2) is required rather than decorative. A thread entry is placed by `club_threads.created_at`,
@@ -209,7 +209,7 @@ resolving to `{}`.
 #### Scenario: A thread with unread messages is marked wherever it sits
 - **WHEN** a member has unread messages in a thread created three weeks ago
 - **THEN** that thread's timeline entry SHALL carry an unread dot
-- **AND** the action layer's Threads tile SHALL carry a mark, above the fold, regardless of
+- **AND** the club's Threads entrance SHALL carry a mark, above the fold, regardless of
   where the entry sits
 
 #### Scenario: A failed unread read costs marks and not rows
@@ -290,7 +290,7 @@ this screen and the reason `See all` is dropped from an empty section today.
 
 #### Scenario: A club with one member and nothing else strands no route
 - **WHEN** a member opens a brand-new club
-- **THEN** the action layer SHALL offer Plan a ride, Add a postcard and Threads
+- **THEN** the create bar SHALL offer Postcard, Ride and Thread, and a Threads entrance SHALL sit above the stream
 - **AND** the Members rail SHALL keep its own `See all`
 - **AND** no entrance SHALL be offered to a list with nothing in it
 

@@ -1,6 +1,6 @@
 ## ADDED Requirements
 
-### Requirement: Each timeline source SHALL keep its own cache key, and a write from the action layer SHALL invalidate every source it moves
+### Requirement: Each timeline source SHALL keep its own cache key, and a write from the create bar SHALL invalidate every source it moves
 
 The timeline is a merge of reads that other screens also make, so it SHALL NOT be given a cache
 entry of its own holding the merged result. Two shapes under one key is the collision
@@ -13,7 +13,7 @@ strip `rides.list(filterSegment.club(id))`, unchanged, so the club detail and
 new reads SHALL take new keys under `clubs.detail(clubId)` — the same nesting `members`,
 `threads` and `joinRequests` use — so any invalidation of `clubs.all()` reaches them for free.
 
-A write made from the action layer SHALL invalidate every key its rows appear under, including
+A write made from the create bar SHALL invalidate every key its rows appear under, including
 the ones it did not previously have to name:
 
 - creating a ride in the club → the club's rides list **and** the new recent-rides key
@@ -23,7 +23,7 @@ the ones it did not previously have to name:
   the Members rail reads
 
 #### Scenario: A newly created ride appears in both places it is drawn
-- **WHEN** a member creates a ride from the action layer
+- **WHEN** a member creates a ride from the create bar
 - **THEN** the upcoming-rides strip and the timeline SHALL both show it without a reload
 - **AND** the two SHALL NOT disagree, because each reads its own key and both are invalidated
 

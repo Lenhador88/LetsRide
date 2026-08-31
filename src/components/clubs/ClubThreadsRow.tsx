@@ -42,8 +42,18 @@ export function ClubThreadsRow({ clubId }: { clubId: string }) {
     getClubThreadUnread(clubId)
   )
 
-  const count = threads.data?.length
   const hasUnread = Object.values(unread.data ?? {}).some(Boolean)
+
+  // **Withheld until there is a list to open**, which is this screen's standing
+  // policy applied to its newest entrance rather than an exception to it: the
+  // timeline drops `All photos` on a club with no photos and gates every foot
+  // link on its list holding rows, and the rides section drops its `See all` on
+  // an empty sub-page. A row reading "Threads" over an empty screen is the same
+  // defect. Starting one stays reachable — that is the create bar's `Thread`.
+  //
+  // `undefined` is "not yet" and draws nothing; a `0` in its place would flash
+  // the row away on every load of a club that has threads.
+  if (!threads.data || threads.data.length === 0) return null
 
   return (
     <Link
@@ -55,14 +65,12 @@ export function ClubThreadsRow({ clubId }: { clubId: string }) {
     >
       <ChatBubbleIcon className="h-5 w-5 shrink-0 text-foreground" aria-hidden="true" />
 
+      {/* No count. `getClubThreads` returns a PAGE — `CLUB_THREADS_PAGE_SIZE`,
+          20 — so a club with forty-five threads would render "Threads · 20" as
+          a fact. The list one tap away is where the number belongs, and it has
+          the pagination to be honest about it. */}
       <span aria-hidden="true" className="min-w-0 flex-1 text-sm font-semibold text-foreground">
         Threads
-        {/* Only once the list has answered. `undefined` is "not yet" and a `0`
-            drawn in its place would tell a rider the club has no conversations
-            for as long as the read is out. */}
-        {count !== undefined && (
-          <span className="font-medium text-muted"> · {count}</span>
-        )}
       </span>
 
       {hasUnread && <NotificationDot className="shrink-0" />}

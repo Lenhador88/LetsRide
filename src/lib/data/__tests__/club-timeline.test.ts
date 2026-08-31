@@ -2,14 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { CLUB_THREADS_PAGE_SIZE } from '@/lib/data/club-threads'
 import { FEED_PAGE_SIZE } from '@/lib/data/postcards'
 import {
+  boundedHorizon,
+  collapseToNewestPerThread,
   CLUB_TIMELINE_JOINS,
-  CLUB_TIMELINE_REPLIES,
   CLUB_TIMELINE_LIMIT,
   CLUB_TIMELINE_RIDES,
   groupClubTimeline,
   mergeClubTimeline,
   type ClubJoin,
   type ClubRideAnnouncement,
+  type ClubMessageRow,
   type ClubThreadReply,
   type ClubTimelineSources,
 } from '@/lib/data/club-timeline'
@@ -76,11 +78,11 @@ function eventsOf(...args: Parameters<typeof mergeClubTimeline>) {
 function sources(over: Partial<ClubTimelineSources> = {}): ClubTimelineSources {
   return {
     club: { created_at: '2020-01-01T00:00:00Z', owner_id: 'owner' },
-    rides: { rows: [], truncated: false },
-    postcards: { rows: [], truncated: false },
-    threads: { rows: [], truncated: false },
-    joins: { rows: [], truncated: false },
-    replies: { rows: [], truncated: false },
+    rides: { rows: [], horizon: null },
+    postcards: { rows: [], horizon: null },
+    threads: { rows: [], horizon: null },
+    joins: { rows: [], horizon: null },
+    replies: { rows: [], horizon: null },
     unread: {},
     ...over,
   }
@@ -90,10 +92,10 @@ describe('mergeClubTimeline', () => {
   it('interleaves all four kinds newest first', () => {
     const merged = eventsOf(
       sources({
-        rides: { rows: [ride('r1', '2026-08-03T10:00:00Z')], truncated: false },
-        postcards: { rows: [postcard('p1', '2026-08-04T10:00:00Z')], truncated: false },
-        threads: { rows: [thread('t1', '2026-08-01T10:00:00Z')], truncated: false },
-        joins: { rows: [join('u1', '2026-08-02T10:00:00Z')], truncated: false },
+        rides: { rows: [ride('r1', '2026-08-03T10:00:00Z')], horizon: null },
+        postcards: { rows: [postcard('p1', '2026-08-04T10:00:00Z')], horizon: null },
+        threads: { rows: [thread('t1', '2026-08-01T10:00:00Z')], horizon: null },
+        joins: { rows: [join('u1', '2026-08-02T10:00:00Z')], horizon: null },
       })
     )
 
@@ -111,8 +113,8 @@ describe('mergeClubTimeline', () => {
 
     const merged = eventsOf(
       sources({
-        rides: { rows: [upcoming], truncated: false },
-        postcards: { rows: [postcard('p1', '2026-08-02T10:00:00Z')], truncated: false },
+        rides: { rows: [upcoming], horizon: null },
+        postcards: { rows: [postcard('p1', '2026-08-02T10:00:00Z')], horizon: null },
       })
     )
 
@@ -128,11 +130,11 @@ describe('mergeClubTimeline', () => {
       sources({
         joins: {
           rows: [join('u1', '2026-08-12T10:00:00Z'), join('u2', '2026-08-10T10:00:00Z')],
-          truncated: true,
+          horizon: '2026-08-10T10:00:00Z',
         },
         rides: {
           rows: [ride('r1', '2026-08-11T10:00:00Z'), ride('r2', '2026-06-01T10:00:00Z')],
-          truncated: false,
+          horizon: null,
         },
       })
     )
@@ -147,11 +149,11 @@ describe('mergeClubTimeline', () => {
       sources({
         joins: {
           rows: [join('u1', '2026-08-12T10:00:00Z'), join('u2', '2026-08-10T10:00:00Z')],
-          truncated: false,
+          horizon: null,
         },
         rides: {
           rows: [ride('r1', '2026-08-11T10:00:00Z'), ride('r2', '2026-06-01T10:00:00Z')],
-          truncated: false,
+          horizon: null,
         },
       })
     )
@@ -172,11 +174,11 @@ describe('mergeClubTimeline', () => {
       sources({
         postcards: {
           rows: [postcard('p1', '2026-08-20T10:00:00Z'), postcard('p2', '2026-08-01T10:00:00Z')],
-          truncated: true,
+          horizon: '2026-08-01T10:00:00Z',
         },
         threads: {
           rows: [thread('t1', '2026-08-15T10:00:00Z'), thread('t2', '2026-07-01T10:00:00Z')],
-          truncated: true,
+          horizon: '2026-07-01T10:00:00Z',
         },
       })
     )
@@ -191,8 +193,8 @@ describe('mergeClubTimeline', () => {
     // guard is asserted rather than trusted.
     const merged = eventsOf(
       sources({
-        postcards: { rows: [], truncated: true },
-        rides: { rows: [ride('r1', '2020-01-01T10:00:00Z')], truncated: false },
+        postcards: { rows: [], horizon: null },
+        rides: { rows: [ride('r1', '2020-01-01T10:00:00Z')], horizon: null },
       })
     )
 
@@ -208,7 +210,7 @@ describe('mergeClubTimeline', () => {
             ride('r2', '2026-08-03T10:00:00Z'),
             ride('r3', '2026-08-02T10:00:00Z'),
           ],
-          truncated: false,
+          horizon: null,
         },
       }),
       2
@@ -224,14 +226,14 @@ describe('mergeClubTimeline', () => {
     const at = '2026-08-04T10:00:00Z'
     const first = eventsOf(
       sources({
-        rides: { rows: [ride('r1', at)], truncated: false },
-        joins: { rows: [join('u1', at)], truncated: false },
+        rides: { rows: [ride('r1', at)], horizon: null },
+        joins: { rows: [join('u1', at)], horizon: null },
       })
     )
     const second = eventsOf(
       sources({
-        joins: { rows: [join('u1', at)], truncated: false },
-        rides: { rows: [ride('r1', at)], truncated: false },
+        joins: { rows: [join('u1', at)], horizon: null },
+        rides: { rows: [ride('r1', at)], horizon: null },
       })
     )
 
@@ -243,7 +245,7 @@ describe('mergeClubTimeline', () => {
       sources({
         threads: {
           rows: [thread('t1', '2026-08-04T10:00:00Z'), thread('t2', '2026-08-03T10:00:00Z')],
-          truncated: false,
+          horizon: null,
         },
         unread: { t1: true },
       })
@@ -259,7 +261,7 @@ describe('mergeClubTimeline', () => {
         // ordinary case — `001` writes them in one statement pair — and is the
         // pair `byNewestThenKey` has to break the right way round.
         club: { created_at: '2020-01-01T00:00:00Z', owner_id: 'u1' },
-        joins: { rows: [join('u1', '2020-01-01T00:00:00Z')], truncated: false },
+        joins: { rows: [join('u1', '2020-01-01T00:00:00Z')], horizon: null },
       })
     )
 
@@ -279,11 +281,11 @@ describe('mergeClubTimeline', () => {
         club: { created_at: '2020-01-01T00:00:00Z', owner_id: 'u1' },
         joins: {
           rows: [join('u1', '2026-08-12T10:00:00Z'), join('u2', '2026-08-10T10:00:00Z')],
-          truncated: true,
+          horizon: '2026-08-10T10:00:00Z',
         },
         // Older than the horizon the full join read sets, so the merge drops it
         // — which is what makes this stream incomplete.
-        rides: { rows: [ride('r1', '2026-06-01T10:00:00Z')], truncated: false },
+        rides: { rows: [ride('r1', '2026-06-01T10:00:00Z')], horizon: null },
       })
     )
 
@@ -303,7 +305,7 @@ describe('mergeClubTimeline', () => {
             ride('r2', '2026-08-03T10:00:00Z'),
             ride('r3', '2026-08-02T10:00:00Z'),
           ],
-          truncated: false,
+          horizon: null,
         },
       }),
       2
@@ -332,8 +334,8 @@ describe('mergeClubTimeline', () => {
     // instead would date "ana started a thread" to today.
     const merged = eventsOf(
       sources({
-        threads: { rows: [thread('t1', '2026-08-01T10:00:00Z')], truncated: false },
-        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], truncated: false },
+        threads: { rows: [thread('t1', '2026-08-01T10:00:00Z')], horizon: null },
+        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: null },
       })
     )
 
@@ -346,7 +348,7 @@ describe('mergeClubTimeline', () => {
     // to be in the map would never be marked at all.
     const merged = eventsOf(
       sources({
-        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], truncated: false },
+        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: null },
         unread: { t1: true },
       })
     )
@@ -354,21 +356,27 @@ describe('mergeClubTimeline', () => {
     expect(merged.map((event) => event.kind === 'reply' && event.unread)).toEqual([true])
   })
 
-  it('lets a full reply read set the horizon like any other source', () => {
+  it('cuts on the reply read\'s OWN horizon, not on the one row it kept', () => {
+    // The defect this replaced: `getClubThreadReplies` collapses its window to
+    // one row per thread, so sixty messages in one argument come back as a
+    // single entry. Deriving the horizon from that entry claimed the club's
+    // picture stopped at that thread's latest message and cut its whole
+    // history to the last hour. The source declares how far back it LOOKED —
+    // here a week — and only that far back is cut.
     const merged = mergeClubTimeline(
       sources({
         replies: {
-          rows: [
-            reply('m1', '2026-08-20T10:00:00Z', 't1'),
-            reply('m2', '2026-08-10T10:00:00Z', 't2'),
-          ],
-          truncated: true,
+          rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')],
+          horizon: '2026-08-15T10:00:00Z',
         },
-        rides: { rows: [ride('r1', '2026-06-01T10:00:00Z')], truncated: false },
+        rides: {
+          rows: [ride('r1', '2026-08-18T10:00:00Z'), ride('r2', '2026-06-01T10:00:00Z')],
+          horizon: null,
+        },
       })
     )
 
-    expect(merged.events.map((event) => event.key)).toEqual(['reply:m1', 'reply:m2'])
+    expect(merged.events.map((event) => event.key)).toEqual(['reply:m1', 'ride:r1'])
     expect(merged.complete).toBe(false)
   })
 
@@ -456,7 +464,11 @@ describe('the display cap against the source bounds', () => {
       postcards: FEED_PAGE_SIZE,
       threads: CLUB_THREADS_PAGE_SIZE,
       joins: CLUB_TIMELINE_JOINS,
-      replies: CLUB_TIMELINE_REPLIES,
+      // `CLUB_TIMELINE_REPLIES` is deliberately absent and must stay absent.
+      // The invariant is about ROWS RETURNED when a source is full, and that
+      // read collapses its window to one row per thread — no bound on messages
+      // can promise a row count after it. Its horizon is genuinely live; the
+      // case above is what covers it.
     }
 
     for (const [source, bound] of Object.entries(bounds)) {
@@ -483,11 +495,11 @@ describe('the display cap against the source bounds', () => {
             join('u2', '2026-08-11T10:00:00Z'),
             join('u3', '2026-08-10T10:00:00Z'),
           ],
-          truncated: true,
+          horizon: '2026-08-10T10:00:00Z',
         },
         rides: {
           rows: [ride('r1', '2026-08-11T12:00:00Z'), ride('r2', '2026-06-01T10:00:00Z')],
-          truncated: false,
+          horizon: null,
         },
       }),
       10
@@ -503,3 +515,106 @@ describe('the display cap against the source bounds', () => {
   })
 })
 
+/**
+ * `boundedHorizon` — the horizon for a read whose rows ARE its window.
+ *
+ * A read that post-processes (`getClubJoins` filters, `getClubThreadReplies`
+ * collapses) must NOT use it on its survivors, which is what the club-timeline
+ * horizon case above exists to protect. This covers the plain case those two
+ * pass their raw window to.
+ */
+describe('boundedHorizon', () => {
+  const at = (row: { at: string }) => row.at
+  const rows = (...stamps: string[]) => stamps.map((s) => ({ at: s }))
+
+  it('is the oldest row read when the window came back full', () => {
+    expect(boundedHorizon(rows('2026-08-04', '2026-08-03'), 2, at)).toBe('2026-08-03')
+  })
+
+  it('is null when the window came back short, however short', () => {
+    // A read that did not fill its bound has reached the beginning of time for
+    // its kind, so it hides nothing and must impose nothing on the others.
+    expect(boundedHorizon(rows('2026-08-04'), 2, at)).toBe(null)
+  })
+
+  it('is null for an empty window even at a bound of zero', () => {
+    // Unreachable from the data layer — a read cannot be both full and empty —
+    // but `rows[rows.length - 1]` on an empty array is `undefined`, and an
+    // undefined horizon compares false against every timestamp and would empty
+    // the whole timeline rather than fail.
+    expect(boundedHorizon([], 0, at)).toBe(null)
+  })
+})
+
+/**
+ * `collapseToNewestPerThread` — one entry per thread, and the horizon that has
+ * to survive the collapse.
+ *
+ * **The second case is the one this file exists for.** It reproduces the defect
+ * a review caught: sixty messages in a single argument collapse to one row, and
+ * a horizon read off that row cuts the club's rides, postcards and joins back
+ * to that thread's latest message. Verified both ways per CLAUDE.md §Working
+ * Principles — deriving the horizon from the collapsed rows instead of the
+ * window fails exactly that case and nothing else in the repo notices.
+ */
+describe('collapseToNewestPerThread', () => {
+  const message = (id: string, at: string, threadId: string): ClubMessageRow => ({
+    id,
+    created_at: at,
+    thread_id: threadId,
+    author: { username: 'ana' },
+    thread: { club_id: 'c1', title: `Thread ${threadId}` },
+  })
+
+  it('keeps the newest message per thread and drops the rest of its history', () => {
+    const { rows } = collapseToNewestPerThread(
+      [
+        message('m3', '2026-08-04T12:00:00Z', 't1'),
+        message('m2', '2026-08-04T11:00:00Z', 't1'),
+        message('m1', '2026-08-03T10:00:00Z', 't2'),
+      ],
+      10
+    )
+
+    expect(rows.map((row) => [row.thread_id, row.id])).toEqual([
+      ['t1', 'm3'],
+      ['t2', 'm1'],
+    ])
+  })
+
+  it('takes the horizon from the WINDOW, not from the one row it kept', () => {
+    // Four messages, all in one thread, filling a bound of four. The collapse
+    // yields a single row at 12:00; the read looked back to 09:00, and 09:00 is
+    // what the rest of the timeline may be cut at. Reading it off the survivor
+    // would cut three hours of the club's history instead.
+    const { rows, horizon } = collapseToNewestPerThread(
+      [
+        message('m4', '2026-08-04T12:00:00Z', 't1'),
+        message('m3', '2026-08-04T11:00:00Z', 't1'),
+        message('m2', '2026-08-04T10:00:00Z', 't1'),
+        message('m1', '2026-08-04T09:00:00Z', 't1'),
+      ],
+      4
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(horizon).toBe('2026-08-04T09:00:00Z')
+  })
+
+  it('imposes no horizon when the window came back short', () => {
+    const { horizon } = collapseToNewestPerThread(
+      [message('m1', '2026-08-04T12:00:00Z', 't1')],
+      10
+    )
+
+    expect(horizon).toBe(null)
+  })
+
+  it('drops a message whose thread the policy did not return', () => {
+    // `!inner` makes this unreachable in practice; typed as nullable because
+    // the embed is, and a row with no thread has no title to draw.
+    const orphan = { ...message('m1', '2026-08-04T12:00:00Z', 't1'), thread: null }
+
+    expect(collapseToNewestPerThread([orphan], 10).rows).toEqual([])
+  })
+})
