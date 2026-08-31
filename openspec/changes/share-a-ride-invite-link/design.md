@@ -206,6 +206,18 @@ ever answering it.
 
 Priced here because `proposal.md`'s warning names it and something has to hold the detail.
 
+**RESOLVED 2026-08-30 — the gap stays open on purpose (PD-351, closed as decided).** The product
+owner chose blocking as the remedy rather than building a ride-scoped removal, and the deciding
+fact was measured on DEV rather than argued: `ride_members`' INSERT policy is `auth.uid() =
+user_id` AND an `EXISTS` against `rides` under the caller's own row security — **any ride a rider
+can see, they can join**. So a removal on a public ride is a revolving door, and on a private one
+it would have to settle the rider's `accepted` invite in the same statement, since
+`has_live_ride_invite` would otherwise keep the ride visible and this same policy would let them
+back in. Making a removal actually stick therefore costs a second visibility mechanism beside
+blocks, which is larger than what it buys today. **Reopen when** a real organizer asks, or when the
+link starts admitting riders the organizer did not choose individually. Everything below stands as
+the description of what is missing and why.
+
 An organizer who revokes a link cannot remove the riders it admitted. `ride_members` DELETE is
 `auth.uid() = user_id`; `ride_invites` has no UPDATE grant and its DELETE policy is scoped to
 `pending`; `088`'s three RPCs are club-scoped. The only lever is a block, which is symmetric,
