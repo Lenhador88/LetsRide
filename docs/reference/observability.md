@@ -62,8 +62,21 @@ where the blast radius is largest.
 
 Free-tier retention is roughly a day, and the Management API caps any single
 query at a 24-hour window. **A day nobody reads is permanently gone** — there is
-no backfill and no archive. That is the whole argument for running the reader
-below on a schedule rather than when something is already suspected.
+no backfill and no archive. That was the whole argument for running the reader
+below on a schedule rather than when something is already suspected, and since
+PD-352 it does: `.github/workflows/log-digest.yml` runs it against both
+projects at 06:00 and 18:00 UTC.
+
+**Twice daily rather than once, because the runs must overlap.** Each reads the
+preceding 24 hours, so runs 12 hours apart cover every minute twice and a
+skipped run loses nothing — which matters because GitHub's scheduled workflows
+are best-effort and get delayed or dropped under load. On a single daily run,
+every miss would be a permanent hole in the exact record this exists to keep.
+
+**Red means one of two things and nothing else** — a 5xx, or a 404 under
+`/rest/v1/`. Everything else lands in the job summary without turning the run
+red, for the reason in the next section: an alert that fires on correct
+behaviour is one nobody reads by the second week.
 
 ## Reading the logs
 
@@ -81,8 +94,21 @@ SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors -- --prod  # PRODUCTION
 ```
 
 `scripts/db/logs-errors.mjs` carries the query and the credential rules. **Its
-SQL is verified against DEV; its HTTP transport is not** — no management token
-exists in the build container, so the file has never completed a live call.
+SQL is verified against both projects; its HTTP transport is not, and no session
+can verify it** — `api.supabase.com:443` is a policy denial at the agent proxy,
+which answers 403 to CONNECT, so `fetch` reports only "fetch failed" and curl
+reports status 000. That is a stronger claim than the missing token this file
+used to cite, and the reason not to spend a session on it. Re-derive rather than
+trusting it, since a network policy changes without announcement:
+
+```bash
+curl -sS "$HTTPS_PROXY/__agentproxy/status"   # look at recentRelayFailures
+```
+
+A GitHub Actions runner has no such restriction, so the scheduled workflow above
+is not merely the clock — it is the only environment that can execute the script
+at all, and its `workflow_dispatch` trigger exists so the first transport test
+can be triggered deliberately rather than waited for.
 
 **Not every 4xx is a defect.** A 401 on `has_password_reset_grant` is the guard
 working and a 403 is usually RLS refusing correctly. What matters is:
