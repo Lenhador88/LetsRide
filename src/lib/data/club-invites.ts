@@ -13,11 +13,24 @@ import type { ClubInvite, ClubInviteListItem, RiderSearchResult } from '@/types'
  *
  * ## Nothing here restates a visibility rule
  *
- * `club_invites` SELECT is `(invitee_id = auth.uid() or inviter_id = auth.uid())`
- * dominated by the block check on both parties, so `getClubInvites` and
- * `searchRidersToInviteToClub` filter by nothing else — restating the policy
- * would be a second copy of a rule RLS owns, free to drift, and weaker, since
- * the publishable key ships in the bundle.
+ * `club_invites` SELECT is `(invitee_id = auth.uid() or inviter_id = auth.uid()
+ * or private.is_club_admin(club_id))`, dominated by the block check on both
+ * parties, so `getClubInvites` and `searchRidersToInviteToClub` filter by
+ * nothing else — restating the policy would be a second copy of a rule RLS
+ * owns, free to drift, and weaker, since the publishable key ships in the
+ * bundle.
+ *
+ * **The third disjunct is not incidental and this file is the place it is most
+ * likely to be edited away from.** It is what `getClubInvites` — the ADMIN's
+ * outgoing list, filtering on `club_id` alone — returns rows through for an
+ * admin who is neither the invitee nor the inviter, which is the ordinary
+ * case. And `093` §3c's DELETE policy has a matching admin arm that exists
+ * ONLY because this SELECT disjunct does: RLS filters a `DELETE … where` by
+ * what the caller may READ, so without it an admin clearing a co-admin's
+ * declined invite matches zero rows and PostgREST reports success. `093`
+ * names that as the tidy a later session will reach for; an earlier revision
+ * of this very docstring stated the policy without the disjunct, which would
+ * have read as independent confirmation that it was never there.
  *
  * `getMyClubInvites` is the opposite case and the distinction matters: it
  * calls `public.my_live_club_invites()`, a `security definer` function, so

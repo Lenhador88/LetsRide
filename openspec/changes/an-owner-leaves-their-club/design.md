@@ -559,11 +559,29 @@ Each carries a recommended default so the build is never blocked, and names who 
 
 **Non-blocking**
 
-- **Q2 — product owner. Should an owner be able to leave a club whose only other members are
-  members, by promoting somebody in the same flow?** Arm 3 refuses and sends them to
-  `routes.clubManage`, which is one screen away.
-  **Default: two steps, no shortcut.** Promotion is an authorization decision (`088`'s whole
-  argument); folding it into a leave would make one tap both promote a rider and hand them the club.
+- **Q2 — ANSWERED 2026-08-31, and with it the larger question behind it: the successor set is
+  ADMINS ONLY.** The product owner, restating the rule for this change: *"an owner can only leave a
+  club if there is at least one more admin associated with it, or if it has no members."* Arm 3
+  refuses, and refusing is the intended outcome rather than a default nobody chose.
+
+  **This supersedes PD-194's body**, which was written 2026-08-11 and says *"if no left admins, admin
+  is passed by to the rider who joined the longest time ago"* — a **member** fallback. That sentence
+  is the standing record on the issue and it now reads as the opposite of what ships, so a reader
+  arriving through Linear will re-derive the wrong rule from it. **This exact re-derivation has
+  already happened once**, in the pre-merge review of this change, which is why the supersession is
+  written here rather than left implicit and why it is also a comment on PD-194.
+
+  What remains true from that body is the ORDERING — *longest time ago* — which `pick_club_admin_successor`
+  applies within the admin set (§Q6). The `order by case m.role when 'admin' then 0 when 'member'
+  then 1 else 2 end` in that function is `032`'s clause kept for diffability, and with the
+  `and m.role = 'admin'` filter above it the `'member'` arm is unreachable by construction. Do not
+  read it as a member fallback that has been disabled; read it as the shared shape, and see §D3 for
+  why the query is copied rather than extracted.
+
+  The original framing, kept because it is what makes the answer defensible: *should an owner be
+  able to leave by promoting somebody in the same flow?* **No — two steps, no shortcut.** Promotion
+  is an authorization decision (`088`'s whole argument); folding it into a leave would make one tap
+  both promote a rider and hand them the club.
 - **Q3 — product owner. Is the successor notified that they now own a club?**
   **Default: not in this change**, and it is the deferral most likely to be regretted. It needs a new
   `notifications.type`, a new `notifications_subject_shape` arm, and three exhaustive client switches
