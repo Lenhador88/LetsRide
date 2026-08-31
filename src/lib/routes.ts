@@ -86,6 +86,16 @@ export const RIDE_JOIN_PATH = '/rides/join'
  */
 export const INVITE_TOKEN_PARAM = 'token'
 
+/**
+ * "Say welcome" (`092`, PD-356, `design.md` §D3) — the join row's overflow
+ * opens the ordinary thread composer with its title pre-filled. A query
+ * parameter rather than a second route, on the same reasoning `CREATE_CLUB_
+ * PARAM` gives: it seeds a form field and nothing else, and it is the
+ * SEARCH PARAM half of `routes.newClubThread`'s two-parameter shape below
+ * rather than a route of its own.
+ */
+export const SAY_WELCOME_TITLE_PARAM = 'title'
+
 function detail(path: string, id: string): string {
   return `${path}?${DETAIL_ID_PARAM}=${encodeURIComponent(id)}`
 }
@@ -138,7 +148,19 @@ export const routes = {
   clubThreads: (clubId: string) => detail(detailPaths.clubThreads, clubId),
   /** Takes the THREAD's id, not the club's — see `detailPaths`. */
   clubThread: (threadId: string) => detail(detailPaths.clubThread, threadId),
-  newClubThread: (clubId: string) => detail(detailPaths.newClubThread, clubId),
+  /**
+   * `prefillTitle` is "Say welcome"'s only caller (`092`, PD-356) — every
+   * other entrance to this screen (`ClubCreateBar`) omits it, and the
+   * composer defaults to an empty title exactly as before. The rider still
+   * edits or discards it like any other draft; nothing is written until they
+   * submit — see `CreateThreadForm`.
+   */
+  newClubThread: (clubId: string, prefillTitle?: string) => {
+    const base = detail(detailPaths.newClubThread, clubId)
+    return prefillTitle
+      ? `${base}&${new URLSearchParams({ [SAY_WELCOME_TITLE_PARAM]: prefillTitle })}`
+      : base
+  },
   /** Another rider — `view-rider-profile`. Own-id is redirected to `/profile`
    * rather than resolving here; see that route's own redirect. */
   profile: (id: string) => detail(detailPaths.profile, id),

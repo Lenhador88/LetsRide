@@ -1378,6 +1378,15 @@ export type NotificationType =
   // own `clubs` embed, which returns null for a club the reader cannot see:
   // `getNotificationsPage` fills it from `discoverable_private_clubs`.
   | 'club_join_request_declined'
+  // `092` (PD-356). A JOIN wave notifies the joiner — a THREAD wave notifies
+  // nobody (`design.md` §Q2's default). Subject shape identical to
+  // `club_joined`'s — `club_id` set, everything else NULL — so
+  // `notifications_event_key` collapses it per `(recipient, actor, club)`
+  // with no new column and no ninth index. `notificationCopy`,
+  // `NotificationsListItem`'s `describe`, and this union are the three
+  // exhaustive switches this type has to land in together — missing one is a
+  // runtime break in the first two and only a type error in this one.
+  | 'club_waved'
 
 /**
  * One row from `public.notifications` (`036`), as the notifications screen and

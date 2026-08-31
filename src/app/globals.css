@@ -79,12 +79,17 @@
      pass, which is why the number is computed rather than recalled. */
   --color-accent-strong: #338059;
   --color-danger: #D92140;          /* Warning/100 — destructive / error. <Button variant="danger">, form error text. */
-  /* Pink/100 — the liked state of the like control, and only that:
-     `Button / Postcard Action` Type=Like Toggled=True. Since PD-228 it tints
-     `Element / Icon / Wave`, which has no filled twin, so this colour is the
-     entire visual difference between liked and not — 4.51:1 against the
-     unliked #1A1A1A, clearing the 3:1 a colour-only distinction needs. Do not
-     dim it for a hover or pressed state without rechecking that ratio. */
+  /* Pink/100 — the pressed state of the wave/like control: `Button / Postcard
+     Action` Type=Like Toggled=True, since PD-228 tinting `Element / Icon /
+     Wave`, which has no filled twin, so this colour is the entire visual
+     difference between pressed and not — 4.51:1 against the unpressed
+     #1A1A1A, clearing the 3:1 a colour-only distinction needs. Do not dim it
+     for a hover or pressed state without rechecking that ratio.
+
+     **Second caller since `092` (PD-356)**: `ClubWaveButton` tints the same
+     glyph the same colour for a wave on a club thread or a club join —
+     `design.md` §D1's "same mechanism, same word" applied to the token too,
+     not a scope creep of a name that used to say "and only that". */
   --color-like: #F23071;
   --color-danger-strong: #99001A;   /* Warning/110 — Warning, darker. Hover/pressed on danger. */
 

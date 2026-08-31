@@ -138,7 +138,11 @@ function describe(row: NotificationRowData): {
     // group.** It draws the club in the ACTOR slot rather than the trailing
     // one, and it takes no controls: an admin can lift a refusal from Manage
     // riders, and the rider it addresses can do nothing about it from here.
+    // `092`, PD-356. Identical subject shape to `club_joined` and the same
+    // destination — a join wave is addressed to the joiner, who reads it the
+    // same way they read having joined at all.
     case 'club_joined':
+    case 'club_waved':
     case 'club_join_request_approved':
       return { href: row.club ? routes.club(row.club.id) : null, trailing: clubThumbnail(row) }
     // **Split off from its two siblings by `088` (PD-326), because its

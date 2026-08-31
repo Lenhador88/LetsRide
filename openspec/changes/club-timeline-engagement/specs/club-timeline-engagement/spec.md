@@ -6,12 +6,18 @@ A wave row SHALL be visible exactly when its subject is visible to the caller, a
 achieved by an `EXISTS` against the parent table evaluated under the caller's own row security —
 never by restating membership, club visibility, or a block on the subject.
 
-- `club_thread_waves` SELECT SHALL be
-  `exists (select 1 from public.club_threads t where t.id = thread_id)` conjoined with the reactor
-  block arm below.
-- `club_join_waves` SELECT SHALL be
-  `exists (select 1 from public.club_members m where m.club_id = club_join_waves.club_id and m.user_id = subject_user_id)`
-  conjoined with the same arm.
+Each SELECT policy SHALL be `user_id = auth.uid() or (<parent EXISTS> and not
+private.is_blocked(auth.uid(), user_id))` — the own-row branch a disjunct of the **whole** policy,
+for the reason the withdrawal requirement below states.
+
+- `club_thread_waves`' parent SHALL be
+  `exists (select 1 from public.club_threads t where t.id = club_thread_waves.thread_id)`.
+- `club_join_waves`' parent SHALL be
+  `exists (select 1 from public.club_members m where m.club_id = club_join_waves.club_id and m.user_id = club_join_waves.subject_user_id)`.
+
+**Both sides of every comparison in a parent `EXISTS` SHALL be table-qualified.** `club_members`
+has a column named `club_id` and one named `user_id`, so an unqualified comparison deparses to
+`m.club_id = m.club_id` and the subquery degenerates into "can I read any roster row anywhere".
 
 Neither policy SHALL name `private.is_club_member`, `clubs.is_public`, `clubs.owner_id`, or a block
 on the thread's author or the join's subject. Each parent policy already carries all of them, and a
@@ -49,17 +55,24 @@ rule here.
 | Club **owner** | yes, all | yes | yes | reaches everything a member does |
 | Club **admin** (`club_members.role = 'admin'`) | yes, all | yes | yes | **no policy in this change tests `role`**, and none SHALL |
 | Club **member** | yes, all | yes | yes | |
-| **Non-member of a PUBLIC club** | **no thread waves**; **join waves only for joins they can already read** | **no** | **no** | `club_members` SELECT has a public-club disjunct and `club_threads` SELECT does not; the two halves differ and the difference is not an oversight |
+| **Non-member of a PUBLIC club** | **no thread waves**; **join waves for that club's joins, which they can already read** | **no** | **YES** | `club_members` SELECT has a public-club disjunct and `club_threads` SELECT does not; the two halves differ and the difference is not an oversight. **The join-wave WRITE follows the read, because the INSERT policy uses the same `EXISTS`** — making it "no" would require restating membership, which the first requirement above forbids by name. `092.1` asserts both halves |
 | **Non-member of a PRIVATE club** | none | no | no | `085`; `ClubPreviewScreen` issues no such read |
 | **Rider blocked by, or blocking, the WAVER** | never sees that wave, and it never counts for them | n/a | n/a | symmetric, via the reactor block arm |
 | **Rider blocked by, or blocking, the THREAD AUTHOR** | sees no wave on that thread | **no** | n/a | the thread row is already absent |
 | **Rider blocked by, or blocking, the JOIN SUBJECT** | sees no wave on that join | n/a | **no** | the membership row is already absent |
 | **Signed-out visitor** | reaches the shell and no data | no | no | `anon` holds no grant on either table and this change adds none |
 
-`club_join_waves`' row for a non-member of a public club is reachable in principle and empty in
-practice, because `ClubTimeline` disables every member-only read for a non-member and the screen
-draws no join entries for them to decorate. **The spec states the policy outcome rather than the
-screen's**, because the policy is the boundary and the screen is the affordance.
+`club_join_waves`' row for a non-member of a public club is reachable — for reading **and for
+writing** — and empty in practice, because `ClubTimeline` disables every member-only read for a
+non-member and the screen draws no join entries for them to decorate. **The spec states the policy
+outcome rather than the screen's**, because the policy is the boundary and the screen is the
+affordance.
+
+An earlier draft of this table said such a rider may not wave a join. That contradicted this
+capability's own first requirement — the INSERT policy uses the **same** `EXISTS` as SELECT, and
+the only way to refuse the write would be a membership conjunct that requirement forbids. The
+table is corrected rather than the policy, because a signed-in rider welcoming a newcomer to a
+**public** club is not a harm the change set out to prevent.
 
 #### Scenario: An admin reaches exactly what a member reaches
 - **WHEN** a rider whose `club_members.role` is `admin` opens the club
@@ -130,20 +143,34 @@ DELETE SHALL be `using (user_id = auth.uid())` with **no visibility conjunct**, 
 rule and its reason: a rider must be able to withdraw a wave from a subject that has gone out of
 view, or the row is stranded.
 
-**The own-row arm of the SELECT policy is what makes that reachable, and it SHALL be asserted
-rather than assumed.** `081` measured that RLS applies the SELECT policy to a `DELETE` whose
-`WHERE` names a column, so a row the caller owns but cannot read survives its own delete with
-PostgREST reporting success. Here the caller can always read their own wave, because
-`user_id = auth.uid()` is a disjunct of SELECT — so removing that disjunct would break the delete
-path silently while looking like a tightening.
+**The SELECT policy is what makes that reachable, and it SHALL be asserted rather than assumed.**
+`081` measured that RLS applies the SELECT policy to a `DELETE` whose `WHERE` names a column, so a
+row the caller owns but cannot read survives its own delete with PostgREST reporting success.
+Relaxing the DELETE policy cannot repair that, because SELECT is applied first.
+
+**The own-row branch SHALL therefore be a disjunct of the WHOLE SELECT policy**, not a disjunct
+inside the block arm. Inside the block arm it is a **no-op** — `blocks_no_self_block` already makes
+`is_blocked(x, x)` false — and the parent `EXISTS` still dominates, so a rider blocked by a
+thread's author, **and** a rider who has merely left the club, both read zero of their own waves
+and both get `DELETE 0` with the row surviving while every remaining member still sees it. That
+shape was specified first, measured on the real chain, and corrected; `postcard_likes` carries it
+today and is filed separately. Un-hoisting the branch SHALL fail an assertion, because it looks
+like a tightening and its cost is invisible from the DELETE policy alone.
 
 No role other than the row's author SHALL delete a wave. There SHALL be no owner or admin
 moderation verb for a wave, no `security definer` RPC, and no new advisor.
 
 #### Scenario: A wave on a thread whose author has since blocked the waver is still withdrawable
 - **WHEN** B waves A's thread and A then blocks B
-- **THEN** B SHALL still be able to delete their own wave
+- **THEN** B SHALL still be able to read and delete their own wave
 - **AND** the delete SHALL match the row rather than reporting a silent success against zero rows
+- **AND** B SHALL still read no OTHER rider's wave on that thread, and still not read the thread
+
+#### Scenario: A rider who has left the club can still withdraw what they left behind
+- **WHEN** a rider leaves a private club in which they waved a thread and welcomed a joiner
+- **THEN** both waves SHALL still be deletable by them, each delete matching its row
+- **AND** no block SHALL be involved, `private.is_club_member` simply having stopped answering
+- **AND** the other waver's rows SHALL be untouched by the departure
 
 #### Scenario: No club role can delete another rider's wave
 - **WHEN** a club owner or admin attempts to delete a wave they did not write
@@ -298,32 +325,45 @@ requirement. Stating the condition is the requirement; the entry is a non-goal h
 - **THEN** the message SHALL NOT distinguish "blocked" from "not a member" from "no such subject"
 - **AND** the affordance SHALL not have been drawn in the first place
 
-### Requirement: A club thread SHALL NOT gain a share affordance in this change
+### Requirement: A thread's share affordance SHALL share the CLUB, and SHALL say so in its label
 
-No control SHALL call `shareAppLink(routes.clubThread(id))` or produce any URL addressing a thread.
+The product owner answered this on 2026-08-31, choosing the first of the two futures this
+requirement originally held open. A club thread's ⋯ menu gains a row that calls
+`shareAppLink(routes.club(clubId))` and is labelled **`Share club`**. No control SHALL call
+`shareAppLink(routes.clubThread(id))` or produce any URL addressing a thread.
 
-`081`'s SELECT policy admits only a club's members to its threads, so such a link resolves to
+`081`'s SELECT policy admits only a club's members to its threads, so a thread link resolves to
 *content unavailable* for every recipient who is not already inside the club — **which is the live
 defect PD-299 was opened against**, in that issue's own words, on a different surface.
 
-Exactly two futures are permissible and both are out of scope here:
+**The word `club` in the label is the whole safety property.** A row reading `Share` on a thread
+screen promises the thread; only the label stops a rider believing they have sent someone a
+conversation. A refactor that shortens it reinstates the defect with nothing red anywhere, which is
+why the label is a requirement rather than copy.
 
-- The affordance shares the **club**, labelled as the club, reusing `ClubOptionsMenu`'s existing
-  row; or
-- a capability URL is designed with the full apparatus `091` gives `ride_invite_links` — an expiry,
-  a revoke, a use count, and RPCs whose caller is authorised by a secret rather than by identity.
+The second future — a capability URL for a thread, with the full apparatus `091` gives
+`ride_invite_links` — remains out of scope and SHALL NOT arrive incrementally. A link granting reach
+into a members-only club conversation is a larger decision than the icon it would sit behind.
 
-The second SHALL NOT arrive incrementally. A thread link granting reach into a members-only club
-conversation is a larger decision than the icon it would sit behind.
+**This row inherits a known defect and SHALL be annotated as doing so.** `routes.club(clubId)` on a
+*private* club is refused by RLS to the non-member it is sent to. That is PD-299 #2, fixed by
+`invite-riders-to-a-club` (PD-360), which replaces both callers with one shared control that
+branches on `clubs.is_public`. Until that lands this is deliberately a second caller of a
+known-broken path, and the site says so.
 
 #### Scenario: No thread URL is produced anywhere
 - **WHEN** the change is complete
 - **THEN** no component, action or helper SHALL construct an absolute URL for a club thread
 - **AND** `routes.clubThread` SHALL continue to be used only for in-app navigation
 
-#### Scenario: The absence is a decision on the record
-- **WHEN** a later session adds a share row to a thread
-- **THEN** it SHALL first decide between the two futures above
+#### Scenario: The row names the club, not the thread
+- **WHEN** a member opens a thread's ⋯ menu
+- **THEN** the row SHALL read `Share club`
+- **AND** the URL it shares SHALL address the club
+
+#### Scenario: The capability URL is still a decision nobody has taken
+- **WHEN** a later session wants a share row that reaches the thread itself
+- **THEN** it SHALL design the expiry, the revoke, the use count and the secret-authorised RPCs
 - **AND** SHALL NOT reach a capability URL as a side effect of wanting a share button to work
 
 ### Requirement: The words half of "say welcome" SHALL be rider-initiated and SHALL create no schema

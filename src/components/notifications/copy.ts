@@ -94,6 +94,12 @@ export function notificationCopy(row: NotificationRow, viewerId: string | undefi
     // row name nobody.
     case 'club_join_request_declined':
       return 'declined your request to join.'
+    // `092`, PD-356. A join wave alone reaches this switch — a thread wave
+    // notifies nobody (`design.md` §Q2). "Wave" is the app's word for the
+    // gesture (§D1); this SHALL NOT say "liked your join", which names
+    // neither the gesture nor anything the reader did.
+    case 'club_waved':
+      return `waved you a welcome to ${row.club?.name ?? 'a club'}.`
   }
 
   // **The compile-time guard and the runtime fallback are BOTH needed, and the

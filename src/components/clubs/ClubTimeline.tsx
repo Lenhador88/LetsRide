@@ -8,6 +8,7 @@ import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
+import { waveJoin, waveThread, unwaveJoin, unwaveThread } from '@/lib/actions/club-waves'
 import { getClubThreadUnread, getClubThreads, CLUB_THREADS_PAGE_SIZE } from '@/lib/data/club-threads'
 import {
   CLUB_TIMELINE_RIDES,
@@ -17,7 +18,9 @@ import {
   groupClubTimeline,
   mergeClubTimeline,
 } from '@/lib/data/club-timeline'
+import { attachClubWaveState, resolveClubWaveState } from '@/lib/data/club-waves'
 import { FEED_PAGE_SIZE, getClubFeed } from '@/lib/data/postcards'
+import { getCurrentProfile } from '@/lib/data/profile'
 import { getClubRideAnnouncements } from '@/lib/data/rides'
 import Link from 'next/link'
 import { combineQueries, useQuery } from '@/lib/query'
@@ -105,6 +108,53 @@ export function ClubTimeline({
   // Shares its key — and so its request — with `ClubThreadsRow`'s aggregate dot.
   const unread = useQuery(isMember ? queryKeys.clubs.threadsUnread(clubId) : null, () =>
     getClubThreadUnread(clubId)
+  )
+
+  // The signed-in rider's own id — read for exactly one reason: hiding the
+  // wave control (and "Say welcome") on a rider's own join row
+  // (`ClubTimelineEventRow`'s only use of `viewerId`). Nothing else on this
+  // screen needs it, which is why it was not read before `092`.
+  const viewer = useQuery(isMember ? queryKeys.profile.me() : null, getCurrentProfile)
+
+  /**
+   * The two wave reads — `092`, PD-356. **Not part of `combineQueries`
+   * below**, on `unread`'s own precedent just above: a decoration SHALL NOT
+   * gate the list it decorates (`client-render-shell`'s Loading/Error rows),
+   * so a slow or failed wave read must cost the wave controls and nothing
+   * else.
+   *
+   * **Gated on the SOURCE read having resolved, not merely on `isMember`.**
+   * This cache has no notion of "refetch when an argument changed, only the
+   * key" (`useQuery`'s own header): the KEY here is just the club id, so if
+   * the query activated before `threads.data`/`joins.data` existed it would
+   * fetch once against an empty id list and never fetch again for the ids
+   * that arrive a render later. Flipping the KEY itself from `null` to real
+   * only once the source ids are known — `clubs.preview`'s own pattern above
+   * — is what makes the scoping in `attachClubWaveState`'s docstring true
+   * rather than a race.
+   *
+   * Scoped to the SOURCE reads' own ids (`threads.data`/`joins.data`),
+   * before the merge's horizon/limit cut — `club-timeline-engagement`'s "the
+   * subject ids the timeline's own sources are already holding". Both source
+   * reads are already bounded (`CLUB_THREADS_PAGE_SIZE`, `CLUB_TIMELINE_
+   * JOINS`), so this can never be an unbounded read of either wave table,
+   * and decorating a few ids the merge later cuts is harmless overfetch, not
+   * a second horizon.
+   */
+  const threadWaves = useQuery(
+    isMember && threads.data !== undefined ? queryKeys.clubs.threadWaves(clubId) : null,
+    () => attachClubWaveState({ kind: 'thread', threadIds: (threads.data ?? []).map((t) => t.id) })
+  )
+  const joinWaves = useQuery(
+    isMember && joins.data !== undefined ? queryKeys.clubs.joinWaves(clubId) : null,
+    () =>
+      attachClubWaveState({
+        kind: 'join',
+        clubId,
+        // `getClubJoins` returns a `ClubTimelineSource<ClubJoin>` — `{ rows,
+        // horizon }` — not a bare array; the ids are in `.rows`.
+        subjectIds: (joins.data?.rows ?? []).map((member) => member.user_id),
+      })
   )
 
   const photosHref = `/postcards?club=${encodeURIComponent(clubId)}`
@@ -240,6 +290,11 @@ export function ClubTimeline({
             // photo and an unbounded caption. The deck's `fill` divides a fixed
             // height it does not have here, and a photo in a flow context would
             // render at no height at all. See `PostcardCard`.
+            //
+            // No SEPARATE wave here (`092`, PD-356) — `PostcardCard` already
+            // carries `LikeButton`, which is the identical `postcard_likes`
+            // reaction under the older name (design.md §D1). A second wave
+            // target for the same photo would count one thing twice.
             return <PostcardCard key={group.key} postcard={group.event.postcard} />
           }
 
@@ -276,6 +331,15 @@ export function ClubTimeline({
                 at={event.at}
                 unread={event.unread}
                 activity={event.activity}
+                // The thread's own CREATION entry — the one target for a
+                // thread's wave, per `092`'s "not on `reply`, its thread
+                // already carries one". The `reply` branch below passes no
+                // `wave` prop at all.
+                wave={{
+                  state: resolveClubWaveState(threadWaves.data, event.thread.id),
+                  onWave: () => waveThread(clubId, event.thread.id),
+                  onUnwave: () => unwaveThread(clubId, event.thread.id),
+                }}
               />
             ) : (
               <ClubTimelineThreadRow
@@ -298,7 +362,22 @@ export function ClubTimeline({
                       `Events` → `Divider` 326×8. Between the rows rather than
                       under each, so a block never ends on a rule. */}
                   {i > 0 && <div className="mx-3 h-px bg-border" />}
-                  <ClubTimelineEventRow event={event} />
+                  <ClubTimelineEventRow
+                    event={event}
+                    clubId={clubId}
+                    viewerId={viewer.data?.id}
+                    // Only a `join` entry decorates with a wave — every other
+                    // kind reaching this run (`club-created`) ignores the prop.
+                    wave={
+                      event.kind === 'join'
+                        ? {
+                            state: resolveClubWaveState(joinWaves.data, event.member.user_id),
+                            onWave: () => waveJoin(clubId, event.member.user_id),
+                            onUnwave: () => unwaveJoin(clubId, event.member.user_id),
+                          }
+                        : undefined
+                    }
+                  />
                 </div>
               ))}
             </div>

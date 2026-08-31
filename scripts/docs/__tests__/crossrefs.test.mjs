@@ -314,12 +314,21 @@ describe('the cross-references in the real repo', () => {
     // proposal's `tasks.md` cites `CLAUDE.md` §Working Principles for
     // *verify it both ways*, on the wave toggle's own RLS assertions.
     //
+    // **28 -> 31 on 2026-08-31 (the three club proposals — PD-360, PD-348 and
+    // PD-194).** Three more, one per change, all the same `Working` collision
+    // and all citing the heading they mean: each `tasks.md` cites
+    // `CLAUDE.md` §Working Principles for *verify it both ways* on its own RLS
+    // assertions. That is the rule those three changes lean on hardest — an
+    // invite that admits the wrong rider, a report the club can read, and an
+    // owner-leave that deletes a club all pass a suite whose assertions were
+    // never run against the mistake they name.
+    //
     // **This suite reads `git ls-files`, so a proposal that is written but not
     // yet COMMITTED is invisible to it.** Running it before `git add` on a
     // change that adds markdown is a green that means nothing — which is how
     // this ceiling went red in CI having passed locally minutes earlier. Stage
     // first, then run.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(28)
+    expect(result.ambiguous.length).toBeLessThanOrEqual(31)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been

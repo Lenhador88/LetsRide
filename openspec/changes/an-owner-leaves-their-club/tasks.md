@@ -4,7 +4,8 @@
 changing SQL is paired with a task adding assertions to `supabase/tests/rls_test.sql`. §0 is
 pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered for convenience.
 
-> **`design.md` §Q1 is ANSWERED — 2026-08-31, the product owner: the roster row is DELETED.**
+> **The one blocking question is ANSWERED — 2026-08-31, the product owner: the roster row is
+> DELETED.** It is Q1 under `design.md` §Open Questions.
 > "Leave" means out. §2.4 stands as written, §D2 needs no revision, and nothing in this file is
 > blocked. Stepping down — hand the club over and stay as a member — is a separate affordance
 > nobody has asked for.
@@ -82,8 +83,8 @@ pre-flight, §7 is the ordering, and §7 is the part that cannot be reordered fo
   refusal only holds if the two bodies are actually diffable. Read `pg_get_functiondef` for
   `private.transfer_owned_clubs` on the live project, not the migration file — `032` replaced `029`'s
   body and a third file could have replaced it again.
-- [x] 0.8 **`design.md` §Q1 is answered — DELETED.** Product owner, 2026-08-31. Nothing here is
-  blocked; build §2.4 as written.
+- [x] 0.8 **Q1 under `design.md` §Open Questions is answered — DELETED.** Product owner,
+  2026-08-31. Nothing here is blocked; build §2.4 as written.
 
 ## 1. `095` — the header
 

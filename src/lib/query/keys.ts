@@ -322,6 +322,32 @@ export const queryKeys = {
       'replies',
     ],
     /**
+     * Which of a club's THREADS the viewer has waved, and the per-viewer
+     * count — `attachClubWaveState({ kind: 'thread', ... })` (`092`,
+     * PD-356).
+     *
+     * **Its own leaf, not nested under `threads`** — unlike `threadsUnread`
+     * and `threadReplies` above, which move WITH the thread list because a
+     * new page of threads changes what an unread map or a reply window even
+     * means. A wave toggle changes neither the list nor the unread marks, so
+     * `waveThread`/`unwaveThread` invalidate this key ALONE
+     * (`client-cache-invalidation`'s "SHALL NOT invalidate
+     * `clubs.detail(clubId).threads`, whose rows have not changed, and SHALL
+     * NOT invalidate the unread map"). A sibling of `threads`, a child of
+     * `detail` like every other club sub-resource, so `clubs.all()` and
+     * `clubs.detail(clubId)` still reach it.
+     */
+    threadWaves: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'threadWaves'],
+    /**
+     * Which of a club's JOINS the viewer has waved, and the per-viewer
+     * count — `attachClubWaveState({ kind: 'join', ... })` (`092`, PD-356).
+     *
+     * A sibling of `joins` for the identical reason `threadWaves` is a
+     * sibling of `threads`: a wave moves neither the roster nor the join
+     * list, so `waveJoin`/`unwaveJoin` name this key and nothing else.
+     */
+    joinWaves: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'joinWaves'],
+    /**
      * One thread itself — its title, its author and the club it sits in
      * (`getClubThread`). Keyed by the thread id for the same reason its
      * messages are, and **the parent of that key**: invalidating the thread

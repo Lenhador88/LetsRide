@@ -28,6 +28,12 @@ import type { RideListItem } from '@/types'
  * went" for a past ride. So the card is ours because the frame has no
  * announcement to follow, not because the frame keeps rides out of its stream.
  * Logged in docs/FIGMA-FIDELITY-TODO.md.
+ *
+ * **No wave control, deliberately** (`092`, PD-356). An RSVP is already a
+ * stronger signal than a wave and would sit beside it saying something
+ * weaker — the ride event is the one entry on the timeline whose engagement
+ * mechanism already exists (`RideCard`'s own attendance controls), so this
+ * change adds nothing here.
  */
 export function ClubTimelineRideCard({ ride, at }: { ride: RideListItem; at: string }) {
   const organizer = ride.organizer?.username
