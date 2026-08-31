@@ -18,7 +18,7 @@ const STAMP_WIDTH = 'w-32'
  * Three parts, and only the first is decoration. The perforated frame comes
  * from `stamp-edge` in `globals.css`, which carries the mask mechanics. The
  * byline is what turns a wall of anonymous squares into a record of who was on
- * the ride — the thing a Journal is, and the thing `ClubPostcardCarousel`'s
+ * the ride — the thing a Journal is, and the thing the club's postcard strip
  * header calls out as the accepted cost of a tile ("the byline, caption, likes
  * and comments that `PostcardCard` drew in place are not readable on a tile").
  * Half of that cost is bought back. The postmark is what makes the first two
@@ -67,7 +67,8 @@ const STAMP_WIDTH = 'w-32'
  *
  * ## Two callers, and the second is why this is a component
  *
- * `RideJournal` and `ClubPostcardCarousel` both draw it — the Journal first,
+ * `RideJournal` draws it — and `PostcardCard` carries the same marker since
+ * the club timeline replaced the club's strip (2026-08-31) —
  * the club strip a merge later once the product owner saw what two gestures on
  * the same photos cost (*"lets do A. Same standard."*, 2026-08-27).
  *
@@ -95,7 +96,8 @@ export function PostcardStamp({
    *
    * **Defaults to false, and `RideJournal` never passes it.** Every stamp there
    * is from that ride by construction, so a marker would be on every tile and
-   * would say nothing. Only `ClubPostcardCarousel` has a mix to distinguish.
+   * would say nothing. Only a CLUB surface has a mix to distinguish, and
+   * since the club timeline that surface is `PostcardCard` rather than this.
    */
   fromRide?: boolean
   className?: string

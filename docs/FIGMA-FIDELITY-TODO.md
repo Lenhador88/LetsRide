@@ -427,24 +427,69 @@ is a drawn value this repo no longer builds:
 - [ ] **A SECOND failing pairing arrived with the same commit and is a different one:
       `text-muted` on `bg-track`.** `#666666` on `#E5DACF` measures **4.17:1** against a 4.5:1
       bar, and both new instances are 12px — so neither is WCAG large text and neither passes.
-      They are `ClubCreateRideRow`'s second line and the carousel's `Add` label; the same
+      They were `ClubCreateRideRow`'s second line and the carousel's `Add` label; the same
       pairing already ships unlogged on `RideJournalEmpty`'s `Add`, and this entry's own
       unselected-RSVP-button line logs it at the same ratio. Recorded because the commit that
       added them re-counted the *accent* pairing carefully and said nothing about this one,
       which left this file asserting a complete contrast sweep it had not done.
 
-      **A same-line grep finds one of the two, not both**, which is the trap worth recording:
-      the carousel's `Add` label is a bare `text-xs font-semibold` span that **inherits**
-      `text-muted` from the `Link` wrapping it, so the pairing is spread across two lines and
-      only the row's own second line matches. List the token and read the sizes off the hits:
+      **A THIRD instance arrived with the club timeline on 2026-08-31**, and is the same
+      4.17:1 for the same reason: `ClubTimelineEventRow`'s `Time Since` is `text-xs
+      font-normal text-muted` inside the `bg-track` event block. It is **left exactly as
+      drawn** under the standing policy at the head of this section — the frame specifies
+      `Poppins/12/Regular` `Grey/80` — so what was missing was the measurement, not the
+      colour. The same commit deleted `ClubPostcardCarousel`, which took the second instance
+      with it; the count is unchanged at two live instances plus the unlogged Journal one.
+
+      **A same-line grep finds one of them, not all**, which is the trap worth recording: the
+      carousel's `Add` label was a bare `text-xs font-semibold` span that **inherited**
+      `text-muted` from the `Link` wrapping it, so the pairing was spread across two lines and
+      only the row's own second line matched. That shape survives the carousel's deletion —
+      any wrapper carrying the token over a differently-sized child has it. List the token and
+      read the sizes off the hits:
 
       ```bash
       grep -n "text-muted\|text-xs" src/components/clubs/ClubCreateRideRow.tsx \
-        src/components/clubs/ClubPostcardCarousel.tsx
+        src/components/clubs/ClubTimelineEventRow.tsx
       ```
 
-      `text-foreground` on `bg-track` is fine at **12.65:1** and is what the row's title uses;
-      the failure is confined to the muted supporting lines. Same PD-176 designer question.
+      `text-foreground` on `bg-track` is fine at **12.65:1** and is what both the row's title
+      and the timeline event's sentence use; the failure is confined to the muted supporting
+      lines. Same PD-176 designer question.
+
+- [x] **The club detail is a TIMELINE as of 2026-08-31 (`add-club-timeline`, PD-299 #4), and it
+      is the first version of this screen that is MEASURED rather than composed.** Every entry
+      below it describes the stacked-sections screen that preceded it and is history; this one
+      supersedes them. The frame is `Private club - Timeline` (`2043:10604`) — which existed
+      the whole time and which two successive rebuilds of this screen did not read, on the
+      belief that no timeline frame existed. Check before assuming again:
+      `npm run figma -- ls Timeline`.
+
+      What is measured from it: the `Upcoming rides` scroller leading the stream; **full
+      postcard cards interleaved with event groups**, not a uniform list of rows; the event row
+      itself at 44px on `Grey/10` with a 28px avatar, the sentence at `Poppins/14/Regular` and a
+      `Time Since` at `Poppins/12/Regular` `Grey/80`; the run grouping (consecutive events share
+      one block with 8px dividers, blocks separated by the 16px `Divider` spine); and the
+      sentences' voice — *"Ron Wilson joined the club."*, *"Pedro Abreu created the club."*
+
+      Three things are **ours** and are deviations rather than omissions, each because the frame
+      predates the thing:
+
+      - **The identity band** — the type/started line, the member rail and the description, at
+        the top. The frame draws none of it; the product owner asked for it on 2026-08-31.
+      - **The action layer** — `ClubActionRow`. The frame puts a single `Create postcard` primary
+        button in the navigation bar instead, which is a different composition of the same
+        intent, and this screen has three entrances to carry rather than one.
+      - **The thread event.** The frame predates `081` (PD-307) entirely, so a club had no
+        threads when it was drawn.
+
+      Two deliberate departures from the frame's own drawing, both recorded so a later pass does
+      not read them as drift: the 16px `Divider` is the **gap** between blocks rather than a
+      literal 2×16 rectangle (the `Grey/10` blocks and white cards already separate themselves,
+      and the rule read as an artefact of how the frame was assembled), and the section heading
+      uses `SectionHeader` rather than the frame's `Poppins/14/Medium` `Grey/80` title —
+      deviating from every other section heading in the app inside one screen is the worse of
+      the two inconsistencies.
 
 - [ ] **The section order and the Postcards section itself deviate further from the approved
       mock, 2026-08-18 (`club-details-dropdown-removal`, PD-262).** The product owner settled a
