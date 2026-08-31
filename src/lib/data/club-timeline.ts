@@ -328,7 +328,15 @@ export function mergeClubTimeline(
         key: `thread:${thread.id}`,
         thread,
         unread: sources.unread[thread.id] ?? false,
-        activity: sources.activity[thread.id] ?? null,
+        // **`partial` is forced false on a CREATION row, and the reasoning is
+        // the horizon's.** The stream is cut at the newest of the sources'
+        // horizons, and the reply source's is the oldest message it read — so a
+        // thread-creation event that survives the cut was created *after* that
+        // instant, which means every one of its replies is inside the window
+        // and the count is exact. The flag is earned on a REPLY row, where an
+        // old thread's earlier messages can genuinely fall outside; carried
+        // here it renders `2+ replies` on a thread that has exactly two.
+        activity: withExactCount(sources.activity[thread.id]),
       })
     ),
     ...sources.joins.rows.map(
@@ -399,6 +407,14 @@ export function mergeClubTimeline(
   }
 
   return { events: shown, complete }
+}
+
+/**
+ * A thread's activity with its floor flag cleared — see the call site above,
+ * which is the only place clearing it is correct.
+ */
+function withExactCount(activity: ClubThreadActivity | undefined): ClubThreadActivity | null {
+  return activity ? { ...activity, partial: false } : null
 }
 
 /**
@@ -489,10 +505,16 @@ export async function getClubJoins(
  * **Rides and threads left the run on 2026-08-31**, on the product owner's ask
  * for a visual distinction: a ride draws its full `RideCard` under a label and
  * a thread draws a row of its own, so neither can sit inside a shared grey
- * block. The frame predates both — it has no thread at all and draws its rides
- * only in the scroller at the top — so this part is ours. What stays measured
- * is the run itself: a join and the club's founding are facts that happened
- * once, and they still collect.
+ * block.
+ *
+ * The frame has **no thread at all** — it predates `081` — but it does draw a
+ * ride-derived row in the run, *"Pedro Abreu and Julia Windfield went on a
+ * ride!"*. That is a **different event**: post-hoc, about a ride that happened,
+ * with its crew named, where this one is the announcement. Nothing in the
+ * schema answers "who went" for a past ride, so the frame's row is unbuilt
+ * rather than replaced — `add-club-timeline`'s proposal already records it as
+ * a non-goal. What stays measured is the run itself: a join and the club's
+ * founding are facts that happened once, and they still collect.
  */
 export type ClubTimelineGroup =
   | { kind: 'postcard'; key: string; event: Extract<ClubTimelineEvent, { kind: 'postcard' }> }

@@ -31,8 +31,8 @@ import { formatRelativeTime } from '@/lib/utils'
  * survives here only because the flag comes with it.
  *
  * `activity` is null for a thread nobody has replied to. That is not a missing
- * read — it is zero replies, and the row says so rather than drawing an empty
- * avatar row.
+ * read — it is zero replies, and the row draws `lead` alone rather than an
+ * empty avatar row and a count of nothing.
  */
 export function ClubTimelineThreadRow({
   threadId,
@@ -60,7 +60,19 @@ export function ClubTimelineThreadRow({
       href={routes.clubThread(threadId)}
       // One label for assistive tech: the faces, the glyph and the dot are all
       // decorative, so everything the eye reads from them has to be in words.
-      aria-label={[title, lead, replyLabel(activity), unread ? 'unread messages' : null]
+      // **The faces are in here because they are `aria-hidden` below**, and
+      // "who is involved" is half of what the product owner asked this row to
+      // show — a reader who cannot see the avatars would otherwise never learn
+      // it. `replyLabel` is omitted when there are no replies: the visible row
+      // shows `lead` in that case, and a label claiming "No replies yet" beside
+      // a row that says something else is worse than a shorter label.
+      aria-label={[
+        title,
+        lead,
+        activity ? replyLabel(activity) : null,
+        participantLabel(activity),
+        unread ? 'unread messages' : null,
+      ]
         .filter(Boolean)
         .join(', ')}
       className="flex min-h-[72px] items-center gap-3 rounded-lg bg-track px-3 py-3 transition-colors active:bg-border"
@@ -102,8 +114,15 @@ export function ClubTimelineThreadRow({
               )}
             </span>
           )}
+          {/* **`lead` always draws, and the reply count joins it rather than
+              replacing it.** The timeline shows one thread from two angles —
+              "ana started it" three weeks ago and "bram replied" this morning —
+              and dropping the lead whenever there are replies made both rows
+              identical but for the timestamp, which is precisely the case the
+              two angles exist to tell apart. */}
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-muted">
-            {activity ? replyLabel(activity) : lead}
+            {lead}
+            {activity && ` · ${replyLabel(activity)}`}
           </span>
         </span>
       </span>
@@ -117,10 +136,20 @@ export function ClubTimelineThreadRow({
  * `3 replies`, or `12+ replies` when the window this was counted from filled.
  *
  * The `+` is not decoration: without it the row asserts a total it cannot know
- * — see this component's header.
+ * — see this component's header. It is never reached for a thread with no
+ * replies; `lead` alone carries that row.
  */
-function replyLabel(activity: ClubThreadActivity | null): string {
-  if (!activity) return 'No replies yet'
+function replyLabel(activity: ClubThreadActivity): string {
   const count = `${activity.messages}${activity.partial ? '+' : ''}`
   return `${count} ${activity.messages === 1 && !activity.partial ? 'reply' : 'replies'}`
+}
+
+/** The faces, in words, for the label — see the `aria-label` above. */
+function participantLabel(activity: ClubThreadActivity | null): string | null {
+  const names = activity?.participants
+    .map((rider) => rider.username)
+    .filter((name): name is string => !!name)
+
+  if (!names || names.length === 0) return null
+  return `with ${names.join(', ')}`
 }

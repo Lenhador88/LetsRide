@@ -3,6 +3,7 @@
 import { ClubTimelineEventRow } from '@/components/clubs/ClubTimelineEventRow'
 import { ClubTimelineRideCard } from '@/components/clubs/ClubTimelineRideCard'
 import { ClubTimelineThreadRow } from '@/components/clubs/ClubTimelineThreadRow'
+import { MapAttribution } from '@/components/rides/MapAttribution'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SectionHeader } from '@/components/ui/SectionHeader'
@@ -259,7 +260,19 @@ export function ClubTimeline({
                 key={group.key}
                 threadId={event.thread.id}
                 title={event.thread.title}
-                lead={`Started by ${event.thread.author?.username ?? 'a rider'}`}
+                // **No fallback byline.** `add-club-timeline`'s spec requires
+                // that the timeline never render a sentence naming nobody, and
+                // `Started by a rider` is exactly that. A thread whose author
+                // the `profiles` policy hides still matters — it has a title,
+                // faces and replies — so the row keeps it and drops the clause
+                // rather than the entry. That is the thread row's departure
+                // from the event row, where the sentence IS the name and the
+                // entry is dropped instead.
+                lead={
+                  event.thread.author?.username
+                    ? `Started by ${event.thread.author.username}`
+                    : 'New thread'
+                }
                 at={event.at}
                 unread={event.unread}
                 activity={event.activity}
@@ -269,11 +282,7 @@ export function ClubTimeline({
                 key={group.key}
                 threadId={event.reply.thread_id}
                 title={event.reply.thread_title}
-                lead={
-                  event.reply.author
-                    ? `${event.reply.author} replied`
-                    : 'There is a new message'
-                }
+                lead={event.reply.author ? `${event.reply.author} replied` : 'New message'}
                 at={event.at}
                 unread={event.unread}
                 activity={event.activity}
@@ -296,6 +305,27 @@ export function ClubTimeline({
           )
         })}
       </div>
+
+      {/* **The credit for the map tiles the ride cards draw, and it is a licence
+          obligation rather than a nicety.** Since PD-236 the deployed
+          `resolve-ride-location` fetches tiles with `attribution=none`, so the
+          burned-in credit is gone and the app owes it in HTML wherever a tile
+          renders — CLAUDE.md §Supabase Rules: *"a duplicate credit for the
+          length of a deploy is harmless, an absent one is a licence breach."*
+          This screen drew no tile until the timeline started rendering
+          `RideCard`, which is why it had none.
+
+          Conditional on a tile actually being on screen, matching
+          `/rides/explore` and `/clubs/detail/rides`: the credit belongs where
+          the imagery is, and a club whose rides have no tiles owes nothing.
+
+          **The re-derive command in docs/FIGMA-FIDELITY-TODO.md cannot see this
+          call site**, because neither this file nor the page names
+          `map_card_url` — the tile arrives inside a component. That gap is
+          logged with the command. */}
+      {timeline.events.some((event) => event.kind === 'ride' && !!event.ride.map_card_url) && (
+        <MapAttribution className="px-4 pt-1" />
+      )}
 
       {/* The foot. A complete stream ends on the club's own founding — the
           `club-created` entry above — and needs nothing more; a cut one must

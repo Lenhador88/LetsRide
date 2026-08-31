@@ -3,6 +3,7 @@ import { CLUB_EMBED_COLUMNS, CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS }
 import { myClubIds, type RiderPosition } from '@/lib/data/clubs'
 import { distanceKm } from '@/lib/location/distance'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
+import { clubIdSchema } from '@/lib/validation/clubs'
 import { rideIdSchema } from '@/lib/validation/rides'
 import { resolveAvatarUrls, resolveClubImageUrls, resolveRideMapUrls } from '@/lib/data/media'
 import { rideDayStartUtc } from '@/lib/utils'
@@ -1342,6 +1343,15 @@ export async function getClubRideAnnouncements(
   clubId: string,
   limit = RIDES_PAGE_SIZE
 ): Promise<RideListItem[]> {
+  // The guard every club-scoped read carries, and it moved with the function: a
+  // non-uuid reaches `.eq('club_id', …)` as `22P02`, PostgREST turns it into a
+  // 400 and `unwrapList` throws — which would put a rider on an error boundary
+  // offering `Try again` on an address that can never succeed (PD-142). Its one
+  // caller resolves `getClub` first, so this is defence in depth; the read is
+  // exported from a module with no such convention, and `combineQueries` would
+  // turn one throw into an `ErrorState` over the whole timeline.
+  if (!clubIdSchema.safeParse(clubId).success) return []
+
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 

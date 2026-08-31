@@ -308,7 +308,18 @@ describe('the cross-references in the real repo', () => {
     // plausible, well-ordered, wrong answer that `tsc`, ESLint and `next build`
     // all pass, so an assertion that never fails against the defect is the
     // failure mode, and the task says to break each one and watch it go red.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(27)
+    //
+    // **27 -> 28 on 2026-08-31 (`club-timeline-engagement`, PD-356).** One
+    // more, the same `Working` collision citing the heading it means: that
+    // proposal's `tasks.md` cites `CLAUDE.md` §Working Principles for
+    // *verify it both ways*, on the wave toggle's own RLS assertions.
+    //
+    // **This suite reads `git ls-files`, so a proposal that is written but not
+    // yet COMMITTED is invisible to it.** Running it before `git add` on a
+    // change that adds markdown is a green that means nothing — which is how
+    // this ceiling went red in CI having passed locally minutes earlier. Stage
+    // first, then run.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(28)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been

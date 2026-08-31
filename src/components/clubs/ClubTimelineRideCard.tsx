@@ -19,9 +19,15 @@ import type { RideListItem } from '@/types'
  * `RideCard`'s club chip is dropped on the club-filtered screen because every
  * ride there already belongs to the club naming it, and this is that screen.
  *
- * The composition — a muted label over a card — is ours. `Private club -
- * Timeline` draws its rides only in the scroller at the top and has nothing
- * like this in the stream; logged in docs/FIGMA-FIDELITY-TODO.md.
+ * The composition — a muted label over a card — is ours, and the frame is
+ * worth reading before assuming why. `Private club - Timeline` DOES draw a
+ * ride-derived row in its stream, inside the `Grey/10` run: *"Pedro Abreu and
+ * Julia Windfield went on a ride!"* — but that is a different event. It is
+ * post-hoc, about a ride that HAPPENED, with its crew named; this is the
+ * announcement, at `rides.created_at`, and nothing in the schema answers "who
+ * went" for a past ride. So the card is ours because the frame has no
+ * announcement to follow, not because the frame keeps rides out of its stream.
+ * Logged in docs/FIGMA-FIDELITY-TODO.md.
  */
 export function ClubTimelineRideCard({ ride, at }: { ride: RideListItem; at: string }) {
   const organizer = ride.organizer?.username

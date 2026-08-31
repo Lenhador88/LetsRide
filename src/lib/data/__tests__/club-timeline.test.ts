@@ -374,6 +374,39 @@ describe('mergeClubTimeline', () => {
     expect(merged.complete).toBe(false)
   })
 
+  it('renders a thread CREATION\'s reply count as exact, never as a floor', () => {
+    // The horizon is what makes this true rather than optimistic: the stream is
+    // cut at the newest source horizon, and the reply source's is the oldest
+    // message it read — so a creation row that survives the cut was created
+    // after that instant and every one of its replies is inside the window.
+    // Carrying the window's `partial` here renders `2+ replies` on a thread
+    // that has exactly two.
+    const merged = eventsOf(
+      sources({
+        threads: { rows: [thread('t1', '2026-08-04T10:00:00Z')], horizon: null },
+        activity: { t1: { messages: 2, participants: [], partial: true } },
+      })
+    )
+
+    const event = merged.find((e) => e.kind === 'thread')
+    expect(event?.kind === 'thread' && event.activity?.partial).toBe(false)
+    expect(event?.kind === 'thread' && event.activity?.messages).toBe(2)
+  })
+
+  it('leaves a REPLY row\'s floor flag alone, where it is earned', () => {
+    // An old thread's earlier messages can genuinely fall outside the window,
+    // so a reply row's count is a floor and the row says `12+`.
+    const merged = eventsOf(
+      sources({
+        replies: { rows: [reply('m1', '2026-08-04T10:00:00Z', 't1')], horizon: null },
+        activity: { t1: { messages: 12, participants: [], partial: true } },
+      })
+    )
+
+    const event = merged.find((e) => e.kind === 'reply')
+    expect(event?.kind === 'reply' && event.activity?.partial).toBe(true)
+  })
+
   it('is empty for a club with nothing in it', () => {
     expect(eventsOf(sources())).toEqual([])
   })
