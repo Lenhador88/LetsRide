@@ -10,6 +10,7 @@ import {
   CLUB_TIMELINE_RIDES,
   getClubJoins,
   getClubRideAnnouncements,
+  getClubThreadReplies,
   groupClubTimeline,
   mergeClubTimeline,
 } from '@/lib/data/club-timeline'
@@ -88,6 +89,12 @@ export function ClubTimeline({
     getClubRideAnnouncements(clubId)
   )
   const joins = useQuery(isMember ? queryKeys.clubs.joins(clubId) : null, () => getClubJoins(clubId))
+  // The club's live conversation — one entry per recently-active thread, at the
+  // instant of its newest message. See `getClubThreadReplies` for why this
+  // needs no migration and why the thread's own entry is not simply moved.
+  const replies = useQuery(isMember ? queryKeys.clubs.threadReplies(clubId) : null, () =>
+    getClubThreadReplies(clubId)
+  )
   const threads = useQuery(isMember ? queryKeys.clubs.threads(clubId) : null, () =>
     getClubThreads(clubId)
   )
@@ -135,7 +142,7 @@ export function ClubTimeline({
   // `unread` is deliberately outside the gate: a failed unread call resolves to
   // `{}` inside `getClubThreadUnread`, so it can neither error nor block, and
   // the timeline renders unmarked rather than not rendering.
-  const gate = combineQueries(postcards, rides, joins, threads)
+  const gate = combineQueries(postcards, rides, joins, threads, replies)
 
   if (gate.error)
     return (
@@ -151,7 +158,7 @@ export function ClubTimeline({
   // hold this section on its skeleton for ever. That id cannot reach here — the
   // page resolves the club through `getClub` first — which is exactly why the
   // distinction has to be written down rather than discovered.
-  if (!postcards.data || !rides.data || !joins.data || threads.data === undefined)
+  if (!postcards.data || !rides.data || !joins.data || !replies.data || threads.data === undefined)
     return (
       <section className="flex flex-col gap-2">
         {heading()}
@@ -175,6 +182,10 @@ export function ClubTimeline({
     // Straight through: `getClubJoins` answers the flag itself, because it
     // post-filters its rows and a length measured here would under-report.
     joins: joins.data,
+    // Straight through for `joins`' reason one step further along: the read
+    // collapses its window to one row per thread, so a length measured here
+    // would report sixty messages in one argument as a short read.
+    replies: replies.data,
     unread: unread.data ?? {},
   })
 

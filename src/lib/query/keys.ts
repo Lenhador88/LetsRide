@@ -293,6 +293,22 @@ export const queryKeys = {
      * `rides.messages`: invalidating the list reaches the marks, and
      * `markClubThreadSeen` naming this key alone does not refetch the list.
      */
+    /**
+     * The newest message in each of the club's recently-active threads — the
+     * timeline's reply events (`getClubThreadReplies`).
+     *
+     * **A child of `threads`, like `threadsUnread` and for the same asymmetry**:
+     * posting a message invalidates the thread, which reaches this, while this
+     * key cannot pull the list. It is a window over `club_messages` scoped to
+     * the club, so it dies with the club exactly as its parent does.
+     */
+    threadReplies: (clubId: string): QueryKey => [
+      'clubs',
+      'detail',
+      clubId,
+      'threads',
+      'replies',
+    ],
     threadsUnread: (clubId: string): QueryKey => [
       'clubs',
       'detail',

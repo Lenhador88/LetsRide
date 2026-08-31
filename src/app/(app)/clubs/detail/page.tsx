@@ -3,12 +3,12 @@
 import { Suspense } from 'react'
 import { notFound, useSearchParams } from 'next/navigation'
 import { Globe2Icon, LocationOutlineIcon, Lock2Icon } from '@/components/icons/generated'
-import { ClubActionRow } from '@/components/clubs/ClubActionRow'
-import { ClubCreateRideRow } from '@/components/clubs/ClubCreateRideRow'
+import { ClubCreateBar } from '@/components/clubs/ClubCreateBar'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { ClubPreviewScreen } from '@/components/clubs/ClubPreviewScreen'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
 import { ClubMemberRail } from '@/components/clubs/ClubMemberRail'
+import { ClubThreadsRow } from '@/components/clubs/ClubThreadsRow'
 import { ClubTimeline } from '@/components/clubs/ClubTimeline'
 import { MarkClubSeen } from '@/components/clubs/MarkClubSeen'
 import { RideChip } from '@/components/rides/RideChip'
@@ -22,7 +22,7 @@ import { useRiderPosition } from '@/lib/location/use-rider-position'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
-import { formatRideDateLong } from '@/lib/utils'
+import { cn, formatRideDateLong } from '@/lib/utils'
 
 /**
  * The club — **a timeline with a header on it**, as of 2026-08-31.
@@ -196,13 +196,65 @@ function ClubScreen() {
       {header}
       {club.data.viewer_role && <MarkClubSeen clubId={club.data.id} />}
 
-      <div className="flex flex-col gap-4 pt-4 motion-safe:animate-fade-in">
-        {/* Who the club is — first, on the owner's instruction. Its own 12px
-            internal rhythm rather than the section-sized 16px the surrounding
-            `gap-4` gives: these three read as one block (what the club is, who
-            is in it, what it says about itself), and the wider gap made them
-            look like three unrelated sections, which is the complaint this
-            whole screen is answering. */}
+      <div
+        className={cn(
+          'flex flex-col gap-4 pt-4 motion-safe:animate-fade-in',
+          // The create bar is fixed, so the column has to make room or the last
+          // timeline entry sits behind it. `--navbar-action` is exactly this
+          // bar's geometry — 16 pad + 40 button + 8 — because it is the same
+          // control the nav bar's own action slot draws, just owned by this
+          // screen so it can be member-gated. Only when the bar renders.
+          isMember && 'pb-navbar-action-extra'
+        )}
+      >
+        {/* The future. Past rides are on the timeline now, on the day they were
+            announced — see this file's docstring on `clubTimelineRides`.
+
+            `See all` is still gated on what the SUB-PAGE has rather than on
+            what this strip draws, and the two can now legitimately disagree: a
+            club whose rides are all behind it has an empty strip over a
+            sub-page full of past rides, and dropping the link there would be
+            PD-125's defect exactly — a screen nobody can reach. */}
+        <section className="flex flex-col gap-2">
+          {/* No `create` prop any more — the product owner dropped the `(+)`
+              (2026-08-31: *"the ADD button can be dropped"*). Every create on
+              this screen is in the bar above the tabs now, so a second entrance
+              to one of them in a section heading is exactly the duplication
+              that bar exists to remove. */}
+          <SectionHeader
+            title="Upcoming rides"
+            action={hasAnyRides ? { label: 'See all', href: routes.clubRides(id) } : undefined}
+            className="px-4 py-0"
+          />
+          {upcoming.length === 0 ? (
+            <p className="px-4 text-sm font-medium text-muted">
+                {/* Two different facts, and conflating them is a lie in one
+                    direction: a club with ten past rides and nothing planned
+                    HAS ridden. PD-319 could not tell them apart because its
+                    strip carried both halves; this one carries the future
+                    alone, so the empty state has to say which emptiness it
+                    means. */}
+              {hasAnyRides ? 'No rides are planned, yet!' : 'This club has not ridden, yet!'}
+            </p>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {upcoming.map((ride) => (
+                <RideChip key={ride.id} ride={ride} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Who the club is — under the rides rather than above them, which is
+            the owner's second call on this order (2026-08-31: *"I think
+            upcoming rides should go again to the top"*). The identity is what a
+            rider reads once; the next ride is what they came back for.
+
+            Its own 12px internal rhythm rather than the section-sized 16px the
+            surrounding `gap-4` gives: these four read as one block — what the
+            club is, who is in it, what it is talking about, what it says about
+            itself — and the wider gap made them look like unrelated sections,
+            which is the complaint this whole screen is answering. */}
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <p className="flex items-center gap-1.5 px-4 text-sm font-medium text-muted">
@@ -238,6 +290,12 @@ function ClubScreen() {
               opens the roster in place. */}
           <ClubMemberRail clubId={id} />
 
+          {/* Members and Threads are the club's two rosters — who is in it and
+              what it is saying — so they share a shape and sit together. A
+              non-member reads zero threads (`081`), so the row would be an
+              entrance to a screen that refuses them. */}
+          {isMember && <ClubThreadsRow clubId={id} />}
+
           {club.data.description ? (
             <ExpandableText className="px-4">{club.data.description}</ExpandableText>
           ) : (
@@ -247,60 +305,11 @@ function ClubScreen() {
           )}
         </div>
 
-        {/* The future. Past rides are on the timeline now, on the day they were
-            announced — see this file's docstring on `clubTimelineRides`.
-
-            `See all` is still gated on what the SUB-PAGE has rather than on
-            what this strip draws, and the two can now legitimately disagree: a
-            club whose rides are all behind it has an empty strip over a
-            sub-page full of past rides, and dropping the link there would be
-            PD-125's defect exactly — a screen nobody can reach. */}
-        <section className="flex flex-col gap-2">
-          <SectionHeader
-            title="Upcoming rides"
-            action={hasAnyRides ? { label: 'See all', href: routes.clubRides(id) } : undefined}
-            create={
-              // PD-342: with a strip to scroll, the create is the `(+)` up
-              // here. `isMember`, exactly as the chip was — `017`'s rides
-              // INSERT policy needs the membership, and a control that always
-              // fails RLS is worse than no control.
-              isMember && upcoming.length > 0
-                ? { label: 'Plan a ride', href: routes.newRideInClub(id) }
-                : undefined
-            }
-            className="px-4 py-0"
-          />
-          {upcoming.length === 0 ? (
-            isMember ? (
-              <ClubCreateRideRow clubId={id} />
-            ) : (
-              <p className="px-4 text-sm font-medium text-muted">
-                {/* Two different facts, and conflating them is a lie in one
-                    direction: a club with ten past rides and nothing planned
-                    HAS ridden. PD-319 could not tell them apart because its
-                    strip carried both halves; this one carries the future
-                    alone, so the empty state has to say which emptiness it
-                    means. */}
-                {hasAnyRides ? 'No rides are planned, yet!' : 'This club has not ridden, yet!'}
-              </p>
-            )
-          ) : (
-            <div className="flex gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {upcoming.map((ride) => (
-                <RideChip key={ride.id} ride={ride} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* The narrow layer. A member gets the three entrances the dissolved
-            sections used to carry; a non-member gets the one action available
-            to them, because all three of those fail RLS without a membership —
-            see `ClubActionRow`. An owner is always a member and never sees the
-            join button either way. */}
-        {isMember ? (
-          <ClubActionRow clubId={id} />
-        ) : (
+        {/* Join is the non-member's one action and stays on the page. A member
+            gets no button here at all — every create moved to `ClubCreateBar`,
+            which is fixed above the tabs rather than in the scroll. An owner is
+            always a member and never sees this either way. */}
+        {!isMember && (
           <div className="px-4">
             <ClubMembershipButton clubId={id} />
           </div>
@@ -308,6 +317,11 @@ function ClubScreen() {
 
         <ClubTimeline club={club.data} isMember={isMember} />
       </div>
+
+      {/* Outside the scrolling column: it is fixed above the navigation bar.
+          Member-only, because all three of its destinations refuse a
+          non-member — see `ClubCreateBar`. */}
+      {isMember && <ClubCreateBar clubId={id} />}
     </>
   )
 }

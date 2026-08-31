@@ -477,9 +477,14 @@ is a drawn value this repo no longer builds:
 
       - **The identity band** — the type/started line, the member rail and the description, at
         the top. The frame draws none of it; the product owner asked for it on 2026-08-31.
-      - **The action layer** — `ClubActionRow`. The frame puts a single `Create postcard` primary
-        button in the navigation bar instead, which is a different composition of the same
-        intent, and this screen has three entrances to carry rather than one.
+      - **The create bar** — `ClubCreateBar`. **This one CONVERGED on the frame on 2026-08-31**
+        and is the reason to reread a frame after a layout change: the first pass drew a
+        three-tile action band in the scroll and called the frame's own arrangement a deviation,
+        and the product owner then asked for *"a bottom bar like the one create club on the club
+        list"* — which is exactly the `Button Container` the frame draws above the tab tiles. It
+        holds one primary rather than the frame's `Create postcard` only because this screen has
+        three things to create and the frame predates two of them, so the button opens a sheet.
+        The slot, the geometry and the 358×40 primary are the frame's.
       - **The thread event.** The frame predates `081` (PD-307) entirely, so a club had no
         threads when it was drawn.
 

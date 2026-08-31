@@ -3,12 +3,14 @@ import { CLUB_THREADS_PAGE_SIZE } from '@/lib/data/club-threads'
 import { FEED_PAGE_SIZE } from '@/lib/data/postcards'
 import {
   CLUB_TIMELINE_JOINS,
+  CLUB_TIMELINE_REPLIES,
   CLUB_TIMELINE_LIMIT,
   CLUB_TIMELINE_RIDES,
   groupClubTimeline,
   mergeClubTimeline,
   type ClubJoin,
   type ClubRideAnnouncement,
+  type ClubThreadReply,
   type ClubTimelineSources,
 } from '@/lib/data/club-timeline'
 import type { ClubThreadListItem, Postcard } from '@/types'
@@ -48,6 +50,14 @@ const postcard = (id: string, at: string): Postcard =>
 const thread = (id: string, at: string): ClubThreadListItem =>
   ({ id, created_at: at, title: `Thread ${id}` }) as ClubThreadListItem
 
+const reply = (id: string, at: string, threadId = 't1'): ClubThreadReply => ({
+  id,
+  created_at: at,
+  thread_id: threadId,
+  thread_title: `Thread ${threadId}`,
+  author: 'ana',
+})
+
 const join = (userId: string, at: string): ClubJoin =>
   ({
     user_id: userId,
@@ -70,6 +80,7 @@ function sources(over: Partial<ClubTimelineSources> = {}): ClubTimelineSources {
     postcards: { rows: [], truncated: false },
     threads: { rows: [], truncated: false },
     joins: { rows: [], truncated: false },
+    replies: { rows: [], truncated: false },
     unread: {},
     ...over,
   }
@@ -314,6 +325,53 @@ describe('mergeClubTimeline', () => {
     expect(floor?.kind === 'club-created' && floor.founder).toBe(null)
   })
 
+  it('places a reply at its own instant, leaving the thread where it started', () => {
+    // The defect this whole event kind exists for: a thread begun three weeks
+    // ago and busy this morning. The reply surfaces at the top; the thread's
+    // own entry stays three weeks down, where it is TRUE — moving it there
+    // instead would date "ana started a thread" to today.
+    const merged = eventsOf(
+      sources({
+        threads: { rows: [thread('t1', '2026-08-01T10:00:00Z')], truncated: false },
+        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], truncated: false },
+      })
+    )
+
+    expect(merged.map((event) => event.key)).toEqual(['reply:m1', 'thread:t1'])
+  })
+
+  it('marks a reply unread off the thread it belongs to', () => {
+    // Keyed on `thread_id`, not on the message: `club_thread_unread` answers
+    // per thread, and a reply that read as unread only when its own id happened
+    // to be in the map would never be marked at all.
+    const merged = eventsOf(
+      sources({
+        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], truncated: false },
+        unread: { t1: true },
+      })
+    )
+
+    expect(merged.map((event) => event.kind === 'reply' && event.unread)).toEqual([true])
+  })
+
+  it('lets a full reply read set the horizon like any other source', () => {
+    const merged = mergeClubTimeline(
+      sources({
+        replies: {
+          rows: [
+            reply('m1', '2026-08-20T10:00:00Z', 't1'),
+            reply('m2', '2026-08-10T10:00:00Z', 't2'),
+          ],
+          truncated: true,
+        },
+        rides: { rows: [ride('r1', '2026-06-01T10:00:00Z')], truncated: false },
+      })
+    )
+
+    expect(merged.events.map((event) => event.key)).toEqual(['reply:m1', 'reply:m2'])
+    expect(merged.complete).toBe(false)
+  })
+
   it('is empty for a club with nothing in it', () => {
     expect(eventsOf(sources())).toEqual([])
   })
@@ -398,6 +456,7 @@ describe('the display cap against the source bounds', () => {
       postcards: FEED_PAGE_SIZE,
       threads: CLUB_THREADS_PAGE_SIZE,
       joins: CLUB_TIMELINE_JOINS,
+      replies: CLUB_TIMELINE_REPLIES,
     }
 
     for (const [source, bound] of Object.entries(bounds)) {

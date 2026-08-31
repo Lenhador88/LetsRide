@@ -54,6 +54,34 @@ export type ClubJoin = Omit<ClubRosterMember, 'profile'> & {
 }
 
 /**
+ * The newest message in one thread — *someone is talking in here right now*.
+ *
+ * **This is the entry that makes the word "timeline" true**, and it exists
+ * because the thread's own entry cannot do the job: a thread is placed by when
+ * it was STARTED, so one begun three weeks ago and busy this morning sits three
+ * weeks down the stream. Placing the thread by its last message instead was the
+ * obvious fix and is the wrong one — the row reads "Pedro started a thread",
+ * and dating that today when he started it in January is the screen telling a
+ * small lie. A reply is its own event, at its own instant, and both can be true
+ * at once.
+ *
+ * **One per thread, never one per message.** A club argument runs to forty
+ * messages and would bury everything else under one conversation; the stream
+ * carries the fact that a thread is alive, not a transcript of it.
+ */
+export type ClubThreadReply = {
+  /** The MESSAGE's id — the reply is the event, so two replies in one thread
+   *  across a refetch are the same entry only if they are the same message. */
+  id: string
+  created_at: string
+  thread_id: string
+  thread_title: string
+  /** Null when the `profiles` policy hides the author — the thread is still
+   *  alive, so the entry stays and loses its subject. */
+  author: string | null
+}
+
+/**
  * How many entries the club timeline draws.
  *
  * A bound rather than a page, and there is deliberately no `load more`: the
@@ -116,6 +144,19 @@ export const CLUB_TIMELINE_JOINS = 60
 export const CLUB_TIMELINE_RIDES = 30
 
 /**
+ * How many of the club's recent messages the timeline reads, before they are
+ * collapsed to one entry per thread.
+ *
+ * **The collapse is why this is larger than it looks.** Forty messages in one
+ * argument about tyre pressure yield ONE entry, so the number that matters is
+ * how many distinct threads the window is likely to span rather than how many
+ * rows come back. Sixty covers a club whose busiest thread has run away with
+ * the week without hiding the quieter threads underneath it — and the bound
+ * still joins the invariant every source here holds, `>= CLUB_TIMELINE_LIMIT`.
+ */
+export const CLUB_TIMELINE_REPLIES = 60
+
+/**
  * One thing that happened in a club.
  *
  * A discriminated union carrying the domain object rather than a flattened
@@ -132,6 +173,7 @@ export type ClubTimelineEvent =
   | { kind: 'postcard'; at: string; key: string; postcard: Postcard }
   | { kind: 'thread'; at: string; key: string; thread: ClubThreadListItem; unread: boolean }
   | { kind: 'join'; at: string; key: string; member: ClubJoin }
+  | { kind: 'reply'; at: string; key: string; reply: ClubThreadReply; unread: boolean }
   /**
    * The club itself — `clubs.created_at`, the oldest thing that can be on this
    * stream and therefore its floor.
@@ -176,6 +218,7 @@ export type ClubTimelineSources = {
   postcards: ClubTimelineSource<Postcard>
   threads: ClubTimelineSource<ClubThreadListItem>
   joins: ClubTimelineSource<ClubJoin>
+  replies: ClubTimelineSource<ClubThreadReply>
   /** `thread id -> has unread`, from `getClubThreadUnread`. A missing id is
    *  read (`false`), which is what makes a failed unread call render the
    *  timeline unmarked rather than not render it. */
@@ -258,6 +301,18 @@ export function mergeClubTimeline(
         member,
       })
     ),
+    ...sources.replies.rows.map(
+      (reply): ClubTimelineEvent => ({
+        kind: 'reply',
+        at: reply.created_at,
+        key: `reply:${reply.id}`,
+        reply,
+        // The same map the thread's own entry reads, so a thread with unread
+        // messages is marked wherever it appears rather than only at the point
+        // it was started — which is usually the one below the fold.
+        unread: sources.unread[reply.thread_id] ?? false,
+      })
+    ),
   ]
 
   const horizons = [
@@ -265,6 +320,7 @@ export function mergeClubTimeline(
     horizonOf(sources.postcards, (postcard) => postcard.created_at),
     horizonOf(sources.threads, (thread) => thread.created_at),
     horizonOf(sources.joins, (member) => member.joined_at),
+    horizonOf(sources.replies, (reply) => reply.created_at),
   ].filter((at): at is string => at !== null)
 
   // Lexicographic on ISO-8601 rather than parsed: both are UTC strings from
@@ -465,4 +521,71 @@ export function groupClubTimeline(events: ClubTimelineEvent[]): ClubTimelineGrou
   }
 
   return groups
+}
+
+/**
+ * The newest message in each of the club's recently-active threads.
+ *
+ * **No migration, and the reason is worth writing down because the opposite was
+ * assumed first.** What the client cannot ask for is a `last_message_at`
+ * AGGREGATE per thread — that needs an RPC, and an RPC needs a migration. What
+ * it can ask for is an ordinary bounded window of recent messages, because
+ * `081` grants `authenticated` SELECT on `club_messages` and its policy
+ * restates the club's whole audience: the `clubs` EXISTS, `is_club_member`, and
+ * its own block arm on the MESSAGE's author. Verified against DEV as a member.
+ *
+ * `!inner` on the thread embed is what scopes the window to one club — the
+ * filter is on the embedded table, so a non-member gets zero rows from the
+ * policy rather than a filtered-down list.
+ *
+ * **Collapsed to the newest message per thread, here rather than in the
+ * component**, so the bound and the collapse cannot drift apart: the window is
+ * ordered newest-first, so the first message seen for a thread IS its newest
+ * and every later one is dropped.
+ *
+ * **`truncated` is measured before the collapse**, for `getClubJoins`' reason
+ * one step further along: the collapse can turn sixty rows into one, and a
+ * caller comparing that one against the bound would report a read that reaches
+ * back to the club's first message.
+ */
+export async function getClubThreadReplies(
+  clubId: string,
+  limit = CLUB_TIMELINE_REPLIES
+): Promise<ClubTimelineSource<ClubThreadReply>> {
+  if (!clubIdSchema.safeParse(clubId).success) return { rows: [], truncated: false }
+
+  const supabase = await resolveSupabase()
+
+  const rows = unwrapList(
+    await supabase
+      .from('club_messages')
+      .select('id, created_at, thread_id, author:profiles!author_id(username), thread:club_threads!inner(club_id, title)')
+      .eq('thread.club_id', clubId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(limit),
+    "this club's replies",
+  ) as unknown as {
+    id: string
+    created_at: string
+    thread_id: string
+    author: { username: string | null } | null
+    thread: { club_id: string; title: string } | null
+  }[]
+
+  const newestPerThread = new Map<string, ClubThreadReply>()
+  for (const row of rows) {
+    // First seen wins: the window is newest-first, so this is the thread's
+    // latest message and the rest of its history is not an event.
+    if (!row.thread || newestPerThread.has(row.thread_id)) continue
+    newestPerThread.set(row.thread_id, {
+      id: row.id,
+      created_at: row.created_at,
+      thread_id: row.thread_id,
+      thread_title: row.thread.title,
+      author: row.author?.username ?? null,
+    })
+  }
+
+  return { rows: [...newestPerThread.values()], truncated: rows.length >= limit }
 }
