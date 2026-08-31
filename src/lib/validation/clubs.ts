@@ -239,3 +239,39 @@ export const clubThreadIdSchema = z.uuid()
  * boundary where a refusal belongs.
  */
 export const clubJoinRequestIdSchema = z.uuid()
+
+/**
+ * A `club_invites.id` — `093`, PD-360, `rideInviteIdSchema`'s reasoning
+ * exactly: it comes out of a notification row rather than out of the URL, and
+ * the two RPCs that consume it take one argument, so a malformed value would
+ * reach PostgREST as `22P02` and land the rider on the error boundary rather
+ * than on the ordinary refusal.
+ */
+export const clubInviteIdSchema = z.uuid()
+
+/** A `club_invite_links.id`, for `revoke_club_invite_link`'s one argument. */
+export const clubInviteLinkIdSchema = z.uuid()
+
+/**
+ * A club invite link's token — `093`, PD-360. **32 lowercase hex
+ * characters**, mirroring `rideInviteTokenSchema` and
+ * `club_invite_links_token_shape`.
+ *
+ * **Zod owns the message and the database owns the guarantee.** `token` takes
+ * its value from a column default and the INSERT grant names
+ * `(id, club_id, created_by)` only, so there is no statement in which a
+ * client can choose one — this schema exists so a hand-edited URL or a
+ * truncated paste is refused **before** it reaches PostgREST, where a
+ * malformed argument to a `text` parameter would simply return zero rows and
+ * read as a dead link.
+ *
+ * Anchored and case-sensitive, for `rideInviteTokenSchema`'s reason: the
+ * column stores lowercase and the RPCs compare exactly, so an uppercased
+ * paste is not the same token and accepting it here would hand the rider "no
+ * longer valid" for a link that is alive.
+ */
+export const CLUB_INVITE_TOKEN_LENGTH = 32
+
+export const clubInviteTokenSchema = z
+  .string()
+  .regex(new RegExp(`^[0-9a-f]{${CLUB_INVITE_TOKEN_LENGTH}}$`), 'That invite link is not valid.')

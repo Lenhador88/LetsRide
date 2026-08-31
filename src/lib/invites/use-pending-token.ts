@@ -5,10 +5,12 @@ import {
   getPendingInviteToken,
   getServerPendingInviteToken,
   subscribePendingInviteToken,
+  type InviteTokenKind,
 } from '@/lib/invites/pending-token'
 
 /**
- * The invite token this page load resolved — `091`, PD-330.
+ * The invite token this page load resolved, for one kind — `091`, PD-330,
+ * generalised by `093` (PD-360) to take which.
  *
  * A hook in its own file so `pending-token.ts` stays React-free: that module is
  * imported by `lib/actions/auth.ts` and by `lib/actions/onboarding.ts`, neither
@@ -19,10 +21,10 @@ import {
  * invalid-link message. Same three-way answer, and same meanings, as every
  * `useQuery` on every other screen.
  */
-export function usePendingInviteToken(): string | null | undefined {
+export function usePendingInviteToken(kind: InviteTokenKind): string | null | undefined {
   return useSyncExternalStore(
     subscribePendingInviteToken,
-    getPendingInviteToken,
+    () => getPendingInviteToken(kind),
     getServerPendingInviteToken
   )
 }

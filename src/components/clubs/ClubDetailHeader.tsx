@@ -8,11 +8,13 @@ import { useSwipeBack } from '@/lib/actions/navigate'
 import { routes } from '@/lib/routes'
 import type { ClubDetail, ClubPreview } from '@/types'
 
-/** The four screens that render this header — the merged detail itself, plus
+/** The five screens that render this header — the merged detail itself, plus
  * the three list sub-pages `See all` reaches. `threads` joined them with
  * `081` (PD-307); the *thread* screen is not one of them, because its back
- * control returns to that list rather than to the club. */
-export type ClubScreen = 'detail' | 'members' | 'rides' | 'threads'
+ * control returns to that list rather than to the club. `invite` joined with
+ * `093` (PD-360), `RideHeader`'s `'invite'` one domain over — its back
+ * control returns to the club like every non-`detail` value here. */
+export type ClubScreen = 'detail' | 'members' | 'rides' | 'threads' | 'invite'
 
 /**
  * The chrome the three remaining club screens share — `v2 / Component /
@@ -112,6 +114,7 @@ export function ClubDetailHeader({
         full ? (
           <ClubOptionsMenu
             clubId={clubId}
+            isPublic={full.is_public}
             viewerRole={full.viewer_role}
             isOwner={full.viewer_is_owner}
           />

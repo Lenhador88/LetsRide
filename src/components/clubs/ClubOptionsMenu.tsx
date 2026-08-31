@@ -8,19 +8,18 @@ import {
   EditIcon,
   LogOutIcon,
   OptionsIcon,
-  PaperPlaneIcon,
   ProfileIcon,
 } from '@/components/icons/generated'
 import { useBanner } from '@/components/ui/Banner'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { NotificationDot } from '@/components/ui/NotificationDot'
 import { DeleteClubSheet } from '@/components/clubs/DeleteClubControl'
+import { ClubShareOrInviteItem } from '@/components/clubs/ClubShareOrInviteItem'
 import { leaveClub } from '@/lib/actions/clubs'
 import { getClubThreadUnread } from '@/lib/data/club-threads'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
-import { shareAppLink } from '@/lib/share'
 import type { ClubDetail } from '@/types'
 
 /**
@@ -31,11 +30,15 @@ import type { ClubDetail } from '@/types'
  * sub-page switcher in the header's `action` slot — the same move `RideHeader`
  * made when its own switcher was deleted (PD-254).
  *
- * `Share club` for everyone who can open it, then one branch by viewer role:
+ * `ClubShareOrInviteItem` for everyone who can open it (`093`, PD-360), then
+ * one branch by viewer role:
  *
- * - **Share club** (PD-280) — the row every surface now has. `shareAppLink` is
- *   the postcard's own mechanism, extracted rather than reimplemented, and a
- *   recipient who is not signed in lands on the login screen (decision #1).
+ * - **`Share club` / `Invite riders`** (PD-280, split by visibility in `093`) —
+ *   `ClubShareOrInviteItem` owns the branch: a public club gets `Share club`
+ *   plus `Invite a rider` for a member, a private club's owner or admin gets
+ *   `Invite riders`, and a private club's ordinary member gets neither. See
+ *   that component's own docstring for why the row used to be a live defect
+ *   on a private club and why the branch could not live here a second time.
  * - **Owner** → `Edit club`, into `routes.clubEdit`. What used to be the
  *   header's standalone pencil `Link`, now inside this sheet instead of beside
  *   it — plus `Delete club` below it.
@@ -60,14 +63,19 @@ import type { ClubDetail } from '@/types'
  *   (a full-width `Button`, not a menu row) — the reused part is the *action*,
  *   not the component.
  *
- * - **Non-member** → `Share club` and nothing else. This used to be no menu at
- *   all, because both remaining rows were a member's and an empty sheet behind
- *   a dots icon is worse than the icon's absence. `Share club` is precisely the
- *   row a non-member wants, so the sheet is no longer empty for them — and
- *   `Leave club` must not be offered to somebody who is not in the club, which
- *   is why this takes `viewerRole` rather than the `isOwner` boolean it used
- *   to: a two-state prop cannot tell a member from a stranger, and the false
- *   branch would have offered them Leave.
+ * - **Non-member of a PUBLIC club** → `Share club` and nothing else. This used
+ *   to be no menu at all, because every other row was a member's and an empty
+ *   sheet behind a dots icon is worse than the icon's absence. `Share club` is
+ *   precisely the row a non-member wants, so the sheet is no longer empty for
+ *   them — and `Leave club` must not be offered to somebody who is not in the
+ *   club, which is why this takes `viewerRole` rather than the `isOwner`
+ *   boolean it used to: a two-state prop cannot tell a member from a stranger,
+ *   and the false branch would have offered them Leave.
+ * - **Non-member of a PRIVATE club never mounts this menu at all** — `clubs`
+ *   SELECT refuses the row, so `ClubDetailHeader` never draws the dots for
+ *   them and the club page renders `ClubPreviewScreen` instead. The state
+ *   `ClubShareOrInviteItem` renders nothing for in practice is a private
+ *   club's ordinary MEMBER, who does reach this menu.
  *
  * **`Delete club` is BUILT as of PD-280, reversing this file's own deliberate
  * omission** — `docs/FIGMA-FIDELITY-TODO.md` §Club detail carries what was
@@ -81,10 +89,14 @@ import type { ClubDetail } from '@/types'
  */
 export function ClubOptionsMenu({
   clubId,
+  isPublic,
   viewerRole,
   isOwner,
 }: {
   clubId: string
+  /** `ClubDetail.is_public` — `093`, PD-360. Decides `ClubShareOrInviteItem`'s
+   * branch and nothing else here. */
+  isPublic: boolean
   /** The viewer's own `club_members.role`, or null for a non-member. */
   viewerRole: ClubDetail['viewer_role']
   /**
@@ -126,13 +138,6 @@ export function ClubOptionsMenu({
   )
   const hasUnread = Object.values(unread.data ?? {}).some(Boolean)
 
-  async function onShare() {
-    setOpen(false)
-    const outcome = await shareAppLink(routes.club(clubId), 'A club on LetsRide')
-    if (outcome === 'copied') showBanner('Link copied')
-    if (outcome === 'unavailable') showBanner('This device would not share the link', 'error')
-  }
-
   function onLeave() {
     setOpen(false)
     startTransition(async () => {
@@ -166,9 +171,13 @@ export function ClubOptionsMenu({
       </button>
 
       <ContextMenu open={open} onClose={() => setOpen(false)} label="Club options">
-        <ContextMenuItem icon={<PaperPlaneIcon className="h-6 w-6" />} onClick={onShare}>
-          Share club
-        </ContextMenuItem>
+        <ClubShareOrInviteItem
+          clubId={clubId}
+          isPublic={isPublic}
+          viewerRole={viewerRole}
+          isOwner={isOwner}
+          onDone={() => setOpen(false)}
+        />
 
         {isMember && (
           <ContextMenuItem

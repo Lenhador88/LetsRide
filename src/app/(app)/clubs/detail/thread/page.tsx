@@ -5,13 +5,14 @@ import { notFound, useRouter, useSearchParams } from 'next/navigation'
 import { ChatComposer } from '@/components/chat/ChatComposer'
 import { ChatThread } from '@/components/chat/ChatThread'
 import { MarkChatSeen } from '@/components/chat/MarkChatSeen'
-import { DeleteIcon, OptionsIcon, PaperPlaneIcon } from '@/components/icons/generated'
+import { DeleteIcon, OptionsIcon } from '@/components/icons/generated'
 import { Header } from '@/components/layout/Header'
 import { useBanner } from '@/components/ui/Banner'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { useOnlineStatus } from '@/components/ui/OfflineState'
 import { SkeletonList } from '@/components/ui/Skeleton'
+import { ClubShareOrInviteItem } from '@/components/clubs/ClubShareOrInviteItem'
 import {
   deleteClubThread,
   deleteClubMessage,
@@ -30,9 +31,8 @@ import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 import { useClubThreadStream } from '@/lib/realtime/useClubThreadStream'
-import { shareAppLink } from '@/lib/share'
 import { CLUB_MESSAGE_MAX_LENGTH } from '@/lib/validation/clubs'
-import type { ClubChatMessage } from '@/types'
+import type { ClubChatMessage, ClubDetail } from '@/types'
 import { useSwipeBack } from '@/lib/actions/navigate'
 
 /**
@@ -133,11 +133,13 @@ function ClubThreadScreen() {
               threadId={id}
               clubId={thread.data.club_id}
               isAuthor={thread.data.author_id === me.data.id}
+              isPublic={club.data.is_public}
+              viewerRole={club.data.viewer_role}
               // `viewer_is_owner` is `clubs.owner_id`, NOT `viewer_role ===
               // 'owner'` — `moderate_club_thread` gates on the column, and
               // an owner holding no roster row is a reachable state. Gating the
               // row on the role would hide it from exactly that owner.
-              canModerate={club.data.viewer_is_owner}
+              isOwner={club.data.viewer_is_owner}
             />
           ) : undefined
         }
@@ -353,22 +355,19 @@ function ThreadBody({
 }
 
 /**
- * The thread's own ⋯ menu — `Share club`, plus deletion for who may.
+ * The thread's own ⋯ menu — `ClubShareOrInviteItem`, plus deletion for who may.
  *
- * **`Share club`, never a thread link — `design.md` §Q1, ANSWERED 2026-08-31:
- * option B.** The product owner was offered "no share on a thread" and "a
- * thread capability URL" alongside this and chose this one: the row shares
- * the CLUB, labelled as the club, reusing `ClubOptionsMenu`'s own mechanism
- * rather than building a second. **The label is the whole safety property** —
- * a row reading bare `Share` on a thread screen promises the thread, and only
- * the word `club` here stops a rider believing they sent someone a
- * conversation; a future edit that shortens this label reinstates that defect
- * with nothing red. **This is a SECOND caller of a known-broken path and is
- * not a fix for it**: `shareAppLink(routes.club(clubId), ...)` hands out a
- * URL RLS refuses to a non-member of a PRIVATE club — PD-299 #2, the issue
- * this whole change is named for — and that defect is unchanged by this row
- * existing. It is fixed once, in `invite-riders-to-a-club` (PD-299), not
- * here.
+ * **`Share club` / `Invite riders`, never a thread link — `design.md` §Q1,
+ * ANSWERED 2026-08-31: option B.** The product owner was offered "no share on
+ * a thread" and "a thread capability URL" alongside this and chose this one:
+ * the row shares or invites into the CLUB, labelled as the club. **This used
+ * to be a SECOND caller of a known-broken path and is now fixed by the same
+ * component `ClubOptionsMenu` mounts** (`093`, PD-360) — the annotation this
+ * docstring used to carry, that `shareAppLink(routes.club(clubId), …)` hands
+ * out a URL RLS refuses to a non-member of a PRIVATE club, is why the branch
+ * had to live in one shared place rather than be copied here a second time.
+ * See `ClubShareOrInviteItem`'s own docstring for the three states and why
+ * the label is the safety property.
  *
  * **No Edit row, and its absence is the enforcement rather than an omission.**
  * `081` grants no UPDATE and declares no UPDATE policy on either content table,
@@ -387,28 +386,21 @@ function ThreadOptions({
   threadId,
   clubId,
   isAuthor,
-  canModerate,
+  isPublic,
+  viewerRole,
+  isOwner,
 }: {
   threadId: string
   clubId: string
   isAuthor: boolean
-  canModerate: boolean
+  isPublic: boolean
+  viewerRole: ClubDetail['viewer_role']
+  isOwner: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [, startTransition] = useTransition()
   const showBanner = useBanner()
   const router = useRouter()
-
-  // `Share club` is offered to every member reaching this screen, so the
-  // sheet is never empty the way `ClubOptionsMenu`'s own rule guards against
-  // — the early return that used to live here (no author, no moderator) went
-  // with that: this menu now always has at least one row.
-  async function onShare() {
-    setOpen(false)
-    const outcome = await shareAppLink(routes.club(clubId), 'A club on LetsRide')
-    if (outcome === 'copied') showBanner('Link copied')
-    if (outcome === 'unavailable') showBanner('This device would not share the link', 'error')
-  }
 
   function onDelete() {
     setOpen(false)
@@ -447,11 +439,15 @@ function ThreadOptions({
       </button>
 
       <ContextMenu open={open} onClose={() => setOpen(false)} label="Thread options">
-        <ContextMenuItem icon={<PaperPlaneIcon className="h-6 w-6" />} onClick={onShare}>
-          Share club
-        </ContextMenuItem>
+        <ClubShareOrInviteItem
+          clubId={clubId}
+          isPublic={isPublic}
+          viewerRole={viewerRole}
+          isOwner={isOwner}
+          onDone={() => setOpen(false)}
+        />
 
-        {(isAuthor || canModerate) && (
+        {(isAuthor || isOwner) && (
           <ContextMenuItem
             icon={<DeleteIcon className="h-6 w-6" />}
             variant="warning"

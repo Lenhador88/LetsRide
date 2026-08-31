@@ -379,6 +379,30 @@ export const queryKeys = {
       threadId,
       'messages',
     ],
+    /**
+     * The admin's outgoing invite list for one club (`093`, PD-360) —
+     * `rides.invites`'s shape one domain over. A child of `detail` like
+     * `joinRequests`, so leaving or deleting the club takes it with it.
+     *
+     * **`inviteRiderToClub` and `withdrawClubInvite` both name this key**,
+     * matching `inviteRiderToRide`/`revokeRideInvite`. Neither `acceptClubInvite`
+     * nor `declineClubInvite` does: those are the INVITEE's writes, on a
+     * different device most of the time, and `085`'s rule means accepting
+     * DELETES the row rather than leaving a stale one for this list to keep
+     * showing — the admin sees the change next time they read this key, same
+     * as every other list in this file that nothing pushes to.
+     */
+    inviteList: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'inviteList'],
+    /**
+     * The admin's invite LINKS for one club (`093`, PD-360) — `rides.inviteLinks`'s
+     * shape one domain over, including the one structural difference: a club
+     * has no departure, so nothing here is keyed by anything but the club.
+     *
+     * **No `revalidatePath` maps onto this**, matching its ride counterpart —
+     * the surface did not exist under the server render. `createClubInviteLink`
+     * and `revokeClubInviteLink` both name it.
+     */
+    inviteLinks: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'inviteLinks'],
   },
 
   /**
@@ -694,6 +718,46 @@ export const queryKeys = {
      * extra steps.
      */
     link: (token: string): QueryKey => ['invites', 'link', token],
+  },
+
+  /**
+   * The club invites addressed to the signed-in rider (`093`, PD-360) —
+   * `invites`'s shape one domain over, and its own top-level domain for the
+   * identical reason: it is the *rider's* list, spanning every club they have
+   * been invited to, and nesting it under `clubs` would be a lie about what
+   * invalidating one club reaches.
+   */
+  clubInvites: {
+    all: (): QueryKey => ['clubInvites'],
+    /**
+     * The invitee's own answerable invites — `public.my_live_club_invites()`,
+     * `pending` **or** `declined` (`085`'s rule lets a declined invite be
+     * reopened through Accept). Named `pending` to match `invites.pending()`
+     * one domain over rather than for the narrower literal status it holds;
+     * `ClubInviteActions` is what reads which of the two a given row is.
+     */
+    pending: (): QueryKey => ['clubInvites', 'pending'],
+    /**
+     * The admin's rider-picker hits for one club and one query string —
+     * `invites.search`'s shape. Under `clubInvites` rather than under the
+     * club, because inviting somebody must take them out of the picker and
+     * `inviteRiderToClub` invalidating `clubs.inviteList(id)` would not reach
+     * a key nested there — this one is reached by `clubInvites.all()`.
+     */
+    search: (clubId: string, query: string): QueryKey => ['clubInvites', 'search', clubId, query],
+    /**
+     * What one invite token previews (`093`, PD-360) —
+     * `public.club_invite_link_preview`. **The token is IN the key**, for
+     * `invites.link`'s exact reason: two links opened in one session must not
+     * share an entry, or the second rider would be shown the first rider's
+     * club.
+     *
+     * Under `clubInvites` so `clubInvites.all()` reaches it, which is what
+     * `claimClubInviteLink` names. **`clearQueryCache()` on sign-out is
+     * load-bearing rather than tidy here too** — this entry describes a club
+     * the next rider on the device may have no right to see.
+     */
+    link: (token: string): QueryKey => ['clubInvites', 'link', token],
   },
 
   /**

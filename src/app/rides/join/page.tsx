@@ -46,10 +46,10 @@ import { usePendingInviteToken } from '@/lib/invites/use-pending-token'
  * why no recovery mechanism beyond re-opening the link exists or should.
  */
 export default function JoinRidePage() {
-  const token = usePendingInviteToken()
+  const token = usePendingInviteToken('ride')
 
   useEffect(() => {
-    adoptInviteTokenFromLocation()
+    adoptInviteTokenFromLocation('ride')
   }, [])
 
   return (

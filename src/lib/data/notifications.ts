@@ -38,8 +38,23 @@ export const NOTIFICATIONS_PAGE_SIZE = 30
  * accessor, the one path by which a non-member reads a private club, and the
  * one this rider already reaches every other way (the Explore card, the reduced
  * club screen).
+ *
+ * **`093`, PD-360 adds a second and a third type to the same fallback.**
+ * `club_invited`'s recipient is exactly as likely to be a non-member of a
+ * private club as a decline's requester is — `design.md` §The invitee needs
+ * no new read path is what says this is safe: the invitee can already read
+ * the club through this same accessor, so resolving it here discloses
+ * nothing new. `club_invite_declined`'s recipient is the inviter, who is
+ * ordinarily still a member and needs no widening at all — it rides along in
+ * the same fallback for the one case that is not ordinary, an inviter who has
+ * since left the club, so the row still names it rather than degrading to
+ * `notificationCopy`'s generic "a club" for no reason.
  */
-const DECLINED_TYPE = 'club_join_request_declined'
+const TYPES_NEEDING_PRIVATE_CLUB_LOOKUP = new Set([
+  'club_join_request_declined',
+  'club_invited',
+  'club_invite_declined',
+])
 
 const NOTIFICATION_SELECT = `
   id, type, created_at, read_at, club_id,
@@ -106,52 +121,57 @@ export async function getNotificationsPage(
   )
   await resolveAvatarUrls([...rows.map((row) => row.actor), ...rows.map((row) => row.club)], supabase)
 
-  const declinedClubs = await resolveDeclinedClubs(rows, supabase)
+  const privateClubs = await resolvePrivateClubEmbeds(rows, supabase)
 
   return rows.map((row) => ({
     ...row,
     postcard: row.postcard
       ? { ...row.postcard, image_url: imageUrls.get(row.postcard.image_path) ?? null }
       : null,
-    // Only for the one type, and only when the embed came back empty — which
-    // for a private club is always. A row whose club the reader CAN see keeps
-    // the embed's answer, so this never overwrites a live join with a second
-    // read of the same thing.
-    club: row.club ?? declinedClubs.get(row.id) ?? null,
+    // Only for the three types, and only when the embed came back empty —
+    // which for a private club is always. A row whose club the reader CAN see
+    // keeps the embed's answer, so this never overwrites a live join with a
+    // second read of the same thing.
+    club: row.club ?? privateClubs.get(row.id) ?? null,
   }))
 }
 
 /**
- * The clubs behind this page's decline notifications, by notification id.
+ * The clubs behind this page's decline and invite notifications, by
+ * notification id.
  *
  * **One call per distinct club, in parallel, rather than one call for all of
  * them.** `discoverable_private_clubs` takes a single `target_club` or none at
  * all, and the un-narrowed form is page-capped at 100 — so a single unnarrowed
  * call would silently MISS a club beyond that cap and draw the row with no
  * name, which is the failure mode a cap must never have. A new accessor
- * returning only the caller's own declined clubs would be one round trip and
- * one more permanent `authenticated_security_definer_function_executable`
- * advisor; declines are rare and a page holds at most `NOTIFICATIONS_PAGE_SIZE`
- * of them, so the round trips are the cheaper side of that trade.
+ * returning only the caller's own such clubs would be one round trip and one
+ * more permanent `authenticated_security_definer_function_executable`
+ * advisor; these three types are rare per rider and a page holds at most
+ * `NOTIFICATIONS_PAGE_SIZE` of them, so the round trips are the cheaper side
+ * of that trade.
  *
  * A failure costs the club's NAME and never the list: the row still renders,
- * degrading to "A club" through `notificationCopy`'s own fallback, exactly as
+ * degrading to "a club" through `notificationCopy`'s own fallback, exactly as
  * every other type degrades when its subject does not resolve.
  */
-async function resolveDeclinedClubs(
+async function resolvePrivateClubEmbeds(
   rows: NotificationRawRow[],
   supabase: DataClient
 ): Promise<Map<string, EmbeddedClub>> {
   const wanted = new Map<string, string[]>()
   for (const row of rows) {
-    if (row.type !== DECLINED_TYPE || row.club) continue
+    if (!TYPES_NEEDING_PRIVATE_CLUB_LOOKUP.has(row.type) || row.club) continue
     // **`NOTIFICATION_SELECT` asks for the raw `club_id` as well as the embed,
     // and that column is on the select FOR THIS.** Every other type reads its
-    // club through the embed alone; a decline's embed is null by construction,
-    // because it runs under the reader's own RLS on `clubs` and a private club
-    // refuses them — which is the whole reason `085` wrote no such notification
-    // at all. `089`'s policy is what returns the ROW; the column is what says
-    // which club it is about.
+    // club through the embed alone; a private club's embed is null by
+    // construction for these three, because it runs under the reader's own
+    // RLS on `clubs` and a private club refuses a non-member — which is why
+    // `085` wrote no `club_join_request_declined` notification through the
+    // ordinary conjunct at all, and why `093`'s `club_invited` needed its own
+    // type-scoped disjunct on `notifications` itself (`design.md` §Why the
+    // notification arm is type-scoped). The column is what says which club a
+    // resolved ROW is about; the embed staying null is what says to look here.
     const clubId = row.club_id
     if (!clubId) continue
     wanted.set(clubId, [...(wanted.get(clubId) ?? []), row.id])

@@ -330,26 +330,26 @@ Each is a statement about a **role** and a **resource**. Verify every one **both
 
 ## 7. Client
 
-- [ ] 7.1 `src/lib/data/club-invites.ts` and `src/lib/data/club-invite-links.ts` through
+- [x] 7.1 `src/lib/data/club-invites.ts` and `src/lib/data/club-invite-links.ts` through
   `resolveSupabase`. Neither restates a membership, block, visibility or role predicate; each
   docstring says so, and says which side is definer-read (no policy underneath) and which is
   policy-read.
-- [ ] 7.2 `src/lib/actions/club-invites.ts` and `…/club-invite-links.ts` — plain async functions, one
+- [x] 7.2 `src/lib/actions/club-invites.ts` and `…/club-invite-links.ts` — plain async functions, one
   per mutation, each naming exactly what it invalidates.
-- [ ] 7.3 **One shared component owns the `is_public` branch** — `ClubShareOrInviteItem` — mounted by
+- [x] 7.3 **One shared component owns the `is_public` branch** — `ClubShareOrInviteItem` — mounted by
   `ClubOptionsMenu` **and** by the club thread screen's menu, which PD-356 added knowingly carrying
   the defect. Three states: public → `Share club`; private + admin → `Invite riders`; private +
   non-admin → **nothing**. An **unknown** visibility renders nothing. `is_public` is already on
   `ClubDetail`; if the thread screen does not hold it, add it to that screen's existing club read
   rather than issuing a second query.
-- [ ] 7.4 Five keys in `src/lib/query/keys.ts`, each with the docstring that file's convention
+- [x] 7.4 Five keys in `src/lib/query/keys.ts`, each with the docstring that file's convention
   requires and the token **in** the preview key. No key written inline in a component.
-- [ ] 7.5 `/clubs/join` — a top-level route beside `/rides/join`, not under `(app)`: the `(app)`
+- [x] 7.5 `/clubs/join` — a top-level route beside `/rides/join`, not under `(app)`: the `(app)`
   layout is the authenticated shell and drawing four tabs for a visitor offers four taps that all
   bounce. **Two guard edits**: `PUBLIC_PATHS` **and** `needsOnboardingState()`.
-- [ ] 7.6 Generalise `src/lib/invites/pending-token.ts` to hold **two** keys, one per token kind, and
+- [x] 7.6 Generalise `src/lib/invites/pending-token.ts` to hold **two** keys, one per token kind, and
   make `signOut` clear the module rather than a named key.
-- [ ] 7.7 The landing screen **is `ClubPreviewScreen`**, not a bespoke invite card — the product
+- [x] 7.7 The landing screen **is `ClubPreviewScreen`**, not a bespoke invite card — the product
   owner's browse-then-join refinement, `design.md` §The landing screen is the club's own preview
   screen. Four parts, and each fails silently if missed:
   - **7.7a** The signed-in branch renders `ClubPreviewScreen` fed by `club_invite_link_preview`.
@@ -369,12 +369,12 @@ Each is a statement about a **role** and a **resource**. Verify every one **both
     `ClubPreviewScreen` (there is nothing to show and its back arrow would bounce) and issues no RPC.
     `undefined` is a skeleton, `null` is one dead-link message, a thrown read is an error with a
     retry.
-- [ ] 7.8 `ClubInviteActions` on the notification row reads the **live** invite through
+- [x] 7.8 `ClubInviteActions` on the notification row reads the **live** invite through
   `my_live_club_invites()` and renders `null` when there is none — `RideInviteActions`' shape, and
   what makes `090`'s standing notification degrade to plain text.
-- [ ] 7.9 `notificationCopy`, `NotificationsListItem`'s `describe` and `NotificationType` gain both
+- [x] 7.9 `notificationCopy`, `NotificationsListItem`'s `describe` and `NotificationType` gain both
   types. All three are exhaustive; missing one is a runtime break in the two that are not typed.
-- [ ] 7.10 Icons from `@/components/icons/generated`. Primary buttons near-black `Grey/100`, never
+- [x] 7.10 Icons from `@/components/icons/generated`. Primary buttons near-black `Grey/100`, never
   green.
 
 ## 8. Ordering — the one part that cannot be reordered
@@ -409,10 +409,10 @@ Each is a statement about a **role** and a **resource**. Verify every one **both
 ## 9. Tests
 
 - [ ] 9.1 `PGPASSWORD=postgres npm test` — the RLS suite, green, with §6's assertions in it.
-- [ ] 9.2 A component test for `ClubShareOrInviteItem` asserting the **absence** of any row for a
+- [x] 9.2 A component test for `ClubShareOrInviteItem` asserting the **absence** of any row for a
   private club's ordinary member, and that both callers render the same three states. An assertion
   that something renders cannot see a row that should not.
-- [ ] 9.3 A component test for the landing screen on
+- [x] 9.3 A component test for the landing screen on
   `src/components/rides/__tests__/RideInviteJoin.test.tsx`'s model — the one test in the repo that
   asserts an **absence in the source** — checking on **comment-stripped source** that there is no
   `useEffect`, no `onAuthStateChange` listener and exactly one claim call site, and in markup that
@@ -420,14 +420,14 @@ Each is a statement about a **role** and a **resource**. Verify every one **both
   component's own docstring says "there is no `useEffect` in this file", which failed the first
   version of its test against a correct file. Verify both ways — inserting a real claiming effect
   must fail every source case.
-- [ ] 9.4 A component test for `ClubPreviewScreen`'s two new behaviours: that the `action` slot
+- [x] 9.4 A component test for `ClubPreviewScreen`'s two new behaviours: that the `action` slot
   replaces the request block entirely (asserted as the **absence** of `Request to join club` when an
   action is supplied), and that the `Private club` line is **absent** for `is_public: true`. Both are
   one-line reversals that screenshot plausibly against a private club, which is every club `085`
   sends to that screen.
-- [ ] 9.5 A unit test that `signOut` clears **both** stashes, asserted by reading the storage keys
+- [x] 9.5 A unit test that `signOut` clears **both** stashes, asserted by reading the storage keys
   rather than by calling the accessors.
-- [ ] 9.6 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
+- [x] 9.6 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
 - [ ] 9.7 `npm run walk` reaches `/clubs/detail` and `/clubs/join`; confirm both render. The landing
   route is public, so the walk's signed-out phase can reach it.
 - [ ] 9.8 `npm run docs:check` after §10.

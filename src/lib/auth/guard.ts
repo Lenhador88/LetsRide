@@ -1,4 +1,4 @@
-import { RIDE_JOIN_PATH } from '@/lib/routes'
+import { CLUB_JOIN_PATH, RIDE_JOIN_PATH } from '@/lib/routes'
 import type { OnboardingState } from '@/types'
 
 /**
@@ -66,6 +66,11 @@ export const PUBLIC_PATHS = [
   // **It is in `needsOnboardingState` below as well, and that is not
   // duplication** — see that function.
   RIDE_JOIN_PATH,
+  // The club invite link's landing route (`093`, PD-360) — `RIDE_JOIN_PATH`'s
+  // reasoning exactly, one domain over, including holding no anonymous data:
+  // `club_invite_link_preview` needs `auth.uid()` for its block check and its
+  // participation-gate check too.
+  CLUB_JOIN_PATH,
 ]
 
 /**
@@ -254,6 +259,11 @@ export function needsOnboardingState(pathname: string): boolean {
   // — `023` refuses the claim's write until both stamps are set, so the wizard
   // is the only thing standing between them and the ride. See the note above.
   if (pathname === RIDE_JOIN_PATH) return true
+  // The club invite link's landing route (`093`, PD-360) — the identical trap
+  // one domain over: `join_club_from_invite` restates the participation gate,
+  // so a rider mid-wizard tapping `Join club` here would raise the same
+  // `check_violation` for ever with no route out of it.
+  if (pathname === CLUB_JOIN_PATH) return true
   // The splash has to know where to send a signed-in rider, which is the resume
   // step when they are mid-wizard.
   return pathname === '/'

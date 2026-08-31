@@ -3805,6 +3805,8 @@ rollback to savepoint stranded_wizard;
 -- would answer 42501 rather than a boolean.
 reset role;
 
+-- Twenty-one since 093 gated BOTH club_invites and club_invite_links —
+-- inviting a rider and minting a bearer token are each participation.
 -- Nineteen since 092 gated BOTH wave tables — club_thread_waves and
 -- club_join_waves, TWO not one, the same arithmetic 081 has and 078's own task
 -- list got wrong about the equivalent advisor. Seventeen since 091 gated
@@ -3820,7 +3822,7 @@ reset role;
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  19, '069/081/082/083/084/085/091/092: nineteen gate triggers, one per gated table — 081 added TWO and so does 092, because the advisor and the trigger sweep both fire once per table');
+  21, '069/081/082/083/084/085/091/092/093: twenty-one gate triggers, one per gated table — 081 added TWO, so does 092 and so does 093, because the advisor and the trigger sweep both fire once per table');
 -- Named rather than counted, because the total above cannot tell 091's new gate
 -- from one that moved off another table to land here.
 select assert_eq(
@@ -3854,7 +3856,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  19, '069/081/083/084/085/091/092: every gate trigger carries the WHEN guard that reads the invoking role');
+  21, '069/081/083/084/085/091/092/093: every gate trigger carries the WHEN guard that reads the invoking role');
 
 -- The two halves of the security-definer question, and they point opposite ways.
 -- The gate functions MUST be definer; the profile completion guard must NOT be,
@@ -4323,15 +4325,26 @@ select assert_eq(
 -- would key a wave to a rider rather than to the membership it decorates, which
 -- is the exact defect 092 §1.2 exists to prevent. 092.11 asserts BOTH ends
 -- behaviourally, because neither is visible from this number.
+--
+-- **32 since 093 added club_invites.invitee_id, club_invites.inviter_id AND
+-- club_invite_links.created_by** — THREE, and the split across the two tables
+-- is the reusable part rather than the total. `club_invites` takes 083's PAIR,
+-- because the row records a relationship between two IDENTIFIED riders and half
+-- the record would survive either erasure alone; `club_invite_links` takes
+-- 091's SINGLE key, because a link is open by design and has no addressee to be
+-- a second one. `club_members.invite_link_id` adds NO key here and must not: it
+-- is provenance, `on delete set null`, and a cascade there would erase a rider's
+-- membership when the minter deleted their account. 093.28 asserts all four
+-- behaviourally.
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass),
-  29, '029/061/069/078/081/083/084/085/091/092: twenty-nine FKs reference public.profiles');
+  32, '029/061/069/078/081/083/084/085/091/092/093: thirty-two FKs reference public.profiles');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
       and confdeltype = 'c'),
-  29, '029/061/069/078/081/083/084/085/091/092: ... and every one of them is ON DELETE CASCADE');
+  32, '029/061/069/078/081/083/084/085/091/092/093: ... and every one of them is ON DELETE CASCADE');
 
 -- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
 -- grounds that pinning the path to owner_id makes any transfer raise 23514;
@@ -6021,12 +6034,12 @@ select assert_eq(
       and (has_function_privilege('authenticated', p.oid, 'execute')
         or has_function_privilege('anon', p.oid, 'execute')
         or has_function_privilege('service_role', p.oid, 'execute'))),
-  0, '036/083/085/089/090/092: no client role can call any of the fourteen fan-out functions directly');
+  0, '036/083/085/089/090/092/093: no client role can call any of the sixteen fan-out functions directly');
 select assert_eq(
   (select count(*)::int from pg_proc
     where pronamespace = 'private'::regnamespace
       and (proname like 'notify\_%' or proname like 'retract\_%')),
-  14, '036/083/085/089/090/092: ... and there are fourteen of them — 036''s six, 083''s notify_ride_invited and notify_ride_invite_answered, 085''s notify_club_join_requested and retract_club_join_requested, 089''s notify_club_join_request_declined and retract_club_join_request_declined, and 092''s notify_club_waved and retract_club_waved — so that assertion is not vacuous. FOURTEEN since 092 added two; 090.2 is what names the one 090 took away, because a count cannot');
+  16, '036/083/085/089/090/092/093: ... and there are sixteen of them — 036''s six, 083''s notify_ride_invited and notify_ride_invite_answered, 085''s notify_club_join_requested and retract_club_join_requested, 089''s notify_club_join_request_declined and retract_club_join_request_declined, 092''s notify_club_waved and retract_club_waved, and 093''s notify_club_invited and notify_club_invite_declined — so that assertion is not vacuous. SIXTEEN since 093 added two, both of them notify and NEITHER of them a retraction (090''s measured reason, restated in 093 §5.4); 090.2 is what names the one 090 took away, because a count cannot');
 
 -- ---------------------------------------------------------------------------
 -- 7.5 — blocking, applied TWICE, with A and B exchanged
@@ -6540,7 +6553,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where not tgisinternal
       and (tgname like 'notify\_%' or tgname like 'retract\_%')),
-  15, '036/083/085/087/089/090/092: fifteen fan-out triggers exist — thirteen until 092 hung notify_club_waved and retract_club_waved on club_join_waves, and fourteen until 090 dropped retract_ride_invited, which is named in 090.2 rather than left to this count');
+  17, '036/083/085/087/089/090/092/093: seventeen fan-out triggers exist — fifteen until 093 hung notify_club_invited and notify_club_invite_declined on club_invites, thirteen until 092 hung notify_club_waved and retract_club_waved on club_join_waves, and fourteen until 090 dropped retract_ride_invited, which is named in 090.2 rather than left to this count. 093 adds TWO notifies and NO retraction, deliberately — 090''s measured reason, restated in 093 §5.4');
 -- ** 087 CHANGED WHAT THIS ASSERTION HAD TO SAY. ** It used to read
 -- `tgqual is not null` = 0 — no WHEN clause at all — because the only WHEN
 -- anybody had ever put on one of these was 023's `current_user` guard, which
@@ -6577,15 +6590,16 @@ select assert_eq(
 -- contains variables of more than one relation` on exactly that shape — which
 -- is every interesting transition guard there will ever be.
 select assert_eq(
-  (select array(select substring(pg_get_triggerdef(oid) from 'WHEN \((.*)\) EXECUTE')
+  (select array(select tgname || ' :: ' || substring(pg_get_triggerdef(oid) from 'WHEN \((.*)\) EXECUTE')
                   from pg_trigger
                  where not tgisinternal and tgqual is not null
                    and (tgname like 'notify\_%' or tgname like 'retract\_%')
                  order by 1)),
-  array['((new.status = ''declined''::text) AND (old.status IS DISTINCT FROM new.status))',
-        '(new.status = ''pending''::text)',
-        '(old.status IS DISTINCT FROM new.status)'],
-  '036/083/085/087/089/091: exactly THREE of them carry a WHEN clause and these are their TEXTS — 087''s retract_club_join_requested_on_answer, guarding the status TRANSITION so a no-op update retracts nothing; 089''s notify_club_join_request_declined, which guards the transition AND the value because only one destination status writes a notification; and 091''s notify_ride_invited, which is the ODD ONE OUT and deliberately so — the other two guard an UPDATE''s transition, this one guards an INSERT''s VALUE, because claim_ride_invite_link is a second writer of ride_invites and it inserts `accepted` rows that are not an invitation at all. Pinned by text rather than counted, because a count cannot tell WHICH trigger carries it: a delete arm could acquire a clause while one of these lost its own and a count would not move. 089''s two DELETE-arm retractions must never acquire one — their writers are security definer RPCs and the guard would disable them silently');
+  array['notify_club_invite_declined :: ((old.status IS DISTINCT FROM new.status) AND (new.status = ''declined''::text))',
+        'notify_club_join_request_declined :: ((new.status = ''declined''::text) AND (old.status IS DISTINCT FROM new.status))',
+        'notify_ride_invited :: (new.status = ''pending''::text)',
+        'retract_club_join_requested_on_answer :: (old.status IS DISTINCT FROM new.status)'],
+  '036/083/085/087/089/091/093: exactly FOUR of them carry a WHEN clause and these are their TEXTS, each PAIRED WITH ITS TRIGGER NAME — 087''s retract_club_join_requested_on_answer, guarding the status TRANSITION so a no-op update retracts nothing; 089''s notify_club_join_request_declined, which guards the transition AND the value because only one destination status writes a notification; and 091''s notify_ride_invited, which is the ODD ONE OUT and deliberately so — the other two guard an UPDATE''s transition, 091''s notify_ride_invited, which is the ODD ONE OUT and deliberately so — the others guard an UPDATE''s transition, this one guards an INSERT''s VALUE, because claim_ride_invite_link is a second writer of ride_invites and it inserts `accepted` rows that are not an invitation at all; and 093''s notify_club_invite_declined, which is 089''s shape on the mirror-image table. ** PAIRED WITH THE NAME RATHER THAN LISTED AS BARE TEXTS, which 093 had to change and which strictly strengthens it: ** the two decline fan-outs now carry semantically identical clauses, so a bare-text array could not tell which trigger held which, and a delete arm could acquire a clause while one of these lost its own with the sorted list unmoved. 089''s two DELETE-arm retractions must never acquire one — their writers are security definer RPCs and the guard would disable them silently');
 
 -- auth.uid() appears nowhere in a fan-out body, checkable by inspection rather
 -- than inferred from behaviour.
@@ -6600,7 +6614,7 @@ select assert_eq(
     where pronamespace = 'private'::regnamespace
       and (proname like 'notify\_%' or proname like 'retract\_%')
       and prosecdef and proconfig @> array['search_path=""']),
-  14, '036/083/085/089/090/092: every fan-out is SECURITY DEFINER with search_path pinned empty');
+  16, '036/083/085/089/090/092/093: every fan-out is SECURITY DEFINER with search_path pinned empty');
 
 -- The count must be INVOKER. A definer count steps past the block predicate and
 -- every resolvability conjunct, producing a badge the rider can never clear.
@@ -10169,15 +10183,36 @@ reset role;
 -- distinction behind an arithmetic edit, so the exclusion is by table name and
 -- the rest of `public` still has to read zero — which is what fails if a later
 -- change gives `admin` reach over rides, postcards, threads or the roster.
+--
+-- ** 093 IS THE SECOND EXCEPTION AND IT IS THE SAME KIND, so it is excluded by
+-- TABLE NAME too rather than by bumping a total. ** club_invites' DELETE arm
+-- and both of club_invite_links' arms name private.is_club_admin because admin
+-- is the AUTHORITY to withdraw an offer and to mint, list and revoke a bearer
+-- token — an administrative object belongs to the club, which is also why a
+-- co-admin who did not mint may still revoke. Neither table is club CONTENT and
+-- neither carries an arm reading `clubs`, so the claim below is untouched: a
+-- club admin still reads a ride, a postcard, a thread and the roster because
+-- they hold a membership row and for no other reason. club_invites'' SELECT arm
+-- is the one that looks most like an audience and is not: it makes the DELETE
+-- arm beside it reachable, RLS filtering a DELETE by what the caller may READ.
 select assert_eq((select count(*)::int from pg_policies
                    where schemaname = 'public'
-                     and tablename <> 'club_join_requests'
+                     and tablename not in ('club_join_requests', 'club_invites', 'club_invite_links')
                      and (coalesce(qual, '') || coalesce(with_check, '')) like '%admin%'),
-  0, '054/085: outside club_join_requests, no policy predicate in public references admin at all — the role''s AUDIENCE is whatever its membership row already bought, and 085 gave it authority over join requests and nothing else');
+  0, '054/085/093: outside club_join_requests, club_invites and club_invite_links, no policy predicate in public references admin at all — the role''s AUDIENCE is whatever its membership row already bought, and 085 and 093 gave it AUTHORITY over requests, offers and tokens and nothing else');
 select assert_eq((select count(*)::int from pg_policies
                    where schemaname = 'public' and tablename = 'club_join_requests'
                      and (coalesce(qual, '') || coalesce(with_check, '')) like '%is_club_admin%'),
-  2, '054/085: ... and the two that do are the SELECT and DELETE arms on club_join_requests, both through private.is_club_admin — so the carve-out above is not silently covering a third');
+  2, '054/085: ... and the two that do on club_join_requests are its SELECT and DELETE arms, both through private.is_club_admin — so the carve-out above is not silently covering a third');
+select assert_eq(
+  (select array(select tablename || ' ' || cmd from pg_policies
+                 where schemaname = 'public'
+                   and tablename in ('club_invites', 'club_invite_links')
+                   and (coalesce(qual, '') || coalesce(with_check, '')) like '%is_club_admin%'
+                 order by 1)),
+  array['club_invite_links DELETE', 'club_invite_links SELECT',
+        'club_invites DELETE', 'club_invites SELECT'],
+  '054/093: ... and 093''s FOUR are NAMED rather than counted, because which arm carries it is the whole question. club_invites'' SELECT arm is the one worth reading twice: it is there because the DELETE arm beside it is otherwise DEAD — RLS filters a DELETE by what the caller may READ — and it names private.is_club_admin, the narrow set that may ANSWER a join request under 085, and NOT an EXISTS against `clubs`, which would be true for every signed-in rider on every public club. No arm on either table reads club CONTENT, so 054''s claim is untouched: an admin still reads a ride, a postcard, a thread and the roster because they hold a membership row and for no other reason');
 
 -- N6: a signed-out visitor gains nothing. Asserted as the ROLE's privilege
 -- rather than only as an empty result, per 031 — and scoped to the grantee,
@@ -11122,8 +11157,8 @@ select assert_eq(
   (select pg_get_constraintdef(oid) from pg_constraint
     where conrelid = 'public.notifications'::regclass
       and conname = 'notifications_type_check'),
-  'CHECK ((type = ANY (ARRAY[''postcard_liked''::text, ''postcard_commented''::text, ''ride_joined''::text, ''club_joined''::text, ''ride_created_in_club''::text, ''ride_invited''::text, ''ride_invite_accepted''::text, ''ride_invite_declined''::text, ''club_join_requested''::text, ''club_join_request_approved''::text, ''club_join_request_declined''::text, ''club_waved''::text])))',
-  '055/083/085/089/092: the type CHECK carries no second RIDE_JOINED type — the organizer''s distinct copy is chosen at render time by comparing the reader against rides.organizer_id; 083''s three invite types are three different events rather than a sixth copy of that one, and 085 and 089 add three more for the same reason, and 092''s club_waved is a twelfth. 089''s club_join_request_declined is the type this pin used to record as deliberately ABSENT; read 089''s header before reading that as a reversal of 085''s reasoning, because the mechanism is a type-scoped disjunct and NOT the policy widening 085 refused');
+  'CHECK ((type = ANY (ARRAY[''postcard_liked''::text, ''postcard_commented''::text, ''ride_joined''::text, ''club_joined''::text, ''ride_created_in_club''::text, ''ride_invited''::text, ''ride_invite_accepted''::text, ''ride_invite_declined''::text, ''club_join_requested''::text, ''club_join_request_approved''::text, ''club_join_request_declined''::text, ''club_waved''::text, ''club_invited''::text, ''club_invite_declined''::text])))',
+  '055/083/085/089/092/093: the type CHECK carries no second RIDE_JOINED type — the organizer''s distinct copy is chosen at render time by comparing the reader against rides.organizer_id; 083''s three invite types are three different events rather than a sixth copy of that one, and 085 and 089 add three more for the same reason, 092''s club_waved is a twelfth and 093''s club_invited and club_invite_declined are a thirteenth and fourteenth. ** 093 REWRITES THIS CONSTRAINT ABSOLUTELY AND THEREFORE HAD TO CARRY 092''s club_waved FORWARD — this equality is what caught it, and it is 044/046''s trap arriving at a CHECK rather than at a grant list: an absolute rewrite that omits a type added by a file ahead of it in the chain DROPS that type with no error. ** There is deliberately NO club_invite_accepted: private.notify_club_joined already tells the owner and the admins on the club_members INSERT an accept performs. 089''s club_join_request_declined is the type this pin used to record as deliberately ABSENT; read 089''s header before reading that as a reversal of 085''s reasoning, because the mechanism is a type-scoped disjunct and NOT the policy widening 085 refused');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public' and tablename = 'notifications'),
@@ -12240,8 +12275,8 @@ select assert_eq(
   (select pg_get_constraintdef(oid) from pg_constraint
     where conrelid = 'public.notifications'::regclass
       and conname = 'notifications_type_check'),
-  'CHECK ((type = ANY (ARRAY[''postcard_liked''::text, ''postcard_commented''::text, ''ride_joined''::text, ''club_joined''::text, ''ride_created_in_club''::text, ''ride_invited''::text, ''ride_invite_accepted''::text, ''ride_invite_declined''::text, ''club_join_requested''::text, ''club_join_request_approved''::text, ''club_join_request_declined''::text, ''club_waved''::text])))',
-  '060/083/085/089/092: the type CHECK carries 036''s five, 083''s three, 085''s two, 089''s one and 092''s club_waved and nothing else — 060 itself changed who receives which EXISTING type and never what a notification is, and re-pinning here is what makes each later addition a deliberate one rather than a silent one');
+  'CHECK ((type = ANY (ARRAY[''postcard_liked''::text, ''postcard_commented''::text, ''ride_joined''::text, ''club_joined''::text, ''ride_created_in_club''::text, ''ride_invited''::text, ''ride_invite_accepted''::text, ''ride_invite_declined''::text, ''club_join_requested''::text, ''club_join_request_approved''::text, ''club_join_request_declined''::text, ''club_waved''::text, ''club_invited''::text, ''club_invite_declined''::text])))',
+  '060/083/085/089/092/093: the type CHECK carries 036''s five, 083''s three, 085''s two, 089''s one, 092''s club_waved and 093''s two and nothing else — 060 itself changed who receives which EXISTING type and never what a notification is, and re-pinning here is what makes each later addition a deliberate one rather than a silent one');
 
 set role authenticated;
 rollback to savepoint recipient_sets_060;
@@ -16483,7 +16518,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  19, '078.9c: ... and 078 itself added NO trigger — the total is nineteen because 081 and 092 each added two content tables with one each and 083, 084, 085 and 091 added one more each, and push_devices is still not among them');
+  21, '078.9c: ... and 078 itself added NO trigger — the total is twenty-one because 081, 092 and 093 each added two content tables with one each and 083, 084, 085 and 091 added one more each, and push_devices is still not among them');
 
 -- ---------------------------------------------------------------------------
 -- 078.10  The key is the installation, asserted against the catalogue.
@@ -18247,11 +18282,11 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  19, '081.20/085/091/092: ... and all nineteen carry the WHEN guard that reads the invoking role — inside a security definer body current_user is the OWNER, so a guard moved into the function would fire for nobody');
+  21, '081.20/085/091/092/093: ... and all twenty-one carry the WHEN guard that reads the invoking role — inside a security definer body current_user is the OWNER, so a guard moved into the function would fire for nobody');
 select assert_eq(
   (select obj_description('public.enforce_participation_gate()'::regprocedure, 'pg_proc')
-     like '%nineteen BEFORE INSERT triggers%'),
-  true, '081.20/083/084/085/091/092: ... and the function''s own comment is restamped to nineteen — a database comment is the only documentation no edit to CLAUDE.md reaches (028, 033)');
+     like '%twenty-one BEFORE INSERT triggers%'),
+  true, '081.20/083/084/085/091/092/093: ... and the function''s own comment is restamped to twenty-one — a database comment is the only documentation no edit to CLAUDE.md reaches (028, 033)');
 select assert_eq(
   (select obj_description('public.enforce_participation_gate()'::regprocedure, 'pg_proc')
      like '%club_join_requests (085)%'),
@@ -22736,8 +22771,10 @@ select assert_eq(
                   join pg_namespace n on n.oid = p.pronamespace
                  where n.nspname in ('public', 'private') and p.prosrc like '%link_id%'
                  order by 1)),
-  array['private.ride_invite_link_reachable_by', 'public.claim_ride_invite_link'],
-  '091.15: ... and exactly TWO functions mention it, read as a name list because a count cannot tell an addition from a rename. reachable_by''s is its own OUT parameter — the LINK''s primary key, not this column — and the claim''s is the write that sets it. No audience helper and no fan-out is on this list');
+  array['private.club_invite_link_reachable_by', 'private.join_club_from_invite',
+        'private.ride_invite_link_reachable_by', 'public.claim_club_invite_link',
+        'public.claim_ride_invite_link'],
+  '091.15/093: ... and exactly FIVE functions mention the STRING `link_id`, read as a name list because a count cannot tell an addition from a rename. Both reachable_by''s are their own OUT parameter — the LINK''s primary key, not the provenance column — and both claims'' are the write that sets it; 093''s join_club_from_invite matches on `invite_link_id`, which is the same write one function deeper, that being the single place any invite path writes a club_members row. ** NOT ONE OF THE FIVE BRANCHES ON IT: ** no audience helper, no fan-out and no policy is on this list, and 093.29 asserts the club half of that separately because this substring match would not distinguish a write from a test');
 
 -- ---------------------------------------------------------------------------
 -- 091.16  ** THE FAN-OUT NARROWING, PINNED ON THE DEFINITION **
@@ -22804,8 +22841,9 @@ select assert_eq(
   array['postcard_liked', 'postcard_commented', 'ride_joined', 'club_joined',
         'ride_created_in_club', 'ride_invited', 'ride_invite_accepted',
         'ride_invite_declined', 'club_join_requested', 'club_join_request_approved',
-        'club_join_request_declined', 'club_waved'],
-  '091.16: notifications_type_check holds every type it held before 091 and NOT ONE 091 added — 083''s eight plus 085''s three, plus 092''s club_waved, which is the twelfth and the only one added since. Read as a name list, and note the spec''s own "the eight types 083 left it with" is a pre-085 count rather than a target');
+        'club_join_request_declined', 'club_waved',
+        'club_invited', 'club_invite_declined'],
+  '091.16/093: notifications_type_check holds every type it held before 091 and NOT ONE 091 added — 083''s eight plus 085''s three, plus 092''s club_waved and 093''s two, which are the only ones added since. 093''s pair are the CLUB mirror of 083''s ride_invited/ride_invite_declined and there is deliberately NO club_invite_accepted, private.notify_club_joined already telling the owner and the admins on the club_members INSERT an accept performs — which is the identical call 091 made about ride_joined. Read as a name list, and note the spec''s own "the eight types 083 left it with" is a pre-085 count rather than a target');
 
 -- ---------------------------------------------------------------------------
 -- 091.17  083 §5 gains a caller and NOTHING ELSE
@@ -23881,7 +23919,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  19, '092.13: ... and the flat total is NINETEEN, up from seventeen. Both halves are asserted because neither implies the other');
+  21, '092.13/093: ... and the flat total is TWENTY-ONE, having been nineteen after 092 and seventeen before it. Both halves are asserted because neither implies the other, and the ABSOLUTE is only meaningful here because this suite replays the whole chain — on a hosted project it depends on which of 092-095 has applied, so the number that travels is the DELTA (+2 per file) and the table names');
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where t.tgname = 'enforce_participation_gate'
@@ -24144,6 +24182,1728 @@ select assert_eq(
 
 reset role;
 rollback to savepoint club_waves_092;
+
+\echo ''
+\echo '# 093 — an in-app club invite and a club invite LINK (PD-360)'
+
+-- ---------------------------------------------------------------------------
+-- The cast, and what each rider is FOR. Every one of them exists because some
+-- assertion below would otherwise be counting an empty set.
+--
+--   930001 ciowner    owns c1 (private), c2 (public) and c4 (private)
+--   930002 ciadmin    ADMIN of c1 — the inviter and the minter in most cases
+--   930003 cimember   ordinary MEMBER of c1 and c2 — may invite on the public
+--                     one and on neither the private one nor its link
+--   930004 ciinvitee  invited to c1 by ciadmin. THE STAR: the pending invitee
+--                     whose notification 093.8 exists for
+--   930005 cistranger member of nothing; owns c3, a private club none of the
+--                     others touch. The UNAUTHORISED prober of 093.4
+--   930006 ciblkinv   invited to c1, THEN blocked with the INVITER
+--   930007 ciblocker  blocked with ciadmin BEFORE anything — the INSERT refusal
+--   930008 cinoterms  onboarded, NO terms stamp; deliberately an ADMIN of c1
+--                     and a member of c2, so 093.19's refusals cannot be
+--                     coming from a policy
+--   930009 cisecond   invited to the PUBLIC c2 by an ordinary MEMBER
+--   930010 ciblkown   invited to c1, THEN blocked with the club's OWNER
+--   930011 cidemoted  ADMIN of c1 who invites and mints, then is DEMOTED
+--   930012 cidemotee  the rider cidemoted invited
+--   930013 cirequest  holds a PENDING club_join_requests row for c1
+--   930014 cideclined invited to c2 by cimember; declines
+--   930015 ciclaimer  claims a live link into c1
+--   930016 cileaver   ADMIN of c1 who invites and mints, then LEAVES
+--   930017 cileavee   the rider cileaver invited
+--   930018 ciownblk   blocked with the OWNER *before* being invited — the
+--                     fan-out case, which is different from 930010's
+--
+-- Clubs:  c1 private (the subject), c2 public, c3 private and foreign,
+--         c4 private and DELETABLE (so a token can outlive its club).
+-- Links:  a1 live, a2 revoked, a3 expired, a4 minted by the demoted admin,
+--         a5 on the club that gets deleted, a6 minted by the admin who leaves.
+savepoint club_invites_093;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000930001', 'ciowner@example.com'),
+  ('00000000-0000-0000-0000-000000930002', 'ciadmin@example.com'),
+  ('00000000-0000-0000-0000-000000930003', 'cimember@example.com'),
+  ('00000000-0000-0000-0000-000000930004', 'ciinvitee@example.com'),
+  ('00000000-0000-0000-0000-000000930005', 'cistranger@example.com'),
+  ('00000000-0000-0000-0000-000000930006', 'ciblkinv@example.com'),
+  ('00000000-0000-0000-0000-000000930007', 'ciblocker@example.com'),
+  ('00000000-0000-0000-0000-000000930008', 'cinoterms@example.com'),
+  ('00000000-0000-0000-0000-000000930009', 'cisecond@example.com'),
+  ('00000000-0000-0000-0000-000000930010', 'ciblkown@example.com'),
+  ('00000000-0000-0000-0000-000000930011', 'cidemoted@example.com'),
+  ('00000000-0000-0000-0000-000000930012', 'cidemotee@example.com'),
+  ('00000000-0000-0000-0000-000000930013', 'cirequest@example.com'),
+  ('00000000-0000-0000-0000-000000930014', 'cideclined@example.com'),
+  ('00000000-0000-0000-0000-000000930015', 'ciclaimer@example.com'),
+  ('00000000-0000-0000-0000-000000930016', 'cileaver@example.com'),
+  ('00000000-0000-0000-0000-000000930017', 'cileavee@example.com'),
+  ('00000000-0000-0000-0000-000000930018', 'ciownblk@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000930001', 'ciowner'),
+      ('00000000-0000-0000-0000-000000930002', 'ciadmin'),
+      ('00000000-0000-0000-0000-000000930003', 'cimember'),
+      ('00000000-0000-0000-0000-000000930004', 'ciinvitee'),
+      ('00000000-0000-0000-0000-000000930005', 'cistranger'),
+      ('00000000-0000-0000-0000-000000930006', 'ciblkinv'),
+      ('00000000-0000-0000-0000-000000930007', 'ciblocker'),
+      ('00000000-0000-0000-0000-000000930009', 'cisecond'),
+      ('00000000-0000-0000-0000-000000930010', 'ciblkown'),
+      ('00000000-0000-0000-0000-000000930011', 'cidemoted'),
+      ('00000000-0000-0000-0000-000000930012', 'cidemotee'),
+      ('00000000-0000-0000-0000-000000930013', 'cirequest'),
+      ('00000000-0000-0000-0000-000000930014', 'cideclined'),
+      ('00000000-0000-0000-0000-000000930015', 'ciclaimer'),
+      ('00000000-0000-0000-0000-000000930016', 'cileaver'),
+      ('00000000-0000-0000-0000-000000930017', 'cileavee'),
+      ('00000000-0000-0000-0000-000000930018', 'ciownblk')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+-- ** No terms_accepted_at, deliberately, and an ADMIN of c1 and a member of c2
+-- so that 093.12's two refusals cannot be coming from a policy. ** This is the
+-- account created by calling GoTrue's /auth/v1/signup directly and never
+-- calling accept_terms().
+update profiles set username = 'cinoterms', location = 'Zeist',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000930008';
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000009300c1', 'Invite Test MC',   false, '00000000-0000-0000-0000-000000930001'),
+  ('00000000-0000-0000-0000-0000009300c2', 'Invite Public MC', true,  '00000000-0000-0000-0000-000000930001'),
+  ('00000000-0000-0000-0000-0000009300c3', 'Invite Other MC',  false, '00000000-0000-0000-0000-000000930005'),
+  ('00000000-0000-0000-0000-0000009300c4', 'Invite Doomed MC', false, '00000000-0000-0000-0000-000000930001');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930001', 'owner'),
+  ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930002', 'admin'),
+  ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930003', 'member'),
+  ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930008', 'admin'),
+  ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930011', 'admin'),
+  ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930016', 'admin'),
+  ('00000000-0000-0000-0000-0000009300c2', '00000000-0000-0000-0000-000000930001', 'owner'),
+  ('00000000-0000-0000-0000-0000009300c2', '00000000-0000-0000-0000-000000930003', 'member'),
+  ('00000000-0000-0000-0000-0000009300c2', '00000000-0000-0000-0000-000000930008', 'member'),
+  ('00000000-0000-0000-0000-0000009300c3', '00000000-0000-0000-0000-000000930005', 'owner'),
+  ('00000000-0000-0000-0000-0000009300c4', '00000000-0000-0000-0000-000000930001', 'owner'),
+  ('00000000-0000-0000-0000-0000009300c4', '00000000-0000-0000-0000-000000930002', 'admin');
+
+-- One private club-only ride and one thread on c1, so 093.10's "a pending
+-- invitee reaches NOTHING" is counting real rows rather than an empty club.
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-0000009300e1', 'Members only', 'The Bridge',
+   now() + interval '3 days', false, '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930001');
+insert into club_threads (id, club_id, author_id, title) values
+  ('00000000-0000-0000-0000-0000009300d1', '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930001', 'Sunday run');
+insert into club_messages (thread_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000009300d1', '00000000-0000-0000-0000-000000930001', 'See you there');
+
+-- cirequest asks to join c1, THROUGH THE POLICY — the row 093.3's collision
+-- rule and 093.19's request-clearing both turn on.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930013', false);
+insert into club_join_requests (club_id, user_id)
+values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930013');
+reset role;
+
+-- The one block placed BEFORE any invite, because 093.5 is about the INSERT
+-- policy refusing rather than about a row going unanswerable afterwards. The
+-- other three are added last, for 092's stated reason: a block deletes nothing,
+-- so a row placed first and blocked afterwards is the sequence the product
+-- actually produces.
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000930007', '00000000-0000-0000-0000-000000930002'),
+  ('00000000-0000-0000-0000-000000930001', '00000000-0000-0000-0000-000000930018');
+
+-- ** EVERY INVITE AND EVERY LINK BELOW IS WRITTEN THROUGH ITS POLICY, AS ITS
+-- OWN AUTHOR. ** Placing them as the owner would skip the one statement 093.1
+-- through 093.9 are about, and every later assertion would then be reading rows
+-- no client could have created.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930002', false);
+insert into club_invites (id, club_id, invitee_id, inviter_id) values
+  ('00000000-0000-0000-0000-0000009300f1', '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930004', '00000000-0000-0000-0000-000000930002'),
+  ('00000000-0000-0000-0000-0000009300f2', '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930006', '00000000-0000-0000-0000-000000930002'),
+  ('00000000-0000-0000-0000-0000009300f3', '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930010', '00000000-0000-0000-0000-000000930002');
+insert into club_invite_links (id, club_id, created_by) values
+  ('00000000-0000-0000-0000-0000009300a1', '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930002'),
+  ('00000000-0000-0000-0000-0000009300a2', '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930002'),
+  ('00000000-0000-0000-0000-0000009300a3', '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930002'),
+  ('00000000-0000-0000-0000-0000009300a5', '00000000-0000-0000-0000-0000009300c4',
+   '00000000-0000-0000-0000-000000930002');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000930011', false);
+insert into club_invites (id, club_id, invitee_id, inviter_id) values
+  ('00000000-0000-0000-0000-0000009300f4', '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930012', '00000000-0000-0000-0000-000000930011');
+insert into club_invite_links (id, club_id, created_by) values
+  ('00000000-0000-0000-0000-0000009300a4', '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930011');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000930016', false);
+insert into club_invites (id, club_id, invitee_id, inviter_id) values
+  ('00000000-0000-0000-0000-0000009300f5', '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930017', '00000000-0000-0000-0000-000000930016');
+insert into club_invite_links (id, club_id, created_by) values
+  ('00000000-0000-0000-0000-0000009300a6', '00000000-0000-0000-0000-0000009300c1',
+   '00000000-0000-0000-0000-000000930016');
+
+-- An ordinary MEMBER inviting on a PUBLIC club — the asymmetry decision 3 rests
+-- on, and the fixture 093.13's "the inviter is not an admin" case needs.
+select set_config('test.uid', '00000000-0000-0000-0000-000000930003', false);
+insert into club_invites (id, club_id, invitee_id, inviter_id) values
+  ('00000000-0000-0000-0000-0000009300f6', '00000000-0000-0000-0000-0000009300c2',
+   '00000000-0000-0000-0000-000000930009', '00000000-0000-0000-0000-000000930003'),
+  ('00000000-0000-0000-0000-0000009300f7', '00000000-0000-0000-0000-0000009300c2',
+   '00000000-0000-0000-0000-000000930014', '00000000-0000-0000-0000-000000930003');
+reset role;
+
+-- a2 revoked and a3 expired, as the OWNER. Neither state is reachable through
+-- a client statement — there is no UPDATE grant and no UPDATE policy — which is
+-- itself asserted at 093.24.
+update club_invite_links set revoked_at = now()
+ where id = '00000000-0000-0000-0000-0000009300a2';
+update club_invite_links set expires_at = now() - interval '1 hour'
+ where id = '00000000-0000-0000-0000-0000009300a3';
+
+-- The three DIRECTIONAL block rows added LAST, one of each shape.
+--   930006 -> 930002 : the invitee blocked the INVITER, who is also the MINTER
+--   930001 -> 930010 : the club's OWNER blocked an invitee
+-- private.is_blocked is symmetric, so a fixture with both directions is what
+-- proves the symmetry is resolved in the helper rather than at each call site.
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000930006', '00000000-0000-0000-0000-000000930002'),
+  ('00000000-0000-0000-0000-000000930001', '00000000-0000-0000-0000-000000930010');
+
+-- The six tokens, read once as the OWNER and carried in session settings. A
+-- test running as a claimer CANNOT read them — 093.16 is the assertion that
+-- says so — so reading them here is what makes every later call a genuine
+-- BEARER call rather than a privileged one.
+select set_config('test.ctok1', (select token from club_invite_links where id = '00000000-0000-0000-0000-0000009300a1'), false);
+select set_config('test.ctok2', (select token from club_invite_links where id = '00000000-0000-0000-0000-0000009300a2'), false);
+select set_config('test.ctok3', (select token from club_invite_links where id = '00000000-0000-0000-0000-0000009300a3'), false);
+select set_config('test.ctok4', (select token from club_invite_links where id = '00000000-0000-0000-0000-0000009300a4'), false);
+select set_config('test.ctok5', (select token from club_invite_links where id = '00000000-0000-0000-0000-0000009300a5'), false);
+select set_config('test.ctok6', (select token from club_invite_links where id = '00000000-0000-0000-0000-0000009300a6'), false);
+select set_config('test.cguess', '00000000000000000000000000000000', false);
+
+-- ---------------------------------------------------------------------------
+-- 093.1  The row is the database's, not the client's
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from club_invites
+    where id = '00000000-0000-0000-0000-0000009300f1'
+      and status = 'pending' and responded_at is null),
+  1, '093.1: an admin''s invite into a PRIVATE club succeeded, with the server''s own status and a NULL responded_at');
+select assert_eq(
+  (select count(*)::int from club_invite_links
+    where id = '00000000-0000-0000-0000-0000009300a1'
+      and token ~ '^[0-9a-f]{32}$' and revoked_at is null),
+  1, '093.1: ... and the mint succeeded with a server-supplied 32-hex token and a NULL revoked_at');
+select assert_eq(
+  (select count(distinct token)::int from club_invite_links),
+  6, '093.1: ... and six links carry six DISTINCT tokens, so a claim resolves to at most one link and never depends on ordering');
+select assert_eq(
+  (select l.expires_at between l.created_at + interval '13 days 23 hours'
+                          and l.created_at + interval '14 days'
+     from club_invite_links l where l.id = '00000000-0000-0000-0000-0000009300a1'),
+  true, '093.1: ... and expires_at is created_at + 14 days from the COLUMN DEFAULT — 091 needed a trigger because least() had to read rides.departure_at, and a club has no departure to read');
+
+-- The columns no client may name. 42501 from the COLUMN GRANT, not from a
+-- trigger: a default applies only when the column is omitted, and PostgREST
+-- will happily name one.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930002', false);
+select assert_denied($$
+  insert into club_invites (club_id, invitee_id, inviter_id, status)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930005',
+          '00000000-0000-0000-0000-000000930002', 'declined')$$,
+  '093.1: an admin cannot write `status` on an invite — the grant refuses it, so `declined` is not reachable from a client at all');
+select assert_denied($$
+  insert into club_invites (club_id, invitee_id, inviter_id, responded_at)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930005',
+          '00000000-0000-0000-0000-000000930002', now())$$,
+  '093.1: ... nor responded_at, which the response coupling pins to it');
+select assert_denied($$
+  insert into club_invite_links (club_id, created_by, token)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930002',
+          'deadbeefdeadbeefdeadbeefdeadbeef')$$,
+  '093.1: ... nor a token of their own choosing, which is what makes possession of one a credential');
+select assert_denied($$
+  insert into club_invite_links (club_id, created_by, expires_at)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930002',
+          now() + interval '5 years')$$,
+  '093.1: ... nor an expiry, so no client can mint a link that outlives the 14-day ceiling');
+select assert_denied($$
+  insert into club_invite_links (club_id, created_by, revoked_at)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930002', null)$$,
+  '093.1: ... nor revoked_at');
+reset role;
+
+-- The CHECKs, asserted from the owner where no grant is in the way. They are
+-- the guarantee a Zod schema only carries a message for.
+select assert_rejected($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930002',
+          '00000000-0000-0000-0000-000000930002')$$,
+  '23514', '093.1: a SELF-invite is refused by club_invites_no_self_invite');
+select assert_rejected($$
+  insert into club_invites (club_id, invitee_id, inviter_id, status)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930005',
+          '00000000-0000-0000-0000-000000930002', 'accepted')$$,
+  '23514', '093.1: and `accepted` is not a legal status — TWO values, not three, because accepting DELETES the row and the club_members row is the record (085''s rule, not 083''s)');
+select assert_rejected($$
+  insert into club_invites (club_id, invitee_id, inviter_id, status, responded_at)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930005',
+          '00000000-0000-0000-0000-000000930002', 'declined', null)$$,
+  '23514', '093.1: ... and a declined row with a NULL responded_at is refused by the coupling, which is `is not distinct from` and NOT `=` — 073''s correction, because a CHECK passes on NULL');
+select assert_rejected($$
+  insert into club_invite_links (club_id, created_by, token, expires_at)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930002',
+          'NOTHEX', now() + interval '1 day')$$,
+  '23514', '093.1: a token that is not 32 lowercase hex is refused by club_invite_links_token_shape');
+
+-- ---------------------------------------------------------------------------
+-- 093.2  ** WHO MAY INVITE, AND THE PUBLIC/PRIVATE ASYMMETRY DECISION 3 RESTS
+--        ON **
+-- ---------------------------------------------------------------------------
+-- On a PRIVATE club the invite is a GRANT, so the set that may send one is the
+-- set that may refuse a join request (085's). On a PUBLIC club it is a POINTER
+-- — the recipient could already open the club and join it — so any member may.
+-- Any looser set on the private side defeats 085: a rider whose request an
+-- admin declined could get in via a friendly member.
+savepoint invite_authority_093;
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000930001', false);
+select assert_allowed($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930005',
+          '00000000-0000-0000-0000-000000930001')$$,
+  '093.2: the OWNER may invite into their own private club');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000930003', false);
+select assert_denied($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930005',
+          '00000000-0000-0000-0000-000000930003')$$,
+  '093.2: ** an ordinary MEMBER of a PRIVATE club may NOT ** — the set that may admit a rider must be the set that may refuse one, or 085''s decline is reversible by somebody with no authority to reverse it');
+select assert_allowed($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c2', '00000000-0000-0000-0000-000000930005',
+          '00000000-0000-0000-0000-000000930003')$$,
+  '093.2: ... while the SAME member may invite to the PUBLIC club, where the row is a pointer rather than a grant');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000930005', false);
+select assert_denied($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930004',
+          '00000000-0000-0000-0000-000000930005')$$,
+  '093.2: a NON-MEMBER may not invite into a private club ...');
+select assert_denied($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c2', '00000000-0000-0000-0000-000000930004',
+          '00000000-0000-0000-0000-000000930005')$$,
+  '093.2: ... nor into a PUBLIC one, membership being required on both sides of the asymmetry');
+
+-- Impersonation, both ways round.
+select set_config('test.uid', '00000000-0000-0000-0000-000000930003', false);
+select assert_denied($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930005',
+          '00000000-0000-0000-0000-000000930002')$$,
+  '093.2: and a member cannot put an ADMIN''s id in inviter_id to borrow their authority — `inviter_id = auth.uid()` is the first conjunct');
+reset role;
+rollback to savepoint invite_authority_093;
+
+-- ---------------------------------------------------------------------------
+-- 093.3  Admissibility — the four refusals, from an AUTHORISED admin
+-- ---------------------------------------------------------------------------
+savepoint invite_admissible_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930002', false);
+select assert_rejected($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930001',
+          '00000000-0000-0000-0000-000000930002')$$,
+  '23514', '093.3: an invite to the club''s OWNER is refused by the admissibility trigger — they are inside it by every definition this schema has');
+select assert_rejected($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930003',
+          '00000000-0000-0000-0000-000000930002')$$,
+  '23514', '093.3: ... and so is an invite to an EXISTING MEMBER');
+select assert_rejected($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930013',
+          '00000000-0000-0000-0000-000000930002')$$,
+  '23514', '093.3: ** ... and so is an invite to a rider with a PENDING JOIN REQUEST ** — the two mechanisms meet and the request wins, because the admin''s remedy is the Approve button already in front of them, which is the same outcome with the audit trail the rider started');
+select assert_rejected($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930004',
+          '00000000-0000-0000-0000-000000930002')$$,
+  '23505', '093.3: a REPEAT invite is a 23505 from unique (club_id, invitee_id), not a second row');
+reset role;
+select assert_eq(
+  (select count(*)::int from notifications
+    where user_id = '00000000-0000-0000-0000-000000930004' and type = 'club_invited'),
+  1, '093.3: ... and no second notification was written either — 036''s event key is (recipient, type, actor, club) and the fan-out carries `on conflict do nothing`');
+rollback to savepoint invite_admissible_093;
+
+-- The DEFAULT club, in its own savepoint because clubs_one_default_club is a
+-- unique partial index and the seed has none.
+savepoint invite_default_club_093;
+reset role;
+-- PUBLIC, because clubs_default_club_is_public is `not is_default or is_public`
+-- — the welcome club cannot be private at all, which is itself why
+-- private.may_mint_club_link_for's `is_default = false` conjunct is belt-and-
+-- braces rather than the thing doing the work below.
+insert into clubs (id, name, is_public, is_default, owner_id)
+values ('00000000-0000-0000-0000-0000009300c9', 'Welcome', true, true,
+        '00000000-0000-0000-0000-000000930001');
+insert into club_members (club_id, user_id, role)
+values ('00000000-0000-0000-0000-0000009300c9', '00000000-0000-0000-0000-000000930001', 'owner'),
+       ('00000000-0000-0000-0000-0000009300c9', '00000000-0000-0000-0000-000000930002', 'admin');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930002', false);
+select assert_rejected($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c9', '00000000-0000-0000-0000-000000930004',
+          '00000000-0000-0000-0000-000000930002')$$,
+  '23514', '093.3: an invite to the DEFAULT club is refused — 058 auto-joins every rider at onboarding, so an invitation to it is meaningless');
+select assert_denied($$
+  insert into club_invite_links (club_id, created_by)
+  values ('00000000-0000-0000-0000-0000009300c9', '00000000-0000-0000-0000-000000930002')$$,
+  '093.3: ... and no link may be minted into it either — here by the `is_public = false` conjunct rather than by `is_default = false`, because clubs_default_club_is_public makes a PRIVATE default club unreachable. That second conjunct is 085''s belt-and-braces verbatim and is unreachable TODAY; it is written for the day somebody relaxes that CHECK, which is exactly why 085 wrote its own');
+reset role;
+rollback to savepoint invite_default_club_093;
+
+-- ---------------------------------------------------------------------------
+-- 093.4  ** THE ORACLE DETECTOR — the defect this file fixed in the specified
+--        design, and the assertion that keeps it fixed **
+-- ---------------------------------------------------------------------------
+-- MEASURED on Postgres 17: a BEFORE ROW trigger fires BEFORE the RLS
+-- `WITH CHECK` expression is evaluated. So an admissibility trigger that raises
+-- unconditionally is a MEMBERSHIP ORACLE for every private club in the schema:
+-- an unauthorised prober compares 23514 ("already a member / the owner / has a
+-- pending request") against 42501 ("no") and reads the private social graph off
+-- the SQLSTATE.
+--
+-- ** COMPARED ON THE FULL ERROR STRING, NOT ON THE SQLSTATE. ** `error_of`
+-- returns `SQLSTATE message`, and the two calls below are compared against EACH
+-- OTHER rather than against a literal, so re-wording a raise cannot make this
+-- pass vacuously.
+savepoint invite_oracle_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930005', false);
+select assert_eq(
+  error_of($$insert into club_invites (club_id, invitee_id, inviter_id)
+             values ('00000000-0000-0000-0000-0000009300c1',
+                     '00000000-0000-0000-0000-000000930003',
+                     '00000000-0000-0000-0000-000000930005')$$),
+  error_of($$insert into club_invites (club_id, invitee_id, inviter_id)
+             values ('00000000-0000-0000-0000-0000009300c1',
+                     '00000000-0000-0000-0000-000000930004',
+                     '00000000-0000-0000-0000-000000930005')$$),
+  '093.4: ** an UNAUTHORISED rider gets the IDENTICAL refusal for a rider who IS a member of a private club and one who is not ** — without the trigger''s first statement the first is 23514 and the second 42501, and the whole private social graph is readable by anyone with a session');
+select assert_eq(
+  error_of($$insert into club_invites (club_id, invitee_id, inviter_id)
+             values ('00000000-0000-0000-0000-0000009300c1',
+                     '00000000-0000-0000-0000-000000930013',
+                     '00000000-0000-0000-0000-000000930005')$$),
+  error_of($$insert into club_invites (club_id, invitee_id, inviter_id)
+             values ('00000000-0000-0000-0000-0000009300c1',
+                     '00000000-0000-0000-0000-000000930004',
+                     '00000000-0000-0000-0000-000000930005')$$),
+  '093.4: ... and identical again for a rider holding a PENDING JOIN REQUEST, which is the same disclosure one table over');
+select assert_eq(
+  error_of($$insert into club_invites (club_id, invitee_id, inviter_id)
+             values ('00000000-0000-0000-0000-0000009300c1',
+                     '00000000-0000-0000-0000-000000930001',
+                     '00000000-0000-0000-0000-000000930005')$$),
+  error_of($$insert into club_invites (club_id, invitee_id, inviter_id)
+             values ('00000000-0000-0000-0000-0000009300c1',
+                     '00000000-0000-0000-0000-000000930004',
+                     '00000000-0000-0000-0000-000000930005')$$),
+  '093.4: ... and identical for the club''s OWNER, so a prober cannot even confirm who owns a club they cannot see');
+-- Non-vacuity: the shared answer would also be equal if every one of them
+-- SUCCEEDED. This is what says they are all the POLICY refusing.
+select assert_eq(
+  error_of($$insert into club_invites (club_id, invitee_id, inviter_id)
+             values ('00000000-0000-0000-0000-0000009300c1',
+                     '00000000-0000-0000-0000-000000930004',
+                     '00000000-0000-0000-0000-000000930005')$$) like '42501 %',
+  true, '093.4: ... and the shared answer really is the INSERT POLICY refusing (42501), not four silent successes compared against each other');
+-- The other half, and without it the fix would read as "the trigger was
+-- disabled": for a rider who MAY invite, the trigger still refuses and still
+-- says so — and they are a rider who can already read that roster and those
+-- requests through 085's own policies, so it discloses nothing new.
+select set_config('test.uid', '00000000-0000-0000-0000-000000930002', false);
+select assert_eq(
+  error_of($$insert into club_invites (club_id, invitee_id, inviter_id)
+             values ('00000000-0000-0000-0000-0000009300c1',
+                     '00000000-0000-0000-0000-000000930003',
+                     '00000000-0000-0000-0000-000000930002')$$) like '23514 %',
+  true, '093.4: ** ... while an ADMIN still gets the trigger''s 23514 for the same rider ** — the raise is not removed, it is scoped to a caller who may already read the roster, and 093.3 is what fails if somebody removes it');
+select assert_eq(
+  error_of($$insert into club_invites (club_id, invitee_id, inviter_id)
+             values ('00000000-0000-0000-0000-0000009300c1',
+                     '00000000-0000-0000-0000-000000930005',
+                     '00000000-0000-0000-0000-000000930002')$$),
+  '<no error>',
+  '093.4: ... and their invite to an ADMISSIBLE rider succeeds, so the two answers genuinely differ for them and are genuinely identical for the prober');
+reset role;
+rollback to savepoint invite_oracle_093;
+
+-- ---------------------------------------------------------------------------
+-- 093.5  Blocking, at all four sites and in BOTH directions
+-- ---------------------------------------------------------------------------
+-- The four are: the INSERT policy (a block the inviter is party to), the
+-- fan-out, the accessor, and the accept. The admissibility trigger deliberately
+-- tests none of them — see 093.4's neighbour in the migration.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930002', false);
+select assert_denied($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930007',
+          '00000000-0000-0000-0000-000000930002')$$,
+  '093.5: (1/4) the INSERT POLICY refuses an invite to a rider the inviter is blocked with — the block row runs the OTHER way (930007 blocked 930002), so this passes only because private.is_blocked is symmetric');
+reset role;
+
+-- (2/4) The FAN-OUT. ciownblk was blocked by the club's OWNER BEFORE being
+-- invited, which the INSERT policy does not test — deliberately, since a raise
+-- there would tell an inviting member about a block between two other riders.
+-- So the row lands and the fan-out is the thing that must drop the
+-- notification.
+savepoint invite_fanout_block_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930002', false);
+insert into club_invites (club_id, invitee_id, inviter_id)
+values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930018',
+        '00000000-0000-0000-0000-000000930002');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_invites
+    where club_id = '00000000-0000-0000-0000-0000009300c1'
+      and invitee_id = '00000000-0000-0000-0000-000000930018'),
+  1, '093.5: (2/4) an invite to a rider blocked with the club''s OWNER is WRITTEN — the INSERT policy tests only the inviter''s own block, because a raise about two other riders would be a marker and decision #2 forbids one ...');
+select assert_eq(
+  (select count(*)::int from notifications
+    where user_id = '00000000-0000-0000-0000-000000930018' and type = 'club_invited'),
+  0, '093.5: ... and the FAN-OUT writes NOTHING for them, which is the only place left to drop a row that rider could never act on');
+rollback to savepoint invite_fanout_block_093;
+
+-- (3/4) The ACCESSOR and (4/4) the ACCEPT, for both block shapes.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930006', false);
+select assert_eq(
+  (select count(*)::int from my_live_club_invites()),
+  0, '093.5: (3/4) a rider blocked with their INVITER sees no live invite, though the row is still there — 009 §7: a block deletes nothing, it hides');
+select assert_eq(
+  error_of($$select accept_club_invite('00000000-0000-0000-0000-0000009300f2')$$) like '42501 %',
+  true, '093.5: (4/4) ... and their accept raises');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930010', false);
+select assert_eq(
+  (select count(*)::int from my_live_club_invites()),
+  0, '093.5: a rider blocked with the club''s OWNER — and NOT with their inviter — sees no live invite either');
+select assert_eq(
+  error_of($$select accept_club_invite('00000000-0000-0000-0000-0000009300f3')$$),
+  error_of($$select accept_club_invite('00000000-0000-0000-0000-0000009300f1')$$),
+  '093.5: ** ... and their accept fails with the SAME MESSAGE as an accept of somebody else''s invite ** — one raise site, so a rider cannot tell "the owner blocked you" from "that is not your invite"');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000009300c1'
+      and user_id in ('00000000-0000-0000-0000-000000930006',
+                      '00000000-0000-0000-0000-000000930010')),
+  0, '093.5: ... and neither blocked rider got a membership row out of it');
+
+-- ---------------------------------------------------------------------------
+-- 093.6  ** A PENDING INVITEE REACHES NOTHING AT ALL **
+-- ---------------------------------------------------------------------------
+-- The narrowness proof for the in-app half, and the assertion that fails if
+-- anybody adds an arm to `clubs` SELECT for an invitee — which 085 already
+-- wrote down the cost of: 016's club-avatar AND club-cover storage policies
+-- both delegate to it, and 036 §3's notifications conjunct starts resolving for
+-- every club_id-carrying row a rider happens to hold.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930004', false);
+select assert_eq((select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000009300c1'),
+  0, '093.6: a pending invitee reads ZERO rows from `clubs` for the club they were invited to');
+select assert_eq((select count(*)::int from club_members where club_id = '00000000-0000-0000-0000-0000009300c1'),
+  0, '093.6: ... zero from its ROSTER');
+select assert_eq((select count(*)::int from club_threads where club_id = '00000000-0000-0000-0000-0000009300c1'),
+  0, '093.6: ... zero from its THREADS');
+select assert_eq((select count(*)::int from club_messages where thread_id = '00000000-0000-0000-0000-0000009300d1'),
+  0, '093.6: ... zero from its MESSAGES');
+select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-0000009300e1'),
+  0, '093.6: ... and zero from its club-only RIDES. Every one of these counts a row that really exists, so the zeros are refusals rather than an empty club');
+select assert_denied($$
+  insert into club_members (club_id, user_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930004')$$,
+  '093.6: ... and they cannot simply join it either — an invite is an OFFER, and accepting it goes through a definer writer because this policy admits only a public or self-owned club');
+-- What they CAN see is one row on club_invites and nothing else on it.
+select assert_eq((select count(*)::int from club_invites),
+  1, '093.6: ... and on club_invites they read exactly ONE row — their own — out of the seven the fixture holds, because no arm of that policy reads `clubs`');
+reset role;
+
+-- The inviter's half of the same policy, and the third party who is neither.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930002', false);
+select assert_eq((select count(*)::int from club_invites where club_id = '00000000-0000-0000-0000-0000009300c1'),
+  4, '093.6: an ADMIN reads FOUR of the club''s five invites — their own three and a co-admin''s two, minus the one to a rider they are now blocked with. The block conjunct is on BOTH parties and it costs them the withdrawal too, at 093.14');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930003', false);
+select assert_eq((select count(*)::int from club_invites where club_id = '00000000-0000-0000-0000-0000009300c1'),
+  0, '093.6: ** an ordinary MEMBER of the club reads NONE of its invites ** — no arm reads `clubs`, because one that did would hand every member of a PUBLIC club the invites of a private one, and for a private club it would be circular');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930001', false);
+select assert_eq((select count(*)::int from club_invites where club_id = '00000000-0000-0000-0000-0000009300c1'),
+  3, '093.6: ** ... while the club''s OWNER reads all three, through the is_club_admin disjunct ** — the narrow set that may ANSWER a join request under 085, not the wide one that can see the club. It is there because 093.13''s decided "an admin may clear a declined invite" is otherwise a silent DELETE 0: RLS filters a DELETE by what the caller may READ, and the DELETE policy alone cannot show that');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 093.7  ** THE POLICIES THIS CHANGE MUST NOT TOUCH. IF THIS FAILS, THE CHANGE
+--        IS WRONG RATHER THAN THE PIN BEING STALE **
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select md5(qual) from pg_policies
+    where schemaname = 'public' and tablename = 'clubs' and cmd = 'SELECT'),
+  '4299c23bc61a3b5f53c580631cdf941c',
+  '093.7: `clubs` SELECT is byte-identical to what 085 and 091 pinned — 093 adds NO audience arm, so an invitee and a token holder reach the club through a definer accessor or not at all');
+select assert_eq(
+  (select md5(prosrc) from pg_proc
+    where proname = 'can_read_club' and pronamespace = 'private'::regnamespace),
+  'a8d7f5ad4785bf8bff0c3cbded7c53da',
+  '093.7: ... and private.can_read_club''s body is unchanged, measured on DEV and on this chain before 093 applied');
+select assert_eq(
+  (select md5(qual) from pg_policies
+    where schemaname = 'public' and tablename = 'club_members' and cmd = 'SELECT'),
+  '9d075352246e30fe8dcdd2da25669518',
+  '093.7: ... and so is `club_members` SELECT. ** 085''s header says this policy carries NO block predicate; it does, on both hosted projects, and 093 deliberately does not inherit that stale claim ** — the RULE 085 states still holds and its stated REASON has expired, the surviving one being that a membership admits a rider to the club''s threads, messages, rides and timeline');
+select assert_eq(
+  (select array(select cmd || ' ' || md5(coalesce(qual, '') || coalesce(with_check, ''))
+                  from pg_policies
+                 where schemaname = 'public' and tablename = 'club_join_requests'
+                 order by 1)),
+  array['DELETE 59c272bf8912eb09bc6c178d204dce2e',
+        'INSERT 0a5a1c69b24674160b224ed19bd89fcb',
+        'SELECT aa8f855d29d8ed0046dfb5c22a820649'],
+  '093.7: ... and all THREE of club_join_requests'' policies are untouched. The two mechanisms are made deterministic inside 093''s own objects — private.club_takes_invites_for refuses the invite, and private.join_club_from_invite clears the request — and never by narrowing 085''s predicate, which would make the club vanish from an invited rider''s Explore list');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'private'::regnamespace
+      and proname in ('club_takes_join_requests_for', 'club_takes_join_requests',
+                      'is_club_admin_for', 'is_club_admin', 'is_club_member_for',
+                      'can_read_club', 'join_club_from_request')
+      and (prosrc ilike '%club_invite%' or prosrc ilike '%token%')),
+  0, '093.7: and no EXISTING club helper learned about invites or tokens — 085''s seven stay exactly as narrow as they were');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where coalesce(qual, '') || coalesce(with_check, '') ilike '%club_invite_links%'
+      and tablename <> 'club_invite_links'),
+  0, '093.7: and no policy on any OTHER table mentions club_invite_links — the table is administrative, not an audience');
+
+-- ---------------------------------------------------------------------------
+-- 093.8  ** THE ASSERTION THIS WHOLE CHANGE RESTS ON: the invitee can READ
+--        their notification, AND CAN MARK IT READ **
+-- ---------------------------------------------------------------------------
+-- 036 §3's club conjunct is `club_id is null or exists (select 1 from clubs …)`
+-- evaluated under the RECIPIENT's own row security. An invitee to a PRIVATE
+-- club is not its owner and not a member, so without §5.2's type-scoped
+-- disjunct the row is written and then NEVER RETURNED — silently, for ever,
+-- looking correct to every reviewer and to any test that only checks the row
+-- was inserted. That is 085's recorded trap arriving on the exact surface this
+-- change exists to build.
+--
+-- ** TWO CASES AND NOT ONE. ** The SELECT `using`, the UPDATE `using` and the
+-- UPDATE `with check` are three textually identical expressions (036 §4), and
+-- moving only the first gives the invitee a notification they can SEE and can
+-- NEVER MARK READ — a permanent unread line with nothing behind it that clears
+-- it, and a defect invisible in review because the feature demo works.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930004', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_invited'
+      and club_id = '00000000-0000-0000-0000-0000009300c1'),
+  1, '093.8: (1/2) the invitee to a PRIVATE club READS their club_invited notification — this reads 0 without §5.2''s type-scoped disjunct on the SELECT policy');
+select assert_eq(
+  (select actor_id from notifications
+    where type = 'club_invited' and club_id = '00000000-0000-0000-0000-0000009300c1'),
+  '00000000-0000-0000-0000-000000930002'::uuid,
+  '093.8: ... and its actor is the INVITER, read from the row rather than from auth.uid() inside the trigger — 036 trap (b)');
+savepoint invite_mark_read_093;
+update notifications set read_at = now()
+ where type = 'club_invited' and club_id = '00000000-0000-0000-0000-0000009300c1';
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_invited'
+      and club_id = '00000000-0000-0000-0000-0000009300c1'
+      and read_at is not null),
+  1, '093.8: ** (2/2) ... and CAN MARK IT READ ** — the UPDATE matched the row. With only the SELECT policy moved this is UPDATE 0, PostgREST reports success, and the rider carries an unread line nothing on earth clears');
+rollback to savepoint invite_mark_read_093;
+reset role;
+
+-- ** NON-VACUITY, and it is what says this is a type-scoped exception rather
+-- than a widening of the club conjunct. ** 089.4's shape: a club_joined row
+-- naming the SAME unreadable club, addressed to the SAME rider, must stay
+-- invisible.
+savepoint invite_notif_scope_093;
+reset role;
+insert into notifications (user_id, actor_id, type, club_id)
+values ('00000000-0000-0000-0000-000000930004', '00000000-0000-0000-0000-000000930002',
+        'club_joined', '00000000-0000-0000-0000-0000009300c1');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930004', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000009300c1'),
+  0, '093.8: ** a club_joined row naming the SAME private club and the SAME rider stays INVISIBLE ** — the disjunct is scoped to `type = ''club_invited''`, so this is an exception for one type and one predicate rather than a relaxation of 036 §3''s club conjunct');
+reset role;
+rollback to savepoint invite_notif_scope_093;
+
+-- The three expressions really are three, and really are identical.
+select assert_eq(
+  (select count(distinct e)::int from (
+     select md5(qual) as e from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'SELECT'
+     union all
+     select md5(qual) from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'UPDATE'
+     union all
+     select md5(with_check) from pg_policies
+      where schemaname = 'public' and tablename = 'notifications' and cmd = 'UPDATE') s),
+  1, '093.8: notifications'' SELECT using, UPDATE using and UPDATE with check are ONE expression under three names — 036 §4''s rule, because no write path may reach a row no read path returns, or "mark all read" becomes a disclosure channel through its affected-row count');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'notifications'
+      and coalesce(qual, '') like '%has_live_club_invite%'),
+  2, '093.8: ... and BOTH of them carry the new arm. This is the ONE place in the suite where a moved pin is CORRECT — 091''s rule is the opposite, and 093.7 is the set that must not move');
+
+-- ---------------------------------------------------------------------------
+-- 093.9  The notification is LIVE-scoped: four ways it stops resolving
+-- ---------------------------------------------------------------------------
+-- One predicate, four cases, and none of them is visible from the policy text.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930005', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_invited' and club_id = '00000000-0000-0000-0000-0000009300c1'),
+  0, '093.9: a rider holding NO invite reads zero club_invited rows for that club — the arm is not "any club_invited row", it is "an invite addressed to me that is still answerable"');
+reset role;
+
+-- (a) WITHDRAWN.
+savepoint invite_notif_withdrawn_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930002', false);
+delete from club_invites where id = '00000000-0000-0000-0000-0000009300f1';
+select set_config('test.uid', '00000000-0000-0000-0000-000000930004', false);
+select assert_eq(
+  (select count(*)::int from notifications where type = 'club_invited'),
+  0, '093.9: (a) WITHDRAWN — the notification row SURVIVES (090 dropped the ride retraction for a measured reason and 093 does not reinstate it) and simply stops resolving, so on a PRIVATE club the invite retracts itself');
+reset role;
+select assert_eq(
+  (select count(*)::int from notifications
+    where user_id = '00000000-0000-0000-0000-000000930004' and type = 'club_invited'),
+  1, '093.9: ... and the row IS still there, read as the owner — which is what makes withdraw-and-re-send notify ONCE rather than without limit, because the re-send collides with notifications_event_key');
+rollback to savepoint invite_notif_withdrawn_093;
+
+-- (b) THE INVITER DEMOTED. 088's own RPC, called by the owner.
+savepoint invite_notif_demoted_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930012', false);
+select assert_eq(
+  (select count(*)::int from notifications where type = 'club_invited'),
+  1, '093.9: (b) cidemotee reads their notification while cidemoted is still an admin ...');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930001', false);
+select demote_club_admin('00000000-0000-0000-0000-0000009300c1',
+                         '00000000-0000-0000-0000-000000930011');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930012', false);
+select assert_eq(
+  (select count(*)::int from notifications where type = 'club_invited'),
+  0, '093.9: ** ... and DEMOTION takes it away ** — authority is re-derived at every use and never trusted from creation, so an invite from a rider the club has just stripped of exactly this power stops working, notification included');
+select assert_eq(
+  (select count(*)::int from my_live_club_invites()),
+  0, '093.9: ... and the invite leaves their live list at the same moment, through the SAME body — one definition of answerable, three callers');
+select assert_eq(
+  error_of($$select accept_club_invite('00000000-0000-0000-0000-0000009300f4')$$) like '42501 %',
+  true, '093.9: ... and the accept raises, so the surface can never offer a button that always fails');
+reset role;
+rollback to savepoint invite_notif_demoted_093;
+
+-- (c) THE INVITER LEFT.
+savepoint invite_notif_left_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930016', false);
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000009300c1'
+   and user_id = '00000000-0000-0000-0000-000000930016';
+select set_config('test.uid', '00000000-0000-0000-0000-000000930017', false);
+select assert_eq(
+  (select count(*)::int from notifications where type = 'club_invited'),
+  0, '093.9: (c) THE INVITER LEFT — no block, no demotion, just a departure, and the invite stops working because they no longer speak for the club');
+select assert_eq(
+  error_of($$select accept_club_invite('00000000-0000-0000-0000-0000009300f5')$$) like '42501 %',
+  true, '093.9: ... and so does the accept');
+reset role;
+rollback to savepoint invite_notif_left_093;
+
+-- (d) BLOCKED, in each direction — the fixture already holds one of each shape.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930006', false);
+select assert_eq(
+  (select count(*)::int from notifications where type = 'club_invited'),
+  0, '093.9: (d) BLOCKED WITH THE INVITER — the row was written before the block and stops resolving after it');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930010', false);
+select assert_eq(
+  (select count(*)::int from notifications where type = 'club_invited'),
+  0, '093.9: ... and BLOCKED WITH THE CLUB''S OWNER does the same, though the owner is nowhere in the notification row — the predicate reaches them through the invite');
+reset role;
+
+-- ** AND THE PUBLIC-CLUB HALF, WHICH BEHAVES DIFFERENTLY AND MUST. ** There the
+-- ordinary `clubs` conjunct resolves throughout, so the new arm is never
+-- reached and 090's accepted cost applies: a withdrawn invite leaves a
+-- notification standing, which the client must degrade to plain text rather
+-- than to a dead control.
+savepoint invite_notif_public_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930003', false);
+delete from club_invites where id = '00000000-0000-0000-0000-0000009300f6';
+select set_config('test.uid', '00000000-0000-0000-0000-000000930009', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_invited' and club_id = '00000000-0000-0000-0000-0000009300c2'),
+  1, '093.9: on a PUBLIC club a WITHDRAWN invite leaves its notification READABLE — 036 §3''s ordinary conjunct resolves for any signed-in rider, so the new arm is never reached and 090''s accepted cost applies here and only here. ClubInviteActions must read the LIVE invite through my_live_club_invites() and render null, which is RideInviteActions'' shape');
+select assert_eq(
+  (select count(*)::int from my_live_club_invites()),
+  0, '093.9: ... and that live read returns nothing, so the row degrades to plain text rather than to a dead control');
+reset role;
+rollback to savepoint invite_notif_public_093;
+
+-- ---------------------------------------------------------------------------
+-- 093.10  The accessor — and what it does NOT disclose
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930004', false);
+select assert_eq(
+  (select count(*)::int from my_live_club_invites()),
+  1, '093.10: the invitee''s live list holds exactly their own invite');
+select assert_eq(
+  (select club_name || '|' || coalesce(club_location_name, '-') || '|' ||
+          club_is_public::text || '|' || members_count::text || '|' || inviter_username
+     from my_live_club_invites()),
+  'Invite Test MC|-|false|6|ciadmin',
+  '093.10: ... with the club''s name, a MEMBER COUNT and never a roster, the is_public flag and the inviter''s username — every one of which public.discoverable_private_clubs already gives this exact rider, because a live invitee is by construction a non-owner, non-member of a non-default club unblocked with its owner, which is that accessor''s predicate');
+-- The equivalence, asserted rather than claimed.
+select assert_eq(
+  (select count(*)::int from discoverable_private_clubs('00000000-0000-0000-0000-0000009300c1')),
+  1, '093.10: ** ... and 085''s accessor really does return that club to them ** — so my_live_club_invites discloses NOTHING NEW, which is the narrowness proof for the in-app half and would be a claim rather than a fact without this line');
+select assert_eq(
+  (select d.name = i.club_name and d.members_count = i.members_count
+     from discoverable_private_clubs('00000000-0000-0000-0000-0000009300c1') d,
+          my_live_club_invites() i),
+  true, '093.10: ... and the two agree on the name and the count, so the invite surface is drawing the same club by the same numbers');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 093.11  Accepting — five writes and a retraction, each COUNTED
+-- ---------------------------------------------------------------------------
+savepoint invite_accept_093;
+-- cirequest holds a PENDING join request AND gets invited to the same club.
+-- That combination is unreachable through the INSERT policy (093.3), so the
+-- request is placed first and the invite is written as the OWNER — which is the
+-- only way to build the state where the claim path's request-clearing matters.
+reset role;
+insert into club_invites (id, club_id, invitee_id, inviter_id)
+values ('00000000-0000-0000-0000-0000009300f8', '00000000-0000-0000-0000-0000009300c1',
+        '00000000-0000-0000-0000-000000930013', '00000000-0000-0000-0000-000000930002');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_join_requested'
+      and club_id = '00000000-0000-0000-0000-0000009300c1'
+      and actor_id = '00000000-0000-0000-0000-000000930013'),
+  5, '093.11: before the accept, the club''s owner and its four admins each hold a "cirequest asked to join" notification');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930013', false);
+select assert_eq(
+  accept_club_invite('00000000-0000-0000-0000-0000009300f8'),
+  '00000000-0000-0000-0000-0000009300c1'::uuid,
+  '093.11: the accept returns the club it joined, so the client can navigate without a second read');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000009300c1'
+      and user_id = '00000000-0000-0000-0000-000000930013'
+      and role = 'member' and invite_link_id is null),
+  1, '093.11: (1) exactly ONE club_members row, role `member` written as a LITERAL — private.join_club_from_invite takes no role argument, which is what keeps 019''s rule that `admin` is claimable by no client true through this new path — and invite_link_id NULL, because this admission came by name rather than by token');
+select assert_eq(
+  (select count(*)::int from club_invites where id = '00000000-0000-0000-0000-0000009300f8'),
+  0, '093.11: (2) the invite row is DELETED — the membership is the record, and a surviving row beside unique (club_id, invitee_id) would make this club un-invitable to this rider for ever if they left');
+select assert_eq(
+  (select count(*)::int from club_join_requests
+    where club_id = '00000000-0000-0000-0000-0000009300c1'
+      and user_id = '00000000-0000-0000-0000-000000930013'),
+  0, '093.11: (3) the PENDING JOIN REQUEST is deleted too, AFTER the membership was written');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_join_requested'
+      and club_id = '00000000-0000-0000-0000-0000009300c1'
+      and actor_id = '00000000-0000-0000-0000-000000930013'),
+  0, '093.11: (4) ** ... which fires 085/087''s retraction and takes all five admins'' "X asked to join" notifications with it ** — without the delete every admin keeps an actionable request line for a rider who is already in the club, which is 087''s exact defect arriving by a third route');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined'
+      and club_id = '00000000-0000-0000-0000-0000009300c1'
+      and actor_id = '00000000-0000-0000-0000-000000930013'),
+  (select count(*)::int from (
+     select c.owner_id as r from clubs c where c.id = '00000000-0000-0000-0000-0000009300c1'
+     union
+     select m.user_id from club_members m
+      where m.club_id = '00000000-0000-0000-0000-0000009300c1' and m.role in ('owner','admin')) s
+    where s.r <> '00000000-0000-0000-0000-000000930013'),
+  '093.11: (5) exactly one club_joined per (owner UNION admins), compared against the set rather than against a number so the fixture''s admin count cannot make it vacuous. private.notify_club_joined fires `after insert on club_members` with NO when clause, so it now runs INSIDE this write path and a raise there would take the rider''s accept down with it — 036''s hand-exercise gate');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_invite_accepted' or type = 'club_invite_declined'),
+  0, '093.11: (6) and NO club_invite_accepted row anywhere — there is no such type, deliberately: notify_club_joined already tells the owner and the admins, and a second row would tell the same people the same thing (091 made the identical call about ride_joined)');
+rollback to savepoint invite_accept_093;
+
+-- ---------------------------------------------------------------------------
+-- 093.12  ** THE UN-ONBOARDED RIDER, ON BOTH PATHS — 085's trap, one function
+--         over **
+-- ---------------------------------------------------------------------------
+-- private.join_club_from_invite restates the gate with the SUBJECT-taking
+-- may_participate_for. The caller-relative may_participate() would answer for
+-- whoever is calling, and on the CLAIM path that is the rider while on the
+-- ACCEPT path it is also the rider — but the ADMITTER is a third party in both,
+-- and reading the wrong one is the substitution 085 records.
+savepoint invite_gate_093;
+-- cinoterms is an ADMIN of c1 and a MEMBER of c2, so neither refusal below can
+-- be coming from a policy.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930008', false);
+select assert_rejected($$
+  insert into club_invites (club_id, invitee_id, inviter_id)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930005',
+          '00000000-0000-0000-0000-000000930008')$$,
+  '23514', '093.12: a rider with NO terms stamp cannot INVITE, though they are an admin of the club — the twentieth gate trigger, and the policy cannot be what refused them');
+select assert_rejected($$
+  insert into club_invite_links (club_id, created_by)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930008')$$,
+  '23514', '093.12: ... and cannot MINT a link either — the twenty-first gate trigger, and again they hold every membership the policy asks for, so a 42501 here would mean the POLICY refused and the gate was never reached');
+reset role;
+-- Their ACCEPT, written as the owner because the INSERT policy is not what is
+-- under test here.
+insert into club_invites (id, club_id, invitee_id, inviter_id)
+values ('00000000-0000-0000-0000-0000009300f9', '00000000-0000-0000-0000-0000009300c2',
+        '00000000-0000-0000-0000-000000930005', '00000000-0000-0000-0000-000000930003');
+update profiles set terms_accepted_at = null
+ where id = '00000000-0000-0000-0000-000000930005';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930005', false);
+select assert_eq(
+  (select count(*)::int from my_live_club_invites()),
+  0, '093.12: an UN-ONBOARDED invitee sees no live invite at all — the stamp test is inside private.club_invite_is_answerable_for, so the gate governs the READ as well as the write and a definer read has no policy beneath it to do it instead');
+select assert_eq(
+  error_of($$select accept_club_invite('00000000-0000-0000-0000-0000009300f9')$$) like '42501 %',
+  true, '093.12: ... and their accept raises, at the SAME single site as every other refusal');
+select assert_eq(
+  (select count(*)::int from club_invite_link_preview(current_setting('test.ctok1'))),
+  0, '093.12: ... and their PREVIEW of a live token returns zero rows, which is the read half 091 shipped a first draft without');
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.ctok1'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$),
+  '093.12: ... and their CLAIM is indistinguishable from a guess');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members where user_id = '00000000-0000-0000-0000-000000930005'
+     and club_id in ('00000000-0000-0000-0000-0000009300c1','00000000-0000-0000-0000-0000009300c2')),
+  0, '093.12: ... and nothing was written on either path');
+rollback to savepoint invite_gate_093;
+
+-- ---------------------------------------------------------------------------
+-- 093.13  A refusal is terminal against the INVITER and reopenable by the
+--         INVITEE — 083's rule, inverted from 085's
+-- ---------------------------------------------------------------------------
+-- The inviter here is an ordinary MEMBER of a PUBLIC club, which is the only
+-- shape where "the inviter" and "an admin" are different riders and the DELETE
+-- policy's two arms can be told apart.
+savepoint invite_decline_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930014', false);
+select assert_eq(
+  (select count(*)::int from my_live_club_invites()),
+  1, '093.13: cideclined holds one live invite to the public club ...');
+select decline_club_invite('00000000-0000-0000-0000-0000009300f7');
+reset role;
+select assert_eq(
+  (select status || '|' || (responded_at is not null)::text from club_invites
+    where id = '00000000-0000-0000-0000-0000009300f7'),
+  'declined|true',
+  '093.13: ... and the decline moves BOTH columns together, the coupling being `is not distinct from` so neither can move alone');
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000009300c2'
+      and user_id = '00000000-0000-0000-0000-000000930014'),
+  0, '093.13: ... and writes no membership');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_invite_declined'
+      and user_id = '00000000-0000-0000-0000-000000930003'
+      and actor_id = '00000000-0000-0000-0000-000000930014'),
+  1, '093.13: ** the decline notifies the INVITER ALONE ** — recipient read from the row, and the WHEN is on the status TRANSITION rather than on current_user, which would have disabled it entirely because decline_club_invite is security definer (087''s bug, one table over)');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_invite_declined'
+      and user_id <> '00000000-0000-0000-0000-000000930003'),
+  0, '093.13: ... and NOBODY else, not the club''s owner and not its admins — the invite was one rider''s act, and fanning a refusal to a whole team discloses one rider''s answer to people who did not ask');
+
+-- Terminal against the inviter, clearable by the club.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930003', false);
+delete from club_invites where id = '00000000-0000-0000-0000-0000009300f7';
+reset role;
+select assert_eq(
+  (select count(*)::int from club_invites where id = '00000000-0000-0000-0000-0000009300f7'),
+  1, '093.13: ** the INVITER''s delete of a DECLINED invite matches NOTHING ** — their arm is scoped to `status = ''pending''`, so they may withdraw an offer and never un-answer one. Read back as the owner, because RLS filters a DELETE to zero rows rather than raising and PostgREST reports success either way');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930001', false);
+delete from club_invites where id = '00000000-0000-0000-0000-0000009300f7';
+reset role;
+select assert_eq(
+  (select count(*)::int from club_invites where id = '00000000-0000-0000-0000-0000009300f7'),
+  0, '093.13: ... while an ADMIN of the club clears it, which is 085''s "a refusal is clearable by the club" mirrored. The re-send is bounded by the unique key and, from the SAME admin, by notifications_event_key');
+rollback to savepoint invite_decline_093;
+
+-- The invitee alone may reopen their own refusal.
+savepoint invite_reopen_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930014', false);
+select decline_club_invite('00000000-0000-0000-0000-0000009300f7');
+select assert_eq(
+  error_of($$select decline_club_invite('00000000-0000-0000-0000-0000009300f7')$$) like '42501 %',
+  true, '093.13: a second decline of the same invite raises — decline answers `pending` ONLY');
+select assert_eq(
+  accept_club_invite('00000000-0000-0000-0000-0000009300f7'),
+  '00000000-0000-0000-0000-0000009300c2'::uuid,
+  '093.13: ** ... but the INVITEE may still ACCEPT it ** — answerability is `pending` OR `declined`, because the invitee alone may reopen their own refusal (083''s rule) and the accept RPC is the only door to it');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000009300c2'
+      and user_id = '00000000-0000-0000-0000-000000930014'),
+  1, '093.13: ... and that reopening really joined them');
+rollback to savepoint invite_reopen_093;
+
+-- ---------------------------------------------------------------------------
+-- 093.14  Withdrawal reaches the row — the shape 092 measured as reversible
+-- ---------------------------------------------------------------------------
+-- RLS applies the SELECT policy to a `DELETE … where` (081, measured), so the
+-- DELETE policy alone decides nothing: a row the caller owns but cannot READ
+-- survives its own delete, silently, with PostgREST reporting success.
+--
+-- ** 093 HAS NO HOISTED OWN-ROW ARM AND NEEDS NONE, WHICH IS ITSELF THE THING
+-- TO ASSERT. ** club_invites SELECT has no parent EXISTS to dominate anything:
+-- its first conjunct is `invitee_id = auth.uid() or inviter_id = auth.uid()`
+-- with no club predicate at all, so an inviter who has since LEFT the club can
+-- still withdraw the offer they made. The case below is 092.6's third detector
+-- transplanted — no block is involved, leaving is enough.
+savepoint invite_withdraw_left_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930016', false);
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000009300c1'
+   and user_id = '00000000-0000-0000-0000-000000930016';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000009300c1'),
+  0, '093.14: a rider who has LEFT a private club can no longer read it at all ...');
+select assert_eq(
+  (select count(*)::int from club_invites where id = '00000000-0000-0000-0000-0000009300f5'),
+  1, '093.14: ** ... and STILL READS the invite they sent ** — club_invites SELECT names the two riders and no club, so there is no parent EXISTS to dominate the own-row arm and nothing to hoist');
+delete from club_invites where id = '00000000-0000-0000-0000-0000009300f5';
+reset role;
+select assert_eq(
+  (select count(*)::int from club_invites where id = '00000000-0000-0000-0000-0000009300f5'),
+  0, '093.14: ** ... and their DELETE MATCHED it, read back as the owner. ** If a club-visibility arm is ever added to that SELECT policy this becomes DELETE 0 with PostgREST reporting success and the offer standing for ever — 081''s club_messages trap, which 092 measured on club_thread_waves and which this table escapes by SHAPE rather than by luck');
+rollback to savepoint invite_withdraw_left_093;
+
+-- The block conjunct on DELETE is 036 §4's rule and its cost is deliberate.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930002', false);
+select assert_eq(
+  (select count(*)::int from club_invites where id = '00000000-0000-0000-0000-0000009300f2'),
+  0, '093.14: an inviter blocked with their invitee reads NEITHER the invite they sent ...');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_invites where id = '00000000-0000-0000-0000-0000009300f2'),
+  1, '093.14: ... nor, therefore, deletes it — the row is still there. That is 036 §4 rather than tidiness: without the conjunct on DELETE, an admin''s bulk clear returns an affected-row count exceeding the list they can see, by exactly the number of rows a block is hiding');
+
+-- ---------------------------------------------------------------------------
+-- 093.15  ** ONLY OWNERS AND ADMINS MINT, AND ONLY ON A PRIVATE CLUB **
+-- ---------------------------------------------------------------------------
+savepoint link_mint_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930001', false);
+select assert_allowed($$
+  insert into club_invite_links (club_id, created_by)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930001')$$,
+  '093.15: the OWNER mints');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930003', false);
+select assert_denied($$
+  insert into club_invite_links (club_id, created_by)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930003')$$,
+  '093.15: ** an ordinary MEMBER does NOT ** — if they could, a rider whose join request an admin declined could get a link from a friendly member and be in, and the decline would be reversible by somebody with no authority to reverse it');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930001', false);
+select assert_denied($$
+  insert into club_invite_links (club_id, created_by)
+  values ('00000000-0000-0000-0000-0000009300c2', '00000000-0000-0000-0000-000000930001')$$,
+  '093.15: ** and NOBODY mints into a PUBLIC club, its owner included ** — decision 1: the plain URL already carries the whole grant a token could carry, so a token there would be a capability surface with no capability behind it');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930005', false);
+select assert_denied($$
+  insert into club_invite_links (club_id, created_by)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930005')$$,
+  '093.15: a non-member mints nothing ...');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930003', false);
+select assert_denied($$
+  insert into club_invite_links (club_id, created_by)
+  values ('00000000-0000-0000-0000-0000009300c1', '00000000-0000-0000-0000-000000930002')$$,
+  '093.15: ... and a member cannot mint one in an ADMIN''s name — `created_by = auth.uid()` is the first conjunct');
+reset role;
+rollback to savepoint link_mint_093;
+
+-- ---------------------------------------------------------------------------
+-- 093.16  A link row FOLLOWS THE CLUB, and no claimer ever reads it
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930011', false);
+select assert_eq(
+  (select count(*)::int from club_invite_links
+    where club_id = '00000000-0000-0000-0000-0000009300c1'),
+  5, '093.16: a CO-ADMIN who minted only one of them reads all five links on the club — the policy is private.is_club_admin and not `created_by = auth.uid()`, because an administrative object belongs to the club');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930003', false);
+select assert_eq(
+  (select count(*)::int from club_invite_links),
+  0, '093.16: an ordinary MEMBER reads none of them');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930015', false);
+select assert_eq(
+  (select count(*)::int from club_invite_links),
+  0, '093.16: ** and the CLAIMER reads none either ** — which is what makes every token a genuine bearer credential rather than a lookup key, and what makes the calls below genuine bearer calls');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 093.17  ** EVERY DEAD TOKEN IS INDISTINGUISHABLE FROM EVERY OTHER AND FROM A
+--         GUESS ** — eleven states, one answer
+-- ---------------------------------------------------------------------------
+-- ** COMPARED ON THE MESSAGE, NOT ONLY THE SQLSTATE. ** A SQLSTATE-only
+-- comparison passes green with an oracle present: two ways to fail can both be
+-- insufficient_privilege and still tell a prober which is which. `error_of`
+-- returns `SQLSTATE message`, and every comparison is against the GUESS rather
+-- than against a literal, so re-wording the raise cannot make these vacuous.
+savepoint link_dead_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930015', false);
+
+select assert_eq((select count(*)::int from club_invite_link_preview(current_setting('test.ctok3'))),
+  0, '093.17: (1) an EXPIRED token previews zero rows');
+select assert_eq((select count(*)::int from club_invite_link_preview(current_setting('test.ctok2'))),
+  0, '093.17: (2) a REVOKED token previews zero rows');
+select assert_eq((select count(*)::int from club_invite_link_preview(current_setting('test.cguess'))),
+  0, '093.17: (3) a well-formed GUESS previews zero rows');
+select assert_eq((select count(*)::int from club_invite_link_preview('not a token at all')),
+  0, '093.17: (4) and so does a MALFORMED string — compared as text, so there is no parse error to confirm the token format to a prober');
+
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.ctok3'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$),
+  '093.17: EXPIRED and GUESSED claims fail with the same SQLSTATE and the same MESSAGE');
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.ctok2'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$),
+  '093.17: ... and so does REVOKED, so an admin''s revoke is not observable to whoever holds the URL');
+select assert_eq(
+  error_of($$select claim_club_invite_link('not a token at all')$$),
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$),
+  '093.17: ... and MALFORMED, which must not raise a different error from a well-formed miss');
+-- Non-vacuity: the comparisons above would also pass if every one of them
+-- SUCCEEDED. This is what says they all failed, and failed as a REFUSAL.
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$) like '42501 %',
+  true, '093.17: ... and the shared answer really is a REFUSAL (42501), not four silent successes compared against each other');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members where user_id = '00000000-0000-0000-0000-000000930015'),
+  0, '093.17: and no dead-token claim left a membership row behind');
+
+-- (5) THE MINTER DEMOTED, (6) THE MINTER DEPARTED — the two cases `expires_at`
+-- alone gets wrong, and the reason authority is re-derived at every use.
+savepoint link_minter_demoted_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930001', false);
+select demote_club_admin('00000000-0000-0000-0000-0000009300c1',
+                         '00000000-0000-0000-0000-000000930011');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930015', false);
+select assert_eq(
+  (select expires_at > now() and revoked_at is null from club_invite_links
+    where id = '00000000-0000-0000-0000-0000009300a4'),
+  true, '093.17: (5) after the minter is DEMOTED the link is still unexpired and unrevoked ...');
+select assert_eq((select count(*)::int from club_invite_link_preview(current_setting('test.ctok4'))),
+  0, '093.17: ... and DEAD anyway, because reachability re-reads may_invite_to_club_for(created_by, club) at every use');
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.ctok4'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$),
+  '093.17: ... indistinguishably from a guess');
+reset role;
+rollback to savepoint link_minter_demoted_093;
+
+savepoint link_minter_left_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930016', false);
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000009300c1'
+   and user_id = '00000000-0000-0000-0000-000000930016';
+select set_config('test.uid', '00000000-0000-0000-0000-000000930015', false);
+select assert_eq((select count(*)::int from club_invite_link_preview(current_setting('test.ctok6'))),
+  0, '093.17: (6) THE MINTER DEPARTED — no demotion and no revoke, just a leave, and every token they ever made dies with their authority');
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.ctok6'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$),
+  '093.17: ... indistinguishably from a guess');
+reset role;
+rollback to savepoint link_minter_left_093;
+
+-- (7) THE CLUB DELETED, which reaches the same answer by a different road: the
+-- cascade removes the link row first, so the token becomes one that never
+-- existed.
+savepoint link_club_deleted_093;
+reset role;
+delete from clubs where id = '00000000-0000-0000-0000-0000009300c4';
+select assert_eq((select count(*)::int from club_invite_links where id = '00000000-0000-0000-0000-0000009300a5'),
+  0, '093.17: (7) deleting the club takes its links with it, by cascade');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930015', false);
+select assert_eq((select count(*)::int from club_invite_link_preview(current_setting('test.ctok5'))),
+  0, '093.17: ... so a token for a DELETED club previews zero rows');
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.ctok5'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$),
+  '093.17: ... and claims identically to a token that never existed');
+reset role;
+rollback to savepoint link_club_deleted_093;
+
+-- (8) BLOCKED WITH THE MINTER, (9) BLOCKED WITH THE OWNER, (10) UN-ONBOARDED
+-- (093.12), (11) ALREADY A MEMBER and the OWNER themselves.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930006', false);
+select assert_eq((select count(*)::int from club_invite_link_preview(current_setting('test.ctok1'))),
+  0, '093.17: (8) a rider BLOCKED WITH THE MINTER previews zero rows off a live token');
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.ctok1'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$),
+  '093.17: ... and claims identically to a guess');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930010', false);
+select assert_eq((select count(*)::int from club_invite_link_preview(current_setting('test.ctok1'))),
+  0, '093.17: (9) and so does a rider BLOCKED WITH THE CLUB''S OWNER, who is nowhere in the link row — reachability reaches them through the club');
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.ctok1'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$),
+  '093.17: ... and claims identically to a guess');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930003', false);
+select assert_eq((select count(*)::int from club_invite_link_preview(current_setting('test.ctok1'))),
+  0, '093.17: (10) a rider who is ALREADY A MEMBER previews zero rows — there is nothing to decide, and a preview would be a screen offering to join a club they are in');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930001', false);
+select assert_eq((select count(*)::int from club_invite_link_preview(current_setting('test.ctok1'))),
+  0, '093.17: (11) and so does the club''s OWNER opening their own club''s link');
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.ctok1'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$),
+  '093.17: ... and the owner''s claim is indistinguishable from a guess, so the surface must read its own membership rather than rely on the error');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 093.18  ** THE PREVIEW AND THE CLAIM CANNOT DISAGREE ABOUT A TOKEN **
+-- ---------------------------------------------------------------------------
+-- The pin that makes "change reach in ONE place" enforceable. For every dead
+-- state the preview returning zero rows AND the claim raising are asserted as
+-- one conjunct, so a predicate copied into one body and edited in the other
+-- fails here rather than shipping a preview that shows a stranger a private
+-- club they cannot join — a pure disclosure — or a "no longer valid" screen for
+-- a link that works.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930015', false);
+select assert_eq(
+  (select count(*)::int from (values
+      (current_setting('test.ctok2')), (current_setting('test.ctok3')),
+      (current_setting('test.cguess')), ('not a token at all')) as d(tok)
+    where (select count(*) from club_invite_link_preview(d.tok)) = 0
+      and error_of(format('select claim_club_invite_link(%L)', d.tok)) like '42501 %'),
+  4, '093.18: for all FOUR always-dead states the preview answers zero rows AND the claim refuses — asserted as one conjunct per state, so a predicate that drifts into one body and not the other fails here');
+select assert_eq(
+  (select count(*)::int from club_invite_link_preview(current_setting('test.ctok1'))) = 1
+    and error_of(format('select claim_club_invite_link(%L)', current_setting('test.ctok1'))) = '<no error>',
+  true, '093.18: ... and for the LIVE token both answer yes, so the four above are a refusal rather than a function that refuses everything');
+reset role;
+rollback to savepoint link_dead_093;
+
+-- ---------------------------------------------------------------------------
+-- 093.19  The claim — what it writes, and what a second one does not
+-- ---------------------------------------------------------------------------
+savepoint link_claim_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930015', false);
+select assert_eq(
+  (select club_id || '|' || name || '|' || members_count::text || '|' || is_public::text
+     from club_invite_link_preview(current_setting('test.ctok1'))),
+  '00000000-0000-0000-0000-0000009300c1|Invite Test MC|6|false',
+  '093.19: the preview shows the claimer the club''s id, name, MEMBER COUNT and is_public — the count is what lets them tell a club of four from a club of four hundred, and the flag is what stops the landing screen asserting "Private club" about a club that has since flipped');
+select assert_eq(
+  claim_club_invite_link(current_setting('test.ctok1')),
+  '00000000-0000-0000-0000-0000009300c1'::uuid,
+  '093.19: ... and the claim returns the club, so the rider lands on it rather than on a redemption receipt');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000009300c1'
+      and user_id = '00000000-0000-0000-0000-000000930015'
+      and role = 'member'
+      and invite_link_id = '00000000-0000-0000-0000-0000009300a1'),
+  1, '093.19: ONE club_members row, role `member` as a literal, carrying the link that admitted them — provenance, and the only thing that ever writes that column');
+select assert_eq(
+  (select count(*)::int from club_members where invite_link_id = '00000000-0000-0000-0000-0000009300a1'),
+  1, '093.19: ... and the link''s USE COUNT is that number, DERIVED and never stored — a counter drifts, a derived count cannot');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930015', false);
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.ctok1'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.cguess'))$$),
+  '093.19: a SECOND claim by the same rider is refused exactly like a guess — they are now a member, which reachability excludes, so the surface must read its own membership rather than the error');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members where invite_link_id = '00000000-0000-0000-0000-0000009300a1'),
+  1, '093.19: ... and it did not move the derived count');
+
+-- The claimer is an ORDINARY MEMBER afterwards and nothing more.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930015', false);
+select assert_eq((select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000009300c1'),
+  1, '093.19: after the claim the rider reads the club ...');
+select assert_eq((select count(*)::int from club_threads where club_id = '00000000-0000-0000-0000-0000009300c1'),
+  1, '093.19: ... its threads ...');
+select assert_eq((select count(*)::int from rides where id = '00000000-0000-0000-0000-0000009300e1'),
+  1, '093.19: ... and its club-only rides — an admitted claimer is byte-for-byte the same audience member as an approved join request, reached through an ordinary club_members row and nothing else');
+select assert_eq((select count(*)::int from club_invite_links),
+  0, '093.19: ... and STILL reads no link row, because the token bought a membership and never an administrative surface');
+reset role;
+
+-- Deleting the link nulls the column and keeps every membership.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930002', false);
+delete from club_invite_links where id = '00000000-0000-0000-0000-0000009300a1';
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000009300c1'
+      and user_id = '00000000-0000-0000-0000-000000930015'
+      and invite_link_id is null),
+  1, '093.19: ** deleting the link NULLS the column and keeps the rider ** — `on delete set null`, never cascade, because deleting a link must not delete the people it admitted. The use count goes to zero and the membership does not');
+rollback to savepoint link_claim_093;
+
+-- A claim CLEARS what it makes moot: the pending request and the standing
+-- invite both go, and the admins' request notification goes with the first.
+savepoint link_claim_clears_093;
+reset role;
+insert into club_invites (id, club_id, invitee_id, inviter_id)
+values ('00000000-0000-0000-0000-0000009300fa', '00000000-0000-0000-0000-0000009300c1',
+        '00000000-0000-0000-0000-000000930013', '00000000-0000-0000-0000-000000930002');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930013', false);
+select claim_club_invite_link(current_setting('test.ctok1'));
+reset role;
+select assert_eq(
+  (select count(*)::int from club_join_requests
+    where club_id = '00000000-0000-0000-0000-0000009300c1'
+      and user_id = '00000000-0000-0000-0000-000000930013'),
+  0, '093.19: a claim DELETES the rider''s pending join request, inside private.join_club_from_invite and AFTER the membership row ...');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_join_requested' and actor_id = '00000000-0000-0000-0000-000000930013'),
+  0, '093.19: ... which fires 085/087''s retraction, so no admin is left holding an actionable "X asked to join" line for a rider who is already in — 087''s defect arriving by a third route');
+select assert_eq(
+  (select count(*)::int from club_invites
+    where club_id = '00000000-0000-0000-0000-0000009300c1'
+      and invitee_id = '00000000-0000-0000-0000-000000930013'),
+  0, '093.19: ... and the STANDING INVITE goes too, because a rider who is now a member must not go on being shown "you have been invited" to a club they are in');
+rollback to savepoint link_claim_clears_093;
+
+-- ---------------------------------------------------------------------------
+-- 093.20  Revoke — one raise site, and it removes nobody
+-- ---------------------------------------------------------------------------
+savepoint link_revoke_093;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930015', false);
+select claim_club_invite_link(current_setting('test.ctok1'));
+select set_config('test.uid', '00000000-0000-0000-0000-000000930011', false);
+select revoke_club_invite_link('00000000-0000-0000-0000-0000009300a1');
+reset role;
+select assert_eq(
+  (select revoked_at is not null from club_invite_links where id = '00000000-0000-0000-0000-0000009300a1'),
+  true, '093.20: a CO-ADMIN who did not mint the link revokes it — the RPC is authorised by private.is_club_admin_for and not by created_by');
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000009300c1'
+      and user_id = '00000000-0000-0000-0000-000000930015'),
+  1, '093.20: ** ... and it REMOVES NOBODY ** — the rider it already admitted keeps their membership, deliberately, so the button''s copy must not imply otherwise. 088''s remove_club_member is the ejection path, and it does NOT bar re-entry through a live token (PD-361)');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000930011', false);
+select assert_eq(
+  error_of($$select revoke_club_invite_link('00000000-0000-0000-0000-0000009300a1')$$),
+  error_of($$select revoke_club_invite_link('00000000-0000-0000-0000-0000009300a1')$$),
+  '093.20: revoking an ALREADY-REVOKED link raises ...');
+select set_config('test.uid', '00000000-0000-0000-0000-000000930003', false);
+select assert_eq(
+  error_of($$select revoke_club_invite_link('00000000-0000-0000-0000-0000009300a2')$$),
+  error_of($$select revoke_club_invite_link('00000000-0000-0000-0000-0000009300a1')$$),
+  '093.20: ** ... with the SAME message an ordinary member gets, and the same one a nonexistent id gets ** — "no such link", "not your club" and "already revoked" are one answer');
+select assert_eq(
+  error_of($$select revoke_club_invite_link('00000000-0000-0000-0000-000000939999')$$),
+  error_of($$select revoke_club_invite_link('00000000-0000-0000-0000-0000009300a1')$$),
+  '093.20: ... including a link id that matches no row at all');
+select assert_eq(
+  error_of($$select revoke_club_invite_link('00000000-0000-0000-0000-000000939999')$$) like '42501 %',
+  true, '093.20: ... and that shared answer is a refusal rather than three silent successes');
+reset role;
+rollback to savepoint link_revoke_093;
+
+-- ---------------------------------------------------------------------------
+-- 093.21  The return lists ARE the disclosure
+-- ---------------------------------------------------------------------------
+-- `returns table` with named columns, never `setof public.clubs`: the second
+-- would make every future `alter table public.clubs add column` a widening of
+-- this disclosure with no diff anywhere to notice it in.
+select assert_eq(
+  (select pg_get_function_result(p.oid) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'club_invite_link_preview'),
+  'TABLE(club_id uuid, name text, avatar_path text, location_name text, members_count bigint, is_public boolean)',
+  '093.21: the preview returns SIX named columns and a seventh is a red test. It DROPS discoverable_private_clubs'' latitude and longitude — the landing screen renders neither, and a token must not disclose where a club is for a field nothing draws — and ADDS is_public, which that accessor implies by its own predicate while a TOKEN CAN OUTLIVE A FLIP');
+select assert_eq(
+  (select pg_get_function_result(p.oid) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'my_live_club_invites'),
+  'TABLE(invite_id uuid, club_id uuid, club_name text, club_avatar_path text, club_location_name text, club_is_public boolean, members_count bigint, inviter_id uuid, inviter_username text, inviter_avatar_path text, status text, created_at timestamp with time zone)',
+  '093.21: ... and the invitee''s accessor returns TWELVE, none of which is the club''s description, cover, owner, age or coordinates');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('club_invite_link_preview', 'my_live_club_invites')
+      and pg_get_function_result(p.oid) like '%SETOF%'),
+  0, '093.21: and neither returns SETOF a table, so a column added to `clubs` or `club_invites` later is not disclosed by default');
+
+-- ---------------------------------------------------------------------------
+-- 093.22  ** THE CALLER PREDICATE LIVES IN ONE PLACE, READ OFF prosrc **
+-- ---------------------------------------------------------------------------
+-- 093.17 proves the predicate is applied today. This proves it cannot drift:
+-- there is NO POLICY underneath either RPC, so a check absent from a body is
+-- absent everywhere, and a preview and a claim that disagree about the CALLER
+-- are invisible from either body alone. 091 was bitten here twice.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'public'::regnamespace
+      and proname in ('club_invite_link_preview', 'claim_club_invite_link')
+      and (prosrc ilike '%is_blocked%' or prosrc ilike '%terms_accepted_at%'
+        or prosrc ilike '%onboarding_completed_at%' or prosrc ilike '%revoked_at%'
+        or prosrc ilike '%expires_at%')),
+  0, '093.22: neither public RPC restates a block, a stamp or a liveness test — all five live in private.club_invite_link_reachable_by and private.live_club_invite_link, which is their only entry point');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'public'::regnamespace
+      and proname in ('accept_club_invite', 'decline_club_invite', 'my_live_club_invites')
+      and (prosrc ilike '%is_blocked%' or prosrc ilike '%terms_accepted_at%'
+        or prosrc ilike '%may_invite_to_club%')),
+  0, '093.22: ... and none of the three in-app RPCs restates one either — private.club_invite_is_answerable_for is ONE body with three callers, which is what stops the accessor and the accept disagreeing about who may answer');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'private'::regnamespace
+      and proname = 'club_invite_link_reachable_by'
+      and prosrc ilike '%for share%'),
+  1, '093.22: and reachable_by takes `for share` on the link row BEFORE resolving, so a revoke and an in-flight claim serialise rather than admitting a rider whose admin was told the opposite');
+select assert_eq(
+  (select provolatile from pg_proc
+    where pronamespace = 'public'::regnamespace and proname = 'club_invite_link_preview'),
+  'v', '093.22: ** the preview is VOLATILE and not STABLE, and the label is not cosmetic ** — `for share` is illegal in a non-volatile function, and PostgREST serves a stable function over GET, which would put a live capability token in the query string and therefore in the project''s own request log');
+
+-- ---------------------------------------------------------------------------
+-- 093.23  invite_link_id is PROVENANCE and must never become an audience test
+-- ---------------------------------------------------------------------------
+-- A rider admitted through a link has to be indistinguishable from an accepted
+-- invitee, an approved requester and a rider who simply joined a public club,
+-- EVERYWHERE access is decided. The moment something branches on this column it
+-- becomes a second copy of a visibility decision.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where coalesce(qual, '') || coalesce(with_check, '') ilike '%invite_link_id%'),
+  0, '093.23: NO policy anywhere references club_members.invite_link_id');
+select assert_eq(
+  (select array(select n.nspname || '.' || p.proname from pg_proc p
+                  join pg_namespace n on n.oid = p.pronamespace
+                 where n.nspname in ('public', 'private') and p.prosrc like '%invite_link_id%'
+                 order by 1)),
+  array['private.join_club_from_invite'],
+  '093.23: ... and exactly ONE function mentions it — the single place any invite path writes a club_members row, and there it is a WRITE. No audience helper, no fan-out and no read predicate is on this list');
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where c.relname = 'club_members' and not t.tgisinternal
+      and pg_get_triggerdef(t.oid) ilike '%invite_link_id%'),
+  0, '093.23: ... and no trigger on club_members is scoped by it either');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.club_members', 'invite_link_id', 'INSERT')
+    or has_column_privilege('authenticated', 'public.club_members', 'invite_link_id', 'UPDATE'),
+  false, '093.23: and no client can write it in either verb, so nobody can claim an admission came through a link when it did not, or launder one that did. 048''s per-column grants are what make that true by INHERITANCE rather than by a statement in 093');
+
+-- ---------------------------------------------------------------------------
+-- 093.24  The absences that make the RPCs the only writers
+-- ---------------------------------------------------------------------------
+-- Asserted in BOTH directions per grantee, because a well-meaning
+-- `grant all on … to authenticated` restores only one of them and the other
+-- goes on looking correct.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename in ('club_invites', 'club_invite_links')
+      and cmd = 'UPDATE'),
+  0, '093.24: there is NO UPDATE POLICY on either table, and the absence is the enforcement — with RLS on, a command with no policy is refused for every row');
+select assert_eq(
+  (select count(*)::int from (values ('club_invites'), ('club_invite_links')) t(n)
+    where has_table_privilege('authenticated', 'public.' || t.n, 'update')),
+  0, '093.24: ... and no UPDATE grant either, which is what stops a client writing NULL back over revoked_at to un-revoke a link');
+select assert_eq(
+  (select array(select tablename || ' ' || cmd || ' ' || roles::text from pg_policies
+                 where schemaname = 'public'
+                   and tablename in ('club_invites', 'club_invite_links')
+                 order by 1)),
+  array['club_invite_links DELETE {authenticated}',
+        'club_invite_links INSERT {authenticated}',
+        'club_invite_links SELECT {authenticated}',
+        'club_invites DELETE {authenticated}',
+        'club_invites INSERT {authenticated}',
+        'club_invites SELECT {authenticated}'],
+  '093.24: six policies, three per table, and every one targets `authenticated` ALONE — decision #1, and named rather than counted so an anon-targeted policy cannot hide inside a total');
+select assert_eq(
+  (select count(*)::int from information_schema.table_privileges
+    where table_schema = 'public' and table_name in ('club_invites', 'club_invite_links')
+      and grantee = 'anon'),
+  0, '093.24: anon holds NOTHING on either table');
+select assert_eq(
+  (select count(*)::int from (values
+      ('public.accept_club_invite(uuid)'), ('public.decline_club_invite(uuid)'),
+      ('public.my_live_club_invites()'), ('public.club_invite_link_preview(text)'),
+      ('public.claim_club_invite_link(text)'), ('public.revoke_club_invite_link(uuid)')) f(sig)
+    where has_function_privilege('anon', f.sig, 'execute')),
+  0, '093.24: ... and EXECUTE on none of the six RPCs — asserted by naming the role rather than by attempting a call, because this suite runs as the table owner for whom the barrier does not exist (031)');
+select assert_eq(
+  (select array(select column_name from information_schema.column_privileges
+                 where table_schema = 'public' and table_name = 'club_invites'
+                   and grantee = 'authenticated' and privilege_type = 'INSERT'
+                 order by 1)),
+  array['club_id', 'id', 'invitee_id', 'inviter_id'],
+  '093.24: club_invites'' INSERT grant names four columns and NOT status, created_at or responded_at — the default is not the guard, the absent grant is');
+select assert_eq(
+  (select array(select column_name from information_schema.column_privileges
+                 where table_schema = 'public' and table_name = 'club_invite_links'
+                   and grantee = 'authenticated' and privilege_type = 'INSERT'
+                 order by 1)),
+  array['club_id', 'created_by', 'id'],
+  '093.24: ... and club_invite_links'' names three and NOT token, expires_at, created_at or revoked_at');
+
+-- ---------------------------------------------------------------------------
+-- 093.25  The oracles are reachable by NO client role, NAMED rather than called
+-- ---------------------------------------------------------------------------
+-- 031's lesson: the suite runs as the table owner, for whom neither the schema
+-- barrier nor the EXECUTE barrier exists, so an assertion that CALLED these
+-- would pass against a database where the grant was wide open.
+select assert_eq(
+  (select count(*)::int from (values
+      ('private.may_invite_to_club_for(uuid,uuid)'),
+      ('private.may_mint_club_link_for(uuid,uuid)'),
+      ('private.club_takes_invites_for(uuid,uuid)'),
+      ('private.club_invite_is_answerable_for(uuid,uuid)'),
+      ('private.has_live_club_invite_for(uuid,uuid)'),
+      ('private.live_club_invite_link(text)'),
+      ('private.club_invite_link_reachable_by(text,uuid,boolean)'),
+      ('private.join_club_from_invite(uuid,uuid,uuid,uuid)'),
+      ('private.enforce_club_invite_is_admissible()'),
+      ('private.notify_club_invited()'),
+      ('private.notify_club_invite_declined()')) f(sig)
+    where has_function_privilege('authenticated', f.sig, 'execute')
+       or has_function_privilege('anon', f.sig, 'execute')
+       or has_function_privilege('service_role', f.sig, 'execute')),
+  0, '093.25: NO client role — service_role included — can call any of 093''s ELEVEN ungranted private helpers. may_invite_to_club_for is an ADMIN ORACLE for any pair and club_takes_invites_for a MEMBERSHIP ORACLE for any pair; both are safe only while nobody can call them');
+select assert_eq(
+  (select count(*)::int from (values
+      ('private.may_invite_to_club(uuid)'),
+      ('private.may_mint_club_link(uuid)'),
+      ('private.has_live_club_invite(uuid)')) f(sig)
+    where has_function_privilege('authenticated', f.sig, 'execute')),
+  3, '093.25: ... and the THREE caller-relative wrappers ARE callable by authenticated, because an RLS expression is evaluated as the querying role and the policies would otherwise refuse everything. Each answers about nobody but its caller, which is what makes granting it safe where granting the _for twin would not be');
+select assert_eq(
+  (select count(*)::int from (values
+      ('private.may_invite_to_club(uuid)'),
+      ('private.may_mint_club_link(uuid)'),
+      ('private.has_live_club_invite(uuid)')) f(sig)
+    where has_function_privilege('anon', f.sig, 'execute')),
+  0, '093.25: ... and anon can call none of the three');
+
+-- ---------------------------------------------------------------------------
+-- 093.26  Each wrapper's body is EXACTLY the delegation, pinned by EQUALITY
+-- ---------------------------------------------------------------------------
+-- Never by `like '%..._for%'`, which a comment mentioning the name satisfies —
+-- 060's reasoning and CLAUDE.md's comment trap.
+select assert_eq(
+  (select btrim(prosrc) from pg_proc
+    where pronamespace = 'private'::regnamespace and proname = 'may_invite_to_club'),
+  'select private.may_invite_to_club_for(auth.uid(), target_club);',
+  '093.26: private.may_invite_to_club delegates and does nothing else');
+select assert_eq(
+  (select btrim(prosrc) from pg_proc
+    where pronamespace = 'private'::regnamespace and proname = 'may_mint_club_link'),
+  'select private.may_mint_club_link_for(auth.uid(), target_club);',
+  '093.26: ... and so does private.may_mint_club_link');
+select assert_eq(
+  (select btrim(prosrc) from pg_proc
+    where pronamespace = 'private'::regnamespace and proname = 'has_live_club_invite'),
+  'select private.has_live_club_invite_for(auth.uid(), target_club);',
+  '093.26: ... and so does private.has_live_club_invite — one body per rule, not two, which is what stops the copies drifting');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('private', 'public')
+      and p.proname in ('may_invite_to_club_for', 'may_invite_to_club',
+                        'may_mint_club_link_for', 'may_mint_club_link',
+                        'club_takes_invites_for', 'club_invite_is_answerable_for',
+                        'has_live_club_invite_for', 'has_live_club_invite',
+                        'live_club_invite_link', 'club_invite_link_reachable_by',
+                        'enforce_club_invite_is_admissible', 'join_club_from_invite',
+                        'notify_club_invited', 'notify_club_invite_declined',
+                        'accept_club_invite', 'decline_club_invite',
+                        'my_live_club_invites', 'club_invite_link_preview',
+                        'claim_club_invite_link', 'revoke_club_invite_link')
+      and p.prosecdef and p.proconfig @> array['search_path=']),
+  20, '093.26: all TWENTY of 093''s functions are SECURITY DEFINER with search_path pinned empty — FOURTEEN in private and SIX in public, which is why the advisor count moves by six and not by twenty (PostgREST does not publish `private`)');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and (p.proname like '%club_invite%' or p.proname = 'my_live_club_invites')),
+  6, '093.26: ... and exactly SIX of them are in `public`, so a seventh advisor after this applies means something landed in the wrong schema');
+
+-- ---------------------------------------------------------------------------
+-- 093.27  The participation gate, by TABLE NAME and by DELTA
+-- ---------------------------------------------------------------------------
+-- Both, because a flat count cannot tell a new table's gate from one that MOVED
+-- off another table to land here — 078's own task list got that wrong in the
+-- other direction. The absolute total lives at 092.13 and is only meaningful
+-- because this suite replays the whole chain; on a hosted project it depends on
+-- which of 092-095 has applied, so what travels is the delta.
+select assert_eq(
+  (select array(select c.relname from pg_trigger t join pg_class c on c.oid = t.tgrelid
+                 where t.tgname = 'enforce_participation_gate' and not t.tgisinternal
+                   and c.relname in ('club_invites', 'club_invite_links')
+                 order by 1)),
+  array['club_invite_links', 'club_invites'],
+  '093.27: BOTH new tables carry the gate — TWO new triggers, not one, which is 081''s arithmetic and the one 078''s task list got wrong. Inviting a rider and minting a bearer token are each participation');
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where t.tgname = 'enforce_participation_gate'
+      and c.relname in ('club_invites', 'club_invite_links')
+      and pg_get_triggerdef(t.oid) ilike '%current_user%'),
+  2, '093.27: ... and BOTH carry the WHEN guard. 023 §2: inside a security definer body current_user is the OWNER, so the guard moved into the function would fire for nobody and gate nothing while looking complete');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.club_members'::regclass and not tgisinternal),
+  3, '093.27: ** and the trigger count on club_members is UNCHANGED ** — 078.9''s lesson: a compensating gate trigger here could never fire, current_user inside private.join_club_from_invite being the owner, and it would raise the gate count while gating nothing. The gate is restated in that function''s BODY instead, through may_participate_for');
+select assert_eq(
+  (select array(select tgname from pg_trigger
+                 where tgrelid = 'public.club_invites'::regclass and not tgisinternal
+                 order by 1)),
+  array['enforce_club_invite_is_admissible', 'enforce_participation_gate',
+        'notify_club_invite_declined', 'notify_club_invited'],
+  '093.27: club_invites carries exactly four triggers, NAMED. The admissibility one sorts FIRST and therefore fires first, which is harmless only because its first statement short-circuits for a caller with no authority — otherwise an un-onboarded rider would learn which riders are members before ever reaching the gate');
+
+-- ---------------------------------------------------------------------------
+-- 093.28  Cascades and indexes — 029's erasure contract, from every end
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select array(select conname || ' ' || confdeltype from pg_constraint
+                 where conrelid = 'public.club_invites'::regclass and contype = 'f'
+                 order by 1)),
+  array['club_invites_club_id_fkey c', 'club_invites_invitee_id_fkey c',
+        'club_invites_inviter_id_fkey c'],
+  '093.28: club_invites has THREE cascading keys — the club and BOTH riders. 083''s pair rather than 085''s single one, because the row records a relationship between two IDENTIFIED riders and half the record would survive either erasure alone');
+select assert_eq(
+  (select array(select conname || ' ' || confdeltype from pg_constraint
+                 where conrelid = 'public.club_invite_links'::regclass and contype = 'f'
+                 order by 1)),
+  array['club_invite_links_club_id_fkey c', 'club_invite_links_created_by_fkey c'],
+  '093.28: club_invite_links has TWO — 091''s single-key shape, because a link is open by design and has no addressee to be a second key');
+select assert_eq(
+  (select confdeltype from pg_constraint
+    where conrelid = 'public.club_members'::regclass and contype = 'f'
+      and conname like '%invite_link%'),
+  'n', '093.28: ** and club_members.invite_link_id is SET NULL, never cascade ** — deleting a link, or the account of the admin who minted it, must remove the attribution and never the rider');
+
+-- Behavioural, because none of the above is visible from the other end.
+savepoint invite_cascade_093;
+reset role;
+delete from profiles where id = '00000000-0000-0000-0000-000000930004';
+select assert_eq(
+  (select count(*)::int from club_invites where invitee_id = '00000000-0000-0000-0000-000000930004'),
+  0, '093.28: deleting the INVITEE''s account takes the invite addressed to them ...');
+rollback to savepoint invite_cascade_093;
+savepoint invite_cascade2_093;
+reset role;
+delete from profiles where id = '00000000-0000-0000-0000-000000930002';
+select assert_eq(
+  (select count(*)::int from club_invites where inviter_id = '00000000-0000-0000-0000-000000930002'),
+  0, '093.28: ... deleting the INVITER''s takes every invite they SENT, out of every other rider''s list ...');
+select assert_eq(
+  (select count(*)::int from club_invite_links where created_by = '00000000-0000-0000-0000-000000930002'),
+  0, '093.28: ... and every token they ever minted, which is the only mechanism that will ever remove one');
+rollback to savepoint invite_cascade2_093;
+
+-- Every FK LEADS an index — the pg_index form, never a timing.
+select assert_eq(
+  (select count(*)::int from pg_constraint c
+    where c.contype = 'f'
+      and c.conrelid in ('public.club_invites'::regclass, 'public.club_invite_links'::regclass)
+      and not exists (
+        select 1 from pg_index i
+         where i.indrelid = c.conrelid
+           and i.indkey[0] = c.conkey[1])),
+  0, '093.28: every foreign key on both new tables LEADS an index — 029''s standing rule, read out of pg_index rather than measured with a timing');
+select assert_eq(
+  (select count(*)::int from pg_index i
+    where i.indrelid = 'public.club_members'::regclass
+      and i.indkey[0] = (select attnum from pg_attribute
+                          where attrelid = 'public.club_members'::regclass
+                            and attname = 'invite_link_id')),
+  1, '093.28: ... and so does the new column on club_members, which also serves the derived use count');
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where tablename = 'club_invite_links' and indexdef ilike '%(token)%'),
+  1, '093.28: and there is exactly ONE index on `token` — the unique constraint''s, with no second one beside it, since it already serves every lookup this feature makes');
+
+reset role;
+rollback to savepoint club_invites_093;
 
 rollback;
 
