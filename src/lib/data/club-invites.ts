@@ -38,10 +38,21 @@ const CLUB_INVITE_ADMIN_SELECT = `
   invitee:profiles!invitee_id(${PUBLIC_PROFILE_COLUMNS})
 `
 
-/** `public.my_live_club_invites()`'s own columns — see `ClubInvite` for why
- * this is inferred rather than measured. */
+/**
+ * `public.my_live_club_invites()`'s own columns — **measured against `093` as
+ * shipped**, not inferred. The function returns twelve; these are the four
+ * this app reads.
+ *
+ * **Its key is `invite_id`, not `id`**, which is the whole reason this type
+ * exists rather than the row being cast straight to `ClubInvite`. A
+ * `security definer` function names its own OUT parameters and this one
+ * disambiguates the invite's id from the club's; a read that assumed `id`
+ * type-checks, compiles, and hands every control an `undefined` invite to act
+ * on. The mapping below is the one line that stops that, and it is why the
+ * cast is to this shape first and never directly to the domain type.
+ */
 type LiveClubInviteRow = {
-  id: string
+  invite_id: string
   club_id: string
   status: ClubInvite['status']
   created_at: string
@@ -65,10 +76,19 @@ export async function getMyClubInvites(): Promise<ClubInvite[]> {
   } = await supabase.auth.getUser()
   if (!user) return []
 
-  return unwrapList(
+  const rows = unwrapList(
     await supabase.rpc('my_live_club_invites'),
     'your club invites'
   ) as unknown as LiveClubInviteRow[]
+
+  // `invite_id` -> `id`. See `LiveClubInviteRow` for why this rename is not
+  // cosmetic.
+  return rows.map(({ invite_id, club_id, status, created_at }) => ({
+    id: invite_id,
+    club_id,
+    status,
+    created_at,
+  }))
 }
 
 /**

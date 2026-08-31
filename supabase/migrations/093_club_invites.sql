@@ -35,7 +35,7 @@
 -- The 23514 is then reachable only by a rider who may already read that club's
 -- roster and its join requests through `085`'s own policies, so it discloses
 -- nothing they did not have. Every case tasks.md 6.2 names is performed by such
--- a rider and still gets its 23514; `093.20` is the oracle detector, and it
+-- a rider and still gets its 23514; `093.4` is the oracle detector, and it
 -- compares the two refusals as STRINGS rather than by SQLSTATE.
 --
 -- ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@
 --   * participation-gate triggers: 17 on DEV and 17 on PROD, 19 in the local
 --     suite, because `092` is on disk and unapplied to either project. ** THE
 --     ASSERTION IS THE DELTA OF +2 AND THE TWO TABLE NAMES, NEVER THE
---     ABSOLUTE. ** `093.24`.
+--     ABSOLUTE. ** `093.27`.
 --   * `comment on function public.enforce_participation_gate()` re-read LIVE on
 --     DEV rather than off any document — it says `seventeen` there and
 --     `nineteen` in `092` on disk, and last writer wins on that string. This
@@ -156,7 +156,7 @@
 -- `private.can_read_club` or `public.discoverable_private_clubs`. ** `085`'s
 -- reasoning holds unchanged: an arm on `clubs` SELECT also moves `016`'s two
 -- `storage.objects` policies and `036` §3's notifications conjunct, neither of
--- which any migration would mention. `093.16` pins both by equality and a
+-- which any migration would mention. `093.7` pins both by equality and a
 -- failure there means this file is wrong rather than that the pin is stale.
 --
 -- Possession of a live club token permits exactly two RPC calls:
@@ -317,7 +317,7 @@ create index club_invite_links_club_idx on public.club_invite_links (club_id);
 create index club_invite_links_created_by_idx on public.club_invite_links (created_by);
 
 comment on table public.club_invite_links is
-  'One row per shareable invite token into a PRIVATE club — 093, PD-360. POSSESSION OF THE TOKEN IS THE CREDENTIAL, the second such grant in this schema after ride_invite_links and the only other one that is not a fact about an identity. A live token buys exactly two RPC calls — club_invite_link_preview and claim_club_invite_link — and NO POLICY REACH: this file adds no arm to `clubs` SELECT and does not touch private.can_read_club (093.16). ONLY OWNERS AND ADMINS MINT, and only on a PRIVATE club: a public club''s plain URL already carries the whole grant a token could carry, so a token there would be a capability surface with no capability behind it. The minting set is exactly 085''s approval set on purpose — if an ordinary member could mint, a rider whose request an admin declined could get a link from a friendly member and be in, and the decline would be reversible by somebody with no authority to reverse it. AUDIENCE of the ROW: the club''s admins, through private.is_club_admin, so a link FOLLOWS THE CLUB rather than its minter and a co-admin who did not mint may still list and revoke it. No claimer ever reads the row, which is what makes every token a genuine bearer credential rather than a lookup key. A CLAIM ADMITS DIRECTLY — no admin approval — which is the product owner''s decision of 2026-08-31 together with its refinement that the rider must be able to BROWSE the club before anything is spent, and that the token is spent by a TAP and never by a render. RETENTION: the row is kept after the token dies, because club_members.invite_link_id points at it and the derived use count reads it; two on delete cascade FKs (club, minter) are the whole window, and a token is dead at created_at + 14 days, at revoke, when the club is deleted, or when the minter''s authority ends — whichever is first. REVOKING ADMITS NOBODY NEW AND EJECTS NOBODY; 088''s remove_club_member does eject, and does NOT bar re-entry through a live token (PD-361).';
+  'One row per shareable invite token into a PRIVATE club — 093, PD-360. POSSESSION OF THE TOKEN IS THE CREDENTIAL, the second such grant in this schema after ride_invite_links and the only other one that is not a fact about an identity. A live token buys exactly two RPC calls — club_invite_link_preview and claim_club_invite_link — and NO POLICY REACH: this file adds no arm to `clubs` SELECT and does not touch private.can_read_club (093.7). ONLY OWNERS AND ADMINS MINT, and only on a PRIVATE club: a public club''s plain URL already carries the whole grant a token could carry, so a token there would be a capability surface with no capability behind it. The minting set is exactly 085''s approval set on purpose — if an ordinary member could mint, a rider whose request an admin declined could get a link from a friendly member and be in, and the decline would be reversible by somebody with no authority to reverse it. AUDIENCE of the ROW: the club''s admins, through private.is_club_admin, so a link FOLLOWS THE CLUB rather than its minter and a co-admin who did not mint may still list and revoke it. No claimer ever reads the row, which is what makes every token a genuine bearer credential rather than a lookup key. A CLAIM ADMITS DIRECTLY — no admin approval — which is the product owner''s decision of 2026-08-31 together with its refinement that the rider must be able to BROWSE the club before anything is spent, and that the token is spent by a TAP and never by a render. RETENTION: the row is kept after the token dies, because club_members.invite_link_id points at it and the derived use count reads it; two on delete cascade FKs (club, minter) are the whole window, and a token is dead at created_at + 14 days, at revoke, when the club is deleted, or when the minter''s authority ends — whichever is first. REVOKING ADMITS NOBODY NEW AND EJECTS NOBODY; 088''s remove_club_member does eject, and does NOT bar re-entry through a live token (PD-361).';
 
 comment on column public.club_invite_links.token is
   '128 bits from extensions.gen_random_bytes(16), 32 lowercase hex. Server-owned by the GRANT and not by this default — authenticated holds no INSERT grant on this column and no UPDATE grant at all, so no client can choose a token or rotate one onto an existing row. The `unique` constraint means a claim resolves to at most one link, so resolution never depends on ordering. Compared as TEXT everywhere, so a malformed string matches no row rather than raising a parse error that would confirm the format to a prober.';
@@ -348,7 +348,7 @@ alter table public.club_members
 create index club_members_invite_link_idx on public.club_members (invite_link_id);
 
 comment on column public.club_members.invite_link_id is
-  'Which club invite link admitted this rider, or NULL for every other route in — 093, PD-360. PROVENANCE ONLY. NO POLICY, TRIGGER OR READ PREDICATE MAY BRANCH ON IT, and 093.29 asserts that none does: a rider admitted through a link must be indistinguishable from an accepted invitee, an approved requester and a rider who simply joined a public club EVERYWHERE access is decided, or the column becomes a second copy of a visibility decision. Its one purpose is deriving a link''s use count, which is the number of rows carrying it — read under the admin''s own block-dominated RLS, so a claimer who later blocks that admin stops being visible to them and the count GOES DOWN; a rider who leaves takes their row with them. That is decision #2 working as designed and the surface must not present the number as an immutable ledger. `on delete set null`: deleting a link removes the attribution and never the rider.';
+  'Which club invite link admitted this rider, or NULL for every other route in — 093, PD-360. PROVENANCE ONLY. NO POLICY, TRIGGER OR READ PREDICATE MAY BRANCH ON IT, and 093.23 asserts that none does: a rider admitted through a link must be indistinguishable from an accepted invitee, an approved requester and a rider who simply joined a public club EVERYWHERE access is decided, or the column becomes a second copy of a visibility decision. Its one purpose is deriving a link''s use count, which is the number of rows carrying it — read under the admin''s own block-dominated RLS, so a claimer who later blocks that admin stops being visible to them and the count GOES DOWN; a rider who leaves takes their row with them. That is decision #2 working as designed and the surface must not present the number as an immutable ledger. `on delete set null`: deleting a link removes the attribution and never the rider.';
 
 -- ===========================================================================
 -- §2. The helpers — one body per rule, and two entry points for the token
@@ -358,7 +358,7 @@ comment on column public.club_members.invite_link_id is
 -- The `_for` twins are ORACLES — `may_invite_to_club_for` answers "is rider X
 -- an admin of club Y" for any pair, `club_takes_invites_for` answers a
 -- membership-and-block question for any pair — and they are safe only while no
--- client role can call them. §2h revokes; `093.31` asserts by ROLE NAME rather
+-- client role can call them. §2h revokes; `093.25` asserts by ROLE NAME rather
 -- than by attempting a call, because this suite runs as the table owner for
 -- whom neither the schema barrier nor the EXECUTE barrier exists (`031`).
 
@@ -415,7 +415,7 @@ as $$
          );
 $$;
 
--- Body is EXACTLY the delegation and nothing else — `093.32` asserts it by
+-- Body is EXACTLY the delegation and nothing else — `093.26` asserts it by
 -- EQUALITY rather than by `like`, because `like '%..._for%'` is satisfied by a
 -- comment mentioning the name (`060`'s reasoning, and CLAUDE.md's comment trap).
 create or replace function private.may_invite_to_club(target_club uuid)
@@ -640,7 +640,7 @@ $$;
 -- A preview MORE permissive than its claim is a pure disclosure; a preview LESS
 -- permissive is a rider staring at "no longer valid" for a link that works.
 -- Neither is visible from either body alone and there is no policy under either
--- to catch it, which is why `093.27` reads `prosrc` for the ABSENCE of any
+-- to catch it, which is why `093.22` reads `prosrc` for the ABSENCE of any
 -- block or stamp test in the two public bodies.
 --
 -- ** `private.may_invite_to_club_for(created_by, club)` AND NOT
@@ -719,11 +719,11 @@ grant execute on function private.has_live_club_invite(uuid) to authenticated;
 comment on function private.may_invite_to_club_for(uuid, uuid) is
   'May this CANDIDATE send an in-app invite into this club? An ADMIN on a private club (085''s is_club_admin_for, which is clubs.owner_id UNION club_members with role in (owner, admin), and therefore 054''s ownerless owner too), or ANY MEMBER on a public one — because there an invite is a POINTER rather than a grant. 093, PD-360. ** IT IS RE-EVALUATED AT EVERY ACCEPT AND EVERY CLAIM, NEVER TRUSTED FROM CREATION, ** which is what makes an invite from a since-demoted or since-departed rider stop working and what stops a member''s pointer into a public club silently becoming a grant into a private one after a flip. It is the FIRST grant in this schema whose validity is re-derived at use rather than fixed at creation. Subject-taking, so the claim path can ask it about the link''s minter; granted to NO client role, because it answers for any pair and is therefore an admin oracle.';
 comment on function private.may_invite_to_club(uuid) is
-  'May the CALLER send an in-app invite into this club? Delegates to may_invite_to_club_for(auth.uid(), …) and does nothing else — 093.32 pins that body by EQUALITY, never by `like`, because a mention of the name in a comment satisfies a pattern match. Granted to authenticated because club_invites'' INSERT policy calls it and an RLS expression runs as the querying role.';
+  'May the CALLER send an in-app invite into this club? Delegates to may_invite_to_club_for(auth.uid(), …) and does nothing else — 093.26 pins that body by EQUALITY, never by `like`, because a mention of the name in a comment satisfies a pattern match. Granted to authenticated because club_invites'' INSERT policy calls it and an RLS expression runs as the querying role.';
 comment on function private.may_mint_club_link_for(uuid, uuid) is
   'May this CANDIDATE mint a capability link into this club? An admin, on a club that is PRIVATE and not the default one. 093, PD-360. THE `is_public = false` CONJUNCT IS DECISION 1 AND THIS IS THE ONLY PLACE IT LIVES: a public club''s plain URL already carries the entire grant a token could carry, so a token there would be a capability surface with no capability behind it and a second, weaker way of describing one permission. Narrower than may_invite_to_club_for on purpose, and NOT the predicate the claim path re-derives — a link on a club that has since become public stays claimable, because it then admits nothing the URL would not. The minting set is exactly 085''s approval set, so a declined rider cannot be let in by somebody with no authority to reverse the decline. Granted to no client role.';
 comment on function private.may_mint_club_link(uuid) is
-  'May the CALLER mint a capability link into this club? Delegates to may_mint_club_link_for(auth.uid(), …) and does nothing else — pinned by equality at 093.32. Granted to authenticated because club_invite_links'' INSERT policy calls it.';
+  'May the CALLER mint a capability link into this club? Delegates to may_mint_club_link_for(auth.uid(), …) and does nothing else — pinned by equality at 093.26. Granted to authenticated because club_invite_links'' INSERT policy calls it.';
 comment on function private.club_takes_invites_for(uuid, uuid) is
   'May this CANDIDATE be invited to this club? Not the default club, not its owner, not already a member, and NO PENDING club_join_requests ROW for the pair — the last being where the two mechanisms meet, resolved in favour of the request the rider started, whose remedy is the Approve button already in front of the admin. On a public club that conjunct is vacuous, club_takes_join_requests_for requiring is_public = false. IT TESTS NO BLOCK, deliberately: it is asked by a BEFORE INSERT trigger whose raise a third rider would read, and a raise naming a block between the invitee and the club''s owner would disclose a block to somebody who is not party to it — decision #2 forbids a gap, a count or a marker, and an error string is a marker. Blocks are enforced instead at four places that disclose nothing: the INSERT policy (a block the inviter is a party to), the fan-out, the accessor and the accept. Granted to NO client role: it answers for any pair and is a membership oracle.';
 comment on function private.club_invite_is_answerable_for(uuid, uuid) is
@@ -731,11 +731,11 @@ comment on function private.club_invite_is_answerable_for(uuid, uuid) is
 comment on function private.has_live_club_invite_for(uuid, uuid) is
   'Does this CANDIDATE hold a PENDING, answerable invite to this club? — 093. The predicate behind the notifications policy''s type-scoped club_invited arm, and the only reason that arm is safe: it is true for precisely the rider the notification addresses, for precisely as long as the invitation stands. `in (''pending'')` is written as an INCLUSION and never as `<> ''declined''`, so a fourth status added later grants nothing by default (036''s `else false` shape). Consequence, invisible from the policy: on a PRIVATE club the notification becomes unreadable when the invite is withdrawn, declined, or made unanswerable by a demotion or a block, and readable again through the ORDINARY clubs conjunct the moment the rider accepts and is a member. On a public club this arm is never reached. Granted to no client role.';
 comment on function private.has_live_club_invite(uuid) is
-  'Does the CALLER hold a pending, answerable invite to this club? Delegates to has_live_club_invite_for(auth.uid(), …) and does nothing else — pinned by equality at 093.32. Granted to authenticated because the notifications SELECT and UPDATE policies call it and an RLS expression runs as the querying role. It is caller-relative and therefore answers about nobody but the caller, which is what makes granting it safe where granting the _for twin would not be.';
+  'Does the CALLER hold a pending, answerable invite to this club? Delegates to has_live_club_invite_for(auth.uid(), …) and does nothing else — pinned by equality at 093.26. Granted to authenticated because the notifications SELECT and UPDATE policies call it and an RLS expression runs as the querying role. It is caller-relative and therefore answers about nobody but the caller, which is what makes granting it safe where granting the _for twin would not be.';
 comment on function private.live_club_invite_link(text) is
-  'THE SINGLE DEFINITION OF "LIVE" for a club invite token — 093. A statement about the LINK alone: it takes no caller and reads no auth.uid(). Live when the token matches a row AND revoked_at is NULL AND now() < expires_at AND the club still exists. Returns ZERO ROWS for every dead state and RAISES NOTHING, so expired, revoked, deleted, malformed and unmatched are one outcome. Callable by NO client role; its only caller is private.club_invite_link_reachable_by. Change liveness HERE and nowhere else — 093.26 asserts the preview and the claim answer identically in every dead state, which is what makes that instruction enforceable.';
+  'THE SINGLE DEFINITION OF "LIVE" for a club invite token — 093. A statement about the LINK alone: it takes no caller and reads no auth.uid(). Live when the token matches a row AND revoked_at is NULL AND now() < expires_at AND the club still exists. Returns ZERO ROWS for every dead state and RAISES NOTHING, so expired, revoked, deleted, malformed and unmatched are one outcome. Callable by NO client role; its only caller is private.club_invite_link_reachable_by. Change liveness HERE and nowhere else — 093.18 asserts the preview and the claim answer identically in every dead state, which is what makes that instruction enforceable.';
 comment on function private.club_invite_link_reachable_by(text, uuid, boolean) is
-  'THE SINGLE DEFINITION OF "THIS CALLER MAY USE THIS TOKEN" — 093 — and the ONLY entry point public.club_invite_link_preview and public.claim_club_invite_link have. Live (private.live_club_invite_link) AND the MINTER STILL AUTHORISED (may_invite_to_club_for, re-derived at every use, so a demotion or a departure kills every link that rider minted) AND not blocked in either direction with the minter OR with the club''s owner (private.is_blocked, symmetric) AND both participation stamps on the caller AND the caller is neither the owner nor already a member. It deliberately asks may_invite_to_club_for and NOT may_mint_club_link_for: a club that has become PUBLIC since minting stays claimable, because the claim then admits nothing the plain URL would not. NEITHER RPC BODY MAY RESTATE ANY OF THIS — 093.27 asserts it by reading prosrc — because a preview and a claim that disagree about the CALLER are invisible from either body alone and there is no policy under either. With lock => true it takes `for share` on the link row BEFORE resolving, so a revoke and an in-flight claim serialise; that is why it is VOLATILE, Postgres refusing FOR SHARE in a non-volatile function, and why both public RPCs are POST-only rather than served over GET with a live token in the query string. Callable by no client role.';
+  'THE SINGLE DEFINITION OF "THIS CALLER MAY USE THIS TOKEN" — 093 — and the ONLY entry point public.club_invite_link_preview and public.claim_club_invite_link have. Live (private.live_club_invite_link) AND the MINTER STILL AUTHORISED (may_invite_to_club_for, re-derived at every use, so a demotion or a departure kills every link that rider minted) AND not blocked in either direction with the minter OR with the club''s owner (private.is_blocked, symmetric) AND both participation stamps on the caller AND the caller is neither the owner nor already a member. It deliberately asks may_invite_to_club_for and NOT may_mint_club_link_for: a club that has become PUBLIC since minting stays claimable, because the claim then admits nothing the plain URL would not. NEITHER RPC BODY MAY RESTATE ANY OF THIS — 093.22 asserts it by reading prosrc — because a preview and a claim that disagree about the CALLER are invisible from either body alone and there is no policy under either. With lock => true it takes `for share` on the link row BEFORE resolving, so a revoke and an in-flight claim serialise; that is why it is VOLATILE, Postgres refusing FOR SHARE in a non-volatile function, and why both public RPCs are POST-only rather than served over GET with a live token in the query string. Callable by no client role.';
 
 -- ===========================================================================
 -- §3. Policies, grants and the two triggers
@@ -785,7 +785,7 @@ comment on function private.club_invite_link_reachable_by(text, uuid, boolean) i
 -- there is no parent EXISTS to dominate anything, and the only rider with a
 -- DELETE arm on this table is the INVITER, whose readability is `inviter_id =
 -- auth.uid()` with no club predicate at all — so an inviter who has since left
--- the club can still withdraw their own pending invite. `093.21` asserts that
+-- the club can still withdraw their own pending invite. `093.14` asserts that
 -- withdrawal MATCHES the row rather than reporting a silent success.
 --
 -- The one thing the block conjuncts DO cost is deliberate and is `036` §4's
@@ -853,7 +853,7 @@ create policy "An inviter withdraws a pending offer; the club's admins clear any
 -- ** NO UPDATE POLICY AND NO UPDATE GRANT, and the absence is the enforcement. **
 -- `078`'s, `083`'s and `085`'s precedent. With RLS on, a command with no policy
 -- is refused for every row, so `status` and `responded_at` are writable only by
--- §4c's RPC. Do not "complete" the CRUD set here. `093.30` asserts the absence
+-- §4c's RPC. Do not "complete" the CRUD set here. `093.24` asserts the absence
 -- in BOTH directions per grantee, because a well-meaning `grant all` restores
 -- only one of them.
 revoke all on public.club_invites from anon, authenticated;
@@ -887,7 +887,7 @@ grant insert (id, club_id, invitee_id, inviter_id) on public.club_invites to aut
 -- 23514 is then reachable only by a rider who may already read that club's
 -- roster (club_members SELECT, through private.is_club_member) and its join
 -- requests (`085`'s SELECT policy, through private.is_club_admin), so it
--- discloses nothing they did not have. `093.20` is the detector and it compares
+-- discloses nothing they did not have. `093.4` is the detector and it compares
 -- the two refusals as STRINGS, not by SQLSTATE.
 --
 -- ** auth.uid() rather than new.inviter_id, and the difference is the whole
@@ -1018,7 +1018,7 @@ comment on function public.enforce_participation_gate() is
 -- caller-relative form reads auth.uid(), which on the CLAIM path is the rider
 -- and on the ACCEPT path is also the rider — but the ADMITTER is a third party
 -- in both, and `085`'s recorded trap is exactly this substitution one function
--- over. Written subject-taking so the two can never be confused, and `093.23`
+-- over. Written subject-taking so the two can never be confused, and `093.12`
 -- asserts an un-onboarded rider is refused on BOTH paths.
 --
 -- It returns FALSE rather than raising on every refusal, so the caller keeps
@@ -1187,7 +1187,7 @@ $$;
 -- §4d. my_live_club_invites — what the invitee is shown
 -- ---------------------------------------------------------------------------
 -- ** A FIXED LIST OF NAMED COLUMNS, never club_invites.* or clubs.*, ** so a
--- column added to either table later is not disclosed by default. `093.15`
+-- column added to either table later is not disclosed by default. `093.21`
 -- pins the return list against pg_get_function_result so a twelfth is a red
 -- test rather than a code review.
 --
@@ -1199,7 +1199,7 @@ $$;
 -- theirs for the asking on a PRIVATE club, and on a PUBLIC one `clubs` SELECT
 -- gives them the whole row. `is_public` is added because a club can flip and
 -- the accessor implies its answer; the coordinates are NOT, because nothing
--- draws them. `093.14` asserts the equivalence rather than claiming it.
+-- draws them. `093.10` asserts the equivalence rather than claiming it.
 --
 -- The inviter's username and avatar path are readable to the caller through
 -- `profiles` SELECT already — its qual is `auth.uid() = id or (username is not
@@ -1209,7 +1209,7 @@ $$;
 -- ** THE AVATAR WILL NOT SIGN FOR A PRIVATE CLUB, ** deliberately: `016`'s
 -- storage policy runs its own EXISTS against `clubs` under the reader's RLS, so
 -- signImagePaths returns null and the card draws initials — exactly as `085`
--- left it. The day a storage arm lands, `093.14` names it.
+-- left it. The day a storage arm lands, `093.10` names it.
 create or replace function public.my_live_club_invites()
 returns table (
   invite_id           uuid,
@@ -1407,7 +1407,7 @@ comment on function public.accept_club_invite(uuid) is
 comment on function public.decline_club_invite(uuid) is
   'The invitee declines one PENDING invite addressed to them — 093. Same single raise site and same answerability predicate as accept. Writes no club_members row. It is the ONLY writer of club_invites.status and responded_at after the insert — there is no UPDATE grant and no UPDATE policy on that table. A refusal is TERMINAL AGAINST THE INVITER (the DELETE policy scopes their arm to pending) and reopenable by the invitee through accept; a club''s admins may clear it and re-send. It fans a club_invite_declined notification to the INVITER ALONE and never to the admin team: the invite was one rider''s act, and fanning a refusal to a whole team discloses one rider''s answer to people who did not ask. On a PRIVATE club the decline also makes the invitee''s own club_invited notification unreadable, private.has_live_club_invite_for being pending-scoped, so a client that marks it read must do so BEFORE calling this.';
 comment on function public.my_live_club_invites() is
-  'The caller''s own answerable club invites — 093. TWELVE NAMED COLUMNS and never club_invites.* or clubs.*; 093.15 pins the list so a thirteenth is a red test. Filtered by private.club_invite_is_answerable_for, the same body accept and decline use, so what is shown and what can be acted on cannot drift. IT DISCLOSES NOTHING public.discoverable_private_clubs DOES NOT ALREADY GIVE THIS RIDER — a live invitee is by construction a non-owner, non-member of a non-default club unblocked with its owner, which is that accessor''s predicate exactly — plus is_public, which a club can flip, and MINUS the coordinates, which nothing draws. The avatar path is returned and will NOT sign for a private club (016''s storage EXISTS), so the card draws initials, deliberately. A PENDING INVITE GRANTS NO OTHER READ: this file adds no arm to clubs SELECT (093.16), so the invitee still reads zero rosters, threads, messages, rides and postcards.';
+  'The caller''s own answerable club invites — 093. TWELVE NAMED COLUMNS and never club_invites.* or clubs.*; 093.21 pins the list so a thirteenth is a red test. Filtered by private.club_invite_is_answerable_for, the same body accept and decline use, so what is shown and what can be acted on cannot drift. IT DISCLOSES NOTHING public.discoverable_private_clubs DOES NOT ALREADY GIVE THIS RIDER — a live invitee is by construction a non-owner, non-member of a non-default club unblocked with its owner, which is that accessor''s predicate exactly — plus is_public, which a club can flip, and MINUS the coordinates, which nothing draws. The avatar path is returned and will NOT sign for a private club (016''s storage EXISTS), so the card draws initials, deliberately. A PENDING INVITE GRANTS NO OTHER READ: this file adds no arm to clubs SELECT (093.7), so the invitee still reads zero rosters, threads, messages, rides and postcards.';
 comment on function public.club_invite_link_preview(text) is
   'What a club token holder is shown before they decide — 093. EXACTLY SIX NAMED COLUMNS of exactly one club: club_id, name, avatar_path, location_name, members_count and is_public. Never clubs.*, never a roster, never a rider id, never the description, cover, owner or age, and NEVER the coordinates — the landing screen renders neither, and a token must not disclose where a club is for a field nothing draws. is_public is here and is NOT in discoverable_private_clubs'' seven, because that accessor returns private clubs by construction while A TOKEN CAN OUTLIVE A FLIP, and the screen would otherwise assert something false. Returns ZERO ROWS for every unreachable case and RAISES NOTHING, so expired, revoked, club deleted, minter demoted or departed, blocked either way, un-onboarded, already a member, the owner, malformed and guessed are one outcome. Resolves through private.club_invite_link_reachable_by and nothing else: no is_blocked call and no profiles stamp test appears in this body, which 093.27 asserts. VOLATILE rather than STABLE deliberately — its entry point may take a row lock, and a stable function is served over GET by PostgREST, which would put a live capability token in the request log''s query string.';
 comment on function public.claim_club_invite_link(text) is
@@ -1556,13 +1556,13 @@ alter table public.notifications
 -- all read" becomes a disclosure channel through its affected-row count.
 -- Moving only the read gives the invitee a notification they can see and can
 -- NEVER MARK READ — a defect invisible in review, because the feature demo
--- works. `093.11` is the read case and `093.12` the mark-read case, and they
+-- works. `093.8` is the read case and `093.8`''s second half the mark-read case, and they
 -- are two assertions rather than one.
 --
 -- ** THESE TWO PINS ARE SUPPOSED TO MOVE, WHICH IS THE OPPOSITE OF `091`. **
 -- Every OTHER pin — `clubs` SELECT, private.can_read_club, club_join_requests'
 -- three policies, club_members SELECT — must NOT, and a failure there means
--- this change is wrong rather than that the pin is stale. `093.16`.
+-- this change is wrong rather than that the pin is stale. `093.7`.
 drop policy "Notifications are readable only by their recipient" on public.notifications;
 drop policy "Riders mark only their own readable notifications read" on public.notifications;
 

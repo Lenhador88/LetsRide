@@ -17,7 +17,7 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
   PD-299 is `Needs decision` with one comment closing its question 1 (Threads) and explicitly leaving
   2 and 3 open. **The sub-issue already exists — do not open another.** PD-299 stays open: this
   change closes its #2 and #3 and nothing else.
-- [ ] 0.2 Re-derive the four policies this change reasons about. Any difference reopens a decision:
+- [x] 0.2 Re-derive the four policies this change reasons about. Any difference reopens a decision:
   ```sql
   select tablename, policyname, cmd, qual, with_check from pg_policies
    where schemaname='public' and tablename in ('clubs','club_members','club_join_requests','notifications')
@@ -39,21 +39,21 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
   -- notifications SELECT 28ab04505c62f16147539f78b521a858  } equal to each other, and BOTH move
   -- notifications UPDATE 28ab04505c62f16147539f78b521a858  } together in §5.2
   ```
-- [ ] 0.3 Confirm the migration number. `093` is the intended one; `092`, `094` and `095` are held by
+- [x] 0.3 Confirm the migration number. `093` is the intended one; `092`, `094` and `095` are held by
   three concurrent changes, so re-derive rather than trust: `ls supabase/migrations/ | tail -5`, and
   `list_migrations` against both refs. **91 applied on DEV and 91 on PROD, measured 2026-08-31** —
   level, which is the exception rather than the resting state.
-- [ ] 0.4 Record the gate-trigger count **before**, so the after-count means something. **17 on DEV,
+- [x] 0.4 Record the gate-trigger count **before**, so the after-count means something. **17 on DEV,
   17 on PROD.** Assert the **delta of +2 and the two table names**, never the absolute — `092` takes
   it to 19 before this file:
   ```sql
   select count(*) from pg_trigger where tgname='enforce_participation_gate' and not tgisinternal;
   ```
-- [ ] 0.5 Record the security-advisor count **before**. Expected delta **+6**, one
+- [x] 0.5 Record the security-advisor count **before**. Expected delta **+6**, one
   `authenticated_security_definer_function_executable` per new `public` definer function and **none**
   for the fifteen in `private` — `085` is the worked example, eleven functions for three advisors.
   `mcp__Supabase__get_advisors <ref> security`.
-- [ ] 0.6 Read both `notifications` CHECK constraints verbatim; §5 rewrites them and they are existing
+- [x] 0.6 Read both `notifications` CHECK constraints verbatim; §5 rewrites them and they are existing
   objects on a live table:
   ```sql
   select conname, pg_get_constraintdef(oid) from pg_constraint
@@ -64,7 +64,7 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
   ```sql
   select indexdef from pg_indexes where indexname='notifications_event_key';
   ```
-- [ ] 0.7 Confirm `club_members`' column grants, because §1.3 adds a column to a live table and its
+- [x] 0.7 Confirm `club_members`' column grants, because §1.3 adds a column to a live table and its
   unwritability is inherited rather than declared. Measured: `authenticated` holds INSERT on
   `(club_id, role, user_id)` and no table-level UPDATE, so a new column is unwritable by default:
   ```sql
@@ -73,7 +73,7 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
    where table_schema='public' and table_name='club_members' and grantee='authenticated'
    group by privilege_type;
   ```
-- [ ] 0.8 Confirm `pgcrypto` is installed in `extensions` on both projects (`091` recorded it on DEV);
+- [x] 0.8 Confirm `pgcrypto` is installed in `extensions` on both projects (`091` recorded it on DEV);
   `create extension if not exists pgcrypto with schema extensions` is a no-op there and keeps the file
   correct on a scratch replay.
 - [ ] 0.9 Read the design offline. **Do not call the Figma API.** `npm run figma -- ls "*nvite*"`,
@@ -94,7 +94,7 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
 
 ## 1. `093` — the two tables and the one column
 
-- [ ] 1.1 `club_invites (id, club_id, invitee_id, inviter_id, status, created_at, responded_at)`.
+- [x] 1.1 `club_invites (id, club_id, invitee_id, inviter_id, status, created_at, responded_at)`.
   `club_id → clubs(id) on delete cascade`; `invitee_id` and `inviter_id → profiles(id) on delete
   cascade`, **both**, because the row records a relationship between two identified riders and
   `029`'s erasure contract has to reach it from both ends. `unique (club_id, invitee_id)`,
@@ -102,99 +102,99 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
   three**, per `085`: accepting deletes the row — and
   `check ((status = 'pending') is not distinct from (responded_at is null))`, `is not distinct from`
   rather than `=` per `073`.
-- [ ] 1.2 `club_invite_links (id, club_id, created_by, token, expires_at, created_at, revoked_at)`.
+- [x] 1.2 `club_invite_links (id, club_id, created_by, token, expires_at, created_at, revoked_at)`.
   `token` defaults to `encode(extensions.gen_random_bytes(16), 'hex')` with `unique` and
   `check (token ~ '^[0-9a-f]{32}$')`; `expires_at` defaults to `now() + interval '14 days'` —
   **a column default, not `091`'s trigger**, because there is no second table to read. Both are
   server-owned by the **absent grant**, never by the default: a default applies only when the column
   is omitted and PostgREST will happily name it.
-- [ ] 1.3 `alter table public.club_members add column invite_link_id uuid references
+- [x] 1.3 `alter table public.club_members add column invite_link_id uuid references
   public.club_invite_links(id) on delete set null`. **`set null`, never cascade** — deleting a link
   must not delete the riders it admitted. No grant is added in either direction; §0.7 is why that is
   already true.
-- [ ] 1.4 Indexes, each named with the FK it discharges (`029`: every FK into `profiles` **leads** an
+- [x] 1.4 Indexes, each named with the FK it discharges (`029`: every FK into `profiles` **leads** an
   index). `club_invites`: the unique index leads with `club_id`; add `(invitee_id, created_at desc,
   id desc)` — also the invitee's own list — and `(inviter_id)`, and `(club_id, status, created_at
   desc, id desc)` for the admin's list. `club_invite_links`: `(club_id)` and `(created_by)`; **no
   second index on `token`**, the unique constraint already builds one. `club_members`:
   `(invite_link_id)`, which discharges the new FK and serves the use count.
-- [ ] 1.5 `alter table … enable row level security` on both.
-- [ ] 1.6 `comment on table` for each and `comment on column` for `status`, `token`, `expires_at`,
+- [x] 1.5 `alter table … enable row level security` on both.
+- [x] 1.6 `comment on table` for each and `comment on column` for `status`, `token`, `expires_at`,
   `revoked_at` and `club_members.invite_link_id`. Each SHALL state its retention explicitly and
   `invite_link_id`'s SHALL carry `091`'s provenance rule verbatim: no policy, trigger or read
   predicate may branch on it, and the derived count can go **down**.
 
 ## 2. `093` — the helpers, one body and two entry points
 
-- [ ] 2.1 `private.may_invite_to_club_for(candidate, club)` — `is_club_admin_for(candidate, club) or
+- [x] 2.1 `private.may_invite_to_club_for(candidate, club)` — `is_club_admin_for(candidate, club) or
   (the club is public and is_club_member_for(candidate, club))`. **No client grant**: it answers for
   any pair and is an admin oracle. Wrapper `private.may_invite_to_club(club)` is **exactly** the
   delegation, granted to `authenticated` because an RLS expression runs as the querying role — and
   pinned by **equality**, never `like`, per `060`/`085.28`: a comment mentioning the name satisfies a
   pattern match.
-- [ ] 2.2 `private.may_mint_club_link_for(candidate, club)` — `is_club_admin_for(…) and not the club
+- [x] 2.2 `private.may_mint_club_link_for(candidate, club)` — `is_club_admin_for(…) and not the club
   is public`, plus its wrapper. The `not is_public` conjunct is decision 1 and carries its own comment
   saying why a public club gets no token.
-- [ ] 2.3 `private.club_takes_invites_for(candidate, club)` — the invitee-side admissibility: the club
+- [x] 2.3 `private.club_takes_invites_for(candidate, club)` — the invitee-side admissibility: the club
   exists, `is_default = false`, `candidate <> owner_id`, not already a member, **and no `pending`
   `club_join_requests` row for the pair**. **No client grant**, and **no block conjunct** — see 3.4.
-- [ ] 2.4 `private.club_invite_is_answerable_for(candidate, invite)` — pending or declined, addressed
+- [x] 2.4 `private.club_invite_is_answerable_for(candidate, invite)` — pending or declined, addressed
   to the candidate, `may_invite_to_club_for(inviter, club)` still true, neither block standing, both
   stamps. **One body, three callers** (the accessor, the accept, and the notification arm's wrapper).
-- [ ] 2.5 `private.has_live_club_invite_for(candidate, club)` and its wrapper
+- [x] 2.5 `private.has_live_club_invite_for(candidate, club)` and its wrapper
   `private.has_live_club_invite(club)` — the notification policy arm's predicate. `in ('pending')`
   written as an inclusion, **never** `<> 'declined'`: a fourth status added later must grant nothing
   by default, and an inequality defaults to granting everything (`036`'s `else false` shape).
-- [ ] 2.6 `private.live_club_invite_link(t)` — **the single definition of "live"**, a statement about
+- [x] 2.6 `private.live_club_invite_link(t)` — **the single definition of "live"**, a statement about
   the link alone: token matches, `revoked_at is null`, `now() < expires_at`, the club still exists.
   No caller, no `auth.uid()`, zero rows for every dead state, never raises.
-- [ ] 2.7 `private.club_invite_link_reachable_by(t, uid, lock default false)` — **the single
+- [x] 2.7 `private.club_invite_link_reachable_by(t, uid, lock default false)` — **the single
   definition of "this caller may use this token"**, and the only entry point either RPC has. Live,
   minter still authorised, not blocked with the minter, not blocked with the owner, both stamps, not
   already a member, not the owner. `if lock then perform 1 from club_invite_links where token = t for
   share; end if` **before** liveness resolves. **VOLATILE** — Postgres refuses `FOR SHARE` in a
   non-volatile function, and `stable` would also let PostgREST serve it over GET with a live token in
   the query string.
-- [ ] 2.8 `revoke all` from `public, anon, authenticated` on every `_for` twin and on every helper
+- [x] 2.8 `revoke all` from `public, anon, authenticated` on every `_for` twin and on every helper
   that takes no caller. Grant EXECUTE to `authenticated` **only** on the wrappers an RLS expression
   calls. Assert by **role name** (`has_function_privilege`), never by calling — the suite runs as the
   table owner, for whom neither barrier exists (`031`).
 
 ## 3. `093` — policies, grants, and the two triggers
 
-- [ ] 3.1 `club_invites` SELECT: `(invitee_id = auth.uid() or inviter_id = auth.uid()) and not
+- [x] 3.1 `club_invites` SELECT: `(invitee_id = auth.uid() or inviter_id = auth.uid()) and not
   is_blocked(auth.uid(), invitee_id) and not is_blocked(auth.uid(), inviter_id)`. **No arm reads
   `clubs`** — comment why: it would hand every member of a public club the invites of a private one,
   and for a private club it is circular.
-- [ ] 3.2 `club_invites` INSERT: `inviter_id = auth.uid() and private.may_invite_to_club(club_id) and
+- [x] 3.2 `club_invites` INSERT: `inviter_id = auth.uid() and private.may_invite_to_club(club_id) and
   not private.is_blocked(auth.uid(), invitee_id)`. Per-column grant over `(id, club_id, invitee_id,
   inviter_id)` — `status`, `created_at` and `responded_at` on none of them.
-- [ ] 3.3 `club_invites` DELETE: `((inviter_id = auth.uid() and status = 'pending') or
+- [x] 3.3 `club_invites` DELETE: `((inviter_id = auth.uid() and status = 'pending') or
   private.is_club_admin(club_id)) and not private.is_blocked(auth.uid(), invitee_id)`. The `status`
   scope is what makes a refusal stick against the inviter; the block conjunct is `036` §4's rule —
   without it an affected-row count is a number an admin can compare against the list they were shown.
-- [ ] 3.4 `private.enforce_club_invite_is_admissible()` — `security definer` BEFORE INSERT, raising
+- [x] 3.4 `private.enforce_club_invite_is_admissible()` — `security definer` BEFORE INSERT, raising
   `check_violation` when `club_takes_invites_for(new.invitee_id, new.club_id)` is false. It exists
   because the policy cannot ask an invitee-side question without granting an oracle
   (`enforce_ride_club_audience` is the same shape). **It tests no block**, and its comment says why: a
   raise naming a block between the invitee and the club's owner would disclose a block to a third
   rider, which decision #2 forbids by any gap, count or marker.
-- [ ] 3.5 `club_invite_links` SELECT / INSERT / DELETE, all `private.is_club_admin(club_id)`-based, so
+- [x] 3.5 `club_invite_links` SELECT / INSERT / DELETE, all `private.is_club_admin(club_id)`-based, so
   the row follows the **club** and not `created_by`; INSERT additionally `created_by = auth.uid() and
   private.may_mint_club_link(club_id)`. Per-column grant over `(id, club_id, created_by)`.
-- [ ] 3.6 **No UPDATE policy and no UPDATE grant on either table**, and the absence is the
+- [x] 3.6 **No UPDATE policy and no UPDATE grant on either table**, and the absence is the
   enforcement. Assert in both directions per grantee — a well-meaning `grant all` restores only one
   of them.
-- [ ] 3.7 `revoke all … from anon, authenticated` first, then the grants above. Nothing to `anon`,
+- [x] 3.7 `revoke all … from anon, authenticated` first, then the grants above. Nothing to `anon`,
   ever — decision #1.
-- [ ] 3.8 `enforce_participation_gate` on **both** tables, `before insert … for each row when
+- [x] 3.8 `enforce_participation_gate` on **both** tables, `before insert … for each row when
   (current_user = 'authenticated')`. The `when` clause is not decoration (`023` §2). Restamp
   `comment on function public.enforce_participation_gate()` with the new count and both names — it is
   the `data` agent's first read through `list_tables` and no edit to `CLAUDE.md` reaches it.
 
 ## 4. `093` — the write path and the six RPCs
 
-- [ ] 4.1 `private.join_club_from_invite(rider, target_club, admitter)` — the **single** place any
+- [x] 4.1 `private.join_club_from_invite(rider, target_club, admitter)` — the **single** place any
   invite path writes a `club_members` row. Restates, in order: `may_participate_for(rider)` (**never**
   the caller-relative `may_participate()`, `085`'s trap), `may_invite_to_club_for(admitter,
   target_club)`, `is_blocked(rider, owner_id)`, `is_blocked(rider, admitter)`. Writes `'member'` as a
@@ -202,19 +202,19 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
   raising** on every refusal, so the caller keeps one observable failure. Then deletes any `pending`
   `club_join_requests` row for the pair — **after** the membership insert, so `085`/`087`'s retraction
   clears the admins' notification.
-- [ ] 4.2 `public.accept_club_invite(invite uuid)` — takes an **invite id, never a rider id**; answers
+- [x] 4.2 `public.accept_club_invite(invite uuid)` — takes an **invite id, never a rider id**; answers
   `pending` **or** `declined` (the invitee alone may reopen their own refusal); calls 4.1; **then**
   deletes the invite row; **one raise site**.
-- [ ] 4.3 `public.decline_club_invite(invite uuid)` — `pending` only; sets `status` and
+- [x] 4.3 `public.decline_club_invite(invite uuid)` — `pending` only; sets `status` and
   `responded_at`; writes no membership; **one raise site**.
-- [ ] 4.4 `public.my_live_club_invites()` — the invitee's answerable invites, filtered by 2.4. A fixed
+- [x] 4.4 `public.my_live_club_invites()` — the invitee's answerable invites, filtered by 2.4. A fixed
   list of **named columns**, never `club_invites.*` or `clubs.*`. Assert it discloses nothing
   `discoverable_private_clubs` does not already give that rider.
-- [ ] 4.5 `public.claim_club_invite_link(t text)` — resolves through
+- [x] 4.5 `public.claim_club_invite_link(t text)` — resolves through
   `club_invite_link_reachable_by(t, uid, lock => true)` and nothing else, then calls 4.1 with the
   link's `created_by` as admitter, writing `club_members.invite_link_id`. **One raise site.** Takes
   the token and never a club id or a rider id.
-- [ ] 4.6 `public.club_invite_link_preview(t text)` — **six named columns**: `club_id`, `name`,
+- [x] 4.6 `public.club_invite_link_preview(t text)` — **six named columns**: `club_id`, `name`,
   `avatar_path`, `location_name`, `members_count`, `is_public`. `returns table`, never `setof
   public.clubs`. Zero rows for every dead state, **raises nothing**. `t` compared as text, so a
   malformed string matches no row rather than confirming the format.
@@ -223,20 +223,20 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
   are `security definer` with no policy underneath, so a difference between them is a **disclosure
   decision** and not a mapping detail. This one drops `latitude`/`longitude` (the screen draws
   neither) and adds `is_public` (the accessor's predicate implies it; a token can outlive a flip).
-- [ ] 4.7 `public.revoke_club_invite_link(link uuid)` — an RPC rather than an UPDATE grant, because a
+- [x] 4.7 `public.revoke_club_invite_link(link uuid)` — an RPC rather than an UPDATE grant, because a
   grant on `(revoked_at)` lets a client un-revoke by writing NULL. One raise site. Its comment states
   that it **removes nobody** and that `088`'s removal does **not** bar re-entry through a live token.
-- [ ] 4.8 `revoke all … from public, anon` then `grant execute … to authenticated` on all six.
+- [x] 4.8 `revoke all … from public, anon` then `grant execute … to authenticated` on all six.
   **Neither 4.5 nor 4.6 may contain an `is_blocked` call or a `profiles` stamp test** — assert by
   reading `prosrc`, `091.13`'s shape.
 
 ## 5. `093` — notifications
 
-- [ ] 5.1 Widen `notifications_type_check` with `club_invited` and `club_invite_declined`, and
+- [x] 5.1 Widen `notifications_type_check` with `club_invited` and `club_invite_declined`, and
   `notifications_subject_shape` with two arms requiring `club_id is not null` and the other three
   NULL — **identical to `club_joined`'s**, so `036` §3's per-column conjuncts already cover them.
   **Both CHECKs in the same block**; verify the `else false` fallthrough survives the rewrite.
-- [ ] 5.2 Add **one** type-scoped disjunct to the `notifications` **SELECT** policy:
+- [x] 5.2 Add **one** type-scoped disjunct to the `notifications` **SELECT** policy:
   `or (type = 'club_invited' and private.has_live_club_invite(club_id))` — `089`'s pattern, its second
   instance. **And the identical change to the UPDATE policy**, in the same statement block: the two
   quals are byte-identical today and moving only the read gives the invitee a notification they can
@@ -244,21 +244,21 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
   **These two pins are SUPPOSED to move.** Every other pin — `clubs` SELECT, `private.can_read_club`,
   `club_join_requests`' three policies — must **not**, and a failure there means this change is wrong
   rather than that the pin is stale.
-- [ ] 5.3 `private.notify_club_invited()` — `after insert on club_invites`, recipient `new.invitee_id`
+- [x] 5.3 `private.notify_club_invited()` — `after insert on club_invites`, recipient `new.invitee_id`
   read from the row, actor `new.inviter_id`, guarded on `not is_blocked(invitee, inviter)`, `not
   is_blocked(invitee, owner)` and the resolvability check, `on conflict do nothing`.
-- [ ] 5.4 `private.notify_club_invite_declined()` — `after update of status`, guarded on the value
+- [x] 5.4 `private.notify_club_invite_declined()` — `after update of status`, guarded on the value
   actually moving (`old.status is distinct from new.status`) and on `new.status = 'declined'`.
   Recipient is the **inviter alone**, not every admin: the invite was one rider's act and fanning a
   refusal to a whole admin team discloses one rider's answer to people who did not ask.
-- [ ] 5.5 **No retraction trigger, and the absence is deliberate** — `090`'s measured reason. Write it
+- [x] 5.5 **No retraction trigger, and the absence is deliberate** — `090`'s measured reason. Write it
   in the migration: with one, withdraw-and-re-send re-notifies without limit because the deleted row
   never collides with `notifications_event_key`. A later session's first instinct will be to "fix"
   the omission.
-- [ ] 5.6 **No `club_invite_accepted` type.** `private.notify_club_joined` already fans `club_joined`
+- [x] 5.6 **No `club_invite_accepted` type.** `private.notify_club_joined` already fans `club_joined`
   out to the owner and admins on the `club_members` INSERT the accept performs. Comment it, because
   the symmetry with `083` makes its absence look like an oversight.
-- [ ] 5.7 Neither fan-out carries a `when (current_user = …)` clause — `036` trap (a), and here it is
+- [x] 5.7 Neither fan-out carries a `when (current_user = …)` clause — `036` trap (a), and here it is
   load-bearing: `decline_club_invite` is `security definer`, so `current_user` is the owner and such a
   clause would disable the decline fan-out entirely. Neither reads `auth.uid()` — trap (b).
   `revoke all` on both from `public, anon, authenticated`.
@@ -268,64 +268,64 @@ pre-flight and §8 is the ordering, which is the one part that cannot be reorder
 Each is a statement about a **role** and a **resource**. Verify every one **both ways** per
 `CLAUDE.md` §Working Principles: confirm it fails against the mistake it names.
 
-- [ ] 6.1 A `member` of a **private** club cannot insert an invite; an `admin` and the `owner` can.
+- [x] 6.1 A `member` of a **private** club cannot insert an invite; an `admin` and the `owner` can.
   A `member` of a **public** club **can**. A non-member cannot, for either kind.
-- [ ] 6.2 An invite to the club's owner, to an existing member, to the default club, and to a rider
+- [x] 6.2 An invite to the club's owner, to an existing member, to the default club, and to a rider
   with a **pending join request** are each refused with `23514` by the admissibility trigger; a
   self-invite is refused by the CHECK.
-- [ ] 6.3 A repeat invite is `23505`; no second notification is written.
-- [ ] 6.4 A pending invitee reads **zero** rows from `club_members`, `club_threads`, `club_messages`,
+- [x] 6.3 A repeat invite is `23505`; no second notification is written.
+- [x] 6.4 A pending invitee reads **zero** rows from `club_members`, `club_threads`, `club_messages`,
   the club's rides and its postcards. (Fails if any arm was added to `clubs` SELECT.)
-- [ ] 6.5 `clubs` SELECT's qual and `private.can_read_club`'s `prosrc` are **byte-identical** to the
+- [x] 6.5 `clubs` SELECT's qual and `private.can_read_club`'s `prosrc` are **byte-identical** to the
   values the suite already pins. So are `club_join_requests`' three policies.
-- [ ] 6.6 The invitee reads exactly one `club_invited` notification for a **private** club — the
+- [x] 6.6 The invitee reads exactly one `club_invited` notification for a **private** club — the
   assertion that fails without §5.2 — **and** can mark it read, which is the assertion that fails when
   only the SELECT policy moves. Two cases, not one.
-- [ ] 6.7 A rider holding **no** live invite reads zero `club_invited` rows for that club; and the row
+- [x] 6.7 A rider holding **no** live invite reads zero `club_invited` rows for that club; and the row
   becomes unreadable the moment the invite is withdrawn, the inviter is demoted, or either block is
   placed. Four cases against one predicate.
-- [ ] 6.8 Blocking, in **both** directions and at all four sites: the INSERT policy refuses; the
+- [x] 6.8 Blocking, in **both** directions and at all four sites: the INSERT policy refuses; the
   fan-out writes nothing; the accessor returns nothing; the accept raises. A rider blocked with the
   **owner** but not with the inviter is refused at the accept with the same single message.
-- [ ] 6.9 Accepting writes exactly **one** `club_members` row with `role = 'member'`, deletes the
+- [x] 6.9 Accepting writes exactly **one** `club_members` row with `role = 'member'`, deletes the
   invite, deletes a pending request, retracts the admins' `club_join_requested` notification, and
   fans out exactly one `club_joined`. Count each; do not assume.
-- [ ] 6.10 An accept by an **un-onboarded** rider writes nothing, and the refusal comes from
+- [x] 6.10 An accept by an **un-onboarded** rider writes nothing, and the refusal comes from
   `may_participate_for` inside the writer — asserted for the claim path too, where the caller-relative
   form would have answered for the wrong rider.
-- [ ] 6.11 The inviter cannot delete a `declined` invite; an admin can; the invitee can reopen their
+- [x] 6.11 The inviter cannot delete a `declined` invite; an admin can; the invitee can reopen their
   own refusal through accept.
-- [ ] 6.12 A `member` cannot mint a link; an `admin` and the `owner` can; **a mint on a public club is
+- [x] 6.12 A `member` cannot mint a link; an `admin` and the `owner` can; **a mint on a public club is
   refused**. A co-admin who did not mint can list and revoke.
-- [ ] 6.13 Eleven dead-token states — expired, revoked, club deleted, minter demoted, minter departed,
+- [x] 6.13 Eleven dead-token states — expired, revoked, club deleted, minter demoted, minter departed,
   blocked with minter, blocked with owner, un-onboarded, already a member, the owner, malformed —
   return **zero rows** from the preview and the **identical message and SQLSTATE** from the claim.
   Compare the **message**, not only the SQLSTATE: a SQLSTATE-only comparison passes green with an
   oracle present.
-- [ ] 6.14 The preview's return list is exactly six named columns, asserted against
+- [x] 6.14 The preview's return list is exactly six named columns, asserted against
   `pg_get_function_result` so a seventh is a red test.
-- [ ] 6.15 Neither public RPC's `prosrc` contains `is_blocked` or `terms_accepted_at`.
-- [ ] 6.16 A claim writes one membership carrying `invite_link_id`; a second claim by the same rider
+- [x] 6.15 Neither public RPC's `prosrc` contains `is_blocked` or `terms_accepted_at`.
+- [x] 6.16 A claim writes one membership carrying `invite_link_id`; a second claim by the same rider
   writes nothing and does not move the derived count; deleting the link nulls the column and keeps
   every membership.
-- [ ] 6.17 **No policy, trigger or helper references `invite_link_id`** — read `pg_policies` quals and
+- [x] 6.17 **No policy, trigger or helper references `invite_link_id`** — read `pg_policies` quals and
   `prosrc`, so provenance cannot become an audience test.
-- [ ] 6.18 `anon` holds **no** privilege on either new table and EXECUTE on none of the six RPCs; no
+- [x] 6.18 `anon` holds **no** privilege on either new table and EXECUTE on none of the six RPCs; no
   policy targets a role other than `authenticated`.
-- [ ] 6.19 No UPDATE grant and no UPDATE policy on either table, asserted per grantee in both
+- [x] 6.19 No UPDATE grant and no UPDATE policy on either table, asserted per grantee in both
   directions.
-- [ ] 6.20 Every `_for` twin is unreachable by `authenticated` and every wrapper an RLS expression
+- [x] 6.20 Every `_for` twin is unreachable by `authenticated` and every wrapper an RLS expression
   calls is reachable — by `has_function_privilege`, never by calling (`031`).
-- [ ] 6.21 Each wrapper's body is **exactly** the delegation, pinned by equality rather than `like`
+- [x] 6.21 Each wrapper's body is **exactly** the delegation, pinned by equality rather than `like`
   (`085.28`).
-- [ ] 6.22 `enforce_participation_gate` is present **by table name** on both new tables and the flat
+- [x] 6.22 `enforce_participation_gate` is present **by table name** on both new tables and the flat
   count rose by exactly **two**. Both, because a count alone cannot tell a new gate from a moved one.
-- [ ] 6.23 The trigger count on `club_members` is **unchanged** — `078.9`'s lesson.
-- [ ] 6.24 Every FK into `profiles` and into `clubs` on the new tables **leads** an index — the
+- [x] 6.23 The trigger count on `club_members` is **unchanged** — `078.9`'s lesson.
+- [x] 6.24 Every FK into `profiles` and into `clubs` on the new tables **leads** an index — the
   `pg_constraint` / `pg_index` form, never a timing.
-- [ ] 6.25 Cascades: deleting the club, the invitee, the inviter and the minter each removes what it
+- [x] 6.25 Cascades: deleting the club, the invitee, the inviter and the minter each removes what it
   should and nothing it should not; a deleted link leaves its memberships standing.
-- [ ] 6.26 Re-run the whole suite and **compare label sets, not counts** — a count cannot tell a
+- [x] 6.26 Re-run the whole suite and **compare label sets, not counts** — a count cannot tell a
   rename from a loss.
 
 ## 7. Client
@@ -408,7 +408,7 @@ Each is a statement about a **role** and a **resource**. Verify every one **both
 
 ## 9. Tests
 
-- [ ] 9.1 `PGPASSWORD=postgres npm test` — the RLS suite, green, with §6's assertions in it.
+- [x] 9.1 `PGPASSWORD=postgres npm test` — the RLS suite, green, with §6's assertions in it.
 - [x] 9.2 A component test for `ClubShareOrInviteItem` asserting the **absence** of any row for a
   private club's ordinary member, and that both callers render the same three states. An assertion
   that something renders cannot see a row that should not.
@@ -434,7 +434,7 @@ Each is a statement about a **role** and a **resource**. Verify every one **both
 
 ## 10. Documentation
 
-- [ ] 10.1 `docs/reference/schema.md` — two new table rows and the `club_members` column, each with
+- [x] 10.1 `docs/reference/schema.md` — two new table rows and the `club_members` column, each with
   its audience predicate, its cascade behaviour and its per-column grants. The `club_invites` row must
   state that **accepting deletes it** and why, because that is the counter-intuitive one and that file
   exists for exactly those.

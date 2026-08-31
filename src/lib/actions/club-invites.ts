@@ -151,6 +151,16 @@ export async function acceptClubInvite(inviteId: string, clubId: string): Promis
  * readable to a pending invitee in the first place (`design.md` §The invitee
  * needs no new read path), so there is no stale `clubs.detail` entry to worry
  * about here.
+ *
+ * **The notification must be marked read BEFORE this runs, and today it is —
+ * by construction rather than by an ordering here.** On a private club the
+ * `club_invited` row stops resolving the moment the invite leaves `pending`,
+ * so `markNotificationsRead` afterwards matches zero rows and PostgREST
+ * reports success. Nothing gets stuck (an unreadable row is not counted
+ * either), and the order holds because `MarkNotificationsRead` fires once on
+ * opening `/notifications` while Decline is a later tap. It is written down
+ * because moving that mark-read to a per-row dismiss, or to a Stop handler,
+ * silently leaves a read notification unread for ever.
  */
 export async function declineClubInvite(inviteId: string): Promise<ActionState> {
   if (!clubInviteIdSchema.safeParse(inviteId).success) {
