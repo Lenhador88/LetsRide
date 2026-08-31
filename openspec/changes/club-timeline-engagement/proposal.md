@@ -1,9 +1,15 @@
 # Club Timeline Engagement — a rider can wave at an arrival and at a conversation
 
+> **Q1 answered, 2026-08-31.** The share objection below stood and the product owner resolved it:
+> a thread's share row shares the **club**, labelled `Share club`. No thread URL is handed out and
+> no capability link is built. The objection is kept rather than deleted because the reasoning is
+> what makes the chosen option defensible — and because this change now adds a **second caller** of
+> `shareAppLink(routes.club(...))`, which still carries PD-299 #2's own defect on a PRIVATE club.
+> See `design.md` §Q1.
+
 > Linear **PD-299** — *"A club is a container, not a place"*. This extends **PD-355**
-> (`openspec/changes/add-club-timeline/`), which merged today as **#350** and **#351**. There is
-> **no sub-issue for this work yet**; opening one, with the five-rating block, is the main
-> thread's — this agent does not write to Linear.
+> (`openspec/changes/add-club-timeline/`), which merged today as **#350**, **#351** and **#352**.
+> The story is **PD-356**.
 
 ## ⚠ Read this first
 

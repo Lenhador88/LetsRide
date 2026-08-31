@@ -284,18 +284,36 @@ matters: the new predicate accepts every row the old one did. The ordering rule 
 
 Every one carries a recommended default so the build can proceed and be corrected later.
 
-### Q1 — Does a thread get a share affordance, and if so what does it share? — **BLOCKING · product owner**
+### Q1 — Does a thread get a share affordance, and if so what does it share? — **ANSWERED, 2026-08-31: B**
 
-**Default: no share row on a thread.** This is the objection at the top of `proposal.md` and it is
-blocking because the owner asked for the icon by name and the honest answer is "not as asked".
+**The product owner chose B — the row shares the CLUB, labelled as such.** Asked directly, given
+all three options with their costs, they picked it over "no share at all" and over a thread
+capability URL. So a thread's share row reads **`Share club`**, calls
+`shareAppLink(routes.club(clubId))`, and no thread URL is ever handed out.
+
+Two consequences to build against rather than rediscover:
+
+- **The label is the whole safety property.** A row reading `Share` on a thread screen promises
+  the thread; only the word `club` stops a rider believing they sent someone a conversation. A
+  future refactor that shortens it to `Share` reinstates the defect this question exists for,
+  with nothing red.
+- **It does not fix PD-299's own share defect and must not be read as fixing it.** That one is
+  `ClubOptionsMenu` sharing a PRIVATE club's URL unconditionally, which RLS refuses to the
+  non-member you sent it to. This row inherits that bug the moment the club is private — same
+  call, same route. PD-299 #2 is where it gets fixed; **this change is not allowed to ship a
+  second caller of it without saying so**, which is what this paragraph is.
+
+C stays closed. If thread links are ever wanted they are their own story, for the reason below.
+
+**The options as they were put, kept because the reasoning is what makes B defensible:**
 
 Three options, and only the first two are open:
 
-- **A) No share on a thread.** Recommended. The club already has one (`ClubOptionsMenu`, PD-280),
+- **A) No share on a thread.** Was the recommendation; not chosen. The club already has one (`ClubOptionsMenu`, PD-280),
   and a rider who wants to bring someone to a conversation is really trying to bring them to the
   club.
-- **B) The row shares the CLUB, labelled as such** — `Share club` on a thread. Honest, no dead
-  link, and slightly surprising: the rider aimed at a thread and got a club.
+- **B) The row shares the CLUB, labelled as such** — `Share club` on a thread. **CHOSEN.** Honest,
+  no dead link, and slightly surprising: the rider aimed at a thread and got a club.
 - **C) A capability URL for a thread.** **Not open in this change.** PD-330's `ride_invite_links`
   is the precedent for what one costs — an expiry, a revoke, a use count, three `security definer`
   RPCs whose caller is authorised *by a secret rather than by their identity*, and `091`'s whole
