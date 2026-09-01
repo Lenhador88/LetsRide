@@ -11,11 +11,18 @@ Branch off `development`, PR into `development`.
 
 ## 0. Before anything
 
-- [ ] **0.1** Run `openspec validate --change notify-a-club-thread` **if the CLI is available**.
-      It is **not** installed in the build container as of 2026-09-01 (`npm run openspec` →
-      `sh: 1: openspec: not found`, and `node_modules/.bin` holds no such binary), so these
-      artifacts were hand-written to the scaffold's shape. Say so in the PR body rather than
-      claiming a validation that did not run.
+- [x] **0.1** `openspec validate` — **run 2026-09-01, valid in both modes.** Re-run it after any
+      edit to these artifacts: it is the **only** automated gate they have, `openspec/` being in
+      `ci.yml`'s denylist.
+
+      ```bash
+      node_modules/.bin/openspec validate notify-a-club-thread --type change
+      node_modules/.bin/openspec validate notify-a-club-thread --type change --strict
+      ```
+
+      **There is no `--change` flag** — it is a positional item name plus `--type change`, or
+      `--changes` for all of them. `--change` fails as an unknown option, which reads like a broken
+      artifact rather than a broken command.
 - [x] **0.2** **Q4 answered — order A, migration-first.** Decided by the main thread 2026-09-01 on
       three measurements rather than on the recommendation alone; §7 carries them and strikes order
       B. `design.md` §D11 carries the analysis.
@@ -30,17 +37,29 @@ Branch off `development`, PR into `development`.
        where schemaname='public' and tablename='notifications';
       select polname, pg_get_expr(polqual,polrelid), pg_get_expr(polwithcheck,polrelid)
         from pg_policy where polrelid='public.notifications'::regclass;
-      select count(*) from public.notifications;                     -- DEV 20, PROD 15 (2026-09-01)
+      select count(*) from public.notifications;                     -- DEV 18, PROD 15 (2026-09-01)
+      --   ^ a live count that moves with ordinary use; re-derive, never carry it forward
       select count(*) from public.club_threads;                      -- DEV 4,  PROD 0
       select count(*) from pg_trigger
        where tgname='enforce_participation_gate' and not tgisinternal;   -- 22, both
-      select proname, substring(prosrc from position('on conflict' in lower(prosrc)) for 30)
-        from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-       where n.nspname='private' and proname like 'notify%';             -- 12, all BARE
+      select n.nspname||'.'||p.proname as fn, m[1] as clause
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        cross join lateral regexp_matches(p.prosrc, 'on conflict[^;]{0,80}', 'gi') m
+       where p.prosrc ilike '%insert into public.notifications%'
+       order by 1, 2;              -- 13 functions, every clause BARE (2026-09-01)
       ```
 
-      **The last one is load-bearing.** If any fan-out names the index or its columns, the rebuild
+      **The last one is load-bearing.** If any write site names the index or its columns, the rebuild
       breaks it at runtime inside a rider's write and this change needs that function replaced too.
+
+      **Do not narrow it to `nspname='private' and proname like 'notify%'`, and do not use
+      `position()`.** That form returns twelve and misses `public.approve_club_join_request`, which
+      inserts into `notifications` from `public` under a name that is not `notify%`; and `position()`
+      returns the FIRST occurrence, which for that function and for
+      `private.notify_club_join_request_declined` is inside a **comment** — the comment trap at a
+      `position()` rather than a `grep`. Select on *"inserts into `public.notifications`"* and return
+      **every** match, so a fourteenth site cannot hide from the gate.
 
 ---
 
@@ -72,8 +91,10 @@ Append-only. Never edit an applied migration.
       every other type.
 - [ ] **1.4 §2 — the partial index.**
       `create index notifications_thread_id_idx on public.notifications (thread_id) where thread_id is not null;`
-      Comment: seventh FK, seventh usable index; partial for the reason the other four subject
-      indexes are.
+      Comment: `thread_id` is the **seventh FK column** (so the seventh usable cascade index) and
+      the **fifth partial subject index** — partial for the reason the other four subject indexes
+      are. The two ordinals differ because `actor_id` has an index and it is not partial; state both
+      rather than one, since a single number here has been wrong twice.
 - [ ] **1.5 §3 — the CHECK rewrite. SIXTEEN arms.** Drop and re-add both constraints whole.
       `notifications_type_check` gains `club_thread_replied` and `club_thread_waved`.
       `notifications_subject_shape` gains two arms **and** `and thread_id is null` on each of the
@@ -90,8 +111,9 @@ Append-only. Never edit an applied migration.
       Comment: `thread_id` **appended last** so the seven-column prefix every retraction uses is
       unchanged; it is a plain UNIQUE INDEX and not a table constraint (measured); every existing row
       has it NULL and `nulls not distinct` compares NULLs equal, so no equivalence class splits; all
-      twelve fan-outs use a bare `on conflict do nothing` (measured), so none names it. **Not
-      `concurrently`** — that cannot run in a transaction block, and the table holds 20 / 15 rows.
+      THIRTEEN write sites use a bare `on conflict do nothing` (measured — twelve `private.notify_*`
+      plus `public.approve_club_join_request`), so none names it. **Not
+      `concurrently`** — that cannot run in a transaction block, and the table holds 18 / 15 rows.
 - [ ] **1.7 §5 — the two policies.** Drop and re-create the SELECT and the UPDATE policy with the
       conjunct
       `and (thread_id is null or exists (select 1 from public.club_threads t where t.id = notifications.thread_id))`
@@ -107,6 +129,34 @@ Append-only. Never edit an applied migration.
 - [ ] **1.10 §8 — `private.retract_club_thread_waved()`.** Delete scoped by **all four** of
       `user_id`, `type`, `actor_id`, `thread_id`. Comment carrying the aim-at-another-rider argument
       and the do-not-add-a-`pg_trigger_depth`-guard rule.
+
+      **The recipient is NOT on the deleted row — join `public.club_threads` for it, and tolerate it
+      being gone.** `club_thread_waves` is `(thread_id, user_id, created_at)`, so
+      `club_threads.author_id` must be looked up. **`092`'s `retract_club_waved` cannot be copied
+      here**: it reads all four scope columns off `OLD`, because `club_join_waves` carries
+      `subject_user_id`, `user_id` **and** `club_id`.
+
+      ```sql
+      delete from public.notifications n
+       using public.club_threads t
+       where t.id       = old.thread_id
+         and n.user_id  = t.author_id
+         and n.type     = 'club_thread_waved'
+         and n.actor_id = old.user_id
+         and n.thread_id = old.thread_id;
+      ```
+
+      **On the cascade path this deletes ZERO rows, by design.** When a thread is deleted the FK
+      cascade issues `delete from club_thread_waves where thread_id = …`, and the `club_threads` row
+      is **already gone** when that statement fires its `AFTER DELETE` triggers — so the join finds
+      nothing. `notifications.thread_id`'s own cascade removes the rows. Do **not** describe this as
+      redundant; there is no duplicate removal.
+
+      **`select … into strict`, `PERFORM` + `if not found then raise`, or any raise on the empty case
+      is a THREAD THAT CANNOT BE DELETED.** `NO_DATA_FOUND` inside the cascade aborts the whole
+      statement, taking `moderate_club_thread`, `remove_reported_thread`, club deletion and account
+      deletion with it — fan-out failures are deliberately not swallowed. The `using` join above, or a
+      scalar subquery compared with `=` (NULL matches nothing), are the two forms that are safe.
 - [ ] **1.11 §9 — revokes.**
       `revoke all on function … from public, anon, authenticated, service_role;` for all three.
       Revoking from `public` is what does the work; EXECUTE is granted to PUBLIC by default.
@@ -195,6 +245,19 @@ Append-only. Never edit an applied migration.
 ### Cascades
 
 - [ ] **2.23 `098.23`** — deleting the thread removes both types' rows.
+- [ ] **2.23a `098.23a`** — **the four cascade routes each SUCCEED with the retraction trigger
+      installed**, asserted **separately** because they enter the cascade differently: the author's
+      own `delete from club_threads`, `public.moderate_club_thread`, `private.remove_reported_thread`,
+      and a club deletion. Set up a thread that **has a wave** in every case, or the trigger never
+      fires and the assertion passes vacuously.
+      **Assert that the statement succeeded, not that the notification is absent** — it is absent
+      under a raising implementation too, because the transaction rolled back. This is the assertion
+      that catches `select … into strict`, and nothing else in this file can.
+- [ ] **2.23b `098.23b`** — on that same cascade, the retraction itself deletes **zero** rows and the
+      notifications go by `notifications.thread_id`'s cascade. Assert it by dropping the
+      `thread_id` FK's cascade in a rolled-back transaction, or by counting inside a statement-level
+      probe — whichever the suite can express — so that "the row is gone" cannot be satisfied by the
+      wrong mechanism.
 - [ ] **2.24 `098.24`** — `public.moderate_club_thread` removes them; `private.remove_reported_thread`
       removes them.
 - [ ] **2.25 `098.25`** — deleting the **club** removes them, through the thread, with
@@ -332,7 +395,7 @@ Both are in `src/components/notifications/`. **There is no `src/lib/notification
 >    `grep -c "return { href: null }" src/components/notifications/NotificationsListItem.tsx` → 1.
 > 2. **`098` adds a column the shipped bundle READS, which `089` did not.**
 >    `NOTIFICATION_SELECT` (`src/lib/data/notifications.ts:59`) is an explicit column list, so a new
->    bundle against a pre-`098` database answers `42703`/400 and `unwrapList` throws — every rider's
+>    bundle against a pre-`098` database answers `PGRST200`/400 and `unwrapList` throws — every rider's
 >    notifications list, not one degraded row. That is `096`'s rule read on the read side.
 > 3. **On PROD the migration-first window costs nothing measurable**: `club_threads` and
 >    `club_messages` are both **0 rows** there (measured 2026-09-01), so no notification of either
@@ -345,7 +408,7 @@ Both are in `src/components/notifications/`. **There is no `src/lib/notification
 ### Order A — migration BEFORE the bundle serves. **CHOSEN.**
 
 The bundle reads a column that does not exist until `098` applies, so a serving new bundle against a
-pre-`098` database answers **`42703` / 400** on `NOTIFICATION_SELECT` and takes **every rider's
+pre-`098` database answers **`PGRST200` / 400** on `NOTIFICATION_SELECT` and takes **every rider's
 notifications list** down for the window. Migration-first costs only rows of the two new types
 rendering `Rider · did something on LetsRide.` unlinked, in an older bundle, self-healing the moment
 the new one lands — and on PROD it costs nothing at all, `club_threads` being empty there. This is
@@ -366,7 +429,7 @@ the new one lands — and on PROD it costs nothing at all, `club_threads` being 
       from under a Preview still calling what it had just dropped.
 - [x] ~~**7.B2** Then apply `098`, then hand-exercise as in 7.A2.
 - [x] ~~**7.B3** **Accept and record** that between 7.B1 and 7.B2 the notifications list answers
-      `42703` for every rider, and say how long that window was.
+      `PGRST200` for every rider, and say how long that window was.
 
 ### Either way
 
@@ -389,7 +452,8 @@ the new one lands — and on PROD it costs nothing at all, `club_threads` being 
 ## 8. Documentation
 
 - [ ] **8.1** `docs/reference/schema.md` — update the `notifications` row: the seventh subject
-      column, the eight-column key, the seventh partial index, sixteen types, and the two new
+      column — the **fifth** subject column, **fifth** partial index and **seventh** FK column — the
+      eight-column key, sixteen types, and the two new
       conjuncts. Also note on the `club_threads` row that its deletion now reaches `notifications`.
 - [ ] **8.2** `CLAUDE.md` — **main thread only, agents do not write it.** Two claims move: the
       security-advisor table's reasoning about which functions add advisors (unchanged in count, and
@@ -406,7 +470,8 @@ the new one lands — and on PROD it costs nothing at all, `club_threads` being 
       belong in a notifications migration. `098`'s external `comment on function` carries the
       correction in the meantime (task 1.13).
 - [ ] **8.5** PR body: the change id, the Q4 decision and who made it, the negative cases, the
-      recipient set and its bound, and the fact that `openspec validate` could not run.
+      recipient set and its bound, the `openspec validate` result, and the two open questions the
+      owner still owes an answer on (**Q2**, the wave retraction, and **Q8**, the leave eviction).
 
 ---
 

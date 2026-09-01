@@ -34,8 +34,14 @@ about.
 
 **Why a typed column rather than a polymorphic `subject_id`.** Unchanged from `036`: a polymorphic
 column can carry no foreign key, so nothing cascades and a deleted thread leaves a row pointing at
-nothing with nothing to detect it. This is the seventh typed subject column and the sixth to be
-partially indexed.
+nothing with nothing to detect it. **`thread_id` is the FIFTH typed subject column, the FIFTH
+partial index and the SEVENTH foreign-key column**, and the three ordinals differ because the sets
+differ: the subject columns are `postcard_id`, `comment_id`, `ride_id`, `club_id`; the partial
+indexes are those four (`notifications_actor_id_idx` is **not** partial); and the FK columns are
+those four plus `user_id` and `actor_id`. Derive them rather than counting by eye —
+`information_schema.columns`, `pg_indexes … indexdef like '%WHERE%'`, and
+`pg_constraint … contype='f'` — because an earlier revision of this line gave two of the three
+wrong and a different pair wrong again in `tasks.md`.
 
 **`ON DELETE CASCADE`, like every other FK on this table.** A notification whose subject no longer
 exists must not survive as a tombstone.
@@ -69,22 +75,34 @@ alter index public.notifications_event_key_v2 rename to notifications_event_key;
    `create index` therefore cannot fail on existing data — and if it does, that is a **pre-existing
    duplicate** and a finding, not a rebuild problem.
 
-3. **All twelve existing fan-outs end in a BARE `on conflict do nothing`** — no index name, no
+3. **All THIRTEEN existing write sites end in a BARE `on conflict do nothing`** — no index name, no
    column list, no `on constraint` — measured:
 
    ```sql
-   select proname, substring(prosrc from position('on conflict' in lower(prosrc)) for 30)
-     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'private' and proname like 'notify%';
+   select n.nspname||'.'||p.proname as fn, m[1] as clause
+     from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+     cross join lateral regexp_matches(p.prosrc, 'on conflict[^;]{0,80}', 'gi') m
+    where p.prosrc ilike '%insert into public.notifications%'
+    order by 1, 2;
    ```
 
    A bare `on conflict do nothing` binds to *whatever* unique index the row violates, resolved at
-   execution time. So **no existing fan-out names the index and none needs editing.** Had one used
+   execution time. So **no existing write site names the index and none needs editing.** Had one used
    `on conflict (user_id, type, actor_id, …)`, the rebuild would have broken it at runtime with a
    `42P10` inside a rider's own write — which is exactly why this is measured rather than assumed.
 
+   **The query above is deliberately not the obvious one, and the obvious one under-reports twice.**
+   Filtering `n.nspname = 'private' and proname like 'notify%'` returns twelve and misses
+   **`public.approve_club_join_request`**, which also inserts into `public.notifications` — a write
+   site that is neither in `private` nor named `notify%`. And `position('on conflict' in …)` returns
+   only the **first** occurrence, which for `private.notify_club_join_request_declined` and for
+   `approve_club_join_request` is inside a **comment** — this repo's own comment trap, at a
+   `position()` instead of a `grep`. Selecting on *"inserts into `public.notifications`"* and
+   returning *every* match is what makes the gate able to see a fourteenth site.
+
 **The lock and the cost, stated.** A non-concurrent `create unique index` takes a `SHARE` lock,
-blocking writes to `notifications` for its duration. The table holds **20 rows on DEV and 15 on
+blocking writes to `notifications` for its duration. The table holds **18 rows on DEV and 15 on
 PROD**, so the duration is sub-millisecond. `create index concurrently` is deliberately **not** used:
 it cannot run inside a transaction block, which would leave the file non-atomic for no benefit at
 this size.
@@ -209,11 +227,36 @@ The three subject columns not named — `postcard_id`, `comment_id`, `ride_id`, 
 every `club_thread_waved` row by D3's arm, so naming `type` is what fixes them. That is
 `retract_postcard_liked`'s own reasoning.
 
-**It fires on cascaded deletes too, and that is useful rather than merely harmless.** Deleting the
-thread cascades its waves, which fires this — redundantly with `notifications.thread_id`'s own
-cascade, so it is at worst duplicated work and never wrong. **Do not add a `pg_trigger_depth()` or
-`TG_OP` guard**: a guard that skips the cascade case is one refactor away from skipping the rider
-case, and the rider case is the feature.
+### The recipient is NOT on the deleted row, and `092`'s function cannot be copied
+
+**`club_thread_waves` holds `(thread_id, user_id, created_at)` and nothing else**, so the
+notification's recipient — `club_threads.author_id` — has to be **joined**. That is the one
+structural difference from `092`, and it is invisible until it bites: `retract_club_waved` reads all
+four scope columns straight off `OLD`, because `club_join_waves` carries `subject_user_id`,
+`user_id` **and** `club_id`. Copying its shape here does not compile into anything correct.
+
+**It fires on cascaded deletes, and — unlike `092`'s — it does NOTHING there.** When a thread is
+deleted, the FK cascade issues `delete from club_thread_waves where thread_id = …`, and by the time
+that statement's `AFTER DELETE` triggers run the `club_threads` row is **already gone**. So the join
+finds nothing, no recipient resolves, and zero rows are deleted. The notifications are removed by
+`notifications.thread_id`'s own cascade, which does all the work.
+
+An earlier revision of this section said the retraction fires there "redundantly … at worst
+duplicated work and never wrong". **That is false** — there is no duplicate removal, because the
+retraction cannot reach the row at all. It is kept as a correction because the wrong version is what
+a reader re-derives from `092`'s comment, which says the opposite *and is right about its own table*.
+
+**The failure mode of getting this wrong is not a missing notification, it is a thread that cannot be
+deleted.** `select … into strict`, or any `if not found then raise`, raises `NO_DATA_FOUND` inside
+the thread's own delete and aborts it — taking `moderate_club_thread`, `remove_reported_thread`, club
+deletion and account deletion with it, because all four reach `club_thread_waves` through this
+cascade. Fan-out failures are deliberately not swallowed, so it surfaces as a rider who cannot delete
+their own thread. Write it as `delete … using public.club_threads`, or as a scalar subquery compared
+with `=` so a missing thread yields NULL and matches nothing.
+
+**Still no `pg_trigger_depth()` or `TG_OP` guard.** The temptation now runs the other way — "skip the
+cascade case, it does nothing" — and it is refused for the original reason: a guard that skips the
+cascade case is one refactor away from skipping the rider case, and the rider case is the feature.
 
 ### The `090` counter-argument, stated rather than buried
 
@@ -222,22 +265,47 @@ word: **with** a retraction, wave → un-wave → wave writes a *fresh* row each
 never collides — so a rider with one toggle can re-notify a thread's author without limit. **Without**
 one, the uniqueness index absorbs every repeat and the author is notified exactly once, ever.
 
-`092` shipped `club_waved` with the retraction anyway, one day before this file, and its stated
-reason — *"without a retraction it is an unbounded notification generator"* — is the argument
+`092` shipped `club_waved` with the retraction anyway, one day before this file, and its **first**
+stated reason — *"without a retraction it is an unbounded notification generator"* — is the argument
 `090` had already inverted. Both cannot be right about the same index.
 
-**This change follows `092` regardless, and the reason is scope rather than agreement.** Diverging
-would give the app two waves with two different retraction policies and nothing on either screen
-saying which is which — a two-tier rule of exactly the kind §2 of the proposal refuses elsewhere.
-And if the `090` reading is the right one, it is right for `club_waved` and `postcard_liked` **too**,
-which is a change to three fan-outs in one file with its own assertions, not a quiet divergence
-inside this one. `092` set the same precedent when it declined to fix `postcard_likes`' policy in
-its own file: *"fixing it in this file would put an unrelated policy change behind this change's
-ordering constraint."*
+**`092` has a SECOND reason, it is sound, and it does not transfer to this type.** Stated at
+`supabase/migrations/092_club_timeline_engagement.sql:710-717`: the retraction is what removes a
+`club_waved` row when the waved rider leaves the club, and *"the notifications read policy would have
+withheld it anyway once `clubs` SELECT stopped resolving for them on a private club; **on a PUBLIC
+club it would not have**, and this is what closes that."* That is a real gap the retraction closes —
+`club_waved`'s resolvability conjunct is `clubs`, whose SELECT carries an `is_public` arm, so a
+public club's row stays readable for ever after the subject leaves.
 
-So: **Q2, non-blocking, default = keep the retraction**, with the observation filed. The exposure is
-bounded by `club_thread_waves`' primary key `(thread_id, user_id)` — one wave per rider per thread at
-a time — and by the recipient being one rider who can block the waver.
+**`club_thread_waved`'s conjunct is `club_threads`, which is membership-only and has no `is_public`
+arm at all.** So the eviction this change already specifies happens on public and private clubs
+alike, and there is no gap left for a retraction to close. The one sound half of `092`'s case is
+absent here.
+
+**So Q2 rests on a genuinely thinner footing than "follow `092`", and the owner should see that
+rather than a consistency argument doing work it cannot do.** What is actually left for the
+retraction, once the inverted argument and the non-transferring one are removed:
+
+- **For it:** a notification standing for an act that has been undone. But this repo has already
+  ruled that truthfulness is *not* the reason for a retraction — `036` §7.2 says in terms that *"the
+  reason is harassment, not truthfulness"*, and `club_joined` deliberately survives the joiner
+  leaving. So this argument is available but is not one the repo has ever accepted before.
+- **Against it:** `090` applies cleanly — the retraction is precisely what turns a one-tap toggle
+  into a repeatable notification generator, and without it the collapse key bounds the author to one
+  notification ever. Dropping it also deletes a `security definer` function, a trigger, and the
+  entire cascade hazard the section above exists to describe.
+
+**Q2, non-blocking, default = keep the retraction — and it is the one default in this change the
+author holds weakly.** The reason it is not flipped here is scope rather than merit: `postcard_liked`
+and `club_waved` both retract, `090` says all three are wrong to, and reversing that belongs in one
+file covering all three with its own assertions rather than as a silent divergence in a change about
+threads. `092` set the same precedent when it declined to fix `postcard_likes`' policy in its own
+file. **If the owner has no view, the cheaper and simpler build is to drop it**, and the
+implementation cost of asking later is one trigger and one function.
+
+The exposure while it stands is bounded by `club_thread_waves`' primary key `(thread_id, user_id)` —
+one wave per rider per thread at a time — and by the recipient being one rider who can block the
+waver.
 
 ---
 
@@ -294,9 +362,19 @@ RLS, per the standing rule that a notification carries no denormalised text.
 **No type-scoped disjunct.** `089` and `093` each added one — `type = 'club_join_request_declined'
 AND private.club_takes_join_requests(club_id)`, `type = 'club_invited' AND
 private.has_live_club_invite(club_id)` — because their recipients are, by construction, riders who
-cannot read the club. **Neither new type has that property**: the recipient is the thread's author,
-who was a member when they wrote it, so the ordinary conjunct resolves. Adding a disjunct nothing
-needs would widen the one policy that must stay the narrowest in the schema.
+**never could** read the subject: a declined requester and an invitee are non-members at the moment
+the row is written, so without a disjunct the row would be unreadable from birth. That is the
+condition a type-scoped disjunct exists for, and **neither new type meets it**: the recipient
+authored the thread, which `club_threads` INSERT required membership for, so the ordinary conjunct
+resolves **at the moment the row is written**.
+
+**It does not resolve for ever, and that is deliberate rather than an oversight.** A thread's author
+who later leaves the club stops reading it — `club_threads` SELECT is membership-only — which is the
+eviction Q8 puts to the owner and `specs/event-fanout-integrity` states as *"a subset of the
+resolving set only while they remain a member."* A disjunct is **not** the repair for that: it would
+keep the notification readable while the thread screen it links to still refuses the rider, which is
+precisely the row-renders-but-its-destination-will-not-open state the standing spec forbids. Adding a
+disjunct nothing needs would also widen the one policy that must stay the narrowest in the schema.
 
 **The two existing disjuncts are preserved verbatim** in the re-created policies. They are on the
 `club_id` conjunct and this change does not touch it; dropping them would take `089`'s and `093`'s
@@ -369,7 +447,7 @@ this change's facts, it answers the other way.
 
 | | Older bundle, `098` applied | New bundle, `098` NOT applied |
 |---|---|---|
-| The notifications **list** | Renders. New rows show `Rider · did something on LetsRide.`, unlinked | **`42703` / 400 on `thread:club_threads!thread_id` → `unwrapList` throws → the screen's failed-read state, for every rider** |
+| The notifications **list** | Renders. New rows show `Rider · did something on LetsRide.`, unlinked | **`PGRST200` / 400 on `thread:club_threads!thread_id` — no such relationship in the schema cache → `unwrapList` throws → the screen's failed-read state, for every rider** |
 | The unread **count** | Correct — `unread_notification_count()` reads through the policy | Correct, so the badge is nonzero over a broken list |
 | Self-healing | **Yes.** The copy is resolved live, so the rows render correctly the moment the bundle lands | Yes, once the migration lands |
 | Blast radius | The new rows only | **Every notification row of every type, for every rider** |
@@ -395,10 +473,15 @@ the only safe side"* — and `096` went **first**, before the build served, for 
 **0** and `club_messages` is **0** on `zwprydcyryvudhurbnye`. No reply and no thread wave can be
 written during the window, so no generic row can appear.
 
-**Recommendation: `098` applies BEFORE the bundle serves, on each project independently.** Q4 is
-blocking and `tasks.md` §7 carries both orders with the apply step held until it is answered. Whoever
-answers it should note that the two orders are *not* equally recoverable: migration-first is undone
-by waiting a few minutes, deploy-first is a live outage of an existing screen.
+**DECIDED 2026-09-01, by the main thread: `098` applies BEFORE the bundle serves, on each project
+independently.** It was raised here as a recommendation against PD-367's own instruction; the
+decision was taken on the three measurements above rather than on the recommendation, and
+`tasks.md` §7 is the operative instruction, with order B struck rather than deleted.
+
+The reason the decision went that way and not the other is that **the two orders are not equally
+recoverable**: migration-first is undone by waiting a few minutes for the build, deploy-first is a
+live outage of an existing screen for every rider until someone applies a migration. Where two
+orders both look defensible, that asymmetry is the tie-break.
 
 ---
 
@@ -423,12 +506,20 @@ Both go false the moment `098` applies, and both are corrected in the same file.
    `notifications` has no `thread_id` column and is not in the chain."* That claim becomes false and
    it is the one an operator reads before removing a reported thread.
 
-   **The body is deliberately NOT rewritten.** Correcting an in-body comment needs `create or
-   replace function`, which changes `prosrc`, which is what every cross-project comparison in this
-   repo is keyed on (`md5(prosrc)`, `pg_get_functiondef`) — so a comment fix would read as a
-   behavioural change of a `security definer` moderation function in a diff whose subject is
-   notifications, and would put `094`'s function behind this change's ordering constraint. `092`
-   declined the identical trade for `postcard_likes`' policy, for the identical reason.
+   **The body is deliberately NOT rewritten, and the reason is `prosrc` alone.** Correcting an
+   in-body comment needs `create or replace function`, which changes `prosrc` — the value every
+   cross-project reconciliation in this repo is keyed on (`md5(prosrc)`, `pg_get_functiondef`,
+   because a reduced apply makes the *recorded statement* useless for comparison). A DEV/PROD
+   divergence in that hash, produced by a notifications migration, is a signal that costs a session
+   to run down and says nothing true. It also puts `094`'s function behind this change's ordering
+   constraint for a comment. `092` declined the identical trade for `postcard_likes`' policy.
+
+   **It is NOT because the function is `security definer` — it is not one.** `private.remove_reported_thread`
+   has `prosecdef = false` (measured on DEV 2026-09-01; its DDL carries `set search_path = ''` and no
+   `security definer`, deliberately). The definer one is `public.moderate_club_thread`, a different
+   function, and conflating them is easy because they sit in the same migration and do the same
+   delete. Recorded because an earlier revision of this section rested the argument on that false
+   premise, and the argument survives without it.
 
    Instead: `comment on function private.remove_reported_thread(uuid)` is re-issued carrying the
    correction, `098`'s header names the stale line and its file and line, and **task 8.4 files the
@@ -454,10 +545,18 @@ stop firing. Equally, **no fan-out function body may branch on `current_user`**:
 definer` function `current_user` is the **owner**, so such a guard never runs.
 
 **No new security advisor.** All three functions live in `private`, which PostgREST does not publish,
-so `authenticated_security_definer_function_executable` cannot fire for them. The count stays at
-**36** on both projects. `085`'s eight `private` functions adding zero advisors is the measured
-precedent, and the rule is that the count moves by the number of **public** functions only. A new
-advisor after apply means a function landed in `public` or a `revoke` did not, and is a failed apply.
+so `authenticated_security_definer_function_executable` cannot fire for them and **this change moves
+the count by zero on each project**. `085`'s eight `private` functions adding zero advisors is the
+measured precedent, and the rule is that the count moves by the number of **public** functions only.
+A new advisor after apply means a function landed in `public` or a `revoke` did not, and is a failed
+apply.
+
+**The gate is the DELTA and never an absolute number, and this is the session that proves why.** DEV
+reads 37 and PROD 36 today (2026-09-01) — a legitimate difference, because `097`'s public
+`introduce_to_club` is applied on DEV and awaiting promotion, which is the ordinary DEV-ahead state.
+An earlier revision of this section pinned **36 on both**; against a correct DEV that reads as a
+failed apply, which is the failure mode a stale absolute number always has here. Take the count and
+the name set **before** the apply on that project and compare them **after**.
 
 ---
 

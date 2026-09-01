@@ -99,15 +99,22 @@ owner's instruction, and the comment SHALL be corrected in the same migration.
   never on a subset
 - **AND** this SHALL be asserted with two actors, because a single-actor assertion cannot fail
 
-#### Scenario: Deleting the thread retracts the wave notification twice over, harmlessly
+#### Scenario: Deleting the thread fires the retraction, which matches nothing, and does not raise
 
 - **WHEN** a thread is deleted and its `club_thread_waves` rows cascade away
 - **THEN** the `AFTER DELETE` retraction SHALL fire once per cascaded row, inside the deletion's own
-  transaction, which SHALL be recorded rather than discovered
-- **AND** the same rows are removed by `notifications.thread_id`'s own cascade, so the retraction is
-  at worst redundant and never wrong
-- **AND** the redundancy SHALL NOT be removed by adding a `pg_trigger_depth()` or `TG_OP` guard,
-  because a guard that skips the cascade case is one refactor away from skipping the rider case
+  transaction
+- **AND** it SHALL find **no** `club_threads` row — the parent is already gone when the cascade's
+  delete fires — so it SHALL resolve no recipient and SHALL delete **zero** rows
+- **AND** the notifications SHALL be removed by `notifications.thread_id`'s own `ON DELETE CASCADE`,
+  which is what actually does the work here
+- **AND** the thread deletion SHALL succeed
+- **AND** this SHALL NOT be described as a redundant or duplicated removal, because the retraction
+  cannot reach the row at all in this case — a description claiming redundancy is satisfied by an
+  implementation that raises, since the row is gone either way
+- **AND** the redundancy that does NOT exist SHALL NOT be "restored" by adding a `pg_trigger_depth()`
+  or `TG_OP` guard, and no guard SHALL be added for any reason: a guard that skips the cascade case
+  is one refactor away from skipping the rider case
 
 #### Scenario: Wave, un-wave and wave again re-notifies once per cycle, and that is a stated cost
 
@@ -121,6 +128,56 @@ owner's instruction, and the comment SHALL be corrected in the same migration.
 - **AND** the alternative — dropping the retraction, which is what `090` did to `ride_invited` for
   exactly this reason — SHALL be an open question against **all three** wave-shaped fan-outs together
   rather than a divergence introduced here
+
+### Requirement: The wave retraction SHALL resolve its recipient by joining `club_threads`, and SHALL tolerate that thread being gone
+
+`public.club_thread_waves` holds only `(thread_id, user_id, created_at)`. The notification's
+recipient — `club_threads.author_id` — is therefore **not on the deleted row**, so
+`private.retract_club_thread_waved()` SHALL obtain it by joining `public.club_threads` on
+`old.thread_id`. Resolving no row SHALL delete nothing and SHALL NOT raise.
+
+**This is the one place where `092`'s `retract_club_waved` cannot simply be copied, and copying it is
+the likely implementation.** That function reads all four of its scope columns straight off `OLD`,
+because `club_join_waves` carries `subject_user_id`, `user_id` and `club_id`. Its shape therefore
+works unchanged on a cascade. This one cannot: on the cascade path the `club_threads` row is
+**already deleted** when the referencing delete fires its `AFTER DELETE` triggers, so the join finds
+nothing.
+
+The failure mode is severe and is not visible in a passing test of the ordinary path. A
+`select … into strict` or any `if not found then raise` raises `NO_DATA_FOUND` **inside the thread's
+own delete**, which aborts it — and with it `public.moderate_club_thread`, `private.remove_reported_thread`,
+club deletion and account deletion, each of which reaches `club_thread_waves` through the same
+cascade. A fan-out failure is deliberately not swallowed, so this would surface as a rider unable to
+delete their own thread and an admin unable to moderate one.
+
+The forms that satisfy this are a `DELETE … USING public.club_threads` join, or a scalar subquery
+compared with `=` (which yields NULL and matches nothing when the thread is gone). `INTO STRICT`,
+`PERFORM` + `FOUND`, and any `raise` on the empty case do not.
+
+#### Scenario: The recipient is joined, not read off the deleted row
+
+- **WHEN** `private.retract_club_thread_waved()` is written
+- **THEN** it SHALL obtain `user_id` from `public.club_threads.author_id` for `old.thread_id`
+- **AND** it SHALL NOT read a recipient column off `OLD`, because `club_thread_waves` has none
+- **AND** the scope SHALL still be all four of `user_id`, `type`, `actor_id` and `thread_id`
+
+#### Scenario: A missing thread deletes nothing and raises nothing
+
+- **WHEN** the retraction fires for a wave whose thread no longer exists
+- **THEN** it SHALL delete zero rows and SHALL complete normally
+- **AND** the statement that caused the cascade SHALL succeed
+
+#### Scenario: Every path that cascades into `club_thread_waves` still succeeds
+
+- **WHEN** a thread is deleted by its author, moderated through `public.moderate_club_thread`,
+  removed through `private.remove_reported_thread`, or reached by a club deletion or an account
+  deletion
+- **THEN** each SHALL succeed with the retraction trigger installed
+- **AND** each SHALL be asserted **separately**, because they enter the cascade by different routes
+  and an assertion on one does not cover the others
+- **AND** the assertion SHALL check that the statement **succeeded**, not merely that the
+  notification is absent — the notification is absent under a raising implementation too, because the
+  transaction rolled back
 
 ### Requirement: A reply notification SHALL NOT be retracted when its message is deleted
 
@@ -198,9 +255,14 @@ the column is mandatory rather than convenient.
 **The rebuild SHALL be proved safe rather than asserted**, on three measured facts: the key is a plain
 UNIQUE INDEX and not a table constraint, so nothing depends on a constraint name; every existing row
 has `thread_id` NULL and `NULLS NOT DISTINCT` compares NULLs equal, so appending a column constant
-across every existing row cannot split an equivalence class; and **every one of the twelve existing
-fan-outs ends in a bare `on conflict do nothing`** with no index name and no column list, so none
-names the index and none needs editing.
+across every existing row cannot split an equivalence class; and **every one of the thirteen
+existing write sites into `public.notifications` ends in a bare `on conflict do nothing`** with no
+index name and no column list, so none names the index and none needs editing.
+
+**The thirteen SHALL be found by selecting on the INSERT rather than on a naming convention.**
+Twelve are `private.notify_*`; the thirteenth is `public.approve_club_join_request`, which is in
+neither that schema nor that name shape. A derivation that filters on schema and prefix reports
+twelve and cannot see a fourteenth site.
 
 #### Scenario: Every existing type collapses exactly as it did
 
@@ -353,9 +415,12 @@ NOT survive as a tombstone.
 - **THEN** every notification naming that thread SHALL be removed by the same cascade
 - **AND** `private.remove_reported_thread`'s own body currently states that `notifications` *"has no
   `thread_id` column and is not in the chain"*, which this change makes false — the claim SHALL be
-  corrected in the function's external comment and the in-body edit filed separately, because
-  `create or replace` on a `security definer` moderation function is outside this change's blast
-  radius
+  corrected in the function's **external** comment, and the in-body edit filed separately, because
+  `create or replace` is the only way to reach an in-body comment and it moves `prosrc`, the value
+  every cross-project reconciliation in this repo compares
+- **AND** the reason SHALL NOT be given as the function being `security definer`: it is **not** one
+  (`prosecdef = false`, measured 2026-09-01). `public.moderate_club_thread` is the definer function,
+  and the two are easy to conflate because they sit in one migration and perform the same delete
 
 #### Scenario: Deleting the club destroys them too, through the thread
 

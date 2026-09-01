@@ -12,13 +12,15 @@
 
 ## ⚠ Read this first
 
-### 1. One objection, and it is about the APPLY ORDER rather than the feature. BLOCKING.
+### 1. The APPLY ORDER is the opposite of the one PD-367 specifies. RAISED, AND NOW SETTLED.
 
-**PD-367's body, and the brief that commissioned this file, both say `098` applies only AFTER its
-bundle is confirmed serving — `089`'s rule. Measured against the tree and both databases today,
-that is the unsafe side, and this change refuses to write it as settled.**
+**PD-367's body, and the brief that commissioned this file, both said `098` applies only AFTER its
+bundle is confirmed serving — `089`'s rule. Measured against the tree and both databases, that is
+the unsafe side. The main thread decided it on 2026-09-01: order A, migration-first**, on the three
+measurements below rather than on the recommendation alone. `tasks.md` §7 records the decision and
+keeps order B struck rather than deleted.
 
-The stated reason has expired and the change has a second property that inverts the answer:
+The stated reason had expired and the change has a second property that inverts the answer:
 
 - **The reason expired on 2026-08-28.** `089`'s rule exists because `notificationCopy` and
   `NotificationsListItem`'s `describe` were exhaustive switches with **no runtime fallback**, so an
@@ -37,7 +39,8 @@ The stated reason has expired and the change has a second property that inverts 
 - **`098` adds a COLUMN THE SHIPPED CLIENT READS, and `089` did not.** `NOTIFICATION_SELECT` in
   `src/lib/data/notifications.ts` is an explicit column list, and this change adds
   `thread:club_threads!thread_id(id, title)` to it. Against a pre-`098` database PostgREST answers
-  **`42703` / 400** for that embed, `unwrapList` throws, and **every rider's notifications list
+  **`PGRST200` / 400** for that embed — *could not find a relationship* — `unwrapList` throws, and
+  **every rider's notifications list
   fails entirely** for the length of the window — not a degraded row, the whole screen. That is
   `096`'s reasoning read on the read side: *"For a column a shipped client WRITES, migration-first
   is the only safe side."*
@@ -48,10 +51,11 @@ measurably **zero**: `select count(*) from club_threads` is **0** and `club_mess
 `zwprydcyryvudhurbnye` (2026-09-01), so no reply and no thread wave can exist during that window at
 all.
 
-**The recommendation is therefore `096`'s order — `098` applies BEFORE the bundle serves, on each
-project independently — and `tasks.md` §7 is written with BOTH orders, marked blocked on Q4.** This
-is not a disagreement with `089`; it is `089`'s own rule, which asks *which side fails safe*, run
-against two facts `089` did not have. Nothing else in this change depends on the answer.
+**So the order is `096`'s: `098` applies BEFORE the bundle serves, on each project independently.**
+This is not a disagreement with `089`; it is `089`'s own rule, which asks *which side fails safe*,
+run against two facts `089` did not have. `tasks.md` §7 is the operative instruction and order B
+there is struck — kept visible because *"a new notification type deploys last"* is the rule this
+repo carries and the next reader will reach for it.
 
 ### 2. Scope is EVERY club thread, and that is an interpretation rather than a quotation.
 
@@ -69,14 +73,21 @@ DEV `fpmrimzxadewsaiwpsel`, PROD `zwprydcyryvudhurbnye`. Each claim carries the 
 re-derives it. The Linear half is first-hand: `get_issue` and `list_comments` on PD-367 and
 `get_issue` on PD-368.
 
-### 4. The `openspec` CLI is not installed in this container, so these files are hand-written.
+### 4. These files were hand-scaffolded, and `openspec validate` is green.
 
-`npm run openspec` resolves to `sh: 1: openspec: not found`, and `node_modules/.bin` holds no such
-binary — so `openspec new change`, `openspec status` and `openspec validate` could not run. The
+`node_modules` was absent when they were written, so `openspec new change` could not run and the
 artifacts were written to the exact shape the scaffold produces (`.openspec.yaml` with `schema` and
 `created`, plus `proposal.md`, `design.md`, `specs/<capability>/spec.md`, `tasks.md`), copied from
-`openspec/changes/club-timeline-engagement/`. **Same artifact, so this is a workaround rather than
-debt** — but `openspec validate` has not run against them and that is task 0.1.
+`openspec/changes/club-timeline-engagement/`. The CLI is installed now and has been run:
+
+```bash
+node_modules/.bin/openspec validate notify-a-club-thread --type change            # valid
+node_modules/.bin/openspec validate notify-a-club-thread --type change --strict   # valid
+```
+
+**Note the flag.** There is no `--change` option; it is a positional item name with `--type change`,
+or `--changes` for all of them. And this is the **only** automated gate these artifacts have —
+`openspec/` sits in `ci.yml`'s denylist, so nothing else in CI reads them.
 
 ## Why
 
@@ -205,12 +216,14 @@ case cannot arise; **a widening must exclude it explicitly.**
 - **The recipient, once the thread stops resolving for them.** The new conjunct is
   `thread_id IS NULL OR EXISTS (select 1 from public.club_threads t where t.id = notifications.thread_id)`,
   evaluated under the reader's own row security. So:
-  - **A rider who LEFT the club keeps the row and stops reading it.** `club_threads` SELECT needs
+  - **A rider who LEFT the club keeps the row and stops reading it — this is Q8**, the only
+    rider-visible behaviour here that nobody has explicitly decided. `club_threads` SELECT needs
     `is_club_member`, and the thread author's own-row arm sits *inside* the block conjunct rather
     than ahead of the membership one — so authoring it is not enough. **Nothing deletes the row**,
     the unread count falls with the list in the same instant, and rejoining returns it with its
     original `created_at` and read state. Eviction, not deletion — the `client-cache-invalidation`
-    ruling.
+    ruling. It follows from the policy rather than being chosen, which is exactly why it is put as a
+    question rather than left to be inherited.
   - **A rider blocked with the thread's author** loses it the same way, by the same conjunct.
   - **A rider blocked with the ACTOR** loses it by `notifications`' own
     `not private.is_blocked(auth.uid(), actor_id)` — a different mechanism, and the two are asserted
@@ -243,7 +256,7 @@ and `thread_id`, so one rider's un-wave cannot reach another rider's row.
 | A replier deletes their message (`delete_own_club_message`) | **Survives** | Deliberate — no retraction on replies, see §D7 |
 | The recipient deletes their account | **Deleted** | `user_id` cascade |
 | The actor deletes their account | **Deleted**, from the recipient's list | `actor_id` cascade |
-| An un-wave | **Deleted** | `private.retract_club_thread_waved()`, this change's own trigger |
+| An un-wave | **Deleted** | `private.retract_club_thread_waved()`, this change's own trigger — which joins `club_threads` for the recipient and deletes nothing when that thread is already gone (§D6) |
 
 ## What the rider actually sees
 
@@ -309,9 +322,12 @@ navigation, which is precisely the bounded staleness `client-cache-invalidation`
 - **No new participation-gate trigger.** `club_messages` and `club_thread_waves` already carry one
   (measured), and this change adds no table — so the count stays at **22** on both projects.
 - **No new security advisor.** All three functions live in `private`, which PostgREST does not
-  publish, so the count stays at **36** on both. `085`'s eight `private` functions adding zero
-  advisors is the precedent, and the rule is that the count moves by the number of **public**
-  functions only.
+  publish, so **this change moves the count by zero on each project**. `085`'s eight `private`
+  functions adding zero advisors is the precedent, and the rule is that the count moves by the number
+  of **public** functions only. **The check is relative, never an absolute number**: DEV and PROD
+  legitimately differ right now — 37 and 36, measured 2026-09-01, because `097`'s `introduce_to_club`
+  is applied on DEV and awaiting promotion — so an absolute target would read a correct DEV as a
+  failed apply.
 - **No `introduces_user_id`, no `introduction`, no `097`.** That is the parallel story's.
 
 ## Open questions
@@ -321,12 +337,13 @@ Every one carries a recommended default so the build can proceed and be correcte
 | # | Question | Blocking | Who answers | Default |
 |---|---|---|---|---|
 | **Q1** | Does a reply notify **prior repliers** as well as the thread's author? | No | Product owner | **No.** Author only. §D4 records what widening would cost and require |
-| **Q2** | Wave → un-wave → wave re-notifies once per cycle. Keep the retraction (`092`) or drop it (`090`)? | No | Product owner | **Keep it**, matching `club_waved` shipped one day earlier. §D6 |
+| **Q2** | Wave → un-wave → wave re-notifies once per cycle. Keep the retraction or drop it (`090`)? | No | Product owner | **Keep it — weakly.** `092`'s only *sound* argument does not transfer to this type, so `090` applies cleanly and the merits now favour dropping. Held only because reversing it belongs in one file covering all three wave fan-outs. §D6 |
 | **Q3** | The two copy strings and the destination | No | Product owner | The table above. The design draws no such row |
-| **Q4** | **The apply order.** Migration-first (this change's analysis) or after-serving (the brief) | **YES** | Product owner / main thread | **Migration-first.** §1 and §D11. `tasks.md` §7 carries both and is blocked until answered |
+| ~~**Q4**~~ | ~~**The apply order.**~~ **ANSWERED 2026-09-01 — order A, migration-first**, on three measurements rather than on the recommendation alone. `tasks.md` §7 records them and strikes order B. §1 and §D11 | — | Settled | **Migration-first.** Not open |
 | **Q5** | Should a reply notification **resurface** when the same rider replies again? | No | Product owner | **No** — `on conflict do nothing`. §D5 |
 | **Q6** | Is the scope every thread, or introductions only? | No | Product owner | **Every thread.** §2 |
 | **Q7** | Does a thread wave deserve the same weight as a reply, or is it noise? | No | Product owner | **Same weight**, its own type. `club_waved` is the precedent |
+| **Q8** | A thread's author who **leaves the club** stops reading their own thread's notifications. Evict, or keep them readable? | No | Product owner | **Evict.** It falls out of `club_threads`' membership-only SELECT rather than being chosen, and it is an eviction rather than a deletion — rejoining returns every row with its `created_at` and read state intact. §D8. Raised as a question because it is rider-visible and nobody has decided it |
 
 ## Verification
 
@@ -349,6 +366,6 @@ select proname, substring(prosrc from position('on conflict' in lower(prosrc)) f
 select count(*) from pg_trigger where tgname='enforce_participation_gate' and not tgisinternal;  -- 22, both
 
 # the rebuild's cost
-select count(*) from public.notifications;                          -- DEV 20, PROD 15
+select count(*) from public.notifications;                          -- DEV 18, PROD 15 (it moves)
 select count(*) from public.club_threads;                           -- DEV 4,  PROD 0
 ```

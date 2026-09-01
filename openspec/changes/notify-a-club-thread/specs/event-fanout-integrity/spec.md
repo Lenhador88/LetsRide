@@ -2,11 +2,14 @@
 
 ### Requirement: The two thread fan-outs SHALL satisfy every standing fan-out rule, and each SHALL be checked rather than assumed inherited
 
-This capability carries ten requirements. Every one applies to `private.notify_club_thread_replied`,
-`private.notify_club_thread_waved` and `private.retract_club_thread_waved`, and each is checked
-below rather than declared inherited — because *"the next fan-out this app grows … inherits every
-rule here unchanged and must not rediscover them"* is a statement about the rules, not a promise
-that a new fan-out complies.
+`private.notify_club_thread_replied`, `private.notify_club_thread_waved` and
+`private.retract_club_thread_waved` SHALL each satisfy all ten of this capability's standing
+requirements, and each of the ten SHALL be checked against them individually rather than declared
+inherited.
+
+Compliance SHALL NOT be argued from the capability's own purpose statement — *"the next fan-out this
+app grows … inherits every rule here unchanged and must not rediscover them"* is a statement about
+the rules, not a promise that any particular new fan-out obeys them.
 
 | # | Standing requirement | How these three satisfy it |
 |---|---|---|
