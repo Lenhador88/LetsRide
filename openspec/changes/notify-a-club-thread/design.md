@@ -170,12 +170,38 @@ message, inside the replier's own transaction — which is PD-368's exception, t
 on a surface that is chat rather than an event.
 
 **The owner-who-is-not-a-member trap belongs to that widening and is recorded here so it is not
-re-derived wrongly.** `clubs` SELECT has an `owner_id = auth.uid()` arm; `club_threads` SELECT does
-**not** — it requires `private.is_club_member(club_id)`, which queries `club_members` with no owner
-arm — and `club_members` DELETE is a bare `auth.uid() = user_id` with no owner carve-out, so an owner
-can leave their own club in one request. This is the exact asymmetry `event-fanout-integrity` records
-between `club_joined` (owner ∪ members, safe) and `ride_created_in_club` (members **only**). A
-widened recipient set here is on the `ride_created_in_club` side.
+re-derived wrongly — and an earlier revision of this section DID re-derive it wrongly**, which is
+why the measurement is written out rather than the conclusion. `club_members` DELETE is a bare
+`auth.uid() = user_id` with no owner carve-out, so an owner can leave their own club in one request
+and keep ownership. What that costs them is the question, and the tempting answer is false:
+
+```sql
+-- measured on DEV 2026-09-01, off pg_get_functiondef
+private.is_club_member(target_club_id)
+  -> private.is_club_member_for(auth.uid(), target_club_id)
+private.is_club_member_for(candidate, target_club_id)
+  -> exists (select 1 from public.club_members
+              where club_id = target_club_id and user_id = candidate)
+     or exists (select 1 from public.clubs
+                 where id = target_club_id and owner_id = candidate)
+```
+
+**`private.is_club_member` HAS an owner arm** — `054`/PD-128 gave it one — so an ownerless owner
+resolves `club_threads` perfectly well, and a notification addressed to them is **readable**. The
+`ride_created_in_club` asymmetry is therefore NOT what is going on here: that asymmetry is what
+`036` §7.5 measured *before* `054`, and `CLAUDE.md` already records that `054` turned that narrowing
+into a gap rather than a consequence. Citing it here would import a permanently-unreadable-row
+argument that does not apply.
+
+Two live consequences, and they run in opposite directions:
+
+- **For a Q1 widening**, the helper would silently ADMIT the ownerless owner into the candidate set.
+  Whether they belong there is a product decision to make out loud; it is not forced either way by
+  readability, which is what the old wording implied.
+- **For Q8**, the eviction is observable ONLY for an author who is not the club's owner. An owner
+  who leaves keeps reading notifications about their own thread, through the owner arm. `098.14`'s
+  fixture makes the author a non-owner deliberately, so that assertion cannot pass for the wrong
+  reason.
 
 ---
 

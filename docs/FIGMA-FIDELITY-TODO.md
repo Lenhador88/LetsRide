@@ -561,6 +561,27 @@ is a drawn value this repo no longer builds:
 Blocked on schema, same as the ride detail: `formatRideTime` on `RideChip` renders one
 instant because `rides` has no end-time column — see that entry rather than repeating it.
 
+**The introduction sheet is ours — there is no v2 frame for it (PD-365, `097`, 2026-09-01).**
+Established rather than assumed, and the command is here so the next session re-runs it instead
+of trusting this line:
+
+```bash
+npm run figma -- ls | grep -i "introduc\|welcome"     # empty
+```
+
+So the sheet's composition, its welcome wording and the introduction's layout on the thread
+detail are **inferred**, not measured, and are the app's own — the same standing as
+`ClubThreadRow`, `CreateThreadForm` and the Journal stamp above, all ours for the same reason.
+It borrows `ContextMenu`'s scrim and geometry so it is at least consistent with the sheets that
+were measured. **Nothing here has been rendered against DEV**; `npm run walk` has not run over
+it, which is the gate that would catch a sheet that throws on open.
+
+**The join row swapped a control and did not merely gain one.** PD-356's ⋯ overflow with
+`Say welcome` is deleted; a comment glyph and count sit in its place, and the wave control is
+unchanged and still absent — not disabled — on the viewer's own row. The row's measured 44×326
+`Event` geometry had no room for a wave, a count and an overflow together, which is why this
+composition was already ours before this change; it now carries one control fewer.
+
 ### Clubs list — built from the measurements 2026-08-05
 
 Every geometry value was **read** from `v2 / Component / List / Club` (the 3-variant set,

@@ -199,15 +199,15 @@ becomes whatever the migration author assumed"*.
 | **A blocked party, either direction** | never | never | `not private.is_blocked(actor, recipient)` in both fan-outs |
 | **A signed-out visitor** | never | never | Decision #1: `anon` holds zero grants and every route but `/auth/*` and `/legal/*` needs a session. Asserted as a negative, never granted |
 
-**The owner-who-is-not-a-member case is the `ride_created_in_club` asymmetry again, and it must not
-be re-derived wrongly if Q1 is ever answered `yes`.** `clubs` SELECT admits `owner_id = auth.uid()`;
-`club_threads` SELECT does **not** — it requires `private.is_club_member(club_id)`, which queries
-`club_members` with no owner arm. `club_members` DELETE is a bare `auth.uid() = user_id`, so an
-owner can leave their own club in one request and keep ownership. A row written to an ownerless
-owner would be dropped by the SELECT policy on **every** read, for ever — which
-`event-fanout-integrity` calls a defect in the fan-out rather than a row awaiting a policy change.
-Today the recipient is the thread's author, who held a membership when they wrote the thread, so the
-case cannot arise; **a widening must exclude it explicitly.**
+**The owner-who-is-not-a-member case must not be re-derived wrongly if Q1 is ever answered `yes`,
+and it is NOT the `ride_created_in_club` asymmetry** — an earlier revision of this file said it was.
+`club_members` DELETE is a bare `auth.uid() = user_id`, so an owner can leave their own club in one
+request and keep ownership. But `private.is_club_member` delegates to `is_club_member_for`, which
+unions a `clubs.owner_id` arm (`054`/PD-128, measured on DEV — `design.md` §D4 carries the body), so
+such an owner still resolves `club_threads` and a row addressed to them is **readable**. There is no
+permanently-unreadable-row defect here. What follows instead is that a widening's candidate set
+would silently **include** them, which is a decision to state rather than a hazard to exclude — and
+that Q8's eviction is visible only for an author who is not the owner.
 
 ### Who never READS a row that exists
 
