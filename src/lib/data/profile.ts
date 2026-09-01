@@ -308,3 +308,36 @@ export async function getProfileCountries(userId: string): Promise<string[]> {
 
   return rows.map((row) => row.country_code as string)
 }
+
+/**
+ * Whether this rider has opted out of analytics — PD-353.
+ *
+ * **Its own accessor rather than a field on `my_onboarding_state()`**, and the
+ * four reasons are in `openspec/changes/add-analytics-consent/design.md`. The
+ * worst of them first: `guard-cache.ts` holds that call's answer for the whole
+ * page load *because both onboarding stamps are immutable for a session's
+ * lifetime*, and this one is a toggle a rider can flip twice in a minute. It
+ * also has PD-304's read-refills-after-invalidate race in its machinery, no
+ * routing decision reads it, and folding an analytics preference into the
+ * consent accessor is PD-353's forbidden pattern one layer down — the opt-out
+ * is a SEPARATE stamp from the T&C consent, and bundling it in is specifically
+ * what does not count.
+ *
+ * `096` grants the column to nobody: it is in none of `025`'s three lists, so
+ * this `security definer` accessor is the only way any client reads it, and no
+ * other rider can reach it through a member list, a byline or a PostgREST
+ * filter. `030`'s `terms_version` is the same shape.
+ *
+ * **It throws on a failed read rather than answering `false`**, which is the
+ * `unwrap` convention here and matters more than usual for this one. Two
+ * callers want opposite things from a failure: the settings sheet needs to draw
+ * an error state, which it cannot do if the failure arrives as a value; and the
+ * boot path needs capture to stay OFF, which it gets by catching and applying
+ * nothing. Answering `false` would serve neither — it would show a
+ * confidently-wrong toggle AND turn a network blip into consent.
+ */
+export async function getAnalyticsOptOut(): Promise<boolean> {
+  const supabase = await resolveSupabase()
+  const optedOut = unwrap(await supabase.rpc('my_analytics_opt_out'), 'your privacy settings')
+  return optedOut === true
+}

@@ -1,4 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { capture } from '@/lib/analytics/client'
 import { invalidate } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
@@ -328,6 +329,11 @@ export async function joinClub(clubId: string): Promise<ActionState> {
   if (error) return { error: 'That club could not be joined.' }
 
   invalidateClubMembership(clubId)
+  // PD-353's third moment. `via` is the one thing SQL cannot recover
+  // afterwards: `club_members` records the membership and not the door it came
+  // through, so "does an invite convert better than browsing" is answerable
+  // only from here. It is an enum, so it is not content.
+  capture({ name: 'club_joined', properties: { via: 'browse' } })
   return { error: null }
 }
 

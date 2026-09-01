@@ -111,13 +111,38 @@ is what happened to `add-account-deletion` task 6.3. And a build-time `NEXT_PUBL
 doubles as an undeclared DEV/PROD separator, because the two are separate Vercel env scopes; when
 it goes, the next promotion ships the feature to riders with nothing left saying so.
 
-**Dependencies are added deliberately.** **Nine** runtime dependencies today, and that is a
+**Dependencies are added deliberately.** **Twelve** runtime dependencies today, and that is a
 feature — `lucide-react` and `@supabase/ssr` both came out with the code that needed them rather
 than lingering unused. Count rather than trust that number:
 `node -p "Object.keys(require('./package.json').dependencies).length"`. Before adding one, ask whether a thirty-line helper does the job. No UI component
 libraries at all — shadcn, Radix and MUI are out; extend `src/components/ui/*` instead.
 
-**Two of the nine are the native shell's**, and both are runtime by necessity rather than by
+**Three of the twelve arrived together on 2026-09-01, for observability**, which is the largest
+single addition this repo has made and the reason to read the rule above as a budget rather than a
+ban. Each is a doorway module in `src/lib/`, and nothing outside that module imports the package —
+the same one-doorway shape as `lib/data/` and `lib/actions/`, enforced by a test in each case,
+because the privacy posture is a property of the doorway and only while everything goes through it:
+
+- **`@sentry/capacitor` + `@sentry/react`** (PD-315) — a throw in a rider's browser reached no log
+  anywhere, which in a client-rendered bundle is most rider-visible breakage. They are a **pair**
+  rather than two choices: `@sentry/capacitor` peers an exact `@sentry/react` and hands it the
+  options as its sibling `init`. The pair covers BOTH build shapes, which is not obvious —
+  `@sentry/capacitor`'s `init` branches on `NATIVE.platform === 'web'` and falls through to the
+  browser SDK — and taking `@sentry/nextjs` for the web build as well would be two `Sentry.init`
+  paths to keep in agreement for ever. `@sentry/capacitor` is also a **native plugin**, so the
+  rule below applies to it.
+- **`posthog-js`** (PD-353) — the one product question SQL structurally cannot reach is *which*
+  onboarding step turns a rider away, because a rider who tries three usernames and closes the tab
+  has written nothing. Eight of the ten questions in `docs/reference/analytics.md` are still a
+  `select` and must stay one.
+
+All three are pinned **exact**, for the reason the framework and auth packages are: a minor bump
+that changes replay masking or session storage is a privacy or a sign-in regression with nothing
+red anywhere. `src/lib/analytics/__tests__/client.test.ts` asserts against the installed recorder
+that password inputs are still masked unconditionally, which is the assumption the pilot's unmasked
+session replay rests on.
+
+**Two of the twelve are the native shell's**, and both are runtime by necessity rather than by
 preference — app code imports them at runtime, so neither can be a devDependency:
 
 - **`@capacitor/core`** — the shell. Nothing reaches a native API without it.

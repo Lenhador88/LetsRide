@@ -131,6 +131,17 @@ export const queryKeys = {
      */
     location: (): QueryKey => ['profile', 'location'],
     /**
+     * `getAnalyticsOptOut` — PD-353. No `revalidatePath` predecessor; it is a
+     * stamp `096` added.
+     *
+     * Under `profile` so that `updateProfile`'s existing `profile.all()` sweeps
+     * it, which costs one re-read of a boolean and keeps the settings screen
+     * from showing a stale toggle after any other profile write. Its own leaf
+     * rather than `me()` for the reason `location` gives: a `boolean` and a
+     * whole `Profile` sharing one entry is this file's collision.
+     */
+    analyticsOptOut: (): QueryKey => ['profile', 'analyticsOptOut'],
+    /**
      * `view-rider-profile` — no `revalidatePath` predecessor, like
      * `notifications` and `places`. `blockRider`/`unblockRider`'s
      * `invalidate(EVERYTHING)` already reaches this through the empty

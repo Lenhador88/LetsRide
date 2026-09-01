@@ -1,4 +1,5 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
+import { capture } from '@/lib/analytics/client'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
@@ -268,6 +269,23 @@ export async function createRide(
   // `revalidatePath('/rides')` never reached — `/rides/new` only began offering
   // `club_id` on 2026-08-05 and this claim was not extended with it.
   if (rest.club_id) invalidate(queryKeys.clubs.detail(rest.club_id))
+
+  // PD-353's first moment. After the write and after the invalidations, so a
+  // throw inside analytics could never cost the rider the ride they just made —
+  // `capture` swallows its own errors for the same reason, belt and braces.
+  //
+  // Booleans only. Whether the ride is public, whether it went into a club and
+  // whether a meeting point was set at all — never the club, never the ride,
+  // and above all never the place, which `place_search_attempts` refuses to
+  // store on the ground that it is frequently a home address.
+  capture({
+    name: 'ride_created',
+    properties: {
+      is_public: rest.is_public === true,
+      in_club: Boolean(rest.club_id),
+      has_meeting_point: Boolean(rest.meeting_point),
+    },
+  })
   return { error: null, redirectTo: routes.ride(ride.id) }
 }
 
@@ -335,6 +353,13 @@ export async function setRideAttendance(
   }
 
   invalidateRide()
+
+  // PD-353's second moment, and only for `going`. `maybe` is not a join — the
+  // Crew design draws it as a separate state, and a rider who says maybe has
+  // committed to nothing — and `null` is a WITHDRAWAL, which an event firing on
+  // every RSVP would count as one more join.
+  if (attendance === 'going') capture({ name: 'ride_joined', properties: { via: 'rsvp' } })
+
   return { error: null, sent: true }
 }
 

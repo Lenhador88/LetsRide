@@ -1,3 +1,4 @@
+import { analyticsSessionId } from '@/lib/analytics/client'
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { feedbackBodySchema } from '@/lib/validation/feedback'
 import { APP_VERSION } from '@/lib/version'
@@ -61,6 +62,32 @@ export async function sendFeedback(
     body: parsed.data,
     app_version: APP_VERSION,
     route: typeof window === 'undefined' ? null : window.location.pathname,
+    // PD-353. "The postcard thing is broken" is unactionable alone and
+    // completely actionable beside ninety seconds of footage, which is the
+    // pairing the Notion page was reaching for when it picked PostHog for
+    // replay. PD-322 is still where these rows go so somebody reads them; this
+    // is what a reader will have when it lands.
+    //
+    // **Now rather than later, because it cannot be backfilled.** Every
+    // feedback row written before this column existed has no replay attached,
+    // permanently — and the pilot is exactly the period whose feedback is worth
+    // the most.
+    //
+    // Three rules, all of them load-bearing:
+    //
+    // - **Nullable and best-effort.** `analyticsSessionId()` returns null for a
+    //   rider who opted out, for a build with no key (every environment except
+    //   PROD), and for a session where replay never started. Feedback failing
+    //   because analytics did not load would be a worse defect than the one
+    //   this fixes. `096` also nulls it in a trigger for an opted-out rider, so
+    //   the guarantee does not depend on this line being right.
+    // - **The session id, never a replay URL.** The URL is constructible from
+    //   the id and changes with PostHog's routing; a stored URL is a dead link
+    //   waiting to happen.
+    // - **A stored id whose recording has expired is a NULL RESULT, not a
+    //   broken one** — which is the correct behaviour when the pilot posture is
+    //   re-scoped and most of these recordings stop existing.
+    posthog_session_id: analyticsSessionId(),
   })
 
   if (error) {

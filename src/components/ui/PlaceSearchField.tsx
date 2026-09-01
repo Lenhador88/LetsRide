@@ -13,6 +13,7 @@ import {
 import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { getSnapshot, setQueryData, useQuery, type QueryKey } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { MASK_CLASS } from '@/lib/analytics/client'
 import { cn } from '@/lib/utils'
 import type { PlaceSearchResult } from '@/types'
 
@@ -455,7 +456,25 @@ export function PlaceSearchField({
             aria-controls={listId}
             aria-autocomplete="list"
             aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
-            className="w-full min-w-0 bg-transparent text-base font-medium text-foreground placeholder:text-muted focus:outline-none"
+            /* `MASK_CLASS` is the ONE narrowing of PD-353's unmasked session
+               replay, and it is deliberate rather than an oversight. This field
+               is where a rider types a meeting point, and
+               `place_search_attempts` (069) deliberately holds NO column that
+               could store the term, on the stated ground that a meeting point —
+               and often a search term — is a home address. Recording the same
+               keystrokes as video in a third-party store would reinstate exactly
+               what the schema was written to refuse, at higher fidelity and with
+               a different retention, and nothing anywhere compares a replay
+               setting against a schema decision. PD-353's own text expects this
+               field to stay masked when the pilot posture is revisited.
+
+               It masks the TEXT, not the field: the replay still shows a rider
+               opening the picker, typing, and choosing or giving up — which is
+               the whole of what the funnel needs from this screen. */
+            className={cn(
+              MASK_CLASS,
+              'w-full min-w-0 bg-transparent text-base font-medium text-foreground placeholder:text-muted focus:outline-none'
+            )}
           />
         </div>
 

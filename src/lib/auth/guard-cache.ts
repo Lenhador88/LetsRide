@@ -1,5 +1,6 @@
 import { needsOnboardingState, onboardingStateFrom, type GuardState } from '@/lib/auth/guard'
 import { createClient } from '@/lib/supabase/client'
+import { identifyAnalyticsRider } from '@/lib/analytics/client'
 import { identifyRider } from '@/lib/observability/sentry'
 import { clearQueryCache } from '@/lib/query'
 import { clearRiderLocation } from '@/lib/location/rider-location'
@@ -633,6 +634,12 @@ function writeSession(next: string | null): void {
   // carries why this one identifier is sent when the content ids in a URL are
   // stripped out. `null` on sign-out, which clears it.
   identifyRider(next)
+  // PD-353, and it is `auth.uid()` DELIBERATELY: a rider who deletes their
+  // account leaves events and recordings behind in PostHog, and
+  // `delete-account` can only ask for their removal if it knows which person
+  // to name. `null` calls `reset()`, which also drops the local distinct id so
+  // the next rider on a shared device inherits neither identity nor session.
+  identifyAnalyticsRider(next)
 }
 
 /**
