@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { classify, formatSummary, isAlerting, parseRows, sanitisePath } from '../logs-errors.mjs'
+import {
+  SQL,
+  classify,
+  describeSchemaMismatch,
+  formatSummary,
+  isAlerting,
+  parseRows,
+  sanitisePath,
+} from '../logs-errors.mjs'
 
 /**
  * The transport in `logs-errors.mjs` cannot be tested here — it needs a
@@ -113,9 +121,12 @@ describe('classify', () => {
     // The PD-363 case, with its real number. `092` added an ordinary join
     // table, `club_members`↔`profiles` gained a second candidate relationship,
     // and PostgREST answered `PGRST201` rather than choosing — taking both club
-    // lists, the club roster and the club timeline down together. 65 of these
-    // landed in DEV's stream and this digest reported a clean day, because 300
-    // sorts BELOW every threshold a monitor reaches for.
+    // lists, the club roster and the club timeline down together. 65 landed on
+    // `/rest/v1/clubs` and 6 more on `/rest/v1/club_members` — the number goes
+    // with its path, because a bare total loses the roster query, which is one
+    // of the four screens the same sentence says went down. The digest reported
+    // a clean day through all of it, because 300 sorts BELOW every threshold a
+    // monitor reaches for.
     const ambiguous = [{ n: 65, path: '/rest/v1/clubs', status: 300 }]
     expect(classify(ambiguous).schemaMismatch).toEqual(ambiguous)
     expect(isAlerting(classify(ambiguous))).toBe(true)
@@ -170,6 +181,7 @@ describe('isAlerting', () => {
   it.each([
     ['a 5xx', { n: 1, path: '/rest/v1/rides', status: 500 }],
     ['a PostgREST 404', { n: 1, path: '/rest/v1/club_discussions', status: 404 }],
+    ['a PostgREST 300', { n: 1, path: '/rest/v1/clubs', status: 300 }],
   ])('is true for %s', (_label, row) => {
     expect(isAlerting(classify([row]))).toBe(true)
   })
@@ -241,5 +253,102 @@ describe('the workflow runs this without npm ci, so it must import only builtins
     for (const specifier of specifiers) {
       expect(specifier.startsWith('node:')).toBe(true)
     }
+  })
+})
+
+
+describe('the SQL window', () => {
+  /**
+   * The filter and the classifier are two halves of one guarantee, and only the
+   * classifier had tests. Reverting this predicate to `>= 400` — the obvious
+   * "simplification" — leaves every other assertion in this file green while the
+   * digest goes blind to PD-363 again, because `classify` never sees a row the
+   * query did not return. That is why `SQL` is exported at all.
+   */
+  // The WHERE clause alone. Asserting against the whole statement is VACUOUS
+  // here and was: `= 300` also appears in the ORDER BY added beside it, so
+  // `expect(SQL).toContain('= 300')` passed against a predicate reverted to
+  // `>= 400` — the exact mutation these cases exist to catch, waved through by
+  // a substring found somewhere else in the same string.
+  const whereClause = () => SQL.slice(SQL.indexOf('where'), SQL.indexOf('group by'))
+
+  it('asks for the 300 that PD-363 produced', () => {
+    expect(whereClause()).toContain('= 300')
+  })
+
+  it('names 300 rather than widening the band to >= 300', () => {
+    // `>= 300` would sweep in every 304 — DEV's own window holds them on avatar
+    // fetches — and every redirect. An alert is credible only while every row in
+    // it is a question.
+    expect(whereClause()).not.toContain('>= 300')
+    expect(whereClause()).toContain('>= 400')
+  })
+
+  it('keeps the status band parenthesised against the source conjunct', () => {
+    // Unparenthesised, `and` binds tighter than `or` and the filter becomes
+    // `(source AND >= 400) OR (= 300)` — which pulls 300s from every other log
+    // source and quietly stops being a digest of edge_logs.
+    expect(SQL).toMatch(/and \(toInt32OrZero\([^)]*\)[^)]*>= 400/)
+    expect(SQL).toContain("where source = 'edge_logs'")
+  })
+
+  it('sorts alerting rows above frequency, so the cap cannot evict one', () => {
+    // `limit 50` is a count. Ordered by `n` alone a single 5xx is the first row
+    // evicted, and "any 5xx is always ours" is the loudest rule in the file.
+    expect(SQL).toMatch(/order by \(status >= 500 or status = 404 or status = 300\) desc, n desc/)
+  })
+})
+
+describe('describeSchemaMismatch', () => {
+  /**
+   * The bucket holds two statuses whose remedies are completely different, so a
+   * single count sends the reader to the wrong place. Reporting "N returned
+   * 404" over a page of 300s — which is what the console did — points an
+   * operator at migration/deploy ordering for a defect living in a `.select()`.
+   */
+  it('names the 404 half as a missing relation', () => {
+    const out = describeSchemaMismatch([{ n: 64, path: '/rest/v1/club_discussions', status: 404 }])
+    expect(out).toBe('1 returned 404 (missing relation)')
+  })
+
+  it('never calls a 300 a 404', () => {
+    const out = describeSchemaMismatch([{ n: 67, path: '/rest/v1/clubs', status: 300 }])
+    expect(out).toContain('300')
+    expect(out).not.toContain('404')
+  })
+
+  it('reports both halves when the window holds both', () => {
+    const out = describeSchemaMismatch([
+      { n: 64, path: '/rest/v1/club_discussions', status: 404 },
+      { n: 67, path: '/rest/v1/clubs', status: 300 },
+      { n: 8, path: '/rest/v1/club_members', status: 300 },
+    ])
+    expect(out).toBe(
+      '1 returned 404 (missing relation) and 2 returned 300 (the schema made something ambiguous)',
+    )
+  })
+
+  it('is what the interactive console prints too, not a second copy of the words', () => {
+    // The drift this replaces: `formatSummary` was updated for the widened
+    // bucket and the console branch was not, so `npm run logs:errors` said
+    // "N path(s) returned 404" over a page of 300s and sent the reader to the
+    // migration/deploy order for a defect that lives in a `.select()` string.
+    // Nothing executes `main()` in this suite, so the check is on the source:
+    // the console branch must call the helper rather than spell the sentence
+    // again.
+    const source = readFileSync(new URL('../logs-errors.mjs', import.meta.url), 'utf8')
+    const consoleBranch = source.slice(source.indexOf('if (classified.schemaMismatch.length > 0)'))
+    expect(consoleBranch).toContain('describeSchemaMismatch(classified.schemaMismatch)')
+    // And must not have grown a hardcoded status back.
+    expect(consoleBranch.slice(0, 400)).not.toContain('returned 404')
+  })
+
+  it('reaches the job summary, which is where the two had drifted apart', () => {
+    // The summary was updated for the widened bucket and the console was not.
+    // One function feeds both now; this pins the summary end of it.
+    const rows = [{ n: 67, path: '/rest/v1/clubs', status: 300 }]
+    const summary = formatSummary('letsride-dev (DEV)', rows, classify(rows))
+    expect(summary).toContain('300 (the schema made something ambiguous)')
+    expect(summary).not.toContain('returned 404')
   })
 })

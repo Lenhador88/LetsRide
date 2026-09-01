@@ -133,9 +133,12 @@ working and a 403 is usually RLS refusing correctly. What matters is:
 
 - **a 404 on `/rest/v1/<table>`** — the schema and the deployed code disagree,
   which is a migration/deploy ordering problem;
-- **a 300 on `/rest/v1/<table>`** — `PGRST201`, the same disagreement in the
-  other direction: the schema now offers an embed more than one relationship,
-  so PostgREST resolves none of them and the screen behind it renders nothing;
+- **a 300 on `/rest/v1/`** — PostgREST declining to *choose*. The measured case
+  is `PGRST201`: the schema now offers an embed more than one relationship, so
+  it resolves none of them and the screen behind it renders nothing. On an
+  `/rest/v1/rpc/` path the same status also covers an overloaded function it
+  cannot pick between — unobserved here, and unobservable today, since no
+  `public` function in this schema has an overload;
 - **any 5xx** — always ours;
 - **a count that jumps** against yesterday.
 
@@ -143,8 +146,11 @@ working and a 403 is usually RLS refusing correctly. What matters is:
 digest sat through the outage it exists for.** PD-363: `092` added an ordinary
 join table, `club_members`↔`profiles` gained a second candidate relationship,
 and both club lists, the club roster and the club timeline started returning
-nothing — **65 rows** in DEV's stream, every one *below* the threshold the
-script was reading, so the digest would have reported a clean day. The band is
+nothing — **65 rows** on `/rest/v1/clubs` and **6 more** on
+`/rest/v1/club_members`, every one *below* the threshold the script was reading,
+so the digest would have reported a clean day. Each number goes with its path:
+a bare total loses the roster query, which is one of the four screens that
+sentence says went down. The band is
 named rather than widened to `>= 300`: a 304 is a cache working and a redirect
 is a redirect, and an alert stays credible only while every row in it is a
 question.

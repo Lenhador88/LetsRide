@@ -76,7 +76,8 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       # WHAT RED MEANS HERE, and it is two different pieces of news rather than
-      # one. The script exits 1 for a 5xx, or a 404 or 300 under /rest/v1/ — the shapes
+      # one. The script exits 1 for a 5xx, or a 404 or 300 under
+      # /rest/v1/ — the shapes
       # that are always ours — and exits 2 when it could not look at all: no
       # token, no transport, an envelope it cannot read. Both redden the job,
       # deliberately; what matters is that the job summary always says which,

@@ -20,8 +20,19 @@
  * is what stops that being a habit nobody keeps; run it by hand too, at the
  * start of a session and after every promotion.
  *
- * WHAT IT CANNOT SEE, and it is the bigger half: nothing here is a client-side
- * JavaScript error. A component that throws renders `error.tsx`, logs to the
+ * WHAT IT CANNOT SEE — two things, and the first is the bigger half.
+ *
+ * An AUTH-LINK FAILURE IS A 302 and is invisible at status level. GoTrue answers
+ * `/auth/v1/verify` and `/auth/v1/callback` with a redirect whether the token
+ * was good or expired, and an unlisted `redirect_to` is DISCARDED rather than
+ * refused — measured against the live PROD auth server on 2026-08-12, see
+ * `docs/ENVIRONMENTS.md` §The redirect allowlist. So a rider whose confirmation
+ * email dead-ends is byte-identical here to a rider signing in. This is a
+ * structural limit rather than an oversight: the discriminator lives in the
+ * query string, and `sanitisePath` strips that on purpose, because a query on
+ * those paths carries a live credential. Widening the window would not fix it.
+ *
+ * And nothing here is a client-side JavaScript error. A component that throws renders `error.tsx`, logs to the
  * rider's own console, and leaves no trace on any server. Every row this prints
  * is a network call. Sentry (PD-315) is the other half; see
  * docs/reference/observability.md.
@@ -39,9 +50,12 @@
  * sat through the outage it exists for. PD-363: `092` added an ordinary join
  * table, `club_members`↔`profiles` gained a second candidate relationship, and
  * both club lists, the club roster and the club timeline started returning
- * nothing — 65 rows in DEV's stream, every one below the threshold this script
- * was reading. A status class that means "your code and your schema disagree"
- * is the whole remit here; that it sorts below 400 is an accident of HTTP.
+ * nothing — 65 rows on `/rest/v1/clubs` and 6 more on `/rest/v1/club_members`,
+ * every one below the threshold this script was reading. Both numbers, with
+ * their paths: a bare total loses the roster query, which is one of the four
+ * screens the same sentence says went down. A status class that means "your
+ * code and your schema disagree" is the whole remit here; that it sorts below
+ * 400 is an accident of HTTP.
  *
  * CREDENTIAL. Needs a Supabase *Management API* personal access token in
  * SUPABASE_ACCESS_TOKEN — not the publishable key, not the service-role key,
@@ -122,7 +136,11 @@ const PROJECTS = {
 // `log_attributes` values are strings, so the status has to be cast before it
 // is compared: `>= '400'` is a lexicographic comparison that happens to be
 // right for three-digit codes and is silently wrong for anything else.
-const SQL = `
+// Exported ONLY so `logs-errors.test.ts` can pin the window. The classifier and
+// the filter are two halves of one guarantee and the classifier was the only
+// half with tests: reverting this predicate to `>= 400` leaves every assertion
+// green while the digest goes blind to PD-363 again.
+export const SQL = `
 select toInt32OrZero(log_attributes['response.status_code']) as status,
        log_attributes['request.path'] as path,
        count(*) as n
@@ -131,7 +149,14 @@ where source = 'edge_logs'
   and (toInt32OrZero(log_attributes['response.status_code']) >= 400
        or toInt32OrZero(log_attributes['response.status_code']) = 300)
 group by status, path
-order by n desc
+-- Alerting rows first, THEN frequency. The cap is a count, so ordered by n
+-- alone a single 5xx (n=1) is the first row evicted, and "any 5xx is always
+-- ours" is the loudest rule in this file. Widening the window added rows
+-- competing for the same 50 slots, which moves that risk in the wrong
+-- direction; this makes truncation unable to drop an alerting row while any
+-- non-alerting one remains. The predicate restates the classifier's: keep
+-- the two in step.
+order by (status >= 500 or status = 404 or status = 300) desc, n desc
 limit 50
 `.trim()
 
@@ -141,15 +166,23 @@ limit 50
 // A 404 is not a missing row — PostgREST answers those 200 with an empty array
 // — it is a missing *relation*.
 //
-// A 300 is `PGRST201`: an embed PostgREST will not resolve because the schema
-// offers it more than one relationship between the two tables. **300 is the
-// reason this filter is not simply `>= 400`.** It sits below every threshold a
-// monitor naturally reaches for, and it is not a rare curiosity: a migration
-// adding an ordinary join table makes an untouched embed ambiguous, so a
-// screen whose query, columns and policies did not change starts returning
-// nothing. That is PD-363 — `092` took both club lists, the club roster and
-// the club timeline down together, 65 of these landed in DEV's stream, and
-// this digest could not see one of them.
+// A 300 is PostgREST declining to CHOOSE. The measured case is `PGRST201`: an
+// embed it will not resolve because the schema offers more than one
+// relationship between the two tables. On an `/rest/v1/rpc/` path the same
+// status also covers an overloaded function it cannot pick between
+// (`PGRST203`) — UNOBSERVED here, and it cannot be observed today because no
+// `public` function in this schema has an overload, which is why the wording
+// below says "made something ambiguous" rather than naming an embed. The
+// bucket is keyed on the path and the status rather than on the error code, so
+// it holds either way; only the sentence would mislead.
+//
+// **300 is the reason this filter is not simply `>= 400`.** It sits below every
+// threshold a monitor naturally reaches for, and it is not a rare curiosity: a
+// migration adding an ordinary join table makes an untouched embed ambiguous,
+// so a screen whose query, columns and policies did not change starts returning
+// nothing. That is PD-363 — `092` took both club lists, the club roster and the
+// club timeline down together; 65 of these landed on `/rest/v1/clubs` and 6
+// more on `/rest/v1/club_members`, and this digest could not see one of them.
 //
 // The other 3xx are deliberately excluded rather than swept in by a `>= 300`:
 // a 304 is a cache working (DEV's window holds them on avatar fetches) and a
@@ -165,14 +198,16 @@ const AMBIGUOUS_EMBED = 300
 const isServerError = (row) => Number(row.status) >= 500
 
 // `includes` rather than `startsWith`, and the difference is a silent miss of
-// the exact case this exists to catch. Whether `request.path` arrives relative
-// (`/rest/v1/rides`) or absolute (`https://<ref>.supabase.co/rest/v1/rides`) is
-// UNOBSERVED for a 4xx: the filtered query returned no rows on either project,
-// so the one measured row is a 200 from the unfiltered query. Anchored to the
-// start, an absolute path would classify PD-313's 404s as unremarkable and the
-// digest would stay green through the outage it was built for. No path that is
-// not PostgREST contains this substring, so the looser test costs no false
-// positives.
+// the exact case this exists to catch. Anchored to the start, an absolute path
+// would classify PD-313's 404s as unremarkable and the digest would stay green
+// through the outage it was built for. No path that is not PostgREST contains
+// this substring, so the looser test costs no false positives.
+//
+// The shape is now PARTLY observed and the observation does not settle it. DEV's
+// filtered window on 2026-09-01 returned failure rows with RELATIVE paths
+// (`/rest/v1/clubs`, `/rest/v1/club_members`), which is one status class on one
+// project on one day — the direction that makes `startsWith` look adequate, and
+// nowhere near enough to bet the digest on. Keep `includes`.
 const isSchemaMismatch = (row) =>
   (Number(row.status) === 404 || Number(row.status) === AMBIGUOUS_EMBED) &&
   String(row.path ?? '').includes(REST_SEGMENT)
@@ -228,6 +263,37 @@ export function isAlerting({ serverErrors, schemaMismatch }) {
 }
 
 /**
+ * The schema-mismatch bucket, split by status for the reader.
+ *
+ * One bucket is right — a 404 and a 300 under `/rest/v1/` both mean the
+ * deployed bundle and the schema disagree, and both are exit 1 — but the two
+ * send the reader somewhere completely different, so a single count is a
+ * disservice. A 404 is a missing relation and the remedy is the migration and
+ * deploy order. A 300 is the schema making something AMBIGUOUS, and the remedy
+ * is in the query: an FK hint on the embed. Reporting "N returned 404" over a
+ * page of 300s, which is what this said before, sends an operator to diff
+ * migration state against a deploy timestamp for a defect that lives in a
+ * `.select()` string.
+ *
+ * Exported and used by BOTH the job summary and the interactive console. They
+ * had drifted — the summary was updated for the widened bucket and the console
+ * was not — and one function is what stops that happening again.
+ */
+export function describeSchemaMismatch(schemaMismatch) {
+  const missing = schemaMismatch.filter((row) => Number(row.status) === 404).length
+  const ambiguous = schemaMismatch.filter(
+    (row) => Number(row.status) === AMBIGUOUS_EMBED,
+  ).length
+
+  const parts = []
+  if (missing > 0) parts.push(`${missing} returned 404 (missing relation)`)
+  if (ambiguous > 0) {
+    parts.push(`${ambiguous} returned 300 (the schema made something ambiguous)`)
+  }
+  return parts.join(' and ')
+}
+
+/**
  * Make a logged path safe to publish in a job summary.
  *
  * A GitHub job summary is readable by anyone with repo read access and is kept
@@ -261,9 +327,8 @@ export function formatSummary(label, rows, classified) {
   }
   if (isAlerting(classified)) {
     lines.push(
-      `**${classified.serverErrors.length} path(s) returned 5xx** and ` +
-        `**${classified.schemaMismatch.length} returned 404 or 300 under \`${REST_SEGMENT}\`** ` +
-        '(missing relation, or an embed the schema made ambiguous).',
+      `**${classified.serverErrors.length} path(s) returned 5xx** and, under ` +
+        `\`${REST_SEGMENT}\`, **${describeSchemaMismatch(classified.schemaMismatch)}**.`,
       '',
     )
   } else {
@@ -353,7 +418,7 @@ async function main() {
 
   if (rows.length === 0) {
     console.log('  Nothing failed. That is a real answer, not an empty result:')
-    console.log('  this window genuinely holds no 4xx or 5xx.\n')
+    console.log('  this window genuinely holds no 300, 4xx or 5xx.\n')
   } else {
     const width = Math.max(...rows.map((r) => String(r.path ?? '').length), 4)
     console.log(`  ${'n'.padStart(6)}  ${'status'.padEnd(6)}  path`)
@@ -372,8 +437,9 @@ async function main() {
     }
     if (classified.schemaMismatch.length > 0) {
       console.log(
-        `  ${classified.schemaMismatch.length} path(s) returned 404 under ${REST_SEGMENT} — the\n` +
-          '  schema and the deployed code disagree. Check the migration/deploy order.',
+        `  Under ${REST_SEGMENT}: ${describeSchemaMismatch(classified.schemaMismatch)} — the\n` +
+          '  deployed code and the schema disagree. A 404 is the migration/deploy\n' +
+          '  order; a 300 is a query that needs an explicit relationship.',
       )
     }
     console.log('')
