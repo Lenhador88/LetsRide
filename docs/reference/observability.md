@@ -88,7 +88,7 @@ every miss would be a permanent hole in the exact record this exists to keep.
 
 **Red is two different pieces of news, and the summary is what tells them
 apart.** Exit 1 means the reader looked and found something ours — a 5xx, or a
-404 under `/rest/v1/`. Exit 2 means it could not look at all: no token, no
+404 or **300** under `/rest/v1/`. Exit 2 means it could not look at all: no token, no
 transport, an envelope it could not read. Collapsing those into one non-zero is
 how a missing repository secret becomes four red jobs a day that look exactly
 like a production outage, so the summary always names which happened.
@@ -133,8 +133,27 @@ working and a 403 is usually RLS refusing correctly. What matters is:
 
 - **a 404 on `/rest/v1/<table>`** — the schema and the deployed code disagree,
   which is a migration/deploy ordering problem;
+- **a 300 on `/rest/v1/`** — PostgREST declining to *choose*. The measured case
+  is `PGRST201`: the schema now offers an embed more than one relationship, so
+  it resolves none of them and the screen behind it renders nothing. On an
+  `/rest/v1/rpc/` path the same status also covers an overloaded function it
+  cannot pick between — unobserved here, and unobservable today, since no
+  `public` function in this schema has an overload;
 - **any 5xx** — always ours;
 - **a count that jumps** against yesterday.
+
+**The 300 is why the window is not simply `>= 400`, and it was added after this
+digest sat through the outage it exists for.** PD-363: `092` added an ordinary
+join table, `club_members`↔`profiles` gained a second candidate relationship,
+and both club lists, the club roster and the club timeline started returning
+nothing — **65 rows** on `/rest/v1/clubs` and **6 more** on
+`/rest/v1/club_members`, every one *below* the threshold the script was reading,
+so the digest would have reported a clean day. Each number goes with its path:
+a bare total loses the roster query, which is one of the four screens that
+sentence says went down. The band is
+named rather than widened to `>= 300`: a 304 is a cache working and a redirect
+is a redirect, and an alert stays credible only while every row in it is a
+question.
 
 The worked example is real, and worth stating with its measured timeline rather
 than a rounder one. The Discussions→Threads rename (PD-313) left **64 404s** on
