@@ -197,9 +197,9 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **twenty-two** tables on DEV and
-   **seventeen** on PROD — measured 2026-09-01, and the five-table gap is `092`–`095` awaiting
-   promotion, which is the ordinary DEV-ahead state rather than a defect. PROD was eleven
+   gets inherited as covered.** `enforce_participation_gate` is on **twenty-two** tables on
+   **both** projects — measured 2026-09-01 after the `092`–`095` promotion landed, which is what
+   closed the five-table gap this line used to carry. PROD was eleven
    until `081`, `083`, `084`, `085` and `091` went with it (`086`–`090` add no gate) —
    `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
