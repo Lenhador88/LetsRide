@@ -49,7 +49,7 @@
  * changes, the absent boundary is a `next build` failure on ten routes at once.
  */
 
-import { clubIdSchema } from '@/lib/validation/clubs'
+import { clubIdSchema, clubTimelineAnchorSchema } from '@/lib/validation/clubs'
 import { rideIdSchema } from '@/lib/validation/rides'
 
 /** The query parameter every detail route reads its id from. */
@@ -93,18 +93,28 @@ export const CLUB_JOIN_PATH = '/clubs/join'
  */
 export const INVITE_TOKEN_PARAM = 'token'
 
-/**
- * "Say welcome" (`092`, PD-356, `design.md` §D3) — the join row's overflow
- * opens the ordinary thread composer with its title pre-filled. A query
- * parameter rather than a second route, on the same reasoning `CREATE_CLUB_
- * PARAM` gives: it seeds a form field and nothing else, and it is the
- * SEARCH PARAM half of `routes.newClubThread`'s two-parameter shape below
- * rather than a route of its own.
- */
-export const SAY_WELCOME_TITLE_PARAM = 'title'
-
 function detail(path: string, id: string): string {
   return `${path}?${DETAIL_ID_PARAM}=${encodeURIComponent(id)}`
+}
+
+/**
+ * Which row on the club timeline a thread — its creation entry, a reply, or a
+ * join's introduction — was opened from, so `Back` can return to it instead of
+ * to the thread list. `097`'s follow-up, PD-366 (`design.md` §D9).
+ *
+ * **`CREATE_CLUB_PARAM`'s exact shape**: never a URL, only a bounded value —
+ * here, `mergeClubTimeline`'s own row key (`join:<uuid>`, `thread:<uuid>`, …),
+ * parsed by `clubTimelineAnchorSchema` before it is ever used. The only thing
+ * `clubThreadReturnTo` can produce from it is `routes.club(clubId)` with a
+ * fragment naming a row of THAT club — there is no allowlist to maintain and
+ * no open redirect to close. Do **not** add a `BACK_ORIGINS` entry for this;
+ * that list is derived from the screens rendering `NotificationsHeaderControl`
+ * and has its own drift test, and this carries an id rather than a path.
+ */
+export const RETURN_ANCHOR_PARAM = 'row'
+
+function withReturnAnchor(href: string, anchor: string): string {
+  return `${href}&${RETURN_ANCHOR_PARAM}=${encodeURIComponent(anchor)}`
 }
 
 /**
@@ -160,18 +170,13 @@ export const routes = {
   /** Takes the THREAD's id, not the club's — see `detailPaths`. */
   clubThread: (threadId: string) => detail(detailPaths.clubThread, threadId),
   /**
-   * `prefillTitle` is "Say welcome"'s only caller (`092`, PD-356) — every
-   * other entrance to this screen (`ClubCreateBar`) omits it, and the
-   * composer defaults to an empty title exactly as before. The rider still
-   * edits or discards it like any other draft; nothing is written until they
-   * submit — see `CreateThreadForm`.
+   * `prefillTitle` and `SAY_WELCOME_TITLE_PARAM` are gone — `097`, PD-365
+   * deleted "Say welcome" (`092`, PD-356), which was this parameter's only
+   * producer. `CreateThreadForm`'s `initialTitle` prop went with it, for the
+   * same reason: a prefill nothing writes any more is dead code rather than
+   * a feature waiting for a second caller.
    */
-  newClubThread: (clubId: string, prefillTitle?: string) => {
-    const base = detail(detailPaths.newClubThread, clubId)
-    return prefillTitle
-      ? `${base}&${new URLSearchParams({ [SAY_WELCOME_TITLE_PARAM]: prefillTitle })}`
-      : base
-  },
+  newClubThread: (clubId: string) => detail(detailPaths.newClubThread, clubId),
   /** Another rider — `view-rider-profile`. Own-id is redirected to `/profile`
    * rather than resolving here; see that route's own redirect. */
   profile: (id: string) => detail(detailPaths.profile, id),
@@ -203,6 +208,26 @@ export const routes = {
   /** `Add` from a ride's Journal — see `CREATE_RIDE_PARAM`. PD-256. */
   newPostcardInRide: (rideId: string) => inRide(createPaths.postcard, rideId),
 } as const
+
+/**
+ * The same thread, opened from a specific row on the club's own timeline —
+ * `097`'s follow-up, PD-366. `anchor` is `mergeClubTimeline`'s own row key for
+ * that row, carried verbatim rather than a second identity, so
+ * `clubThreadReturnTo` can only ever resolve it to a row the stream actually
+ * produced. Used by the join row's introduction door and by
+ * `ClubTimelineThreadRow` for both a thread's creation entry and its
+ * replies — never by the plain Threads list, which has no row to return to.
+ *
+ * **Deliberately NOT a member of `routes`, unlike every other builder above.**
+ * `bootRestoreTarget`'s own suite enumerates `Object.values(routes)` and calls
+ * each with one argument to check none of them is accidentally public; a
+ * second required argument here would break that generic sweep rather than
+ * teach it something. `backFromCreateScreen` sits outside `routes` for the
+ * identical reason.
+ */
+export function clubThreadFromTimeline(threadId: string, anchor: string): string {
+  return withReturnAnchor(detail(detailPaths.clubThread, threadId), anchor)
+}
 
 /**
  * Which club a create screen was opened from (PD-283).
@@ -274,4 +299,28 @@ export function backFromCreateScreen(
   if (ids.ride && rideIdSchema.safeParse(ids.ride).success) return routes.ride(ids.ride)
   if (ids.club && clubIdSchema.safeParse(ids.club).success) return routes.club(ids.club)
   return fallback
+}
+
+/**
+ * Where a club thread's `Back` goes — the header arrow and `useSwipeBack` both
+ * read this, so they cannot disagree (the defect PD-341 already closed on
+ * this exact screen once). `097`'s follow-up, PD-366 (`design.md` §D9).
+ *
+ * **Absent or unparseable both answer `routes.clubThreads`** — today's
+ * behaviour, and what a notification tap, a shared URL and a reload all
+ * produce: it lands the rider somewhere that certainly exists and that they
+ * can certainly read, because they just read the thread.
+ *
+ * Parsed with `clubTimelineAnchorSchema` rather than a regex of this file's
+ * own — `backFromCreateScreen`'s own reasoning: one definition, bounded to the
+ * six kinds `mergeClubTimeline` can ever produce, so the only thing this can
+ * ever build is `routes.club(clubId)` with a fragment. **It never asks
+ * whether the anchored row still exists** — that is the club timeline's own
+ * no-op (`resolveClubTimelineScrollTarget`), not this function's; a deleted,
+ * horizon-cut or no-longer-readable row all reach this function identically
+ * and all produce the same fragment, because none of that is knowable here.
+ */
+export function clubThreadReturnTo(clubId: string, rawAnchor: string | null): string {
+  const anchor = rawAnchor && clubTimelineAnchorSchema.safeParse(rawAnchor).success ? rawAnchor : null
+  return anchor ? `${routes.club(clubId)}#${anchor}` : routes.clubThreads(clubId)
 }

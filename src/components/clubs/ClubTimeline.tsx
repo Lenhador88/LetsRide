@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { ClubTimelineEventRow } from '@/components/clubs/ClubTimelineEventRow'
 import { ClubTimelineRideCard } from '@/components/clubs/ClubTimelineRideCard'
 import { ClubTimelineThreadRow } from '@/components/clubs/ClubTimelineThreadRow'
@@ -8,6 +9,7 @@ import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
+import { resolveClubTimelineScrollTarget } from '@/lib/clubs/club-timeline-anchor'
 import { waveJoin, waveThread, unwaveJoin, unwaveThread } from '@/lib/actions/club-waves'
 import { getClubThreadUnread, getClubThreads, CLUB_THREADS_PAGE_SIZE } from '@/lib/data/club-threads'
 import {
@@ -19,6 +21,10 @@ import {
   mergeClubTimeline,
 } from '@/lib/data/club-timeline'
 import { attachClubWaveState, resolveClubWaveState } from '@/lib/data/club-waves'
+import {
+  attachClubIntroductions,
+  resolveClubIntroductionState,
+} from '@/lib/data/club-introductions'
 import { FEED_PAGE_SIZE, getClubFeed } from '@/lib/data/postcards'
 import { getCurrentProfile } from '@/lib/data/profile'
 import { getClubRideAnnouncements } from '@/lib/data/rides'
@@ -111,9 +117,10 @@ export function ClubTimeline({
   )
 
   // The signed-in rider's own id — read for exactly one reason: hiding the
-  // wave control (and "Say welcome") on a rider's own join row
-  // (`ClubTimelineEventRow`'s only use of `viewerId`). Nothing else on this
-  // screen needs it, which is why it was not read before `092`.
+  // wave control on a rider's own join row (`ClubTimelineEventRow`'s only use
+  // of `viewerId`; the introduction door has no such gate — a rider may read
+  // and open their own introduction). Nothing else on this screen needs it,
+  // which is why it was not read before `092`.
   const viewer = useQuery(isMember ? queryKeys.profile.me() : null, getCurrentProfile)
 
   /**
@@ -156,6 +163,68 @@ export function ClubTimeline({
         subjectIds: (joins.data?.rows ?? []).map((member) => member.user_id),
       })
   )
+
+  /**
+   * The join row's door and count — `097`, PD-365, `attachClubWaveState`'s
+   * own precedent one row up: scoped to `joins.data`'s own ids, gated on that
+   * read having resolved rather than merely on `isMember`, for the identical
+   * reason the wave reads are.
+   */
+  const joinIntroductions = useQuery(
+    isMember && joins.data !== undefined ? queryKeys.clubs.joinIntroductions(clubId) : null,
+    () =>
+      attachClubIntroductions(
+        clubId,
+        (joins.data?.rows ?? []).map((member) => member.user_id)
+      )
+  )
+
+  /**
+   * The return anchor — `097`'s follow-up, PD-366 (`design.md` §D9). A rider
+   * who tapped a join's introduction, a thread's creation entry or a reply
+   * lands back here with that row's own key on the URL as a fragment
+   * (`clubThreadReturnTo` is what puts it there); this is the one place that
+   * can act on it, because the row carrying that `id` exists only once the
+   * same five reads the skeleton gate below waits on have resolved.
+   *
+   * **After the rows exist, and ONLY once.** Not on mount — a client-rendered
+   * screen has nothing for a native fragment to find at first paint, so a
+   * plain `useEffect(() => {...}, [])` would silently do nothing. Not on every
+   * render either — an arriving realtime row or an invalidated cache must
+   * never yank a rider who has already started reading, which is why
+   * `scrolledToAnchor` rather than `rowsReady` alone decides "once": the two
+   * are different questions, and `rowsReady` can go true → true again across
+   * an unrelated refetch.
+   *
+   * `rowsReady` mirrors the skeleton gate below exactly — `unread` and the two
+   * wave/introduction decorations are deliberately excluded, for the same
+   * reason they are excluded from IT: a decoration must not gate the rows it
+   * decorates.
+   *
+   * **An anchor naming no row is a no-op.** Deleted, past the horizon, or a
+   * row the viewer can no longer read are indistinguishable here and all
+   * three are ordinary — `resolveClubTimelineScrollTarget` is what makes that
+   * testable at all, since `renderToStaticMarkup` runs no effect for anything
+   * in this file to assert against directly.
+   */
+  const rowsReady =
+    isMember &&
+    !!postcards.data &&
+    !!rides.data &&
+    !!joins.data &&
+    !!replies.data &&
+    threads.data !== undefined
+
+  const scrolledToAnchor = useRef(false)
+  useEffect(() => {
+    if (!rowsReady || scrolledToAnchor.current) return
+    scrolledToAnchor.current = true
+
+    const target = resolveClubTimelineScrollTarget(window.location.hash, (id) =>
+      !!document.getElementById(id)
+    )
+    if (target) document.getElementById(target)?.scrollIntoView({ block: 'start' })
+  }, [rowsReady])
 
   const photosHref = `/postcards?club=${encodeURIComponent(clubId)}`
 
@@ -295,7 +364,15 @@ export function ClubTimeline({
             // carries `LikeButton`, which is the identical `postcard_likes`
             // reaction under the older name (design.md §D1). A second wave
             // target for the same photo would count one thing twice.
-            return <PostcardCard key={group.key} postcard={group.event.postcard} />
+            //
+            // The wrapping `div` carries the scroll anchor (`097`'s follow-up,
+            // PD-366) — `PostcardCard` opens a viewer rather than navigating
+            // away, so it has no return link to carry, only a scroll target.
+            return (
+              <div key={group.key} id={group.event.key}>
+                <PostcardCard postcard={group.event.postcard} />
+              </div>
+            )
           }
 
           if (group.kind === 'ride') {
@@ -304,6 +381,7 @@ export function ClubTimeline({
                 key={group.key}
                 ride={group.event.ride}
                 at={group.event.at}
+                anchorKey={group.event.key}
               />
             )
           }
@@ -314,6 +392,7 @@ export function ClubTimeline({
               <ClubTimelineThreadRow
                 key={group.key}
                 threadId={event.thread.id}
+                anchorKey={event.key}
                 title={event.thread.title}
                 // **No fallback byline.** `add-club-timeline`'s spec requires
                 // that the timeline never render a sentence naming nobody, and
@@ -345,6 +424,7 @@ export function ClubTimeline({
               <ClubTimelineThreadRow
                 key={group.key}
                 threadId={event.reply.thread_id}
+                anchorKey={event.key}
                 title={event.reply.thread_title}
                 lead={event.reply.author ? `${event.reply.author} replied` : 'New message'}
                 at={event.at}
@@ -364,7 +444,6 @@ export function ClubTimeline({
                   {i > 0 && <div className="mx-3 h-px bg-border" />}
                   <ClubTimelineEventRow
                     event={event}
-                    clubId={clubId}
                     viewerId={viewer.data?.id}
                     // Only a `join` entry decorates with a wave — every other
                     // kind reaching this run (`club-created`) ignores the prop.
@@ -375,6 +454,17 @@ export function ClubTimeline({
                             onWave: () => waveJoin(clubId, event.member.user_id),
                             onUnwave: () => unwaveJoin(clubId, event.member.user_id),
                           }
+                        : undefined
+                    }
+                    // `097`, PD-365 — `undefined` when there is none or the
+                    // read has not resolved, both of which the row draws as
+                    // "no door" per its own doc.
+                    introduction={
+                      event.kind === 'join'
+                        ? resolveClubIntroductionState(
+                            joinIntroductions.data,
+                            event.member.user_id
+                          )
                         : undefined
                     }
                   />

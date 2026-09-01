@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { CreateThreadForm } from '@/components/clubs/CreateThreadForm'
 import { Header } from '@/components/layout/Header'
-import { DETAIL_ID_PARAM, SAY_WELCOME_TITLE_PARAM, routes } from '@/lib/routes'
+import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
 
 /**
  * `Start a thread` in a club (`081`, PD-307).
@@ -34,11 +34,6 @@ export default function NewClubThreadPage() {
 function NewClubThreadScreen() {
   const params = useSearchParams()
   const id = params.get(DETAIL_ID_PARAM) ?? ''
-  // "Say welcome" (`092`, PD-356) — a join row's overflow reaches this same
-  // screen with a title already chosen. Absent for every other entrance
-  // (`ClubCreateBar`), which is exactly the empty string `CreateThreadForm`
-  // already defaults to.
-  const prefillTitle = params.get(SAY_WELCOME_TITLE_PARAM) ?? ''
 
   return (
     <>
@@ -52,7 +47,7 @@ function NewClubThreadScreen() {
       />
 
       <div className="px-4 pt-4 pb-8">
-        <CreateThreadForm clubId={id} initialTitle={prefillTitle} />
+        <CreateThreadForm clubId={id} />
       </div>
     </>
   )

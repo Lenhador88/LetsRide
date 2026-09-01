@@ -4,8 +4,8 @@ import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { clubThreadIdSchema, clubIdSchema } from '@/lib/validation/clubs'
 import type {
   ClubChatMessage,
-  ClubThread,
   ClubThreadCursor,
+  ClubThreadDetail,
   ClubThreadListItem,
   ClubMessage,
 } from '@/types'
@@ -94,8 +94,19 @@ export async function getClubThreads(
  * The thread screen needs `club_id` from this rather than from the URL: the
  * route names the thread, and the club is what `Back`, the watermark's cache
  * key and the moderation affordance are all built from.
+ *
+ * **Widened for `097` (PD-365) to carry `introduction` and its author.** A
+ * column nothing reads is a column nothing wrote — without this the text a
+ * rider posts through `introduceToClub` would be stored and never rendered.
+ * `introduces_user_id` is deliberately NOT selected: it is a composite key
+ * into `club_members` rather than an embed path, and the render this feeds
+ * (`ClubThreadPage`) gates on `introduction` and never on the marker — see
+ * `ClubThreadDetail`'s own doc for why. `author` is hinted `author_id`,
+ * matching `THREAD_SELECT` above — `club_threads` has no `user_id` column and
+ * its relationship to `profiles` is already ambiguous through
+ * `club_thread_reads` and `club_thread_waves` (`design.md` §D8).
  */
-export async function getClubThread(id: string): Promise<ClubThread | null> {
+export async function getClubThread(id: string): Promise<ClubThreadDetail | null> {
   if (!clubThreadIdSchema.safeParse(id).success) return null
 
   const supabase = await resolveSupabase()
@@ -103,7 +114,9 @@ export async function getClubThread(id: string): Promise<ClubThread | null> {
   return unwrap(
     await supabase
       .from('club_threads')
-      .select('id, club_id, author_id, title, created_at')
+      .select(
+        'id, club_id, author_id, title, created_at, introduction, author:profiles!author_id(id, username)'
+      )
       // `maybeSingle`, not `single`: RLS answers a thread this rider may not
       // read with zero rows, and `single` turns that into a PostgREST error
       // (`PGRST116`) which `unwrap` would throw — an error screen where the rest
@@ -111,7 +124,7 @@ export async function getClubThread(id: string): Promise<ClubThread | null> {
       .eq('id', id)
       .maybeSingle(),
     'this thread'
-  ) as ClubThread | null
+  ) as ClubThreadDetail | null
 }
 
 /**

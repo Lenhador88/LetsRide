@@ -56,12 +56,29 @@ const TYPES_NEEDING_PRIVATE_CLUB_LOOKUP = new Set([
   'club_invite_declined',
 ])
 
+/**
+ * `thread:club_threads!thread_id(id, title)` — `098`, PD-367. **The `!thread_id`
+ * hint is mandatory, not caution**: PD-363 took four screens down with
+ * `PGRST201` / HTTP 300 the day `092` added `club_join_waves`, a plain junction
+ * between `club_members` and `profiles` that made every *unhinted* embed of
+ * that pair ambiguous with no column, policy or type having changed. A hinted
+ * embed cannot go ambiguous whatever a later migration adds — and no gate in
+ * this repo can see an unhinted one going bad: `tsc` type-checks a template
+ * string, ESLint reads no SQL, Vitest mocks the client, `next build` issues no
+ * query, and the RLS suite runs on plain Postgres where PostgREST's
+ * relationship cache does not exist. No raw `thread_id` column is selected
+ * beside it — unlike `club_id` below, which `089`'s three types need because
+ * their embed cannot resolve — because this one resolves exactly when the row
+ * is returned: `098`'s SELECT policy conjunct and this embed run the same
+ * `EXISTS (select 1 from club_threads …)` under the same reader.
+ */
 const NOTIFICATION_SELECT = `
   id, type, created_at, read_at, club_id,
   actor:profiles!actor_id(${PUBLIC_PROFILE_COLUMNS}),
   postcard:postcards(id, image_path),
   ride:rides(id, title, organizer_id),
-  club:clubs(${CLUB_EMBED_COLUMNS})
+  club:clubs(${CLUB_EMBED_COLUMNS}),
+  thread:club_threads!thread_id(id, title)
 `
 
 type NotificationRawRow = Omit<NotificationRow, 'postcard'> & {
