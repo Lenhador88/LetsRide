@@ -323,12 +323,27 @@ describe('the cross-references in the real repo', () => {
     // owner-leave that deletes a club all pass a suite whose assertions were
     // never run against the mistake they name.
     //
+    // **31 -> 32 on 2026-09-01 (`add-analytics-consent`, PD-353).** One more,
+    // the same `Working` collision and citing the heading it means: that
+    // change's `tasks.md` §6.5 cites `CLAUDE.md` §Working Principles for
+    // *verify it both ways*, on the analytics opt-out's boot order and on
+    // `096`'s assertions. Both are the shape the rule exists for — capture-off
+    // until the stamp reads null is a behaviour every gate here passes with the
+    // guard removed, since PostHog is unreachable from all of them, and an
+    // ambiguous read of the column reads as a clean database rather than a
+    // leak.
+    //
     // **This suite reads `git ls-files`, so a proposal that is written but not
     // yet COMMITTED is invisible to it.** Running it before `git add` on a
     // change that adds markdown is a green that means nothing — which is how
     // this ceiling went red in CI having passed locally minutes earlier. Stage
-    // first, then run.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(31)
+    // first, then run. **It has now done exactly that twice**, the second time
+    // to a session that had read this paragraph: the run that mattered was the
+    // one before `git add openspec/`, and the later full-suite run that would
+    // have caught it was never repeated after the last doc edit. The habit the
+    // warning actually asks for is to re-run the suite AFTER staging, not
+    // merely to stage before running it once.
+    expect(result.ambiguous.length).toBeLessThanOrEqual(32)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been
