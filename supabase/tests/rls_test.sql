@@ -29483,7 +29483,7 @@ select assert_eq(
   (select count(*)::int from notifications
     where user_id = '00000000-0000-0000-0000-000000980007'
       and thread_id = '00000000-0000-0000-0000-0000009800d1'),
-  0, '098.15: a non-member of the club reads NO notification naming its thread, even one addressed to them — the row was written as the owner because no fan-out can produce it, and it is still refused');
+  0, '098.15: a non-member of the club reads NO notification naming its thread, even one addressed to them — the row is written as the owner because, SINCE 100, no fan-out can address this rider, and it is still refused. Under 098 alone a fan-out COULD produce it: replying to a thread whose author had already left the club wrote exactly this row, unreadable from the instant it was written. 100''s private.is_club_member_for conjunct is what makes this label true, and 100.1 is what proves it');
 select assert_eq(
   (select count(*)::int from notifications
     where user_id = '00000000-0000-0000-0000-000000980007'
@@ -30255,8 +30255,8 @@ select assert_eq(
                         'retract_club_thread_waved')
       and (p.prosrc ilike '%auth.uid()%'
         or p.prosrc ilike '%current_user%'
-        or p.prosrc ilike '%is_club_member%')),
-  0, '098.35: ** ... and no body mentions auth.uid(), current_user or is_club_member. ** The actor comes from NEW; a current_user branch inside a definer body is the OWNER and gates nothing (087''s bug); and is_club_member reads auth.uid() internally, so a fan-out calling it computes the ACTOR''s membership and applies it to everybody');
+        or p.prosrc ilike '%private.is_club_member(%')),
+  0, '098.35: ** ... and no body mentions auth.uid(), current_user or private.is_club_member. ** The actor comes from NEW; a current_user branch inside a definer body is the OWNER and gates nothing (087''s bug); and is_club_member reads auth.uid() internally, so a fan-out calling it computes the ACTOR''s membership and applies it to everybody. ** THE OPEN PAREN IS LOAD-BEARING AND WAS ADDED BY 100. ** Written as `%is_club_member%` this also matched private.is_club_member_FOR, the subject-taking twin 085 added for exactly this situation — the one helper a fan-out MUST use, since it takes the candidate rather than reading auth.uid(). 100 puts it in two of these three bodies, and the unparenthesised pattern refused the correct fix while its own label named a reason that applies only to the caller-scoped one');
 select assert_eq(
   (select count(*)::int from pg_trigger t
     where t.tgname in ('notify_club_thread_replied', 'notify_club_thread_waved',
@@ -30341,7 +30341,7 @@ select assert_eq(
   1, '098.38: ... and their club_invited row, through 093''s has_live_club_invite disjunct — written by notify_club_invited on the insert above rather than by hand, so the fan-out and the read are both exercised');
 select assert_eq(
   (select count(*)::int from notifications where thread_id is not null),
-  0, '098.38: ... while reading NO thread notification, the two new types taking no disjunct of their own: their recipient AUTHORED the thread, which club_threads INSERT required membership for, so the ordinary conjunct resolves at the moment the row is written');
+  0, '098.38: ... while reading NO thread notification, the two new types taking no disjunct of their own: SINCE 100 their recipient is a rider who is still IN THE CLUB at the instant of the write, so the ordinary conjunct resolves then. Authoring the thread is NOT what resolves it — club_threads INSERT required membership when the THREAD was created, which is a different instant from the reply, and reasoning from it is the defect 100 corrects');
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint disjuncts_098;
@@ -30882,6 +30882,370 @@ select assert_eq(
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint club_joined_members_099;
+
+-- ===========================================================================
+-- 100. The two club-thread fan-outs test the RECIPIENT'S MEMBERSHIP, not the
+--      thread's authorship. The correction of a defect in 098.
+--
+-- ** WRITE-AFTER-LEAVE IS NOT 098.14's EVICTION-AFTER-LEAVE, AND CONFLATING THE
+-- TWO IS HOW THIS FIX GETS UNDONE. ** 098.14 covers a row that WAS readable when
+-- it was written and stops being readable when its recipient leaves the club —
+-- proposal.md Q8's eviction, which the product owner answered, which stays, and
+-- which nothing in this section touches. These assertions cover the other state:
+-- a row written to a rider who had ALREADY LEFT, which the notifications SELECT
+-- policy can never return, because its thread conjunct goes through
+-- club_threads SELECT and that needs membership. Unreadable from the instant it
+-- is written, for ever, accumulating one row per distinct replier and one per
+-- distinct waver. 098's own header calls the recipient safe because "the
+-- recipient AUTHORED the thread, which club_threads INSERT required membership
+-- for" — membership was required when the THREAD was created, not when the REPLY
+-- is written, and club_threads holds no FK to club_members on author_id.
+--
+-- ** 100.3 IS THE BOTH-WAYS CHECK AND IT IS MANDATORY. ** Every negative below
+-- passes just as well against a fan-out that was simply switched off, so a
+-- still-member author being written their rows is the only thing that makes
+-- 100.1 and 100.2 mean anything.
+--
+-- ** 100.4 IS THE ONE A club_members-ONLY TEST FAILS. ** private.is_club_member
+-- has carried a clubs.owner_id arm since 054 and its subject-taking twin
+-- inherits it, so an OWNERLESS OWNER — 095 lets an owner delete their own
+-- membership row — can still READ their own thread and must therefore still be
+-- told about it. 098.17 does not reach this case: there the ownerless owner owns
+-- the club a MEMBER's thread sits in and receives nothing qua owner. Here they
+-- are the thread's AUTHOR, which is the recipient set itself.
+--
+--   1000001 tfowner   owns cP (PUBLIC) and holds its owner membership row
+--   1000002 tfleaver  MEMBER of cP and author of a thread there. LEAVES, and is
+--                     then replied to and waved — 100.1 and 100.2's recipient,
+--                     who must be written nothing. ** NOT cP's owner, which is
+--                     load-bearing: an owning author resolves through the owner
+--                     arm and would never have been the defect **
+--   1000003 tfreplier MEMBER of cP and cQ — the actor throughout
+--   1000004 tfstayer  MEMBER of cP and author of a thread there. Stays, except
+--                     in 100.6 where the leave happens AFTER the write
+--   1000005 tfsolo    ** owns cQ (PUBLIC) and holds NO club_members row **
+-- ===========================================================================
+savepoint thread_membership_100;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000100001', 'tfowner@example.com'),
+  ('00000000-0000-0000-0000-000000100002', 'tfleaver@example.com'),
+  ('00000000-0000-0000-0000-000000100003', 'tfreplier@example.com'),
+  ('00000000-0000-0000-0000-000000100004', 'tfstayer@example.com'),
+  ('00000000-0000-0000-0000-000000100005', 'tfsolo@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000100001', 'tfowner'),
+      ('00000000-0000-0000-0000-000000100002', 'tfleaver'),
+      ('00000000-0000-0000-0000-000000100003', 'tfreplier'),
+      ('00000000-0000-0000-0000-000000100004', 'tfstayer'),
+      ('00000000-0000-0000-0000-000000100005', 'tfsolo')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000001000c1', 'Thread Membership MC', true, '00000000-0000-0000-0000-000000100001'),
+  ('00000000-0000-0000-0000-0000001000c2', 'Solo Owner MC',        true, '00000000-0000-0000-0000-000000100005');
+
+-- ** cQ DELIBERATELY GETS NO OWNER MEMBERSHIP ROW. ** That is 100.4's subject,
+-- and 095 makes it a state a real owner reaches in one request.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000001000c1', '00000000-0000-0000-0000-000000100001', 'owner'),
+  ('00000000-0000-0000-0000-0000001000c1', '00000000-0000-0000-0000-000000100002', 'member'),
+  ('00000000-0000-0000-0000-0000001000c1', '00000000-0000-0000-0000-000000100003', 'member'),
+  ('00000000-0000-0000-0000-0000001000c1', '00000000-0000-0000-0000-000000100004', 'member'),
+  ('00000000-0000-0000-0000-0000001000c2', '00000000-0000-0000-0000-000000100003', 'member');
+
+insert into club_threads (id, club_id, author_id, title) values
+  ('00000000-0000-0000-0000-0000001000d1', '00000000-0000-0000-0000-0000001000c1', '00000000-0000-0000-0000-000000100002', 'The leaver''s thread'),
+  ('00000000-0000-0000-0000-0000001000d2', '00000000-0000-0000-0000-0000001000c1', '00000000-0000-0000-0000-000000100004', 'The stayer''s thread'),
+  ('00000000-0000-0000-0000-0000001000d3', '00000000-0000-0000-0000-0000001000c2', '00000000-0000-0000-0000-000000100005', 'The ownerless owner''s own thread');
+
+-- ---------------------------------------------------------------------------
+-- 100.1  ** WRITE-AFTER-LEAVE, REPLY — the ex-member author is written NOTHING **
+-- ---------------------------------------------------------------------------
+savepoint leave_then_reply_100;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000100002', false);
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000001000c1'
+   and user_id = '00000000-0000-0000-0000-000000100002';
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000001000c1'
+      and user_id = '00000000-0000-0000-0000-000000100002'),
+  0, '100.1: the thread''s author really LEFT, through club_members'' own bare `auth.uid() = user_id` DELETE policy — the precondition, since a filtered-to-zero delete is indistinguishable from a permitted one');
+select set_config('test.uid', '00000000-0000-0000-0000-000000100003', false);
+insert into club_messages (thread_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000001000d1', '00000000-0000-0000-0000-000000100003', 'still here?');
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from club_threads where id = '00000000-0000-0000-0000-0000001000d1'),
+  1, '100.1: ... and their THREAD survived the leave — club_threads holds no foreign key to club_members on author_id, which is the whole reason this state is reachable rather than a hypothetical');
+select assert_eq(
+  (select count(*)::int from club_messages where thread_id = '00000000-0000-0000-0000-0000001000d1'),
+  1, '100.1: ... and the reply itself was WRITTEN, counted as the table owner — so the zero below is a recipient set rather than a refused write or a fan-out that raised inside the replier''s own transaction');
+select assert_eq(
+  (select count(*)::int from notifications
+    where thread_id = '00000000-0000-0000-0000-0000001000d1' and type = 'club_thread_replied'),
+  0, '100.1: ** ... and NO club_thread_replied row exists AT ALL, counted as the TABLE OWNER rather than as the recipient. ** Under 098 this read 1: a row addressed to a rider club_threads SELECT refuses, which notifications'' own thread conjunct then drops on every read from the instant it is written. event-fanout-integrity calls that a defect in the fan-out; it is NOT 098.14''s eviction, because an evicted row WAS readable once and this one never was');
+select assert_eq(
+  (select count(*)::int from notifications where thread_id = '00000000-0000-0000-0000-0000001000d1'),
+  0, '100.1: ... and no thread notification of ANY type names that thread, which is the same claim without a type in the predicate — so a row of the other type could not hide behind the scoping above');
+rollback to savepoint leave_then_reply_100;
+
+-- ---------------------------------------------------------------------------
+-- 100.2  ** WRITE-AFTER-LEAVE, WAVE — the second fan-out, asserted separately **
+-- ---------------------------------------------------------------------------
+-- Two fan-outs are two function bodies. A fix applied to one and not the other
+-- passes every assertion in 100.1 and leaves half the defect standing.
+savepoint leave_then_wave_100;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000100002', false);
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000001000c1'
+   and user_id = '00000000-0000-0000-0000-000000100002';
+select set_config('test.uid', '00000000-0000-0000-0000-000000100003', false);
+insert into club_thread_waves (thread_id, user_id) values
+  ('00000000-0000-0000-0000-0000001000d1', '00000000-0000-0000-0000-000000100003');
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from club_thread_waves
+    where thread_id = '00000000-0000-0000-0000-0000001000d1'),
+  1, '100.2: the wave itself was WRITTEN — club_thread_waves'' INSERT policy only asks that the waver can read the thread, and the WAVER is still a member, so nothing about this write is refused');
+select assert_eq(
+  (select count(*)::int from notifications
+    where thread_id = '00000000-0000-0000-0000-0000001000d1' and type = 'club_thread_waved'),
+  0, '100.2: ** ... and NO club_thread_waved row exists, counted as the table owner. ** private.notify_club_thread_waved carries the same private.is_club_member_for conjunct as its sibling, character for character, because the recipient is club_threads.author_id in both');
+rollback to savepoint leave_then_wave_100;
+
+-- ---------------------------------------------------------------------------
+-- 100.3  ** BOTH WAYS: a still-member author IS written both rows, and reads
+--         them. THE FIX DID NOT SIMPLY DISABLE THE FAN-OUT **
+-- ---------------------------------------------------------------------------
+savepoint stayer_100;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000100003', false);
+insert into club_messages (thread_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000001000d2', '00000000-0000-0000-0000-000000100003', 'good thread');
+insert into club_thread_waves (thread_id, user_id) values
+  ('00000000-0000-0000-0000-0000001000d2', '00000000-0000-0000-0000-000000100003');
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where thread_id = '00000000-0000-0000-0000-0000001000d2' and type = 'club_thread_replied'
+      and user_id = '00000000-0000-0000-0000-000000100004'),
+  1, '100.3: ** an author who is STILL a member is written their reply row. ** Every negative in 100.1 and 100.2 passes against a fan-out that writes nothing at all, so this is what makes them mean something');
+select assert_eq(
+  (select count(*)::int from notifications
+    where thread_id = '00000000-0000-0000-0000-0000001000d2' and type = 'club_thread_waved'
+      and user_id = '00000000-0000-0000-0000-000000100004'),
+  1, '100.3: ... and their wave row, the second fan-out asserted separately for the same reason 100.2 exists');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000100004', false);
+select assert_eq(
+  (select count(*)::int from notifications where thread_id = '00000000-0000-0000-0000-0000001000d2'),
+  2, '100.3: ** ... and the recipient READS both back under their own session ** — not "two rows were written". The recipient set is now EQUAL to the set notifications SELECT returns the row to rather than a superset of it, which is the property event-fanout-integrity asks for');
+select assert_eq(
+  (select count(*)::int from club_threads where id = '00000000-0000-0000-0000-0000001000d2'),
+  1, '100.3: ... and the thread each row links to opens for them, so neither notification renders over a screen that refuses');
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint stayer_100;
+
+-- ---------------------------------------------------------------------------
+-- 100.4  ** AN OWNERLESS OWNER AUTHORING THE THREAD IS STILL NOTIFIED — the
+--         assertion a club_members-only predicate fails **
+-- ---------------------------------------------------------------------------
+savepoint ownerless_author_100;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000001000c2'
+      and user_id = '00000000-0000-0000-0000-000000100005'),
+  0, '100.4: cQ''s owner really holds NO club_members row — without this precondition the ones below are an ordinary member and prove nothing about the owner arm');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000100003', false);
+insert into club_messages (thread_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000001000d3', '00000000-0000-0000-0000-000000100003', 'nice club');
+insert into club_thread_waves (thread_id, user_id) values
+  ('00000000-0000-0000-0000-0000001000d3', '00000000-0000-0000-0000-000000100003');
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where thread_id = '00000000-0000-0000-0000-0000001000d3' and type = 'club_thread_replied'
+      and user_id = '00000000-0000-0000-0000-000000100005'),
+  1, '100.4: ** the ownerless owner IS written their reply row. ** private.is_club_member_for unions a clubs.owner_id arm, so it answers TRUE for a rider holding no membership row in a club they own — `exists (select 1 from club_members ...)` in its place reads 0 here and silently stops notifying every such rider');
+select assert_eq(
+  (select count(*)::int from notifications
+    where thread_id = '00000000-0000-0000-0000-0000001000d3' and type = 'club_thread_waved'
+      and user_id = '00000000-0000-0000-0000-000000100005'),
+  1, '100.4: ... and their wave row');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000100005', false);
+select assert_eq(
+  (select count(*)::int from club_threads where id = '00000000-0000-0000-0000-0000001000d3'),
+  1, '100.4: ** ... and they can still READ their own thread, which is WHY they must still be told. ** club_threads SELECT''s resolving arm is private.is_club_member(club_id), which delegates to the same twin with the same owner arm — so keeping them is not leniency, it is the recipient set matching the read policy exactly');
+select assert_eq(
+  (select count(*)::int from notifications where thread_id = '00000000-0000-0000-0000-0000001000d3'),
+  2, '100.4: ... and they read both rows back, so neither is a row the policy will drop');
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint ownerless_author_100;
+
+-- ---------------------------------------------------------------------------
+-- 100.5  The two function bodies, and the bindings create-or-replace preserved
+-- ---------------------------------------------------------------------------
+savepoint fn_shape_100;
+select assert_eq(
+  (select prosrc like '%private.is_club_member_for(t.author_id, t.club_id)%'
+     from pg_proc where oid = 'private.notify_club_thread_replied()'::regprocedure),
+  true, '100.5: private.notify_club_thread_replied asks the membership question against the RECIPIENT and the THREAD''S club — 085''s subject-taking twin, by name, on the two columns that identify them');
+select assert_eq(
+  (select prosrc like '%private.is_club_member_for(t.author_id, t.club_id)%'
+     from pg_proc where oid = 'private.notify_club_thread_waved()'::regprocedure),
+  true, '100.5: ... and private.notify_club_thread_waved carries the identical conjunct — the two bodies still differ ONLY in whether the actor column is author_id or user_id');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid in ('private.notify_club_thread_replied()'::regprocedure,
+                  'private.notify_club_thread_waved()'::regprocedure)
+      and prosrc like '%private.is_club_member(%'),
+  0, '100.5: ** NEITHER body calls private.is_club_member itself — 036 trap (c). ** It reads auth.uid() internally, so it answers "is the CALLER a member" and would apply the actor''s own answer to every candidate: TRUE for every write from a real session, because the actor must be a member to reply at all, and not-TRUE in psql, in seed.sql, in this suite and inside every security definer writer. A predicate that passes every positive assertion while testing nothing');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid in ('private.notify_club_thread_replied()'::regprocedure,
+                  'private.notify_club_thread_waved()'::regprocedure)
+      and prosrc like '%auth.uid()%'),
+  0, '100.5: ... and auth.uid() appears in NEITHER body — 036 trap (b). This suite sets test.uid and the fan-outs run with no caller identity of their own; the actor is read from NEW and the recipient from club_threads');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid in ('private.notify_club_thread_replied()'::regprocedure,
+                  'private.notify_club_thread_waved()'::regprocedure)
+      and prosecdef and proconfig @> array['search_path=""']),
+  2, '100.5: ... and BOTH are still SECURITY DEFINER with an empty search_path. proconfig stores the pin as the literal search_path="" — matching on `search_path=` finds nothing and reads as a pass, which is how 055''s own assertion was first written wrong');
+select assert_eq(
+  (select count(*)::int
+     from (values ('authenticated'), ('anon'), ('service_role')) as r(role)
+    where has_function_privilege(r.role, 'private.notify_club_thread_replied()', 'execute')
+       or has_function_privilege(r.role, 'private.notify_club_thread_waved()', 'execute')),
+  0, '100.5: neither is reachable by any client role nor by service_role — 100 re-issues 098''s revokes, and `create or replace` preserves privileges rather than resetting them. Named by ROLE and never called, per 031: this suite runs as the table owner, for whom neither the schema barrier nor the EXECUTE barrier exists');
+select assert_eq(
+  (select array(select tgname::text from pg_trigger
+                 where tgrelid = 'public.club_messages'::regclass and not tgisinternal order by 1)),
+  array['enforce_participation_gate', 'notify_club_thread_replied'],
+  '100.5: club_messages still carries exactly those two triggers — `create or replace` keeps each function''s OID and the trigger references it by OID, so 100 issues no trigger DDL and a third here would be a failed apply rather than a finding');
+select assert_eq(
+  (select array(select tgname::text from pg_trigger
+                 where tgrelid = 'public.club_thread_waves'::regclass and not tgisinternal order by 1)),
+  array['enforce_participation_gate', 'notify_club_thread_waved', 'retract_club_thread_waved'],
+  '100.5: ... and club_thread_waves exactly those three, the retraction included');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where not tgisinternal and tgqual is null
+      and ((tgrelid = 'public.club_messages'::regclass     and tgname = 'notify_club_thread_replied')
+        or (tgrelid = 'public.club_thread_waves'::regclass and tgname = 'notify_club_thread_waved'))),
+  2, '100.5: ... and both fan-out triggers still carry NO when clause — 036 trap (a). A `when (current_user = ''authenticated'')` copied from 023''s gate is false inside every security definer writer, and 097''s public.introduce_to_club creates club_threads rows from exactly such a body');
+rollback to savepoint fn_shape_100;
+
+-- ---------------------------------------------------------------------------
+-- 100.6  ** THE RETRACTION DELIBERATELY DOES NOT GET THIS PREDICATE **
+-- ---------------------------------------------------------------------------
+-- "Apply it consistently" is the wrong instinct one function over. The
+-- retraction's job is to remove a row that was ALREADY written, so a membership
+-- test there orphans a row whose recipient left between the wave and the
+-- un-wave — the row survives its own subject, with nothing to remove it but the
+-- thread's own deletion.
+savepoint retraction_across_leave_100;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000100003', false);
+insert into club_thread_waves (thread_id, user_id) values
+  ('00000000-0000-0000-0000-0000001000d2', '00000000-0000-0000-0000-000000100003');
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where thread_id = '00000000-0000-0000-0000-0000001000d2' and type = 'club_thread_waved'),
+  1, '100.6: the wave notified the author, who was a member at that instant — the precondition, and the state 100 deliberately preserves');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000100004', false);
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000001000c1'
+   and user_id = '00000000-0000-0000-0000-000000100004';
+select set_config('test.uid', '00000000-0000-0000-0000-000000100003', false);
+delete from club_thread_waves
+ where thread_id = '00000000-0000-0000-0000-0000001000d2'
+   and user_id = '00000000-0000-0000-0000-000000100003';
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where thread_id = '00000000-0000-0000-0000-0000001000d2' and type = 'club_thread_waved'),
+  0, '100.6: ** the un-wave STILL reaches the row after its recipient left the club. ** This is the assertion that fails the day someone adds private.is_club_member_for to the retraction for symmetry: the row would survive the un-wave that was meant to remove it, addressed to a rider who cannot see it and cannot clear it');
+select assert_eq(
+  (select prosrc like '%is_club_member%'
+     from pg_proc where oid = 'private.retract_club_thread_waved()'::regprocedure),
+  false, '100.6: ... and private.retract_club_thread_waved names no membership helper at all, which is the same claim read off the body rather than off the behaviour — the two together distinguish "the predicate is absent" from "the predicate happened to answer true"');
+rollback to savepoint retraction_across_leave_100;
+
+-- ---------------------------------------------------------------------------
+-- 100.7  The corrected reasoning is recorded in the DATABASE
+-- ---------------------------------------------------------------------------
+-- 098's false justification lives in a migration file, which nothing reads at
+-- debug time and which can never be edited. A database comment is the one piece
+-- of documentation that travels with the object — 028, 033 and 055's precedent.
+select assert_eq(
+  (select obj_description('private.notify_club_thread_replied()'::regprocedure, 'pg_proc')
+     like '%is_club_member_for%'),
+  true, '100.7: private.notify_club_thread_replied''s comment names the predicate it now carries');
+select assert_eq(
+  (select obj_description('private.notify_club_thread_replied()'::regprocedure, 'pg_proc')
+     like '%Authoring the thread is NOT sufficient%'),
+  true, '100.7: ... and says plainly that authoring the thread is not sufficient, which is the sentence 098''s header gets wrong and will keep asserting');
+select assert_eq(
+  (select obj_description('private.notify_club_thread_waved()'::regprocedure, 'pg_proc')
+     like '%retract_club_thread_waved deliberately carries NO such test%'),
+  true, '100.7: ... and the wave fan-out''s comment records why its own retraction is exempt, at the object a reader reaching for symmetry would look at first');
+
+-- ---------------------------------------------------------------------------
+-- 100.8  THE REPAIR IS IN THE FAN-OUT, NOT IN THE POLICY
+-- ---------------------------------------------------------------------------
+-- The other conceivable fix is a type-scoped disjunct on notifications SELECT,
+-- like 089's and 093's, keeping the row readable to an ex-member. It is refused:
+-- the row would render over a thread screen that still refuses the rider, which
+-- is the state 036 forbids. Scoped to the two new types rather than counting the
+-- policy's arms, so a later type landing beside them does not make this stop
+-- testing its own intent.
+select assert_eq(
+  (select qual like '%club_thread_replied%' or qual like '%club_thread_waved%'
+     from pg_policies
+    where schemaname = 'public' and tablename = 'notifications' and cmd = 'SELECT'),
+  false, '100.8: notifications SELECT carries NO type-scoped disjunct for either thread type — 100 narrows the RECIPIENT SET to the set the policy already returns to, and never widens the policy to match a recipient set that was wrong');
+select assert_eq(
+  (select qual like '%FROM club_threads st%'
+     from pg_policies
+    where schemaname = 'public' and tablename = 'notifications' and cmd = 'SELECT'),
+  true, '100.8: ... and 098''s thread conjunct is still there and still unqualified, so it remains the whole resolvability test for both types — this assertion is only meaningful while that arm exists');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgname = 'enforce_participation_gate' and not tgisinternal),
+  22, '100.8: still TWENTY-TWO participation-gate triggers — 100 adds no table and therefore no gate; it replaces two function bodies and hangs nothing');
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint thread_membership_100;
+
 
 
 rollback;

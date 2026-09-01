@@ -96,14 +96,18 @@ one-member test. Where a candidate's membership genuinely must be evaluated, the
 `private.is_club_member_for(candidate, club)` is the only correct form; `private.is_blocked(a, b)` and
 `private.can_read_club(candidate, club)` are the other two that take their subject as an argument.
 
-#### Scenario: The single-recipient form needs no membership test at all
+#### Scenario: The single-recipient form STILL needs a membership test
 
 - **WHEN** the recipient is `club_threads.author_id` for the thread the parent row belongs to
-- **THEN** no membership predicate SHALL be needed in the fan-out, because the join is the whole
-  recipient set
-- **AND** this SHALL be recorded as a property of the **single-recipient** design, so that any
-  widening to prior repliers adds `private.is_club_member_for(candidate, club_id)` explicitly rather
-  than inheriting an absence
+- **THEN** the fan-out SHALL still carry `private.is_club_member_for(t.author_id, t.club_id)`
+- **AND** the tempting reasoning — *"the join is the whole recipient set, so no membership predicate
+  is needed"* — SHALL be recorded as REFUTED rather than removed, because it is what this scenario
+  said until migration `100` and it is what a reader re-derives in five seconds
+- **AND** the refutation is that authorship is not membership at the moment the fan-out fires:
+  `club_threads` INSERT required membership when the THREAD was created, and the fan-out runs when
+  the REPLY is written. Nothing deletes a thread when its author leaves the club, so
+  `A starts a thread → A leaves → B replies` writes A a row `club_threads` SELECT can never return
+- **AND** a widening to prior repliers SHALL carry the same predicate per candidate
 
 ### Requirement: Blocking SHALL be written into both thread fan-outs even where the parent policy already implies it
 
@@ -243,11 +247,30 @@ leave, the row is evicted rather than deleted. That is the correct behaviour and
 eviction ruling, but a reviewer reading "the recipient is the author, so the own-row arm resolves it"
 would be reasoning from `postcards`' policy shape, which is the opposite one.
 
-**A widening to prior repliers SHALL therefore carry `private.is_club_member_for(candidate,
-club_id)`** in the fan-out, and SHALL exclude a club owner holding no `club_members` row — the same
-ownerless-owner case that narrows `ride_created_in_club` to members alone. `club_members` DELETE is a
-bare `auth.uid() = user_id` with no owner carve-out, so that state is reachable in one request by any
-owner.
+**Both thread fan-outs SHALL carry `private.is_club_member_for(t.author_id, t.club_id)`, and a
+widening to prior repliers SHALL carry it per candidate.** `club_members` DELETE is a bare
+`auth.uid() = user_id` with no owner carve-out, so an author who has left is reachable in one
+request — and until migration `100` both fan-outs wrote that rider a row their own SELECT policy
+could never return, which is the defect this capability's own *"a row the policy drops on every read
+from the instant it is written"* requirement names. It is NOT the eviction ruling above: that covers
+a row readable when written; this one never was.
+
+**An earlier revision of this paragraph also told a widening to "exclude a club owner holding no
+`club_members` row — the same ownerless-owner case that narrows `ride_created_in_club` to members
+alone", and BOTH halves of that were false.** Recorded rather than deleted, because it is the
+sentence a future widening would have followed:
+
+- The two instructions contradict each other. `private.is_club_member_for` **includes** the
+  ownerless owner — its body is `exists(club_members …) or exists(clubs where owner_id =
+  candidate)` — so one predicate cannot both be carried and exclude them.
+- `ride_created_in_club` does **not** narrow to members alone. Measured off `prosrc` on DEV:
+  `private.notify_ride_created_in_club` unions `clubs.owner_id`, and `060`'s own comment at the
+  site says why — *"`036` §7.5 withheld this arm because `is_club_member` had no owner arm; `054`
+  gave it one."*
+
+Including the ownerless owner is therefore correct here for the same reason it is correct there:
+`club_threads` SELECT resolves through `private.is_club_member`, which delegates to the same twin,
+so the recipient set is now **equal** to the set the policy returns to rather than a superset.
 
 #### Scenario: Every type's recipient set is checked against its resolving policy arm
 

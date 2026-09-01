@@ -701,14 +701,14 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 99 files. DEV is at `099`, PROD is at `096`, and the three-file gap is
-`097`–`099` awaiting promotion — measured 2026-09-01.** That is the ordinary DEV-ahead state, not a
+**Applied state: 100 files. DEV is at `100`, PROD is at `096`, and the four-file gap is
+`097`–`100` awaiting promotion — measured 2026-09-01.** That is the ordinary DEV-ahead state, not a
 defect; the paragraph below on which side of a build each file goes is what the promotion needs.
-**Both are safe MIGRATION-FIRST and all three go before the build serves**, which is the same side
+**All four are safe MIGRATION-FIRST and go before the build serves**, which is the same side
 `096` took and the opposite of `092`–`095`: `097` is inert to an older bundle, `098` adds a column
 the bundle READS through an explicit `NOTIFICATION_SELECT` column list (so a newer bundle against a
-pre-`098` database takes every rider's notifications screen down), and `099` changes no schema at
-all. Count rather than trust it: `list_migrations` against both refs, against
+pre-`098` database takes every rider's notifications screen down), and `099` and `100` change no
+schema at all — `100` narrows `098`'s two fan-outs and must never be applied without it. Count rather than trust it: `list_migrations` against both refs, against
 `ls supabase/migrations/*.sql | wc -l`. **DEV also records three rows with no file** —
 `ride_capacity_is_enforced_exemptions`, `ride_capacity_moves_to_private` and
 `rides_zone_is_not_cleared_with_the_location_group`, hand-applied historically — so DEV's row count
@@ -837,7 +837,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **3301** assertions — re-derive rather than trust it:
+Suite **3335** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
