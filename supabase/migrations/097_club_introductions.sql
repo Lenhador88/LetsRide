@@ -451,7 +451,18 @@ comment on function public.introduce_to_club(uuid, text) is
 --          has_function_privilege('anon',
 --            'public.introduce_to_club(uuid,text)', 'execute'),            -- f
 --          has_function_privilege('service_role',
---            'public.introduce_to_club(uuid,text)', 'execute');            -- f
+--            'public.introduce_to_club(uuid,text)', 'execute');            -- t
+--   -- ** service_role is TRUE and that is CORRECT — this line said `f` until a
+--   -- pre-merge review measured it. ** It is Supabase's ambient default on
+--   -- `public` and the house shape: approve_club_join_request,
+--   -- moderate_club_thread, accept_ride_invite, claim_ride_invite_link and
+--   -- remove_club_member all read sr=t, anon=f identically. The function comment
+--   -- below already said so; this block contradicted it. Harmless because the
+--   -- subject is auth.uid() and a service_role caller carries no JWT, so it
+--   -- refuses at the first conjunct — it fails CLOSED for the one role that
+--   -- could bypass RLS. Left as `f` this is a verification step that reads FAIL
+--   -- against a correct database at exactly the moment it is run, the PROD
+--   -- promotion, which is the defect 099's header names in its own footer.
 --
 --   -- the two DELTAS, against the §0 baseline read on THIS project
 --   select count(*) from pg_trigger

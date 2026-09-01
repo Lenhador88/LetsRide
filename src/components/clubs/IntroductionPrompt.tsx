@@ -132,7 +132,13 @@ export function IntroductionPromptBody({
         placeholder={CLUB_INTRODUCTION_STARTER}
         error={error ?? undefined}
         disabled={pending}
-        autoFocus
+        // No `autoFocus`, deliberately. The sheet is driven by STATE, not by
+        // the Join button (§D7), so it opens on ANY navigation to a club this
+        // rider owes an introduction to — and focusing the textarea there
+        // raises the mobile keyboard over the screen they actually navigated
+        // to. The dismissal is per-session, so a new session repeats it. The
+        // textarea is already the visually dominant element; focus costs
+        // nothing it needs.
       />
 
       <div className="mt-4 flex gap-3">
