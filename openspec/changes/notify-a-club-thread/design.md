@@ -321,13 +321,20 @@ retraction, once the inverted argument and the non-transferring one are removed:
   notification ever. Dropping it also deletes a `security definer` function, a trigger, and the
   entire cascade hazard the section above exists to describe.
 
-**Q2, non-blocking, default = keep the retraction — and it is the one default in this change the
-author holds weakly.** The reason it is not flipped here is scope rather than merit: `postcard_liked`
-and `club_waved` both retract, `090` says all three are wrong to, and reversing that belongs in one
-file covering all three with its own assertions rather than as a silent divergence in a change about
-threads. `092` set the same precedent when it declined to fix `postcard_likes`' policy in its own
-file. **If the owner has no view, the cheaper and simpler build is to drop it**, and the
-implementation cost of asking later is one trigger and one function.
+**Q2 — ANSWERED 2026-09-01: keep the retraction.** Product owner, asked directly with the case
+against it put first: *"Q2 yes leave it."* So the retraction ships and this section is the record of
+what was weighed rather than an open question.
+
+**The argument against is NOT withdrawn, and it is written down here because it is the thing a later
+change would act on.** `postcard_liked` and `club_waved` both retract; `090` says all three are
+wrong to; reversing it belongs in one file covering all three with its own assertions rather than as
+a silent divergence in a change about threads — which is the same call `092` made when it declined
+to fix `postcard_likes`' policy in its own file. The sharpest form of the objection, which is
+easier to see now that the eight-column key exists: **a second reply from the same actor in the same
+thread COLLAPSES and re-notifies nobody, while a wave toggled off and on again does not** — the
+retraction deletes the row, so the next wave has nothing to collide with. That makes a wave button
+the only control in this schema that can be used as a doorbell. Its implementation cost, whenever it
+is taken, is one trigger and one function per surface.
 
 The exposure while it stands is bounded by `club_thread_waves`' primary key `(thread_id, user_id)` —
 one wave per rider per thread at a time — and by the recipient being one rider who can block the
