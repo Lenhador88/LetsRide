@@ -19,6 +19,10 @@ import {
   mergeClubTimeline,
 } from '@/lib/data/club-timeline'
 import { attachClubWaveState, resolveClubWaveState } from '@/lib/data/club-waves'
+import {
+  attachClubIntroductions,
+  resolveClubIntroductionState,
+} from '@/lib/data/club-introductions'
 import { FEED_PAGE_SIZE, getClubFeed } from '@/lib/data/postcards'
 import { getCurrentProfile } from '@/lib/data/profile'
 import { getClubRideAnnouncements } from '@/lib/data/rides'
@@ -111,9 +115,10 @@ export function ClubTimeline({
   )
 
   // The signed-in rider's own id — read for exactly one reason: hiding the
-  // wave control (and "Say welcome") on a rider's own join row
-  // (`ClubTimelineEventRow`'s only use of `viewerId`). Nothing else on this
-  // screen needs it, which is why it was not read before `092`.
+  // wave control on a rider's own join row (`ClubTimelineEventRow`'s only use
+  // of `viewerId`; the introduction door has no such gate — a rider may read
+  // and open their own introduction). Nothing else on this screen needs it,
+  // which is why it was not read before `092`.
   const viewer = useQuery(isMember ? queryKeys.profile.me() : null, getCurrentProfile)
 
   /**
@@ -155,6 +160,21 @@ export function ClubTimeline({
         // horizon }` — not a bare array; the ids are in `.rows`.
         subjectIds: (joins.data?.rows ?? []).map((member) => member.user_id),
       })
+  )
+
+  /**
+   * The join row's door and count — `097`, PD-365, `attachClubWaveState`'s
+   * own precedent one row up: scoped to `joins.data`'s own ids, gated on that
+   * read having resolved rather than merely on `isMember`, for the identical
+   * reason the wave reads are.
+   */
+  const joinIntroductions = useQuery(
+    isMember && joins.data !== undefined ? queryKeys.clubs.joinIntroductions(clubId) : null,
+    () =>
+      attachClubIntroductions(
+        clubId,
+        (joins.data?.rows ?? []).map((member) => member.user_id)
+      )
   )
 
   const photosHref = `/postcards?club=${encodeURIComponent(clubId)}`
@@ -364,7 +384,6 @@ export function ClubTimeline({
                   {i > 0 && <div className="mx-3 h-px bg-border" />}
                   <ClubTimelineEventRow
                     event={event}
-                    clubId={clubId}
                     viewerId={viewer.data?.id}
                     // Only a `join` entry decorates with a wave — every other
                     // kind reaching this run (`club-created`) ignores the prop.
@@ -375,6 +394,17 @@ export function ClubTimeline({
                             onWave: () => waveJoin(clubId, event.member.user_id),
                             onUnwave: () => unwaveJoin(clubId, event.member.user_id),
                           }
+                        : undefined
+                    }
+                    // `097`, PD-365 — `undefined` when there is none or the
+                    // read has not resolved, both of which the row draws as
+                    // "no door" per its own doc.
+                    introduction={
+                      event.kind === 'join'
+                        ? resolveClubIntroductionState(
+                            joinIntroductions.data,
+                            event.member.user_id
+                          )
                         : undefined
                     }
                   />

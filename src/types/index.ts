@@ -1166,6 +1166,17 @@ export type ClubDetail = {
   location_place_id: string | null
   latitude: number | null
   longitude: number | null
+  /**
+   * `058` — the Welcome club every rider is auto-joined to at onboarding.
+   * `authenticated` holds SELECT on this column (`058` §2), which is what
+   * already lets `ClubOptionsMenu`'s leave path read a refusal by name off it.
+   *
+   * **The one screen-side use is the introduction prompt** (`097`, PD-365):
+   * `design.md` §D7 excludes this club from the prompt for `058`'s own reason —
+   * every rider joins it inside a wizard with no skip affordance, so a prompt
+   * there would be the first thing a new rider is asked.
+   */
+  is_default: boolean
 }
 
 /**
@@ -1745,6 +1756,29 @@ export type ClubThread = {
  * unmarked rather than not rendering.
  */
 export type ClubThreadListItem = ClubThread & {
+  author: Pick<PublicProfile, 'id' | 'username'> | null
+}
+
+/**
+ * One thread as its own detail screen renders it — `getClubThread` (`097`,
+ * PD-365).
+ *
+ * `introduction` is `null` on an ordinary thread and the introduction's own
+ * text on one that carries it. **The render keys off THIS column and never
+ * off `introduces_user_id`, which is not selected here at all** — the marker
+ * is a composite key into `club_members` rather than an embed path, and the
+ * thread screen has no use for it: the render gate, the leave-survival
+ * behaviour and the author's name all come from `introduction` and
+ * `author_id`/`author`, which is what still resolves after the subject leaves
+ * (`design.md` §D3, §D8).
+ *
+ * `author` mirrors `ClubThreadListItem`'s, hinted `author_id` for the same
+ * reason — `club_threads` has no `user_id` column and its relationship to
+ * `profiles` is already ambiguous through `club_thread_reads` and
+ * `club_thread_waves`.
+ */
+export type ClubThreadDetail = ClubThread & {
+  introduction: string | null
   author: Pick<PublicProfile, 'id' | 'username'> | null
 }
 

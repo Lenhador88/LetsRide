@@ -222,6 +222,49 @@ export const clubMessageBodySchema = z
   .refine((value) => value.length >= 1, 'Write something first.')
 
 /**
+ * An introduction's bounds — `097`, PD-365. **Identical to
+ * `club_messages_body_length` on purpose, not by coincidence**: `design.md` §D3
+ * pairs the two deliberately, so an introduction can never be longer than any
+ * reply to it. Reusing `CLUB_MESSAGE_MAX_LENGTH` rather than a second literal
+ * `1000` is what keeps that true if the bound ever moves.
+ *
+ * Same shape as `clubMessageBodySchema` — the ceiling on the raw length, the
+ * floor on the trimmed value — for `clubThreadTitleSchema`'s reason: the
+ * database's floor is `~ '\S'`, which `.trim()` agrees with and a `btrim`-only
+ * check would not.
+ */
+export const CLUB_INTRODUCTION_MAX_LENGTH = CLUB_MESSAGE_MAX_LENGTH
+
+export const clubIntroductionSchema = z
+  .string()
+  .max(CLUB_INTRODUCTION_MAX_LENGTH, `Must be ${CLUB_INTRODUCTION_MAX_LENGTH} characters or fewer.`)
+  .transform((value) => value.trim())
+  .refine((value) => value.length >= 1, 'Write something first.')
+
+/**
+ * The sheet's starter wording — Q3 arm (a), decided 2026-09-01.
+ *
+ * **Copy only, and nothing may check it.** It carries no CHECK, no column and
+ * no migration, and no predicate anywhere — not the prompt's state rule, not a
+ * policy, not this schema — may compare a rider's text against it. A rider who
+ * posts it verbatim has posted an ordinary introduction and the system must be
+ * unable to tell (`design.md` §Q3).
+ *
+ * **It is a `placeholder`, never a `defaultValue`, and that is the whole reason
+ * this constant is not read by anything except the sheet's `Textarea`.** Q1
+ * landed on "Post is inert until the field holds non-whitespace text"; a
+ * textarea carrying this as a prefilled *value* is never empty, so Post would
+ * be live the instant the sheet opens and one tap would ship this sentence,
+ * unedited, into every club. Both spellings screenshot identically — see
+ * `IntroductionPrompt.test.tsx`.
+ *
+ * It satisfies `clubIntroductionSchema` itself (non-blank, under the
+ * ceiling), so the wording shown to a rider is one the database would accept.
+ */
+export const CLUB_INTRODUCTION_STARTER =
+  "Hi, I'm new here! I ride a... and I'm looking forward to meeting the club."
+
+/**
  * A thread id out of the URL, untrusted like any other query parameter —
  * `clubIdSchema`'s reasoning, applied to the thread screen's own `?id=`. A
  * malformed id means "no such thread", and 404 is the honest answer.

@@ -30,26 +30,19 @@ import { CLUB_THREAD_TITLE_MAX } from '@/lib/validation/clubs'
  * short enough to reach by accident; `maxLength` stops the rider passing it, and
  * `081`'s CHECK is what actually refuses one that gets past this.
  *
- * **`initialTitle` is "Say welcome"'s whole client footprint** (`092`,
- * PD-356, `design.md` §D3) — a starting value for an ordinary controlled
- * input, nothing more. It writes no row until the rider submits, same as
- * every other draft this form has ever held, and they may edit or clear it
- * freely; `routes.newClubThread`'s second parameter is the only caller that
- * ever passes one.
+ * **There is no prefilled title any more.** "Say welcome" (`092`, PD-356) used
+ * to seed this field through `routes.newClubThread`'s second parameter; `097`,
+ * PD-365 deletes that overflow and its `JoinOverflow`/`ContextMenu` trigger, so
+ * every entrance to this screen (`ClubCreateBar`) now opens on the same empty
+ * field, and `routes.newClubThread` takes one argument.
  */
-export function CreateThreadForm({
-  clubId,
-  initialTitle = '',
-}: {
-  clubId: string
-  initialTitle?: string
-}) {
+export function CreateThreadForm({ clubId }: { clubId: string }) {
   const [state, formAction, pending] = useActionState(createClubThread, emptyActionState)
   useActionRedirect(state)
   // Controlled rather than retained through `seedRetained`: it is one field, and
   // the action returns its error without navigating, so this survives a failed
   // submit on its own.
-  const [title, setTitle] = useState(initialTitle)
+  const [title, setTitle] = useState('')
 
   return (
     <form action={formAction} className="flex flex-col gap-4">

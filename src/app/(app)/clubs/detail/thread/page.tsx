@@ -56,6 +56,15 @@ import { useSwipeBack } from '@/lib/actions/navigate'
  * thread with nothing in it is reachable by construction. It draws its title, an
  * empty-thread line and a working composer.
  *
+ * **`097`, PD-365 narrows that state rather than removing it.** An
+ * introduction is a thread carrying `introduction` text with no first
+ * message either, and it is not empty — it renders above the composer's
+ * messages, before any reply, attributed to `thread.data.author`. The render
+ * keys off `introduction` and never off `introduces_user_id` (not even
+ * selected by `getClubThread`): the marker is NULLed the moment its subject
+ * leaves the club, and the text survives, so an ex-member's introduction
+ * still renders here.
+ *
  * ## A one-sided conversation is also designed
  *
  * A blocked pair may both post here and each sees only their own messages —
@@ -334,10 +343,43 @@ function ThreadBody({
         onMark={markSeen}
       />
 
+      {/* The introduction — `097`, PD-365. Rendered above every comment and
+          whether or not there are any, keyed on `introduction` and NEVER on
+          `introduces_user_id` (not even selected here — see `getClubThread`):
+          the marker is NULLed the moment its subject leaves the club, and a
+          render gated on it would make an ex-member's own words, and every
+          reply written under them, vanish from a thread that still exists.
+          The author comes from `thread.data.author`, which survives the same
+          leave. Not inside `ChatThread`'s scroller: it is the thread's
+          subject rather than a message in it, so it is pinned above the list
+          rather than one more row inside it. */}
+      {thread.data.introduction !== null && (
+        <div className="px-4 pb-3">
+          <div className="flex flex-col gap-1 rounded-lg bg-track px-3 py-2">
+            <p className="text-sm font-semibold text-foreground">
+              {thread.data.author?.username ?? 'a rider'}
+            </p>
+            <p className="text-base break-words whitespace-pre-wrap text-foreground">
+              {thread.data.introduction}
+            </p>
+          </div>
+        </div>
+      )}
+
       {shown.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center motion-safe:animate-fade-in">
-          <p className="text-base font-semibold text-foreground">No replies yet</p>
-          <p className="text-sm text-muted">Say what you think and the club will see it.</p>
+          {/* Narrowed rather than removed — `097`'s spec: a thread carrying an
+              introduction is not an empty thread, so it earns a lighter
+              invitation instead of the "nothing here yet" line a thread with
+              neither still shows unchanged. */}
+          {thread.data.introduction !== null ? (
+            <p className="text-sm text-muted">Reply and the club will see it.</p>
+          ) : (
+            <>
+              <p className="text-base font-semibold text-foreground">No replies yet</p>
+              <p className="text-sm text-muted">Say what you think and the club will see it.</p>
+            </>
+          )}
         </div>
       ) : (
         <ChatThread

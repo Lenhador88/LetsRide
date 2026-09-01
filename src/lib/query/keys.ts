@@ -359,6 +359,41 @@ export const queryKeys = {
      */
     joinWaves: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'joinWaves'],
     /**
+     * A batch of a club's JOINS' introductions — the door and the count each
+     * one's join row draws (`097`, PD-365, `attachClubIntroductions`).
+     *
+     * **Its own leaf, not reused from `joinWaves`, on that key's own
+     * precedent one entry up**: a wave toggle and an introduction being
+     * posted are two different writes on two different tables, so sharing
+     * one key would refetch one decoration every time the other moved for no
+     * reason. `introduceToClub` names this key; `waveJoin`/`unwaveJoin` do
+     * not reach it and must not.
+     */
+    joinIntroductions: (clubId: string): QueryKey => [
+      'clubs',
+      'detail',
+      clubId,
+      'joinIntroductions',
+    ],
+    /**
+     * Whether the SIGNED-IN rider has already introduced themselves in this
+     * club — `hasIntroducedClub`, `design.md` §D7's last conjunct. Read only
+     * by the club detail screen, to decide whether `IntroductionPrompt` is
+     * offered at all.
+     *
+     * **Not the same question as `joinIntroductions` above**, and not
+     * reachable by invalidating it: that key is batched over the join
+     * subjects the TIMELINE already holds (bounded by `CLUB_TIMELINE_JOINS`),
+     * so a rider who joined long enough ago to have fallen out of that
+     * window would never appear in it — this is its own round trip, scoped
+     * to the caller alone, for exactly that reason.
+     *
+     * `introduceToClub` names this key so the prompt does not reappear the
+     * instant it succeeds; nothing else in this file's `clubs` domain
+     * reaches it, because nothing else can change the answer.
+     */
+    myIntroduction: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'myIntroduction'],
+    /**
      * One thread itself — its title, its author and the club it sits in
      * (`getClubThread`). Keyed by the thread id for the same reason its
      * messages are, and **the parent of that key**: invalidating the thread

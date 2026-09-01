@@ -4,6 +4,7 @@ import { clearQueryCache } from '@/lib/query'
 import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { clearRiderLocation } from '@/lib/location/rider-location'
 import { clearAllStashedInviteTokens, takeAnyStashedInviteToken } from '@/lib/invites/pending-token'
+import { clearIntroductionDismissals } from '@/lib/clubs/introduction-dismissal'
 import { routes } from '@/lib/routes'
 import { clearSessionStore } from '@/lib/supabase/session-store'
 import { edgeFunctionErrorCode } from '@/lib/supabase/functions'
@@ -303,6 +304,7 @@ export async function signOut(): Promise<ActionState> {
   clearGuardCache()
   clearRiderLocation()
   clearAllStashedInviteTokens()
+  clearIntroductionDismissals()
   await clearSessionStore()
   return { error: null, redirectTo: '/auth/login' }
 }

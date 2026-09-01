@@ -32,6 +32,14 @@ import { formatRelativeTime } from '@/lib/utils'
  * trap that made `ClubThreadsRow` drop its thread count entirely; the number
  * survives here only because the flag comes with it.
  *
+ * **The visible count is a glyph and a number, not words — `097`, PD-365.**
+ * `replyLabel` below still produces `"12+ replies"`, but only for the
+ * `aria-label`; the eye now reads the same `ChatBubbleIcon` the join row's
+ * introduction door uses, beside the bare `12+`. The `+` is not decoration
+ * either way: dropping it when the words become a glyph would make the row
+ * assert a total it cannot know, which is exactly the defect this doc has
+ * always warned about — see `replyLabel`'s own comment.
+ *
  * `activity` is null for a thread nobody has replied to. That is not a missing
  * read — it is zero replies, and the row draws `lead` alone rather than an
  * empty avatar row and a count of nothing.
@@ -147,10 +155,21 @@ export function ClubTimelineThreadRow({
                 and dropping the lead whenever there are replies made both rows
                 identical but for the timestamp, which is precisely the case the
                 two angles exist to tell apart. */}
-            <span className="min-w-0 flex-1 truncate text-sm font-medium text-muted">
-              {lead}
-              {activity && ` · ${replyLabel(activity)}`}
-            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-muted">{lead}</span>
+
+            {/* The glyph-and-number form of `replyLabel` — see this file's
+                header. The words stay in the `aria-label` above; `097`'s
+                task 7.7 is what requires that pairing rather than dropping
+                the words when the eye gets a smaller mark. */}
+            {activity && (
+              <span className="flex shrink-0 items-center gap-1 text-sm font-medium text-muted">
+                <ChatBubbleIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="tabular-nums">
+                  {activity.messages}
+                  {activity.partial ? '+' : ''}
+                </span>
+              </span>
+            )}
           </span>
         </span>
 

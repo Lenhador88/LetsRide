@@ -93,16 +93,6 @@ export const CLUB_JOIN_PATH = '/clubs/join'
  */
 export const INVITE_TOKEN_PARAM = 'token'
 
-/**
- * "Say welcome" (`092`, PD-356, `design.md` §D3) — the join row's overflow
- * opens the ordinary thread composer with its title pre-filled. A query
- * parameter rather than a second route, on the same reasoning `CREATE_CLUB_
- * PARAM` gives: it seeds a form field and nothing else, and it is the
- * SEARCH PARAM half of `routes.newClubThread`'s two-parameter shape below
- * rather than a route of its own.
- */
-export const SAY_WELCOME_TITLE_PARAM = 'title'
-
 function detail(path: string, id: string): string {
   return `${path}?${DETAIL_ID_PARAM}=${encodeURIComponent(id)}`
 }
@@ -160,18 +150,13 @@ export const routes = {
   /** Takes the THREAD's id, not the club's — see `detailPaths`. */
   clubThread: (threadId: string) => detail(detailPaths.clubThread, threadId),
   /**
-   * `prefillTitle` is "Say welcome"'s only caller (`092`, PD-356) — every
-   * other entrance to this screen (`ClubCreateBar`) omits it, and the
-   * composer defaults to an empty title exactly as before. The rider still
-   * edits or discards it like any other draft; nothing is written until they
-   * submit — see `CreateThreadForm`.
+   * `prefillTitle` and `SAY_WELCOME_TITLE_PARAM` are gone — `097`, PD-365
+   * deleted "Say welcome" (`092`, PD-356), which was this parameter's only
+   * producer. `CreateThreadForm`'s `initialTitle` prop went with it, for the
+   * same reason: a prefill nothing writes any more is dead code rather than
+   * a feature waiting for a second caller.
    */
-  newClubThread: (clubId: string, prefillTitle?: string) => {
-    const base = detail(detailPaths.newClubThread, clubId)
-    return prefillTitle
-      ? `${base}&${new URLSearchParams({ [SAY_WELCOME_TITLE_PARAM]: prefillTitle })}`
-      : base
-  },
+  newClubThread: (clubId: string) => detail(detailPaths.newClubThread, clubId),
   /** Another rider — `view-rider-profile`. Own-id is redirected to `/profile`
    * rather than resolving here; see that route's own redirect. */
   profile: (id: string) => detail(detailPaths.profile, id),
