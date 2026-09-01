@@ -281,7 +281,7 @@ reason in the same words: *"Every rider joins the default club at onboarding, so
 addresses one account with the entire signup stream."*
 
 **Once per membership, not once per visit.** The rule is satisfied for ever once an introduction
-exists, and a rider who dismisses the prompt (§Q1's arm A) must not be asked again on the next
+exists, and a rider who dismisses the prompt (§Q1, decided) must not be asked again on the next
 navigation. That needs a client-side per-(rider, club) dismissal, and it belongs in the session
 store rather than the schema — a dismissal is not a fact about the club. `client-session-storage`
 governs it and `signOut` clears it, which is the correct behaviour: signing out and back in is not
@@ -338,15 +338,36 @@ header's arrow and `useSwipeBack`. It is reachable from the thread list, from th
 rows, from the timeline's reply rows, and now from a join row, so one fixed target is wrong for
 three of four callers.
 
-**Chosen:** a query parameter in `CREATE_CLUB_PARAM`'s exact shape — it carries an *origin kind*
-from a closed set, never a URL, so there is no allowlist to maintain and no open redirect to close.
-`routes.ts` already explains why `BACK_ORIGINS` is the wrong reuse: that list is derived from the
-screens rendering `NotificationsHeaderControl` and has its own drift test.
+**Chosen:** a query parameter in `CREATE_CLUB_PARAM`'s exact shape, carrying **two** bounded
+values — an *origin kind* from a closed set and the *row key* to return to. Never a URL, so there
+is no allowlist to maintain and no open redirect to close: the only thing it can produce is
+`routes.club(<well-formed id>)` with a fragment naming a row of that club. `routes.ts` already
+explains why `BACK_ORIGINS` is the wrong reuse — that list is derived from the screens rendering
+`NotificationsHeaderControl` and has its own drift test.
 
 **Absent means the thread list**, which is today's behaviour and is what a deep link, a
 notification tap, a shared URL and a reload all produce. That is the safe default: it lands the
 rider somewhere that certainly exists and that they can certainly read, because they just read the
-thread. §Q4.
+thread.
+
+**The row key is the anchor, and every timeline row grows one.** Q4's answer put the scroll
+position in scope, so the club screen needs somewhere to scroll *to*. Each row already has a stable
+key — `mergeClubTimeline` gives every event one (`join:<uuid>`, `thread:<uuid>`, and so on) as a
+total-order tiebreak — so the anchor id is that key rather than a new identity invented for the
+purpose, and the two cannot drift apart.
+
+**Three properties, each of which the obvious implementation gets wrong:**
+
+- **Scroll after the data lands, once.** The screen is client-rendered and its rows arrive from
+  five independently-resolving reads, so at first paint there is nothing for a native fragment to
+  find. The scroll runs when the named row exists and does not re-run on later renders, or an
+  incoming realtime row or a cache invalidation yanks the rider back mid-read.
+- **An unresolvable anchor is a no-op, never an error.** The row may be deleted, may have fallen
+  past the coherence horizon, or may be one the viewer can no longer read — all three are ordinary.
+  The screen renders at the top and reports nothing.
+- **The fragment is not a second source of truth.** It names a row; it does not decide what the
+  screen fetches, and nothing about the timeline's reads or its horizon changes because it is
+  present. §Q4.
 
 ## Risks / Trade-offs
 
@@ -371,9 +392,12 @@ thread. §Q4.
 - **[Every read of `club_threads` now carries two columns most callers ignore]** → `097` grants
   SELECT on them and nothing more; the reads that do not need them do not name them. This is the
   cost §D1 accepted.
-- **[The prompt is one more thing between a rider and the club they just joined]** → §Q1's arm A
-  keeps `Not now` one tap away and the dismissal sticks for the session. Arm B does not, and that
-  is the trade the owner is being asked to make.
+- **[The prompt is one more thing between a rider and the club they just joined]** → §Q1's decided
+  arm keeps `Not now` one tap away and the dismissal sticks for the session.
+- **[The return anchor is a second thing that can be wrong about a screen already assembled from
+  five reads]** → It is a no-op by construction when it cannot resolve, and it changes nothing
+  about what the timeline fetches. Its failure mode is "the rider lands at the top", which is
+  exactly today's behaviour.
 
 ## Migration Plan
 
@@ -404,9 +428,13 @@ That is the opposite of `096`, whose column a shipped client *writes* — and th
 rather than inherit "additive, so order does not matter", which `CLAUDE.md` records as wrong in
 both directions for the `092`–`096` group.
 
-**On PROD it goes after `092`–`096`, in filename order.** Those five are DEV-only as of
-2026-09-01 and `097` depends on `092` for nothing in SQL but on the whole club batch for the screen
-it changes.
+**There is no promotion gap left to sequence.** `092`–`096` reached PROD on 2026-09-01, so both
+projects are at `096` and `097` applies to each the same way.
+
+**Story 3's `098` is the counter-example and the two must not be merged.** A new notification type
+is safe only *after* the bundle that knows it is confirmed serving (`089`'s rule), which is the
+opposite side of the build from `097`. Two files whose safe sides disagree cannot be one file —
+`069`/`070` is the worked example, and `proposal.md` §How this is built carries the split.
 
 **Rollback.** `drop function public.introduce_to_club(uuid, text)`, then drop the index, the
 constraints and the two columns. Destructive, so it goes **after** the reverting bundle is
@@ -436,21 +464,22 @@ select count(*) from pg_trigger
 ```
 
 **Both of the counts below are checked as DELTAS against a baseline read immediately before `097`
-applies, never against a number written here.** `092`–`096` move both of them on PROD *and go
-first*, so a baseline taken from this document would be wrong on the project it is checked against:
+applies, never against a number written here.** The two projects are **level** as of 2026-09-01 —
+`092`–`096` reached PROD — so both read the same pair today, measured on each:
 
-| | PROD today | PROD after `092`–`096`, before `097` | after `097` |
-|---|---|---|---|
-| `enforce_participation_gate` triggers | 17 | 22 | **22** — unchanged, `097` adds no table |
-| `authenticated_security_definer_function_executable` | 24 | 33 | **34** |
-
-The middle column is measured off DEV, which already has `092`–`096`:
+| | both projects, before `097` | after `097` |
+|---|---|---|
+| `enforce_participation_gate` triggers | 22 | **22** — unchanged, `097` adds no table |
+| `authenticated_security_definer_function_executable` | 33 | **34** |
 
 ```sql
 select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public' and p.prosecdef
-   and has_function_privilege('authenticated', p.oid, 'EXECUTE');   -- 33 on DEV, 2026-09-01
+   and has_function_privilege('authenticated', p.oid, 'EXECUTE');   -- 33 on both, 2026-09-01
 ```
+
+**Level is a state rather than a property**, so read it rather than inheriting this table: it was
+17/24 against 22/33 the day before this was written.
 
 Then `get_advisors(security)` — exactly **one** new
 `authenticated_security_definer_function_executable`, for `introduce_to_club`. Two would mean a
@@ -458,92 +487,38 @@ Then `get_advisors(security)` — exactly **one** new
 
 ## Open Questions
 
-### Q1 — Is the introduction mandatory? **BLOCKING. Product owner's alone.**
+### Q1 — Is the introduction mandatory? **ANSWERED 2026-09-01 — arm A.**
 
-> *"And maybe we make the field mandatory?"*
+> Product owner: *"q1 sounds good A, yes mandatory but dismissable."*
 
-**It cannot mean "no membership without an introduction" while the write is a client write.** The
-INSERT policy in §Context requires the membership to already exist, so there is always a window in
-which a rider is a member and has not introduced themselves — and a closed tab, a dead tunnel or a
-`23514` from the participation gate lands in it. So "mandatory" has to be chosen from:
+**Decided: required to post, dismissible.** The sheet's Post control is inert until there is
+non-whitespace text; a `Not now` closes it; the prompt returns on the next visit to that club (§D7)
+and never twice in one session. Nothing else in this change forks on it.
 
-**A) Required-to-post, dismissible. — RECOMMENDED.** The sheet's Post button is disabled until
-there is non-whitespace text; a `Not now` closes it; the prompt returns on the next visit to that
-club (§D7) and never during the same session.
+**"Mandatory" cannot mean "no membership without an introduction", and that is a database fact
+rather than a reading of the answer.** `club_threads`' INSERT policy requires the membership to
+already exist (§Context), so there is always a window in which a rider is a member and has not
+introduced themselves, and a closed tab or a dropped connection lands in it. *Joined with no
+introduction* is therefore a designed state under this arm and under every other.
 
-> **Recommendation** 8/10
->
-> gets the content in almost every case and traps nobody — a modal a rider cannot leave, in front of
-> a club they have *already joined*, is a dead end reachable by a dropped connection
->
-> **Complexity** 4/10
->
-> the sheet, the state rule, a per-(rider, club) session dismissal
->
-> **Urgency** 2/10
->
-> nothing forces it; the club batch it builds on is already on DEV
->
-> **Customer value** 7/10
->
-> a rider joining a club of strangers arrives with something to say, and the club has something to
-> reply to
->
-> **This session** N
->
-> the owner is answering it now; the spec is written so either arm can be picked
+**The refused arm is kept because "make it truly mandatory" is the obvious next ask, and this is
+the answer to it.** Moving the `club_members` insert inside the introduction's own RPC —
+`join_club_with_introduction(club, body)` — does make that one path atomic, and it buys less than
+it appears to:
 
-**B) Atomic — one RPC joins and introduces in one transaction.** `join_club_with_introduction(club,
-body)` writes the `club_members` row and the thread together, so a rider is never a member without
-an introduction *through that door*.
+- It creates a **seventh** door and leaves the other six untouched. A rider still arrives with no
+  introduction through onboarding's auto-join, an admin's approval, an invite, or a link, so the
+  invariant is "one particular button is atomic" rather than "every member has an introduction".
+- The membership INSERT policy cannot be reused inside a `security definer` body — a definer
+  bypasses RLS — so its predicate would be copied into PL/pgSQL and would drift from the policy it
+  duplicates.
+- It introduces a failure mode nothing else in the app has: a rejected introduction silently
+  rejects the join, so a rider who typed something the CHECK refuses is left outside a club they
+  asked to be in.
 
-> **Recommendation** 3/10
->
-> it makes a SEVENTH door and leaves the other six exactly as they are — a rider can still arrive
-> with no introduction through onboarding, an invite, a link or an approval, so the invariant it
-> buys is not the invariant it sounds like
->
-> **Complexity** 7/10
->
-> a second `security definer` RPC duplicating `club_members`' INSERT policy in a body (the policy
-> cannot be reused — a definer bypasses it), plus a new failure mode where a rejected introduction
-> silently rejects the join
->
-> **Urgency** 1/10
->
-> nothing forces it
->
-> **Customer value** 3/10
->
-> the rider gains a guarantee they cannot perceive; what they notice is that a bad connection now
-> costs them the join as well as the introduction
->
-> **This session** N
->
-> owner's call, and it forks the migration
-
-**C) Optional — the sheet has an equal Post and Skip.**
-
-> **Recommendation** 4/10
->
-> honest and cheap, and it will produce noticeably fewer introductions than A for no gain over it —
-> A's `Not now` is already the escape hatch, it is just not offered as an equal
->
-> **Complexity** 3/10
->
-> A minus the disabled-button rule
->
-> **Urgency** 1/10
->
-> nothing forces it
->
-> **Customer value** 4/10
->
-> the rider is asked and can decline without reading a disabled button
->
-> **This session** N
->
-> same decision as A
+A third option, an equal Post and Skip, was weighed and loses to A on the only axis that separates
+them: A's `Not now` is already the escape hatch, and offering the two as equals produces fewer
+introductions for no gain.
 
 ### Q2 — Prompt on the action, or on the state? *Non-blocking. The agent's.*
 
@@ -554,46 +529,64 @@ skip affordance. If the owner later wants the prompt at the *moment* of joining 
 rule already permits it: the action can open the same sheet eagerly, and the state rule is what
 catches everyone it misses.
 
-### Q3 — Does the default club take introductions? *Non-blocking. Product owner's.*
+### Q3 — What does the default club do? **STILL OPEN. Product owner's.**
 
-**Recommended default: no.** `058`'s carve-out, for the same reason it exists there. Six of DEV's
-22 memberships are on the default club and every future signup adds one.
+> *"q3 does not take instructions, so a default message should be prefilled?"*
 
-**The counter-argument is real and is `club-timeline-engagement` §D2's**: *"the rider with the
-emptiest app is the only one guaranteed to get no welcome."* It is weaker here, because the
-alternative is not "no welcome" but "a modal during onboarding", and because a rider can still
-reach every other club. If the owner prefers introductions there, the change is one clause in §D7's
-rule and one assertion — the spec is written so it is a predicate, not a redesign.
+**The first half is settled: the default club is not prompted.** `058`'s carve-out stands, for the
+reason it exists there — every rider joins that club inside a wizard that has no skip affordance.
 
-### Q4 — Does "at that section" include the scroll position? *Non-blocking. **Product owner's**.*
+**The second half has two readings and they are different changes. Do not pick one.**
 
-**The mechanism is the agent's and is settled** — a bounded origin parameter, §D9. Absent → the
-thread list, which is today's behaviour and what every deep link produces. **What is the owner's is
-how much of their own phrase this change delivers**, and that is why this question is routed to them
-rather than answered here.
+**(a) An editable starter in the textarea, in every club. — RECOMMENDED.** The sheet opens with
+suggested wording already in the field. The rider edits, replaces or clears it and still presses
+Post. It adds no rule, no policy and no schema; the words remain the rider's because sending them
+was their act. It also does nothing for the Welcome club, which is not prompted at all — so if the
+owner's concern was specifically *that* club, (a) does not answer it and (b) is what they meant.
 
-They asked for the club detail *"at that section"*. The club detail is a timeline with a header and
-no named anchors, so "that section" is a **scroll position**, and restoring one needs either an
-anchor per row plus a fragment, or the browser's own scroll restoration re-enabled for this route —
-neither of which is the parameter, and both of which are their own piece of work.
+**(b) A canned introduction posted automatically into the Welcome club on the auto-join. — CARRIES
+AN OBJECTION.** Stated concretely rather than as a preference:
 
-**Recommended default: ship the screen, defer the position, and say so.** A back button that lands
-at the top of the right screen is a fix; one that lands at the top of the wrong screen is the bug
-being reported, so the parameter alone is worth having on its own.
+- `club_threads.author_id` is `NOT NULL` with no default and cascades from `profiles`, so the row
+  **must name the new rider as the author of a sentence they did not write**. This schema has no
+  system actor and no nullable author; there is nowhere else to put the authorship.
+- `081`'s DELETE policy then lets that rider delete it, and their account deletion cascades it —
+  both correct for a thread they wrote, both odd for one the app wrote.
+- It is **one thread per signup, for ever**, in the single club every rider is in. That is the
+  scale `private.notify_club_joined`'s early return exists to avoid, arriving through another door.
+- It is the exact shape `club-timeline-engagement` §D2 refused. This change was able to argue it
+  was *not* reopening that refusal only because the rider types and posts; (b) removes that.
 
-**But this is a partial delivery of a stated ask and SHALL be recorded as one.** The product owner's
-standing instruction after PD-279 — *"the main feature is not being developed in the main story we
-discussed about"* — is exactly about this shape: a story that ships the easy half and writes off the
-phrase it was asked for. So the remainder is a follow-up issue **before** this one closes, never a
-comment on a closed one, and `proposal.md` §Open decisions names it in the table the owner actually
-reads.
+**If the owner means (b) it needs its own story and its own decision**, because making the words
+attributable to the app rather than to the rider is a schema question this change does not answer.
 
-Two ways to build the deferred half, when it is wanted:
+### Q4 — Does "at that section" include the scroll position? **ANSWERED 2026-09-01 — yes, in scope.**
 
-- **An anchor per timeline row** plus a fragment on the return URL. Deterministic, survives a
-  reload, and costs an id on every row.
-- **Scroll restoration**, re-enabled for this route. Free when it works and silently wrong when the
-  timeline re-fetches and re-lays-out between the two paints, which is the common case here.
+> Product owner: *"q4 yes defers to that scroll position on that discussion, announcement, etc."*
+
+**This overrules the recommendation to defer it**, and correctly — it was their original phrase and
+returning to the top of a long timeline is the bug they were reporting.
+
+**Chosen: an anchor per timeline row plus a fragment on the return URL.** The alternative, browser
+scroll restoration, is refused for the reason this document already gave against it: the club
+timeline is assembled from five independently-resolving reads and re-lays-out between the paint
+that restores a position and the paint that has the rows, so restoration lands somewhere arbitrary
+and does it **silently**. A fragment naming a row is deterministic, survives a reload, and is
+inspectable in the URL bar.
+
+Three properties it must have, and each is a way the obvious implementation fails:
+
+- **The scroll happens after the data lands, not on mount.** A client-rendered list has no rows at
+  first paint, so the browser's native fragment handling finds nothing and does nothing. The screen
+  scrolls to the anchor when the row it names exists, once, and not again on subsequent renders.
+- **An anchor that no longer resolves is a no-op, never an error.** The row may have been deleted,
+  may have fallen past the coherence horizon, or may be one the viewer can no longer read. The
+  screen renders normally at the top; it does not retry, and it does not report anything.
+- **The row key is bounded, like the origin.** It is a well-formed id of a kind the screen already
+  draws, parsed the way `backFromCreateScreen` parses its club id, so the only thing the parameter
+  can ever produce is a scroll to a row of this club — no URL, no allowlist, no open redirect.
+
+§D9 carries the mechanism.
 
 ### Q5 — Does the comment count keep the `+`? *Non-blocking. The agent's.*
 
@@ -602,16 +595,73 @@ gives the reason: the two numbers come from different places and only one of the
 Losing the `+` in the redesign would be a silent regression — the number would look the same and
 mean something weaker.
 
-### Q6 — Should a comment on an introduction notify the newcomer? *Non-blocking. **Product owner's**, and in `proposal.md` §Open decisions' table.*
+### Q6 — Should a comment or a wave notify? **ANSWERED 2026-09-01 — yes, both. SPLIT OUT.**
 
-**Recommended default: not in this change, and say so out loud.** No notification type in this
-schema fires on a `club_messages` insert — measured off `notifications_type_check`, which lists
-fourteen types and none of them is a thread reply. So a rider who introduces themselves and gets
-three replies is told nothing, and that is **not** a gap this change opens; it is how every thread
-in the app already behaves.
+> Product owner: *"q6 yes a comment or wave should notify."*
 
-It is nonetheless the most likely thing to disappoint, because an introduction is the one thread
-whose author is *waiting* for an answer. It wants its own proposal: a reply fan-out is a recipient
-set (everyone in the thread? the thread's author? the club?), a collapse rule, a retraction on
-delete, and a fifteenth type — `event-fanout-integrity`'s ten requirements each apply. Named here
-so it is a decision rather than an omission.
+**Two fan-outs, not one, and both are absent today. Measured on DEV 2026-09-01:**
+
+```sql
+select tgrelid::regclass::text, tgname from pg_trigger where not tgisinternal
+ and tgrelid::regclass::text in ('club_messages','club_thread_waves','club_join_waves');
+-- club_messages      : enforce_participation_gate            <- and NOTHING else
+-- club_thread_waves  : enforce_participation_gate            <- and NOTHING else
+-- club_join_waves    : enforce_participation_gate, notify_club_waved, retract_club_waved
+```
+
+So a reply to **any** club thread notifies nobody, and a wave on a **thread** notifies nobody —
+`092` refused the latter deliberately (its §Q2) and the owner has now overruled it. Only the *join*
+wave notifies.
+
+**Scope: every club thread, not introductions alone.** This is an interpretation rather than a
+quotation — the owner asked in the context of introductions. Building it for introductions only
+creates a two-tier rule with no visible reason: replying to a newcomer's introduction notifies,
+replying to the thread beside it does not, and a rider cannot tell which kind of thread they are
+in. `notifications` §*A future reply notification SHALL be designed as a fan-out, not bolted onto an
+introduction* already required this before the answer arrived.
+
+**It is split into its own change, `notify-a-club-thread`, migration `098`**, for three reasons in
+descending order of force:
+
+1. **Its migration's safe deploy order is the opposite of `097`'s.** A new notification type must
+   apply **after** the bundle that knows it is confirmed serving, because `notificationCopy`
+   (`src/components/notifications/copy.ts:44`) and `NotificationsListItem`'s `describe`
+   (`:150`) are exhaustive switches and one unknown row takes a rider's whole notifications screen
+   down — `089`'s rule. `097` is safe migration-first. Two files with opposite ordering rules must
+   not be one file; that is the `069`/`070` lesson.
+2. Its subject is every club thread, so filing it under this change's title would archive a
+   `notifications` capability under a name that does not describe it.
+3. It is materially bigger than the rest of this change put together — see the hazard below.
+
+**The hazard that will bite whoever builds it cheaply, and it fails silently.** `notifications` has
+no `thread_id` column, and its collapse key is
+
+```
+notifications_event_key  UNIQUE (user_id, type, actor_id, postcard_id, comment_id, ride_id,
+                                 club_id) NULLS NOT DISTINCT
+```
+
+Reusing `club_id` alone — the obvious way to avoid a schema change — collapses **per (recipient,
+type, actor, club)**. Ana replies in thread X and the author is notified; Ana replies in thread Y in
+the same club and the fan-out's `on conflict do nothing` **swallows it**, for ever, with no error
+anywhere. The notification also cannot deep-link to the conversation; tapping it lands on the club.
+So `thread_id` is required, and adding it means **rebuilding the unique index**, which every
+existing fan-out's collapse depends on. That rebuild is safe — existing rows hold NULL in the new
+column and `NULLS NOT DISTINCT` leaves their collapse unchanged — but it must be one statement
+block, and it is not a change to make inside a migration whose subject is something else.
+
+**Two things story 3 must decide and this change does not:** the recipient set (the recommended
+default is the thread's author plus everyone who has already posted in it, minus the actor, minus
+blocked pairs — bounded by distinct posters, `055`'s shape), and whether deleting a message retracts
+a reply notification, given the notification's subject is the thread rather than the message.
+
+### Q7 — Does anybody learn that a new introduction exists? *Non-blocking. Product owner's. Raised by Q6's answer, not asked yet.*
+
+**Recommended default: no, and name it.** The join already notifies the club's owner and admins
+(`club_joined`); ordinary members are told nothing, so in a club of any size the introduction the
+owner wants replies on may be seen by nobody. Notifying **every member** on every introduction is
+the unbounded fan-out `036` avoids everywhere else, so the answer is not simply "add one" — and the
+timeline does surface it, at the top, where a member opening the club will see it.
+
+Named here because Q6's answer makes it visible: it is coherent to want replies notified and not to
+want the introduction itself broadcast, but it should be a decision rather than an accident.

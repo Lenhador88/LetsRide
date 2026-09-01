@@ -96,6 +96,51 @@ Neither count SHALL be presented as a fact about the club, and neither SHALL ord
 - **THEN** the number SHALL be exact for that viewer
 - **AND** it SHALL NOT be marked as a floor, because it is not read through a window
 
+### Requirement: Every timeline row SHALL be addressable, and a return from a row's destination SHALL land on that row
+
+A rider who opens a thread, an announcement or any other timeline entry and comes back SHALL return
+to the club detail **at the row they left from**, not at the top of the stream.
+
+Each row SHALL carry a stable anchor derived from the ordering key the stream already assigns it,
+so an anchor cannot name a row the stream does not have and the two cannot drift. The destination
+SHALL carry the origin and the row key as **bounded values** — a kind from a closed set and a
+well-formed id — so the only navigation the parameter can produce is a return to a row of that
+club. It SHALL NOT carry a URL.
+
+**The return SHALL be positioned after the rows exist, and exactly once.** The timeline is
+assembled from several independently-resolving reads and has no rows at first paint, so a
+position applied on mount lands on an empty screen. It SHALL NOT re-apply on later renders, or an
+arriving row or an invalidated cache would move a rider who has started reading.
+
+**An anchor that does not resolve SHALL be a no-op.** The row may have been deleted, may have
+fallen past the coherence horizon, or may be one the viewer may no longer read. The screen SHALL
+render normally at the top, SHALL NOT retry, and SHALL NOT report anything — the three cases are
+indistinguishable to the client and all three are ordinary.
+
+**The anchor SHALL NOT influence what the screen reads.** It names a row; it SHALL NOT change any
+source, any page size or the horizon.
+
+#### Scenario: Back from a thread lands on its row
+- **WHEN** a rider opens a thread from the club timeline and navigates back
+- **THEN** the club detail SHALL be positioned at the row they opened it from
+
+#### Scenario: Back from an introduction lands on the join announcement
+- **WHEN** a rider opens an introduction from a join announcement and navigates back
+- **THEN** the club detail SHALL be positioned at that join announcement
+
+#### Scenario: A deep link carries no anchor and lands at the top
+- **WHEN** a thread is reached from a notification, a shared URL or a reload
+- **THEN** the back destination SHALL be the club's thread list, as it is today
+- **AND** no position SHALL be applied
+
+#### Scenario: An unresolvable anchor is silent
+- **WHEN** the named row is absent from the stream for any reason
+- **THEN** the screen SHALL render at the top with no error, no retry and no message
+
+#### Scenario: The position is applied once
+- **WHEN** the timeline re-fetches or a new row arrives after the position was applied
+- **THEN** the screen SHALL NOT move again
+
 ### Requirement: The timeline SHALL gain no source, and the condition under which that changes SHALL be stated
 
 An introduction contributes no event, no ordering key and no new source: it decorates a join entry

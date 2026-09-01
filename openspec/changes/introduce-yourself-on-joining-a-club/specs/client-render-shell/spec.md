@@ -8,15 +8,21 @@ The prompt is a sheet over the club it belongs to. Its states:
 |---|---|
 | **Not owed** | Absent. No flash, no placeholder, and no read issued for a rider the rule already excludes |
 | **Deciding** | The read that decides whether one is owed has not answered. The sheet SHALL NOT open, and the club behind it SHALL render normally |
-| **Open** | The welcome sentence, the input, a submit and a way out. Submit SHALL be inert until the rule for the chosen arm is satisfied |
+| **Open** | The welcome sentence, the input, a submit and a way out. Submit SHALL be inert until the input holds non-whitespace text, and a `Not now` SHALL always be present |
 | **Submitting** | Submit shows pending; the input SHALL NOT be cleared and SHALL NOT be disabled in a way that loses what was typed |
 | **Failed** | The message stays in the input, the error is shown against it, and the sheet stays open so the rider can retry. The rider SHALL be told the **introduction** failed and SHALL NOT be told the join failed |
 | **Offline** | Submit SHALL be refused with an offline message and the text SHALL be preserved. The write SHALL NOT be queued for later — there is no write queue in this app and inventing one here would post an introduction into a club minutes or hours after the rider stopped expecting it |
 | **Done** | The sheet closes, the join row gains its count, and no confirmation screen is interposed |
 
-**A rider SHALL always be able to reach the club behind the sheet.** Whatever is chosen for the
-mandatory question, a rider who is already a member and cannot complete the write SHALL NOT be held
-in a modal — a dropped connection would otherwise lock them out of a club they have joined.
+**A rider SHALL always be able to reach the club behind the sheet.** "Mandatory" means the Post
+control is inert without text; it SHALL NOT mean the sheet cannot be closed. A rider who is already
+a member and cannot complete the write SHALL NOT be held in a modal — a dropped connection would
+otherwise lock them out of a club they have joined.
+
+**The dismissal SHALL hold for the session and SHALL NOT be recorded in the schema.** The prompt
+returns on the rider's next visit to that club and never twice in one session. A dismissal is a fact
+about a moment, not about the club, and it SHALL be cleared with the rest of the session on
+sign-out.
 
 #### Scenario: A failed introduction does not read as a failed join
 - **WHEN** the introduction write fails
