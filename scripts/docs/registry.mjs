@@ -263,8 +263,14 @@ export const claims = [
     // red on cue for the fifth time. Pinned back to DEV AHEAD, naming BOTH refs
     // so the direction cannot be inferred from the count alone. It goes red
     // again on the promotion, which is the mechanism rather than a defect.
+    // 2026-09-01: it did — the promotion put `092`-`096` on PROD and this went
+    // red on cue for the sixth time. Pinned back to LEVEL. Note the prose no
+    // longer names the two refs, because at LEVEL there is no direction to
+    // infer; "BOTH projects" is what the pattern now pins, and the day they
+    // diverge again the sentence has to name them and this pattern has to move
+    // with it. Two edits, one commit — still never a relaxed regex.
     pattern:
-      /\*\*Applied state: (\d+) files; DEV is at `\d+` and PROD at `\d+` — measured/,
+      /\*\*Applied state: (\d+) files, and BOTH projects are at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,

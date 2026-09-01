@@ -1225,12 +1225,11 @@ Measured 2026-08-16: PROD `23d62dc7-4370-4b0b-b0fe-e83e7015ac7b` `Welcome club`,
 onboarded before `058` keep whatever membership they chose. PROD's `Welcome club` therefore still
 reads 2 members until someone new signs up.
 
-## Migrations — 96 files; DEV is at `096` and PROD at `091`
+## Migrations — 96 files; BOTH projects are at `096`
 
 **`list_migrations` prints 99 rows on DEV and 91 on PROD against 96 files, and NONE of the DEV
 surplus is a gap.** DEV is level with the repo at `096` — every file has a recorded row, reconciled
-name by name on 2026-08-31 and again for `096` on 2026-09-01. PROD is at `091`, so `092`–`096` are
-the five awaiting promotion. DEV's **surplus rows** are files applied there in increments: `063` in
+name by name on 2026-08-31 and again for `096` on 2026-09-01. **The promotion landed the same day: `092`–`096` are on PROD and the gap is closed.** DEV's **surplus rows** are files applied there in increments: `063` in
 three — `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private`, where PROD
 holds the one consolidated file — and `080` in two, `rides_carry_their_meeting_points_zone` plus
 `rides_zone_is_not_cleared_with_the_location_group`. **DEV keeps all three `063` rows even though

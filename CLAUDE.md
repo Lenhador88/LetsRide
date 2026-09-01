@@ -701,12 +701,14 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 96 files; DEV is at `096` and PROD at `091` — measured 2026-09-01, so `092`–`096`
-are DEV-ONLY and awaiting promotion.** Count rather than trust it: `list_migrations` against both
-refs, against `ls supabase/migrations/`. `092`–`095` are the club batch (PD-356,
+**Applied state: 96 files, and BOTH projects are at `096` — measured 2026-09-01, after the
+promotion. There is no gap.** Count rather than trust it: `list_migrations` against both refs,
+against `ls supabase/migrations/`. **PROD's recorded versions are NOT in filename order and that is
+correct** — the version is an apply timestamp, and this promotion deliberately applied `096` before
+`092`–`095`, so PROD's tail reads `096`, `092`, `093`, `094`, `095`. `092`–`095` are the club batch (PD-356,
 PD-360, PD-348, PD-194) and `096` is the analytics opt-out (PD-353). All five are additive, and
-**the promotion applies them in TWO groups on opposite sides of the build, which deliberately
-breaks filename order** — the one place in this repo where it is broken on purpose, and it is safe
+**the promotion applied them in TWO groups on opposite sides of the build, deliberately breaking
+filename order — done on 2026-09-01, and the reasoning is kept because it is the reusable part** — the one place in this repo where it is broken on purpose, and it is safe
 because `096` names nothing `092`–`095` create (its only mention of them is a comment) and they
 name nothing of its:
 
@@ -866,11 +868,14 @@ rider with a NULL stamp no way out of the wizard. Inside a `security definer` fu
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: twenty-seven on PROD and thirty-six on DEV, and only one is outstanding.**
-**The table below describes PROD** — measured 2026-09-01, and reading it against DEV produces a
-nine-advisor surplus that looks like a finding and is `092`–`096` awaiting promotion. Re-derive rather than trust the number
-— `get_advisors(security)` — but the *shape* is durable, because twenty-six of the twenty-seven are
-things this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
+**Security advisors: thirty-six on BOTH projects, with identical name sets, and only one is
+outstanding** — measured 2026-09-01 after the promotion. Re-derive rather than trust the number
+— `get_advisors(security)` — but the *shape* is durable, because thirty-five of the thirty-six are
+things this repo chose, and a bare count cannot tell a session whether a new WARN is expected. The
+count moved 27 → 36 exactly as the arithmetic predicts: `093` adds six public RPCs, `095` one
+(`leave_owned_club`), `096` two, and `092` and `094` add none — `moderate_club_thread` having
+already existed. A per-project *difference* is the ordinary state between a merge and its
+promotion; there is none today:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
