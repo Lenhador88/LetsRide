@@ -551,6 +551,36 @@ remember to edit. Check the toggle before assuming a move needs no code change:
 grep -o 'https://[^"]*/brand/og-card.png' .next/server/app/index.html
 ```
 
+### The observability keys, and their scoping is the whole design (PD-315, PD-353)
+
+Four `NEXT_PUBLIC_*` variables arrived on 2026-09-01. All four are **public by design** — they
+ship in the client bundle, like the Supabase publishable key — and all four are a **clean no-op
+when unset**, so nothing throws and nothing prints on an environment that has none. That last
+property is what a session should verify before reporting either SDK as broken.
+
+**They scope in OPPOSITE directions, and that is deliberate rather than an oversight:**
+
+| Variable | Scope | Why |
+|---|---|---|
+| `NEXT_PUBLIC_SENTRY_DSN` | Production **and** Preview/Development | One Sentry project, split by the environment tag. Filtering an environment out of an issue list is one click, and an error on DEV is worth seeing |
+| `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | Per target — `production` / `development` | Unset resolves to `unknown` rather than `production`. A build whose variable did not arrive is one we want to SEE mislabelled; defaulting to the real answer for the most important environment is how a Preview's errors get read as riders' |
+| `NEXT_PUBLIC_POSTHOG_KEY` | **Production ONLY** | The free tier allows **one project**, and a PostHog project is the analytics boundary: a funnel aggregates everything in it by default, so a DEV event corrupts a PROD number silently unless every insight remembers to filter it out. There is no environment tag that fixes this the way Sentry's does |
+| `NEXT_PUBLIC_POSTHOG_HOST` | Production only, with PostHog's EU host | EU Cloud, chosen at account creation. Defaults to `https://eu.i.posthog.com` in code, so this row is a belt-and-braces override rather than a requirement |
+
+**The cost of the PostHog row is named rather than hidden**, because it is the trap §Technology
+Decisions records against a flag defaulting off: *a thing nothing can reach is a thing nothing can
+test*. `npm run walk` runs against DEV, so it cannot exercise one line of the analytics path, and
+neither can any preview. Two things cover it and both are required —
+`src/lib/analytics/__tests__/` asserts the seam and every call site, and the **transport is
+hand-verified once on PROD after a promotion**, before PD-353 reaches `Done (in production)`.
+
+**Four PostHog settings live in a dashboard as well as in the code, and nothing checks that the
+two agree.** Autocapture off, heatmaps off, web vitals on, session replay on. A mismatch fails
+silently in the expensive direction — autocapture switched on in the dashboard collects element
+text from every screen while `src/lib/analytics/client.ts` says it does not. Same class of
+drift as the auth settings below, and the same remedy: read the dashboard, do not trust a
+sentence.
+
 ### Auth configuration
 
 There is no `supabase/config.toml` — this repo has never used the Supabase CLI — so every
@@ -770,6 +800,23 @@ Nobody in a session can do these.
    and `RLS Policy Tests`, require branches up to date, no bypass. Currently off entirely.
 7. **Supabase Pro.** The free tier has no daily backups, and with no down migrations, backups
    are the only rollback that exists.
+7b. **Create the Sentry org and project, and put the DSN in Vercel** (PD-315). Production and
+   Preview/Development are separate scopes and both want it — see §The observability keys above.
+   The native build's environment needs it too. **Until this lands, error reporting ships and
+   stays completely silent**, which is a clean no-op rather than a failure: nothing throws and
+   nothing prints, so there is no symptom to debug and no way for a session to tell it apart
+   from working.
+7c. **Confirm the four PostHog dashboard toggles** (PD-353) — autocapture off, heatmaps off, web
+   vitals on, session replay on — and put `NEXT_PUBLIC_POSTHOG_KEY` on **Production only**. The
+   code cannot see the dashboard half, and a mismatch is silent.
+7d. **Decide what happens to PostHog's records when a rider deletes their account** (PD-353,
+   open). `delete-account` does not reach PostHog, so a rider who erases their account leaves
+   their events and their unmasked recordings behind — `029`'s "the row goes" contract is
+   silently false for the one processor holding video of them. `identify()` uses `auth.uid()`
+   so the handle exists; wiring the erasure needs a PostHog private API key in the function's
+   secret store, which is a new secret and arguably its own story. Until then
+   `/legal/privacy` and `/legal/account-deletion` both say plainly that deletion does not reach
+   it and name the email route that does.
 7a. **Make `development` the repo's default branch** — the ordered checklist is in §The last
    piece above, and step 1 (verify Vercel's Production Branch reads `main`) gates the rest.
    Until this is done, every agent session reads `CLAUDE.md` and `.claude/` from `main`, so any

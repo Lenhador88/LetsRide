@@ -148,27 +148,68 @@ outage** — the reason to carry the example is that the same ordering mistake o
 PROD is rider-visible for the length of a build, and nothing would have told us
 there either.
 
-## The open decision: client-side error reporting
+## Client-side error reporting — DECIDED and shipped, PD-315
 
-This is the part that is still undecided, and it is deliberately **not** being
-decided by whoever next needs it. It carries three costs the log reading above
-does not:
+**Sentry**, on the Monitoring & Analytics Notion page, built 2026-09-01. This
+section used to be an open decision and is kept as the record of what the
+decision cost, because two of the three costs it named are now permanent
+properties of the repo rather than hypotheticals:
 
-1. **A runtime dependency.** There are nine, deliberately, and a hosted SDK
-   would be the tenth — in a bundle that also holds a JS-readable refresh token
-   and ships into an app store.
-2. **A consent question.** Error payloads carry URLs, user ids and sometimes
-   input. Under GDPR that is not automatically "strictly necessary", and consent
-   has to be separate from the T&C stamp `accept_terms()` writes.
-3. **A store privacy label.** `native` owns anything gated on a review
-   guideline, and an SDK collecting device identifiers changes what must be
-   declared.
+1. **Two runtime dependencies**, not one. `@sentry/capacitor` peers an exact
+   `@sentry/react` and hands it the options as its sibling `init`; the pair
+   covers both build shapes, so `@sentry/nextjs` was NOT taken alongside them.
+   `@sentry/capacitor` is additionally a native plugin.
+2. **A store privacy label.** Still `native`'s, and PD-353's unmasked session
+   replay moves it further than this does.
+3. **The consent question turned out to be narrower here than it looked.** It
+   lands mostly on analytics, where PD-353 built a separate opt-out stamp
+   (`096`). Error reporting sends no rider content by design — see the scrub
+   below — and is not behind that toggle.
 
-A first-party alternative exists and avoids all three: an Edge Function endpoint
-plus a small insert-only table, in the shape of the two spend ledgers
-(`place_search_attempts`, `ride_map_render_attempts`) — same RLS posture, same
-retention sweep, no new dependency. It costs more to build and gives less than a
-real SDK.
+The first-party alternative this section used to describe (an Edge Function plus
+an insert-only table in the shape of the two spend ledgers) was not taken. It
+avoided the three costs and reached neither native crashes nor the global
+handlers, which is most of what the SDK is for.
 
-**Do not pick one of these in passing.** It wants a proposal that states what is
-sent, what is never sent, and how long it is kept.
+### What is sent, what is never sent
+
+`src/lib/observability/scrub.ts` is the whole answer and it strips **by shape,
+not by a list of fields somebody remembered** — the fields are Sentry's to
+change, and an SDK upgrade routes around a field list silently.
+
+| | |
+|---|---|
+| Query strings and fragments | **Stripped, from every URL anywhere in the payload.** Every detail route carries its subject's id in `?id=`, and a Supabase REST URL carries its filters the same way. `feedback.route`'s rule (`084`) at a second surface |
+| Anything JWT-shaped, and both Supabase key formats | **Redacted.** The bundle holds a JS-readable refresh token, so one can reach a message by routes nobody enumerated |
+| `user.email`, `user.username`, `user.ip_address` | **Dropped.** `sendDefaultPii: false` covers what the SDK collects; the scrub covers what we set |
+| `user.id` | **Sent.** The asymmetry is deliberate: ids in a URL are other riders' content on a screen the reporter merely had open, and this is the reporter's own. It is what turns "someone hit this" into "three riders did" |
+| Cookies, request headers, `query_string` | **Deleted, not redacted.** A redacted key still tells a reader the request carried one |
+| A failed request's body | **Never captured.** `enableCaptureFailedRequests: false`, written out rather than left to the default, because a place-search term is frequently a home address and travels in a POST body nothing else in a report can reach |
+| Performance traces | **Off.** `tracesSampleRate: 0` — a different product with its own quota |
+| Session replay | **Off here.** It is PostHog's (PD-353); a second recorder is a second privacy disclosure for no question the first cannot answer |
+
+### What still cannot be seen
+
+- **A failure to load the app's own chunks.** The reporter is in the bundle, so
+  nothing in a client bundle can report it. Vercel's logs are the only witness
+  on the web, and in the shell there is none.
+- **Anything, on any environment without a DSN.** Unset is a clean no-op, which
+  is DEV, every preview and local development. The transport is therefore
+  exercised by nothing this repo gates — the assertions are about the payload's
+  shape and the options asked for.
+
+```bash
+npx vitest run src/lib/observability     # the scrub, the options, the one doorway
+```
+
+### Not in PD-315
+
+The alert → ticket automation — the Sentry webhook, `repository_dispatch` and
+the headless triage run. This story ends when a throw in a rider's browser is
+visible to us.
+
+### The owner action still outstanding
+
+The Sentry org and project, and the DSN in Vercel (Production and
+Preview/Development are separate scopes) and in the native build's environment.
+Until that lands the code ships and stays silent.
