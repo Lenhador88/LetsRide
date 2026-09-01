@@ -57,7 +57,7 @@ src/
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatChatMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
-capacitor.config.ts         # The native shell's config. See docs/HANDOFF.md §The shell
+capacitor.config.ts         # The native shell's config. See docs/reference/native-shell.md §The shell
 ios/                        # The generated Xcode project, committed 2026-08-25. SPM, not CocoaPods.
                             #   App/App/public and the generated config are gitignored by the template.
                             #   android/ is NOT generated — nobody has asked for it yet (PD-95)
@@ -84,7 +84,11 @@ docs/
 │   ├── repo-layout.md      #   this file
 │   ├── product-scope.md    #   what is built per domain, against the Figma
 │   ├── analytics.md        #   the product questions, and which are already SQL
-│   └── observability.md    #   what we see when it breaks, and the 24h expiry on it
+│   ├── observability.md    #   what we see when it breaks, and the 24h expiry on it
+│   ├── native-shell.md     #   the Capacitor shell's position and the store-readiness table
+│   ├── running-locally.md  #   the per-command table, the relay, the walk and its fixtures
+│   ├── known-issues.md     #   understood issues — mechanism, sites to re-derive, why not folded in
+│   └── signup.md           #   how signup broke against confirmation-on, and the proof it is fixed
 └── specs/                  # Implementation specs (login-onboarding.md)
 design/                     # Committed Figma snapshot — READ THIS, don't call the API
 ├── README.md               # Why it exists, how to refresh it, how to query it

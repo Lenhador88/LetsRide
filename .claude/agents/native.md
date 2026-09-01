@@ -75,7 +75,7 @@ xcframeworks, so a grep of *that repo* finds nothing, but the source is already 
 session has burned a download and a disassembly rediscovering that.
 
 **The premise underneath `boot-restore.ts` splits, and one half is now known WRONG for deep links**
-(measured 2026-08-25; `docs/HANDOFF.md` §The shell carries the commands). `CapacitorRouter.route(for:)`
+(measured 2026-08-25; `docs/reference/native-shell.md` §The shell carries the commands). `CapacitorRouter.route(for:)`
 does map every extensionless path to the root `index.html` — but a deep-link cold start never
 reaches it: `loadWebView()` loads `appStartServerURL`, so the webview boots at `/`, and a universal
 link is posted to `NotificationCenter` with nothing in Capacitor's core observing it to navigate.
@@ -111,7 +111,7 @@ without confirming it still says what the file claims.
    List them rather than trust this line, because the unticked set mixes build work with owner
    actions and live exercises:
    `grep -n '^- \[ \]' openspec/changes/add-account-deletion/tasks.md`. Then read
-   `docs/HANDOFF.md` §Store readiness row 2 before scoping anything here.
+   `docs/reference/native-shell.md` §Store readiness row 2 before scoping anything here.
 2. ~~**Dead navigation.**~~ **Resolved 2026-08-07** — the Inbox tab was removed rather than
    built (PD-100), so the bar draws four tabs and every one has a route. Kept here because the
    *rule* outlives the instance: a reviewer taps every tab, and a tab that goes nowhere is a

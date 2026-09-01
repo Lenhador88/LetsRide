@@ -127,7 +127,7 @@ export function invalidateClubMembership(clubId: string) {
  * The fix is the same `security definer` function this comment has named since
  * it was written, doing both inserts in one statement. Nothing asserts "a club
  * has an owner-membership row" as a CHECK or trigger, and that is the actual
- * gap. Logged in docs/HANDOFF.md §Known issues.
+ * gap. Logged in docs/reference/known-issues.md §Known issues.
  *
  * Images are already in Storage by the time this runs — the client uploads
  * first, so a failure here leaves an orphaned object rather than a club pointing

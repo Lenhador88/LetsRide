@@ -480,7 +480,7 @@ background gradient included — and made a tab tap read as a page reload.
 (`signUp`, `setUsername`, `acceptTerms`), and each calls
 `invalidateOnboardingState()`; `signOut` calls `clearGuardCache()`. Miss one and the rider
 finishes a step and is sent straight back into it. `npm run walk` has a phase that measures this
-— see `docs/HANDOFF.md` §The walk.
+— see `docs/reference/running-locally.md` §The walk.
 
 **Necessary, and never sufficient — an invalidation cannot reach a round trip that has already
 left.** All four writers do call it, and PD-304 still happened: `signUp` establishes the session,
@@ -1661,7 +1661,7 @@ here by hand — the check rides the CI job that a docs diff already triggers. T
 awk '/^[[:space:]]*> \*\*(Recommendation|Complexity|Urgency|Customer value|This session)\*\*/ {
   s = $0; f = FILENAME; n = FNR; if ((getline line) <= 0) line = ""
   if (line !~ /^[[:space:]]*>[[:space:]]*$/) print f ":" n ": " s
-}' CLAUDE.md docs/HANDOFF.md
+}' CLAUDE.md docs/HANDOFF.md docs/reference/known-issues.md
 ```
 
 It must print nothing. Each hit is a score line whose reason will render glued to it.
