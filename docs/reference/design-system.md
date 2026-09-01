@@ -144,8 +144,14 @@ detail screen had been re-deciding it: the club merge put Edit behind the dots w
 a bare pencil, no Delete and no Share at all. Re-derive the set rather than trusting a list here:
 
 ```bash
-grep -rln "OptionsIcon" src/components/ | grep -v icons/   # 7: account, rider, postcard, club, ride, club thread, club timeline join row
+grep -rln "OptionsIcon" src/components/ | grep -v icons/   # 6: account, rider, postcard, club, ride, club thread
 ```
+
+**It read 7 until 2026-09-01 and the seventh was the club timeline's join row.** PD-365 deleted it
+— its only row was PD-356's `Say welcome`, and that gesture was replaced by a comment glyph opening
+the rider's introduction. So this number can go DOWN as well as up, which the note above does not
+say: a screen losing its last row loses the control, and that is a correct outcome rather than a
+regression to restore.
 
 Three rules the surfaces already agree on, and one exception:
 

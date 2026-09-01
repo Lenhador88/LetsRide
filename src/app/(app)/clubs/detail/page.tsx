@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useSyncExternalStore } from 'react'
 import { notFound, useSearchParams } from 'next/navigation'
 import { Globe2Icon, LocationOutlineIcon, Lock2Icon } from '@/components/icons/generated'
 import { ClubCreateBar } from '@/components/clubs/ClubCreateBar'
@@ -9,14 +9,22 @@ import { ClubPreviewScreen } from '@/components/clubs/ClubPreviewScreen'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
 import { ClubMemberRail } from '@/components/clubs/ClubMemberRail'
 import { ClubTimeline } from '@/components/clubs/ClubTimeline'
+import { IntroductionPrompt } from '@/components/clubs/IntroductionPrompt'
 import { MarkClubSeen } from '@/components/clubs/MarkClubSeen'
 import { RideChip } from '@/components/rides/RideChip'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { ExpandableText } from '@/components/ui/ExpandableText'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
+import { hasIntroducedClub, owesIntroduction } from '@/lib/data/club-introductions'
 import { getClub, getClubPreview } from '@/lib/data/clubs'
 import { getRides, withRideDistance } from '@/lib/data/rides'
+import {
+  dismissIntroductionPrompt,
+  getServerIntroductionDismissed,
+  isIntroductionDismissed,
+  subscribeIntroductionDismissal,
+} from '@/lib/clubs/introduction-dismissal'
 import { useRiderPosition } from '@/lib/location/use-rider-position'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
@@ -77,6 +85,14 @@ import { cn, formatRideDateLong } from '@/lib/utils'
  *
  * There is no v2 Figma frame for any of this. Composition is ours and is logged
  * in docs/FIGMA-FIDELITY-TODO.md §Club detail.
+ *
+ * ## The introduction prompt — `097`, PD-365
+ *
+ * `IntroductionPrompt` is mounted here rather than on `joinClub`'s success
+ * path, so it reaches a rider however their membership came to exist — the
+ * Join button, creating a club, onboarding's auto-join, an invite, a request
+ * approval or a claimed invite link all land here, and `showIntroductionPrompt`
+ * is state this screen already reads for itself (`design.md` §D7).
  *
  * ## `null` is the 404; `undefined` is "not yet"
  *
@@ -154,6 +170,53 @@ function ClubScreen() {
   const rides = useQuery(found ? queryKeys.rides.list(filterSegment.club(id)) : null, () =>
     getRides({ kind: 'club', id })
   )
+
+  /**
+   * `owesIntroduction`'s first three conjuncts, evaluated eagerly so the
+   * fourth read below is not issued for a rider who could never be prompted —
+   * the owner, the default club, a non-member. This is a fetch-gating
+   * heuristic rather than the rule itself: it is safe to be wider than the
+   * real answer (an extra round trip costs nothing but itself), and it must
+   * read `club.data` directly rather than waiting for `isMember` below, which
+   * a hook cannot do — `club.data` is `undefined` before the club loads and
+   * makes this `false` exactly as safely as waiting would.
+   */
+  const introductionEligible =
+    !!club.data &&
+    club.data.viewer_role !== null &&
+    club.data.viewer_role !== 'owner' &&
+    !club.data.is_default
+
+  const hasIntroduced = useQuery(
+    introductionEligible ? queryKeys.clubs.myIntroduction(id) : null,
+    () => hasIntroducedClub(id)
+  )
+
+  /**
+   * The per-(rider, club) dismissal — `lib/clubs/introduction-dismissal.ts`.
+   * `useSyncExternalStore` rather than a mount effect calling `setState`,
+   * which is the shape `react-hooks/set-state-in-effect` refuses — see that
+   * module's own header for why this is `pending-token.ts`'s pattern reused
+   * rather than a new one. `getServerIntroductionDismissed` answers `false`
+   * for the SSR pass, where `sessionStorage` does not exist.
+   */
+  const dismissed = useSyncExternalStore(
+    subscribeIntroductionDismissal,
+    () => isIntroductionDismissed(id),
+    getServerIntroductionDismissed
+  )
+
+  // The actual rule, `design.md` §D7's four conjuncts in full — evaluated
+  // only once `hasIntroduced` has resolved, so the sheet cannot flash open
+  // before the read confirms there is genuinely nothing to show it for.
+  const showIntroductionPrompt =
+    !!club.data &&
+    hasIntroduced.data !== undefined &&
+    owesIntroduction(
+      { viewerRole: club.data.viewer_role, isDefaultClub: club.data.is_default },
+      hasIntroduced.data
+    ) &&
+    !dismissed
 
   // Before the error gate: a club neither read can see is a 404 whatever else
   // happened, and the ride read cannot have failed yet because it was never
@@ -338,6 +401,19 @@ function ClubScreen() {
           Member-only, because all three of its destinations refuse a
           non-member — see `ClubCreateBar`. */}
       {isMember && <ClubCreateBar clubId={id} />}
+
+      {/* `097`, PD-365. Driven entirely by `showIntroductionPrompt`'s state
+          rule — never by `joinClub`'s success path — so it reaches a rider
+          however their membership came to exist. `onPosted` also records the
+          session dismissal: `hasIntroduced`'s own invalidated read will
+          confirm the same answer, but recording it here closes the sheet on
+          the same tick rather than waiting on that round trip. */}
+      <IntroductionPrompt
+        clubId={id}
+        open={showIntroductionPrompt}
+        onDismiss={() => dismissIntroductionPrompt(id)}
+        onPosted={() => dismissIntroductionPrompt(id)}
+      />
     </>
   )
 }

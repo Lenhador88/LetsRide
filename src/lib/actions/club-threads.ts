@@ -265,6 +265,16 @@ export async function sendClubMessage(
  * when the caller knows which club — the club timeline's reply entry, whose key
  * is hung under the club rather than the thread and so is reached by neither
  * `threadMessages` nor `thread`.
+ *
+ * **Deliberately does not invalidate `notifications.list()` or
+ * `notifications.unread()`** (`098`, PD-367, `client-cache-invalidation`). The
+ * `club_thread_replied` row this write may fan out is addressed to the
+ * thread's author, never to the poster whose client is running this
+ * invalidation — so the one cache this function's caller could refetch is
+ * exactly the one the write did not change. There is no mechanism in this
+ * hand-rolled cache to reach the recipient's client; the recipient's badge is
+ * stale until their own next navigation, which is stated rather than papered
+ * over with a poll or a subscription.
  */
 function invalidateThreadMessage(threadId: string, clubId?: string) {
   invalidate(queryKeys.clubs.threadMessages(threadId))

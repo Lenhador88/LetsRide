@@ -1166,6 +1166,17 @@ export type ClubDetail = {
   location_place_id: string | null
   latitude: number | null
   longitude: number | null
+  /**
+   * `058` — the Welcome club every rider is auto-joined to at onboarding.
+   * `authenticated` holds SELECT on this column (`058` §2), which is what
+   * already lets `ClubOptionsMenu`'s leave path read a refusal by name off it.
+   *
+   * **The one screen-side use is the introduction prompt** (`097`, PD-365):
+   * `design.md` §D7 excludes this club from the prompt for `058`'s own reason —
+   * every rider joins it inside a wizard with no skip affordance, so a prompt
+   * there would be the first thing a new rider is asked.
+   */
+  is_default: boolean
 }
 
 /**
@@ -1529,10 +1540,11 @@ export type NotificationType =
   // for the one case that is not ordinary: an inviter who has since left.
   //
   // **There is deliberately no `club_invite_accepted`.** `private.notify_club_joined`
-  // already fans `club_joined` out to the owner and admins on the
-  // `club_members` INSERT the accept performs, and a second row would tell
-  // the same people the same thing — `091` made the identical call for
-  // `ride_joined`.
+  // already fans `club_joined` out to the whole membership on the
+  // `club_members` INSERT the accept performs — `099` widened this from the
+  // owner and admins to every member, so a second row would tell even more of
+  // the same people the same thing than it did when this was written — and
+  // `091` made the identical call for `ride_joined`.
   | 'club_invited'
   | 'club_invite_declined'
   // `092` (PD-356). A JOIN wave notifies the joiner — a THREAD wave notifies
@@ -1544,13 +1556,23 @@ export type NotificationType =
   // exhaustive switches this type has to land in together — missing one is a
   // runtime break in the first two and only a type error in this one.
   | 'club_waved'
+  // `098` (PD-367). A reply or a wave on a club THREAD — distinct from
+  // `club_waved`'s join-wave above — both addressed to
+  // `club_threads.author_id` alone. Both carry `thread_id` rather than
+  // `club_id`: the collapse key needs the THREAD (two threads in the same
+  // club must not collapse into one notification) and so does the deep link
+  // (`routes.clubThread` takes a thread id, not a club id). `notificationCopy`,
+  // `NotificationsListItem`'s `describe`, and this union are again the three
+  // exhaustive switches these two have to land in together.
+  | 'club_thread_replied'
+  | 'club_thread_waved'
 
 /**
  * One row from `public.notifications` (`036`), as the notifications screen and
  * the header's unread control render it.
  *
  * **No `title`, `clubName`, `actorUsername`, or any other snapshot field —
- * that is the point of the table.** `actor` and the three typed subjects below
+ * that is the point of the table.** `actor` and the four typed subjects below
  * are live joins, resolved fresh on every read under the *reader's own* RLS,
  * never a stored copy. `036` §3's SELECT policy already refuses to return a
  * row whose actor or subject cannot resolve for this viewer, so in practice
@@ -1559,11 +1581,12 @@ export type NotificationType =
  * type, and the render code (`NotificationsListItem`) degrades rather than
  * crashes if it is ever wrong.
  *
- * Exactly one of `postcard`, `ride`, `club` is meaningful per `type` — see
- * `036`'s `notifications_subject_shape` CHECK for the fixed mapping — but the
- * type does not encode that as a discriminated union, because nothing here
- * needs to switch on it besides the one component that renders a row, and a
- * five-way union would cost more at every other call site than it saves there.
+ * Exactly one of `postcard`, `ride`, `club`, `thread` is meaningful per
+ * `type` — see `036`'s and `098`'s `notifications_subject_shape` CHECK for the
+ * fixed mapping — but the type does not encode that as a discriminated union,
+ * because nothing here needs to switch on it besides the one component that
+ * renders a row, and a six-way union would cost more at every other call site
+ * than it saves there.
  */
 export type NotificationRow = {
   id: string
@@ -1587,6 +1610,18 @@ export type NotificationRow = {
   /** Set for `club_joined`, and for `ride_created_in_club` as *context* — the
    * copy names the club even though the row's destination is the ride. */
   club: EmbeddedClub | null
+  /**
+   * Set for `club_thread_replied` and `club_thread_waved` alone (`098`,
+   * PD-367) — never `club_id`, because these two render the THREAD's title
+   * and open the THREAD, not its club. Resolves exactly when the row is
+   * returned at all: the SELECT policy's `thread_id` conjunct and this embed
+   * run the same predicate under the same reader, so — unlike `club_id` on
+   * the three `089`/`093` types — there is no reachable state where the row
+   * exists but this is null. `href: null` is still the floor every other arm
+   * has, for the same reason: a row that stops resolving is a row the policy
+   * withholds entirely, not one this type renders half of.
+   */
+  thread: { id: string; title: string } | null
 }
 
 /**
@@ -1745,6 +1780,29 @@ export type ClubThread = {
  * unmarked rather than not rendering.
  */
 export type ClubThreadListItem = ClubThread & {
+  author: Pick<PublicProfile, 'id' | 'username'> | null
+}
+
+/**
+ * One thread as its own detail screen renders it — `getClubThread` (`097`,
+ * PD-365).
+ *
+ * `introduction` is `null` on an ordinary thread and the introduction's own
+ * text on one that carries it. **The render keys off THIS column and never
+ * off `introduces_user_id`, which is not selected here at all** — the marker
+ * is a composite key into `club_members` rather than an embed path, and the
+ * thread screen has no use for it: the render gate, the leave-survival
+ * behaviour and the author's name all come from `introduction` and
+ * `author_id`/`author`, which is what still resolves after the subject leaves
+ * (`design.md` §D3, §D8).
+ *
+ * `author` mirrors `ClubThreadListItem`'s, hinted `author_id` for the same
+ * reason — `club_threads` has no `user_id` column and its relationship to
+ * `profiles` is already ambiguous through `club_thread_reads` and
+ * `club_thread_waves`.
+ */
+export type ClubThreadDetail = ClubThread & {
+  introduction: string | null
   author: Pick<PublicProfile, 'id' | 'username'> | null
 }
 

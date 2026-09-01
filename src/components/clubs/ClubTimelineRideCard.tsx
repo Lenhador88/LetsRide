@@ -34,12 +34,27 @@ import type { RideListItem } from '@/types'
  * weaker — the ride event is the one entry on the timeline whose engagement
  * mechanism already exists (`RideCard`'s own attendance controls), so this
  * change adds nothing here.
+ *
+ * **`anchorKey` is the scroll target only — PD-366.** It is `mergeClubTimeline`'s
+ * own key for this row (`ride:<uuid>`), set as this card's DOM `id` so a Back
+ * from elsewhere on the timeline can scroll to it. `RideCard`'s own link still
+ * goes to the plain ride detail screen: that screen's own Back is unconditional
+ * (`RideHeader`'s `current === 'plan'`), not driven by this parameter, and nothing
+ * here changes that.
  */
-export function ClubTimelineRideCard({ ride, at }: { ride: RideListItem; at: string }) {
+export function ClubTimelineRideCard({
+  ride,
+  at,
+  anchorKey,
+}: {
+  ride: RideListItem
+  at: string
+  anchorKey: string
+}) {
   const organizer = ride.organizer?.username
 
   return (
-    <section className="flex flex-col gap-1.5">
+    <section id={anchorKey} className="flex flex-col gap-1.5">
       <p className="flex items-baseline gap-2 px-1 text-sm font-medium text-muted">
         <span className="min-w-0 flex-1 truncate">
           {/* The name falls back rather than the label vanishing: the `profiles`

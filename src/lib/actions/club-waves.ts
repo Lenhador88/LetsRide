@@ -15,6 +15,14 @@ import type { ActionState } from '@/lib/actions/state'
  * "SHALL NOT invalidate `clubs.detail(clubId).threads`", whose rows have not
  * changed, and SHALL NOT invalidate the unread map, a different fact about
  * the same thread.
+ *
+ * **Nor `notifications.list()` / `notifications.unread()`** (`098`, PD-367).
+ * The `club_thread_waved` row this write fans out is addressed to the
+ * thread's author, not the waver whose client runs this invalidation — so
+ * there is nothing of the waver's own to refetch, and no mechanism in this
+ * hand-rolled cache to reach the recipient's. Their badge is stale until
+ * their own next navigation; `unwaveThread` below carries the identical
+ * absence for the retraction.
  */
 export async function waveThread(clubId: string, threadId: string): Promise<ActionState> {
   const supabase = await resolveSupabase()

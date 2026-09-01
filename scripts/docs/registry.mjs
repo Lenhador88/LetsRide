@@ -126,6 +126,33 @@ const NUMBER_WORDS = {
   eighteen: 18,
   nineteen: 19,
   twenty: 20,
+  // Extended past twenty on 2026-09-01, and the ceiling was reached AGAIN by
+  // the same claim: the club-introduction bundle took the component tests to
+  // twenty-one. Note what is new above twenty — the words are HYPHENATED, so
+  // an anchor written `\w+` stops matching them and the claim fails to LOCATE
+  // rather than failing to compare. Any anchor reading one of these must use
+  // `[\w-]+`; `component-tests-count-claude` is the first and its pattern says
+  // so at the site.
+  'twenty-one': 21,
+  'twenty-two': 22,
+  'twenty-three': 23,
+  'twenty-four': 24,
+  'twenty-five': 25,
+  'twenty-six': 26,
+  'twenty-seven': 27,
+  'twenty-eight': 28,
+  'twenty-nine': 29,
+  thirty: 30,
+  'thirty-one': 31,
+  'thirty-two': 32,
+  'thirty-three': 33,
+  'thirty-four': 34,
+  'thirty-five': 35,
+  'thirty-six': 36,
+  'thirty-seven': 37,
+  'thirty-eight': 38,
+  'thirty-nine': 39,
+  forty: 40,
 }
 
 /**
@@ -204,7 +231,11 @@ export const claims = [
     // stale count is exactly the one adding a component test that *does* need
     // jsdom. That is why this is gated rather than left as a hand-copy: three
     // hand-typed counts in this repo have already been wrong.
-    pattern: /\*\*(\w+)\*\* component test(?:s)? exists? — `PostcardAction`/,
+    // `[\w-]+`, not `\w+`: every number word past twenty is hyphenated, and
+    // this claim reached twenty-one on 2026-09-01. With `\w+` the anchor
+    // stops matching and the claim fails to LOCATE rather than to compare —
+    // a different failure with a much less obvious message.
+    pattern: /\*\*([\w-]+)\*\* component test(?:s)? exists? — `PostcardAction`/,
     extractStated: extractWord(),
     kind: 'shell',
     // `git ls-files` rather than a filesystem walk: an untracked scratch test
@@ -263,8 +294,23 @@ export const claims = [
     // red on cue for the fifth time. Pinned back to DEV AHEAD, naming BOTH refs
     // so the direction cannot be inferred from the count alone. It goes red
     // again on the promotion, which is the mechanism rather than a defect.
+    // 2026-09-01: it did — the promotion put `092`-`096` on PROD and this went
+    // red on cue for the sixth time. Pinned back to LEVEL. Note the prose no
+    // longer names the two refs, because at LEVEL there is no direction to
+    // infer; "BOTH projects" is what the pattern now pins, and the day they
+    // diverge again the sentence has to name them and this pattern has to move
+    // with it. Two edits, one commit — still never a relaxed regex.
+    // 2026-09-01, later: `097`-`099` (PD-365/PD-367/PD-368) applied to DEV alone
+    // and this went red on cue for the SEVENTH time, on the very sentence the
+    // note above predicted would have to change. Pinned back to DEV AHEAD,
+    // naming BOTH refs. The pattern deliberately still ends mid-sentence rather
+    // than pinning the gap's SIZE in words — "three-file gap" would make every
+    // single new migration a registry edit, which is churn rather than a
+    // tripwire, while the two `at \`NNN\`` captures already make the direction
+    // unmissable. Relaxing it to /Applied state: (\d+) files/ is still the
+    // wrong repair.
     pattern:
-      /\*\*Applied state: (\d+) files; DEV is at `\d+` and PROD at `\d+` — measured/,
+      /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD is at `\d+`, and the/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
@@ -273,7 +319,12 @@ export const claims = [
   {
     id: 'migrations-count-handoff',
     file: 'docs/HANDOFF.md',
-    pattern: /ls supabase\/migrations\/ \| wc -l\s+# (\d+)/,
+    // Pinned to the RELATIONSHIP as well as the count, exactly like its
+    // CLAUDE.md sibling above — and for a second reason here: HANDOFF.md
+    // carries this one-liner TWICE (the Migrations section's row-vs-file
+    // reconciliation also runs it), so a pattern matching the bare command
+    // is ambiguous and fails to locate rather than to compare. 2026-09-01.
+    pattern: /ls supabase\/migrations\/\*\.sql \| wc -l\s+# (\d+) — DEV at \d+, PROD at \d+/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,

@@ -25,7 +25,7 @@ import {
 } from '@/lib/data/club-threads'
 import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
-import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
+import { DETAIL_ID_PARAM, RETURN_ANCHOR_PARAM, clubThreadReturnTo } from '@/lib/routes'
 import { useClubThreadStream } from '@/lib/realtime/useClubThreadStream'
 import { CLUB_MESSAGE_MAX_LENGTH } from '@/lib/validation/clubs'
 import type { ClubChatMessage } from '@/types'
@@ -56,12 +56,32 @@ import { useSwipeBack } from '@/lib/actions/navigate'
  * thread with nothing in it is reachable by construction. It draws its title, an
  * empty-thread line and a working composer.
  *
+ * **`097`, PD-365 narrows that state rather than removing it.** An
+ * introduction is a thread carrying `introduction` text with no first
+ * message either, and it is not empty — it renders above the composer's
+ * messages, before any reply, attributed to `thread.data.author`. The render
+ * keys off `introduction` and never off `introduces_user_id` (not even
+ * selected by `getClubThread`): the marker is NULLed the moment its subject
+ * leaves the club, and the text survives, so an ex-member's introduction
+ * still renders here.
+ *
  * ## A one-sided conversation is also designed
  *
  * A blocked pair may both post here and each sees only their own messages —
  * `081` carries no block arm in either WITH CHECK, because refusing the insert
  * would disclose the block to the poster. Nothing on this screen may present
  * that as an error or a gap.
+ *
+ * ## `Back` returns to the row this thread was opened from — `097`'s follow-up, PD-366
+ *
+ * `?row=` carries `mergeClubTimeline`'s own key for the row that linked here
+ * (a join's introduction, a thread's creation entry, or a reply), and
+ * `clubThreadReturnTo` is the one place that turns it into a destination —
+ * both the header arrow and `useSwipeBack` read the SAME `backHref` below, so
+ * they cannot disagree (the defect PD-341 already closed on this exact
+ * screen once). Absent or unparseable both answer `routes.clubThreads`,
+ * today's behaviour and what a notification tap, a shared URL and a reload
+ * all still produce. See `design.md` §D9.
  */
 export default function ClubThreadPage() {
   // The id is a query parameter, not a segment, so the static bundle needs one
@@ -76,7 +96,14 @@ export default function ClubThreadPage() {
 }
 
 function ClubThreadScreen() {
-  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
+  const searchParams = useSearchParams()
+  const id = searchParams.get(DETAIL_ID_PARAM) ?? ''
+  // Which row on the club timeline this thread was opened from — `097`'s
+  // follow-up, PD-366. Read once here and handed to `clubThreadReturnTo`
+  // rather than re-read at the `backHref` line, so both this and `id` above
+  // come off the one search-params instance the way the rest of this file's
+  // reads do.
+  const rawAnchor = searchParams.get(RETURN_ANCHOR_PARAM)
 
   const thread = useQuery(queryKeys.clubs.thread(id), () => getClubThread(id))
   const messages = useQuery(queryKeys.clubs.threadMessages(id), () =>
@@ -98,7 +125,11 @@ function ClubThreadScreen() {
 
   // Read from the URL, so it is right while the thread is still arriving and
   // after it has failed — the same reason the arrow below takes it.
-  const backHref = clubId ? routes.clubThreads(clubId) : '/clubs'
+  // `clubThreadReturnTo` is what makes `rawAnchor` safe here: absent or
+  // unparseable both fall back to `routes.clubThreads`, which is this line's
+  // own previous behaviour and what a notification tap, a shared URL and a
+  // reload all still produce.
+  const backHref = clubId ? clubThreadReturnTo(clubId, rawAnchor) : '/clubs'
 
   // PD-341, folded in: without it this screen and the ride chat — the app's two
   // conversations, one gesture apart — would answer the same swipe differently,
@@ -334,10 +365,43 @@ function ThreadBody({
         onMark={markSeen}
       />
 
+      {/* The introduction — `097`, PD-365. Rendered above every comment and
+          whether or not there are any, keyed on `introduction` and NEVER on
+          `introduces_user_id` (not even selected here — see `getClubThread`):
+          the marker is NULLed the moment its subject leaves the club, and a
+          render gated on it would make an ex-member's own words, and every
+          reply written under them, vanish from a thread that still exists.
+          The author comes from `thread.data.author`, which survives the same
+          leave. Not inside `ChatThread`'s scroller: it is the thread's
+          subject rather than a message in it, so it is pinned above the list
+          rather than one more row inside it. */}
+      {thread.data.introduction !== null && (
+        <div className="px-4 pb-3">
+          <div className="flex flex-col gap-1 rounded-lg bg-track px-3 py-2">
+            <p className="text-sm font-semibold text-foreground">
+              {thread.data.author?.username ?? 'a rider'}
+            </p>
+            <p className="text-base break-words whitespace-pre-wrap text-foreground">
+              {thread.data.introduction}
+            </p>
+          </div>
+        </div>
+      )}
+
       {shown.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center motion-safe:animate-fade-in">
-          <p className="text-base font-semibold text-foreground">No replies yet</p>
-          <p className="text-sm text-muted">Say what you think and the club will see it.</p>
+          {/* Narrowed rather than removed — `097`'s spec: a thread carrying an
+              introduction is not an empty thread, so it earns a lighter
+              invitation instead of the "nothing here yet" line a thread with
+              neither still shows unchanged. */}
+          {thread.data.introduction !== null ? (
+            <p className="text-sm text-muted">Reply and the club will see it.</p>
+          ) : (
+            <>
+              <p className="text-base font-semibold text-foreground">No replies yet</p>
+              <p className="text-sm text-muted">Say what you think and the club will see it.</p>
+            </>
+          )}
         </div>
       ) : (
         <ChatThread

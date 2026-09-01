@@ -188,6 +188,18 @@ function describe(row: NotificationRowData): {
     // one row reads as two clubs.
     case 'club_join_request_declined':
       return { href: row.club ? routes.club(row.club.id) : null }
+    // `098`, PD-367. The destination is the THREAD itself, not the club and
+    // not the club's thread list — the rider was told about a conversation,
+    // and the club's thread list does not say which one. No trailing
+    // thumbnail: a thread has no image, and the club's avatar in that slot
+    // would read as a club notification rather than a reply or a wave.
+    // `routes.clubThread` (no `row` anchor) is deliberate: that parameter is
+    // for a tap that came FROM the club timeline, and a notification tap, a
+    // shared URL and a reload all correctly land on the same place — Back
+    // falls to the thread list, `clubThreadReturnTo`'s absent-anchor case.
+    case 'club_thread_replied':
+    case 'club_thread_waved':
+      return { href: row.thread ? routes.clubThread(row.thread.id) : null }
   }
 
   // Both halves, for `notificationCopy`'s recorded reason. The assignment keeps

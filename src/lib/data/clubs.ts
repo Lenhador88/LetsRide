@@ -585,7 +585,7 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
     .from('clubs')
     .select(
       `id, name, description, is_public, owner_id, created_at, avatar_path, cover_image_path,
-       location_name, location_place_id, latitude, longitude,
+       location_name, location_place_id, latitude, longitude, is_default,
        members_count:club_members(count)`
     )
     .eq('id', id)
@@ -606,6 +606,7 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
     location_place_id: string | null
     latitude: number | null
     longitude: number | null
+    is_default: boolean
     members_count: { count: number }[] | null
   }
 
@@ -643,6 +644,7 @@ export async function getClub(id: string): Promise<ClubDetail | null> {
     location_place_id: row.location_place_id,
     latitude: row.latitude,
     longitude: row.longitude,
+    is_default: row.is_default,
   }
 
   const paths = [club.avatar_path, club.cover_image_path].filter((p): p is string => !!p)

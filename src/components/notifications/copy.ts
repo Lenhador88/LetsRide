@@ -114,6 +114,15 @@ export function notificationCopy(row: NotificationRow, viewerId: string | undefi
     // neither the gesture nor anything the reader did.
     case 'club_waved':
       return `waved you a welcome to ${row.club?.name ?? 'a club'}.`
+    // `098`, PD-367. Both resolve the thread's title from the live embed, like
+    // every other arm here — a reader who loses the thread loses the string
+    // with it, `036` §2's rule. Neither names the club: these two render the
+    // thread's title and open the thread, never the club (`098`'s design.md
+    // §D9), so there is nothing here for a club fallback to stand in for.
+    case 'club_thread_replied':
+      return `replied to ${row.thread?.title ?? 'your post'}.`
+    case 'club_thread_waved':
+      return `waved at ${row.thread?.title ?? 'your post'}.`
   }
 
   // **The compile-time guard and the runtime fallback are BOTH needed, and the
