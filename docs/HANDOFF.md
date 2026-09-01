@@ -1151,6 +1151,40 @@ timeout:**
 
 ---
 
+## Where this left off — 2026-09-01, and three stories are queued
+
+The club-details feedback round is **specified and queued**, nothing is built. Read
+`openspec/changes/introduce-yourself-on-joining-a-club/` before any of it; §Open decisions is
+the part the owner answered.
+
+| Story | Migration | Where |
+|---|---|---|
+| **PD-365** the introduction | `097` | that directory, tasks §§0–10 |
+| **PD-366** the return anchor | none | same directory, tasks §11 |
+| **PD-367** notify a club thread | `098` | **its own change directory**, not yet written |
+
+**Three boundaries that are not obvious and are the whole reason for the split:**
+
+- **PD-367 must never share a migration file or a working tree with PD-365.** Its migration's
+  safe deploy side is the OPPOSITE of `097`'s — a new notification type applies only *after* its
+  bundle is confirmed serving (`089`), while `097` is safe migration-first. That is `069`/`070`'s
+  lesson and on its own disqualifies one file. It has no structural dependency on PD-365 and may
+  go first or in a worktree.
+- **PD-367's cheap build fails silently.** `notifications` has no `thread_id` and its collapse key
+  is `UNIQUE (user_id, type, actor_id, postcard_id, comment_id, ride_id, club_id) NULLS NOT
+  DISTINCT` — so keying a reply on `club_id` means a second reply in a *different thread of the
+  same club* hits `on conflict do nothing` and the recipient is never told, for ever, with nothing
+  raised. `thread_id` is mandatory, which means rebuilding the index every existing fan-out's
+  collapse depends on. Re-derive rather than trusting this: `\d notifications` or
+  `select indexdef from pg_indexes where tablename='notifications'`.
+- **PD-365 must not touch the return path and PD-366 owns it entirely**, including both the header
+  arrow and `useSwipeBack`. One tree, one writer.
+
+**Two owner decisions are open and neither blocks:** whether the introduction textarea arrives
+prefilled (and if the Welcome club gets a canned one — which carries an objection, see PD-365),
+and whether an ordinary member is told when a rider joins at all. Today `club_joined` reaches only
+the club's owner and admins, so an introduction may be seen by nobody.
+
 ## The open OpenSpec changes, and the collision between two of them
 
 **`npm run openspec -- list --json` is the live view** — read it rather than a table here. Six
