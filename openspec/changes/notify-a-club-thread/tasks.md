@@ -471,7 +471,8 @@ the new one lands — and on PROD it costs nothing at all, `club_threads` being 
       correction in the meantime (task 1.13).
 - [ ] **8.5** PR body: the change id, the Q4 decision and who made it, the negative cases, the
       recipient set and its bound, the `openspec validate` result, and the two open questions the
-      owner still owes an answer on (**Q2**, the wave retraction, and **Q8**, the leave eviction).
+      owner answered on 2026-09-01 (**Q2**, the wave retraction — keep it; **Q8**, the leave
+      eviction — evict). Both were already built that way, so neither moved any code.
 
 ---
 

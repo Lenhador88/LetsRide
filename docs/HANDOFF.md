@@ -1198,19 +1198,22 @@ are verified by `tsc`, ESLint, Vitest, `next build` and the RLS suite and by not
 pixel. **The introduction sheet also has no v2 Figma frame**, so its composition and wording are
 inferred; `docs/FIGMA-FIDELITY-TODO.md` §Club detail carries the command that establishes it.
 
-**Two open questions for the product owner, neither blocking and both built to their defaults:**
+**Both open questions were ANSWERED on 2026-09-01 and both confirmed what was already built, so
+neither moved any code.** Product owner: *"Q2 yes leave it"* and *"Q8 no, no more notifications."*
 
-- **The wave retraction (PD-367 Q2).** Un-waving a thread currently takes its notification back,
-  following `092`. The review showed `092`'s sound justification does not transfer here — that one
-  was about a public club's row staying readable after the subject leaves, and `club_threads`'
-  audience is membership-only — so it now rests only on an argument `090` inverted: with a
-  retraction, wave/un-wave/wave re-notifies without limit, because the key never collides. Dropping
-  it deletes a function, a trigger and a cascade hazard.
-- **Whether a thread's author keeps reading notifications about it after leaving the club
-  (PD-367 Q8).** Built as **evict**. It is narrower than a free choice: keeping them readable needs
-  a type-scoped disjunct, which produces a row that renders while its destination refuses the
-  rider. Note it is observable only for an author who is NOT the club's owner — `is_club_member`
-  unions an owner arm (`054`), so an owner who leaves keeps reading.
+- **The wave retraction (PD-367 Q2) — KEEP.** Un-waving a thread takes its notification back,
+  following `092`. **The case against it is recorded rather than closed**, in that change's §D6,
+  because it is what a later change would act on: `092`'s only sound justification does not
+  transfer here (it was about a public club's row staying readable after the subject leaves, and
+  `club_threads`' audience is membership-only), and the sharpest form of `090`'s objection is that
+  **a second reply from the same actor in the same thread collapses and re-notifies nobody, while a
+  wave toggled off and on again does not** — so a wave button is the only control in this schema
+  usable as a doorbell. It applies equally to `club_waved` and `postcard_liked`, which is why it is
+  one file covering all three whenever it is taken, and not a divergence here.
+- **A thread's author who leaves the club (PD-367 Q8) — EVICT.** They stop reading its
+  notifications. It is an eviction rather than a deletion, so rejoining returns every row with its
+  `created_at` and read state intact, and it is observable only for an author who is NOT the club's
+  owner — `is_club_member` unions an owner arm (`054`), so an owner who leaves keeps reading.
 
 **One scope narrowing, stated rather than silent:** PD-366's task 11.3 names the ride card among
 the links that should carry the return anchor, and its outbound link does not carry one. Nothing

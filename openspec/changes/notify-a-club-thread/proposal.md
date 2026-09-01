@@ -337,13 +337,13 @@ Every one carries a recommended default so the build can proceed and be correcte
 | # | Question | Blocking | Who answers | Default |
 |---|---|---|---|---|
 | **Q1** | Does a reply notify **prior repliers** as well as the thread's author? | No | Product owner | **No.** Author only. §D4 records what widening would cost and require |
-| **Q2** | Wave → un-wave → wave re-notifies once per cycle. Keep the retraction or drop it (`090`)? | No | Product owner | **Keep it — weakly.** `092`'s only *sound* argument does not transfer to this type, so `090` applies cleanly and the merits now favour dropping. Held only because reversing it belongs in one file covering all three wave fan-outs. §D6 |
+| ~~**Q2**~~ | ~~Wave → un-wave → wave re-notifies once per cycle. Keep the retraction or drop it (`090`)?~~ **ANSWERED 2026-09-01 — keep it.** Product owner: *"Q2 yes leave it."* Built as shipped; nothing changes. The merits against it are recorded in §D6 and are NOT withdrawn — they are what a later change covering all three wave fan-outs would act on | — | Settled | **Keep the retraction.** Not open |
 | **Q3** | The two copy strings and the destination | No | Product owner | The table above. The design draws no such row |
 | ~~**Q4**~~ | ~~**The apply order.**~~ **ANSWERED 2026-09-01 — order A, migration-first**, on three measurements rather than on the recommendation alone. `tasks.md` §7 records them and strikes order B. §1 and §D11 | — | Settled | **Migration-first.** Not open |
 | **Q5** | Should a reply notification **resurface** when the same rider replies again? | No | Product owner | **No** — `on conflict do nothing`. §D5 |
 | **Q6** | Is the scope every thread, or introductions only? | No | Product owner | **Every thread.** §2 |
 | **Q7** | Does a thread wave deserve the same weight as a reply, or is it noise? | No | Product owner | **Same weight**, its own type. `club_waved` is the precedent |
-| **Q8** | A thread's author who **leaves the club** stops reading their own thread's notifications. Evict, or keep them readable? | No | Product owner | **Evict.** It falls out of `club_threads`' membership-only SELECT rather than being chosen, and it is an eviction rather than a deletion — rejoining returns every row with its `created_at` and read state intact. §D8. Raised as a question because it is rider-visible and nobody has decided it |
+| ~~**Q8**~~ | ~~A thread's author who **leaves the club** stops reading their own thread's notifications. Evict, or keep them readable?~~ **ANSWERED 2026-09-01 — evict.** Product owner: *"no, no more notifications."* Built as shipped. It is an eviction rather than a deletion, so rejoining returns every row with its `created_at` and read state intact, and it is observable only for an author who is not the club's owner. §D8 | — | Settled | **Evict.** Not open |
 
 ## Verification
 
