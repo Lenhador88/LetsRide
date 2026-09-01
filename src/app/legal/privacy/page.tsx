@@ -127,7 +127,8 @@ export default function PrivacyPage() {
           open, moments like creating a ride or joining a club, and{' '}
           <span className="font-medium">a video replay of your own screen as you use the app</span>
           , which shows what you type. Your password is never recorded, and neither is the
-          meeting point or place you search for. Everything else on your screen is.
+          meeting point or place you search for — that field and the suggestions under it are
+          left out of the recording entirely. Everything else on your screen is.
         </li>
         <li className="list-none pl-0 pt-2">
           <span className="font-medium">Turning that off, and what it does not do.</span> Open{' '}

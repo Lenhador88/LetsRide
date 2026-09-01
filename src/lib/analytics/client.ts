@@ -9,7 +9,7 @@ import { scrubUrl } from '@/lib/observability/scrub'
  * Same shape as `lib/data/`, `lib/actions/` and `lib/observability/`, and PD-353
  * asks for it by name: *"Every event goes through one thin module that owns
  * `capture`."* Nothing outside this directory imports `posthog-js`, and
- * `__tests__/analytics.test.ts` is what keeps that true.
+ * `__tests__/events-at-the-call-sites.test.ts` is what keeps that true.
  *
  * The reason is the same one that made the render migration a change to one
  * file: the privacy posture below — autocapture off, no ids in a URL, the
@@ -52,7 +52,7 @@ import { scrubUrl } from '@/lib/observability/scrub'
  * knowing rather than assuming: rrweb normalises `maskAllInputs: false` to
  * `{ password: true }`, so `input[type=password]` is never recorded. Measured
  * against the installed recorder rather than recalled, and asserted in
- * `__tests__/analytics.test.ts` so an SDK bump that changed it is red.
+ * `__tests__/client.test.ts` so an SDK bump that changed it is red.
  *
  * ## The project setting and this config must agree, and nothing checks that
  *
@@ -90,26 +90,48 @@ let status: AnalyticsStatus | null = null
 let pendingRider: string | null | undefined
 
 /**
- * The selector that keeps a meeting-point search out of the recording.
+ * The class that keeps a meeting-point search out of the recording.
  *
  * **This is the one narrowing of "unmasked", and it is deliberate rather than
- * an oversight.** PD-353's own text expects the place search to stay masked
- * when the pilot posture is revisited, and `place_search_attempts` is the
- * standing decision it defers to: that table holds **no column that could store
- * the term**, on the ground that a meeting-point search is frequently a home
- * address. Recording the same keystrokes as video in a third-party store would
- * reinstate exactly what the schema was written to refuse, at higher fidelity
- * and with a different retention — and it would do so silently, because
+ * an oversight.** `place_search_attempts` (`069`) holds **no column that could
+ * store the term**, on the stated ground that a meeting-point search is
+ * frequently a home address. Recording the same keystrokes as video in a
+ * third-party store reinstates exactly what the schema was written to refuse,
+ * at higher fidelity and with a different retention — and silently, because
  * nothing anywhere compares a replay setting against a schema decision.
+ *
+ * **It is a BLOCK class, not a mask class, and the difference is the whole
+ * mechanism.** The first version of this used `ph-mask` and did nothing at
+ * all, in two independent ways:
+ *
+ * 1. **rrweb masks input VALUES from `maskInputOptions` alone**, keyed on tag
+ *    name and input type. It never consults `maskTextClass` or
+ *    `maskTextSelector` for them. The place search is `type="text"`, and
+ *    `maskAllInputs: false` normalises to `{password: true}` — so the field
+ *    was recorded verbatim.
+ * 2. **An `<input>` has no descendant text nodes**, so a text-mask class on it
+ *    has nothing to mask even where text masking does apply.
+ *
+ * It also has to cover the **suggestion panel**, which is a SIBLING of the
+ * input rather than a descendant: the geocoder returns full addresses, so
+ * masking the field alone would still put "Hoofdstraat 12, 1234 AB" on screen
+ * and in the recording. Hence the class goes on the wrapper that contains
+ * both, and hence a block rather than a mask — blocking replaces the subtree
+ * with a placeholder of the same size, so the replay still shows a rider
+ * reaching the field, tapping it and moving on, which is what the composer
+ * funnel needs.
+ *
+ * `ph-no-capture` is rrweb's default `blockClass` and posthog-js's default for
+ * it; it is passed explicitly below so the wiring is assertable rather than
+ * inherited.
  *
  * Everything else stays unmasked as asked. Undoing this is deleting one class
  * from one component.
  */
-export const MASK_CLASS = 'ph-mask'
+export const NO_CAPTURE_CLASS = 'ph-no-capture'
 
 /**
- * `$current_url` and `$pathname` are the two properties PostHog puts on every
- * event, and both would carry the query string.
+ * Strip the ids out of every URL-shaped property PostHog attaches by itself.
  *
  * That matters here more than it would in most apps: **every detail route in
  * this app carries its subject's id in `?id=`** — a postcard, a club, a ride,
@@ -118,16 +140,46 @@ export const MASK_CLASS = 'ph-mask'
  * hold, and `scrubUrl` is imported rather than re-spelled so the three cannot
  * disagree about what a stripped URL is.
  *
- * It is applied in `before_send` rather than only at the call site because
- * PostHog sets these itself, on events this module never names — `$pageleave`,
- * web vitals, replay metadata.
+ * ## Two things a fixed key list gets wrong, both measured
+ *
+ * The first version named four keys under `event.properties`, and leaked on
+ * both counts:
+ *
+ * 1. **`$set_once` is a SIBLING of `properties`, not a member of it.** PostHog
+ *    assembles `{properties, $set_once}` and hands the whole object to
+ *    `before_send`. So `$set_once.$initial_current_url`, `$current_url` and
+ *    `$pathname` were untouched — and those become **person** properties,
+ *    durable on the profile rather than on one event. A rider opening one deep
+ *    link stamped a content id onto their profile for good.
+ * 2. **`$session_entry_url` and `$session_entry_pathname` are on every
+ *    event**, attached by the session-props manager, carrying the full href of
+ *    whatever screen started the session.
+ *
+ * So this matches **by key shape** rather than by a list, which is
+ * `scrub.ts`'s doctrine for exactly this reason: the keys are PostHog's to
+ * add, and a list that type-checks today is what the next SDK version routes
+ * around silently. Anything whose key mentions a url, a pathname or a referrer
+ * gets `scrubUrl`, wherever it sits in the event.
  */
-function stripIdsFromEvent<T extends { properties?: Record<string, unknown> } | null>(event: T): T {
-  if (!event?.properties) return event
-  for (const key of ['$current_url', '$pathname', '$referrer', '$initial_current_url']) {
-    const value = event.properties[key]
-    if (typeof value === 'string') event.properties[key] = scrubUrl(value)
+const URL_KEY_PATTERN = /url|pathname|referrer/i
+
+function stripUrlIds(node: unknown, depth = 0): void {
+  if (depth > 6 || node === null || typeof node !== 'object') return
+  const record = node as Record<string, unknown>
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value === 'string') {
+      if (URL_KEY_PATTERN.test(key)) record[key] = scrubUrl(value)
+    } else if (value !== null && typeof value === 'object') {
+      stripUrlIds(value, depth + 1)
+    }
   }
+}
+
+function stripIdsFromEvent<T>(event: T): T {
+  // Mutates in place and returns the same object: `before_send` may return a
+  // new object or null (which DROPS the event), and rebuilding one risks
+  // losing a field PostHog set that this function does not know about.
+  stripUrlIds(event)
   return event
 }
 
@@ -180,12 +232,20 @@ export function buildPostHogOptions() {
     disable_session_recording: false,
     session_recording: {
       maskAllInputs: false,
-      maskTextClass: MASK_CLASS,
-      maskTextSelector: `.${MASK_CLASS}`,
+      // Explicit even though it is rrweb's default, so the one narrowing above
+      // is a line a test can read rather than an inherited default that a
+      // future config edit could silently drop.
+      blockClass: NO_CAPTURE_CLASS,
     },
 
     // Not a product this app uses, and it renders UI over the rider's screen.
     disable_surveys: true,
+
+    // PostHog's own lever for the same hazard, and set as well as rather than
+    // instead of `before_send`: it covers properties this app never names, and
+    // `before_send` covers the ones a future SDK adds after this line was
+    // written. Neither is a superset of the other.
+    mask_personal_data_properties: true,
 
     before_send: stripIdsFromEvent,
   }
@@ -350,6 +410,12 @@ export function capturePageview(url: string): void {
 export function analyticsSessionId(): string | null {
   if (status !== 'initialised') return null
   try {
+    // **`get_session_id()` does NOT consult consent** — it reads the session
+    // manager and answers a real id for an opted-out rider. `096`'s trigger
+    // nulls the column server-side either way, so nothing lands, but a
+    // docstring promising a client-side guarantee that a second caller could
+    // inherit is worse than no guarantee. Asked explicitly.
+    if (posthog.has_opted_out_capturing()) return null
     return posthog.get_session_id() || null
   } catch {
     return null

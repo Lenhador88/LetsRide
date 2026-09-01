@@ -234,11 +234,8 @@ describe('extractWord', () => {
     // This proves the new shape actually reads the edited word.
     //
     // **The mutation is derived from the live sentence rather than written
-    // out**, which is the point of this edit rather than tidying. Both cases
-    // here used to hardcode `**Nine**`, so PD-315 and PD-353 taking the count
-    // to twelve turned the self-test red on a repo where nothing was wrong —
-    // a fixture that goes stale with the fact it is testing is the same defect
-    // this whole file exists to catch, one level up.
+    // out.** A fixture naming the current word goes stale with the fact it is
+    // testing — the same defect this file exists to catch, one level up.
     const claim = claims.find((c) => c.id === 'deps-count-claude')
     const real = readFileSync(join(repoRoot, 'CLAUDE.md'), 'utf8')
 

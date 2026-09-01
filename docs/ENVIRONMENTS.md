@@ -809,6 +809,18 @@ Nobody in a session can do these.
 7c. **Confirm the four PostHog dashboard toggles** (PD-353) — autocapture off, heatmaps off, web
    vitals on, session replay on — and put `NEXT_PUBLIC_POSTHOG_KEY` on **Production only**. The
    code cannot see the dashboard half, and a mismatch is silent.
+7c-i. **Set replay retention to the shortest the plan allows** (PD-353), and check what the free
+   tier actually permits rather than assuming it is configurable. This is the highest-consequence
+   of the PostHog settings and the easiest to leave at a default: unmasked video of riders'
+   screens, sitting for however long the plan defaults to. Nothing in the repo can see or set it.
+7c-ii. **Tell the pilot riders** (PD-353). They are people who can be told, which the issue calls
+   "a stronger answer than masking", and it costs a sentence. `/legal/privacy` carries the written
+   version; this is saying it to the group directly, which the written page cannot substitute for
+   while the recording is unmasked.
+7c-iii. **Set Sentry's alert rule to real-time** (PD-315). Not the alert→ticket automation, which
+   `observability.md` §Not in PD-315 carves out as its own deliverable — this is the project's own
+   notification rule. A crash spike on a fresh release has to be known in minutes, and a project
+   created with defaults will not do that.
 7d. **Decide what happens to PostHog's records when a rider deletes their account** (PD-353,
    open). `delete-account` does not reach PostHog, so a rider who erases their account leaves
    their events and their unmasked recordings behind — `029`'s "the row goes" contract is

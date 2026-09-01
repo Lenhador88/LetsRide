@@ -95,6 +95,23 @@ describe('credential redaction', () => {
     expect(scrubText(`key=${publishableShaped}`)).not.toContain('AbCdEf123456')
   })
 
+  it('strips the query off a ROOT-RELATIVE URL in free text too', () => {
+    // The half an `https?://` anchor misses, and it is the shape a fetch
+    // wrapper or a thrown string actually produces. This file's rule is "every
+    // URL anywhere in the payload", and an absolute-only pattern does not meet
+    // it.
+    const out = scrubText('Failed to fetch /rest/v1/rides?id=eq.8f14e45f-ceea')
+    expect(out).not.toContain('8f14e45f')
+    expect(out).toContain('/rest/v1/rides')
+  })
+
+  it('does not eat a question mark in ordinary prose', () => {
+    // The direction that keeps the pattern above from being a blunt instrument:
+    // a message is not a URL just because it contains a `?`.
+    expect(scrubText('sorted by name?')).toBe('sorted by name?')
+    expect(scrubText('Is 2/3 of the crew going?')).toBe('Is 2/3 of the crew going?')
+  })
+
   it('strips the query off a URL embedded in free text', () => {
     // supabase-js quotes the request it made, so a message carries a filter
     // that no URL-keyed field would ever see.

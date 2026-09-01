@@ -13,7 +13,7 @@ import {
 import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { getSnapshot, setQueryData, useQuery, type QueryKey } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
-import { MASK_CLASS } from '@/lib/analytics/client'
+import { NO_CAPTURE_CLASS } from '@/lib/analytics/client'
 import { cn } from '@/lib/utils'
 import type { PlaceSearchResult } from '@/types'
 
@@ -331,7 +331,25 @@ export function PlaceSearchField({
   }
 
   return (
-    <div className="flex w-full flex-col gap-1.5">
+    /* `NO_CAPTURE_CLASS` is the ONE narrowing of PD-353's unmasked session
+       replay, and it sits HERE — on the wrapper — rather than on the input, for
+       two reasons that each defeat the obvious placement on their own.
+
+       rrweb takes an input's value from `maskInputOptions` alone and never
+       consults a text-mask class, so a class on the `<input>` records the
+       meeting point verbatim. And the suggestion panel below is a SIBLING of
+       the input, not a descendant: the geocoder returns full addresses, so
+       covering the field alone still puts one on screen and in the recording.
+       This wrapper is the nearest ancestor of both.
+
+       Blocking rather than masking is deliberate: the subtree is replaced by a
+       placeholder of the same size, so the replay still shows a rider reaching
+       this field, tapping it and moving on — which is the whole of what the
+       composer funnel needs from this screen. `client.ts`'s own comment carries
+       why the term itself must not be recorded: `place_search_attempts` (069)
+       holds no column that could store it, because a meeting point is
+       frequently a home address. */
+    <div className={cn(NO_CAPTURE_CLASS, 'flex w-full flex-col gap-1.5')}>
       {/* The value travels as named fields rather than as JSON in one: the
           action parses them with `readClubLocation`/`readRideLocation`, and
           named strings are what a `FormData` round trip cannot half-decode.
@@ -456,25 +474,7 @@ export function PlaceSearchField({
             aria-controls={listId}
             aria-autocomplete="list"
             aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
-            /* `MASK_CLASS` is the ONE narrowing of PD-353's unmasked session
-               replay, and it is deliberate rather than an oversight. This field
-               is where a rider types a meeting point, and
-               `place_search_attempts` (069) deliberately holds NO column that
-               could store the term, on the stated ground that a meeting point —
-               and often a search term — is a home address. Recording the same
-               keystrokes as video in a third-party store would reinstate exactly
-               what the schema was written to refuse, at higher fidelity and with
-               a different retention, and nothing anywhere compares a replay
-               setting against a schema decision. PD-353's own text expects this
-               field to stay masked when the pilot posture is revisited.
-
-               It masks the TEXT, not the field: the replay still shows a rider
-               opening the picker, typing, and choosing or giving up — which is
-               the whole of what the funnel needs from this screen. */
-            className={cn(
-              MASK_CLASS,
-              'w-full min-w-0 bg-transparent text-base font-medium text-foreground placeholder:text-muted focus:outline-none'
-            )}
+            className="w-full min-w-0 bg-transparent text-base font-medium text-foreground placeholder:text-muted focus:outline-none"
           />
         </div>
 

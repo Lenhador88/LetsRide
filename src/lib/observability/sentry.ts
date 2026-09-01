@@ -12,8 +12,7 @@ import { scrubEvent, scrubValue, type JsonObject } from '@/lib/observability/scr
  * named place that talks to the outside, so the privacy posture is a property
  * of a file rather than of whoever last called `captureException`. Nothing
  * outside this directory imports `@sentry/*`, and
- * `src/lib/observability/__tests__/one-doorway.test.ts` is what keeps that
- * true.
+ * `__tests__/sentry.test.ts`'s *one doorway* case is what keeps that true.
  *
  * ## Why the Capacitor SDK alone, and not `@sentry/nextjs` beside it
  *

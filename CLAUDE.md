@@ -176,9 +176,7 @@ first is why it must never be dissolved back into components:
    **The participation gate is narrower than "every write", and stating it broader is how a gap
    gets inherited as covered.** `enforce_participation_gate` is on **twenty-two** tables on DEV and
    **seventeen** on PROD — measured 2026-09-01, and the five-table gap is `092`–`095` awaiting
-   promotion, which is the ordinary DEV-ahead state rather than a defect. This sentence said
-   "seventeen on BOTH" for a day after `092`–`095` applied, which is why the rule below is to
-   count rather than read. PROD was eleven
+   promotion, which is the ordinary DEV-ahead state rather than a defect. PROD was eleven
    until `081`, `083`, `084`, `085` and `091` went with it (`086`–`090` add no gate) —
    `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,

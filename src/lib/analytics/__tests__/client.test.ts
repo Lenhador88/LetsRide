@@ -3,7 +3,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
-  MASK_CLASS,
+  NO_CAPTURE_CLASS,
   analyticsSessionId,
   analyticsStatus,
   buildPostHogOptions,
@@ -62,15 +62,56 @@ describe('the options we hand PostHog', () => {
   it('records the session, unmasked except for the place search', () => {
     expect(options.disable_session_recording).toBe(false)
     expect(options.session_recording.maskAllInputs).toBe(false)
-    // The one narrowing, and the case that fails if somebody "tidies up" the
-    // selector: `place_search_attempts` holds no column that could store a
-    // search term because a meeting point is frequently a home address, and an
-    // unmasked replay of that field reinstates exactly what the schema refuses.
-    expect(options.session_recording.maskTextSelector).toBe(`.${MASK_CLASS}`)
+    // The one narrowing. **`blockClass` and not `maskTextClass`**, and the
+    // distinction is the whole mechanism rather than a naming preference:
+    // rrweb takes an input's value from `maskInputOptions` alone and never
+    // consults a text-mask class, so the first version of this asserted a
+    // setting that recorded the meeting point verbatim. This case is worth
+    // nothing on its own — see the pair of cases below, which assert the two
+    // halves that actually make the block work.
+    expect(options.session_recording.blockClass).toBe(NO_CAPTURE_CLASS)
+    expect(NO_CAPTURE_CLASS).toBe('ph-no-capture')
+  })
+
+  it('asks PostHog to mask personal data properties as well', () => {
+    // Belt and braces with `before_send` rather than instead of it: this covers
+    // properties the app never names, `before_send` covers the ones a future
+    // SDK adds. Neither is a superset.
+    expect(options.mask_personal_data_properties).toBe(true)
   })
 
   it('runs no surveys', () => {
     expect(options.disable_surveys).toBe(true)
+  })
+})
+
+describe('the place-search block, which was a no-op in its first form', () => {
+  const field = sourceWithoutComments('src/components/ui/PlaceSearchField.tsx')
+
+  it('puts the block class on the wrapper, not on the input', () => {
+    // Two independent reasons the obvious placement fails, both measured
+    // against the installed recorder: rrweb reads an input's value from
+    // `maskInputOptions` alone and never consults a class, and an `<input>` has
+    // no descendant text nodes for a text-mask to reach. The class has to sit
+    // on an ELEMENT WHOSE SUBTREE is blocked.
+    const input = field.slice(field.indexOf('<input\n            ref={inputRef}'))
+    const inputTag = input.slice(0, input.indexOf('/>'))
+    expect(inputTag).not.toContain('NO_CAPTURE_CLASS')
+
+    // On the outermost wrapper, which is the nearest common ancestor of the
+    // input and the suggestion panel.
+    expect(field).toContain("cn(NO_CAPTURE_CLASS, 'flex w-full flex-col gap-1.5')")
+  })
+
+  it('covers the suggestion panel, which is a SIBLING of the input', () => {
+    // The half that survives even a working input mask: the geocoder returns
+    // full addresses, so blocking the field alone still puts one on screen.
+    // Asserted structurally — the panel must render INSIDE the classed
+    // wrapper, so the wrapper must open before it and close after.
+    const wrapperAt = field.indexOf('cn(NO_CAPTURE_CLASS')
+    const panelAt = field.indexOf('overflow-y-auto rounded-lg border-2 border-border bg-surface')
+    expect(wrapperAt).toBeGreaterThan(-1)
+    expect(panelAt).toBeGreaterThan(wrapperAt)
   })
 })
 
@@ -85,12 +126,58 @@ describe('before_send strips the ids out of every URL PostHog sets itself', () =
         $pathname: '/rides/detail?id=8f14e45f-ceea-467a-9d3f',
         via: 'rsvp',
       },
-    })
+    }) as { properties: Record<string, string> }
 
-    expect(sent?.properties?.$current_url).toBe('https://app.letsride.social/rides/detail')
-    expect(sent?.properties?.$pathname).toBe('/rides/detail')
+    expect(sent.properties.$current_url).toBe('https://app.letsride.social/rides/detail')
+    expect(sent.properties.$pathname).toBe('/rides/detail')
     // Everything else survives, or the strip has eaten the event.
-    expect(sent?.properties?.via).toBe('rsvp')
+    expect(sent.properties.via).toBe('rsvp')
+  })
+
+  it('strips the session-entry URL, which rides on EVERY event', () => {
+    // Missed by the first version's four-key list. The session-props manager
+    // attaches the full href of whatever screen started the session, so one
+    // deep link stamps a content id onto every event for that whole session.
+    const sent = options.before_send({
+      event: 'ride_joined',
+      properties: {
+        $session_entry_url: 'https://app.letsride.social/postcards/detail?id=abc-123',
+        $session_entry_pathname: '/postcards/detail?id=abc-123',
+      },
+    }) as { properties: Record<string, string> }
+
+    expect(sent.properties.$session_entry_url).toBe('https://app.letsride.social/postcards/detail')
+    expect(sent.properties.$session_entry_pathname).toBe('/postcards/detail')
+  })
+
+  it('strips $set_once, which is a SIBLING of properties and outlives the event', () => {
+    // The worst of the three, because these land as PERSON properties: durable
+    // on the profile rather than on one event. A rider opening one deep link
+    // stamped a content id onto their profile for good.
+    const sent = options.before_send({
+      event: '$pageview',
+      properties: {},
+      $set_once: {
+        $initial_current_url: 'https://app.letsride.social/clubs/detail?id=def-456',
+        $initial_pathname: '/clubs/detail?id=def-456',
+      },
+    }) as { $set_once: Record<string, string> }
+
+    expect(sent.$set_once.$initial_current_url).toBe('https://app.letsride.social/clubs/detail')
+    expect(sent.$set_once.$initial_pathname).toBe('/clubs/detail')
+  })
+
+  it('matches by key SHAPE, so a key nobody enumerated is still stripped', () => {
+    // The doctrine `scrub.ts` already holds: the keys are PostHog's to add, and
+    // a list that type-checks today is what the next SDK version routes around
+    // silently.
+    const sent = options.before_send({
+      event: 'x',
+      properties: { $some_future_url: 'https://app.letsride.social/rides?id=z', n: 1 },
+    }) as { properties: Record<string, unknown> }
+
+    expect(sent.properties.$some_future_url).toBe('https://app.letsride.social/rides')
+    expect(sent.properties.n).toBe(1)
   })
 
   it('does not throw on an event with no properties', () => {
@@ -215,6 +302,13 @@ describe('the recorder still masks passwords, whatever maskAllInputs says', () =
       )
     }
 
-    expect(contents).toContain('password:!0')
+    // **Asserted on the FALSE BRANCH, not on the substring.** `password:!0`
+    // also terminates the `maskAllInputs: true` map, so the naive assertion
+    // stays green with the guarantee removed — which is what a reviewer proved
+    // by deleting the branch from a copy of the recorder and watching this
+    // file pass. The branch is what the unmasked posture actually rests on:
+    // `!1 === k` is `maskAllInputs: false`, and `{password:!0}` is what it
+    // normalises to.
+    expect(contents).toContain('!1===k?{password:!0}')
   })
 })

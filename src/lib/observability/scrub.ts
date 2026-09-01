@@ -79,8 +79,23 @@ const SUPABASE_KEY_PATTERN = /\bsb_(?:publishable|secret)_[A-Za-z0-9_-]{8,}/g
 
 const REDACTED = '[redacted]'
 
-/** Absolute URLs inside free text — an error message quoting the request that failed. */
-const URL_IN_TEXT_PATTERN = /\bhttps?:\/\/[^\s"'<>)\]}]+/g
+/**
+ * URLs inside free text — an error message quoting the request that failed.
+ *
+ * **Both absolute and root-relative, and the second half is not hypothetical.**
+ * Anchoring on `https?://` alone leaves `Failed to fetch
+ * /rest/v1/rides?id=eq.<uuid>` carrying its id, which is the exact shape a
+ * fetch wrapper or a thrown string produces. This file's stated rule is "from
+ * every URL anywhere in the payload", and a pattern that only reaches the
+ * absolute ones does not meet it.
+ *
+ * A bare `/path?x=1` needs the leading slash to be anchored on something, so
+ * the alternation requires either a scheme or a path segment starting at a
+ * word boundary. It deliberately does NOT try to find query strings with no
+ * URL around them — a message like `sorted by name?` is not a URL, and
+ * stripping from the first `?` in arbitrary prose would eat real text.
+ */
+const URL_IN_TEXT_PATTERN = /\bhttps?:\/\/[^\s"'<>)\]}]+|(?<![\w?&=])\/[A-Za-z0-9._~\-/]+\?[^\s"'<>)\]}]+/g
 
 /**
  * Strip the query string and fragment, keeping origin and path.
