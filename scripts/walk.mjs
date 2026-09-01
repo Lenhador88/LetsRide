@@ -162,6 +162,17 @@ const STATIC_PATHS = [
   '/clubs/explore',
   '/clubs/new',
   '/profile',
+  // Added 2026-09-01, with a reason rather than to broaden the sweep: this
+  // screen renders an EXHAUSTIVE SWITCH over `notifications.type` in two places
+  // (`copy.ts` and `NotificationsListItem`'s `describe`), and it was the only
+  // route in the app the walk could not see. `098` took that switch from
+  // fourteen arms to sixteen; a missing arm degrades to
+  // `did something on LetsRide.` — deliberately, per PD-335 — which is exactly
+  // the kind of silent wrongness no other gate here catches, `tsc` being happy
+  // with a `default` branch and the component tests rendering a fixture rather
+  // than a real row. It renders for a rider with no notifications too, so it
+  // costs nothing on an empty account.
+  '/notifications',
 ]
 
 /**
