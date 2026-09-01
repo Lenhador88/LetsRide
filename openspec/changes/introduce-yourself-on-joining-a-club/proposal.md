@@ -116,8 +116,14 @@ club_threads
 **The title is a constant that names nobody** (`Introduction`), because `club_threads` has no
 UPDATE grant and no UPDATE policy — a title is immutable for the life of the thread, and
 `club-timeline-engagement` §D2 refused a shape precisely for publishing a rider's username into
-one. The screen renders the newcomer's name from a live `profiles` read through
-`introduces_user_id`, so nothing is snapshotted and nothing outlives the membership.
+one. **The cost is that a club's Threads list can show several identically-titled rows**, so the
+secondary line on those rows carries the author's name — derived from `author_id`, which survives
+the leave that nulls the marker. The screen renders the newcomer's name from a live `profiles` read **hinted on
+`author_id`** — the marker is a composite key into `club_members` and has no relationship to
+`profiles` at all, so it is the thread's author that names the rider. Nothing is snapshotted and
+nothing outlives the membership. `design.md` §D8 carries the measurement, and the hint is not
+optional: `club_threads`↔`profiles` is **already ambiguous** and an unhinted embed answers
+`PGRST201` / HTTP 300.
 
 **The text is a column rather than a first `club_messages` row, and that is what makes the count
 honest.** With the introduction in the thread, *every* `club_messages` row in it is a comment, so
@@ -140,9 +146,12 @@ CHECKs, one column-scoped SELECT grant, one `security definer` RPC, and the RLS 
 not move; **one new PUBLIC function**, so the security-advisor count moves by exactly one.
 
 ```sql
--- 22 on DEV, 17 on PROD, and 097 leaves both alone — it adds no table.
+-- 097 adds no table, so this number does not move — whatever it is when 097 applies.
 select count(*) from pg_trigger
- where tgname = 'enforce_participation_gate' and not tgisinternal;   -- 22 on DEV, 2026-09-01
+ where tgname = 'enforce_participation_gate' and not tgisinternal;
+-- 22 on DEV, 2026-09-01. PROD reads 17 TODAY and 22 by the time 097 reaches it, because the
+-- five-table gap IS 092-095 and those go first. Read it, do not carry it: the baseline for
+-- this check is taken AFTER the promotion group lands, not from this sentence. Task 0.4.
 ```
 
 ### The database
@@ -171,10 +180,14 @@ select count(*) from pg_trigger
 - **The join row loses its ⋯ and gains a comment count.** `092`'s `Say welcome` goes with it; the
   count is the door to the same conversation that menu item used to compose. The wave **stays** —
   the owner's words, *"this can be waved or commented"*.
-- **Thread rows swap `2 replies` for the icon and the number** — and **the `+` survives**.
-  `ClubTimelineThreadRow`'s count is a floor when the club-wide message window filled, and its own
-  header says so: *"without it the row asserts a total it cannot know"*. A bare number is that
-  assertion. §Q5.
+- **Thread rows swap `2 replies` for the icon and the number** — and **the `+` survives on exactly
+  the rows that carry it today**. `ClubTimelineThreadRow`'s count is a floor when the club-wide
+  message window filled, and its own header says so: *"without it the row asserts a total it cannot
+  know"*. A bare number is that assertion. **A full window is necessary and not sufficient**:
+  `mergeClubTimeline` already clears the flag on every thread-**creation** row, because a creation
+  row inside the horizon has all its replies inside the window, and carrying it there renders `2+`
+  on a thread with exactly two. Re-deriving the rule from the window alone re-adds a `+` that is
+  known wrong. §Q5, and `design.md` §D6.
 - **Backing out of a thread returns to the club detail** when that is where the rider came from,
   carried as a bounded parameter in `CREATE_CLUB_PARAM`'s shape rather than a referrer. §Q4.
 
@@ -306,17 +319,28 @@ delete from club_members ...   -- succeeds; a marker with no text is still 23514
 
 ## Open decisions
 
-Five, and **one is blocking**. Each has a recommended default so the build can start on it and be
-corrected, per `CLAUDE.md` §Ambiguity → assume and proceed. The full argument on each side is in
+**Six, and one is blocking. Three of the six are the product owner's** — they are marked, because
+an owner-only decision mixed into a list of build tasks is the one that never gets asked. Each has a
+recommended default so the build can start on it and be corrected, per the standing
+*ambiguity → assume and proceed* instruction in `CLAUDE.md`. The full argument on each side is in
 `design.md`.
 
 | # | Question | Who answers | Blocking | Recommended default |
 |---|---|---|---|---|
 | **Q1** | Is the introduction mandatory? | **Product owner** | **Yes** | Required-to-post, dismissible — Post disabled until there is text, plus `Not now` |
 | **Q2** | Prompt on the Join action, or on the state? | Agent | No | On the **state**: a membership with no introduction. Reaches all six doors |
-| **Q3** | Does the default club take introductions? | Product owner | No | **No.** `058`'s carve-out, for the same reason |
-| **Q4** | How does a thread know where to go back to? | Agent | No | A bounded `from` parameter, `CREATE_CLUB_PARAM`'s shape; absent → the thread list |
-| **Q5** | Does the comment count keep its `+`? | Agent | No | **Yes**, on the thread row. The join row's count needs no `+` (§D6) |
+| **Q3** | Does the default club take introductions? | **Product owner** | No | **No.** `058`'s carve-out, for the same reason |
+| **Q4** | Does "back to the club detail **at that section**" mean the scroll position too? | **Product owner** | No | The screen first, the scroll position deferred — see below |
+| **Q5** | Does the comment count keep its `+`? | Agent | No | **Yes**, on the thread row's reply entries. Its creation entries are exact and must not gain one (§D6) |
+| **Q6** | Should a comment on an introduction notify the newcomer? | **Product owner** | No | **Not in this change.** No notification type in this app fires on a club message at all |
+
+**Q4 deliberately keeps a phrase of the owner's own request open rather than settling it.** They
+asked for the club detail *"at that section"*; this change ships the **screen** and defers the
+**scroll position**, because the club detail is a timeline with no named anchors and restoring a
+position is its own piece of work. That is a partial delivery of a stated ask, so it is named here
+and it does not close with this change — the remainder is a follow-up issue, not a comment on a
+closed one. If the owner reads the plain return as the bug they reported, the scroll position moves
+into scope and `design.md` §Q4 has the two ways to build it.
 
 ## Impact
 
@@ -326,6 +350,9 @@ corrected, per `CLAUDE.md` §Ambiguity → assume and proceed. The full argument
 - **Affected code** — `src/lib/data/club-introductions.ts` (new),
   `src/lib/actions/club-introductions.ts` (new),
   `src/components/clubs/IntroductionPrompt.tsx` (new),
+  `src/lib/data/club-threads.ts` (**`getClubThread` must select `introduction`** — today it selects
+  `'id, club_id, author_id, title, created_at'`, so without this the text is written and read by
+  nothing),
   `src/components/clubs/ClubTimelineEventRow.tsx` (the ⋯ goes, the count arrives),
   `src/components/clubs/ClubTimelineThreadRow.tsx` (`replyLabel` becomes an icon and a number),
   `src/components/clubs/ClubTimeline.tsx`, `src/components/clubs/JoinClubButton.tsx`,
@@ -336,15 +363,27 @@ corrected, per `CLAUDE.md` §Ambiguity → assume and proceed. The full argument
 - **Affected database** — `097`: two columns on `club_threads`, one composite foreign key with a
   **column-scoped** `ON DELETE SET NULL`, one partial unique index, two CHECK constraints, one
   column-scoped SELECT grant, one `security definer` RPC. **No new table**, so the
-  participation-gate count stays at 22 (DEV) / 17 (PROD). **One new security advisor** —
-  `authenticated_security_definer_function_executable`, taking PROD's accounting from 24 to 25 —
-  because `introduce_to_club` is the one PUBLIC function this migration adds.
+  participation-gate count is **unchanged**, and **exactly one** new security advisor —
+  `authenticated_security_definer_function_executable` — because `introduce_to_club` is the one
+  PUBLIC function this migration adds.
+
+  **Both deltas are stated as deltas, and their baselines are read at apply time rather than from
+  this file**, because `092`–`096` move both of them on PROD *before* `097` gets there. Today's
+  numbers are PROD 17 gate triggers and 24 advisors of that class; after the promotion group and
+  before `097` they are **22 and 33** — measured on DEV, which already has `092`–`096`:
+
+  ```sql
+  select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.prosecdef
+     and has_function_privilege('authenticated', p.oid, 'EXECUTE');   -- 33 on DEV, 2026-09-01
+  ```
+
+  So `097` verifies against 22 → 22 and 33 → 34 on both projects. Task 0.4 re-measures rather
+  than trusting either pair.
 - **Promotion** — `092`–`096` are DEV-only as of 2026-09-01, so `097` lands on a DEV that has them
   and a PROD that has none. It is **additive and NOT inert** (`036`'s hand-exercise gate applies:
   the RPC writes into a live table under a live gate), and it must go to PROD **after** `092`–`096`
   in filename order and **before** the bundle that calls `introduce_to_club` serves — a client
   calling an absent RPC gets `PGRST202` and the prompt is dead, which is the safe side, while the
-  reverse order is also safe. `tasks.md` §7 carries it. Verify rather than trust:
+  reverse order is also safe. `tasks.md` §9 carries it. Verify rather than trust:
   `list_migrations` against both refs against `ls supabase/migrations/`.
-</content>
-</invoke>

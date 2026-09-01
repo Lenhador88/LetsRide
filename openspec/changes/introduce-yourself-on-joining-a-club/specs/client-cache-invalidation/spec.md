@@ -51,4 +51,3 @@ different predicate, and it SHALL NOT survive a change of session.
 - **WHEN** two screens display a count for the same thread
 - **THEN** they SHALL read it under the same key and the same predicate, or under two keys
 - **AND** neither SHALL reuse the other's entry
-</content>

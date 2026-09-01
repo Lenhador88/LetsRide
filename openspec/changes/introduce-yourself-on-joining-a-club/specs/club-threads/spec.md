@@ -81,4 +81,3 @@ existing function.
 - **WHEN** two riders who have blocked each other both comment on the same introduction
 - **THEN** each SHALL see their own comment and not the other's
 - **AND** neither SHALL be told that the other commented
-</content>

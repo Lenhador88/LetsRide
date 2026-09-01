@@ -1,6 +1,6 @@
 # Design — Introduce Yourself on Joining a Club
 
-See `proposal.md` §Why for motivation and §The two traps for the two shapes that were measured and
+See `proposal.md` §Why for motivation and §The three traps for the shapes that were measured and
 rejected. This file is the *how*: nine decisions, six open questions, and the migration plan.
 
 Everything measured here was measured against `letsride-dev` (`fpmrimzxadewsaiwpsel`) on
@@ -22,8 +22,8 @@ with_check: author_id = auth.uid()
 ```
 
 So the join commits first and the introduction is a second, separately-failable write. There is no
-client-side transaction — PostgREST offers none and `CLAUDE.md` §The render model is the client
-puts the mutation path in the browser. This is the whole content of §Q1.
+client-side transaction — PostgREST offers none and `CLAUDE.md` §Technology Decisions puts the
+mutation path in the browser. This is the whole content of §Q1.
 
 **2. A thread has a title and no body.** `club_threads` is `(id, club_id, author_id, title,
 created_at)` and nothing else; `CreateThreadForm` says in its own header why it asks for a title and
@@ -90,7 +90,7 @@ Three options were weighed:
 
 | Option | Verdict |
 |---|---|
-| **a** `club_members.introduction_thread_id` | **Declined.** Needs an UPDATE policy on the roster, and that policy hands out `admin` — measured, `proposal.md` §Trap 2 |
+| **a** `club_members.introduction_thread_id` | **Declined.** Needs an UPDATE policy on the roster, and that policy hands out `admin` — measured, `proposal.md` §The three traps, Trap 2 |
 | **b** `club_threads.introduces_user_id` | **Adopted** |
 | **c** derived — "the earliest thread this rider authored in this club" | **Declined.** Not a decision the schema records, so it changes meaning whenever a rider's second thread is written first, and it is unindexable as a uniqueness rule |
 
@@ -133,6 +133,20 @@ policy for anyone, so an introduction cannot be edited by its author, an admin, 
 is `add-club-threads` §*A thread title and a message body SHALL NOT be editable by anyone* applied
 to a third column, not a new rule.
 
+**A column nothing reads is a column nothing wrote.** `getClubThread` selects
+`'id, club_id, author_id, title, created_at'` today, so the thread detail must be widened to
+select `introduction` in the same change — otherwise a rider types an introduction, posts it, a
+member taps the count and lands on a thread titled `Introduction` with no body and no messages.
+The task is 6.5 and it is not optional; it is the reason the argument for SET NULL over CASCADE in
+§D5 is about *words other riders can read* rather than about a stored string.
+
+**The render is gated on `introduction`, never on `introduces_user_id`, and the two come apart
+permanently.** The foreign key nulls the marker when the subject leaves; the text stays. A render
+gated on the marker therefore drops every ex-member's introduction — and every comment written
+under it — out of a thread that is still there and still readable. The author's name likewise comes
+from `author_id`, which survives the leave, and not from the marker, which does not and which
+points at a membership rather than at a profile (§D8).
+
 ### D4 — One `security definer` RPC writes it
 
 **Chosen:** `public.introduce_to_club(target_club uuid, body text) returns uuid`.
@@ -171,8 +185,8 @@ available because `club_members`' primary key is `(club_id, user_id)` — the sa
 `club_join_waves` uses, and it is the third table to use it.
 
 **`ON DELETE SET NULL (introduces_user_id)`, with the column list.** Without it the delete tries to
-null `club_id` as well and the leave fails with `23502` — measured, `proposal.md` §Trap 1. Postgres
-15+ supports the column list; DEV is 17.6.
+null `club_id` as well and the leave fails with `23502` — measured, `proposal.md` §The three traps,
+Trap 1. Postgres 15+ supports the column list; DEV is 17.6.
 
 **Why SET NULL rather than CASCADE.** `092` cascades a join wave with the membership, correctly:
 the wave decorates the *event*, and when the event goes so should its reactions. An introduction is
@@ -227,10 +241,21 @@ that is the whole reason:
 | Row | Source | Bounded? |
 |---|---|---|
 | Join row (introduction) | `messages_count:club_messages(count)` embedded on the one thread | No — the aggregate runs in Postgres over every row RLS returns |
-| Thread row | `ClubThreadActivity`, folded from `getClubThreadReplies`' club-wide `CLUB_TIMELINE_REPLIES = 200` message window | **Yes** — `partial` is what turns `12` into `12+` |
+| Thread row — **reply** entry | `ClubThreadActivity`, folded from `getClubThreadReplies`' club-wide `CLUB_TIMELINE_REPLIES = 200` message window | **Yes** — `partial` is what turns `12` into `12+` |
+| Thread row — **creation** entry | the same window, with `partial` **forced false** by `withExactCount` | **No** — exact, and marking it is a defect |
 
-Dropping the `+` when `2 replies` becomes an icon and a number would make the thread row assert a
+Dropping the `+` when `2 replies` becomes an icon and a number would make the reply row assert a
 total it cannot know — its own component header says so. §Q5.
+
+**The third row of that table is the half that inverts if the rule is restated carelessly, and it
+is already load-bearing code.** `mergeClubTimeline` clears the flag on every creation entry
+(`club-timeline.ts:417`, and the reasoning at :330-338): the stream is cut at the newest of the
+sources' horizons and the reply source's horizon is the oldest message it read, so a creation entry
+that survives the cut was created *after* that instant and every one of its replies is inside the
+window. **A full window is therefore necessary and not sufficient**, and a spec saying "mark it
+when the window filled" instructs an implementer to re-add a `+` to a thread with exactly two
+replies. A test asserting only that `12+` still renders as `12+` passes under both behaviours and
+cannot catch it, which is why `tasks.md` 8.4 asserts the creation row too.
 
 ### D7 — The prompt is driven by state, not by the Join button
 
@@ -266,11 +291,41 @@ a state the app preserves opinions across.
 
 Two hazards, both of which this repo has already paid for once.
 
-**The embed hint.** Anything reading `profiles` off a thread or a membership goes through
-`MEMBER_PROFILE_EMBED` in `src/lib/data/columns.ts`. `092` made `club_members`↔`profiles` ambiguous
-and took four screens down with `PGRST201` / HTTP 300 (PD-363), and no gate in this repo can see it
-— `src/lib/data/__tests__/embed-hints.test.ts` is the only thing that refuses an unhinted embed,
-and `!inner` is a join modifier rather than a hint.
+**The embed hint, and `MEMBER_PROFILE_EMBED` is the WRONG one here.** That constant is
+`profile:profiles!user_id(...)`, which is correct off `club_members` — a table with a real
+`user_id` foreign key — and wrong off `club_threads` twice over: `club_threads` has **no `user_id`
+column at all**, and the relationship that does exist is on `author_id`.
+
+**`club_threads`↔`profiles` is already ambiguous, before this change adds anything.** Measured on
+DEV 2026-09-01 — one direct foreign key and two genuine junctions, a junction being two foreign
+keys whose union is exactly the primary key:
+
+```sql
+-- direct
+club_threads_author_id_fkey        club_threads(author_id) -> profiles
+-- junctions: PK is exactly the two FK columns
+club_thread_reads                  PRIMARY KEY (user_id, thread_id)
+club_thread_waves                  PRIMARY KEY (thread_id, user_id)
+-- NOT junctions, and this is the distinction CLAUDE.md insists on: both hold a key
+-- to each side and both are PRIMARY KEY (id), so neither makes anything ambiguous
+club_messages                      PRIMARY KEY (id)
+club_thread_reports                PRIMARY KEY (id)
+```
+
+So **a thread → `profiles` embed SHALL hint `author_id`** —
+`author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS})`, which is exactly what
+`getClubThreadReplies` already writes off `club_messages` (`src/lib/data/club-timeline.ts:692`).
+`MEMBER_PROFILE_EMBED` stays the constant for `club_members` rows and is not reused here.
+
+**The marker is not an embed path.** `(club_id, introduces_user_id)` is a composite key into
+`club_members`, so there is no `introduces_user_id → profiles` relationship for PostgREST to
+resolve and no hint that would make one — the rider's name comes from the thread's author, who is
+the same rider by construction.
+
+`092` made `club_members`↔`profiles` ambiguous and took four screens down with `PGRST201` /
+HTTP 300 (PD-363) *this week*, and no gate in this repo can see it —
+`src/lib/data/__tests__/embed-hints.test.ts` is the only thing that refuses an unhinted embed, and
+`!inner` is a join modifier rather than a hint.
 
 **The column list.** `097` adds two columns to a table whose SELECT is already column-scoped for
 `authenticated`. The grant must name them or every read of `introduces_user_id` answers `42501`,
@@ -360,7 +415,7 @@ confirmed serving — `070`'s rule, not `069`'s.
 ## Verification
 
 ```bash
-# The probes in proposal.md §The two traps left nothing behind:
+# The probes in proposal.md §The three traps left nothing behind:
 ```
 ```sql
 select column_name from information_schema.columns
@@ -377,10 +432,27 @@ select conname, pg_get_constraintdef(oid) from pg_constraint
  where conrelid = 'public.club_threads'::regclass order by contype, conname;
 -- the FK must read: ON DELETE SET NULL (introduces_user_id) — the column list is the assertion
 select count(*) from pg_trigger
- where tgname='enforce_participation_gate' and not tgisinternal;   -- unchanged: 22 DEV / 17 PROD
+ where tgname='enforce_participation_gate' and not tgisinternal;   -- UNCHANGED by 097
 ```
 
-Then `get_advisors(security)` — exactly one new
+**Both of the counts below are checked as DELTAS against a baseline read immediately before `097`
+applies, never against a number written here.** `092`–`096` move both of them on PROD *and go
+first*, so a baseline taken from this document would be wrong on the project it is checked against:
+
+| | PROD today | PROD after `092`–`096`, before `097` | after `097` |
+|---|---|---|---|
+| `enforce_participation_gate` triggers | 17 | 22 | **22** — unchanged, `097` adds no table |
+| `authenticated_security_definer_function_executable` | 24 | 33 | **34** |
+
+The middle column is measured off DEV, which already has `092`–`096`:
+
+```sql
+select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.prosecdef
+   and has_function_privilege('authenticated', p.oid, 'EXECUTE');   -- 33 on DEV, 2026-09-01
+```
+
+Then `get_advisors(security)` — exactly **one** new
 `authenticated_security_definer_function_executable`, for `introduce_to_club`. Two would mean a
 `private` helper was created in `public` by mistake.
 
@@ -493,17 +565,35 @@ alternative is not "no welcome" but "a modal during onboarding", and because a r
 reach every other club. If the owner prefers introductions there, the change is one clause in §D7's
 rule and one assertion — the spec is written so it is a predicate, not a redesign.
 
-### Q4 — How does the thread know where to go back to? *Non-blocking. The agent's.*
+### Q4 — Does "at that section" include the scroll position? *Non-blocking. **Product owner's**.*
 
-**Recommended default:** a bounded origin parameter, §D9. Absent → the thread list, which is
-today's behaviour and what every deep link produces.
+**The mechanism is the agent's and is settled** — a bounded origin parameter, §D9. Absent → the
+thread list, which is today's behaviour and what every deep link produces. **What is the owner's is
+how much of their own phrase this change delivers**, and that is why this question is routed to them
+rather than answered here.
 
-The owner asked for "the club detail, **at that section**". The club detail is a timeline with a
-header, so "that section" is a scroll position rather than a named anchor, and restoring it needs
-either an anchor on the row or the browser's own scroll restoration. **Recommendation: the
-parameter first, the scroll position second, and only if the plain return reads wrong** — a back
-button that lands at the top of the right screen is a fix; one that lands at the top of the wrong
-screen is the bug being reported.
+They asked for the club detail *"at that section"*. The club detail is a timeline with a header and
+no named anchors, so "that section" is a **scroll position**, and restoring one needs either an
+anchor per row plus a fragment, or the browser's own scroll restoration re-enabled for this route —
+neither of which is the parameter, and both of which are their own piece of work.
+
+**Recommended default: ship the screen, defer the position, and say so.** A back button that lands
+at the top of the right screen is a fix; one that lands at the top of the wrong screen is the bug
+being reported, so the parameter alone is worth having on its own.
+
+**But this is a partial delivery of a stated ask and SHALL be recorded as one.** The product owner's
+standing instruction after PD-279 — *"the main feature is not being developed in the main story we
+discussed about"* — is exactly about this shape: a story that ships the easy half and writes off the
+phrase it was asked for. So the remainder is a follow-up issue **before** this one closes, never a
+comment on a closed one, and `proposal.md` §Open decisions names it in the table the owner actually
+reads.
+
+Two ways to build the deferred half, when it is wanted:
+
+- **An anchor per timeline row** plus a fragment on the return URL. Deterministic, survives a
+  reload, and costs an id on every row.
+- **Scroll restoration**, re-enabled for this route. Free when it works and silently wrong when the
+  timeline re-fetches and re-lays-out between the two paints, which is the common case here.
 
 ### Q5 — Does the comment count keep the `+`? *Non-blocking. The agent's.*
 
@@ -512,7 +602,7 @@ gives the reason: the two numbers come from different places and only one of the
 Losing the `+` in the redesign would be a silent regression — the number would look the same and
 mean something weaker.
 
-### Q6 — Should a comment on an introduction notify the newcomer? *Non-blocking. Product owner's.*
+### Q6 — Should a comment on an introduction notify the newcomer? *Non-blocking. **Product owner's**, and in `proposal.md` §Open decisions' table.*
 
 **Recommended default: not in this change, and say so out loud.** No notification type in this
 schema fires on a `club_messages` insert — measured off `notifications_type_check`, which lists
@@ -525,4 +615,3 @@ whose author is *waiting* for an answer. It wants its own proposal: a reply fan-
 set (everyone in the thread? the thread's author? the club?), a collapse rule, a retraction on
 delete, and a fifteenth type — `event-fanout-integrity`'s ten requirements each apply. Named here
 so it is a decision rather than an omission.
-</content>

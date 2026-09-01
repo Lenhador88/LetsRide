@@ -67,15 +67,29 @@ preserved rather than harmonised, because only one of them is bounded by a read 
   row security returns for that thread. It SHALL NOT carry a "more than this" mark, because there
   is no window to overflow.
 - The **thread row's count** SHALL continue to be derived from the club-wide message window, and
-  SHALL continue to mark that it is a floor when that window filled. Replacing the words
-  `N replies` with an icon and a number SHALL NOT drop that mark: without it the row asserts a
-  total it cannot know.
+  SHALL continue to mark that it is a floor **on exactly the rows that already carry the mark
+  today, and on no others**. Replacing the words `N replies` with an icon and a number SHALL
+  change only the rendering: a row marked as a floor before the change SHALL be marked after it,
+  and a row not marked before SHALL NOT become marked.
+
+  **A full window is necessary and NOT sufficient**, and this is the half that inverts if the rule
+  is restated from the window alone. A thread's **creation** row that survives the stream's
+  coherence cut was created after the reply window's oldest message, so every one of its replies is
+  inside that window and its count is exact — the floor mark is cleared on those rows deliberately,
+  and carrying it renders `2+` on a thread that has exactly two. The mark is earned on a **reply**
+  row, where an older thread's earlier messages can genuinely fall outside.
 
 Neither count SHALL be presented as a fact about the club, and neither SHALL order any list.
 
-#### Scenario: The windowed count keeps its floor mark
-- **WHEN** the message window that feeds a thread row's count is full
+#### Scenario: The windowed count keeps its floor mark where it had one
+- **WHEN** a reply row's count is derived from a full message window
 - **THEN** the number SHALL be rendered as a floor and SHALL NOT be rendered as an exact total
+
+#### Scenario: A creation row does NOT gain a floor mark from a full window
+- **WHEN** a thread-creation row inside the coherence horizon has its count derived from a full
+  message window
+- **THEN** the number SHALL be rendered exactly, with no floor mark
+- **AND** a thread with two replies SHALL render `2` and never `2+`
 
 #### Scenario: The introduction count carries no floor mark
 - **WHEN** a join row draws its introduction's comment count
@@ -100,4 +114,3 @@ introduced themselves"* as a row — which would be a source and would owe a hor
 - **WHEN** the screen reads introductions for its join entries
 - **THEN** it SHALL read only for the subjects already on the stream
 - **AND** it SHALL NOT read every introduction the club has ever held
-</content>

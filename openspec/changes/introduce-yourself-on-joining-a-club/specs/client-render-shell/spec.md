@@ -55,4 +55,3 @@ is the intended outcome, and different from telling them a number.
 - **WHEN** the read that supplies introductions fails entirely
 - **THEN** every join row SHALL still render its sentence, its time and its wave
 - **AND** the failure SHALL cost the doors, not the rows
-</content>

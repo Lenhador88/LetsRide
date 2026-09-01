@@ -31,6 +31,11 @@ way §5 says.
       introduction is, why the marker is on `club_threads` and not on `club_members` (the measured
       role escalation), why the foreign key names its column list, why the pairing CHECK is
       one-directional, and the two rolled-back probes that establish the last two.
+- [ ] 1.1a In that header, state **why the `SET NULL` cannot trip the participation gate**: the
+      gate trigger on `club_threads` is `BEFORE INSERT` only, so the UPDATE the foreign key
+      performs on a leave fires nothing. Without that sentence the next reader has to re-derive it,
+      and the obvious wrong conclusion — that a leave by an un-onboarded rider is refused — reads
+      exactly like the two traps above it.
 - [ ] 1.2 `alter table public.club_threads add column introduces_user_id uuid` and
       `add column introduction text`. Both nullable, no default.
 - [ ] 1.3 The bounds CHECK on `introduction`: non-blank and at most 1000 characters, matching
@@ -133,8 +138,16 @@ Each of these is a policy or constraint change with no assertion until it is wri
       subjects already on the stream, returning `{ threadId, commentCount }` per subject.
       `attachClubWaveState`'s shape, including its fail-to-`{}` rule and its
       resolved-versus-not-yet distinction. Use the proven embedded aggregate
-      (`comments_count:postcard_comments(count)`'s shape); name the foreign key on any `profiles`
-      embed, per `MEMBER_PROFILE_EMBED` and PD-363.
+      (`comments_count:postcard_comments(count)`'s shape). This read carries **no** introduction
+      text — the text belongs to the thread detail, 6.5 — and the join row needs only the id and
+      the number.
+- [ ] 6.1a Any `profiles` embed off `club_threads` SHALL hint **`author_id`**, not `user_id`.
+      `MEMBER_PROFILE_EMBED` is `profiles!user_id` and is correct off `club_members` **only**;
+      `club_threads` has no `user_id` column and its relationship to `profiles` is already
+      ambiguous through `club_thread_reads` and `club_thread_waves` (`design.md` §D8 carries the
+      measurement). Copy `getClubThreadReplies`' spelling at `club-timeline.ts:692`. Then run
+      `npx vitest run src/lib/data/__tests__/embed-hints.test.ts` — it is the only gate that sees
+      this, and PD-363 is what an unhinted one costs.
 - [ ] 6.2 `src/lib/actions/club-introductions.ts` — `introduceToClub(clubId, body)`, a plain async
       function calling the RPC, returning `{ error }` in the repo's shape, and invalidating the
       four keys §7 names.
@@ -143,6 +156,11 @@ Each of these is a policy or constraint change with no assertion until it is wri
       "do I owe one" state. Do **not** reuse the wave keys.
 - [ ] 6.4 The "does this rider owe an introduction" read — the rule in `club-introductions`
       §*The prompt SHALL be driven by the ABSENCE of an introduction*, evaluated from state.
+- [ ] 6.5 **`getClubThread` SHALL select `introduction`** — today it selects
+      `'id, club_id, author_id, title, created_at'` (`src/lib/data/club-threads.ts:106`), so
+      without this task the text is written and never read by anything. Add
+      `introduces_user_id` alongside it only if a screen needs the marker; the render does not
+      (7.9).
 
 ## 7. Client — screens
 
@@ -168,6 +186,17 @@ Each of these is a policy or constraint change with no assertion until it is wri
       `src/lib/routes.ts`, read by the thread page for **both** the header arrow and
       `useSwipeBack` — they must not disagree. Absent → the thread list, which is today's
       behaviour and what every deep link produces.
+- [ ] 7.9 **Render the introduction on the thread detail**, above the messages, attributed to the
+      thread's author. Gate the render on `introduction !== null` and **never** on
+      `introduces_user_id` — after a leave the marker is NULL and the text survives, so a
+      marker-gated render makes every ex-member's introduction and every comment under it vanish
+      from a thread that still exists.
+- [ ] 7.10 Narrow the empty-thread state: a thread with an introduction and no comments SHALL draw
+      the introduction plus an invitation to reply, not the existing "nothing here yet" line. A
+      thread with neither keeps that line unchanged.
+- [ ] 7.11 The Threads list and the timeline's thread entries: every introduction carries the same
+      constant title, so the row's `lead` line SHALL name the author. Derive it from the thread's
+      author, so it survives the leave that nulls the marker.
 
 ## 8. Tests
 
@@ -177,8 +206,13 @@ Each of these is a policy or constraint change with no assertion until it is wri
       only checks something rendered, and this row has now lost one control and gained another.
 - [ ] 8.3 A component test asserting the wave control survives on the join row in both states, and
       is still absent on the viewer's own row. Verify it both ways: removing the wave must fail it.
-- [ ] 8.4 A component test for the thread row asserting the floor mark survives the redesign —
-      `12+` must still render as `12+`. Verify both ways: dropping the `+` must fail it.
+- [ ] 8.4 A component test for the thread row asserting the floor mark survives the redesign, in
+      **both** directions — `12+` must still render as `12+` on a row whose activity is `partial`,
+      **and a row whose activity is not `partial` must render `12` with no mark**. The second case
+      is the one that matters: an implementer who re-derives the rule from "the window filled"
+      re-adds the `+` to every thread-creation row, and a test asserting only the first case passes
+      under both behaviours. Verify both ways — forcing `partial` true on the exact-count case must
+      fail it, and dropping the `+` from the floor case must fail it.
 - [ ] 8.5 `PGPASSWORD=postgres npm test` — the full RLS suite, comparing label sets with the
       previous run, not counts.
 - [ ] 8.6 `npm run test:unit`, `npx tsc --noEmit`, `npm run lint`, `npm run build`.
@@ -221,4 +255,3 @@ Each of these is a policy or constraint change with no assertion until it is wri
       count moves by one. Write each beside the command that re-derives it.
 - [ ] 10.5 A `reviewer` pass on this proposal **before** any SQL is written — `openspec/` sits in
       CI's denylist and the RLS suite can only assert what somebody thought to write down.
-</content>

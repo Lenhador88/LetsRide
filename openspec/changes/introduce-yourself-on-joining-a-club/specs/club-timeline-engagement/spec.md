@@ -34,4 +34,3 @@ but "a modal inside the onboarding wizard".
 Every other requirement of `club-timeline-engagement` is untouched. The wave stays, on both
 subjects, with its own-row absence, its per-viewer count and its fan-out exactly as `092` shipped
 them — the product owner's words being *"this can be waved or commented"*.
-</content>

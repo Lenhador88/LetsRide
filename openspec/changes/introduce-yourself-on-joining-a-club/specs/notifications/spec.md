@@ -44,4 +44,3 @@ of event fan-out integrity.
 - **WHEN** a reply notification is added in a later change
 - **THEN** it SHALL treat an introduction as an ordinary thread
 - **AND** no notification type SHALL exist that fires only for introductions
-</content>

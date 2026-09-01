@@ -113,4 +113,3 @@ decided.
 #### Scenario: The bound matches its sibling
 - **WHEN** the new column's maximum is compared with the message body's
 - **THEN** they SHALL be equal, and the equality SHALL be stated where the column is defined
-</content>

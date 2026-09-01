@@ -338,6 +338,60 @@ at all rather than a disabled or empty one — a tap that cannot succeed SHALL N
 - **THEN** the row SHALL draw no comment icon and no count
 - **AND** the row SHALL NOT be a link to a thread
 
+### Requirement: The introduction text SHALL be rendered on its thread, and the render SHALL key off the TEXT rather than the marker
+
+The introduction is the first thing a reader of the thread sees — above the comments, attributed to
+its author, and present whether or not anybody has commented. A thread carrying an introduction
+SHALL NOT render as an empty thread with a title and nothing in it.
+
+**The render SHALL be driven by the presence of the text, not by the presence of the marker.** The
+two come apart permanently the moment the subject leaves the club: the marker is nulled by the
+foreign key and the text survives. Keying the render off the marker would make every ex-member's
+introduction — and every comment written under it — silently vanish from a thread that still
+exists, which is the exact loss the SET NULL was chosen to prevent.
+
+**The author's name SHALL come from the thread's author**, which is the introducing rider by
+construction and remains correct after they leave. It SHALL NOT be derived from the marker: the
+marker is a key into the membership, not into the rider's profile.
+
+**The empty-thread state is narrowed, not removed.** A thread with no introduction and no messages
+still draws the existing empty-thread line; a thread with an introduction and no comments draws the
+introduction and an invitation to reply.
+
+#### Scenario: A posted introduction is visible to a reader of its thread
+- **WHEN** a member opens an introduction's thread
+- **THEN** the introduction text SHALL be rendered, attributed to its author
+- **AND** it SHALL be rendered before any comment
+
+#### Scenario: A brand-new introduction does not read as an empty thread
+- **WHEN** an introduction has been posted and nobody has commented
+- **THEN** the thread SHALL show the introduction
+- **AND** it SHALL NOT show the "nothing here yet" state that a thread with no messages shows
+
+#### Scenario: An ex-member's introduction still renders
+- **WHEN** the subject has left the club, so the marker is NULL and the text remains
+- **THEN** the thread SHALL still render the introduction and every comment under it
+- **AND** the author SHALL still be named
+
+### Requirement: Introductions SHALL be distinguishable from one another wherever threads are listed
+
+Every introduction carries the same constant title, so a club with several of them shows several
+identically-titled rows on the Threads list and on the timeline's thread entries. Each such row
+SHALL carry, in its secondary line, something that tells them apart — the author's name being the
+obvious and correct choice, since it is what the row is about.
+
+This SHALL hold after the subject leaves the club, so the distinguishing value SHALL be derived
+from the thread's author and SHALL NOT be derived from the marker.
+
+#### Scenario: Two introductions in one club are told apart
+- **WHEN** a club holds introductions from two riders
+- **THEN** their rows on any list of threads SHALL differ from each other in what they display
+- **AND** the difference SHALL name the rider, not a position or a date alone
+
+#### Scenario: The distinction survives a leave
+- **WHEN** one of those riders leaves the club
+- **THEN** their introduction's row SHALL still be distinguishable from the other's
+
 ### Requirement: A comment on an introduction SHALL notify nobody, and that silence SHALL be stated
 
 This change SHALL add no notification type and no fan-out. A rider who introduces themselves and
@@ -356,4 +410,3 @@ introduction is the one thread whose author is waiting for an answer.
 - **WHEN** a rider joins and introduces themselves
 - **THEN** the notifications written SHALL be exactly those the join already produced
 - **AND** the introduction SHALL add none
-</content>
