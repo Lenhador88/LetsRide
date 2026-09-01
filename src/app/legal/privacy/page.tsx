@@ -70,6 +70,78 @@ export default function PrivacyPage() {
           map you see is served from our own storage and a search never discloses your identity,
           session or IP address to Geoapify.
         </li>
+        {/* PD-315. Written to the same rule as the Geoapify bullet above: it
+            describes what the app does when something happens, never what has
+            or has not been switched on yet. A sentence like "we do not use
+            error reporting today" is true until a DSN is set in a dashboard
+            nobody in a session can reach, and false one second after — on a
+            public page describing where a rider's data goes.
+
+            The IP clause is the one to keep honest. `sendDefaultPii: false`
+            means the SDK attaches no IP to the report, and the connection that
+            delivers it still discloses one, exactly as the Vercel bullet
+            already says of the app itself. Claiming the first without the
+            second would be the kind of true-sounding sentence this page exists
+            not to contain. */}
+        <li>
+          <span className="font-medium">Sentry</span> — records the technical detail of a
+          failure so we find out the app broke for you. Nothing is sent while it is working:
+          a report is made only when a screen fails or the app crashes. It carries which
+          screen you were on, the version you are running, an internal reference to your
+          account, and where in the code the failure happened.{' '}
+          <span className="font-medium">
+            It does not carry your email address, your username, your photos, anything you
+            typed, or the place you searched for
+          </span>{' '}
+          — addresses in the app&rsquo;s own links are removed before a report leaves your
+          device. Sentry sees your IP address the way any website you connect to does, but we
+          do not attach it to the report.
+        </li>
+        {/* PD-353, and the hardest bullet on this page to write honestly.
+
+            Three claims it must NOT make, each of which the obvious wording
+            makes by accident:
+
+            1. That the opt-out deletes anything. It stops future collection.
+               `delete-account` does not reach PostHog at all, so a rider who
+               erases their account still leaves their events and recordings
+               behind — an open item on PD-353, and until it is wired the only
+               honest thing to name is the email route, exactly as the
+               account-deletion page already does for riders who cannot sign in.
+            2. That a rider can opt out of appearing in someone ELSE'S
+               recording. They cannot, and no schema change could: an unmasked
+               recording captures whatever was on the recorded rider's screen,
+               including other people's postcards, captions, bylines and photos.
+               That limit is the entire reason PD-353's pilot posture carries a
+               retirement condition, so the page states it rather than letting
+               the toggle imply otherwise.
+            3. That the recording is somehow anonymised. It is not — that is
+               what "unmasked" means, and saying so plainly is the point of
+               naming the two things that ARE withheld.
+
+            Written in the present tense about what the app does when a rider
+            acts, like every other bullet here. */}
+        <li>
+          <span className="font-medium">PostHog</span> — records how the app is used, so we can
+          see what is broken or confusing while LetsRide is small. It receives the screens you
+          open, moments like creating a ride or joining a club, and{' '}
+          <span className="font-medium">a video replay of your own screen as you use the app</span>
+          , which shows what you type. Your password is never recorded, and neither is the
+          meeting point or place you search for — that field and the suggestions under it are
+          left out of the recording entirely. Everything else on your screen is.
+        </li>
+        <li className="list-none pl-0 pt-2">
+          <span className="font-medium">Turning that off, and what it does not do.</span> Open{' '}
+          <span className="font-medium">Profile</span>, then the menu, then{' '}
+          <span className="font-medium">Privacy</span>. It stops any further recording of you
+          from that moment. It does not delete what has already been collected, and deleting
+          your account does not delete it either — for that, email{' '}
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
+            {SUPPORT_EMAIL}
+          </a>{' '}
+          and ask. It also cannot remove you from another rider&rsquo;s replay: if their screen
+          showed your postcard or your name, that is in their recording rather than yours.
+        </li>
       </ul>
       {/*
         App Store Review Guideline 1.2 asks a user-generated-content app for four things: a

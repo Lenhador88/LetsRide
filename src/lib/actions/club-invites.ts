@@ -1,4 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { capture } from '@/lib/analytics/client'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { invalidateClubMembership } from '@/lib/actions/clubs'
@@ -141,6 +142,7 @@ export async function acceptClubInvite(inviteId: string, clubId: string): Promis
   // Reaches `clubs.all()`, this club's feed and ride list, and
   // `notifications.all()` in one call — the identical write `joinClub` makes.
   invalidateClubMembership(clubId)
+  capture({ name: 'club_joined', properties: { via: 'invite' } })
   return { error: null, sent: true }
 }
 

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Poppins } from 'next/font/google'
 import { RouteGuard } from '@/components/auth/RouteGuard'
+import { Observability } from '@/components/observability/Observability'
 import { UpdateGate } from '@/components/native/UpdateGate'
 import './globals.css'
 
@@ -144,6 +145,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`h-full ${poppins.variable}`}>
       <body className="min-h-full bg-background text-foreground font-sans antialiased">
+        {/* Outermost, and it draws nothing. Error reporting starts when this
+            module evaluates, which is before React's first render — so a throw
+            in `UpdateGate` or `RouteGuard`, the two components every route
+            renders through, is already being watched when it happens. Both are
+            below it for that reason and not by accident. */}
+        <Observability />
         {/* Outside the guard, because a build too old to run is too old
             whoever is holding it — signed out, mid-onboarding or ten clubs
             deep. It renders `children` untouched until it knows otherwise, so

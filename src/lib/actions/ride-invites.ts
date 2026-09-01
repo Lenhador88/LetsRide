@@ -1,4 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { capture } from '@/lib/analytics/client'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { rideIdSchema, rideInviteIdSchema } from '@/lib/validation/rides'
@@ -124,6 +125,7 @@ export async function acceptRideInvite(inviteId: string): Promise<ActionState> {
   // navigated to — AND the tab's lists and Explore, which the narrower pair
   // does not. `setRideAttendance`'s parity, for the same write.
   invalidate(queryKeys.rides.all())
+  capture({ name: 'ride_joined', properties: { via: 'invite' } })
   return { error: null, sent: true }
 }
 

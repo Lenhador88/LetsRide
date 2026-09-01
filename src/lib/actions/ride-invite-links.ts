@@ -1,4 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { capture } from '@/lib/analytics/client'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import {
@@ -213,5 +214,6 @@ export async function claimRideInviteLink(
 
   invalidate(queryKeys.rides.all())
   invalidate(queryKeys.invites.all())
+  capture({ name: 'ride_joined', properties: { via: 'link' } })
   return { error: null, claim: { ride_id: rideId } }
 }

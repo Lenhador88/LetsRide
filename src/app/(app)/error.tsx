@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { BoundaryError } from '@/components/ui/BoundaryError'
+import { reportError } from '@/lib/observability/sentry'
 
 /**
  * Catches a failed read anywhere in the authenticated tree.
@@ -27,6 +28,10 @@ export default function AppError({
     // Next already logs this server-side; this is what makes it visible when
     // the throw happens during client navigation instead of the initial render.
     console.error('Unhandled error in the app tree:', error)
+    // PD-315 — the console line reaches the rider's own devtools and nobody
+    // else's, which for a client-rendered bundle is most rider-visible
+    // breakage going unrecorded.
+    reportError(error, { boundary: 'app', digest: error.digest })
   }, [error])
 
   return <BoundaryError onRetry={reset} digest={error.digest} />

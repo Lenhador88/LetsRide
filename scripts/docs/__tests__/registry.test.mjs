@@ -229,22 +229,29 @@ describe('extractWord', () => {
   it('goes red when the doc is edited to a new (wrong) word — the actual PD-155 defect', () => {
     // Before this fix, every one of these seven claims embedded its expected
     // word literally IN the anchor regex and returned a hardcoded value —
-    // so editing `**Nine**` to `**Twelve**` made the anchor stop matching
-    // (a SKIP) rather than reading 12 and disagreeing with a measurement (a
-    // FAIL). This proves the new shape actually reads the edited word.
+    // so editing the word made the anchor stop matching (a SKIP) rather than
+    // reading the new number and disagreeing with a measurement (a FAIL).
+    // This proves the new shape actually reads the edited word.
+    //
+    // **The mutation is derived from the live sentence rather than written
+    // out.** A fixture naming the current word goes stale with the fact it is
+    // testing — the same defect this file exists to catch, one level up.
     const claim = claims.find((c) => c.id === 'deps-count-claude')
     const real = readFileSync(join(repoRoot, 'CLAUDE.md'), 'utf8')
 
+    const stated = findOnce(real, claim.pattern)[0]
     const correctStated = claim.extractStated(findOnce(real, claim.pattern))
-    const mutated = real.replace('**Nine** runtime dependencies today', '**Twelve** runtime dependencies today')
+    const mutated = real.replace(stated, stated.replace(/\*\*\w+\*\*/, '**Eleventy**'))
     expect(mutated).not.toBe(real)
 
     // The anchor still locates — this is the fix. Before it, this line threw.
     const mutatedMatch = findOnce(mutated, claim.pattern)
-    const mutatedStated = claim.extractStated(mutatedMatch)
 
-    expect(mutatedStated).toBe(12)
-    expect(mutatedStated).not.toBe(correctStated)
+    // And it reads the edited word rather than a hardcoded one, which is what
+    // turns a SKIP into a FAIL: `eleventy` is not a number, so extraction
+    // throws by name instead of quietly returning the correct value.
+    expect(() => claim.extractStated(mutatedMatch)).toThrow(/[Ee]leventy/)
+    expect(correctStated).toBeTypeOf('number')
   })
 
   it('goes red when the doc is edited to a bare numeral — the second-round PD-155 finding', () => {
@@ -255,7 +262,9 @@ describe('extractWord', () => {
     const claim = claims.find((c) => c.id === 'deps-count-claude')
     const real = readFileSync(join(repoRoot, 'CLAUDE.md'), 'utf8')
 
-    const mutated = real.replace('**Nine** runtime dependencies today', '**10** runtime dependencies today')
+    // Derived from the live sentence for the reason the case above gives.
+    const stated = findOnce(real, claim.pattern)[0]
+    const mutated = real.replace(stated, stated.replace(/\*\*\w+\*\*/, '**10**'))
     const mutatedMatch = findOnce(mutated, claim.pattern) // still locates
     expect(claim.extractStated(mutatedMatch)).toBe(10)
   })

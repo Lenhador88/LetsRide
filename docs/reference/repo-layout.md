@@ -30,7 +30,8 @@ src/
 │   ├── clubs/              # ClubCard, ClubCreateBar, ClubDeclinedRequestsSection, ClubDetailHeader, ClubJoinRequestsSection, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPreviewScreen, ClubThreadRow, ClubThreadsRow, ClubTimeline, ClubTimelineEventRow, ClubTimelineRideCard, ClubTimelineThreadRow, CreateClubForm, CreateThreadForm, DeleteClubControl, EditClubForm, ExploreClubsList, ExploreClubsStrip, JoinClubButton, ManageRidersRoster, MarkClubSeen, RequestToJoinButton
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, PostcardStamp, PostcardViewer, ShareButton, SwipeCoach, coachMark, deck, locationCopy, viewerContext
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem, NotificationsPanel
-│   └── profile/            # CountryFlags, EditProfileForm, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu
+│   ├── observability/      # Observability — mounts error reporting (module scope) and analytics (an effect). Draws nothing (PD-315, PD-353)
+│   └── profile/            # CountryFlags, DeleteAccountSheet, EditProfileForm, FeedbackSheet, PrivacySheet, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu
 ├── lib/
 │   ├── supabase/
 │   │   ├── resolve.ts      # THE doorway for lib/data and lib/actions. Read its header
@@ -44,6 +45,8 @@ src/
 │   ├── auth/               # guard.ts (route rules, pure + tested), guard-cache.ts (what it reads, held per page load), recovery.ts (grant + safeNext)
 │   ├── native/             # secure-store.ts — the keychain behind window.__letsrideSecureStore; boot-restore.ts — the shell's cold start (PD-142)
 │   ├── query/              # useQuery, invalidate, keys.ts — the cache contract
+│   ├── observability/      # THE doorway to Sentry. scrub.ts is what may leave the app (PD-315)
+│   ├── analytics/          # THE doorway to PostHog. events.ts is the closed union of all five (PD-353)
 │   ├── routes.ts           # every href that names a resource id — /rides/detail?id= and its nine siblings (PD-142)
 │   ├── back-navigation.ts  # where a back control goes on a screen with several entry points — /notifications carries its origin in ?from= (PD-209)
 │   ├── realtime/           # useRideMessageStream, useClubThreadStream — the app's two Supabase Realtime subscriptions (081)

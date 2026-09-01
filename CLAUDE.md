@@ -111,13 +111,38 @@ is what happened to `add-account-deletion` task 6.3. And a build-time `NEXT_PUBL
 doubles as an undeclared DEV/PROD separator, because the two are separate Vercel env scopes; when
 it goes, the next promotion ships the feature to riders with nothing left saying so.
 
-**Dependencies are added deliberately.** **Nine** runtime dependencies today, and that is a
+**Dependencies are added deliberately.** **Twelve** runtime dependencies today, and that is a
 feature — `lucide-react` and `@supabase/ssr` both came out with the code that needed them rather
 than lingering unused. Count rather than trust that number:
 `node -p "Object.keys(require('./package.json').dependencies).length"`. Before adding one, ask whether a thirty-line helper does the job. No UI component
 libraries at all — shadcn, Radix and MUI are out; extend `src/components/ui/*` instead.
 
-**Two of the nine are the native shell's**, and both are runtime by necessity rather than by
+**Three of the twelve arrived together on 2026-09-01, for observability**, which is the largest
+single addition this repo has made and the reason to read the rule above as a budget rather than a
+ban. Each is a doorway module in `src/lib/`, and nothing outside that module imports the package —
+the same one-doorway shape as `lib/data/` and `lib/actions/`, enforced by a test in each case,
+because the privacy posture is a property of the doorway and only while everything goes through it:
+
+- **`@sentry/capacitor` + `@sentry/react`** (PD-315) — a throw in a rider's browser reached no log
+  anywhere, which in a client-rendered bundle is most rider-visible breakage. They are a **pair**
+  rather than two choices: `@sentry/capacitor` peers an exact `@sentry/react` and hands it the
+  options as its sibling `init`. The pair covers BOTH build shapes, which is not obvious —
+  `@sentry/capacitor`'s `init` branches on `NATIVE.platform === 'web'` and falls through to the
+  browser SDK — and taking `@sentry/nextjs` for the web build as well would be two `Sentry.init`
+  paths to keep in agreement for ever. `@sentry/capacitor` is also a **native plugin**, so the
+  rule below applies to it.
+- **`posthog-js`** (PD-353) — the one product question SQL structurally cannot reach is *which*
+  onboarding step turns a rider away, because a rider who tries three usernames and closes the tab
+  has written nothing. Eight of the ten questions in `docs/reference/analytics.md` are still a
+  `select` and must stay one.
+
+All three are pinned **exact**, for the reason the framework and auth packages are: a minor bump
+that changes replay masking or session storage is a privacy or a sign-in regression with nothing
+red anywhere. `src/lib/analytics/__tests__/client.test.ts` asserts against the installed recorder
+that password inputs are still masked unconditionally, which is the assumption the pilot's unmasked
+session replay rests on.
+
+**Two of the twelve are the native shell's**, and both are runtime by necessity rather than by
 preference — app code imports them at runtime, so neither can be a devDependency:
 
 - **`@capacitor/core`** — the shell. Nothing reaches a native API without it.
@@ -149,8 +174,9 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **seventeen** tables on
-   BOTH projects — measured 2026-08-30, level again at #348's promotion, PROD having been eleven
+   gets inherited as covered.** `enforce_participation_gate` is on **twenty-two** tables on DEV and
+   **seventeen** on PROD — measured 2026-09-01, and the five-table gap is `092`–`095` awaiting
+   promotion, which is the ordinary DEV-ahead state rather than a defect. PROD was eleven
    until `081`, `083`, `084`, `085` and `091` went with it (`086`–`090` add no gate) —
    `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
@@ -652,14 +678,22 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 95 files; DEV is at `095` and PROD at `091` — measured 2026-08-31, so `092`–`095`
+**Applied state: 96 files; DEV is at `096` and PROD at `091` — measured 2026-09-01, so `092`–`096`
 are DEV-ONLY and awaiting promotion.** Count rather than trust it: `list_migrations` against both
-refs, against `ls supabase/migrations/`. Those four are the club batch (PD-356, PD-360, PD-348,
-PD-194), and **all four are additive**, so the promotion applies them to PROD **before** its build
-serves — with one condition that is not optional and is the reverse of the usual worry: `092` and
+refs, against `ls supabase/migrations/`. `092`–`095` are the club batch (PD-356,
+PD-360, PD-348, PD-194) and `096` is the analytics opt-out (PD-353), and **all five are
+additive**, so the promotion applies them to PROD **before** its build
+serves — with two conditions that are not optional and the first of which is the reverse of the
+usual worry: `092` and
 `093` each widen an exhaustive client switch (`notificationCopy` and `NotificationsListItem`'s
 `describe`), so PROD must not receive a `club_waved`, `club_invited` or `club_invite_declined` row
-while an older bundle is still serving. On DEV they went **after** the merge's deployment reached
+while an older bundle is still serving. And **`096` is the one whose order is decided by the NEWER
+bundle rather than the older one**: an older bundle names none of it and its trigger is a
+behavioural no-op, but a newer bundle against a pre-`096` database sends `posthog_session_id` and
+gets `PGRST204` — feedback submission down entirely for the length of the gap. So "additive, so
+the order does not matter" is wrong here, and the reason is worth carrying: the additive-first rule
+asks which side fails safe, and for a column a shipped client WRITES, migration-first is the only
+safe side. `036`'s hand-exercise gate fires on `096` per project. On DEV they went **after** the merge's deployment reached
 `READY` on the merge sha with `aliasError` null, which is `089`'s rule and is the order to repeat.
 Each change's `tasks.md` §7 carries its own. **Level is the exception, not the resting state** — DEV-ahead is where a
 migration lives between its merge and its promotion, so read a per-project difference as a pending
@@ -758,7 +792,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **2949** assertions — re-derive rather than trust it:
+Suite **3035** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -799,7 +833,9 @@ rider with a NULL stamp no way out of the wizard. Inside a `security definer` fu
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: twenty-seven, and only one is outstanding.** Re-derive rather than trust the number
+**Security advisors: twenty-seven on PROD and thirty-six on DEV, and only one is outstanding.**
+**The table below describes PROD** — measured 2026-09-01, and reading it against DEV produces a
+nine-advisor surplus that looks like a finding and is `092`–`096` awaiting promotion. Re-derive rather than trust the number
 — `get_advisors(security)` — but the *shape* is durable, because twenty-six of the twenty-seven are
 things this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 
