@@ -6,7 +6,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { ClubWaveButton } from '@/components/clubs/ClubWaveButton'
 import type { ClubIntroductionState } from '@/lib/data/club-introductions'
 import type { ClubWaveState } from '@/lib/data/club-waves'
-import { routes } from '@/lib/routes'
+import { clubThreadFromTimeline, routes } from '@/lib/routes'
 import { formatRelativeTime } from '@/lib/utils'
 import type { ClubTimelineEvent } from '@/lib/data/club-timeline'
 
@@ -70,6 +70,13 @@ import type { ClubTimelineEvent } from '@/lib/data/club-timeline'
  * door where there is nothing behind it" — which is a different rider on a
  * different row each time, not a self/other split. `viewerId` is still read
  * for the wave's own reason only.
+ *
+ * ## `id={event.key}` — the return anchor, PD-366
+ *
+ * Every row carries `mergeClubTimeline`'s own key as its DOM id, never a new
+ * identity: it is what a Back from the introduction's thread scrolls to, via
+ * `clubThreadFromTimeline` on the way in and `resolveClubTimelineScrollTarget`
+ * on the way back. `design.md` §D9.
  */
 export function ClubTimelineEventRow({
   event,
@@ -108,7 +115,7 @@ export function ClubTimelineEventRow({
     const isSelf = !!viewerId && event.member.user_id === viewerId
 
     return (
-      <div className="flex min-h-[44px] w-full items-center gap-3 px-3 py-2">
+      <div id={event.key} className="flex min-h-[44px] w-full items-center gap-3 px-3 py-2">
         <Link
           href={parts.href ?? routes.profile(event.member.user_id)}
           aria-label={parts.sentence}
@@ -129,7 +136,11 @@ export function ClubTimelineEventRow({
 
         {introduction ? (
           <Link
-            href={routes.clubThread(introduction.threadId)}
+            // `clubThreadFromTimeline`, not the plain `routes.clubThread` —
+            // PD-366: carries this row's OWN key, `event.key` (`join:<uuid>`),
+            // so a Back from the thread returns to this exact row rather than
+            // to the thread list.
+            href={clubThreadFromTimeline(introduction.threadId, event.key)}
             aria-label={`${parts.sentence} Read their introduction — ${introductionCommentLabel(introduction)}.`}
             className="flex min-w-0 flex-1 items-center gap-1.5"
           >
@@ -188,7 +199,10 @@ export function ClubTimelineEventRow({
   // that returns to the screen you are on is worse than plain text.
   if (!parts.href) {
     return (
-      <div className={`${rowClassName} text-left transition-colors active:bg-border`}>
+      <div
+        id={event.key}
+        className={`${rowClassName} text-left transition-colors active:bg-border`}
+      >
         {identity}
         {time}
       </div>
@@ -197,6 +211,7 @@ export function ClubTimelineEventRow({
 
   return (
     <Link
+      id={event.key}
       href={parts.href}
       // The row is one label for assistive tech — the avatar is decorative.
       // **No unread state here**: threads and replies are the only events with

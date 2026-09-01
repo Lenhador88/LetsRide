@@ -5,7 +5,7 @@ import { ClubWaveButton } from '@/components/clubs/ClubWaveButton'
 import { NotificationDot } from '@/components/ui/NotificationDot'
 import type { ClubWaveState } from '@/lib/data/club-waves'
 import { THREAD_PARTICIPANT_LIMIT, type ClubThreadActivity } from '@/lib/data/club-timeline'
-import { routes } from '@/lib/routes'
+import { clubThreadFromTimeline } from '@/lib/routes'
 import { formatRelativeTime } from '@/lib/utils'
 
 /**
@@ -56,9 +56,19 @@ import { formatRelativeTime } from '@/lib/utils'
  * an anchor is invalid HTML and would fire the tap and the navigation both —
  * so it is now a trailing SIBLING of the link rather than a child of it, and
  * the rounded `bg-track` tile moved from the link to the row that wraps both.
+ *
+ * ## `anchorKey` — the return anchor, PD-366
+ *
+ * The row's own `id`, so the club timeline can scroll to it, and the row's own
+ * return anchor, so a Back from the thread it opens lands here rather than on
+ * the thread list — `clubThreadFromTimeline`, `design.md` §D9. A reply
+ * entry's anchor names the message it came from, not the thread it links
+ * into, which is why this is a required prop rather than derived from
+ * `threadId`.
  */
 export function ClubTimelineThreadRow({
   threadId,
+  anchorKey,
   title,
   lead,
   at,
@@ -67,6 +77,16 @@ export function ClubTimelineThreadRow({
   wave,
 }: {
   threadId: string
+  /**
+   * This row's own key on `mergeClubTimeline`'s stream — `thread:<uuid>` for
+   * the creation entry, `reply:<message uuid>` for a reply — never a new
+   * identity. Required rather than derived from `threadId`, because a reply
+   * entry's own anchor names the MESSAGE, a different id than the thread it
+   * links into. Doubles as this row's DOM `id` (the scroll target) and as the
+   * return anchor on its own outbound link — `097`'s follow-up, PD-366,
+   * `design.md` §D9.
+   */
+  anchorKey: string
   title: string
   /** The line under the title — who started it, or who last replied. The
    *  timeline draws the same thread from two angles and this is the only part
@@ -90,9 +110,12 @@ export function ClubTimelineThreadRow({
   const overflow = (activity?.participants.length ?? 0) - shown.length
 
   return (
-    <div className="flex min-h-[72px] items-center gap-2 rounded-lg bg-track pr-2 transition-colors">
+    <div
+      id={anchorKey}
+      className="flex min-h-[72px] items-center gap-2 rounded-lg bg-track pr-2 transition-colors"
+    >
       <Link
-        href={routes.clubThread(threadId)}
+        href={clubThreadFromTimeline(threadId, anchorKey)}
         // One label for assistive tech: the faces, the glyph and the dot are all
         // decorative, so everything the eye reads from them has to be in words.
         // **The faces are in here because they are `aria-hidden` below**, and

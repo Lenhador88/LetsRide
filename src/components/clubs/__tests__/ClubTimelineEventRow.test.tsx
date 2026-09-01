@@ -24,6 +24,11 @@ import type { ClubJoin, ClubTimelineEvent } from '@/lib/data/club-timeline'
  * comment door where there is no introduction — this row has lost one
  * control and gained another, and a test covering only one direction would
  * pass on a half-finished redesign.
+ *
+ * **The third block is `097`'s follow-up, PD-366** — task 11.7: the row's own
+ * `id` is `event.key`, `mergeClubTimeline`'s row key rather than a second
+ * identity, and the introduction door's own link carries it back as the
+ * return anchor via `routes.clubThreadFromTimeline`.
  */
 const noop = async () => ({ error: null })
 
@@ -129,7 +134,9 @@ describe('ClubTimelineEventRow — the introduction door: present with one, abse
       <ClubTimelineEventRow event={joinEvent('rider-1', 'ana')} introduction={introduction} />
     )
 
-    expect(html).toContain('href="/clubs/detail/thread?id=thread-1"')
+    // `routes.clubThreadFromTimeline`, not the plain `clubThread` — PD-366:
+    // the door carries the row's own key back as the return anchor.
+    expect(html).toContain('href="/clubs/detail/thread?id=thread-1&amp;row=join%3Arider-1"')
     expect(html).toContain('3')
     expect(html).not.toContain('3+')
   })
@@ -139,6 +146,20 @@ describe('ClubTimelineEventRow — the introduction door: present with one, abse
       <ClubTimelineEventRow event={joinEvent('rider-1', 'ana')} viewerId="rider-1" introduction={introduction} />
     )
 
-    expect(html).toContain('href="/clubs/detail/thread?id=thread-1"')
+    expect(html).toContain('href="/clubs/detail/thread?id=thread-1&amp;row=join%3Arider-1"')
+  })
+})
+
+describe('ClubTimelineEventRow — the row anchor, PD-366', () => {
+  it('carries `event.key` as its own DOM id, on a join row and on the founding row alike', () => {
+    const join = renderToStaticMarkup(<ClubTimelineEventRow event={joinEvent('rider-1', 'ana')} />)
+    expect(join).toContain('id="join:rider-1"')
+
+    const founding = renderToStaticMarkup(
+      <ClubTimelineEventRow
+        event={{ kind: 'club-created', at: '2020-01-01T00:00:00Z', key: 'club-created:owner-1', founder: 'pedro' }}
+      />
+    )
+    expect(founding).toContain('id="club-created:owner-1"')
   })
 })

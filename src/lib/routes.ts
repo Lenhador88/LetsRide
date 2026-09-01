@@ -49,7 +49,7 @@
  * changes, the absent boundary is a `next build` failure on ten routes at once.
  */
 
-import { clubIdSchema } from '@/lib/validation/clubs'
+import { clubIdSchema, clubTimelineAnchorSchema } from '@/lib/validation/clubs'
 import { rideIdSchema } from '@/lib/validation/rides'
 
 /** The query parameter every detail route reads its id from. */
@@ -95,6 +95,26 @@ export const INVITE_TOKEN_PARAM = 'token'
 
 function detail(path: string, id: string): string {
   return `${path}?${DETAIL_ID_PARAM}=${encodeURIComponent(id)}`
+}
+
+/**
+ * Which row on the club timeline a thread — its creation entry, a reply, or a
+ * join's introduction — was opened from, so `Back` can return to it instead of
+ * to the thread list. `097`'s follow-up, PD-366 (`design.md` §D9).
+ *
+ * **`CREATE_CLUB_PARAM`'s exact shape**: never a URL, only a bounded value —
+ * here, `mergeClubTimeline`'s own row key (`join:<uuid>`, `thread:<uuid>`, …),
+ * parsed by `clubTimelineAnchorSchema` before it is ever used. The only thing
+ * `clubThreadReturnTo` can produce from it is `routes.club(clubId)` with a
+ * fragment naming a row of THAT club — there is no allowlist to maintain and
+ * no open redirect to close. Do **not** add a `BACK_ORIGINS` entry for this;
+ * that list is derived from the screens rendering `NotificationsHeaderControl`
+ * and has its own drift test, and this carries an id rather than a path.
+ */
+export const RETURN_ANCHOR_PARAM = 'row'
+
+function withReturnAnchor(href: string, anchor: string): string {
+  return `${href}&${RETURN_ANCHOR_PARAM}=${encodeURIComponent(anchor)}`
 }
 
 /**
@@ -190,6 +210,26 @@ export const routes = {
 } as const
 
 /**
+ * The same thread, opened from a specific row on the club's own timeline —
+ * `097`'s follow-up, PD-366. `anchor` is `mergeClubTimeline`'s own row key for
+ * that row, carried verbatim rather than a second identity, so
+ * `clubThreadReturnTo` can only ever resolve it to a row the stream actually
+ * produced. Used by the join row's introduction door and by
+ * `ClubTimelineThreadRow` for both a thread's creation entry and its
+ * replies — never by the plain Threads list, which has no row to return to.
+ *
+ * **Deliberately NOT a member of `routes`, unlike every other builder above.**
+ * `bootRestoreTarget`'s own suite enumerates `Object.values(routes)` and calls
+ * each with one argument to check none of them is accidentally public; a
+ * second required argument here would break that generic sweep rather than
+ * teach it something. `backFromCreateScreen` sits outside `routes` for the
+ * identical reason.
+ */
+export function clubThreadFromTimeline(threadId: string, anchor: string): string {
+  return withReturnAnchor(detail(detailPaths.clubThread, threadId), anchor)
+}
+
+/**
  * Which club a create screen was opened from (PD-283).
  *
  * It does two jobs and is deliberately one parameter for both: it seeds the
@@ -259,4 +299,28 @@ export function backFromCreateScreen(
   if (ids.ride && rideIdSchema.safeParse(ids.ride).success) return routes.ride(ids.ride)
   if (ids.club && clubIdSchema.safeParse(ids.club).success) return routes.club(ids.club)
   return fallback
+}
+
+/**
+ * Where a club thread's `Back` goes — the header arrow and `useSwipeBack` both
+ * read this, so they cannot disagree (the defect PD-341 already closed on
+ * this exact screen once). `097`'s follow-up, PD-366 (`design.md` §D9).
+ *
+ * **Absent or unparseable both answer `routes.clubThreads`** — today's
+ * behaviour, and what a notification tap, a shared URL and a reload all
+ * produce: it lands the rider somewhere that certainly exists and that they
+ * can certainly read, because they just read the thread.
+ *
+ * Parsed with `clubTimelineAnchorSchema` rather than a regex of this file's
+ * own — `backFromCreateScreen`'s own reasoning: one definition, bounded to the
+ * six kinds `mergeClubTimeline` can ever produce, so the only thing this can
+ * ever build is `routes.club(clubId)` with a fragment. **It never asks
+ * whether the anchored row still exists** — that is the club timeline's own
+ * no-op (`resolveClubTimelineScrollTarget`), not this function's; a deleted,
+ * horizon-cut or no-longer-readable row all reach this function identically
+ * and all produce the same fragment, because none of that is knowable here.
+ */
+export function clubThreadReturnTo(clubId: string, rawAnchor: string | null): string {
+  const anchor = rawAnchor && clubTimelineAnchorSchema.safeParse(rawAnchor).success ? rawAnchor : null
+  return anchor ? `${routes.club(clubId)}#${anchor}` : routes.clubThreads(clubId)
 }

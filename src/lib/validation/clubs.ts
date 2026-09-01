@@ -272,6 +272,42 @@ export const CLUB_INTRODUCTION_STARTER =
 export const clubThreadIdSchema = z.uuid()
 
 /**
+ * The closed set of row kinds `mergeClubTimeline` can ever assign an event —
+ * its own `key` prefix (`join:<uuid>`, `thread:<uuid>`, …), never a second
+ * definition of it. `097`'s follow-up, PD-366 (`design.md` §D9): the return
+ * anchor a thread carries back to the club timeline can only ever name one of
+ * these six kinds of row.
+ */
+const CLUB_TIMELINE_ANCHOR_KINDS = [
+  'ride',
+  'postcard',
+  'thread',
+  'join',
+  'reply',
+  'club-created',
+] as const
+
+/**
+ * A club timeline row's anchor, out of the thread screen's `?row=` — PD-366.
+ * `kind:uuid`, exactly the string `mergeClubTimeline` already assigns the row
+ * as its own `key`, never a new identity invented for the purpose. Bounded to
+ * the six kinds above and a well-formed uuid, so a value that parses here can
+ * only ever name a row of a club's own timeline — never a URL, so there is no
+ * allowlist to maintain and no open redirect to close.
+ *
+ * It does not and cannot know whether the named row still exists; that is
+ * `resolveClubTimelineScrollTarget`'s no-op, evaluated once the club's own
+ * rows are on the page, not this schema's.
+ */
+export const clubTimelineAnchorSchema = z.string().refine((value) => {
+  const i = value.indexOf(':')
+  if (i < 0) return false
+  const kind = value.slice(0, i)
+  const id = value.slice(i + 1)
+  return (CLUB_TIMELINE_ANCHOR_KINDS as readonly string[]).includes(kind) && z.uuid().safeParse(id).success
+}, 'Not a club timeline anchor.')
+
+/**
  * What `reportClubThread` sends — `094`, PD-348, `011`'s `reportPostcardSchema`
  * with the subject renamed. **`reason` and `note` are imported, not copied**:
  * `REPORT_REASONS` is `postcard_reports`' six-value enum, kept in step with

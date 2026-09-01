@@ -27,6 +27,7 @@ function activity(partial: boolean): ClubThreadActivity {
 
 const baseProps = {
   threadId: 'thread-1',
+  anchorKey: 'thread:thread-1',
   title: 'Sunday ride?',
   lead: 'Started by ana',
   at: '2026-08-01T10:00:00Z',
@@ -60,5 +61,32 @@ describe('ClubTimelineThreadRow — the reply count is a glyph and a number, and
     const html = renderToStaticMarkup(<ClubTimelineThreadRow {...baseProps} activity={null} />)
 
     expect(html).not.toContain('tabular-nums')
+  })
+})
+
+/**
+ * `097`'s follow-up, PD-366 (`design.md` §D9, task 11.7). `anchorKey` is this
+ * row's own DOM id AND its outbound link's return anchor — never the same
+ * value as `threadId` for a REPLY entry, whose anchor names the message that
+ * produced it rather than the thread it opens, which is why the prop is
+ * required rather than derived from `threadId`.
+ */
+describe('ClubTimelineThreadRow — the row anchor, PD-366', () => {
+  it('carries `anchorKey` as its own DOM id and as the link\'s return anchor, for a thread creation entry', () => {
+    const html = renderToStaticMarkup(
+      <ClubTimelineThreadRow {...baseProps} anchorKey="thread:thread-1" activity={null} />
+    )
+
+    expect(html).toContain('id="thread:thread-1"')
+    expect(html).toContain('href="/clubs/detail/thread?id=thread-1&amp;row=thread%3Athread-1"')
+  })
+
+  it('uses the REPLY\'s own anchor — a different id than the thread it links into', () => {
+    const html = renderToStaticMarkup(
+      <ClubTimelineThreadRow {...baseProps} anchorKey="reply:message-9" activity={null} />
+    )
+
+    expect(html).toContain('id="reply:message-9"')
+    expect(html).toContain('href="/clubs/detail/thread?id=thread-1&amp;row=reply%3Amessage-9"')
   })
 })
