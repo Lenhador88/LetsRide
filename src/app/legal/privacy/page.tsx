@@ -70,6 +70,33 @@ export default function PrivacyPage() {
           map you see is served from our own storage and a search never discloses your identity,
           session or IP address to Geoapify.
         </li>
+        {/* PD-315. Written to the same rule as the Geoapify bullet above: it
+            describes what the app does when something happens, never what has
+            or has not been switched on yet. A sentence like "we do not use
+            error reporting today" is true until a DSN is set in a dashboard
+            nobody in a session can reach, and false one second after — on a
+            public page describing where a rider's data goes.
+
+            The IP clause is the one to keep honest. `sendDefaultPii: false`
+            means the SDK attaches no IP to the report, and the connection that
+            delivers it still discloses one, exactly as the Vercel bullet
+            already says of the app itself. Claiming the first without the
+            second would be the kind of true-sounding sentence this page exists
+            not to contain. */}
+        <li>
+          <span className="font-medium">Sentry</span> — records the technical detail of a
+          failure so we find out the app broke for you. Nothing is sent while it is working:
+          a report is made only when a screen fails or the app crashes. It carries which
+          screen you were on, the version you are running, an internal reference to your
+          account, and where in the code the failure happened.{' '}
+          <span className="font-medium">
+            It does not carry your email address, your username, your photos, anything you
+            typed, or the place you searched for
+          </span>{' '}
+          — addresses in the app&rsquo;s own links are removed before a report leaves your
+          device. Sentry sees your IP address the way any website you connect to does, but we
+          do not attach it to the report.
+        </li>
       </ul>
       {/*
         App Store Review Guideline 1.2 asks a user-generated-content app for four things: a
