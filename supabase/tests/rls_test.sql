@@ -5577,7 +5577,7 @@ insert into club_members (club_id, user_id, role) values
 select assert_eq(
   (select count(*)::int from notifications
     where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c001'),
-  3, '036: club_joined fans out with no JWT present — the actor comes from NEW, not auth.uid()');
+  6, '036/099: club_joined fans out with no JWT present — the actor comes from NEW, not auth.uid(). SIX rows since 099, not three: c01''s four joins each notify the roster that existed BEFORE them, so this is 0+1+2+3 rather than 0+1+1+1, and the number moves the moment the recipient set does');
 
 -- ** The single most visible possible defect. ** club_members INSERT of the
 -- creator's own `owner` row is how every club is created, so a suppression
@@ -5604,7 +5604,7 @@ select assert_eq(
   (select count(*)::int from notifications
     where type = 'club_joined' and club_id = '00000000-0000-0000-0000-00000036c002'
       and user_id = '00000000-0000-0000-0000-0000000360b1'),
-  0, '036: an ORDINARY member is NOT notified of a join');
+  1, '036/099: an ORDINARY member IS notified of a join — this read 0 until 099 and INVERTING it is the whole of PD-368. b1 joined third, so they are notified of c1''s join and of nothing that happened before they were in the club: the membership arm is a live read of club_members at fan-out time, not a backfill');
 select assert_eq(
   (select count(*)::int from notifications
     where type = 'club_joined' and user_id = '00000000-0000-0000-0000-0000000360d1'),
@@ -20604,7 +20604,7 @@ select assert_eq(
   (select array(select p.id from profiles p
                  where private.is_club_admin_for(p.id, '00000000-0000-0000-0000-0000085c00f1')
                  order by 1)),
-  '085.24: is_club_admin_for names exactly notify_club_joined''s recipient set — move the two together or a request reaches somebody a join does not');
+  '085.24/099: is_club_admin_for names exactly the owner UNION the owner/admin rows — who may ANSWER a join request. ** Until 099 this was also notify_club_joined''s recipient set and the label said so; PD-368 widened that fan-out to every member, so the two are deliberately no longer equal ** and this assertion now pins is_club_admin_for against the tables alone. A request must still reach exactly this set: widen it and a request reaches somebody who cannot act on it');
 
 -- ---------------------------------------------------------------------------
 -- 085.18  decline — and 085.26, the zero it must write
@@ -25115,9 +25115,9 @@ select assert_eq(
      select c.owner_id as r from clubs c where c.id = '00000000-0000-0000-0000-0000009300c1'
      union
      select m.user_id from club_members m
-      where m.club_id = '00000000-0000-0000-0000-0000009300c1' and m.role in ('owner','admin')) s
+      where m.club_id = '00000000-0000-0000-0000-0000009300c1') s
     where s.r <> '00000000-0000-0000-0000-000000930013'),
-  '093.11: (5) exactly one club_joined per (owner UNION admins), compared against the set rather than against a number so the fixture''s admin count cannot make it vacuous. private.notify_club_joined fires `after insert on club_members` with NO when clause, so it now runs INSIDE this write path and a raise there would take the rider''s accept down with it — 036''s hand-exercise gate');
+  '093.11/099: (5) exactly one club_joined per (owner UNION THE WHOLE MEMBERSHIP), compared against the set rather than against a number so the fixture''s roster size cannot make it vacuous. ** The role filter came OUT of this expectation with 099 ** — accepting an invite now tells every member, not just the admins, and the accepting rider is excluded here because their own row is what fired the trigger. private.notify_club_joined fires `after insert on club_members` with NO when clause, so it runs INSIDE this write path and a raise there would take the rider''s accept down with it — 036''s hand-exercise gate, and 099 widens what that trigger does on this exact path');
 select assert_eq(
   (select count(*)::int from notifications
     where type = 'club_invite_accepted' or type = 'club_invite_declined'),
@@ -28813,6 +28813,540 @@ select assert_eq(
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint introductions_097;
+
+-- ===========================================================================
+-- 099. `club_joined` fans out to the WHOLE MEMBERSHIP — every club_members row,
+--      unioned with clubs.owner_id, minus the actor, minus anyone blocked with
+--      them. PD-368, widening 036 §7.6's owner+admins set.
+--
+-- ** THE LABELS BELOW ARE PREFIXED `099.` AND SIT UNDER THIS HEADER, WHICH IS
+-- NOT A FORMALITY. ** PD-169 records that 042's assertions were filed under the
+-- wrong header and have been misread ever since. A label is the only thing a
+-- failing run prints, so it is the only place the reader learns which migration
+-- is on the hook.
+--
+-- ** EVERY COUNT IS SCOPED TO THIS SECTION'S OWN CLUB *AND* ITS OWN ACTOR. **
+-- The widened fan-out now fires for every member on every fixture join in this
+-- section and in the seed, so an unscoped `where type = 'club_joined'` counts
+-- rows this block did not write. Scoping to the club alone is not enough either,
+-- now that one club accumulates one fan-out per joiner: the assertion under test
+-- is the fan-out caused by ONE join, so `actor_id` is part of every scope below.
+--
+-- ** THE CLUB UNDER TEST IS PRIVATE, AND THAT IS THE WHOLE POINT OF 099.5. **
+-- On a PUBLIC club every rider resolves the subject through `clubs` SELECT's
+-- first disjunct, so a read-back proves nothing about the membership disjunct
+-- the widening actually rests on. Private is the only shape in which
+-- `private.is_club_member(id)` is the thing being tested.
+-- ===========================================================================
+savepoint club_joined_members_099;
+
+reset role;
+select set_config('test.uid', '', false);
+
+-- Nine riders of this section's own, so no count asserted anywhere above this
+-- line moves. Same rule 009's, 054's and 055's fixtures follow.
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000368001', 'pd368owner@example.com'),
+  ('00000000-0000-0000-0000-000000368002', 'pd368member@example.com'),
+  ('00000000-0000-0000-0000-000000368003', 'pd368admin@example.com'),
+  ('00000000-0000-0000-0000-000000368004', 'pd368actor@example.com'),
+  ('00000000-0000-0000-0000-000000368005', 'pd368blockedactor@example.com'),
+  ('00000000-0000-0000-0000-000000368006', 'pd368leaver@example.com'),
+  ('00000000-0000-0000-0000-000000368007', 'pd368outsider@example.com'),
+  ('00000000-0000-0000-0000-000000368008', 'pd368ownerless@example.com'),
+  ('00000000-0000-0000-0000-000000368009', 'pd368defaultjoiner@example.com'),
+  ('00000000-0000-0000-0000-000000368010', 'pd368blockedbyactor@example.com');
+
+update profiles set username = 'pd368owner', location = 'Lisbon',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000368001';
+update profiles set username = 'pd368member', location = 'Porto',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000368002';
+update profiles set username = 'pd368admin', location = 'Faro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000368003';
+update profiles set username = 'pd368actor', location = 'Braga',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000368004';
+update profiles set username = 'pd368blockedactor', location = 'Aveiro',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000368005';
+update profiles set username = 'pd368leaver', location = 'Evora',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000368006';
+update profiles set username = 'pd368outsider', location = 'Coimbra',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000368007';
+update profiles set username = 'pd368ownerless', location = 'Setubal',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000368008';
+update profiles set username = 'pd368defaultjoiner', location = 'Guarda',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000368009';
+update profiles set username = 'pd368blockedbyactor', location = 'Viseu',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000368010';
+
+-- f1 is the club under test and is PRIVATE — see the header. f2 carries the
+-- OWNER ARM ALONE: its owner holds no membership row, so a row reaching them
+-- there can only have come through the union. f3 is the DEFAULT club and f4 is
+-- its mirror, identical roster and NOT default, which is what makes f3's zero
+-- mean "the guard fired" rather than "there was nobody to tell".
+--
+-- f3 must be public: clubs_default_club_is_public refuses a private default
+-- club, and f4 matches it so the two differ in exactly one column.
+select assert_eq(
+  (select count(*)::int from clubs where is_default),
+  0, '099.0: no default club exists at this point in the suite — 058''s was rolled back with its savepoint, so clubs_one_default_club leaves f3 free to take the flag. Without this the insert below fails on the partial unique index rather than asserting anything');
+
+insert into clubs (id, name, is_public, is_default, owner_id) values
+  ('00000000-0000-0000-0000-0000368c0001', 'PD368 Members MC',   false, false, '00000000-0000-0000-0000-000000368001'),
+  ('00000000-0000-0000-0000-0000368c0002', 'PD368 Ownerless MC', false, false, '00000000-0000-0000-0000-000000368008'),
+  ('00000000-0000-0000-0000-0000368c0003', 'PD368 Welcome MC',   true,  true,  '00000000-0000-0000-0000-000000368001'),
+  ('00000000-0000-0000-0000-0000368c0004', 'PD368 Mirror MC',    true,  false, '00000000-0000-0000-0000-000000368001');
+
+-- ---------------------------------------------------------------------------
+-- 099.1  No JWT, which is what proves the actor is read from NEW
+-- ---------------------------------------------------------------------------
+-- Everything in this fixture is inserted as the TABLE OWNER with `test.uid`
+-- empty, so auth.uid() is NULL throughout. 036 trap (b): had the widened
+-- recipient set been written `where candidates.recipient <> auth.uid()`, that
+-- predicate would be NULL rather than TRUE and would filter out EVERY
+-- recipient — so every count below would read 0, every negative assertion here
+-- would pass vacuously, and only the positives would fail.
+select assert_eq(auth.uid(), null::uuid,
+  '099.1: the widened fan-out is exercised with NO JWT — auth.uid() is NULL, so a recipient set written against it would filter everyone out and every negative below would pass for the wrong reason');
+
+-- ** ONE STATEMENT PER JOIN, AND IT MATTERS MORE AT 099 THAN IT DID AT 036. **
+-- An AFTER ROW trigger fires once the whole STATEMENT completes, so a batched
+-- multi-row INSERT makes every row visible to every invocation. At 036's
+-- recipient set that inflated one admin's count; at 099's every joiner in the
+-- batch would notify every other, which is a shape the product cannot reach —
+-- every join is one rider's own request, and the four security definer writers
+-- (058, 085, 093's two) each write exactly one row.
+
+-- ---------------------------------------------------------------------------
+-- 099.2  The creator's own `owner` row still notifies NOBODY — the after-union
+--        exclusion, which is the single easiest thing to break here
+-- ---------------------------------------------------------------------------
+-- The creator qualifies through BOTH arms: as `clubs.owner_id` and, the instant
+-- this statement lands, as a `club_members` row. Move the actor exclusion inside
+-- either arm and the other still yields them, so every club creation tells its
+-- creator they joined their own club. 036 §7.6 named this the most visible
+-- possible defect; widening the membership arm does not retire it.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0001', '00000000-0000-0000-0000-000000368001', 'owner');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'),
+  0, '099.2: the creator''s own owner row still notifies nobody — the actor exclusion sits AFTER the union, so qualifying through both arms does not leak one through');
+
+-- ---------------------------------------------------------------------------
+-- 099.3  Building the roster. Each of these fans out in its own right; the
+--        assertions under test come after, scoped to the LAST joiner.
+-- ---------------------------------------------------------------------------
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0001', '00000000-0000-0000-0000-000000368002', 'member');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0001', '00000000-0000-0000-0000-000000368003', 'admin');
+
+-- On the roster, and blocked with the ACTOR — the block row points FROM this
+-- rider TO the actor, so it is the direction the fan-out does not read first.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0001', '00000000-0000-0000-0000-000000368005', 'member');
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000368005', '00000000-0000-0000-0000-000000368004');
+
+-- On the roster, and blocked BY the actor — the OTHER direction of the same
+-- rule. Both are asserted because the row is directional and the effect is
+-- symmetric, and a helper that read only `blocker_id = new.user_id` would pass
+-- the first of these and fail the second.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0001', '00000000-0000-0000-0000-000000368010', 'member');
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000368004', '00000000-0000-0000-0000-000000368010');
+
+-- The leaver joins and then leaves, so they are off the roster BEFORE the
+-- fan-out under test. Written as a join-then-leave rather than simply omitting
+-- them, because "a rider who never joined is not notified" is a different and
+-- much weaker claim than "a rider who left is not".
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0001', '00000000-0000-0000-0000-000000368006', 'member');
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000368c0001'
+   and user_id = '00000000-0000-0000-0000-000000368006';
+
+-- ---------------------------------------------------------------------------
+-- 099.4  THE FAN-OUT UNDER TEST. One join, and the whole recipient set.
+-- ---------------------------------------------------------------------------
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0001', '00000000-0000-0000-0000-000000368004', 'member');
+
+-- The positives. Each names WHY the rider is in the set, because a bare count
+-- cannot distinguish "the membership arm works" from "the owner arm fired
+-- twice".
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'
+      and user_id = '00000000-0000-0000-0000-000000368002'),
+  1, '099.4: ** an ORDINARY MEMBER is notified of a new join. ** This is the whole of PD-368 — 036 §7.6 wrote this rider nothing, and 099 is the one create-or-replace that changes it');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'
+      and user_id = '00000000-0000-0000-0000-000000368003'),
+  1, '099.4: an `admin`-role member is STILL notified — 099 widens the arm and removes nobody from it, so 036 §7.10''s recipient keeps their row');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'
+      and user_id = '00000000-0000-0000-0000-000000368001'),
+  1, '099.4: the club OWNER is still notified, and exactly once — they qualify through both arms and UNION dedupes, which is what stops a widening from doubling every owner''s list');
+
+-- The negatives. Every one of these is a rider the widened set could plausibly
+-- have swept in, and each fails for a different reason.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'
+      and user_id = '00000000-0000-0000-0000-000000368004'),
+  0, '099.4: the ACTOR is never notified of their own join, though they are now in the very roster the membership arm reads');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'
+      and user_id = '00000000-0000-0000-0000-000000368005'),
+  0, '099.4: a member who BLOCKED THE ACTOR is not notified — blocking is applied at fan-out and the block row points from them to the actor');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'
+      and user_id = '00000000-0000-0000-0000-000000368010'),
+  0, '099.4: ... and neither is a member the ACTOR blocked — the other direction of the same directional row, which private.is_blocked reads symmetrically. Both are asserted because a helper testing one column only passes the assertion above and fails this one');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'
+      and user_id = '00000000-0000-0000-0000-000000368006'),
+  0, '099.4: a rider who ALREADY LEFT the club is not notified — the membership arm is a live read of club_members, not a history of it');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'
+      and user_id = '00000000-0000-0000-0000-000000368007'),
+  0, '099.4: a rider in NO club is notified of nothing — the membership arm is scoped by club_id, and a widening that dropped that scope would notify the entire user base');
+
+-- The whole set in one number, so a recipient nobody thought to name still fails
+-- this. The three are: owner, ordinary member, admin.
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'),
+  3, '099.4: THREE rows and no fourth — owner, ordinary member and admin; the actor, the leaver, the two blocked members and the outsider are all out. A recipient nobody thought to name fails here even if every assertion above passes');
+
+-- ---------------------------------------------------------------------------
+-- 099.5  READ-TIME RESOLVABILITY — 036 §7.5's question, answered for this type
+-- ---------------------------------------------------------------------------
+-- ** THIS IS THE ASSERTION THAT PAYS FOR THE WIDENING. ** The recipient set and
+-- the SELECT policy live in different files and a widening on one side is
+-- invisible from the other, so counting rows WRITTEN cannot see the failure —
+-- the whole failure is a row that exists and cannot be read. 036 §7.5: "A row
+-- nobody can ever read is worse than no row."
+--
+-- The club is PRIVATE, so `clubs` SELECT's is_public disjunct is false for
+-- everyone and the owner disjunct is false for everyone but the owner. An
+-- ordinary member therefore resolves the subject through
+-- private.is_club_member(id) AND NOTHING ELSE — which is exactly the predicate
+-- the widened arm selects on, and the reason the recipient set is a strict
+-- subset of what the read policy admits rather than a guess at it.
+set role authenticated;
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000368002', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'),
+  1, '099.5: ** the ORDINARY MEMBER can READ the row the widened arm wrote them ** — on a PRIVATE club, through clubs SELECT''s membership disjunct alone. This is 036 §7.5''s question answered for club_joined, and the only assertion here that can see an unreadable row');
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0000368c0001'),
+  1, '099.5: ... and the subject itself resolves for them, which is the conjunct that would have discarded the row. Asserted separately so a failure says WHICH half broke');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000368003', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'),
+  1, '099.5: ... and so can the admin — the rows 099 adds are not write-only');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000368001', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'),
+  1, '099.5: ... and so can the owner');
+
+-- The negative side of the read: widening the recipient set widened no read.
+select set_config('test.uid', '00000000-0000-0000-0000-000000368007', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'),
+  0, '099.5: the outsider reads NOTHING about this club — 036 §3 conjunct 1 does this, and it would be the first thing a careless widening broke');
+select set_config('test.uid', '00000000-0000-0000-0000-000000368004', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0001'
+      and actor_id = '00000000-0000-0000-0000-000000368004'),
+  0, '099.5: and the actor cannot read a single row their own join caused — they learn nothing about delivery, and nothing about who is in a private club');
+
+reset role;
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 099.6  THE OWNER ARM IN ISOLATION — 095's ownerless owner
+-- ---------------------------------------------------------------------------
+-- In 099.4 the owner holds a club_members row of their own, so their
+-- notification is over-determined: the widened membership arm alone would have
+-- delivered it and a union with the owner arm DELETED would still pass. f2's
+-- owner holds no membership row at all — the state 095's leave_owned_club
+-- creates — so a row reaching them there came through clubs.owner_id and
+-- nowhere else. Without this, "the owner arm stays" is untested and dropping it
+-- as redundant-since-054 is green.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0002', '00000000-0000-0000-0000-000000368002', 'member');
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000368c0002'
+      and user_id = '00000000-0000-0000-0000-000000368008'),
+  0, '099.6: f2''s owner really holds NO membership row — without this precondition the next assertion passes through the membership arm and proves nothing');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0002', '00000000-0000-0000-0000-000000368004', 'member');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0002'
+      and actor_id = '00000000-0000-0000-0000-000000368004'
+      and user_id = '00000000-0000-0000-0000-000000368008'),
+  1, '099.6: an OWNERLESS OWNER is still notified — this is the union arm on its own, and the only assertion that fails if it is dropped as redundant since 054');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000368008', false);
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0002'
+      and actor_id = '00000000-0000-0000-0000-000000368004'),
+  1, '099.6: ... and they can READ it, holding no membership row, because clubs SELECT''s SECOND disjunct is owner_id = auth.uid(). That is the asymmetry 036 §7.5 refused for ride_created_in_club and it is what keeps the owner arm safe here');
+reset role;
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 099.7  ** THE DEFAULT CLUB STILL NOTIFIES NOBODY. THIS IS 099's DELIVERABLE. **
+-- ---------------------------------------------------------------------------
+-- 058 §4 silenced this fan-out for the club carrying clubs.is_default because
+-- every rider is auto-joined to it at onboarding, so at 036's recipient set it
+-- addressed ONE account with the entire signup stream. At 099's recipient set
+-- the same missing guard notifies EVERY RIDER WHO HAS EVER SIGNED UP on every
+-- signup — O(N^2) rows, growing for ever, addressed to people who did not ask.
+--
+-- ** f3 AND f4 ARE IDENTICAL EXCEPT FOR is_default, WHICH IS WHAT MAKES THE
+-- ZERO MEAN SOMETHING. ** A lone `count = 0` on a default club passes just as
+-- well when the roster is empty, when the actor is wrong, or when the fan-out
+-- is broken for every club in the app — 058's own version of this assertion had
+-- to add a second club for exactly that reason. Here the mirror runs the SAME
+-- four-rider roster and the SAME actor through a NON-default club and is
+-- asserted to write four rows, so the pair distinguishes "the guard fired" from
+-- "there was nobody to tell".
+--
+-- Verified BOTH WAYS while 099 was written: with the `if exists ... is_default
+-- ... return null` block deleted from private.notify_club_joined on a scratch
+-- database, this assertion reads 4 instead of 0 and goes red; restored, green.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0003', '00000000-0000-0000-0000-000000368001', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0003', '00000000-0000-0000-0000-000000368002', 'member');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0003', '00000000-0000-0000-0000-000000368003', 'admin');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0003', '00000000-0000-0000-0000-000000368005', 'member');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0004', '00000000-0000-0000-0000-000000368001', 'owner');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0004', '00000000-0000-0000-0000-000000368002', 'member');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0004', '00000000-0000-0000-0000-000000368003', 'admin');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0004', '00000000-0000-0000-0000-000000368005', 'member');
+
+select assert_eq(
+  (select array(select user_id from club_members
+                 where club_id = '00000000-0000-0000-0000-0000368c0003' order by 1)),
+  (select array(select user_id from club_members
+                 where club_id = '00000000-0000-0000-0000-0000368c0004' order by 1)),
+  '099.7: the default club and its mirror carry the IDENTICAL roster — compared as sets, because the pair below is only a controlled comparison while this holds, and a fixture drift would make the zero vacuous again');
+select assert_eq(
+  (select count(*)::int from clubs
+    where id = '00000000-0000-0000-0000-0000368c0003' and is_default),
+  1, '099.7: ... and f3 really carries clubs.is_default while f4 does not — the one column the pair differs in');
+select assert_eq(
+  (select count(*)::int from clubs
+    where id = '00000000-0000-0000-0000-0000368c0004' and is_default),
+  0, '099.7: ... asserted from the other side too, so a fixture that flagged both would not read as a pass');
+
+-- The same rider joins both, so the actor is controlled as well as the roster.
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0004', '00000000-0000-0000-0000-000000368009', 'member');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0004'
+      and actor_id = '00000000-0000-0000-0000-000000368009'),
+  4, '099.7: the NON-default mirror writes FOUR rows for this join — one per member of a four-rider roster. This is the control: it is what the default club would write if the 058 guard were gone');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000368c0003', '00000000-0000-0000-0000-000000368009', 'member');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0003'
+      and actor_id = '00000000-0000-0000-0000-000000368009'),
+  0, '099.7: ** and the DEFAULT club writes ZERO for the identical join. ** 058 §4''s early return survives the widening, which is the property without which PD-368 makes every signup notify every rider who has ever signed up. Remove the guard and this reads 4');
+select assert_eq(
+  (select count(*)::int from notifications
+    where type = 'club_joined' and club_id = '00000000-0000-0000-0000-0000368c0003'),
+  0, '099.7: ... and NOTHING was written for any of the default club''s five joins, not just the last — the guard is on the CLUB, so a rider who leaves the welcome club and rejoins it by hand is silent too (058 §4 chose that deliberately)');
+
+-- The structural half of the same guard. The behavioural assertion above needs
+-- a default club to exist; this one holds on any database and is what a session
+-- runs against the hosted project, where no such fixture can be made.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid = 'private.notify_club_joined()'::regprocedure
+      and prosrc like '%is_default%'),
+  1, '099.7: private.notify_club_joined still NAMES clubs.is_default in its body — the structural twin of the zero above, and the form that is checkable against a hosted project where no default-club fixture can be built');
+
+-- ---------------------------------------------------------------------------
+-- 099.8  The role-value DOMAIN, which is what replaces the dropped filter
+-- ---------------------------------------------------------------------------
+-- 099 removed `m.role in ('owner','admin')` outright rather than widening it to
+-- a three-value list, because the recipient set IS every row and a list would be
+-- a second place to edit. That makes the CHECK the only thing standing between a
+-- future fourth role and a silent widening: add `banned` or `pending` and the
+-- membership arm hands them every join with nothing red anywhere.
+--
+-- This is 055's treatment of ride_members_status_check with the predicate on the
+-- other side — there the body listed the values and the suite pinned the domain;
+-- here the body lists nothing, so the domain pin is the whole guard.
+select assert_eq(
+  (select pg_get_constraintdef(oid) from pg_constraint
+    where conname = 'club_members_role_check'),
+  'CHECK ((role = ANY (ARRAY[''owner''::text, ''admin''::text, ''member''::text])))',
+  '099.8: club_members_role_check is still EXACTLY three values — 099 dropped the role filter from the fan-out, so a fourth role added here silently joins the recipient set. Pinned textually rather than counted, because a count cannot tell a rename from an addition');
+
+-- And the filter really is gone, asserted against the body rather than trusted
+-- to the file: apply_migration takes SQL as an argument, so the repo and the
+-- database can diverge (022 shipped without `security definer` for exactly this
+-- reason). `m.role` is the dropped predicate's own text and cannot appear in
+-- prose the way a bare `admin` could — CLAUDE.md's comment trap.
+--
+-- Verified both ways: the pre-099 body on DEV contains `m.role in ('owner',
+-- 'admin')`, so this filter does catch a real instance rather than only reading
+-- zero against everything.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid = 'private.notify_club_joined()'::regprocedure
+      and prosrc like '%m.role%'),
+  0, '099.8: ... and the fan-out body names no role at all — the membership arm selects every club_members row, which is the widening itself and the thing the domain pin above exists to protect');
+
+-- ---------------------------------------------------------------------------
+-- 099.9  Nothing else moved. 099 is one function and one comment.
+-- ---------------------------------------------------------------------------
+-- No new type. The subject shape is untouched, so a club_joined row still
+-- carries club_id ALONE — 092's club_waved and 093's pair reuse that arm and
+-- would break together with it.
+select assert_eq(
+  (select count(*)::int from
+     unnest(string_to_array(
+       (select pg_get_constraintdef(oid) from pg_constraint
+         where conname = 'notifications_type_check'), '::text')) t
+    where t like '%''%'),
+  14, '099.9: notifications_type_check still carries FOURTEEN types — 099 adds none. An ordinary member''s copy differs from an admin''s at RENDER time if at all, which needs no fifteenth type and no column');
+select assert_eq(
+  (select pg_get_constraintdef(oid) like
+     '%WHEN ''club_joined''::text THEN ((postcard_id IS NULL) AND (comment_id IS NULL) AND (ride_id IS NULL) AND (club_id IS NOT NULL))%'
+     from pg_constraint where conname = 'notifications_subject_shape'),
+  true, '099.9: ... and notifications_subject_shape''s club_joined arm is unmoved — club_id alone, NOT NULL. Scoped to that one arm rather than the whole CHECK, so a later type''s arm landing beside it does not make this assertion stop testing its own intent');
+
+-- The policy this file's safety argument rests on, pinned by NAME rather than
+-- inherited. 060.1b pins the same qual for can_read_club; this one is 099's own,
+-- because the subset argument in the migration header is a claim about the THIRD
+-- disjunct specifically, and a rewrite that kept the qual's shape while changing
+-- that disjunct would leave 060.1b's twin standing and this one red.
+select assert_eq(
+  (select qual from pg_policies
+    where schemaname = 'public' and tablename = 'clubs' and cmd = 'SELECT'),
+  '(is_public OR (owner_id = auth.uid()) OR private.is_club_member(id))',
+  '099.9: clubs SELECT still carries private.is_club_member(id) as its third disjunct — that IS the widened arm''s predicate, and it is the whole reason 099 can write every member a row none of them will find unreadable. A block arm added here is the change that makes the subset argument false, and it must arrive with a can_read_club conjunct in the fan-out');
+
+-- The function's own contract, per 031: assert the ROLE, never the call. The
+-- suite runs as the table owner, for whom neither the schema barrier nor the
+-- EXECUTE barrier exists, so calling it would prove nothing about a rider.
+select assert_eq(
+  (select count(*)::int
+     from (values ('authenticated'), ('anon'), ('service_role')) as r(role)
+    where has_function_privilege(r.role, 'private.notify_club_joined()', 'execute')),
+  0, '099.9: private.notify_club_joined is reachable by NO client role and not by service_role — 036 §7.7''s revoke survived the redefinition, which a bare `create or replace` preserves and a drop/create would silently have dropped. Named by role, never attempted (031)');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'notify_club_joined'),
+  1, '099.9: ... and it exists, in `private` and nowhere PostgREST routes, so that assertion is not vacuous');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid = 'private.notify_club_joined()'::regprocedure
+      and prosecdef and proconfig @> array['search_path=""']),
+  1, '099.9: ... and is still SECURITY DEFINER with an empty search_path. proconfig stores the pin as the literal search_path="" — matching on `search_path=` finds nothing and reads as a pass, which is how 055''s own assertion was first written wrong');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid = 'private.notify_club_joined()'::regprocedure
+      and prosrc like '%auth.uid()%'),
+  0, '099.9: ... and auth.uid() appears NOWHERE in the body — 036 trap (b). The actor is new.user_id, which is available inside every security definer writer that reaches this trigger and in the suite, where auth.uid() is NULL');
+
+-- The trigger, filtered by name. The filter is REQUIRED and not tidiness:
+-- club_members carries enforce_participation_gate AND 054's
+-- protect_club_owner_membership, both of which DO have when clauses, so the
+-- unfiltered query returns three rows and reads as a failed apply.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.club_members'::regclass and not tgisinternal
+      and tgname = 'notify_club_joined' and tgqual is null),
+  1, '099.9: the trigger is still bound and still carries NO when clause — 036 trap (a). A `when (current_user = ''authenticated'')` copied from 023''s gate would be false inside all four security definer writers that create memberships, so a join by invite or by request would notify nobody');
+select assert_eq(
+  (select array(select tgname::text from pg_trigger
+                 where tgrelid = 'public.club_members'::regclass and not tgisinternal
+                 order by 1)),
+  array['enforce_participation_gate', 'notify_club_joined', 'protect_club_owner_membership'],
+  '099.9: ... and club_members carries exactly those three triggers — 099 hangs nothing new on the table, so a fourth is a failed apply rather than a finding');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgname = 'enforce_participation_gate' and not tgisinternal),
+  22, '099.9: still TWENTY-TWO participation-gate triggers — 099 adds no table and therefore no gate, and it changes a fan-out rather than a write path a rider owns');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'notifications'),
+  2, '099.9: notifications still carries exactly two policies, SELECT and UPDATE — 099 moves no policy, and above all adds no INSERT policy. The fan-out writes through a definer trigger precisely so that no client role ever holds INSERT here');
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint club_joined_members_099;
+
 
 rollback;
 
