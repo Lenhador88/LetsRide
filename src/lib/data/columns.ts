@@ -151,26 +151,52 @@ export const CLUB_FILTER_EMBED_COLUMNS = 'id, name, avatar_path, cover_image_pat
  * How a `profiles` row is embedded from a **membership** row — `club_members`
  * or `ride_members` — and the reason the `!user_id` hint is not optional.
  *
- * PostgREST resolves an embed by looking for relationships between the two
- * tables, and it counts a *many-to-many* one whenever some third table holds a
- * foreign key to each of them. `092` created `club_join_waves`, which by
- * design references `club_members (club_id, subject_user_id)` and
- * `profiles (user_id)` — so from that migration onwards `club_members` and
- * `profiles` had TWO candidate relationships, PostgREST refused to guess, and
- * every unhinted `profile:profiles(…)` embed started answering `PGRST201` with
- * HTTP 300. That is both club lists, the club roster and the club timeline,
- * broken by a migration that changed no policy and no column either screen
- * reads.
+ * PostgREST resolves an embed by counting the relationships between the two
+ * tables, and it counts a *many-to-many* one through a third table when that
+ * table is a **junction**: two foreign keys, and a primary key that is exactly
+ * the union of their columns. The precision matters — "any third table holding
+ * a key to both" is the tempting rule and it is FALSE, which is why `postcards`
+ * (keys to `clubs` and `rides`, primary key `id`) has never made
+ * `rides` → `clubs` ambiguous. Re-derive the real set rather than reasoning
+ * about it; on DEV it is eight junctions and every one has `profiles` on a side:
  *
- * The hint names the relationship, so no third table can ever make it
- * ambiguous again. **`ride_members` carries it for the same reason before it
- * needs it**: nothing references that pair today, but it is the identical shape
- * one junction table away, and the failure is invisible to every gate this repo
- * has — `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green,
- * because the ambiguity lives in PostgREST's schema cache rather than in the
- * SQL or the types.
+ *   with fk as (select conrelid t, confrelid tgt, conkey cols, conname from pg_constraint
+ *               where contype = 'f'),
+ *        pk as (select conrelid t, conkey cols from pg_constraint where contype = 'p')
+ *   select a.t::regclass, a.tgt::regclass, b.tgt::regclass from fk a
+ *     join fk b on a.t = b.t and a.conname < b.conname join pk on pk.t = a.t
+ *    where a.tgt <> b.tgt
+ *      and (select array_agg(distinct x order by x) from unnest(a.cols || b.cols) x)
+ *        = (select array_agg(x order by x) from unnest(pk.cols) x);
+ *
+ * `092` added the eighth. `club_join_waves` is `(club_id, subject_user_id,
+ * user_id)` — primary key and both foreign keys, `(club_id, subject_user_id)`
+ * to `club_members` and `user_id` to `profiles.id`, because a wave is at a
+ * membership and by a rider. So from that migration onwards `club_members` and
+ * `profiles` had TWO candidate relationships, PostgREST refused to guess, and
+ * every unhinted `profile:profiles(…)` embed answered `PGRST201` with HTTP 300:
+ * both club lists, the club roster and the club timeline, broken by a migration
+ * that changed no policy and no column any of them reads (PD-363).
+ *
+ * **The hint resolves to the direct many-to-one, measured rather than
+ * inferred** — worth stating because `user_id` is *also* the name of
+ * `club_join_waves`' own key to `profiles`, so the collision is real and only a
+ * live request settles it. Against DEV with a signed-in session,
+ * `profiles!user_id` returns `profile` as an OBJECT, byte-identical to
+ * `profiles!club_members_user_id_fkey`, while the junction spelling
+ * `profiles!club_join_waves` returns `[]`. Shape and nullability are therefore
+ * unchanged at every call site.
+ *
+ * **`ride_members` carries it before it needs it**: `ride_members` is itself one
+ * of the eight junctions, so `rides`↔`profiles` is already ambiguous and only
+ * `organizer:profiles!organizer_id` keeps that read working — the pair this
+ * constant covers is one junction table away from the same fate, and the
+ * failure is invisible to every gate here. `tsc` type-checks a template string,
+ * ESLint reads no SQL, Vitest mocks the client, `next build` issues no query,
+ * and the RLS suite runs on plain Postgres where PostgREST's relationship cache
+ * does not exist.
  *
  * `embed-hints.test.ts` is the tripwire: it refuses an unhinted `profiles`
- * embed anywhere in this directory.
+ * embed anywhere in `lib/data/` or `lib/actions/`.
  */
 export const MEMBER_PROFILE_EMBED = `profile:profiles!user_id(${PUBLIC_PROFILE_COLUMNS})`
