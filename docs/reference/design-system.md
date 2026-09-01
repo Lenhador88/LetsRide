@@ -144,7 +144,7 @@ detail screen had been re-deciding it: the club merge put Edit behind the dots w
 a bare pencil, no Delete and no Share at all. Re-derive the set rather than trusting a list here:
 
 ```bash
-grep -rln "OptionsIcon" src/components/ | grep -v icons/   # 5: account, rider, postcard, club, ride
+grep -rln "OptionsIcon" src/components/ | grep -v icons/   # 7: account, rider, postcard, club, ride, club thread, club timeline join row
 ```
 
 Three rules the surfaces already agree on, and one exception:

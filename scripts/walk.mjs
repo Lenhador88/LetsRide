@@ -18,8 +18,8 @@
  * **This is a smoke walk, not an end-to-end suite.** CLAUDE.md defers Playwright
  * "until a flow is stable enough to be worth maintaining", and that still holds.
  * Of every route it visits it asks one question — did this come back as a
- * screen, or as a redirect, an error boundary, or an empty body — and nothing
- * about what the screen then does.
+ * screen, or as a redirect, an error boundary, a failed read left in place, or
+ * an empty body — and nothing about what the screen then does.
  *
  * The named phases are the exception — refused sign-in before the real sign-in,
  * refused signup right after it (it needs the session it establishes — see
@@ -1371,13 +1371,40 @@ for (const path of paths) {
   const finalPath = url.pathname + url.search
   const text = await page.evaluate(() => document.body.innerText.trim()).catch(() => '')
 
-  // The three ways a screen fails without failing loudly. A 200 means Next
+  /**
+   * The in-place read failure, which is the app's COMMONEST one and was
+   * invisible here until PostgREST answered 300 on both club lists for a day.
+   *
+   * `useQuery` renders `ui/ErrorState` in place of one result rather than
+   * throwing to the route boundary, so the screen comes back 200, on its own
+   * URL, with a full body and none of the boundary's words in it — a healthy
+   * `rendered` line for a screen that loaded nothing. The claim in this file's
+   * header ("did this come back as a screen, or an error boundary") was already
+   * meant to cover it; only the detection was missing.
+   *
+   * Keyed on the DOM rather than on the copy, because `ErrorState`'s message is
+   * a default its callers may replace. `role="alert"` alone is far too broad —
+   * every inline form error carries one — so the discriminator is the pair:
+   * that role WITH a retry affordance inside it, which is `ErrorState` and
+   * nothing else in `src/`. `BoundaryError` needs no entry: it says "Something
+   * went wrong", which the line below already catches.
+   */
+  const failedRead = await page
+    .evaluate(() =>
+      [...document.querySelectorAll('[role="alert"]')].some((el) =>
+        /try again/i.test(el.textContent ?? '')
+      )
+    )
+    .catch(() => false)
+
+  // The four ways a screen fails without failing loudly. A 200 means Next
   // served *something*, which includes the error boundary.
   const flags = []
   if (finalPath !== path) flags.push(`redirected -> ${finalPath}`)
   if (/something went wrong|application error|unhandled runtime/i.test(text)) {
     flags.push('ERROR BOUNDARY')
   }
+  if (failedRead) flags.push('FAILED READ (ErrorState)')
   if (text.length < 20) flags.push(`near-empty body (${text.length} chars)`)
 
   if (flags.length || problems.length) failures += 1

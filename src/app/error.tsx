@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { BoundaryError } from '@/components/ui/BoundaryError'
+import { reportError } from '@/lib/observability/sentry'
 
 /**
  * The root error boundary — everything under the root layout that
@@ -31,6 +32,10 @@ export default function RootError({
 }) {
   useEffect(() => {
     console.error('Unhandled error outside the app tree:', error)
+    // PD-315. `boundary` says which of the three caught it, which is the
+    // difference between "a screen broke" and "the auth or onboarding tree
+    // broke" — this one owns every road a new rider has into the product.
+    reportError(error, { boundary: 'root', digest: error.digest })
   }, [error])
 
   return <BoundaryError onRetry={reset} digest={error.digest} />

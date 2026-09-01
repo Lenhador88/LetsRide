@@ -1,4 +1,5 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
+import { capture } from '@/lib/analytics/client'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { createPostcardSchema } from '@/lib/validation/postcards'
@@ -209,6 +210,17 @@ export async function createPostcard(
   // `postcards` prefix, and `invalidate` matches structurally — see that key's
   // own note, which records the extra call this used to make and why it was
   // dead.
+
+  // PD-353's fourth moment. `has_photo` is always true today — the composer
+  // refuses a postcard without one — and is sent rather than assumed because
+  // the design's caption-only postcard is a live question, and an event that
+  // silently stops meaning what its name says is this file's worst outcome.
+  // `from_ride` is the Journal tag (PD-256), which is the one thing here worth
+  // a funnel: it says whether postcards follow rides or stand alone.
+  capture({
+    name: 'postcard_posted',
+    properties: { has_photo: Boolean(imagePath), from_ride: Boolean(rideId) },
+  })
 
   return { error: null, redirectTo: '/postcards' }
 }

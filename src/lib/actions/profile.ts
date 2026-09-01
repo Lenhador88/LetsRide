@@ -1,4 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { applyAnalyticsPreference } from '@/lib/analytics/client'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { unwrap } from '@/lib/data/unwrap'
@@ -185,4 +186,40 @@ export async function removeCountry(code: string): Promise<ActionState> {
 
   invalidate(queryKeys.profile.all())
   return { error: null, sent: true }
+}
+
+/**
+ * Flip the analytics opt-out — PD-353.
+ *
+ * Writes the stamp through `set_analytics_opt_out`, then tells the SDK, in that
+ * order: the durable record is what a second device reads, and a rider who
+ * taps the toggle and closes the tab must not come back opted in. The SDK call
+ * cannot fail the action — `applyAnalyticsPreference` swallows its own errors —
+ * so a rider is never told their preference did not save because a third-party
+ * script was blocked.
+ *
+ * **It is a preference, never an authorization gate.** RLS enforces
+ * authorization and never validity, and this is the case where that cuts the
+ * other way: PostHog is a client-side SDK, so no policy can make an opt-out
+ * true. The column is a remembered answer that this app honours, and the spec
+ * claims exactly that and nothing stronger.
+ */
+export async function setAnalyticsOptOut(optOut: boolean): Promise<ActionState> {
+  const supabase = await resolveSupabase()
+  // `p_opt_out` is load-bearing as a NAME: PostgREST maps a parameter name to
+  // the JSON key, so renaming it in the migration is a wire-format change.
+  //
+  // The function returns the EFFECTIVE stamp — a timestamptz when opted out,
+  // null when not — so the SDK is told what the database actually recorded
+  // rather than what was asked for. One message for every failure, matching the
+  // shape `096`'s siblings use: no session is `42501`, no profile row `P0002`,
+  // and a database that has not had `096` applied yet answers `PGRST202`.
+  // Branching on those would tell a rider which, and none of them is
+  // actionable from a toggle.
+  const { data, error } = await supabase.rpc('set_analytics_opt_out', { p_opt_out: optOut })
+  if (error) return { error: 'Could not save that. Try again.' }
+
+  applyAnalyticsPreference(data !== null)
+  invalidate(queryKeys.profile.analyticsOptOut())
+  return { error: null }
 }

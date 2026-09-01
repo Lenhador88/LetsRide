@@ -131,6 +131,17 @@ export const queryKeys = {
      */
     location: (): QueryKey => ['profile', 'location'],
     /**
+     * `getAnalyticsOptOut` — PD-353. No `revalidatePath` predecessor; it is a
+     * stamp `096` added.
+     *
+     * Under `profile` so that `updateProfile`'s existing `profile.all()` sweeps
+     * it, which costs one re-read of a boolean and keeps the settings screen
+     * from showing a stale toggle after any other profile write. Its own leaf
+     * rather than `me()` for the reason `location` gives: a `boolean` and a
+     * whole `Profile` sharing one entry is this file's collision.
+     */
+    analyticsOptOut: (): QueryKey => ['profile', 'analyticsOptOut'],
+    /**
      * `view-rider-profile` — no `revalidatePath` predecessor, like
      * `notifications` and `places`. `blockRider`/`unblockRider`'s
      * `invalidate(EVERYTHING)` already reaches this through the empty
@@ -198,6 +209,21 @@ export const queryKeys = {
     mine: (): QueryKey => ['clubs', 'mine'],
     detail: (clubId: string): QueryKey => ['clubs', 'detail', clubId],
     members: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'members'],
+    /**
+     * The club's most recent joins, for the timeline — `getClubJoins`.
+     *
+     * **A separate key from `members`, not a slice of it.** The two read the
+     * same table under the same policy from opposite ends: the roster is
+     * `joined_at` ASC capped at 200 (the founding members first) and this is
+     * DESC capped at `CLUB_TIMELINE_JOINS`. On any club past that cap they hold
+     * disjoint sets of riders, so sharing a key would serve whichever loaded
+     * first to the other screen — a roster starting at the newest member, or a
+     * timeline showing only the club's founders.
+     *
+     * A child of `detail` like `members`, so leaving or deleting the club
+     * reaches both.
+     */
+    joins: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'joins'],
     /**
      * PD-101. `getClubForEdit` returns a narrower shape than `getClub` — no
      * `owner` embed, no `viewer_role` — so it gets its own leaf under
@@ -286,6 +312,53 @@ export const queryKeys = {
       'unread',
     ],
     /**
+     * The newest message in each of the club's recently-active threads — the
+     * timeline's reply events (`getClubThreadReplies`).
+     *
+     * **A child of `threads` like `threadsUnread`, and invalidated the same
+     * way — by name.** The asymmetry `threadsUnread` documents does NOT reach
+     * this key on its own: a message lives under
+     * `['clubs','threads',threadId,'messages']`, which does not prefix
+     * `['clubs','detail',clubId,…]`, so posting one cannot invalidate this by
+     * inheritance. `sendClubMessage` and `deleteClubMessage` take the club id
+     * and name this key explicitly for that reason; without it a rider posts in
+     * a thread, taps back, and the timeline does not show the reply they just
+     * wrote until it goes stale.
+     */
+    threadReplies: (clubId: string): QueryKey => [
+      'clubs',
+      'detail',
+      clubId,
+      'threads',
+      'replies',
+    ],
+    /**
+     * Which of a club's THREADS the viewer has waved, and the per-viewer
+     * count — `attachClubWaveState({ kind: 'thread', ... })` (`092`,
+     * PD-356).
+     *
+     * **Its own leaf, not nested under `threads`** — unlike `threadsUnread`
+     * and `threadReplies` above, which move WITH the thread list because a
+     * new page of threads changes what an unread map or a reply window even
+     * means. A wave toggle changes neither the list nor the unread marks, so
+     * `waveThread`/`unwaveThread` invalidate this key ALONE
+     * (`client-cache-invalidation`'s "SHALL NOT invalidate
+     * `clubs.detail(clubId).threads`, whose rows have not changed, and SHALL
+     * NOT invalidate the unread map"). A sibling of `threads`, a child of
+     * `detail` like every other club sub-resource, so `clubs.all()` and
+     * `clubs.detail(clubId)` still reach it.
+     */
+    threadWaves: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'threadWaves'],
+    /**
+     * Which of a club's JOINS the viewer has waved, and the per-viewer
+     * count — `attachClubWaveState({ kind: 'join', ... })` (`092`, PD-356).
+     *
+     * A sibling of `joins` for the identical reason `threadWaves` is a
+     * sibling of `threads`: a wave moves neither the roster nor the join
+     * list, so `waveJoin`/`unwaveJoin` name this key and nothing else.
+     */
+    joinWaves: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'joinWaves'],
+    /**
      * One thread itself — its title, its author and the club it sits in
      * (`getClubThread`). Keyed by the thread id for the same reason its
      * messages are, and **the parent of that key**: invalidating the thread
@@ -317,6 +390,30 @@ export const queryKeys = {
       threadId,
       'messages',
     ],
+    /**
+     * The admin's outgoing invite list for one club (`093`, PD-360) —
+     * `rides.invites`'s shape one domain over. A child of `detail` like
+     * `joinRequests`, so leaving or deleting the club takes it with it.
+     *
+     * **`inviteRiderToClub` and `withdrawClubInvite` both name this key**,
+     * matching `inviteRiderToRide`/`revokeRideInvite`. Neither `acceptClubInvite`
+     * nor `declineClubInvite` does: those are the INVITEE's writes, on a
+     * different device most of the time, and `085`'s rule means accepting
+     * DELETES the row rather than leaving a stale one for this list to keep
+     * showing — the admin sees the change next time they read this key, same
+     * as every other list in this file that nothing pushes to.
+     */
+    inviteList: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'inviteList'],
+    /**
+     * The admin's invite LINKS for one club (`093`, PD-360) — `rides.inviteLinks`'s
+     * shape one domain over, including the one structural difference: a club
+     * has no departure, so nothing here is keyed by anything but the club.
+     *
+     * **No `revalidatePath` maps onto this**, matching its ride counterpart —
+     * the surface did not exist under the server render. `createClubInviteLink`
+     * and `revokeClubInviteLink` both name it.
+     */
+    inviteLinks: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'inviteLinks'],
   },
 
   /**
@@ -369,6 +466,24 @@ export const queryKeys = {
   rides: {
     all: (): QueryKey => ['rides'],
     list: (filter: string | null): QueryKey => ['rides', 'list', filter],
+    /**
+     * The rides one club has ANNOUNCED, newest announcement first — the club
+     * timeline's ride source (`getClubRideAnnouncements`).
+     *
+     * **Under `rides`, not under `clubs.detail`, and the placement is what keeps
+     * it fresh.** Every mutation in `lib/actions/rides.ts` invalidates
+     * `rides.all()`, so a ride created, edited or deleted reaches this key with
+     * nothing added at those three call sites; hung under the club it would
+     * have needed a fourth thing to remember, and the failure of forgetting is
+     * a timeline that keeps claiming a deleted ride was planned.
+     *
+     * **Not `list(filterSegment.club(id))`, which is a different question over
+     * the same rows**: that one is split and bounded by `departure_at` for the
+     * strip at the top of the club screen, this one is ordered and bounded by
+     * `created_at`. Two shapes under one key would serve whichever screen
+     * loaded first to the other — see `getClubRideAnnouncements`.
+     */
+    clubAnnouncements: (clubId: string): QueryKey => ['rides', 'club-announcements', clubId],
     filters: (): QueryKey => ['rides', 'filters'],
     /**
      * `/rides/explore` — public rides the viewer is not already on.
@@ -614,6 +729,46 @@ export const queryKeys = {
      * extra steps.
      */
     link: (token: string): QueryKey => ['invites', 'link', token],
+  },
+
+  /**
+   * The club invites addressed to the signed-in rider (`093`, PD-360) —
+   * `invites`'s shape one domain over, and its own top-level domain for the
+   * identical reason: it is the *rider's* list, spanning every club they have
+   * been invited to, and nesting it under `clubs` would be a lie about what
+   * invalidating one club reaches.
+   */
+  clubInvites: {
+    all: (): QueryKey => ['clubInvites'],
+    /**
+     * The invitee's own answerable invites — `public.my_live_club_invites()`,
+     * `pending` **or** `declined` (`085`'s rule lets a declined invite be
+     * reopened through Accept). Named `pending` to match `invites.pending()`
+     * one domain over rather than for the narrower literal status it holds;
+     * `ClubInviteActions` is what reads which of the two a given row is.
+     */
+    pending: (): QueryKey => ['clubInvites', 'pending'],
+    /**
+     * The admin's rider-picker hits for one club and one query string —
+     * `invites.search`'s shape. Under `clubInvites` rather than under the
+     * club, because inviting somebody must take them out of the picker and
+     * `inviteRiderToClub` invalidating `clubs.inviteList(id)` would not reach
+     * a key nested there — this one is reached by `clubInvites.all()`.
+     */
+    search: (clubId: string, query: string): QueryKey => ['clubInvites', 'search', clubId, query],
+    /**
+     * What one invite token previews (`093`, PD-360) —
+     * `public.club_invite_link_preview`. **The token is IN the key**, for
+     * `invites.link`'s exact reason: two links opened in one session must not
+     * share an entry, or the second rider would be shown the first rider's
+     * club.
+     *
+     * Under `clubInvites` so `clubInvites.all()` reaches it, which is what
+     * `claimClubInviteLink` names. **`clearQueryCache()` on sign-out is
+     * load-bearing rather than tidy here too** — this entry describes a club
+     * the next rider on the device may have no right to see.
+     */
+    link: (token: string): QueryKey => ['clubInvites', 'link', token],
   },
 
   /**

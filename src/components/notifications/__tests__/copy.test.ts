@@ -115,3 +115,24 @@ describe('the three invite types survive losing their ride', () => {
     expect(notificationCopy(row(type), CREW)).toBe(expected)
   })
 })
+
+/**
+ * `093`, PD-360's two — `club_id` alone, `club_joined`'s subject shape, so
+ * these follow `club_joined`'s own generic-fallback pattern rather than the
+ * ride-invite trio's `ride: null` fixture.
+ */
+describe('the two club invite types survive losing their club', () => {
+  it.each([
+    ['club_invited', 'invited you to a club.'],
+    ['club_invite_declined', 'declined your invite to a club.'],
+  ] as const)('%s degrades to a generic club', (type, expected) => {
+    expect(notificationCopy(row(type, { club: null }), CREW)).toBe(expected)
+  })
+
+  it.each([
+    ['club_invited', 'invited you to Night Owls.'],
+    ['club_invite_declined', 'declined your invite to Night Owls.'],
+  ] as const)('%s names the club when it did resolve', (type, expected) => {
+    expect(notificationCopy(row(type), CREW)).toBe(expected)
+  })
+})

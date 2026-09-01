@@ -427,31 +427,119 @@ is a drawn value this repo no longer builds:
 - [ ] **A SECOND failing pairing arrived with the same commit and is a different one:
       `text-muted` on `bg-track`.** `#666666` on `#E5DACF` measures **4.17:1** against a 4.5:1
       bar, and both new instances are 12px — so neither is WCAG large text and neither passes.
-      They are `ClubCreateRideRow`'s second line and the carousel's `Add` label; the same
+      They were `ClubCreateRideRow`'s second line and the carousel's `Add` label — **both
+      components are now deleted** (the carousel with the club timeline, the row with the
+      create bar on 2026-08-31), so ONE live instance remains, plus the unlogged Journal one;
+      the same
       pairing already ships unlogged on `RideJournalEmpty`'s `Add`, and this entry's own
       unselected-RSVP-button line logs it at the same ratio. Recorded because the commit that
       added them re-counted the *accent* pairing carefully and said nothing about this one,
       which left this file asserting a complete contrast sweep it had not done.
 
-      **A same-line grep finds one of the two, not both**, which is the trap worth recording:
-      the carousel's `Add` label is a bare `text-xs font-semibold` span that **inherits**
-      `text-muted` from the `Link` wrapping it, so the pairing is spread across two lines and
-      only the row's own second line matches. List the token and read the sizes off the hits:
+      **THREE live instances arrived with the club timeline over 2026-08-31**, all the same
+      4.17:1 for the same reason — `text-muted` on `bg-track`, at a size WCAG does not count as
+      large: `ClubTimelineEventRow`'s `Time Since` (12px), and `ClubTimelineThreadRow`'s own
+      `Time Since` (12px) and its lead/reply-count line (14px medium). **The third is the one
+      that is load-bearing**, because it carries the reply count rather than a timestamp.
+
+      An earlier revision of this entry said "ONE live instance remains" and was made wrong by
+      the very next commit, which is this entry's own recorded failure mode repeating: a commit
+      counted the accent pairing carefully and said nothing about this one. Re-derive rather than
+      trusting the number. It is **left exactly as
+      drawn** under the standing policy at the head of this section — the frame specifies
+      `Poppins/12/Regular` `Grey/80` — so what was missing was the measurement, not the
+      colour.
+
+      **A same-line grep finds one of them, not all**, which is the trap worth recording: the
+      carousel's `Add` label was a bare `text-xs font-semibold` span that **inherited**
+      `text-muted` from the `Link` wrapping it, so the pairing was spread across two lines and
+      only the row's own second line matched. That shape survives the carousel's deletion —
+      any wrapper carrying the token over a differently-sized child has it. List the token and
+      read the sizes off the hits:
 
       ```bash
-      grep -n "text-muted\|text-xs" src/components/clubs/ClubCreateRideRow.tsx \
-        src/components/clubs/ClubPostcardCarousel.tsx
+      grep -n "text-muted\|text-xs" src/components/clubs/ClubTimelineEventRow.tsx \
+        src/components/clubs/ClubTimelineThreadRow.tsx src/components/rides/RideJournal.tsx
       ```
 
-      `text-foreground` on `bg-track` is fine at **12.65:1** and is what the row's title uses;
-      the failure is confined to the muted supporting lines. Same PD-176 designer question.
+      `text-foreground` on `bg-track` is fine at **12.65:1** and is what both the row's title
+      and the timeline event's sentence use; the failure is confined to the muted supporting
+      lines. Same PD-176 designer question.
+
+- [x] **The club detail is a TIMELINE as of 2026-08-31 (`add-club-timeline`, PD-299 #4), and it
+      is the first version of this screen that is MEASURED rather than composed.** Every entry
+      below it describes the stacked-sections screen that preceded it and is history; this one
+      supersedes them. The frame is `Private club - Timeline` (`2043:10604`) — which existed
+      the whole time and which two successive rebuilds of this screen did not read, on the
+      belief that no timeline frame existed. Check before assuming again:
+      `npm run figma -- ls Timeline`.
+
+      What is measured from it: the `Upcoming rides` scroller leading the stream; **full
+      postcard cards interleaved with event groups**, not a uniform list of rows; the event row
+      itself at 44px on `Grey/10` with a 28px avatar, the sentence at `Poppins/14/Regular` and a
+      `Time Since` at `Poppins/12/Regular` `Grey/80`; the run grouping (consecutive events share
+      one block with 8px dividers, blocks separated by the 16px `Divider` spine); and the
+      sentences' voice — *"Ron Wilson joined the club."*, *"Pedro Abreu created the club."*
+
+      **The stream carries FOUR row shapes as of 2026-08-31, and only two are the frame's.**
+      The product owner asked for a visual distinction between kinds — *"when someone creates a
+      ride, maybe we could add the ride overview (like in ride list screen), but still keep the
+      label on top"*, and *"a thread should also be clearly visible"* — so a ride draws its full
+      `RideCard` under a muted `X planned a ride` label, and a thread draws a 72px row of its own
+      with the thread glyph, its participants' faces and its reply count. Both left the `Grey/10`
+      run to do it. What stays measured is the run itself and the postcard card: a join and the
+      club's founding are facts that happened once, and they still collect into the frame's
+      `Events` block.
+
+      **The frame has no thread at all** — it predates `081`, and that half is verified. **It
+      DOES draw a ride-derived row in the stream**, though, and an earlier revision of this entry
+      said otherwise: `Events` → *"Pedro Abreu and Julia Windfield went on a ride!"*, `326×64`,
+      inside the `Grey/10` run. It is a **different event** — post-hoc, about a ride that
+      happened, with its crew named — where the timeline's is the announcement at
+      `rides.created_at`. Nothing in the schema answers "who went" for a past ride, so the
+      frame's row is UNBUILT rather than replaced (`add-club-timeline`'s proposal already logs it
+      as a non-goal), and the card composition is ours because the frame has no announcement to
+      follow. Read the frame before offering it as evidence: `npm run figma -- tree "Private club
+      - Timeline"`.
+
+      Three further things are **ours** and are deviations rather than omissions, each because
+      the frame predates the thing:
+
+      - **The identity band** — the type/started line, the member rail and the description, at
+        the top. The frame draws none of it; the product owner asked for it on 2026-08-31.
+      - **The create bar** — `ClubCreateBar`, which moved TOWARDS the frame on 2026-08-31 and
+        does not reach it. The first pass drew a three-tile action band in the scroll and called
+        the frame's own arrangement a deviation; the product owner then asked for *"a bottom bar
+        like the one create club on the club list"*, which is the `Button Container` the frame
+        draws. So the slot, the 358×40 primary and the geometry are now the frame's.
+
+        **What is still ours is that it is a SIBLING of the navigation bar rather than part of
+        it.** The frame's `v2 / Component / Navigation / Bar` is one 390×152 component with the
+        button container inside it, under a single `Grey/10%` top stroke — the `STICKY_ACTIONS`
+        construction. This bar cannot be that, because `STICKY_ACTIONS` is keyed on pathname and
+        this one is member-gated, so it is positioned against the nav bar instead and **draws no
+        border of its own** so the two still read as one. If that action slot ever learns a
+        predicate, this belongs inside it. It also holds one primary opening a sheet rather than
+        the frame's `Create postcard`, because the screen has three things to create and the
+        frame predates two of them.
+      - **The thread event.** The frame predates `081` (PD-307) entirely, so a club had no
+        threads when it was drawn.
+
+      Two deliberate departures from the frame's own drawing, both recorded so a later pass does
+      not read them as drift: the 16px `Divider` is the **gap** between blocks rather than a
+      literal 2×16 rectangle (the `Grey/10` blocks and white cards already separate themselves,
+      and the rule read as an artefact of how the frame was assembled), and the section heading
+      uses `SectionHeader` rather than the frame's `Poppins/14/Medium` `Grey/80` title —
+      deviating from every other section heading in the app inside one screen is the worse of
+      the two inconsistencies.
 
 - [ ] **The section order and the Postcards section itself deviate further from the approved
       mock, 2026-08-18 (`club-details-dropdown-removal`, PD-262).** The product owner settled a
       new top-to-bottom order in conversation rather than in a redrawn frame: Upcoming rides,
       Postcards, Members, the `Private club · Started …` line, then the description — Upcoming
       rides moved to lead the screen (with a `Plan a ride` create affordance, `ClubCreateRideRow`,
-      when the club has none and the viewer can create one), and Members and Postcards swapped
+      when the club has none and the viewer can create one — both that component and the
+      affordance are gone as of 2026-08-31; every create is in `ClubCreateBar`), and Members and Postcards swapped
       from what an earlier revision of this same conversation had settled. **Postcards is a
       horizontally-scrolling strip of stamps** (`ClubPostcardCarousel`), not the stacked
       `PostcardCard` list `AI / Club detail merged / 2026-08-17` draws and this section drew

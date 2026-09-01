@@ -187,6 +187,17 @@ export type RideListItem = {
   meeting_point: string
   departure_at: string
   /**
+   * When the ride was **announced**, never when it leaves.
+   *
+   * The club timeline places a ride at the moment its organizer created it —
+   * `departure_at` would put a ride planned today for next month a month into
+   * the future on a feed of things that have already happened. The two sit far
+   * apart on the club screen for that reason: upcoming rides run across the top
+   * ordered by `departure_at`, and the card announcing one sits below ordered
+   * by this.
+   */
+  created_at: string
+  /**
    * The IANA zone the meeting point is in (`080`, PD-193), or `null` when the
    * ride does not carry one — every ride created before that column, and any
    * place whose provider sent no zone.
@@ -615,6 +626,139 @@ export type RideInviteLinkPreview = {
  * or a link id: nothing the rider now holds is addressable by them.
  */
 export type RideInviteLinkClaim = { ride_id: string }
+
+/**
+ * `public.club_invites.status` (`093`, PD-360) — **two values, not three**.
+ *
+ * `085`'s rule rather than `083`'s: accepting **deletes** the row, because for
+ * a club the `club_members` row IS the audience — a surviving `accepted` row
+ * beside `unique (club_id, invitee_id)` would make a club a rider left
+ * un-invitable. `pending` and `declined` are both readable to the invitee and
+ * the inviter; only `pending` grants the Accept/Decline pair, and `declined`
+ * is reopenable by the invitee alone through Accept.
+ */
+export type ClubInviteStatus = 'pending' | 'declined'
+
+/**
+ * One invite as the *invitee* sees it — `public.my_live_club_invites()`'s own
+ * row shape, behind their `club_invited` notification.
+ *
+ * **Inferred, not measured** — `093` is not applied to DEV, so the RPC's
+ * exact column names are this change's best-effort match to `design.md`
+ * §The function inventory ("a fixed list of NAMED columns, never
+ * `club_invites.*` or `clubs.*`") rather than a read pinned against the live
+ * function. Only `getMyClubInvites`'s own mapping needs to change if the
+ * applied shape differs — nothing above the data layer reads a column name.
+ *
+ * **No `club` or `inviter` embed, unlike `RideInvite`'s `ride`.** `093` adds
+ * no arm to `clubs` SELECT (`design.md` §The invitee needs no new read
+ * path), so this is a `security definer` RPC rather than an ordinary table
+ * read — and `ClubInviteActions`, its one caller, matches on `club_id` alone
+ * and renders no club or inviter details of its own. `NotificationsListItem`
+ * already carries the club's name and avatar, read through
+ * `discoverable_private_clubs` for exactly this rider (`src/lib/data/notifications.ts`'s
+ * `resolvePrivateClubEmbeds`).
+ *
+ * **`status` decides which controls are offered, not just whether a row
+ * exists.** `085`'s rule for a club invite admits reopening a `declined` one
+ * through Accept, but `decline_club_invite` is `pending`-only — so a caller
+ * offering both controls unconditionally would offer a Decline the database
+ * refuses for an already-declined row.
+ */
+export type ClubInvite = {
+  id: string
+  club_id: string
+  status: ClubInviteStatus
+  created_at: string
+}
+
+/**
+ * One row of the *inviting member's* outgoing list for one club — `093`,
+ * PD-360, `RideInviteListItem`'s shape one domain over.
+ *
+ * **No `is_crew`-style cross-check against `club_members`, unlike its ride
+ * counterpart.** `085`'s rule means accepting a club invite deletes the row
+ * outright, so there is no state where a `pending` invite sits beside a rider
+ * who already joined — the ride domain needs that check only because an
+ * `accepted` invite row survives its own acceptance.
+ */
+export type ClubInviteListItem = {
+  id: string
+  status: ClubInviteStatus
+  created_at: string
+  invitee: PublicProfile | null
+}
+
+/**
+ * One invite link on the club's admin roster — `093`, PD-360, mirroring
+ * `RideInviteLink` with one structural difference: **there is no `ride`-style
+ * natural death**, so `expires_at` is a plain column default
+ * (`now() + 14 days`) rather than a value derived from a second table.
+ *
+ * **`uses_count` is derived, never stored** — the number of `club_members`
+ * rows carrying this link's id, read under the admin's own row security. It
+ * can go **down**: a rider who claimed and later left, or who blocked this
+ * admin, drops out of the count. `N joined`, never a ledger — see the type's
+ * ride counterpart for the full argument, which transfers whole.
+ */
+export type ClubInviteLink = {
+  id: string
+  token: string
+  created_at: string
+  expires_at: string
+  revoked_at: string | null
+  uses_count: number
+  /**
+   * **Not a column** — `expires_at` against the clock at read time, resolved
+   * in the data layer because a component may not read the clock during
+   * render. A display hint and never the authority: liveness is decided in
+   * `private.live_club_invite_link` at every use.
+   */
+  is_expired: boolean
+}
+
+/**
+ * What a token holder is shown before they decide — `public.club_invite_link_preview`'s
+ * **six** named columns, plus the one field the client adds.
+ *
+ * **Deliberately narrower than `RideInviteLinkPreview`.** No `latitude` or
+ * `longitude` — the landing screen (`ClubPreviewScreen`) renders neither, and a
+ * token must not disclose a club's coordinates for a field nothing draws. No
+ * `is_crew`/`is_member` either: "the caller already belongs to this club" is
+ * one of the eleven dead states `private.club_invite_link_reachable_by` folds
+ * into the ordinary "no longer valid" answer, unlike a ride invite link, which
+ * treats "already crew" as its own reachable branch — see
+ * `design.md` §Liveness and reachability.
+ *
+ * **`is_public` is real here, and it is not on `discoverable_private_clubs`'s
+ * seven at all.** That accessor's predicate can only ever return a private
+ * club, so its own `ClubPreview` type carries no such column; a token can
+ * outlive a flip from private to public, so the screen needs the live answer
+ * rather than an implied one. See `design.md`'s six-column reconciliation
+ * table.
+ */
+export type ClubInviteLinkPreview = {
+  club_id: string
+  name: string
+  avatar_path: string | null
+  /** Not a column — signed from `avatar_path` at read time, and null for a
+   * private club exactly as `ClubPreview.avatar_url` is: `016`'s storage
+   * policy runs its own `EXISTS` against `clubs` and refuses the object to a
+   * non-member. */
+  avatar_url: string | null
+  location_name: string | null
+  members_count: number
+  is_public: boolean
+}
+
+/**
+ * What a successful claim answers — the club the token admitted the rider to.
+ *
+ * The RPC returns a bare uuid; naming it lets the landing screen route on a
+ * shape rather than a cast, and it is deliberately **not** an invite id or a
+ * link id — nothing the rider now holds is addressable by them.
+ */
+export type ClubInviteLinkClaim = { club_id: string }
 
 export type RideCrewMember = {
   user_id: string
@@ -1367,6 +1511,39 @@ export type NotificationType =
   // own `clubs` embed, which returns null for a club the reader cannot see:
   // `getNotificationsPage` fills it from `discoverable_private_clubs`.
   | 'club_join_request_declined'
+  // `093` (PD-360). Two types, both carrying `club_id` ALONE — `club_joined`'s
+  // subject shape, so `036` §3's per-column CHECK needed no change. Their
+  // READABILITY is a different story: `club_invited` is answered by a rider
+  // who may not be a member at all, and `clubs` SELECT carries no invite arm
+  // (`design.md` §The invitee needs no new read path — deliberately, so as
+  // not to widen `016`'s storage policies or `036` §3's own conjunct for
+  // every other `club_id`-carrying row). So the SELECT and UPDATE policies on
+  // `notifications` gain a TYPE-SCOPED third disjunct for `club_invited`
+  // alone — `089`'s pattern, its second instance — and `getNotificationsPage`
+  // resolves the club through `discoverable_private_clubs` when the ordinary
+  // embed comes back null, exactly as it already does for
+  // `club_join_request_declined`.
+  //
+  // `club_invite_declined`'s recipient is the INVITER, who is ordinarily still
+  // a member and needs no such widening — it is included in the same fallback
+  // for the one case that is not ordinary: an inviter who has since left.
+  //
+  // **There is deliberately no `club_invite_accepted`.** `private.notify_club_joined`
+  // already fans `club_joined` out to the owner and admins on the
+  // `club_members` INSERT the accept performs, and a second row would tell
+  // the same people the same thing — `091` made the identical call for
+  // `ride_joined`.
+  | 'club_invited'
+  | 'club_invite_declined'
+  // `092` (PD-356). A JOIN wave notifies the joiner — a THREAD wave notifies
+  // nobody (`design.md` §Q2's default). Subject shape identical to
+  // `club_joined`'s — `club_id` set, everything else NULL — so
+  // `notifications_event_key` collapses it per `(recipient, actor, club)`
+  // with no new column and no ninth index. `notificationCopy`,
+  // `NotificationsListItem`'s `describe`, and this union are the three
+  // exhaustive switches this type has to land in together — missing one is a
+  // runtime break in the first two and only a type error in this one.
+  | 'club_waved'
 
 /**
  * One row from `public.notifications` (`036`), as the notifications screen and

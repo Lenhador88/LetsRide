@@ -94,6 +94,26 @@ export function notificationCopy(row: NotificationRow, viewerId: string | undefi
     // row name nobody.
     case 'club_join_request_declined':
       return 'declined your request to join.'
+    // `093`, PD-360. Both resolve their club from the live subject like every
+    // other arm here, so a reader who loses the club loses the string with
+    // it — `036` §2's rule. `club_invited`'s actor is the inviter and
+    // `club_invite_declined`'s is the invitee who declined; neither is a case
+    // where the club stands in for the actor, unlike `club_join_request_declined`
+    // above, because both types have a real rider on the other end who chose
+    // to act.
+    case 'club_invited':
+      return `invited you to ${row.club?.name ?? 'a club'}.`
+    case 'club_invite_declined':
+      // Plainly, and without softening it — `ride_invite_declined`'s exact
+      // reasoning: the inviter chose this rider by name and already knows who
+      // they invited, so the identity is not new information.
+      return `declined your invite to ${row.club?.name ?? 'a club'}.`
+    // `092`, PD-356. A join wave alone reaches this switch — a thread wave
+    // notifies nobody (`design.md` §Q2). "Wave" is the app's word for the
+    // gesture (§D1); this SHALL NOT say "liked your join", which names
+    // neither the gesture nor anything the reader did.
+    case 'club_waved':
+      return `waved you a welcome to ${row.club?.name ?? 'a club'}.`
   }
 
   // **The compile-time guard and the runtime fallback are BOTH needed, and the

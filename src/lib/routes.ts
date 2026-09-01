@@ -68,6 +68,13 @@ export const DETAIL_ID_PARAM = 'id'
 export const RIDE_JOIN_PATH = '/rides/join'
 
 /**
+ * The club invite link's landing route — `093`, PD-360, `RIDE_JOIN_PATH`'s
+ * exact reasoning one domain over, including the two-guard-edit rule below.
+ * The second public path in this file.
+ */
+export const CLUB_JOIN_PATH = '/clubs/join'
+
+/**
  * Which token the landing route is answering for.
  *
  * **A query parameter rather than a path segment, and the reason is the NATIVE
@@ -85,6 +92,16 @@ export const RIDE_JOIN_PATH = '/rides/join'
  * place it is a *credential* rather than an id.
  */
 export const INVITE_TOKEN_PARAM = 'token'
+
+/**
+ * "Say welcome" (`092`, PD-356, `design.md` §D3) — the join row's overflow
+ * opens the ordinary thread composer with its title pre-filled. A query
+ * parameter rather than a second route, on the same reasoning `CREATE_CLUB_
+ * PARAM` gives: it seeds a form field and nothing else, and it is the
+ * SEARCH PARAM half of `routes.newClubThread`'s two-parameter shape below
+ * rather than a route of its own.
+ */
+export const SAY_WELCOME_TITLE_PARAM = 'title'
 
 function detail(path: string, id: string): string {
   return `${path}?${DETAIL_ID_PARAM}=${encodeURIComponent(id)}`
@@ -114,6 +131,9 @@ export const detailPaths = {
    * authority (`ClubDetail`'s own docstring). The RPCs decide either way. */
   clubManage: '/clubs/detail/manage',
   clubEdit: '/clubs/detail/edit',
+  /** The admin's rider picker and link section — `093`, PD-360,
+   * `rideInvite`'s shape one domain over. */
+  clubInvite: '/clubs/detail/invite',
   /** A club's threads — `081`, PD-307. The segment says which
    * entity the `id` names, matching `/rides/detail/chat?id=`: `threads`
    * takes a CLUB id, `thread` takes a THREAD id. */
@@ -135,10 +155,23 @@ export const routes = {
   clubMembers: (id: string) => detail(detailPaths.clubMembers, id),
   clubManage: (id: string) => detail(detailPaths.clubManage, id),
   clubEdit: (id: string) => detail(detailPaths.clubEdit, id),
+  clubInvite: (id: string) => detail(detailPaths.clubInvite, id),
   clubThreads: (clubId: string) => detail(detailPaths.clubThreads, clubId),
   /** Takes the THREAD's id, not the club's — see `detailPaths`. */
   clubThread: (threadId: string) => detail(detailPaths.clubThread, threadId),
-  newClubThread: (clubId: string) => detail(detailPaths.newClubThread, clubId),
+  /**
+   * `prefillTitle` is "Say welcome"'s only caller (`092`, PD-356) — every
+   * other entrance to this screen (`ClubCreateBar`) omits it, and the
+   * composer defaults to an empty title exactly as before. The rider still
+   * edits or discards it like any other draft; nothing is written until they
+   * submit — see `CreateThreadForm`.
+   */
+  newClubThread: (clubId: string, prefillTitle?: string) => {
+    const base = detail(detailPaths.newClubThread, clubId)
+    return prefillTitle
+      ? `${base}&${new URLSearchParams({ [SAY_WELCOME_TITLE_PARAM]: prefillTitle })}`
+      : base
+  },
   /** Another rider — `view-rider-profile`. Own-id is redirected to `/profile`
    * rather than resolving here; see that route's own redirect. */
   profile: (id: string) => detail(detailPaths.profile, id),
@@ -152,6 +185,16 @@ export const routes = {
    */
   joinRide: (token: string) =>
     `${RIDE_JOIN_PATH}?${new URLSearchParams({ [INVITE_TOKEN_PARAM]: token })}`,
+
+  /**
+   * A club invite link (`093`, PD-360) — `joinRide`'s shape one domain over,
+   * the second URL this app produces meant to be pasted into somebody else's
+   * chat. Decision 1: a **public** club has no such link at all, because the
+   * plain `routes.club(id)` URL already carries every grant a token could —
+   * this exists only for a private club, where it is the whole point.
+   */
+  joinClub: (token: string) =>
+    `${CLUB_JOIN_PATH}?${new URLSearchParams({ [INVITE_TOKEN_PARAM]: token })}`,
 
   /** `Plan a ride` from a club — see `CREATE_CLUB_PARAM`. */
   newRideInClub: (clubId: string) => inClub(createPaths.ride, clubId),

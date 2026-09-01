@@ -8,7 +8,7 @@ import {
   resolveDestination,
   type GuardState,
 } from '@/lib/auth/guard'
-import { RIDE_JOIN_PATH } from '@/lib/routes'
+import { CLUB_JOIN_PATH, RIDE_JOIN_PATH } from '@/lib/routes'
 
 /**
  * The routing rules `proxy.ts` carried, now testable.
@@ -336,5 +336,36 @@ describe('the invite link landing route', () => {
 
   it('leaves a fully onboarded rider on it, so they can read the preview and tap', () => {
     expect(resolveDestination(RIDE_JOIN_PATH, rider())).toBeNull()
+  })
+})
+
+/**
+ * The club invite link's landing route (`093`, PD-360) — the same three cases
+ * one domain over, and the same silent-inversion trap the ride block's own
+ * header names: a route added to `PUBLIC_PATHS` alone leaves
+ * `needsOnboardingState` answering `false`, because its opening line is
+ * `if (!isPublicPath(pathname)) return true`.
+ */
+describe('the club invite link landing route', () => {
+  it('lets an anonymous visitor stay, because the page must mount to stash the token', () => {
+    expect(isPublicPath(CLUB_JOIN_PATH)).toBe(true)
+    expect(resolveDestination(CLUB_JOIN_PATH, anonymous)).toBeNull()
+  })
+
+  it('sends a signed-in rider mid-wizard to their resume step', () => {
+    expect(needsOnboardingState(CLUB_JOIN_PATH)).toBe(true)
+    expect(resolveDestination(CLUB_JOIN_PATH, rider({ onboarding_completed_at: null }))).toBe(
+      '/onboarding/username'
+    )
+    expect(
+      resolveDestination(
+        CLUB_JOIN_PATH,
+        rider({ terms_accepted_at: null, onboarding_completed_at: null })
+      )
+    ).toBe('/onboarding/terms')
+  })
+
+  it('leaves a fully onboarded rider on it, so they can read the preview and tap', () => {
+    expect(resolveDestination(CLUB_JOIN_PATH, rider())).toBeNull()
   })
 })

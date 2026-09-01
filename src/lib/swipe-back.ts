@@ -22,10 +22,12 @@
  * ## "Strong" is three tests, and none of them is sufficient alone
  *
  * The axis is already claimed on several of these screens — `PostcardDeck` owns
- * left/right on its front card, and three scrollers sit on screens the gesture
- * reaches: `RideJournal` on the ride detail, and `ClubPostcardCarousel` plus the
- * club's own ride strip on the club detail. So the gesture has to be one nobody
- * performs by accident on those.
+ * left/right on its front card, and two scrollers sit on screens the gesture
+ * reaches: `RideJournal` on the ride detail, and the club's own ride strip on
+ * the club detail. (It was three until the club timeline dissolved the club's
+ * postcard strip on 2026-08-31 — its postcards are cards in the stream now, and
+ * a card does not scroll sideways.) So the gesture has to be one nobody performs
+ * by accident on those.
  *
  * **`ExploreRidesStrip` is NOT one of them, and PD-341's own body says it is.**
  * It is a single 56px link row with no `overflow-x` at all — it stopped being a
@@ -51,7 +53,7 @@
  *    threshold set for one feels broken for the other.
  *
  * **The edge test alone is not enough, which is the trap worth naming.** Those
- * scrollers are full-bleed — `RideJournal` and `ClubPostcardCarousel` carry
+ * scrollers are full-bleed — `RideJournal` and the club's ride strip carry
  * their padding *inside* the scrolling element, so the element itself starts at
  * x0 and an edge-origin drag lands inside one. `declinesSwipeBack` is what
  * closes that, and it is a separate test rather than a tuning of this one.
@@ -181,8 +183,8 @@ const TEXT_ENTRY_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
  *
  * Three reasons, and each covers a case the others cannot see:
  *
- * - **It scrolls horizontally.** `RideJournal`, `ClubPostcardCarousel`, the
- *   club detail's ride strip, `FilterTile` — and anything added later, which is
+ * - **It scrolls horizontally.** `RideJournal`, the club detail's ride strip,
+ *   `FilterTile` — and anything added later, which is
  *   the point of testing the geometry rather than keeping a list of component
  *   names that goes stale silently. This list had gone stale before it was
  *   written: see the header. A scroller already at its left end still

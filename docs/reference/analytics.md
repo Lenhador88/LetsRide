@@ -72,13 +72,38 @@ is frequently a home address.
 **Worth building only if the funnel says riders are actually stalling there.**
 Run question 1 first.
 
+## The hosted SDK arrived — PostHog, PD-353, 2026-09-01
+
+**This file is still the first place to look, and that has not changed.** Eight
+of the ten questions above are a `select` against `profiles` and must stay one:
+do not instrument what is already a query. What PostHog was taken for is the
+ninth — question 3, *which* onboarding step turns a rider away — because a rider
+who tries three usernames and closes the tab writes nothing at all, so the stage
+is visible here and the cause is not. `onboarding_step` answers it, and it is
+why the insert-only attempt ledger this file proposes above is **not** being
+built.
+
+Five events exist and no more: `ride_created`, `ride_joined`, `club_joined`,
+`postcard_posted` and `onboarding_step`. They live in
+`src/lib/analytics/events.ts` as a closed union, so a sixth is a deliberate act
+rather than a string somebody typed. Their properties are booleans and enums —
+never an id, never free text — which is this file's own
+`place_search_attempts` discipline: record that it happened, never what was
+typed.
+
+**PostHog runs on PRODUCTION ONLY.** The free tier allows one project and a
+project is the analytics boundary, so a DEV event would corrupt a PROD funnel
+silently. Nothing outside production can reach it, which is why the seam is unit
+tested and the transport gets one hand-verification after a promotion.
+
 ## What we are deliberately not measuring yet
 
-Retention cohorts, attribution, session length, cross-session funnels, and
-anything that would need a hosted analytics SDK. There is no traffic to make any
-of them meaningful, and each one carries the dependency, consent and store-label
-costs set out in [`observability.md`](observability.md) §The open decision:
-client-side error reporting.
+Retention cohorts, attribution, session length and cross-session funnels. There
+is still no traffic to make any of them meaningful. The dependency, consent and
+store-label costs those used to carry are now paid — see
+[`observability.md`](observability.md) §Client-side error reporting — DECIDED and
+shipped, PD-315 for what that bought and what it cost — so the argument against
+them is traffic alone, and it is a real one.
 
 Revisit when real riders are signing up daily, not before.
 

@@ -113,6 +113,19 @@ const NUMBER_WORDS = {
   ten: 10,
   eleven: 11,
   twelve: 12,
+  // Extended to twenty on 2026-08-31: the component-test count reached
+  // seventeen and the claim SKIPPED rather than failed, which is the
+  // outcome this table's own comment below calls the one thing the tool
+  // exists to prevent. A word past the end reads as unrecognized, not as
+  // wrong, so the ceiling has to move ahead of the counts it reads.
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  twenty: 20,
 }
 
 /**
@@ -242,6 +255,14 @@ export const claims = [
     // misbehaving; it is what "budget for it" meant. Three times, as it turned
     // out: `071` (the rides `departure_at` index) went on DEV that evening and
     // this went red a third time. Pinned back to DEV AHEAD, naming both refs.
+    // 2026-08-30: #348 promoted `080`-`091` and the two are level again, so this
+    // went red on cue for the fourth time. Prose and pattern edited together, as
+    // it says — pinned back to LEVEL.
+    // 2026-08-31: the club batch (`092`-`095`, PD-356/PD-360/PD-348/PD-194)
+    // applied to DEV alone after its bundle was confirmed serving, so this went
+    // red on cue for the fifth time. Pinned back to DEV AHEAD, naming BOTH refs
+    // so the direction cannot be inferred from the count alone. It goes red
+    // again on the promotion, which is the mechanism rather than a defect.
     pattern:
       /\*\*Applied state: (\d+) files; DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),

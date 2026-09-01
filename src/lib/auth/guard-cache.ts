@@ -1,5 +1,7 @@
 import { needsOnboardingState, onboardingStateFrom, type GuardState } from '@/lib/auth/guard'
 import { createClient } from '@/lib/supabase/client'
+import { identifyAnalyticsRider } from '@/lib/analytics/client'
+import { identifyRider } from '@/lib/observability/sentry'
 import { clearQueryCache } from '@/lib/query'
 import { clearRiderLocation } from '@/lib/location/rider-location'
 import { clearSessionStore } from '@/lib/supabase/session-store'
@@ -611,7 +613,15 @@ async function destroySessionForDeletedAccount(): Promise<void> {
 
 /** Does not notify — every caller either notifies once afterwards or is itself
  * a notifying entry point, so a session write and the stamp write it precedes
- * cost one render rather than two. */
+ * cost one render rather than two.
+ *
+ * **It is also where error reports learn who is holding the app** (PD-315).
+ * This function is the single place the current rider changes — sign-in,
+ * sign-out and the boot read all funnel through it — so hanging the tag here
+ * costs one line and cannot drift out of step with the session, which a second
+ * `onAuthStateChange` listener of its own would. It also keeps
+ * `@/lib/supabase/client`'s importer list where it is: the alternative reads
+ * the session again somewhere else, and that list is a live review heuristic. */
 function writeSession(next: string | null): void {
   if (userId !== next) {
     // A different rider — or none — so the stamps belong to somebody else.
@@ -620,6 +630,16 @@ function writeSession(next: string | null): void {
     gone = false
   }
   userId = next
+  // The id and nothing else — never the email or the username. `scrub.ts`
+  // carries why this one identifier is sent when the content ids in a URL are
+  // stripped out. `null` on sign-out, which clears it.
+  identifyRider(next)
+  // PD-353, and it is `auth.uid()` DELIBERATELY: a rider who deletes their
+  // account leaves events and recordings behind in PostHog, and
+  // `delete-account` can only ask for their removal if it knows which person
+  // to name. `null` calls `reset()`, which also drops the local distinct id so
+  // the next rider on a shared device inherits neither identity nor session.
+  identifyAnalyticsRider(next)
 }
 
 /**

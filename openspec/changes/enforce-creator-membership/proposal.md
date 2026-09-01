@@ -82,9 +82,16 @@ through — verified against the migration, whose INSERT policy admits `role = '
   the row being inserted and **take no caller input at all**, so there is no id to pass and
   nothing to pass someone else's id *to*.
 - **The invariant is asserted on the way out as well as the way in.** A `BEFORE DELETE` guard on
-  `club_members` refuses removal of the row whose `user_id` is the club's own `owner_id`, and on
-  `ride_members` the row whose `user_id` is the ride's `organizer_id`. Both allow the delete when
-  the parent row is already gone, so deleting a club or a ride still cascades.
+  `ride_members` refuses removal of the row whose `user_id` is the ride's `organizer_id`, and allows
+  the delete when the parent row is already gone, so deleting a ride still cascades.
+
+  **The club-side half of that guard MOVED to `an-owner-leaves-their-club` (`095`, PD-194) on
+  2026-08-31, and it moved rather than being dropped.** That change is the one that decides what an
+  owner leaving *means* — a transfer, a deletion, or a refusal — so it is the one that owns the
+  guard's two exceptions, and shipping the guard without them would have to be undone by it.
+  §D3's argument is unchanged and is what shapes the guard there; `design.md` §D3 records the split.
+  **Neither change blocks the other in either order**, which is checked rather than asserted — see
+  that change's `design.md` §D8.
 - **Both create actions lose their second insert and their compensating delete.** `createClub` and
   `createRide` become one round trip each, `useActionState` unchanged, and the message *"That club
   was only partly created"* becomes unreachable and is deleted rather than left as dead copy.
@@ -110,11 +117,21 @@ through — verified against the migration, whose INSERT policy admits `role = '
   to synthesise an organizer row would be a second copy of that rule, free to drift — the mistake
   `getExploreClubs`'s header describes and `getYourClubs`'s header declines to make.
 
-**Explicitly not in this change:** ownership transfer (that is `add-account-deletion`'s, and it
-needs `016`'s `clubs_avatar_path_owned` / `clubs_cover_image_path_owned` CHECKs relaxed, since both
-pin the image path to the row's current `owner_id` and therefore make any `update clubs set
-owner_id` raise `23514`); an admin or invitation flow; a club-delete or ride-cancel screen; and
-`max_riders` enforcement, which `023`'s standing spec already records as deliberately unenforced.
+**Explicitly not in this change:** ownership transfer (`add-account-deletion`'s cascade transfer and
+`an-owner-leaves-their-club`'s voluntary one — neither relaxes `016`'s `clubs_avatar_path_owned` /
+`clubs_cover_image_path_owned` CHECKs, both instead **clearing** the two paths in the same statement
+that moves `owner_id`, since both pin the path to the row's current owner and would otherwise raise
+`23514`); the club-side delete guard, which moved to `095` (§What Changes); an invitation flow; a
+club-delete or ride-cancel screen; and `max_riders` enforcement, which `023`'s standing spec already
+records as deliberately unenforced.
+
+**An admin flow is no longer "not in this change" because it does not exist — it shipped.** `088`
+(PD-326) added `promote_club_member` and `demote_club_admin`, so the premise this proposal and its
+design both rest on in places — that no club can have an admin — is **false as of 2026-08-30**. The
+UPDATE-policy half is still true (there is still none; `088` writes through a definer RPC), which is
+what `036` §7.6 actually relies on. Check rather than recall: `select count(*) from pg_policy where
+polrelid = 'public.club_members'::regclass and polcmd = 'w';` is 0, and `select count(*) from
+public.club_members where role = 'admin';` is 0 on both projects — **capability, not data**.
 
 ## Capabilities
 
@@ -151,16 +168,18 @@ owner_id` raise `23514`); an admin or invitation flow; a club-delete or ride-can
 
 ## Impact
 
-**Database.** Two migrations. Four new triggers and **four** new trigger functions — two that
-seed (`establish_club_owner_membership`, `establish_ride_organizer_membership`) and two that
-guard deletion (`protect_club_owner_membership`, `protect_ride_organizer_membership`). **All
-four SHALL be `security definer` with `revoke all … from public, anon, authenticated`**, so none
+**Database.** Two migrations. Three new triggers and **three** new trigger functions — two that
+seed (`establish_club_owner_membership`, `establish_ride_organizer_membership`) and one that
+guards deletion (`protect_ride_organizer_membership`). **All
+three SHALL be `security definer` with `revoke all … from public, anon, authenticated`**, so none
 adds a security-advisor finding — the advisor fires on definer functions `authenticated` can
 execute, which is why `enforce_participation_gate` is absent from `CLAUDE.md`'s table of six.
 
 *(An earlier revision said "two", counting only the seeding pair, and left the guards' security
 context unstated — see design D3, where it is now stated and load-bearing rather than
-incidental.)* One backfill. One policy
+incidental. It then said "four"; the club-side guard moved to `095` on 2026-08-31, per §What
+Changes. Re-derive the number from the file rather than from this sentence, which has now been
+wrong twice.)* One backfill. One policy
 narrowed. **No SELECT policy changes at all**, which is a deliberate property: this change does not
 touch the visibility layer.
 

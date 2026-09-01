@@ -76,6 +76,30 @@ export default function AccountDeletionPage() {
         other riders are lifted along with everything else.
       </p>
 
+      {/* PD-353. The list above is an enumeration of what the cascade removes,
+          and a rider reading it will reasonably take it as "everything,
+          everywhere" — which stopped being true the moment usage analytics
+          shipped. `delete-account` removes the auth user and the database rows
+          cascade from it; PostHog is a separate processor and the function does
+          not reach it, so the recordings and events survive. Wiring that is an
+          open item on PD-353 and needs a secret this function does not hold.
+
+          Named here rather than left to the privacy page because THIS is the
+          page a rider reads when they are deciding to leave. */}
+      <p className="text-muted">
+        One thing is not removed automatically: the usage records and screen replays described
+        in our{' '}
+        <Link href="/legal/privacy" className="underline">
+          Privacy Statement
+        </Link>
+        . They are held by a separate company and deleting your account does not reach them.
+        Email{' '}
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
+          {SUPPORT_EMAIL}
+        </a>{' '}
+        and ask, and we will have them deleted.
+      </p>
+
       <h2 className="font-semibold">What happens to rides you organised</h2>
       <p className="text-muted">
         They are cancelled and disappear, along with their crew lists. Riders who had said

@@ -1,5 +1,9 @@
 'use client'
 
+import { useEffect } from 'react'
+
+import { reportError } from '@/lib/observability/sentry'
+
 /**
  * The root layout itself throwing — the one failure no other boundary can see.
  *
@@ -34,8 +38,28 @@
  *
  * Silent about *why*, like every other error surface here. The digest is the
  * exception, for the reason `(app)/error.tsx` gives.
+ *
+ * ## It reports, and until PD-315 it did not even log
+ *
+ * This was the one boundary that did nothing at all with the error object — not
+ * even a `console.error` — so the single failure no other boundary can see was
+ * also the only one leaving no trace anywhere. It reports under
+ * `boundary: 'global'`, which is worth separating in the issue list: everything
+ * else here is one screen failing, and this is the app not starting.
+ *
+ * **One residual, stated because it looks covered and is not.** Reporting is
+ * started by a module the root layout imports, so it is running by the time any
+ * *render* fails. A failure to load that chunk in the first place is earlier
+ * than that, and nothing in a client bundle can report it — the reporter is in
+ * the bundle. Vercel's own logs are the only witness to that case, and in the
+ * shell there is none.
  */
 export default function GlobalError({ error }: { error: Error & { digest?: string } }) {
+  useEffect(() => {
+    console.error('The root layout failed to render:', error)
+    reportError(error, { boundary: 'global', digest: error.digest })
+  }, [error])
+
   return (
     <html lang="en">
       <body

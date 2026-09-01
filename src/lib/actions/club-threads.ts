@@ -2,7 +2,12 @@ import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
-import { clubThreadTitleSchema, clubMessageBodySchema } from '@/lib/validation/clubs'
+import { REPORT_REASON_WHEN_UNDRAWN } from '@/lib/validation/comments'
+import {
+  clubThreadTitleSchema,
+  clubMessageBodySchema,
+  reportClubThreadSchema,
+} from '@/lib/validation/clubs'
 import type { ActionState } from '@/lib/actions/state'
 
 /**
@@ -137,6 +142,55 @@ export async function moderateClubThread(
 }
 
 /**
+ * Reports a thread — `094`, PD-348, `reportPostcard`'s shape exactly.
+ *
+ * **Sends `REPORT_REASON_WHEN_UNDRAWN`, always** — there is no reason-picker
+ * frame for a thread report either (`design.md` Q2, `docs/FIGMA-FIDELITY-TODO.md`
+ * beside the identical postcard entry), so `reason` carries no signal while
+ * this is the only caller.
+ *
+ * **Goes nowhere anyone in the club can read.** `private.club_thread_report_queue`
+ * is the only reader, revoked from every client role including `service_role`
+ * — not the thread's author, not the club's owner, not its admin
+ * (`design.md` D7, the `076` question). `invalidate` is deliberately not
+ * called: nothing this rider — or anyone else — can read changes.
+ *
+ * A duplicate report is a no-op rather than an error, `unique (reporter_id,
+ * thread_id)` being the anti-brigading mechanism and the reporter already
+ * able to read their own row regardless.
+ */
+export async function reportClubThread(threadId: string): Promise<ActionState> {
+  const parsed = reportClubThreadSchema.safeParse({
+    threadId,
+    reason: REPORT_REASON_WHEN_UNDRAWN,
+    note: null,
+  })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'That thread could not be found.' }
+  }
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to do that.' }
+
+  const { error } = await supabase
+    .from('club_thread_reports')
+    .upsert(
+      {
+        reporter_id: user.id,
+        thread_id: parsed.data.threadId,
+        reason: parsed.data.reason,
+        note: parsed.data.note,
+      },
+      { onConflict: 'reporter_id,thread_id', ignoreDuplicates: true }
+    )
+
+  if (error) return { error: 'Could not send that report. Try again.' }
+
+  return { error: null }
+}
+
+/**
  * Posts one message into a thread.
  *
  * ## Why it takes an id instead of generating one
@@ -152,7 +206,22 @@ export async function moderateClubThread(
 export async function sendClubMessage(
   threadId: string,
   body: string,
-  messageId: string
+  messageId: string,
+  /**
+   * The club the thread sits in, for the timeline's reply entry.
+   *
+   * **A parameter rather than a read**, because this action has the thread id
+   * and the club timeline's key is hung under the CLUB — `['clubs','detail',
+   * clubId,'threads','replies']` — which `threadMessages`'
+   * `['clubs','threads',threadId,'messages']` does not prefix. Without it a
+   * rider posts in a thread, taps back, and the timeline does not show the
+   * reply they just wrote until the entry goes stale.
+   *
+   * Optional so a caller that genuinely has no club to hand still sends; the
+   * thread screen reads it off `getClubThread`, which returns `club_id` for
+   * exactly this class of reason.
+   */
+  clubId?: string
 ): Promise<ActionState> {
   if (!threadId) return { error: 'That thread could not be found.' }
 
@@ -181,14 +250,25 @@ export async function sendClubMessage(
     // evaluates WITH CHECK before the index insert, so a non-member is refused
     // `42501` and never reaches a duplicate-key error.
     if (error.code === '23505') {
-      invalidate(queryKeys.clubs.threadMessages(threadId))
+      invalidateThreadMessage(threadId, clubId)
       return { error: null, sent: true }
     }
     return { error: 'Could not send that message. You may no longer be in this club.' }
   }
 
-  invalidate(queryKeys.clubs.threadMessages(threadId))
+  invalidateThreadMessage(threadId, clubId)
   return { error: null, sent: true }
+}
+
+/**
+ * What a message appearing or disappearing moves: the thread's own list, and —
+ * when the caller knows which club — the club timeline's reply entry, whose key
+ * is hung under the club rather than the thread and so is reached by neither
+ * `threadMessages` nor `thread`.
+ */
+function invalidateThreadMessage(threadId: string, clubId?: string) {
+  invalidate(queryKeys.clubs.threadMessages(threadId))
+  if (clubId) invalidate(queryKeys.clubs.threadReplies(clubId))
 }
 
 /**
@@ -208,7 +288,11 @@ export async function sendClubMessage(
  */
 export async function deleteClubMessage(
   messageId: string,
-  threadId: string
+  threadId: string,
+  /** The club, for the timeline's reply entry — see `sendClubMessage`. Deleting
+   *  the newest message in a thread changes which message that entry names, or
+   *  removes it. */
+  clubId?: string
 ): Promise<ActionState> {
   if (!messageId || !threadId) return { error: 'That message could not be found.' }
 
@@ -218,7 +302,7 @@ export async function deleteClubMessage(
 
   if (error) return { error: 'That message could not be deleted.' }
 
-  invalidate(queryKeys.clubs.threadMessages(threadId))
+  invalidateThreadMessage(threadId, clubId)
   return { error: null }
 }
 

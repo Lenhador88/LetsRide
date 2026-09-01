@@ -1,24 +1,38 @@
 # database-enforced-integrity (delta)
 
-> **⚠ COORDINATION — two active changes modify `Club membership role SHALL NOT be
-> self-assignable`, and OpenSpec will not warn you.** The other is
-> `add-account-deletion`. Archiving folds a delta into
-> `openspec/specs/database-enforced-integrity/spec.md` by replacing the requirement wholesale,
-> so **whichever change archives second silently discards the first one's edit**.
+> **⚠ COORDINATION — THREE active changes modify `Club membership role SHALL NOT be
+> self-assignable`, and OpenSpec will not warn you.** The others are `add-account-deletion` and
+> **`manage-club-riders`** (`088`, PD-326), which was written after this banner and is not
+> optional to reconcile: it is the change that made `admin` writable at all. Archiving folds a
+> delta into `openspec/specs/database-enforced-integrity/spec.md` by replacing the requirement
+> wholesale, so **whichever change archives last silently discards the other two's edits**.
 >
-> They are reconcilable in substance, and this is the merged text both should converge on:
+> **A fourth change deliberately stayed out of this.** `an-owner-leaves-their-club` (`095`,
+> PD-194) writes `role = 'owner'` through its transfer and states its rule as its own **ADDED**
+> requirement rather than as a fourth competing replacement of this one — its `design.md` §D8
+> carries the reasoning and the one sentence it would have added, for whoever reconciles the
+> three. Do not "tidy" it into a MODIFIED.
+>
+> They are reconcilable in substance, and this is the merged text all three should converge on:
 >
 > - `authenticated` may insert `role = 'member'` only.
 > - The **owner row is written by the database** at club creation (`enforce-creator-membership`'s
 >   `AFTER INSERT` trigger), not by the client — so the old scenario "the creator's own owner row
 >   is still permitted" describes a write that no longer happens.
-> - The **privileged ownership transfer** (`add-account-deletion`, `security definer`, `private`
->   schema, no `authenticated` EXECUTE) may set `role = 'owner'` on the rider it is
+> - The **privileged ownership transfer** may set `role = 'owner'` on the rider it is
 >   simultaneously making `clubs.owner_id`. It bypasses RLS, so the narrowing above does not
->   bind it.
+>   bind it. There are now **two** such transfers and both claim the same latitude:
+>   `add-account-deletion`'s cascade (`security definer`, `private` schema, no `authenticated`
+>   EXECUTE) and `an-owner-leaves-their-club`'s `public.leave_owned_club` (`security definer`,
+>   published to `authenticated` but taking a club and no rider id).
+> - **`admin` is writable, and only through an RPC that takes no role argument.**
+>   `manage-club-riders` shipped `public.promote_club_member` and `public.demote_club_admin`
+>   (`088`), each writing a literal role. `authenticated` still cannot write `owner` or `admin`
+>   by any verb on any table, which is the property all three changes preserve by different
+>   means.
 >
-> Before archiving whichever of the two goes second: re-read
-> `openspec/specs/database-enforced-integrity/spec.md` as the first one left it, and rewrite this
+> Before archiving whichever of the three goes after the first: re-read
+> `openspec/specs/database-enforced-integrity/spec.md` as the previous one left it, and rewrite this
 > delta against *that* text rather than against the version you drafted.
 
 ## ADDED Requirements
@@ -61,6 +75,17 @@ because `club_members` has no UPDATE policy.
 - **THEN** the database SHALL reject the delete with a check violation
 - **AND** the refusal SHALL NOT depend on the UI hiding the control, which is what holds this
   today
+- **AND** there SHALL be exactly two exceptions, both of them elevated paths rather than client
+  writes: the **voluntary-leave transfer**, which reassigns `clubs.owner_id` in the same statement,
+  and the **club's own deletion**, whose cascade the guard permits because the parent row is
+  already gone
+
+> **The enforcement of this scenario ships in `095`, not here — `an-owner-leaves-their-club`
+> (PD-194) carries the club-side `BEFORE DELETE` guard and the two exceptions above, and this
+> change keeps the two seeding triggers, the backfill and the ride-side guard.** `design.md` §D3
+> records why the split is safe in both orders and why neither change blocks the other; that
+> change's §D8 records why it is a split rather than a supersession. The requirement stated here is
+> unchanged and is still this change's to state — what moved is which migration enforces it.
 
 #### Scenario: Deleting the club still works
 - **WHEN** the owner deletes the club itself

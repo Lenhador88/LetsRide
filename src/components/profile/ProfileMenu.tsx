@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import {
   ChatBubbleOutlineIcon,
+  LockIcon,
   LogOutIcon,
   OptionsIcon,
   TrashIcon,
@@ -10,6 +11,7 @@ import {
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
 import { DeleteAccountSheet } from '@/components/profile/DeleteAccountSheet'
 import { FeedbackSheet } from '@/components/profile/FeedbackSheet'
+import { PrivacySheet } from '@/components/profile/PrivacySheet'
 import { useSignOut } from '@/lib/actions/navigate'
 
 /**
@@ -92,6 +94,7 @@ export function ProfileMenu() {
   const [open, setOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [feedback, setFeedback] = useState(false)
+  const [privacy, setPrivacy] = useState(false)
   const { signOut, pending } = useSignOut()
 
   return (
@@ -127,6 +130,20 @@ export function ProfileMenu() {
           Feedback
         </ContextMenuItem>
 
+        {/* Beside Feedback rather than in the danger group: it is an ordinary
+            setting a rider may want to look at without changing, which is also
+            why it opens a sheet instead of toggling from here — PD-353, and
+            `PrivacySheet` carries the reasoning. */}
+        <ContextMenuItem
+          icon={<LockIcon className="h-6 w-6" />}
+          onClick={() => {
+            setOpen(false)
+            setPrivacy(true)
+          }}
+        >
+          Privacy
+        </ContextMenuItem>
+
         <ContextMenuItem onClick={signOut} disabled={pending}>
           <span className="flex items-center gap-2">
             <LogOutIcon className="h-6 w-6" />
@@ -158,6 +175,7 @@ export function ProfileMenu() {
       </ContextMenu>
 
       <FeedbackSheet open={feedback} onClose={() => setFeedback(false)} />
+      <PrivacySheet open={privacy} onClose={() => setPrivacy(false)} />
       <DeleteAccountSheet open={deleting} onClose={() => setDeleting(false)} />
     </>
   )

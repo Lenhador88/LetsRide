@@ -13,6 +13,7 @@ import {
 import { resolveRiderLocation } from '@/lib/location/rider-location'
 import { getSnapshot, setQueryData, useQuery, type QueryKey } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { NO_CAPTURE_CLASS } from '@/lib/analytics/client'
 import { cn } from '@/lib/utils'
 import type { PlaceSearchResult } from '@/types'
 
@@ -330,7 +331,25 @@ export function PlaceSearchField({
   }
 
   return (
-    <div className="flex w-full flex-col gap-1.5">
+    /* `NO_CAPTURE_CLASS` is the ONE narrowing of PD-353's unmasked session
+       replay, and it sits HERE — on the wrapper — rather than on the input, for
+       two reasons that each defeat the obvious placement on their own.
+
+       rrweb takes an input's value from `maskInputOptions` alone and never
+       consults a text-mask class, so a class on the `<input>` records the
+       meeting point verbatim. And the suggestion panel below is a SIBLING of
+       the input, not a descendant: the geocoder returns full addresses, so
+       covering the field alone still puts one on screen and in the recording.
+       This wrapper is the nearest ancestor of both.
+
+       Blocking rather than masking is deliberate: the subtree is replaced by a
+       placeholder of the same size, so the replay still shows a rider reaching
+       this field, tapping it and moving on — which is the whole of what the
+       composer funnel needs from this screen. `client.ts`'s own comment carries
+       why the term itself must not be recorded: `place_search_attempts` (069)
+       holds no column that could store it, because a meeting point is
+       frequently a home address. */
+    <div className={cn(NO_CAPTURE_CLASS, 'flex w-full flex-col gap-1.5')}>
       {/* The value travels as named fields rather than as JSON in one: the
           action parses them with `readClubLocation`/`readRideLocation`, and
           named strings are what a `FormData` round trip cannot half-decode.

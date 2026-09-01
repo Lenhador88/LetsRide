@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { CLUB_AVATAR_PATH_RE, CLUB_COVER_PATH_RE } from '@/lib/media/constants'
+import { reportNoteSchema, reportReasonSchema } from '@/lib/validation/comments'
 
 /**
  * Club name and description bounds.
@@ -228,6 +229,24 @@ export const clubMessageBodySchema = z
 export const clubThreadIdSchema = z.uuid()
 
 /**
+ * What `reportClubThread` sends — `094`, PD-348, `011`'s `reportPostcardSchema`
+ * with the subject renamed. **`reason` and `note` are imported, not copied**:
+ * `REPORT_REASONS` is `postcard_reports`' six-value enum, kept in step with
+ * `club_thread_reports`' identical CHECK by hand (`design.md` D5's stated
+ * cost), so importing rather than re-declaring is the one thing this file can
+ * do to keep the two from drifting further apart than that.
+ *
+ * Per CLAUDE.md, this owns the **message**; the CHECK constraint, the
+ * `unique (reporter_id, thread_id)` index and `enforce_participation_gate`
+ * own the guarantee.
+ */
+export const reportClubThreadSchema = z.object({
+  threadId: z.uuid('That thread could not be found.'),
+  reason: reportReasonSchema,
+  note: reportNoteSchema,
+})
+
+/**
  * A join-request id, on the way into `approve_club_join_request` and
  * `decline_club_join_request` — `085`, PD-325.
  *
@@ -239,3 +258,39 @@ export const clubThreadIdSchema = z.uuid()
  * boundary where a refusal belongs.
  */
 export const clubJoinRequestIdSchema = z.uuid()
+
+/**
+ * A `club_invites.id` — `093`, PD-360, `rideInviteIdSchema`'s reasoning
+ * exactly: it comes out of a notification row rather than out of the URL, and
+ * the two RPCs that consume it take one argument, so a malformed value would
+ * reach PostgREST as `22P02` and land the rider on the error boundary rather
+ * than on the ordinary refusal.
+ */
+export const clubInviteIdSchema = z.uuid()
+
+/** A `club_invite_links.id`, for `revoke_club_invite_link`'s one argument. */
+export const clubInviteLinkIdSchema = z.uuid()
+
+/**
+ * A club invite link's token — `093`, PD-360. **32 lowercase hex
+ * characters**, mirroring `rideInviteTokenSchema` and
+ * `club_invite_links_token_shape`.
+ *
+ * **Zod owns the message and the database owns the guarantee.** `token` takes
+ * its value from a column default and the INSERT grant names
+ * `(id, club_id, created_by)` only, so there is no statement in which a
+ * client can choose one — this schema exists so a hand-edited URL or a
+ * truncated paste is refused **before** it reaches PostgREST, where a
+ * malformed argument to a `text` parameter would simply return zero rows and
+ * read as a dead link.
+ *
+ * Anchored and case-sensitive, for `rideInviteTokenSchema`'s reason: the
+ * column stores lowercase and the RPCs compare exactly, so an uppercased
+ * paste is not the same token and accepting it here would hand the rider "no
+ * longer valid" for a link that is alive.
+ */
+export const CLUB_INVITE_TOKEN_LENGTH = 32
+
+export const clubInviteTokenSchema = z
+  .string()
+  .regex(new RegExp(`^[0-9a-f]{${CLUB_INVITE_TOKEN_LENGTH}}$`), 'That invite link is not valid.')

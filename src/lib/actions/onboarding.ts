@@ -1,9 +1,10 @@
+import { capture } from '@/lib/analytics/client'
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { isUsernameTaken } from '@/lib/data/profile'
 import { USERNAME_TAKEN_MESSAGE, checkUsername } from '@/lib/validation/profile'
 import { consentSchema } from '@/lib/validation/auth'
-import { takeStashedInviteToken } from '@/lib/invites/pending-token'
+import { takeAnyStashedInviteToken } from '@/lib/invites/pending-token'
 import { routes } from '@/lib/routes'
 import type { ActionState } from '@/lib/actions/auth'
 
@@ -83,11 +84,37 @@ export async function setUsername(
     // 2026-08-09 — HTTP 409, code 23505). Returning the value as well as the
     // message is what lets the field stop saying the opposite.
     if (error.code === '23505') {
+      // **PD-353's question 3, and the only one of the ten that SQL cannot
+      // reach.** A rider who tries three usernames, finds all three taken and
+      // closes the tab has written NOTHING: `profiles` shows them at
+      // "consented, no username", identical to a rider who never tried. The
+      // stage is visible in SQL and the cause is not, which is exactly why
+      // instrumenting the wizard makes `analytics.md`'s proposed attempt ledger
+      // unnecessary.
+      //
+      // `reason` and never the name that was rejected. It is the rider's chosen
+      // identity, `taken` already tells the FIELD what it needs, and 'taken'
+      // answers the funnel question on its own — the same rule that keeps a
+      // place-search term out of `place_search_attempts`.
+      capture({
+        name: 'onboarding_step',
+        properties: { step: 'username', status: 'rejected', reason: 'taken' },
+      })
       return { error: USERNAME_TAKEN_MESSAGE, taken: parsed.username }
     }
     // 23514 is a CHECK constraint — charset, length, or the reserved denylist.
     // Only reachable if something bypassed the schema above.
-    if (error.code === '23514') return { error: 'That username is not available.' }
+    if (error.code === '23514') {
+      capture({
+        name: 'onboarding_step',
+        properties: { step: 'username', status: 'rejected', reason: 'invalid' },
+      })
+      return { error: 'That username is not available.' }
+    }
+    capture({
+      name: 'onboarding_step',
+      properties: { step: 'username', status: 'rejected', reason: 'failed' },
+    })
     return { error: 'Could not save that username. Try again.' }
   }
   if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
@@ -119,24 +146,42 @@ export async function setUsername(
   // raising a unique violation against itself.
   invalidateOnboardingState()
 
-  // **The stash is consumed HERE, at the end of the wizard** (`091`, PD-330).
-  // A rider who arrived on an invite link with no account is sent to
-  // `/onboarding/terms` and then here by the route guard, because `023` refuses
-  // the claim's write until both stamps are set. Without this line the detour
-  // ends at `/postcards` with a live token still in `sessionStorage` and nothing
-  // reading it — the same dead end one screen later, and quieter, because
-  // nothing errors.
+  // The wizard's terminal step since PD-286 dropped the location one, so this
+  // is both "username accepted" and "onboarding finished". Only one event:
+  // `profiles.onboarding_completed_at` already answers "did they finish" in
+  // SQL, and PD-353 is explicit that what is worth instrumenting is the step
+  // that turns a rider AWAY, not the one they got through.
+  capture({
+    name: 'onboarding_step',
+    properties: { step: 'username', status: 'completed' },
+  })
+
+  // **The stash is consumed HERE, at the end of the wizard** (`091`, PD-330;
+  // both kinds since `093`, PD-360). A rider who arrived on an invite link with
+  // no account is sent to `/onboarding/terms` and then here by the route guard,
+  // because `023` refuses the claim's write until both stamps are set. Without
+  // this line the detour ends at `/postcards` with a live token still in
+  // `sessionStorage` and nothing reading it — the same dead end one screen
+  // later, and quieter, because nothing errors.
   //
   // **This is not a claim and must never become one.** It returns the rider to
-  // the preview, where they tap; see `claimRideInviteLink` for why an automatic
-  // claim on session establishment joins the wrong rider to a private ride.
+  // the preview, where they tap; see `claimRideInviteLink` and
+  // `claimClubInviteLink` for why an automatic claim on session establishment
+  // joins the wrong rider to a private ride or club.
   //
-  // `takeStashedInviteToken` clears as it reads, and the destination re-stashes
-  // from its own query string — so the token is never left behind for whoever
-  // signs in next on this device.
-  const invite = takeStashedInviteToken()
+  // `takeAnyStashedInviteToken` clears as it reads, whichever kind is stashed,
+  // and the destination re-stashes from its own query string — so the token is
+  // never left behind for whoever signs in next on this device.
+  const invite = takeAnyStashedInviteToken()
 
-  return { error: null, redirectTo: invite ? routes.joinRide(invite) : '/postcards' }
+  return {
+    error: null,
+    redirectTo: invite
+      ? invite.kind === 'ride'
+        ? routes.joinRide(invite.token)
+        : routes.joinClub(invite.token)
+      : '/postcards',
+  }
 }
 
 /**
@@ -166,7 +211,15 @@ export async function acceptTerms(
   if (!user) return { error: null, redirectTo: '/auth/login' }
 
   const { data: accepted, error } = await supabase.rpc('accept_terms')
-  if (error || !accepted) return { error: 'Could not record that. Try again.' }
+  if (error || !accepted) {
+    capture({
+      name: 'onboarding_step',
+      properties: { step: 'terms', status: 'rejected', reason: 'failed' },
+    })
+    return { error: 'Could not record that. Try again.' }
+  }
+
+  capture({ name: 'onboarding_step', properties: { step: 'terms', status: 'completed' } })
 
   // Same reason as `setUsername` — the stamp the guard cached says NULL, which
   // is what sent the rider to this screen in the first place.

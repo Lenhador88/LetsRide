@@ -111,13 +111,38 @@ is what happened to `add-account-deletion` task 6.3. And a build-time `NEXT_PUBL
 doubles as an undeclared DEV/PROD separator, because the two are separate Vercel env scopes; when
 it goes, the next promotion ships the feature to riders with nothing left saying so.
 
-**Dependencies are added deliberately.** **Nine** runtime dependencies today, and that is a
+**Dependencies are added deliberately.** **Twelve** runtime dependencies today, and that is a
 feature — `lucide-react` and `@supabase/ssr` both came out with the code that needed them rather
 than lingering unused. Count rather than trust that number:
 `node -p "Object.keys(require('./package.json').dependencies).length"`. Before adding one, ask whether a thirty-line helper does the job. No UI component
 libraries at all — shadcn, Radix and MUI are out; extend `src/components/ui/*` instead.
 
-**Two of the nine are the native shell's**, and both are runtime by necessity rather than by
+**Three of the twelve arrived together on 2026-09-01, for observability**, which is the largest
+single addition this repo has made and the reason to read the rule above as a budget rather than a
+ban. Each is a doorway module in `src/lib/`, and nothing outside that module imports the package —
+the same one-doorway shape as `lib/data/` and `lib/actions/`, enforced by a test in each case,
+because the privacy posture is a property of the doorway and only while everything goes through it:
+
+- **`@sentry/capacitor` + `@sentry/react`** (PD-315) — a throw in a rider's browser reached no log
+  anywhere, which in a client-rendered bundle is most rider-visible breakage. They are a **pair**
+  rather than two choices: `@sentry/capacitor` peers an exact `@sentry/react` and hands it the
+  options as its sibling `init`. The pair covers BOTH build shapes, which is not obvious —
+  `@sentry/capacitor`'s `init` branches on `NATIVE.platform === 'web'` and falls through to the
+  browser SDK — and taking `@sentry/nextjs` for the web build as well would be two `Sentry.init`
+  paths to keep in agreement for ever. `@sentry/capacitor` is also a **native plugin**, so the
+  rule below applies to it.
+- **`posthog-js`** (PD-353) — the one product question SQL structurally cannot reach is *which*
+  onboarding step turns a rider away, because a rider who tries three usernames and closes the tab
+  has written nothing. Eight of the ten questions in `docs/reference/analytics.md` are still a
+  `select` and must stay one.
+
+All three are pinned **exact**, for the reason the framework and auth packages are: a minor bump
+that changes replay masking or session storage is a privacy or a sign-in regression with nothing
+red anywhere. `src/lib/analytics/__tests__/client.test.ts` asserts against the installed recorder
+that password inputs are still masked unconditionally, which is the assumption the pilot's unmasked
+session replay rests on.
+
+**Two of the twelve are the native shell's**, and both are runtime by necessity rather than by
 preference — app code imports them at runtime, so neither can be a devDependency:
 
 - **`@capacitor/core`** — the shell. Nothing reaches a native API without it.
@@ -138,6 +163,29 @@ because `.from()` calls scattered across a dozen files mean a renamed column is 
 find, which is exactly the trap `003` set by dropping `full_name`. Re-derive the spread with
 `git grep -c "\.from('" -- 'src/*.ts' 'src/*.tsx'`.
 
+**Every embed of `profiles` names its foreign key, and the reason is that a migration touching
+neither the query nor its policies can break it.** PostgREST resolves `alias:profiles(…)` by
+counting the relationships between the two tables, and it counts a **many-to-many** one through a
+third table when that table is a **junction**: two foreign keys, and a primary key that is exactly
+the union of their columns. **"Any third table holding a key to both" is the tempting rule and it
+is false** — `postcards` holds keys to `clubs` and `rides` and has never made `rides` → `clubs`
+ambiguous — and stating it that way is worse than useless, because it reads a dozen working embeds
+as broken and gets discounted as noise. The property that is actually dangerous is the ordinary
+join table, `primary key (a, b)` over its own two keys. `092` added the eighth on DEV —
+`club_join_waves`, at a membership and by a rider — and Your clubs, Explore clubs, the club roster
+and the club timeline all started answering `PGRST201` / **HTTP 300** together. **No gate here can see it** — `tsc` type-checks a template string, ESLint reads no SQL,
+Vitest mocks the client, `next build` issues no query, and the RLS suite runs on plain Postgres
+where PostgREST's relationship cache does not exist — so it reached DEV green and was found in the
+log stream, as a status nothing alerts on. A hinted embed cannot go ambiguous whatever a later
+migration adds; membership rows go through `MEMBER_PROFILE_EMBED` in `lib/data/columns.ts`, whose
+header carries the SQL that lists the real junctions and the measurement proving the hint resolves
+to the many-to-one. `src/lib/data/__tests__/embed-hints.test.ts` refuses an unhinted one — note
+that `!inner` is a **join modifier and not a hint**, which is the spelling that looks safe:
+
+```bash
+npx vitest run src/lib/data/__tests__/embed-hints.test.ts
+```
+
 **Writes go through `src/lib/actions/`**, one function per mutation — plain async functions in
 the browser, not Server Actions. The boundary is the point: one place that writes, named and
 typed per mutation. Two of the three arguments that created the directory still hold, and the
@@ -149,11 +197,10 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **seventeen** tables on DEV
-   and **eleven** on PROD — measured 2026-08-29, the six-table difference being `081`, `083`,
-   `084`, `085` and `091`, all applied to DEV and owed to PROD (`086`, `087`, `088`, `089` and `090`
-   add no gate); PROD was ten until `069` promoted on
-   2026-08-19 —
+   gets inherited as covered.** `enforce_participation_gate` is on **twenty-two** tables on DEV and
+   **seventeen** on PROD — measured 2026-09-01, and the five-table gap is `092`–`095` awaiting
+   promotion, which is the ordinary DEV-ahead state rather than a defect. PROD was eleven
+   until `081`, `083`, `084`, `085` and `091` went with it (`086`–`090` add no gate) —
    `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
    `postcard_reports`, `ride_messages`, `ride_map_render_attempts`, `place_search_attempts`,
@@ -299,7 +346,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (50 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests. **Ten** component tests exist — `PostcardAction` (asserting the class list rather than any measured size) and `PlaceSearchField` (asserting which inputs each of its three modes writes — the contract its callers' actions read back off `FormData`, and for the composer's nameless mode the contract that it writes *nothing* — plus `resolveComboboxKey`, the pure half of its keyboard, split out for exactly the reason `guard.ts` was), and `ExploreRidesStrip` (asserting that the door to `/rides/explore` renders in every state — it is the only route to that screen — and that its `near <place>` clause appears only when the position resolved *and* something behind the row is actually near it). It replaced `NearbyRidesStrip`'s test when that filter became a door, and the invariants inverted with it: the old one asserted which states the row stayed silent for. The fourth is `PostcardStamp` (asserting the byline the Journal tile gained on 2026-08-27 — including the `Rider` fallback for an author the profiles policy withholds — and that the tile is a `<button>` under a `PostcardViewerProvider` and an `<a href>` without one, which is the only place that fallback branch is reachable, since the provider is always mounted in the app; and since PD-350 that the byline is *inside* the perforated frame and that a photo is franked while the failed-to-sign placeholder is not. The nesting case is the only one in this file that walks tag depth rather than matching a substring, and it is why: every other assertion there renders identically with the byline back outside the frame, so the one thing the product owner asked for could have been undone green. Verified both ways per §Working Principles — moving the byline out fails exactly that case, removing the postmark exactly the franking one). The fifth is `CreateRideForm` (PD-320, asserting the three questions the composer stopped asking: that a resolved `?club=` removes the `<select>` entirely while a hidden input posts `club_id` in its place, that an unresolved one falls back to the picker, that `description` is gone while `route_description` stays, and that `is_public` renders unchecked in and out of a club). The sixth is `SwipeCoach` (PD-324's one-time swipe hint, asserting the one invariant another change can silently break: that the overlay is still `pointer-events-none`, so the tap underneath it reaches PD-316's photo button and the deck's own controls — plus that only the *motion* is behind `motion-safe:`, the sentence itself being what the reduced-motion path is owed). The seventh is `SectionHeader` (PD-342, asserting that the `See all` link and the new `(+)` survive *together* — every call site draws both in the same state, so a refactor collapsing the two trailing slots into one looks right in any single screenshot and removes the entrance to four lists — plus that the icon keeps an accessible name, it having no text of its own, and since PD-346 that the two stay in *that order*, `(+)` hugging the title and `ml-auto` on `See all` alone. Those first two cases pass with the slots either way round, which is what made them blind to the order defect; asserted by element order rather than attribute order, React not rendering attributes in source order, plus that nothing reverses the row's own flex direction, since markup order is visual order only while it does not. Verified both ways per §Working Principles: the old order fails two of its five cases, and a `flex-row-reverse` container fails one). The eighth is `PostcardCard` (PD-343, asserting the *direction* of the card's growth rather than any size: the photo is `flex-1` and the caption capped in the deck's `fill` mode, the photo a square and the caption unbounded in flow. One class either way, it reverses silently, and both directions screenshot plausibly against a short caption — which is the state the original defect shipped in for months. Verified both ways per §Working Principles: reintroducing the old geometry fails two of its three cases). The ninth is `RideCard` (PD-340, asserting that the new distance clause is ABSENT — dot included — when `distance_km` is `undefined`, which is every row until a position resolves and every row for ever for a rider who grants no location; that the meeting point is the span that truncates and the distance the one that does not, `PostcardCard`'s reversible-in-silence shape at a shared line rather than at a photo; and that the day cell calls `formatRideCardDay` at all, which the formatter's own tests structurally cannot see). The tenth is `RideInviteJoin` (PD-330, and the only one here that asserts an ABSENCE in the source rather than in the markup: that no `useEffect`, no `onAuthStateChange` listener and no second call site can spend an invite token, because a capability URL claimed by a render is claimed by a rider who never chose to join — plus that the signed-out screen renders no ride data for any token it is handed. Its source assertions run on COMMENT-STRIPPED source, the component's own docstring saying "there is no `useEffect` in this file", which failed the first version against a correct file. Verified both ways per §Working Principles: inserting a real claiming effect fails all four of its cases). An earlier one, `WaveFilledIcon`, went with the filled glyph when PD-287 reverted it. All ten render through `renderToStaticMarkup`; the environment is still `node`, and jsdom is the answer only when something needs a layout or an event. **Four** carry a `vi.mock` of `next/navigation` — count them rather than trust it, `grep -rl "vi.mock('next/navigation'" src/components | wc -l`, because this sentence has now been wrong twice in the same direction. They are `PostcardAction` (which has had one all along), `CreateRideForm`, because `useActionRedirect` calls `useRouter`, `PostcardCard`, because its own `PostcardMenu` calls `useRouter` and `usePathname`, and `RideInviteJoin`, which calls both itself — the tap navigates to the ride it just joined. All four stand in for a provider rather than for behaviour, and no effect runs under a static render anyway. `PostcardCard`'s also mounts the real `BannerProvider`, `PostcardMenu` calling `useBanner`, which throws outside one |
+| Units — validation, `lib/utils.ts`, `lib/data/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (54 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/` still has no direct tests. **Seventeen** component tests exist — `PostcardAction` (asserting the class list rather than any measured size) and `PlaceSearchField` (asserting which inputs each of its three modes writes — the contract its callers' actions read back off `FormData`, and for the composer's nameless mode the contract that it writes *nothing* — plus `resolveComboboxKey`, the pure half of its keyboard, split out for exactly the reason `guard.ts` was), and `ExploreRidesStrip` (asserting that the door to `/rides/explore` renders in every state — it is the only route to that screen — and that its `near <place>` clause appears only when the position resolved *and* something behind the row is actually near it). It replaced `NearbyRidesStrip`'s test when that filter became a door, and the invariants inverted with it: the old one asserted which states the row stayed silent for. The fourth is `PostcardStamp` (asserting the byline the Journal tile gained on 2026-08-27 — including the `Rider` fallback for an author the profiles policy withholds — and that the tile is a `<button>` under a `PostcardViewerProvider` and an `<a href>` without one, which is the only place that fallback branch is reachable, since the provider is always mounted in the app; and since PD-350 that the byline is *inside* the perforated frame and that a photo is franked while the failed-to-sign placeholder is not. The nesting case is the only one in this file that walks tag depth rather than matching a substring, and it is why: every other assertion there renders identically with the byline back outside the frame, so the one thing the product owner asked for could have been undone green. Verified both ways per §Working Principles — moving the byline out fails exactly that case, removing the postmark exactly the franking one). The fifth is `CreateRideForm` (PD-320, asserting the three questions the composer stopped asking: that a resolved `?club=` removes the `<select>` entirely while a hidden input posts `club_id` in its place, that an unresolved one falls back to the picker, that `description` is gone while `route_description` stays, and that `is_public` renders unchecked in and out of a club). The sixth is `SwipeCoach` (PD-324's one-time swipe hint, asserting the one invariant another change can silently break: that the overlay is still `pointer-events-none`, so the tap underneath it reaches PD-316's photo button and the deck's own controls — plus that only the *motion* is behind `motion-safe:`, the sentence itself being what the reduced-motion path is owed). The seventh is `SectionHeader` (PD-342, asserting that the `See all` link and the new `(+)` survive *together* — every call site draws both in the same state, so a refactor collapsing the two trailing slots into one looks right in any single screenshot and removes the entrance to four lists — plus that the icon keeps an accessible name, it having no text of its own, and since PD-346 that the two stay in *that order*, `(+)` hugging the title and `ml-auto` on `See all` alone. Those first two cases pass with the slots either way round, which is what made them blind to the order defect; asserted by element order rather than attribute order, React not rendering attributes in source order, plus that nothing reverses the row's own flex direction, since markup order is visual order only while it does not. Verified both ways per §Working Principles: the old order fails two of its five cases, and a `flex-row-reverse` container fails one). The eighth is `PostcardCard` (PD-343, asserting the *direction* of the card's growth rather than any size: the photo is `flex-1` and the caption capped in the deck's `fill` mode, the photo a square and the caption unbounded in flow. One class either way, it reverses silently, and both directions screenshot plausibly against a short caption — which is the state the original defect shipped in for months. Verified both ways per §Working Principles: reintroducing the old geometry fails two of its three cases). The ninth is `RideCard` (PD-340, asserting that the new distance clause is ABSENT — dot included — when `distance_km` is `undefined`, which is every row until a position resolves and every row for ever for a rider who grants no location; that the meeting point is the span that truncates and the distance the one that does not, `PostcardCard`'s reversible-in-silence shape at a shared line rather than at a photo; and that the day cell calls `formatRideCardDay` at all, which the formatter's own tests structurally cannot see). The tenth is `RideInviteJoin` (PD-330, and the only one here that asserts an ABSENCE in the source rather than in the markup: that no `useEffect`, no `onAuthStateChange` listener and no second call site can spend an invite token, because a capability URL claimed by a render is claimed by a rider who never chose to join — plus that the signed-out screen renders no ride data for any token it is handed. Its source assertions run on COMMENT-STRIPPED source, the component's own docstring saying "there is no `useEffect` in this file", which failed the first version against a correct file. Verified both ways per §Working Principles: inserting a real claiming effect fails all four of its cases). **Seven arrived together with the club batch on 2026-08-31, and each pins one thing a refactor reverses in silence.** `ClubWaveButton` and `ClubTimelineEventRow` (PD-356): the accessible name is CONSTANT across both wave states with `aria-pressed` the only thing that moves, and the control is absent on the viewer's own join row. `ClubShareOrInviteItem` (PD-360): three states including the one that renders NOTHING, asserted as an absence, because a control that appears where it should not is invisible to a test that checks something rendered. `ClubInviteJoin`: `RideInviteJoin`'s source assertions transplanted — no effect, no listener, one call site can spend a token — on COMMENT-STRIPPED source, the trap that file's own docstring set. `ClubPreviewScreen`: the three reversals reusing it for a token holder needed, chiefly that `action` beats a pending `request_status`, or a rider holding both is told to wait for an answer they no longer need. `ThreadOptions` (PD-348): every cell of the viewer x row table, and that the sheet can never render empty — `isAuthor` being boolean is what guarantees it, and `093` had briefly made it possible. `ClubOptionsMenu` (PD-194): that the leave path compares against EXACTLY ONE error string, a second comparison being `openspec/changes/an-owner-leaves-their-club/design.md` §D7's one-bit leak reassembled in TypeScript. An earlier one, `WaveFilledIcon`, went with the filled glyph when PD-287 reverted it. All seventeen render through `renderToStaticMarkup`; the environment is still `node`, and jsdom is the answer only when something needs a layout or an event. **Six** carry a `vi.mock` of `next/navigation` — count them rather than trust it, `grep -rl "vi.mock('next/navigation'" src/components | wc -l`, because this sentence has now been wrong twice in the same direction. They are `PostcardAction` (which has had one all along), `CreateRideForm`, because `useActionRedirect` calls `useRouter`, `PostcardCard`, because its own `PostcardMenu` calls `useRouter` and `usePathname`, `RideInviteJoin`, which calls both itself — the tap navigates to the ride it just joined — and, since the club batch, `ClubInviteJoin` and `ClubPreviewScreen`, for the same reason one domain over. All six stand in for a provider rather than for behaviour, and no effect runs under a static render anyway. `PostcardCard`'s also mounts the real `BannerProvider`, `PostcardMenu` calling `useBanner`, which throws outside one |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Refuses a sign-in and checks the email survives it, signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. It then refuses a create and an edit and checks every field and choice of each survives. With `WALK_FIXTURES=1` it **creates** the ride and club the detail routes need, through the app's own forms; a shrunken `N/N` is a skip, not a pass. Writes are refused unless the session's own project is on the allowlist |
 | End-to-end | Playwright | Still deferred as a full suite. **The walk is not the gap being filled**: it asks one question per route — did this render — and asserts behaviour only in its six named phases, each covering a defect no other gate here can see (PD-196's cleared email, PD-199's cleared create form and its silently-rewritten edit form, PD-111's navigation cost, the guard's redirects, what sign-out leaves behind). Adding a phase means adding a reason, not broadening a remit |
 
@@ -415,7 +462,7 @@ the exported function must be named `proxy`, and do not add a `middleware.ts`.
 Routing decisions live in **three** places, split so the decision can be tested:
 
 - **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
-  `null` means stay; a string is where to go. 50 cases in `__tests__/guard.test.ts`.
+  `null` means stay; a string is where to go. 54 cases in `__tests__/guard.test.ts`.
 - **`src/lib/auth/guard-cache.ts`** — what the decision reads: the session and the onboarding
   stamps, **held for the page load rather than fetched per route**, with `onAuthStateChange` as
   the single writer for the session half. This is where the reads live now, and the reason it
@@ -654,51 +701,76 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 91 files; DEV is at `091` and PROD at `079` — measured 2026-08-29, so DEV is
-AHEAD by twelve and `080`–`091` are owed to PROD at the next promotion, in filename order.**
-`080`–`088` are additive, so those nine go to PROD **before** the promotion build serves, per the
-ordering rule below. **`090` is destructive and goes before it too**, which is this file's one
-exception to that rule rather than a violation of it: it drops `083`'s retraction trigger, and its
-header carries the check that earns the exception — the serving client already degrades correctly
-for a `ride_invited` notification whose invite is not live, nothing in `src/` names the trigger or
-its function, and no client role ever held EXECUTE on it, so an older bundle and a newer one behave
-identically against the post-`090` schema. **Read that as the rule working, not as a loophole**:
-the rule asks which side fails safe, and a destructive file whose removed object no bundle can
-observe has no unsafe side. **`091` is additive and goes before the build like the other nine**,
-with one caveat that is about the CLIENT rather than the schema: it re-creates `notify_ride_invited`
-with a `WHEN` clause, so from the moment it applies every in-app invite runs the narrowed trigger.
-`036`'s hand-exercise gate therefore fires for it, and was run on DEV; run it again on PROD. **`089` is the other exception and goes AFTER it is confirmed serving**, on `070`'s
-and `077`'s footing rather than `069`'s — it is additive in SCHEMA and its ordering constraint is
-in the CLIENT: `notificationCopy` and `NotificationsListItem`'s `describe` are exhaustive switches,
-so one decline landing while an older bundle is still serving takes that rider's notifications
-screen down. On DEV it was applied in exactly that order, after the merge's Vercel deployment
-reached `READY` on the merge sha, and `036`'s hand-exercise gate was run against the live decline
-path in the same sitting (one notification written, its actor equal to its recipient, the clear
-retracting it, nothing raised, zero residue). **`085` is additive and NOT inert**, the same shape `083` has: it rewrites
-`private.may_participate` to delegate to a new subject-taking twin — a function `023`'s gate
-trigger calls on sixteen tables — and its `private.join_club_from_request` fires
-`private.notify_club_joined` inside a `security definer` body, so a raise there takes a rider's
-approval down with it. `036`'s hand-exercise gate applies and was run on DEV; run it again on PROD
-before that promotion. `086` creates one function and hangs no trigger, so it needs none, and neither
-does `088` — three `security definer` RPCs, no trigger and no policy. **`089` DOES need it**: it
-hangs a fan-out on the DECLINE path, which is live, so from the moment it applies every decline
-runs new code inside the admin's own transaction. `081` creates the club-thread tables under their old `discussion` names and
-`082` renames them, so on PROD that pair is a create-then-rename with no rows in between — but the
-**order inside the gap is not optional**, and for two separate reasons that are easy to collapse
-into one: `082` renames objects `081` creates, so the reverse simply errors; and the client calls
-RPCs that exist only after `082`, so stopping *between* them serves `PGRST202` with nothing red.
-**`083` adds a third reason and it is the loudest**: it is additive in schema and NOT inert, because
-it replaces `private.can_read_ride`, which every existing notification fan-out calls inside a
-rider's own RSVP and ride-creation transaction — `036`'s hand-exercise gate, which was run on DEV
-and must be run again on PROD before that promotion. `076` (PD-297) went to PROD before the promotion build (additive) and `077` (PD-293)
-after it was confirmed serving (destructive), which is the whole ordering rule in one sitting.
-**Level is the exception, not the resting state**: DEV-ahead is where a migration lives between its
-merge and its promotion, and the two were last level on 2026-08-20 at PD-273's promotion and
-briefly on 2026-08-24. **Do not read the count of unpromoted files off this sentence** — it named
-exactly one while two were waiting, which is the same defect as a stale number in a smaller place,
-and the promotion is the one job that reads it. Run `list_migrations` against
-`ls supabase/migrations/` and promote everything the gap contains, in filename order, per step 5 of
-`docs/ENVIRONMENTS.md` §Migrations.
+**Applied state: 96 files; DEV is at `096` and PROD at `091` — measured 2026-09-01, so `092`–`096`
+are DEV-ONLY and awaiting promotion.** Count rather than trust it: `list_migrations` against both
+refs, against `ls supabase/migrations/`. `092`–`095` are the club batch (PD-356,
+PD-360, PD-348, PD-194) and `096` is the analytics opt-out (PD-353). All five are additive, and
+**the promotion applies them in TWO groups on opposite sides of the build, which deliberately
+breaks filename order** — the one place in this repo where it is broken on purpose, and it is safe
+because `096` names nothing `092`–`095` create (its only mention of them is a comment) and they
+name nothing of its:
+
+- **`096` FIRST, before the build serves.** An older bundle names none of it and its trigger is a
+  behavioural no-op, but a newer bundle against a pre-`096` database sends `posthog_session_id`
+  and gets `PGRST204` — feedback submission down entirely for the length of the gap. For a column
+  a shipped client WRITES, migration-first is the only safe side.
+- **`092`–`095` AFTER the build is confirmed serving** — `089`'s footing, and `092` is the reason
+  it is not optional. `092` gives PostgREST a second `club_members`↔`profiles` relationship, so an
+  OLDER bundle's unhinted embed answers `PGRST201` / HTTP 300 the moment it applies: Your clubs,
+  Explore clubs, the club roster and the club timeline, all four dead for every rider until the
+  build lands (PD-363, and it is what happened on DEV). The bundle carrying
+  `MEMBER_PROFILE_EMBED` is correct against a pre- and post-`092` database alike, so deploy-first
+  has no unsafe side here — the new features simply answer `PGRST202` until their migration lands.
+  `092` and `093` also each widen an exhaustive client switch (`notificationCopy` and
+  `NotificationsListItem`'s `describe`), which this order satisfies too.
+
+So "additive, so the order does not matter" is wrong for both groups, in opposite directions: the
+additive-first rule asks which side fails safe, and here the two files disagree about which side
+that is. `036`'s hand-exercise gate fires on `096` per project. On DEV they went **after** the merge's deployment reached
+`READY` on the merge sha with `aliasError` null, which is `089`'s rule and is the order to repeat.
+Each change's `tasks.md` §7 carries its own. **Level is the exception, not the resting state** — DEV-ahead is where a
+migration lives between its merge and its promotion, so read a per-project difference as a pending
+promotion before reading it as a gap, and **do not read the count of unpromoted files off a
+sentence anywhere**: one here named exactly one file while two were waiting, which is the same
+defect as a stale number in a smaller place, and the promotion is the one job that reads it.
+Promote everything the gap contains, in filename order, per step 5 of `docs/ENVIRONMENTS.md`
+§Migrations.
+
+**`080`–`091` went to PROD around #348's build, in three groups, and the GROUPING is the reusable
+part rather than the dates.** `080`–`088` and `091` are additive and went **before** the build
+served. **`090` is destructive and went before it too**, which is this file's one exception to that
+rule rather than a violation of it: it drops `083`'s retraction trigger, and its header carries the
+check that earns the exception — the serving client already degrades correctly for a `ride_invited`
+notification whose invite is not live, nothing in `src/` names the trigger or its function, and no
+client role ever held EXECUTE on it, so an older bundle and a newer one behave identically against
+the post-`090` schema. **Read that as the rule working, not as a loophole**: the rule asks which
+side fails safe, and a destructive file whose removed object no bundle can observe has no unsafe
+side. **`089` went AFTER the build was confirmed serving**, on `070`'s and `077`'s footing rather
+than `069`'s — it is additive in SCHEMA and its ordering constraint is in the CLIENT:
+`notificationCopy` and `NotificationsListItem`'s `describe` are exhaustive switches, so one decline
+landing while an older bundle is still serving takes that rider's notifications screen down. On both
+projects it went in exactly that order, after the merge's Vercel deployment reached `READY` on the
+merge sha with `aliasError` null.
+
+**Four of the twelve are additive and NOT inert, which is what `036`'s hand-exercise gate is for**,
+and all four were exercised by hand on DEV and again on PROD — in a rolled-back transaction, as
+`authenticated`, with the fan-outs' rows counted rather than assumed. `083` replaces
+`private.can_read_ride`, which every existing notification fan-out calls inside a rider's own RSVP
+and ride-creation transaction. `085` rewrites `private.may_participate` to delegate to a new
+subject-taking twin — a function `023`'s gate trigger calls on sixteen tables — and its
+`private.join_club_from_request` fires `private.notify_club_joined` inside a `security definer`
+body, so a raise there takes a rider's approval down with it. `091` re-creates
+`notify_ride_invited` with a `WHEN` clause, so from the moment it applies every in-app invite runs
+the narrowed trigger. `089` hangs a fan-out on the DECLINE path, which is live. `086` creates one
+function and hangs no trigger, so it needs none, and neither does `088` — three `security definer`
+RPCs, no trigger and no policy.
+
+**`081` and `082` are a create-then-rename pair and the order inside it is not optional**, for two
+separate reasons that are easy to collapse into one: `082` renames objects `081` creates, so the
+reverse simply errors; and the client calls RPCs that exist only after `082`, so stopping *between*
+them serves `PGRST202` with nothing red. `076` (PD-297) went to PROD before the promotion build
+(additive) and `077` (PD-293) after it was confirmed serving (destructive), which is the whole
+ordering rule in one sitting.
 
 **`069` and `070` went opposite ways round the same event, and that is the reusable part.** `069`
 is additive and applied to PROD **before** the promotion build served; `070` is destructive and
@@ -753,7 +825,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **2479** assertions — re-derive rather than trust it:
+Suite **3035** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -794,7 +866,9 @@ rider with a NULL stamp no way out of the wizard. Inside a `security definer` fu
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: twenty-seven, and only one is outstanding.** Re-derive rather than trust the number
+**Security advisors: twenty-seven on PROD and thirty-six on DEV, and only one is outstanding.**
+**The table below describes PROD** — measured 2026-09-01, and reading it against DEV produces a
+nine-advisor surplus that looks like a finding and is `092`–`096` awaiting promotion. Re-derive rather than trust the number
 — `get_advisors(security)` — but the *shape* is durable, because twenty-six of the twenty-seven are
 things this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 

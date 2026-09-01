@@ -3,7 +3,7 @@ import { canonicalOrigin } from '@/lib/origin'
 import { clearQueryCache } from '@/lib/query'
 import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { clearRiderLocation } from '@/lib/location/rider-location'
-import { clearStashedInviteToken, takeStashedInviteToken } from '@/lib/invites/pending-token'
+import { clearAllStashedInviteTokens, takeAnyStashedInviteToken } from '@/lib/invites/pending-token'
 import { routes } from '@/lib/routes'
 import { clearSessionStore } from '@/lib/supabase/session-store'
 import { edgeFunctionErrorCode } from '@/lib/supabase/functions'
@@ -42,12 +42,23 @@ export async function signIn(_prev: ActionState, formData: FormData): Promise<Ac
   //
   // **It is a navigation and never a claim.** The rider who signs in is not
   // necessarily the rider who opened the link, so they are returned to the
-  // preview and must tap — see `claimRideInviteLink`.
-  const invite = takeStashedInviteToken()
+  // preview and must tap — see `claimRideInviteLink` and `claimClubInviteLink`.
+  //
+  // **Whichever kind is stashed** (`093`, PD-360) — this rider may have arrived
+  // through a ride link or a club link, and `takeAnyStashedInviteToken` is what
+  // tells the two apart without this action having to ask twice.
+  const invite = takeAnyStashedInviteToken()
 
   // The route guard decides the real destination — an un-onboarded rider is
   // sent to their resume step rather than the home screen, from either of these.
-  return { error: null, redirectTo: invite ? routes.joinRide(invite) : '/postcards' }
+  return {
+    error: null,
+    redirectTo: invite
+      ? invite.kind === 'ride'
+        ? routes.joinRide(invite.token)
+        : routes.joinClub(invite.token)
+      : '/postcards',
+  }
 }
 
 export async function signUp(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -258,12 +269,14 @@ export async function updatePassword(
  * rather than the query cache's — see `lib/auth/guard-cache.ts` for why it is
  * cleared here as well as by the `SIGNED_OUT` listener.
  *
- * **`clearStashedInviteToken()` is the fifth** (`091`, PD-330). A stashed
- * invite token is a trace and a credential at once — it came from a message
- * rather than from the rider, but leaving it behind means whoever signs in next
- * on this device inherits a spendable grant. It is a local `sessionStorage` key
- * with no user id in it, so nothing else would ever clear it, and the URL in the
- * original message is the durable copy for the rider who actually holds it.
+ * **`clearAllStashedInviteTokens()` is the fifth** (`091`, PD-330; generalised
+ * to both kinds by `093`, PD-360). A stashed invite token is a trace and a
+ * credential at once — it came from a message rather than from the rider, but
+ * leaving it behind means whoever signs in next on this device inherits a
+ * spendable grant. Each is a local `sessionStorage` key with no user id in it,
+ * so nothing else would ever clear it, and the URL in the original message is
+ * the durable copy for the rider who actually holds it. **Both kinds, or one
+ * left behind is exactly the local trace this call exists to remove.**
  *
  * **`clearRiderLocation()` is the fourth**, added with the place-search
  * location provider (`src/lib/location/rider-location.ts`). It holds no user
@@ -289,7 +302,7 @@ export async function signOut(): Promise<ActionState> {
   clearQueryCache()
   clearGuardCache()
   clearRiderLocation()
-  clearStashedInviteToken()
+  clearAllStashedInviteTokens()
   await clearSessionStore()
   return { error: null, redirectTo: '/auth/login' }
 }
