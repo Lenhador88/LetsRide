@@ -28,6 +28,7 @@ jobs:
     outputs:
       app: ${{ steps.filter.outputs.app }}
       db: ${{ steps.filter.outputs.db }}
+      functions: ${{ steps.filter.outputs.functions }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,6 +47,7 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "app=true" >> "$GITHUB_OUTPUT"
             echo "db=true" >> "$GITHUB_OUTPUT"
+            echo "functions=true" >> "$GITHUB_OUTPUT"
             echo "Not a pull request — running everything."
             exit 0
           fi
@@ -165,9 +167,21 @@ jobs:
             db=false
           fi
 
+          # The Edge Functions are Deno, and `tsconfig.json` excludes them —
+          # so until this job they were the least-guarded code in the repo,
+          # the one holding the service-role key included. An allowlist, like
+          # the database job's: the functions' only inputs are their own
+          # directory and this workflow.
+          if echo "$files" | grep -qE '^(supabase/functions/|\.github/workflows/)'; then
+            functions=true
+          else
+            functions=false
+          fi
+
           echo "app=$app" >> "$GITHUB_OUTPUT"
           echo "db=$db" >> "$GITHUB_OUTPUT"
-          echo "-> app=$app db=$db"
+          echo "functions=$functions" >> "$GITHUB_OUTPUT"
+          echo "-> app=$app db=$db functions=$functions"
 
   ci:
     name: Type Check, Lint & Build
@@ -264,6 +278,32 @@ jobs:
           # `build:native` — wiring it here would fail every PR, because this
           # step builds against DEV.
           NEXT_PUBLIC_CANONICAL_ORIGIN: https://app.letsride.social
+
+  # Type-checks the three Edge Functions under the runtime they actually run
+  # in. Nothing else reads them: `tsconfig.json` excludes `supabase/functions`
+  # because `include` is `**/*.ts` and they are Deno, so `npx tsc --noEmit`
+  # would fail on `Deno.serve` and take the app job with it. A separate job
+  # rather than a step in `ci` — it needs no `npm ci`, and `deno` in a
+  # directory holding a `package.json` expects a node_modules it would
+  # otherwise try to manage. The `jsr:` import is fetched from jsr.io, which
+  # the runner reaches and the build container does not.
+  #
+  # Deploying stays an owner action; this only says the file the owner will
+  # deploy still compiles. No `deno test` because there are no tests to run.
+  functions:
+    name: Edge Functions (Deno type check)
+    needs: changes
+    if: needs.changes.outputs.functions == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type check every function entrypoint
+        run: deno check supabase/functions/*/index.ts
 
   rls:
     name: RLS Policy Tests

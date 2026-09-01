@@ -12,6 +12,7 @@
     "test": "./supabase/tests/run.sh",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
+    "functions:check": "deno check supabase/functions/*/index.ts",
     "figma": "node scripts/figma/query.mjs",
     "figma:pull": "node scripts/figma/pull.mjs",
     "figma:extract": "node scripts/figma/extract.mjs",
