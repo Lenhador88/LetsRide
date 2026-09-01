@@ -1151,77 +1151,83 @@ timeout:**
 
 ---
 
-## Where this left off — 2026-09-01, and the four-story club bundle is BUILT
+## Where this left off — 2026-09-01, the club bundle is IN PRODUCTION
 
-**All four queued stories are built and applied to DEV.** `PD-365` (the introduction,
-`097`), `PD-366` (the return anchor, no migration), `PD-367` (club-thread notifications, `098` plus
-`100`) and `PD-368` (the join fan-out widened, `099`).
+**All four stories shipped to riders.** `PD-365` (the introduction, `097`), `PD-366` (the return
+anchor, no migration), `PD-367` (club-thread notifications, `098` plus `100`) and `PD-368` (the join
+fan-out widened, `099`). Both projects are at `100`; `main` and `development` are both at the
+promotion merge with identical trees.
+
+**The one thing still owed, and it is the biggest: NOTHING IN THIS BUNDLE HAS BEEN RENDERED.**
+`npm run walk` has not run over any of it — this container's Chromium cannot reach Supabase without
+`scripts/supabase-relay.mjs`, and the DEV walk account's password is not in the repo, not in the
+environment, and only the product owner has it. So the introduction sheet, the join row's new door,
+the return-anchor scroll and the two notification rows are verified by `tsc`, ESLint, Vitest,
+`next build` and the RLS suite and by **nothing that draws a pixel**. The introduction sheet also has
+**no v2 Figma frame**, so its composition and wording are inferred —
+`docs/FIGMA-FIDELITY-TODO.md` §Club detail carries the command that establishes it.
+
+**Why that was an acceptable risk at the promotion and will not be next time.** Production holds
+exactly ONE club — the Welcome club, `is_default = true` — with 0 threads and 0 messages, and every
+part of this bundle exempts or cannot reach that state: the introduction prompt and
+`introduce_to_club` both refuse the default club, `notify_club_joined` returns early on it, and the
+return anchor and thread notifications need a thread. So the bundle is **inert until somebody
+creates a real club**, and that moment — not the promotion — is what the walk should precede.
+Re-measure rather than trusting it, because one real club changes the answer:
+
+```sql
+select count(*) from public.clubs where not is_default;   -- 0 on PROD, 2026-09-01
+```
+
+**The promotion's order is the reusable part.** All four went MIGRATION-FIRST, before the build
+served, and the reasoning is per file rather than per batch — `097` inert, `098` adding a column the
+bundle READS through an explicit column list, `099` and `100` no schema at all. **That reversed what
+PD-367's body and this file both said**, which was deploy-after-serving on `089`'s rule; `089`'s
+premise expired one day after `089` shipped, when PD-335 gave both exhaustive switches a
+self-healing runtime fallback. Both greps still return 1:
+
+```bash
+grep -c "did something on LetsRide" src/components/notifications/copy.ts
+grep -c "return { href: null }" src/components/notifications/NotificationsListItem.tsx
+```
 
 **`100` exists because the pre-merge review found the one defect no single story's review could
-see, and it is the reusable lesson from this bundle.** `098` resolved its recipient as
-`club_threads.author_id` with no membership predicate, reasoning that authorship implied membership
-— true when the THREAD was written, false when the REPLY is. Nothing deletes a thread when its
-author leaves, so `A starts a thread → A leaves → B replies` wrote A a row `club_threads` SELECT can
-never return: unreadable from birth, one per distinct replier, for ever. **`097` multiplies exactly
-that population**, because it makes the ex-member-authored thread a designed state whose words
-survive the leave and keep attracting replies. Two agents, two correct stories, one defect in the
-seam. The fix is `private.is_club_member_for(t.author_id, t.club_id)` — the subject-taking twin, so
-an ownerless owner, who CAN still read the thread, keeps being notified. Verified by restoring
-`098`'s bodies on a scratch database: the whole pre-existing 3301-assertion suite passes and only
-the new `100.1` goes red. The change directories are
-`openspec/changes/introduce-yourself-on-joining-a-club/` (§§0–10 are PD-365, §11 is PD-366) and
-`openspec/changes/notify-a-club-thread/` (PD-367). **Neither is archived** — that is a real
-outstanding action, not bookkeeping.
+see, and it is the lesson worth carrying.** `098` resolved its recipient as `club_threads.author_id`
+with no membership predicate, reasoning that authorship implied membership — true when the THREAD
+was written, false when the REPLY is. Nothing deletes a thread when its author leaves, so
+`A starts a thread → A leaves → B replies` wrote A a row `club_threads` SELECT can never return:
+unreadable from birth, one per distinct replier, for ever. **`097` multiplies exactly that
+population**, because it makes the ex-member-authored thread a designed state whose words survive
+the leave and keep attracting replies. Two agents, two correct stories, one defect in the seam. The
+fix is `private.is_club_member_for(t.author_id, t.club_id)` — the subject-taking twin, so an
+ownerless owner, who CAN still read the thread, keeps being notified. Verified by restoring `098`'s
+bodies on a scratch database: the whole pre-existing 3301-assertion suite passes and only the new
+`100.1` goes red.
 
-**The promotion is what is left, and all three migrations go MIGRATION-FIRST** — the same side
-`096` took and the opposite of `092`–`095`. Do not infer this from "additive"; the reasoning is per
-file and two of the three are not symmetric:
+**Both open questions are ANSWERED and both confirmed what shipped**, so neither moved any code.
+Product owner: *"Q2 yes leave it"* and *"Q8 no, no more notifications."*
 
-| File | Why migration-first |
-|---|---|
-| `097` | Inert to an older bundle — it names nothing, triggers nothing. A newer bundle against a pre-`097` database loses only the prompt (`PGRST202`) |
-| `098` | **The one that is not optional.** It adds a column the shipped bundle READS: `NOTIFICATION_SELECT` is an explicit column list, so a newer bundle against a pre-`098` database takes EVERY rider's notifications screen down, not one degraded row |
-| `099` | No schema at all — one `create or replace` on a `private` trigger function |
-| `100` | No schema either, and **it must never be applied without `098`**: it narrows `098`'s two fan-outs so they stop writing a permanently-unreadable row to a thread author who has left the club |
+- **The wave retraction (PD-367 Q2) — KEEP.** **The case against it is recorded rather than closed**,
+  in that change's §D6, because it is what a later change would act on: `092`'s only sound
+  justification does not transfer here, and the sharpest form of `090`'s objection is that **a second
+  reply from the same actor in the same thread collapses and re-notifies nobody, while a wave toggled
+  off and on again does not** — so a wave button is the only control in this schema usable as a
+  doorbell. It applies equally to `club_waved` and `postcard_liked`, so if it is ever taken it is one
+  file covering all three, not a divergence in a change about threads.
+- **A thread's author who leaves the club (PD-367 Q8) — EVICT.** An eviction rather than a deletion,
+  so rejoining returns every row with its `created_at` and read state intact, and it is observable
+  only for an author who is NOT the club's owner — `is_club_member` unions an owner arm (`054`).
 
-**`098` reverses what PD-367's issue body and this file both used to say**, which was deploy-first
-on `089`'s rule. That premise expired one day after `089` shipped: PD-335 (#343) gave both
-exhaustive switches a runtime fallback, so an unknown type renders generic and unlinked and heals
-itself. Re-derive rather than trust it —
-`grep -c "did something on LetsRide" src/components/notifications/copy.ts` and
-`grep -c "return { href: null }" src/components/notifications/NotificationsListItem.tsx`, both 1.
+**Two smaller things left undone**, neither blocking: the two change directories
+(`introduce-yourself-on-joining-a-club` and `notify-a-club-thread`) are implemented and **not
+archived**; and **`docs/reference/schema.md` has no `notifications` row at all**, which `098`'s task
+list assumed it did — that absence predates this bundle and is the one documentation gap it did not
+close.
 
-**Nothing in this bundle has been RENDERED.** `npm run walk` has not run over any of it — this
-container's Chromium cannot reach Supabase without `scripts/supabase-relay.mjs` — so the
-introduction sheet, the join row's new door, the return-anchor scroll and the two notification rows
-are verified by `tsc`, ESLint, Vitest, `next build` and the RLS suite and by nothing that draws a
-pixel. **The introduction sheet also has no v2 Figma frame**, so its composition and wording are
-inferred; `docs/FIGMA-FIDELITY-TODO.md` §Club detail carries the command that establishes it.
-
-**Both open questions were ANSWERED on 2026-09-01 and both confirmed what was already built, so
-neither moved any code.** Product owner: *"Q2 yes leave it"* and *"Q8 no, no more notifications."*
-
-- **The wave retraction (PD-367 Q2) — KEEP.** Un-waving a thread takes its notification back,
-  following `092`. **The case against it is recorded rather than closed**, in that change's §D6,
-  because it is what a later change would act on: `092`'s only sound justification does not
-  transfer here (it was about a public club's row staying readable after the subject leaves, and
-  `club_threads`' audience is membership-only), and the sharpest form of `090`'s objection is that
-  **a second reply from the same actor in the same thread collapses and re-notifies nobody, while a
-  wave toggled off and on again does not** — so a wave button is the only control in this schema
-  usable as a doorbell. It applies equally to `club_waved` and `postcard_liked`, which is why it is
-  one file covering all three whenever it is taken, and not a divergence here.
-- **A thread's author who leaves the club (PD-367 Q8) — EVICT.** They stop reading its
-  notifications. It is an eviction rather than a deletion, so rejoining returns every row with its
-  `created_at` and read state intact, and it is observable only for an author who is NOT the club's
-  owner — `is_club_member` unions an owner arm (`054`), so an owner who leaves keeps reading.
-
-**One scope narrowing, stated rather than silent:** PD-366's task 11.3 names the ride card among
-the links that should carry the return anchor, and its outbound link does not carry one. Nothing
-consumes it — only the thread screen reads the parameter — so it would be a prefill nothing reads.
-The ride card does get its anchor id, so returning TO it works.
-
-**`docs/reference/schema.md` has no `notifications` row at all**, which `098`'s task list assumed it
-did. That absence predates this bundle and is the one documentation gap it did not close.
+**One scope narrowing, stated rather than silent:** PD-366's task 11.3 names the ride card among the
+links that should carry the return anchor, and its outbound link does not carry one. Nothing consumes
+it — only the thread screen reads the parameter — so it would be a prefill nothing reads. The ride
+card does get its anchor id, so returning TO it works.
 
 ## The open OpenSpec changes, and the collision between two of them
 
@@ -1314,7 +1320,7 @@ before, in the direction of reading one row too few.
 ls supabase/migrations/*.sql | wc -l    # 100
 ```
 ```
-mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # PROD — 96 rows, last `096_analytics_opt_out`
+mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # PROD — 100 rows, last `100_club_thread_fan_outs_test_membership`
 mcp__Supabase__list_migrations fpmrimzxadewsaiwpsel   # DEV  — 103 rows, last `club_thread_fan_outs_test_membership`
 ```
 
@@ -1986,7 +1992,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 100 — DEV at 100, PROD at 096: 097-100 await promotion
+ls supabase/migrations/*.sql | wc -l     # 100 — BOTH projects at 100, promoted 2026-09-01
 ```
 
 

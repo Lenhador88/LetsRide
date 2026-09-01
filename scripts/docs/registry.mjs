@@ -302,15 +302,18 @@ export const claims = [
     // with it. Two edits, one commit — still never a relaxed regex.
     // 2026-09-01, later: `097`-`099` (PD-365/PD-367/PD-368) applied to DEV alone
     // and this went red on cue for the SEVENTH time, on the very sentence the
-    // note above predicted would have to change. Pinned back to DEV AHEAD,
-    // naming BOTH refs. The pattern deliberately still ends mid-sentence rather
-    // than pinning the gap's SIZE in words — "three-file gap" would make every
-    // single new migration a registry edit, which is churn rather than a
-    // tripwire, while the two `at \`NNN\`` captures already make the direction
-    // unmissable. Relaxing it to /Applied state: (\d+) files/ is still the
-    // wrong repair.
+    // note above predicted would have to change. Pinned to DEV AHEAD, naming
+    // BOTH refs. The pattern deliberately did not pin the gap's SIZE in words —
+    // "three-file gap" would make every single new migration a registry edit,
+    // which is churn rather than a tripwire, while the two `at \`NNN\`` captures
+    // already made the direction unmissable.
+    // 2026-09-01, later still: the promotion put `097`-`100` on PROD and this
+    // went red for the EIGHTH time, within hours of the seventh. Pinned back to
+    // LEVEL. Two flips in one day is not the tripwire misbehaving — it is what
+    // "budget for it" above meant, and the round trip took two edits in two
+    // commits, never a relaxed regex.
     pattern:
-      /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD is at `\d+`, and the/,
+      /\*\*Applied state: (\d+) files, and BOTH projects are at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
@@ -324,7 +327,7 @@ export const claims = [
     // carries this one-liner TWICE (the Migrations section's row-vs-file
     // reconciliation also runs it), so a pattern matching the bare command
     // is ambiguous and fails to locate rather than to compare. 2026-09-01.
-    pattern: /ls supabase\/migrations\/\*\.sql \| wc -l\s+# (\d+) — DEV at \d+, PROD at \d+/,
+    pattern: /ls supabase\/migrations\/\*\.sql \| wc -l\s+# (\d+) — BOTH projects at \d+/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
