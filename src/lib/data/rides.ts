@@ -1,5 +1,5 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
-import { CLUB_EMBED_COLUMNS, CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { CLUB_EMBED_COLUMNS, CLUB_FILTER_EMBED_COLUMNS, MEMBER_PROFILE_EMBED, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { myClubIds, type RiderPosition } from '@/lib/data/clubs'
 import { distanceKm } from '@/lib/location/distance'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
@@ -146,7 +146,7 @@ const RIDE_SELECT = `
   latitude, longitude,
   organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
   club:clubs(id, name),
-  riders:ride_members(user_id, status, profile:profiles(${PUBLIC_PROFILE_COLUMNS}))
+  riders:ride_members(user_id, status, ${MEMBER_PROFILE_EMBED})
 `
 
 export type RideRow = {
@@ -716,7 +716,7 @@ export async function getRideCrew(rideId: string): Promise<RideCrew> {
   const rows = unwrapList(
     await supabase
       .from('ride_members')
-      .select(`user_id, status, profile:profiles(${PUBLIC_PROFILE_COLUMNS})`)
+      .select(`user_id, status, ${MEMBER_PROFILE_EMBED}`)
       .eq('ride_id', rideId)
       .order('joined_at', { ascending: true })
       .limit(RIDE_CREW_LIMIT),

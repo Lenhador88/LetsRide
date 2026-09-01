@@ -146,3 +146,31 @@ export const CLUB_EMBED_COLUMNS = 'id, name, avatar_path'
  * `cover_image_url` signed.
  */
 export const CLUB_FILTER_EMBED_COLUMNS = 'id, name, avatar_path, cover_image_path'
+
+/**
+ * How a `profiles` row is embedded from a **membership** row — `club_members`
+ * or `ride_members` — and the reason the `!user_id` hint is not optional.
+ *
+ * PostgREST resolves an embed by looking for relationships between the two
+ * tables, and it counts a *many-to-many* one whenever some third table holds a
+ * foreign key to each of them. `092` created `club_join_waves`, which by
+ * design references `club_members (club_id, subject_user_id)` and
+ * `profiles (user_id)` — so from that migration onwards `club_members` and
+ * `profiles` had TWO candidate relationships, PostgREST refused to guess, and
+ * every unhinted `profile:profiles(…)` embed started answering `PGRST201` with
+ * HTTP 300. That is both club lists, the club roster and the club timeline,
+ * broken by a migration that changed no policy and no column either screen
+ * reads.
+ *
+ * The hint names the relationship, so no third table can ever make it
+ * ambiguous again. **`ride_members` carries it for the same reason before it
+ * needs it**: nothing references that pair today, but it is the identical shape
+ * one junction table away, and the failure is invisible to every gate this repo
+ * has — `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green,
+ * because the ambiguity lives in PostgREST's schema cache rather than in the
+ * SQL or the types.
+ *
+ * `embed-hints.test.ts` is the tripwire: it refuses an unhinted `profiles`
+ * embed anywhere in this directory.
+ */
+export const MEMBER_PROFILE_EMBED = `profile:profiles!user_id(${PUBLIC_PROFILE_COLUMNS})`

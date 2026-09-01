@@ -1,4 +1,4 @@
-import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { MEMBER_PROFILE_EMBED, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { RIDES_PAGE_SIZE } from '@/lib/data/rides'
 import { resolveAvatarUrls } from '@/lib/data/media'
 import { unwrapList } from '@/lib/data/unwrap'
@@ -471,7 +471,7 @@ export async function getClubJoins(
   const rows = unwrapList(
     await supabase
       .from('club_members')
-      .select(`user_id, role, joined_at, profile:profiles(${PUBLIC_PROFILE_COLUMNS})`)
+      .select(`user_id, role, joined_at, ${MEMBER_PROFILE_EMBED}`)
       .eq('club_id', clubId)
       .order('joined_at', { ascending: false })
       .limit(limit),

@@ -1,6 +1,6 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { distanceKm, isNearby } from '@/lib/location/distance'
-import { PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import { MEMBER_PROFILE_EMBED } from '@/lib/data/columns'
 import { unwrapCount, unwrapList } from '@/lib/data/unwrap'
 import { resolveAvatarUrls, signImagePaths } from '@/lib/data/media'
 import { clubIdSchema } from '@/lib/validation/clubs'
@@ -67,7 +67,7 @@ const CLUB_LIST_SELECT = `
   id, name, is_public, avatar_path, cover_image_path,
   location_name, location_place_id, latitude, longitude,
   members_count:club_members(count),
-  riders:club_members(user_id, profile:profiles(${PUBLIC_PROFILE_COLUMNS}))
+  riders:club_members(user_id, ${MEMBER_PROFILE_EMBED})
 `
 
 export type ClubListRow = {
@@ -796,7 +796,7 @@ export async function getClubMembers(clubId: string): Promise<ClubRosterMember[]
   const rows = unwrapList(
     await supabase
       .from('club_members')
-      .select(`user_id, role, joined_at, profile:profiles(${PUBLIC_PROFILE_COLUMNS})`)
+      .select(`user_id, role, joined_at, ${MEMBER_PROFILE_EMBED}`)
       .eq('club_id', clubId)
       .order('joined_at', { ascending: true })
       .limit(CLUB_ROSTER_LIMIT),

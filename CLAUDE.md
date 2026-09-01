@@ -163,6 +163,24 @@ because `.from()` calls scattered across a dozen files mean a renamed column is 
 find, which is exactly the trap `003` set by dropping `full_name`. Re-derive the spread with
 `git grep -c "\.from('" -- 'src/*.ts' 'src/*.tsx'`.
 
+**Every embed of `profiles` names its foreign key, and the reason is that a migration touching
+neither the query nor its policies can break it.** PostgREST resolves `alias:profiles(…)` by
+counting the relationships between the two tables, and it counts a **many-to-many** one whenever
+some third table holds a foreign key to *each* of them — so an ordinary join table makes an
+untouched embed ambiguous and it starts answering `PGRST201` with **HTTP 300**. `092` did exactly
+that: `club_join_waves` references `club_members` and `profiles` because a wave is at a membership
+and by a rider, and Your clubs, Explore clubs, the club roster and the club timeline all went down
+together. **No gate here can see it** — `tsc` type-checks a template string, ESLint reads no SQL,
+Vitest mocks the client, `next build` issues no query, and the RLS suite runs on plain Postgres
+where PostgREST's relationship cache does not exist — so it reached DEV green and was found in the
+log stream, as a status nothing alerts on. A hinted embed cannot go ambiguous whatever a later
+migration adds; membership rows go through `MEMBER_PROFILE_EMBED` in `lib/data/columns.ts`, and
+`src/lib/data/__tests__/embed-hints.test.ts` refuses an unhinted one:
+
+```bash
+npx vitest run src/lib/data/__tests__/embed-hints.test.ts
+```
+
 **Writes go through `src/lib/actions/`**, one function per mutation — plain async functions in
 the browser, not Server Actions. The boundary is the point: one place that writes, named and
 typed per mutation. Two of the three arguments that created the directory still hold, and the
