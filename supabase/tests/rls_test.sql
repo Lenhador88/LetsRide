@@ -18077,27 +18077,46 @@ set role authenticated;
 rollback to savepoint transfer_no_successor_081;
 
 -- ---------------------------------------------------------------------------
--- 081.17  No new zombie: neither foreign key is ON DELETE SET NULL
+-- 081.17  No new zombie: the ONE non-cascading foreign key is named, not counted
 -- ---------------------------------------------------------------------------
 -- The property 043's whole existence rests on. `rides.club_id` is SET NULL,
 -- which strands a private ride as a zombie and is why delete_owned_club had to
--- be written at all; these tables hold no Storage object and no SET NULL, so the
--- plain cascade is correct and complete.
+-- be written at all; these tables hold no Storage object, so a plain cascade is
+-- correct for every key that reaches a PARENT OBJECT.
+--
+-- ** 097 ADDS THE ONE DELIBERATE EXCEPTION AND THIS ASSERTION NAMES IT RATHER
+-- THAN COUNTING TO ONE. ** club_threads_introduces_membership_fkey is SET NULL
+-- (introduces_user_id) into club_members, and it strands nothing: the thread
+-- still hangs off club_id, which is NOT NULL and still cascades, so the row
+-- stays reachable, readable and deletable by exactly the audience it had. What
+-- it drops is the MARKER — a rider left, so the thread stops claiming to
+-- introduce a membership that no longer exists — while keeping the words the
+-- rider wrote and the words other riders wrote in reply. Cascading it instead
+-- would mean a leave silently deletes everybody's welcome messages, which
+-- add-club-threads §*Leaving a club SHALL remove the whole conversation from the
+-- leaver, and SHALL remove nothing from anybody else* forbids. Naming it keeps
+-- the tripwire live: a SECOND SET NULL arriving on any of these three tables
+-- still turns this red, which a `count = 1` would not.
 reset role;
 select assert_eq(
-  (select count(*)::int from pg_constraint
+  (select coalesce(string_agg(conname, ',' order by conname), '') from pg_constraint
     where contype = 'f' and confdeltype <> 'c'
       and conrelid in ('public.club_threads'::regclass,
                        'public.club_messages'::regclass,
                        'public.club_thread_reads'::regclass)),
-  0, '081.17: every foreign key on the three new tables is ON DELETE CASCADE — not one is SET NULL, which is what 043 exists because rides.club_id is');
+  'club_threads_introduces_membership_fkey',
+  '081.17: EXACTLY ONE foreign key on the three tables is not ON DELETE CASCADE, and it is 097''s introduction marker — named rather than counted, so a second SET NULL on any of them turns this red. Every key reaching a PARENT still cascades, which is what 043 exists because rides.club_id does not');
+select assert_eq(
+  (select confdeltype::text from pg_constraint
+    where conname = 'club_threads_introduces_membership_fkey'),
+  'n', '081.17: ... and that one is SET NULL (n) rather than SET DEFAULT — 097.6 is what proves the column list makes the leave succeed');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f'
       and conrelid in ('public.club_threads'::regclass,
                        'public.club_messages'::regclass,
                        'public.club_thread_reads'::regclass)),
-  6, '081/082: 081.17: ... and there are six of them — club_threads.club_id and .author_id, club_messages.thread_id and .author_id, and BOTH of the watermark''s key columns');
+  7, '081/082: 081.17: ... and there are seven of them — 081''s six (club_threads.club_id and .author_id, club_messages.thread_id and .author_id, and BOTH of the watermark''s key columns) plus 097''s composite marker key');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
@@ -28137,6 +28156,663 @@ drop function public.pd096_refusal(text);
 
 reset role;
 rollback to savepoint analytics_096;
+
+-- ===========================================================================
+-- 097 · A rider introduces themselves when they join a club (PD-365)
+-- ===========================================================================
+-- Two nullable columns on `club_threads` and one security definer writer. The
+-- three things that make this section worth reading before editing it:
+--
+--   * ** 097.6 IS THE ASSERTION THAT SEPARATES A CORRECT BUILD FROM ALL THREE
+--     WRONG ONES, and only because the leaving rider HAS an introduction. ** A
+--     leave by a rider without one succeeds under the bare `on delete set null`
+--     (which nulls club_id and raises 23502), under the biconditional pairing
+--     CHECK (23514) and under the correct shape alike. Substituting it is how
+--     this whole section becomes decoration.
+--   * ** The two new columns are SELECT-only for every client role. ** The RPC
+--     is the only writer, which is what stops a rider marking somebody else's
+--     thread as that rider's introduction — 097.2, scoped to the grantee.
+--   * ** 097.9 has nothing to do with introductions and must exist anyway. ** It
+--     pins club_members' UPDATE-policy count at zero, because the shape this
+--     change did NOT take — a marker column on the roster — needs an own-row
+--     UPDATE policy, and that policy re-arms 019's dormant
+--     `UPDATE (club_id, role, user_id)` grant and lets an ordinary member write
+--     themselves `admin`.
+--
+--   970001 inowner    owns cA (PRIVATE) and cC; the owner refusal
+--   970002 insubject  plain MEMBER of cA, cB and cC — ** the introducer **
+--   970003 instranger member of nothing; the non-member refusal and the oracle
+--   970004 inungated  MEMBER of cA with terms_accepted_at NULL — the gate
+--   970005 inleaver   MEMBER of cD, the PUBLIC club, who introduces and then
+--                     LEAVES and REJOINS — 097.6/8/12. Their club is public so
+--                     that the whole cycle runs through the POLICIES a rider
+--                     actually uses: club_members' INSERT policy admits a join
+--                     only to a public club or one the caller owns, so a private
+--                     club would have made the rejoin a table-owner write and
+--                     the sequence something no rider could produce
+--   970006 inblocker  MEMBER of cA who has BLOCKED insubject — 097.11
+--   970007 inpubowner owns cB (PUBLIC) and posts a thread and a message in it
+--   970008 inoutsider signed in, member of NOTHING — 097.10's public-club reader
+--   970009 inadmin    ADMIN of cA and member of cD — the moderation path, "admin
+--                     reads what any member reads", and the remaining member who
+--                     must lose nothing when inleaver goes
+--   970010 incomment  MEMBER of cA who COMMENTS on the introduction, so the
+--                     count 097.11 says the blocker cannot see is non-zero for
+--                     everybody else; also in cD, where they welcome inleaver
+savepoint introductions_097;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000970001', 'inowner@example.com'),
+  ('00000000-0000-0000-0000-000000970002', 'insubject@example.com'),
+  ('00000000-0000-0000-0000-000000970003', 'instranger@example.com'),
+  ('00000000-0000-0000-0000-000000970004', 'inungated@example.com'),
+  ('00000000-0000-0000-0000-000000970005', 'inleaver@example.com'),
+  ('00000000-0000-0000-0000-000000970006', 'inblocker@example.com'),
+  ('00000000-0000-0000-0000-000000970007', 'inpubowner@example.com'),
+  ('00000000-0000-0000-0000-000000970008', 'inoutsider@example.com'),
+  ('00000000-0000-0000-0000-000000970009', 'inadmin@example.com'),
+  ('00000000-0000-0000-0000-000000970010', 'incomment@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000970001', 'inowner'),
+      ('00000000-0000-0000-0000-000000970002', 'insubject'),
+      ('00000000-0000-0000-0000-000000970003', 'instranger'),
+      ('00000000-0000-0000-0000-000000970004', 'inungated'),
+      ('00000000-0000-0000-0000-000000970005', 'inleaver'),
+      ('00000000-0000-0000-0000-000000970006', 'inblocker'),
+      ('00000000-0000-0000-0000-000000970007', 'inpubowner'),
+      ('00000000-0000-0000-0000-000000970008', 'inoutsider'),
+      ('00000000-0000-0000-0000-000000970009', 'inadmin'),
+      ('00000000-0000-0000-0000-000000970010', 'incomment')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+-- ** inungated's consent stamp is NULL and their onboarding stamp is NOT. ** The
+-- gate is two conjuncts and this rider fails exactly one, so 097.4 proves the
+-- consent half rather than passing because the profile is half-built.
+update profiles set terms_accepted_at = null
+ where id = '00000000-0000-0000-0000-000000970004';
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000009700c1', 'Introductions MC',      false, '00000000-0000-0000-0000-000000970001'),
+  ('00000000-0000-0000-0000-0000009700c2', 'Introductions Open MC', true,  '00000000-0000-0000-0000-000000970007'),
+  ('00000000-0000-0000-0000-0000009700c3', 'Introductions Other MC',false, '00000000-0000-0000-0000-000000970001'),
+  ('00000000-0000-0000-0000-0000009700c4', 'Introductions Leave MC', true,  '00000000-0000-0000-0000-000000970001');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000009700c1', '00000000-0000-0000-0000-000000970001', 'owner'),
+  ('00000000-0000-0000-0000-0000009700c1', '00000000-0000-0000-0000-000000970002', 'member'),
+  ('00000000-0000-0000-0000-0000009700c1', '00000000-0000-0000-0000-000000970004', 'member'),
+  ('00000000-0000-0000-0000-0000009700c1', '00000000-0000-0000-0000-000000970006', 'member'),
+  ('00000000-0000-0000-0000-0000009700c1', '00000000-0000-0000-0000-000000970009', 'admin'),
+  ('00000000-0000-0000-0000-0000009700c1', '00000000-0000-0000-0000-000000970010', 'member'),
+  ('00000000-0000-0000-0000-0000009700c2', '00000000-0000-0000-0000-000000970007', 'owner'),
+  ('00000000-0000-0000-0000-0000009700c2', '00000000-0000-0000-0000-000000970002', 'member'),
+  ('00000000-0000-0000-0000-0000009700c3', '00000000-0000-0000-0000-000000970001', 'owner'),
+  ('00000000-0000-0000-0000-0000009700c3', '00000000-0000-0000-0000-000000970002', 'member'),
+  ('00000000-0000-0000-0000-0000009700c4', '00000000-0000-0000-0000-000000970001', 'owner'),
+  ('00000000-0000-0000-0000-0000009700c4', '00000000-0000-0000-0000-000000970005', 'member'),
+  ('00000000-0000-0000-0000-0000009700c4', '00000000-0000-0000-0000-000000970009', 'member'),
+  ('00000000-0000-0000-0000-0000009700c4', '00000000-0000-0000-0000-000000970010', 'member');
+
+-- An ORDINARY thread in cA — no marker, no introduction — which is what 097.7
+-- needs: the pairing CHECK can only be caught by setting a marker on a row whose
+-- `introduction` is NULL, and every thread the RPC writes has text by
+-- construction. Its author is a member of cA, so the marker 097.7 tries to set
+-- is a VALID membership and the composite foreign key cannot be what refuses it.
+insert into club_threads (id, club_id, author_id, title) values
+  ('00000000-0000-0000-0000-0000009700d1', '00000000-0000-0000-0000-0000009700c1',
+   '00000000-0000-0000-0000-000000970010', 'Tyre pressures');
+
+-- cB's ordinary thread and its one message, so 097.10's zero is a measurement
+-- against a club that DOES hold a conversation rather than against an empty one.
+insert into club_threads (id, club_id, author_id, title) values
+  ('00000000-0000-0000-0000-0000009700d2', '00000000-0000-0000-0000-0000009700c2',
+   '00000000-0000-0000-0000-000000970007', 'Sunday run');
+insert into club_messages (id, thread_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000009700a2', '00000000-0000-0000-0000-0000009700d2',
+   '00000000-0000-0000-0000-000000970007', 'Meeting at the bridge at nine.');
+
+-- ---------------------------------------------------------------------------
+-- 097.1  A member introduces themselves ONCE, and the thread carries the marker
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970002', false);
+select set_config('test.intro',
+  introduce_to_club('00000000-0000-0000-0000-0000009700c1',
+    'Hi all — I ride a Bonneville and joined for the weekend runs.')::text, false);
+reset role;
+select assert_eq(
+  (select count(*)::int from club_threads where id = current_setting('test.intro')::uuid),
+  1, '097.1: the RPC returns the id of a thread that exists — one statement, so there is no state in which the marker landed and the text did not');
+select assert_eq(
+  (select introduces_user_id from club_threads where id = current_setting('test.intro')::uuid),
+  '00000000-0000-0000-0000-000000970002'::uuid,
+  '097.1: ** the marker names the introducing rider ** — read from auth.uid() inside the function, never from an argument, so no caller can introduce anybody but themselves');
+select assert_eq(
+  (select author_id from club_threads where id = current_setting('test.intro')::uuid),
+  '00000000-0000-0000-0000-000000970002'::uuid,
+  '097.1: ... and the AUTHOR is that same rider, which is what makes this not club-timeline-engagement §D2''s refused shape: the joiner wrote the words');
+select assert_eq(
+  (select club_id from club_threads where id = current_setting('test.intro')::uuid),
+  '00000000-0000-0000-0000-0000009700c1'::uuid,
+  '097.1: ... in the club they asked for');
+select assert_eq(
+  (select introduction from club_threads where id = current_setting('test.intro')::uuid),
+  'Hi all — I ride a Bonneville and joined for the weekend runs.',
+  '097.1: ... carrying the rider''s own words in the thread''s own column, so every club_messages row under it is a COMMENT by construction and the count needs no arithmetic');
+select assert_eq(
+  (select title from club_threads where id = current_setting('test.intro')::uuid),
+  'Introduction', '097.1: ** the title is a CONSTANT NAMING NOBODY ** — club_threads has no UPDATE grant and no UPDATE policy, so a title is immutable for the life of the thread, and §D2 refused a shape precisely for publishing a living rider''s username into one');
+-- The RPC is the only writer, so the client cannot choose the title either.
+select assert_eq(
+  (select count(*)::int from club_threads
+    where club_id = '00000000-0000-0000-0000-0000009700c1'
+      and introduces_user_id is not null),
+  1, '097.1: ... and exactly one thread in the club is marked, so the RPC wrote one row and not two');
+
+-- ---------------------------------------------------------------------------
+-- 097.2  The two columns are SELECT-only, and the INSERT list did not move
+-- ---------------------------------------------------------------------------
+-- ** SCOPED TO THE GRANTEE. ** 015's trap: a table-wide privilege count reads
+-- high because postgres and service_role hold everything by Supabase default.
+reset role;
+select assert_eq(has_column_privilege('authenticated', 'public.club_threads', 'introduces_user_id', 'select'),
+  true, '097.2: authenticated can READ the marker — club_threads'' SELECT grant is column-scoped, so without 097''s grant every read naming it answers 42501 and takes a whole screen with it');
+select assert_eq(has_column_privilege('authenticated', 'public.club_threads', 'introduction', 'select'),
+  true, '097.2: ... and can read the text. The two are granted TOGETHER: no column-level grant may make one readable and the other not');
+select assert_eq(has_column_privilege('authenticated', 'public.club_threads', 'introduces_user_id', 'insert'),
+  false, '097.2: ** and can INSERT neither ** — a client that could write the marker could mark somebody else''s thread as that rider''s introduction');
+select assert_eq(has_column_privilege('authenticated', 'public.club_threads', 'introduction', 'insert'),
+  false, '097.2: ... nor the text, so public.introduce_to_club is the ONLY writer');
+select assert_eq(has_column_privilege('authenticated', 'public.club_threads', 'introduces_user_id', 'update'),
+  false, '097.2: ... and neither is UPDATEable, which is what makes an introduction immutable rather than merely un-edited by the current client');
+select assert_eq(has_column_privilege('authenticated', 'public.club_threads', 'introduction', 'update'),
+  false, '097.2: ... in both columns');
+select assert_eq(
+  (select string_agg(attname, ',' order by attname) from pg_attribute
+    where attrelid = 'public.club_threads'::regclass and attnum > 0 and not attisdropped
+      and has_column_privilege('authenticated', 'public.club_threads', attname, 'insert')),
+  'author_id,club_id,id,title',
+  '097.2: ** the INSERT grant is still EXACTLY 081''s four columns ** — asserted as the sorted LIST rather than as a count, because a count of four also passes for a list that swapped title for introduction');
+select assert_eq(
+  (select string_agg(attname, ',' order by attname) from pg_attribute
+    where attrelid = 'public.club_threads'::regclass and attnum > 0 and not attisdropped
+      and has_column_privilege('anon', 'public.club_threads', attname, 'select')),
+  null, '097.2: anon reads no column of club_threads at all — decision #1, and 097 adds no grant to it');
+select assert_eq(
+  (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'club_threads'),
+  3, '097.2: club_threads still carries exactly 081''s three policies — 097 adds none and changes none, the introduction inheriting the thread''s audience rather than restating it');
+select assert_eq(
+  (select string_agg(cmd, ',' order by cmd) from pg_policies
+    where schemaname = 'public' and tablename = 'club_threads'),
+  'DELETE,INSERT,SELECT',
+  '097.2: ... and they are still the same three COMMANDS, so no UPDATE policy arrived to pair with an UPDATE grant that also did not arrive');
+
+-- ---------------------------------------------------------------------------
+-- 097.3  A non-member is refused, and the refusal is NOT AN ORACLE
+-- ---------------------------------------------------------------------------
+-- Byte-identical to the refusal for a club that does not exist. A distinguishable
+-- pair would let any signed-in rider enumerate private clubs by id.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970003', false);
+select set_config('test.e_nonmember',
+  error_of($q$select introduce_to_club('00000000-0000-0000-0000-0000009700c1', 'Let me in')$q$), false);
+select set_config('test.e_nosuchclub',
+  error_of($q$select introduce_to_club('00000000-0000-0000-0000-00000000dead', 'Let me in')$q$), false);
+select set_config('test.e_private_invisible',
+  error_of($q$select introduce_to_club('00000000-0000-0000-0000-0000009700c3', 'Let me in')$q$), false);
+reset role;
+select assert_eq(current_setting('test.e_nonmember') <> '<no error>',
+  true, '097.3: a non-member of a private club is REFUSED — anti-vacuity for the comparisons below, which two equal ''<no error>'' strings would otherwise satisfy');
+select assert_eq(current_setting('test.e_nonmember'), current_setting('test.e_nosuchclub'),
+  '097.3: ** a club they are not in and a club that DOES NOT EXIST fail identically ** — same SQLSTATE and same message, compared against each other rather than against a literal, so re-wording the raise keeps this honest');
+select assert_eq(current_setting('test.e_nonmember'), current_setting('test.e_private_invisible'),
+  '097.3: ... and so does a private club they cannot even read, which is the arm that would otherwise turn the RPC into a private-club enumerator');
+select assert_eq(left(current_setting('test.e_nonmember'), 5),
+  '42501', '097.3: ... and the SQLSTATE is insufficient_privilege, so a client cannot separate the arms by code either');
+-- The OWNER and the DEFAULT club reach the same line, which is the whole reason
+-- there is one raise statement rather than several with matching wording.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970001', false);
+select set_config('test.e_owner',
+  error_of($q$select introduce_to_club('00000000-0000-0000-0000-0000009700c1', 'I founded this club')$q$), false);
+reset role;
+select assert_eq(current_setting('test.e_owner'), current_setting('test.e_nonmember'),
+  '097.3: ** a club''s OWNER is refused, on the same line ** — 054 makes them a member, so without this the state rule would prompt every founder to introduce themselves to the club they just founded');
+select assert_eq(
+  (select count(*)::int from club_threads
+    where club_id = '00000000-0000-0000-0000-0000009700c1'
+      and introduces_user_id = '00000000-0000-0000-0000-000000970001'),
+  0, '097.3: ... and wrote nothing');
+
+-- ---------------------------------------------------------------------------
+-- 097.4  ** THE PARTICIPATION GATE, RESTATED WHERE THE TRIGGER CANNOT FIRE **
+-- ---------------------------------------------------------------------------
+-- enforce_participation_gate on club_threads carries
+-- `when (current_user = 'authenticated')`, and current_user inside a security
+-- definer body is the FUNCTION'S OWNER — so the trigger cannot fire for this
+-- insert whatever 097.14's count says. 078.9 is the precedent for asserting the
+-- absence rather than adding a trigger that would raise coverage while gating
+-- nothing.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970004', false);
+select set_config('test.e_ungated',
+  error_of($q$select introduce_to_club('00000000-0000-0000-0000-0000009700c1', 'My consent stamp is NULL')$q$), false);
+reset role;
+select assert_eq(current_setting('test.e_ungated') <> '<no error>',
+  true, '097.4: ** a rider with terms_accepted_at NULL is REFUSED ** — by the function body, the trigger on club_threads being structurally unable to fire inside a definer call');
+select assert_eq(current_setting('test.e_ungated'), current_setting('test.e_nonmember'),
+  '097.4: ... with the same one message, so the gate is not an oracle either: an un-onboarded rider learns nothing about the club they were refused from');
+select assert_eq(
+  (select count(*)::int from club_threads
+    where introduces_user_id = '00000000-0000-0000-0000-000000970004'),
+  0, '097.4: ... and NO club_threads row was written — the refusal is before the insert, not a row rolled back afterwards');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.club_threads'::regclass and not tgisinternal
+      and tgname = 'enforce_participation_gate'),
+  1, '097.4: club_threads still carries exactly ONE gate trigger and 097 added none — the coverage claim for this write is against the FUNCTION, never against the trigger');
+select assert_eq(
+  (select tgtype::int & 4 from pg_trigger
+    where tgrelid = 'public.club_threads'::regclass and not tgisinternal
+      and tgname = 'enforce_participation_gate'),
+  4, '097.4: ** ... and that trigger is INSERT-only ** — which is why the foreign key''s ON DELETE SET NULL, an UPDATE, cannot trip the gate and strand an un-onboarded rider inside a club they want to leave. That is the third failure in the same shape as the two traps, and it is absent by construction');
+select assert_eq(
+  (select tgtype::int & 16 from pg_trigger
+    where tgrelid = 'public.club_threads'::regclass and not tgisinternal
+      and tgname = 'enforce_participation_gate'),
+  0, '097.4: ... asserted in both directions: the UPDATE bit is NOT set, so a later file adding one turns this red rather than making the leave fail for the first rider who tries it');
+select assert_eq(
+  (select prosrc like '%may_participate_for%' from pg_proc
+    where oid = 'public.introduce_to_club(uuid,text)'::regprocedure),
+  true, '097.4: ... and the restatement is in the body by NAME — 085''s subject-taking twin, never may_participate(), which reads auth.uid() and would answer for the caller in a context where that is not the subject');
+
+-- ---------------------------------------------------------------------------
+-- 097.5  One per club — and a DIFFERENT club still works
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970002', false);
+select set_config('test.e_second',
+  error_of($q$select introduce_to_club('00000000-0000-0000-0000-0000009700c1', 'A second introduction')$q$), false);
+select set_config('test.intro_c3',
+  introduce_to_club('00000000-0000-0000-0000-0000009700c3', 'Same rider, different club.')::text, false);
+reset role;
+select assert_eq(current_setting('test.e_second') <> '<no error>',
+  true, '097.5: a SECOND introduction in the same club is refused');
+select assert_eq(current_setting('test.e_second'), current_setting('test.e_nonmember'),
+  '097.5: ... through the SAME raise site — the unique-index violation is mapped onto it rather than escaping as a bare 23505, which would tell a caller that a club they cannot see holds an introduction of theirs');
+select assert_eq(
+  (select count(*)::int from club_threads
+    where club_id = '00000000-0000-0000-0000-0000009700c1'
+      and introduces_user_id = '00000000-0000-0000-0000-000000970002'),
+  1, '097.5: ... and there is still exactly one');
+select assert_eq(
+  (select introduces_user_id from club_threads where id = current_setting('test.intro_c3')::uuid),
+  '00000000-0000-0000-0000-000000970002'::uuid,
+  '097.5: ** ... while the SAME rider introduces themselves in a DIFFERENT club ** — the uniqueness is keyed on the MEMBERSHIP, club and rider together, never on the rider alone');
+select assert_eq(
+  (select indexdef like '%WHERE (introduces\_user\_id IS NOT NULL)' from pg_indexes
+    where indexname = 'club_threads_one_introduction_per_membership'),
+  true, '097.5: ... and the index enforcing it is PARTIAL, so the hundreds of ordinary threads carrying NULL are outside it');
+
+-- ---------------------------------------------------------------------------
+-- 097.6  ** A RIDER WHO HAS AN INTRODUCTION CAN LEAVE THE CLUB **
+-- ---------------------------------------------------------------------------
+-- ** THE ASSERTION THAT SEPARATES A CORRECT BUILD FROM ALL THREE WRONG ONES. **
+-- A bare `on delete set null` nulls club_id too and fails 23502; a biconditional
+-- pairing CHECK is re-evaluated with the marker already nulled and fails 23514.
+-- Both are accepted at DDL time. ** A leave by a rider with NO introduction
+-- succeeds under every one of those shapes ** and must never be substituted here.
+-- The leaver also has a COMMENT from another rider under their introduction, so
+-- this proves the words survive rather than only the row.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970005', false);
+select set_config('test.intro_leaver',
+  introduce_to_club('00000000-0000-0000-0000-0000009700c4',
+    'New here — mostly green lanes, occasionally tarmac.')::text, false);
+select set_config('test.uid', '00000000-0000-0000-0000-000000970010', false);
+insert into club_messages (id, thread_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000009700a5', current_setting('test.intro_leaver')::uuid,
+   '00000000-0000-0000-0000-000000970010', 'Welcome! Plenty of lanes round here.');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_threads
+    where id = current_setting('test.intro_leaver')::uuid and introduces_user_id is not null),
+  1, '097.6 PRE: the leaving rider ACTUALLY HAS an introduction before they leave — the anti-vacuity this whole assertion rests on, because the delete below succeeds under every wrong shape if this row is not marked');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970005', false);
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000009700c4'
+   and user_id = '00000000-0000-0000-0000-000000970005';
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000009700c4'
+      and user_id = '00000000-0000-0000-0000-000000970005'),
+  0, '097.6: ** the leave SUCCEEDS and the membership row is gone ** — counted rather than trusted to the absence of an error, because RLS filters a DELETE to zero rows instead of raising and assert_allowed refuses this shape for exactly that reason');
+select assert_eq(
+  (select count(*)::int from club_threads where id = current_setting('test.intro_leaver')::uuid),
+  1, '097.6: ... the thread SURVIVES — SET NULL rather than CASCADE, because an introduction is words rather than a decoration and cascading it would delete everybody else''s welcome messages with it');
+select assert_eq(
+  (select club_id from club_threads where id = current_setting('test.intro_leaver')::uuid),
+  '00000000-0000-0000-0000-0000009700c4'::uuid,
+  '097.6: ** ... with club_id INTACT ** — the whole content of the column list on the SET NULL. Without `(introduces_user_id)` this delete raises 23502 and the rider can never leave');
+select assert_eq(
+  (select introduces_user_id from club_threads where id = current_setting('test.intro_leaver')::uuid),
+  null, '097.6: ... and the marker NULLED, so the thread stops claiming to introduce a membership that no longer exists');
+select assert_eq(
+  (select introduction from club_threads where id = current_setting('test.intro_leaver')::uuid),
+  'New here — mostly green lanes, occasionally tarmac.',
+  '097.6: ** ... while the TEXT is preserved ** — which is why every render keys off this column and never off the marker: the two come apart permanently here');
+select assert_eq(
+  (select count(*)::int from club_messages
+    where thread_id = current_setting('test.intro_leaver')::uuid),
+  1, '097.6: ... and the comment another rider wrote under it is still there. add-club-threads: a leave removes the conversation from the LEAVER and removes nothing from anybody else');
+
+-- ---------------------------------------------------------------------------
+-- 097.7  The one-directional CHECK still refuses a marker with no text
+-- ---------------------------------------------------------------------------
+-- Without this, "one-directional" would be indistinguishable from "no pairing
+-- constraint at all". Run as the TABLE OWNER, because no client role holds an
+-- INSERT or UPDATE grant on either column — the constraint has to hold against
+-- a writer that policies and grants cannot stop.
+reset role;
+select assert_rejected($q$
+  update club_threads set introduces_user_id = '00000000-0000-0000-0000-000000970010'
+   where id = '00000000-0000-0000-0000-0000009700d1'$q$,
+  '23514', '097.7: a marker cannot be set on a thread whose introduction is NULL — the surviving direction of the pairing, and the reason it is not vacuous');
+select assert_rejected($q$
+  insert into club_threads (club_id, author_id, title, introduces_user_id)
+  values ('00000000-0000-0000-0000-0000009700c1', '00000000-0000-0000-0000-000000970010',
+          'Introduction', '00000000-0000-0000-0000-000000970010')$q$,
+  '23514', '097.7: ... and a row cannot be INSERTed half-marked either, so there is no state in which a thread claims to be an introduction and holds no words');
+select assert_eq(
+  (select pg_get_constraintdef(oid) from pg_constraint
+    where conname = 'club_threads_introduction_pairing'),
+  'CHECK (((introduces_user_id IS NULL) OR (introduction IS NOT NULL)))',
+  '097.7: ** the constraint is the ONE-DIRECTIONAL form, pinned by TEXT ** — the biconditional `(a is null) = (b is null)` is accepted at DDL time and refuses 097.6''s leave with 23514, and no behavioural assertion above can tell the two apart until a rider tries to leave');
+-- The bounds, which the client's Zod schema mirrors and must never be the only
+-- copy of. Both arms, because a maximum with no non-blank rule admits '   '.
+reset role;
+select assert_rejected($q$
+  insert into club_threads (club_id, author_id, title, introduces_user_id, introduction)
+  values ('00000000-0000-0000-0000-0000009700c3', '00000000-0000-0000-0000-000000970010',
+          'Introduction', null, '     ')$q$,
+  '23514', '097.7: a whitespace-only introduction is refused by the DATABASE, bypassing the client entirely — the client owns the mutation path now, so a Zod rule with no CHECK behind it is a suggestion a rider can decline');
+select assert_rejected($q$
+  insert into club_threads (club_id, author_id, title, introduces_user_id, introduction)
+  values ('00000000-0000-0000-0000-0000009700c3', '00000000-0000-0000-0000-000000970010',
+          'Introduction', null, repeat('x', 1001))$q$,
+  '23514', '097.7: ... and so is one over 1000 characters');
+select assert_eq(
+  (select replace(pg_get_constraintdef(oid), 'introduction', 'body') from pg_constraint
+    where conname = 'club_threads_introduction_length'),
+  (select 'CHECK (((body IS NULL) OR ' || replace(pg_get_constraintdef(oid), 'CHECK (', '') || ')'
+     from pg_constraint where conname = 'club_messages_body_length'),
+  '097.7: ** the bound is club_messages_body_length''s, character for character ** — compared against the sibling constraint rather than against a literal 1000, so a later widening of a reply''s length cannot silently leave an introduction shorter than the replies to it');
+
+-- ---------------------------------------------------------------------------
+-- 097.8  After the leave: the ex-member loses the club, nobody else loses a word
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970005', false);
+select assert_eq(
+  (select count(*)::int from club_threads where club_id = '00000000-0000-0000-0000-0000009700c4'),
+  0, '097.8: ** the ex-member reads NONE of the club''s threads, and the club is PUBLIC ** — club_threads'' audience is membership and they no longer hold one');
+select assert_eq(
+  (select count(*)::int from club_threads where id = current_setting('test.intro_leaver')::uuid),
+  0, '097.8: ... including the introduction they wrote themselves. The author arm on the SELECT policy is a BLOCK escape hatch, not a membership one, so authoring it buys nothing here');
+select assert_eq(
+  (select count(*)::int from club_messages where thread_id = current_setting('test.intro_leaver')::uuid),
+  0, '097.8: ... and none of the comments under it');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970009', false);
+select assert_eq(
+  (select introduction from club_threads where id = current_setting('test.intro_leaver')::uuid),
+  'New here — mostly green lanes, occasionally tarmac.',
+  '097.8: ** ... while a remaining member reads it UNCHANGED ** — an ex-member''s introduction is an ordinary thread by a non-member, and this is the assertion that a leave removed nothing from anybody else');
+select assert_eq(
+  (select author_id from club_threads where id = current_setting('test.intro_leaver')::uuid),
+  '00000000-0000-0000-0000-000000970005'::uuid,
+  '097.8: ... still attributed to its author, which is where the rider''s NAME comes from. The marker is a composite key into club_members and has no relationship to profiles at all, so it could never have named them');
+select assert_eq(
+  (select count(*)::int from club_messages where thread_id = current_setting('test.intro_leaver')::uuid),
+  1, '097.8: ... with the comment intact');
+
+-- ---------------------------------------------------------------------------
+-- 097.9  ** club_members STILL HAS ZERO UPDATE POLICIES ** (Trap 2's tripwire)
+-- ---------------------------------------------------------------------------
+-- This assertion has nothing to do with introductions and must exist anyway.
+-- authenticated holds a column-level UPDATE (club_id, role, user_id) grant on
+-- club_members from 019, and row security with no matching policy refuses every
+-- UPDATE — that ABSENCE is the only thing making the grant inert. The shape this
+-- change did not take (a marker column on the roster) needs the obvious own-row
+-- policy, and that policy re-arms the grant and lets an ordinary member write
+-- themselves 'admin'. Measured on DEV, rolled back; proposal.md §Trap 2.
+reset role;
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'club_members' and cmd = 'UPDATE'),
+  0, '097.9: ** club_members carries ZERO UPDATE policies ** — 097 adds none and needs none, its marker living on club_threads for exactly this reason. Adding one here is a role-escalation change however it reads in review');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'club_members'),
+  3, '097.9: ... and still exactly three policies in total, so the zero above is not a table that lost its policies');
+select assert_eq(has_column_privilege('authenticated', 'public.club_members', 'role', 'update'),
+  true, '097.9: ** ... while the dormant UPDATE grant on `role` IS STILL THERE ** — asserted rather than assumed away, because it is what makes the zero above load-bearing instead of decorative. Remove the grant and the assertion above stops protecting anything');
+-- And the escalation itself is refused, by the absence of a policy rather than
+-- by any predicate — the thing 019, 088 and database-enforced-integrity require.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970010', false);
+update club_members set role = 'admin'
+ where club_id = '00000000-0000-0000-0000-0000009700c1'
+   and user_id = '00000000-0000-0000-0000-000000970010';
+reset role;
+select assert_eq(
+  (select role from club_members
+    where club_id = '00000000-0000-0000-0000-0000009700c1'
+      and user_id = '00000000-0000-0000-0000-000000970010'),
+  'member', '097.9: an ordinary member cannot promote themselves — the UPDATE is FILTERED to zero rows rather than raising, which is why this counts the row afterwards instead of expecting an error');
+
+-- ---------------------------------------------------------------------------
+-- 097.10  A non-member of a PUBLIC club: the roster, and nothing else
+-- ---------------------------------------------------------------------------
+-- The measurement proposal.md §Why is built on, pinned so a later policy change
+-- cannot open it quietly. The join announcement is reachable by a rider for whom
+-- the introduction does not exist, which is why the comment count is computed
+-- under RLS per viewer and never stored: a stored count would tell this rider
+-- that a conversation they may not read is happening in a club they have not
+-- joined.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970008', false);
+select assert_eq(
+  (select count(*)::int from club_members where club_id = '00000000-0000-0000-0000-0000009700c2'),
+  2, '097.10: a non-member of a PUBLIC club reads its ROSTER — both rows, which is what puts a join announcement in front of them in the first place');
+select assert_eq(
+  (select count(*)::int from club_threads where club_id = '00000000-0000-0000-0000-0000009700c2'),
+  0, '097.10: ** ... and ZERO of its threads ** — including any introduction, so a count read under RLS answers 0 for them, correctly and for free');
+select assert_eq(
+  (select count(*)::int from club_messages where thread_id = '00000000-0000-0000-0000-0000009700d2'),
+  0, '097.10: ... and zero of its messages, so nothing about the conversation reaches them by any path');
+select assert_eq(
+  (select count(*)::int from club_threads where introduction is not null),
+  0, '097.10: ... and zero introductions ANYWHERE, asserted table-wide rather than per-club, because a policy arm added to satisfy some other feature would show up here first');
+-- Anti-vacuity: the club really does hold a thread and a message.
+reset role;
+select assert_eq(
+  (select count(*)::int from club_threads where club_id = '00000000-0000-0000-0000-0000009700c2'),
+  1, '097.10 ANTI-VACUITY: the club DOES hold a thread, so the zeroes above are refusals rather than an empty club');
+select assert_eq(
+  (select count(*)::int from club_messages where thread_id = '00000000-0000-0000-0000-0000009700d2'),
+  1, '097.10 ANTI-VACUITY: ... and a message in it');
+
+-- ---------------------------------------------------------------------------
+-- 097.11  Blocking, in BOTH directions — the introduction and its count
+-- ---------------------------------------------------------------------------
+-- 081's block arm is on the THREAD'S AUTHOR, and private.is_blocked is symmetric
+-- though the row is directional. So one blocks row hides the introduction from
+-- the blocker and hides the blocker's own thread from the subject, and neither
+-- is told why.
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000970006', '00000000-0000-0000-0000-000000970002');
+-- inblocker's own ordinary thread, so the reverse direction has something to hide.
+insert into club_threads (id, club_id, author_id, title) values
+  ('00000000-0000-0000-0000-0000009700d6', '00000000-0000-0000-0000-0000009700c1',
+   '00000000-0000-0000-0000-000000970006', 'Chain lube opinions');
+-- A comment on the introduction by a rider NOBODY has blocked, so the count the
+-- blocker cannot see is non-zero for everybody else and is not hidden merely
+-- because its own author is blocked.
+insert into club_messages (id, thread_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000009700a1', current_setting('test.intro')::uuid,
+   '00000000-0000-0000-0000-000000970010', 'Welcome aboard.');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970009', false);
+select assert_eq(
+  (select count(*)::int from club_messages where thread_id = current_setting('test.intro')::uuid),
+  1, '097.11 ANTI-VACUITY: an unblocked member counts ONE comment on the introduction, so the blocker''s zero below is a refusal rather than an empty thread');
+select assert_eq(
+  (select introduction from club_threads where id = current_setting('test.intro')::uuid),
+  'Hi all — I ride a Bonneville and joined for the weekend runs.',
+  '097.11 ANTI-VACUITY: ... and reads the introduction itself. An ADMIN reading exactly what any member reads is also the point: `admin` grants no extra reach into an introduction and no policy arm names role');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970006', false);
+select assert_eq(
+  (select count(*)::int from club_threads where id = current_setting('test.intro')::uuid),
+  0, '097.11: ** a member who has BLOCKED the subject reads none of their introduction ** — 081''s block arm is on author_id, and the introduction is a thread the subject authored');
+select assert_eq(
+  (select count(*)::int from club_messages where thread_id = current_setting('test.intro')::uuid),
+  0, '097.11: ** ... and none of its COMMENTS, so the count is ABSENT rather than 0 comments ** — including a comment by a rider they have not blocked, because club_messages'' policy resolves its parent thread under the reader''s own row security');
+select assert_eq(
+  (select count(*)::int from club_threads
+    where club_id = '00000000-0000-0000-0000-0000009700c1' and introduces_user_id is not null),
+  0, '097.11: ... so no marked thread in the club is visible to them at all, which is what makes the join row draw no door rather than a broken one');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970002', false);
+select assert_eq(
+  (select count(*)::int from club_threads where id = '00000000-0000-0000-0000-0000009700d6'),
+  0, '097.11: ** and the SUBJECT reads nothing of the BLOCKER''S ** — the row is directional and the effect is symmetric, which is the half a policy written against `blocker_id = auth.uid()` alone would lose');
+select assert_eq(
+  (select count(*)::int from club_threads where id = current_setting('test.intro')::uuid),
+  1, '097.11: ... while still reading their OWN introduction, the author arm of 081''s policy being the escape hatch a block must not close on its own subject');
+
+-- ---------------------------------------------------------------------------
+-- 097.12  A REJOIN inherits nothing
+-- ---------------------------------------------------------------------------
+-- The reason the marker keys to the MEMBERSHIP rather than to the rider. Under
+-- design.md §D2's declined option (c) — "the earliest thread this rider authored
+-- in this club" — the rejoined rider would silently inherit their old thread as
+-- their new introduction, with a comment thread from a membership that ended.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970005', false);
+insert into club_members (club_id, user_id, role)
+values ('00000000-0000-0000-0000-0000009700c4', '00000000-0000-0000-0000-000000970005', 'member');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000009700c4'
+      and user_id = '00000000-0000-0000-0000-000000970005'),
+  1, '097.12 PRE: the rider rejoined the club — through the INSERT policy, because the point is that this is a sequence an ordinary rider can produce');
+select assert_eq(
+  (select introduces_user_id from club_threads where id = current_setting('test.intro_leaver')::uuid),
+  null, '097.12: ** the old thread''s marker is STILL NULL after the rejoin ** — nothing re-attaches it, so the rejoined rider is indistinguishable from a first-time joiner and will be prompted for a new introduction');
+select assert_eq(
+  (select count(*)::int from club_threads
+    where club_id = '00000000-0000-0000-0000-0000009700c4'
+      and introduces_user_id = '00000000-0000-0000-0000-000000970005'),
+  0, '097.12: ... and the new membership carries NO introduction, which is what makes the prompt fire for them again');
+-- And they can write a fresh one, so the old thread is not blocking the index.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970005', false);
+select set_config('test.intro_rejoin',
+  introduce_to_club('00000000-0000-0000-0000-0000009700c4', 'Back again, same bike.')::text, false);
+reset role;
+select assert_eq(
+  (select count(*)::int from club_threads
+    where club_id = '00000000-0000-0000-0000-0000009700c4'
+      and introduces_user_id = '00000000-0000-0000-0000-000000970005'),
+  1, '097.12: ... and a NEW introduction is accepted, the partial unique index counting only marked rows so the detached old thread does not occupy the slot for ever');
+select assert_eq(
+  (select count(*)::int from club_threads
+    where club_id = '00000000-0000-0000-0000-0000009700c4'
+      and author_id = '00000000-0000-0000-0000-000000970005'),
+  2, '097.12: ... leaving the rider with two threads in the club, one marked and one not — the ex-membership''s words are still there and still theirs');
+
+-- ---------------------------------------------------------------------------
+-- 097.13  Delete and moderate both reach an introduction, and both cascade
+-- ---------------------------------------------------------------------------
+-- No new verb, no new authority. An introduction is a thread, so 081's DELETE
+-- policy and 094's moderation path reach it unchanged — which is half of §D1's
+-- argument for not making it a table.
+savepoint author_deletes_097;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970002', false);
+delete from club_threads where id = current_setting('test.intro')::uuid;
+reset role;
+select assert_eq(
+  (select count(*)::int from club_threads where id = current_setting('test.intro')::uuid),
+  0, '097.13: ** the AUTHOR deletes their own introduction ** through 081''s existing DELETE policy — counted rather than trusted to the absence of an error, RLS filtering a forbidden DELETE to zero rows');
+select assert_eq(
+  (select count(*)::int from club_messages where thread_id = current_setting('test.intro')::uuid),
+  0, '097.13: ... and its comments CASCADE with it, so the removed introduction leaves a join row with no door — indistinguishable from a rider who never wrote one, which is deliberate: distinguishing them would tell a small club that something was removed and who removed it');
+rollback to savepoint author_deletes_097;
+
+savepoint admin_moderates_097;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000970009', false);
+select moderate_club_thread(current_setting('test.intro')::uuid);
+reset role;
+select assert_eq(
+  (select count(*)::int from club_threads where id = current_setting('test.intro')::uuid),
+  0, '097.13: ** and a club ADMIN reaches the same thread through 094''s moderation path ** — an introduction gains no protection from being one, and the outcome is identical to the author''s own deletion from every reader''s view');
+select assert_eq(
+  (select count(*)::int from club_messages where thread_id = current_setting('test.intro')::uuid),
+  0, '097.13: ... comments and all');
+rollback to savepoint admin_moderates_097;
+select assert_eq(
+  (select count(*)::int from club_threads where id = current_setting('test.intro')::uuid),
+  1, '097.13: ... and the rollbacks put it back, so the two arms above each ran against a live introduction rather than the second against a thread the first had already removed');
+
+-- ---------------------------------------------------------------------------
+-- 097.14  The participation-gate trigger count is UNCHANGED by 097
+-- ---------------------------------------------------------------------------
+-- 097 adds NO TABLE, so it adds no gate trigger — and it must not, because the
+-- write it introduces runs inside a security definer body where the trigger's
+-- `when (current_user = 'authenticated')` is false. A trigger added here would
+-- raise the coverage count while gating nothing, which is the defect 078.9
+-- exists to assert against. The coverage claim for introduce_to_club is against
+-- the FUNCTION BODY (097.4) and is stated that way everywhere.
+reset role;
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgname = 'enforce_participation_gate' and not tgisinternal),
+  22, '097.14: still TWENTY-TWO participation-gate triggers — 097 adds no table and therefore no gate, and its content write is gated inside the function instead');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.club_threads'::regclass and not tgisinternal),
+  1, '097.14: ... and club_threads carries exactly one non-internal trigger, so 097 hung nothing on it — no fan-out, no marker maintenance, no notification. This change adds no notification behaviour at all; that is notify-a-club-thread''s, and it treats an introduction as an ordinary thread');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname like '%introduc%'),
+  0, '097.14: 097 added NO private helper — the whole change is two columns, four constraints and ONE public function, which is why exactly one security advisor arrives. Two would mean a helper landed in `public` that belonged in `private`');
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint introductions_097;
 
 rollback;
 
