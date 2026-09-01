@@ -1151,39 +1151,60 @@ timeout:**
 
 ---
 
-## Where this left off — 2026-09-01, and three stories are queued
+## Where this left off — 2026-09-01, and the four-story club bundle is BUILT
 
-The club-details feedback round is **specified and queued**, nothing is built. Read
-`openspec/changes/introduce-yourself-on-joining-a-club/` before any of it; §Open decisions is
-the part the owner answered.
+**All four queued stories are built and applied to DEV.** `PD-365` (the introduction,
+`097`), `PD-366` (the return anchor, no migration), `PD-367` (club-thread notifications, `098`) and
+`PD-368` (the join fan-out widened, `099`). The change directories are
+`openspec/changes/introduce-yourself-on-joining-a-club/` (§§0–10 are PD-365, §11 is PD-366) and
+`openspec/changes/notify-a-club-thread/` (PD-367). **Neither is archived** — that is a real
+outstanding action, not bookkeeping.
 
-| Story | Migration | Where |
-|---|---|---|
-| **PD-365** the introduction | `097` | that directory, tasks §§0–10 |
-| **PD-366** the return anchor | none | same directory, tasks §11 |
-| **PD-367** notify a club thread | `098` | **its own change directory**, not yet written |
+**The promotion is what is left, and all three migrations go MIGRATION-FIRST** — the same side
+`096` took and the opposite of `092`–`095`. Do not infer this from "additive"; the reasoning is per
+file and two of the three are not symmetric:
 
-**Three boundaries that are not obvious and are the whole reason for the split:**
+| File | Why migration-first |
+|---|---|
+| `097` | Inert to an older bundle — it names nothing, triggers nothing. A newer bundle against a pre-`097` database loses only the prompt (`PGRST202`) |
+| `098` | **The one that is not optional.** It adds a column the shipped bundle READS: `NOTIFICATION_SELECT` is an explicit column list, so a newer bundle against a pre-`098` database takes EVERY rider's notifications screen down, not one degraded row |
+| `099` | No schema at all — one `create or replace` on a `private` trigger function |
 
-- **PD-367 must never share a migration file or a working tree with PD-365.** Its migration's
-  safe deploy side is the OPPOSITE of `097`'s — a new notification type applies only *after* its
-  bundle is confirmed serving (`089`), while `097` is safe migration-first. That is `069`/`070`'s
-  lesson and on its own disqualifies one file. It has no structural dependency on PD-365 and may
-  go first or in a worktree.
-- **PD-367's cheap build fails silently.** `notifications` has no `thread_id` and its collapse key
-  is `UNIQUE (user_id, type, actor_id, postcard_id, comment_id, ride_id, club_id) NULLS NOT
-  DISTINCT` — so keying a reply on `club_id` means a second reply in a *different thread of the
-  same club* hits `on conflict do nothing` and the recipient is never told, for ever, with nothing
-  raised. `thread_id` is mandatory, which means rebuilding the index every existing fan-out's
-  collapse depends on. Re-derive rather than trusting this: `\d notifications` or
-  `select indexdef from pg_indexes where tablename='notifications'`.
-- **PD-365 must not touch the return path and PD-366 owns it entirely**, including both the header
-  arrow and `useSwipeBack`. One tree, one writer.
+**`098` reverses what PD-367's issue body and this file both used to say**, which was deploy-first
+on `089`'s rule. That premise expired one day after `089` shipped: PD-335 (#343) gave both
+exhaustive switches a runtime fallback, so an unknown type renders generic and unlinked and heals
+itself. Re-derive rather than trust it —
+`grep -c "did something on LetsRide" src/components/notifications/copy.ts` and
+`grep -c "return { href: null }" src/components/notifications/NotificationsListItem.tsx`, both 1.
 
-**Two owner decisions are open and neither blocks:** whether the introduction textarea arrives
-prefilled (and if the Welcome club gets a canned one — which carries an objection, see PD-365),
-and whether an ordinary member is told when a rider joins at all. Today `club_joined` reaches only
-the club's owner and admins, so an introduction may be seen by nobody.
+**Nothing in this bundle has been RENDERED.** `npm run walk` has not run over any of it — this
+container's Chromium cannot reach Supabase without `scripts/supabase-relay.mjs` — so the
+introduction sheet, the join row's new door, the return-anchor scroll and the two notification rows
+are verified by `tsc`, ESLint, Vitest, `next build` and the RLS suite and by nothing that draws a
+pixel. **The introduction sheet also has no v2 Figma frame**, so its composition and wording are
+inferred; `docs/FIGMA-FIDELITY-TODO.md` §Club detail carries the command that establishes it.
+
+**Two open questions for the product owner, neither blocking and both built to their defaults:**
+
+- **The wave retraction (PD-367 Q2).** Un-waving a thread currently takes its notification back,
+  following `092`. The review showed `092`'s sound justification does not transfer here — that one
+  was about a public club's row staying readable after the subject leaves, and `club_threads`'
+  audience is membership-only — so it now rests only on an argument `090` inverted: with a
+  retraction, wave/un-wave/wave re-notifies without limit, because the key never collides. Dropping
+  it deletes a function, a trigger and a cascade hazard.
+- **Whether a thread's author keeps reading notifications about it after leaving the club
+  (PD-367 Q8).** Built as **evict**. It is narrower than a free choice: keeping them readable needs
+  a type-scoped disjunct, which produces a row that renders while its destination refuses the
+  rider. Note it is observable only for an author who is NOT the club's owner — `is_club_member`
+  unions an owner arm (`054`), so an owner who leaves keeps reading.
+
+**One scope narrowing, stated rather than silent:** PD-366's task 11.3 names the ride card among
+the links that should carry the return anchor, and its outbound link does not carry one. Nothing
+consumes it — only the thread screen reads the parameter — so it would be a prefill nothing reads.
+The ride card does get its anchor id, so returning TO it works.
+
+**`docs/reference/schema.md` has no `notifications` row at all**, which `098`'s task list assumed it
+did. That absence predates this bundle and is the one documentation gap it did not close.
 
 ## The open OpenSpec changes, and the collision between two of them
 
