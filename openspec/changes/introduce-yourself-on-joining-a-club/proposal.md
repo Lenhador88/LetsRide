@@ -6,14 +6,24 @@
 > zero comments**, so nothing has overtaken it.
 >
 > It extends **PD-356** (`openspec/changes/club-timeline-engagement/`, migration `092`) and
-> **PD-355** (`openspec/changes/add-club-timeline/`), both merged and both DEV-only.
+> **PD-355** (`openspec/changes/add-club-timeline/`), both merged. `092`–`096` reached PROD on
+> 2026-09-01, so **both projects are level at `096`** and `097` is next on both.
+
+> **Q1, Q4 and Q6 were answered by the product owner on 2026-09-01, and two of them widened this
+> change.** Q1: *"A, yes mandatory but dismissable."* Q4: *"yes defers to that scroll position on
+> that discussion, announcement, etc."* — the scroll position is **in scope**, overruling the
+> recommendation to defer it. Q6: *"yes a comment or wave should notify"* — which is **two** new
+> fan-outs and a column on `notifications`, and is therefore **split into its own change**
+> (§How this is built). **Q3 is still open** and both its arms are specified below.
 
 ## ⚠ Read this first
 
-**1. One decision has to be settled before this is built, and it is the owner's alone.** *"And
-maybe we make the field mandatory?"* — see §Q1 and `design.md` §Q1. Both arms are specified so the
-spec is pickable either way without a rewrite, but the **schema** and the **screen** differ between
-them and the tasks below fork at exactly two places.
+**1. This is now THREE stories, and only the first two live in this directory.** The notification
+work Q6 asks for touches `notifications`' schema, both of its CHECK constraints, its unique
+collapse index and two exhaustive client switches, and it applies to **every** club thread rather
+than to introductions. It has the *opposite* deploy-ordering rule to this change's migration, which
+is on its own sufficient reason not to put them in one file. §How this is built carries the split
+and the reason.
 
 **2. The request says five write paths create a membership. There are SIX doors and THREE database
 insert sites, measured.** The two the request folds into one are separate public RPCs:
@@ -188,8 +198,11 @@ select count(*) from pg_trigger
   row inside the horizon has all its replies inside the window, and carrying it there renders `2+`
   on a thread with exactly two. Re-deriving the rule from the window alone re-adds a `+` that is
   known wrong. §Q5, and `design.md` §D6.
-- **Backing out of a thread returns to the club detail** when that is where the rider came from,
-  carried as a bounded parameter in `CREATE_CLUB_PARAM`'s shape rather than a referrer. §Q4.
+- **Backing out of a thread returns to the club detail AT THE ROW the rider came from** — Q4,
+  answered and in scope. A bounded parameter in `CREATE_CLUB_PARAM`'s shape carries the origin
+  *and* the row key, every timeline row grows an anchor, and the club screen scrolls to it **after
+  its data lands**. Deliberately not browser scroll restoration: the timeline re-fetches and
+  re-lays-out between the two paints, which is the case restoration is silently wrong for.
 
 ### The row has no spare width, measured
 
@@ -298,13 +311,17 @@ delete from club_members ...   -- succeeds; a marker with no text is still 23514
 
 ## Non-Goals
 
-- **No atomic "no join without an introduction".** Available only by moving the `club_members`
-  insert inside the same RPC, which would make a **seventh** door and leave the other six behind.
-  §Q1's arm B specifies it if the owner wants it; the recommendation declines it.
-- **No notification when somebody comments on an introduction.** This app has **fourteen**
-  notification types and not one of them fires on a `club_messages` insert — a reply to any thread
-  notifies nobody today, and fixing that is a change about threads, not about introductions.
-  Named rather than half-built; §Q6.
+- **No atomic "no join without an introduction".** The owner chose **arm A** — mandatory to post,
+  dismissible — so the introduction stays a second, separately-failable write and *"joined with no
+  introduction"* remains a designed state. The atomic arm is declined rather than deferred, and the
+  reason is kept in `design.md` §Q1 because *"make it truly mandatory"* is the obvious later ask:
+  moving the `club_members` insert into the same RPC makes a **seventh** door and leaves the other
+  six exactly as they are, so the invariant it buys is not the invariant it sounds like.
+- **No notification fan-out in THIS change.** Q6 is answered *yes* — a comment and a wave both
+  notify — and the work is a separate change, `notify-a-club-thread`, because it needs a
+  `thread_id` column on `notifications`, a **rebuild of `notifications_event_key`**, two new types,
+  two fan-outs, a retraction, and both exhaustive client switches. It also applies to every club
+  thread rather than only to introductions. §How this is built.
 - **No editing an introduction.** `club_threads` has no UPDATE grant and no UPDATE policy for
   anyone, and this change adds neither. A rider who wants a different introduction deletes the
   thread and writes another — the same answer a thread title already gets.
@@ -319,28 +336,73 @@ delete from club_members ...   -- succeeds; a marker with no text is still 23514
 
 ## Open decisions
 
-**Six, and one is blocking. Three of the six are the product owner's** — they are marked, because
-an owner-only decision mixed into a list of build tasks is the one that never gets asked. Each has a
-recommended default so the build can start on it and be corrected, per the standing
-*ambiguity → assume and proceed* instruction in `CLAUDE.md`. The full argument on each side is in
-`design.md`.
+**Five of six are settled. One is open and it is the product owner's.** Each still carries its
+recommended default so the build can proceed and be corrected, per the standing
+*ambiguity → assume and proceed* instruction in `CLAUDE.md`. The full argument is in `design.md`.
 
-| # | Question | Who answers | Blocking | Recommended default |
+| # | Question | Who answers | Status | Answer |
 |---|---|---|---|---|
-| **Q1** | Is the introduction mandatory? | **Product owner** | **Yes** | Required-to-post, dismissible — Post disabled until there is text, plus `Not now` |
-| **Q2** | Prompt on the Join action, or on the state? | Agent | No | On the **state**: a membership with no introduction. Reaches all six doors |
-| **Q3** | Does the default club take introductions? | **Product owner** | No | **No.** `058`'s carve-out, for the same reason |
-| **Q4** | Does "back to the club detail **at that section**" mean the scroll position too? | **Product owner** | No | The screen first, the scroll position deferred — see below |
-| **Q5** | Does the comment count keep its `+`? | Agent | No | **Yes**, on the thread row's reply entries. Its creation entries are exact and must not gain one (§D6) |
-| **Q6** | Should a comment on an introduction notify the newcomer? | **Product owner** | No | **Not in this change.** No notification type in this app fires on a club message at all |
+| **Q1** | Is the introduction mandatory? | Product owner | **ANSWERED** 2026-09-01 | **Arm A** — required to post, dismissible. Post inert until non-whitespace text; `Not now` closes it; it returns on the next visit and never twice in a session |
+| **Q2** | Prompt on the Join action, or on the state? | Agent | Settled | On the **state**: a membership with no introduction. Reaches all six doors |
+| **Q3** | What does the default club do? | **Product owner** | **OPEN** | Two arms, below. Do not pick one |
+| **Q4** | Does "at that section" mean the scroll position? | Product owner | **ANSWERED** 2026-09-01 | **Yes — in scope.** Anchor per timeline row plus a fragment on the return URL, *not* browser scroll restoration |
+| **Q5** | Does the comment count keep its `+`? | Agent | Settled | **Yes**, on the thread row's reply entries. Its creation entries are exact and must not gain one (§D6) |
+| **Q6** | Should a comment or a wave notify? | Product owner | **ANSWERED** 2026-09-01 | **Yes, both** — and split into `notify-a-club-thread`, for every club thread rather than only introductions |
 
-**Q4 deliberately keeps a phrase of the owner's own request open rather than settling it.** They
-asked for the club detail *"at that section"*; this change ships the **screen** and defers the
-**scroll position**, because the club detail is a timeline with no named anchors and restoring a
-position is its own piece of work. That is a partial delivery of a stated ask, so it is named here
-and it does not close with this change — the remainder is a follow-up issue, not a comment on a
-closed one. If the owner reads the plain return as the bug they reported, the scroll position moves
-into scope and `design.md` §Q4 has the two ways to build it.
+### Q3 is open, and its two arms are different work
+
+The owner's words were *"q3 does not take instructions, so a default message should be prefilled?"*
+The first half settles that **the default club is not prompted** — the carve-out stands. The second
+half has two readings and they are not the same change:
+
+**(a) An editable starter in the textarea, in every club.** The sheet opens with suggested wording
+already in the field; the rider edits it or replaces it and still presses Post themselves. Cheap,
+adds no rule, changes no policy, and the words are still the rider's because they chose to send
+them. This is the **recommended** reading.
+
+**(b) A canned introduction posted automatically into the Welcome club on the auto-join**, since
+that club is never prompted. **This one has an objection and it is not a matter of taste.** It is
+one thread per signup, authored by a rider who did not write the words — precisely the shape
+`club-timeline-engagement` §D2 refused, and the reason this change was able to argue it was *not*
+reopening that refusal is that the rider types and posts. Concretely: `club_threads.author_id` is
+`NOT NULL` and cascades from `profiles`, so the row must name the new rider as the author of a
+sentence they never wrote; `081`'s DELETE policy then lets them delete it, and account deletion
+takes it too; and it mints one thread per signup for ever in the one club every rider is in.
+**If the owner means (b), it needs its own decision and its own story**, and the words must be
+attributable to the app rather than to the rider — which this schema has no way to express today,
+because a thread has exactly one author and no system actor exists.
+
+## How this is built — three stories, in this order
+
+The answers to Q4 and Q6 made this more than one story. Each of the three is buildable cold by a
+session holding only `CLAUDE.md` and the artifacts named.
+
+**Story 1 — the introduction itself. Migration `097`. This directory, tasks §§0–10 phase A.**
+Owns the two columns, the foreign key, the CHECKs, the unique index, the grant,
+`introduce_to_club`, the prompt sheet, the introduction's render on the thread detail, the join
+row's comment count and the removal of its ⋯, and the thread row's icon-and-number.
+**Must not touch** `notifications`, any fan-out, or the return path.
+
+**Story 2 — the return anchor. No migration. This directory, tasks §11 phase B.**
+Owns the origin-and-row parameter in `routes.ts`, an anchor per timeline row, the fragment on the
+return URL, the scroll-after-data behaviour, and the thread screen's back target for both its
+header arrow and `useSwipeBack`. **Must not touch** the schema, and must not re-open the join row's
+composition beyond adding an anchor id. It depends on story 1 only because both edit
+`ClubTimelineEventRow` and the thread page, and one working tree is one writer.
+
+**Story 3 — `notify-a-club-thread`. Migration `098`. Its OWN change directory.**
+Owns `thread_id` on `notifications`, the rebuild of `notifications_event_key`, the partial index,
+two new types, two subject-shape arms, two fan-out triggers, the un-wave retraction, the recipient
+sets, and both exhaustive client switches. **Must not touch** `club_threads`' columns or the
+introduction at all — it is about every club thread.
+**It has no structural dependency on story 1** and may be built first or alongside it; what it must
+not do is share a migration file or a session's working tree with story 1.
+
+**Why story 3 cannot live here, in one line each:** its migration's safe deploy order is the
+*opposite* of `097`'s (a new notification type applies **after** the bundle that knows it is
+serving — `089`'s rule — while `097` is safe migration-first); its subject is every club thread
+rather than introductions; and archiving it under this change's name would file a `notifications`
+capability under a title that does not describe it.
 
 ## Impact
 
@@ -359,7 +421,10 @@ into scope and `design.md` §Q4 has the two ways to build it.
   `src/app/(app)/clubs/detail/page.tsx`, `src/app/(app)/clubs/detail/thread/page.tsx`,
   `src/lib/routes.ts`, `src/lib/query/keys.ts`, `src/lib/validation/clubs.ts`,
   `src/types/index.ts`, `docs/reference/schema.md`, `docs/reference/product-scope.md`,
-  `docs/FIGMA-FIDELITY-TODO.md`.
+  `docs/FIGMA-FIDELITY-TODO.md`. Story 2 adds anchors in
+  `src/components/clubs/ClubTimeline.tsx`, `ClubTimelineEventRow.tsx`,
+  `ClubTimelineThreadRow.tsx` and `ClubTimelineRideCard.tsx`, and the scroll-after-data behaviour
+  on `src/app/(app)/clubs/detail/page.tsx`.
 - **Affected database** — `097`: two columns on `club_threads`, one composite foreign key with a
   **column-scoped** `ON DELETE SET NULL`, one partial unique index, two CHECK constraints, one
   column-scoped SELECT grant, one `security definer` RPC. **No new table**, so the
@@ -367,23 +432,27 @@ into scope and `design.md` §Q4 has the two ways to build it.
   `authenticated_security_definer_function_executable` — because `introduce_to_club` is the one
   PUBLIC function this migration adds.
 
-  **Both deltas are stated as deltas, and their baselines are read at apply time rather than from
-  this file**, because `092`–`096` move both of them on PROD *before* `097` gets there. Today's
-  numbers are PROD 17 gate triggers and 24 advisors of that class; after the promotion group and
-  before `097` they are **22 and 33** — measured on DEV, which already has `092`–`096`:
+  **Both deltas are checked as deltas against a baseline read at apply time, never against a
+  number in this file.** As of 2026-09-01 the two projects are **level** — `092`–`096` reached PROD
+  — and both read the same pair, so `097` verifies 22 → 22 and 33 → 34 on each:
 
   ```sql
+  select count(*) from pg_trigger
+   where tgname = 'enforce_participation_gate' and not tgisinternal;          -- 22, both projects
   select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prosecdef
-     and has_function_privilege('authenticated', p.oid, 'EXECUTE');   -- 33 on DEV, 2026-09-01
+     and has_function_privilege('authenticated', p.oid, 'EXECUTE');           -- 33, both projects
   ```
 
-  So `097` verifies against 22 → 22 and 33 → 34 on both projects. Task 0.4 re-measures rather
-  than trusting either pair.
-- **Promotion** — `092`–`096` are DEV-only as of 2026-09-01, so `097` lands on a DEV that has them
-  and a PROD that has none. It is **additive and NOT inert** (`036`'s hand-exercise gate applies:
-  the RPC writes into a live table under a live gate), and it must go to PROD **after** `092`–`096`
-  in filename order and **before** the bundle that calls `introduce_to_club` serves — a client
-  calling an absent RPC gets `PGRST202` and the prompt is dead, which is the safe side, while the
-  reverse order is also safe. `tasks.md` §9 carries it. Verify rather than trust:
-  `list_migrations` against both refs against `ls supabase/migrations/`.
+  Task 0.4 re-measures rather than trusting either pair — being level is a *state*, not a
+  property, and story 3's `098` moves neither of these but a fourth change might.
+- **Promotion — there is no gap to reason about any more.** Both projects are at `096`, so `097`
+  applies to each the same way. It is **additive and NOT inert** (`036`'s hand-exercise gate
+  applies: the RPC writes into a live table under a live gate) and it is safe on **either** side of
+  the build, which is worth stating rather than inheriting: an older bundle names none of it and
+  nothing is triggered, while a newer bundle against a pre-`097` database gets `PGRST202` and loses
+  only the prompt. The tasks pick migration-first. **Story 3's `098` is the opposite** and must go
+  *after* its bundle is confirmed serving, because a new notification type reaching an older
+  exhaustive switch takes a rider's notifications screen down — `089`'s rule. `tasks.md` §9 carries
+  story 1's half. Verify rather than trust: `list_migrations` against both refs against
+  `ls supabase/migrations/`.

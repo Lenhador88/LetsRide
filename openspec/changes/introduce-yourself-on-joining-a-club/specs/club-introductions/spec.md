@@ -392,21 +392,33 @@ from the thread's author and SHALL NOT be derived from the marker.
 - **WHEN** one of those riders leaves the club
 - **THEN** their introduction's row SHALL still be distinguishable from the other's
 
-### Requirement: A comment on an introduction SHALL notify nobody, and that silence SHALL be stated
+### Requirement: This change SHALL add no fan-out, and an introduction SHALL be notified on the same terms as every other club thread
 
-This change SHALL add no notification type and no fan-out. A rider who introduces themselves and
-receives comments SHALL be told nothing, because nothing in this app notifies on a message in a
-club thread and this change does not make an introduction an exception.
+This change SHALL add no notification type and no fan-out trigger. Comments and waves on club
+threads **are** to be notified — decided 2026-09-01 — and that is a separate change covering every
+club thread rather than introductions alone.
 
-This SHALL be recorded as an inherited limitation rather than left to be discovered, because an
-introduction is the one thread whose author is waiting for an answer.
+An introduction SHALL therefore gain **no** notification behaviour of its own, then or later: when
+the fan-out arrives it SHALL treat an introduction as an ordinary thread. A rule that notifies
+replies to an introduction and not replies to the thread beside it would be a two-tier visibility
+decision that no rider can see the reason for.
 
-#### Scenario: No new notification type
+Until that change lands, a rider who introduces themselves and receives comments is told nothing —
+which is how every club thread behaves today, and SHALL be recorded as a scheduled gap naming its
+successor rather than as a property of introductions.
+
+#### Scenario: No new notification type in this change
 - **WHEN** this change is applied
 - **THEN** the set of notification types SHALL be unchanged
-- **AND** no trigger SHALL be hung on `club_messages`
+- **AND** no trigger SHALL be hung on `club_messages` or on any wave table
 
 #### Scenario: Writing an introduction notifies exactly what joining already notified
 - **WHEN** a rider joins and introduces themselves
 - **THEN** the notifications written SHALL be exactly those the join already produced
 - **AND** the introduction SHALL add none
+
+#### Scenario: The successor treats an introduction as an ordinary thread
+- **WHEN** the club-thread fan-out is added by its own change
+- **THEN** a comment on an introduction SHALL notify on exactly the terms a comment on any other
+  thread does
+- **AND** no branch SHALL test whether the thread is an introduction

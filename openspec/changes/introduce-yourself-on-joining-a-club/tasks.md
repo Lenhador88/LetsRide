@@ -5,18 +5,27 @@ failures below are accepted at DDL time and appear only when a rider leaves a cl
 migration and a green suite prove nothing about either unless the assertions in §5 are written the
 way §5 says.
 
-**§0 is blocking.** `design.md` §Q1 is the product owner's and it forks §1, §4 and §6.
+**This directory holds TWO stories.** §§1–10 are **phase A**, the introduction, migration `097`.
+§11 is **phase B**, the return anchor, no migration. `proposal.md` §How this is built says why they
+are separate sessions and why the notification work is a third change entirely.
+
+**Nothing here is blocked.** Q1, Q4 and Q6 were answered on 2026-09-01. **Q3 is open and does not
+block phase A** — its recommended arm (a) is a placeholder string in one component, and arm (b) is
+a different story that this change does not build either way.
 
 ## 0. Pre-flight — resolve before writing SQL
 
-- [ ] 0.1 Get **Q1** answered: mandatory-and-dismissible (arm A, recommended), atomic join+intro
-      (arm B), or fully optional (arm C). Record the answer at the top of `design.md` §Q1 as a
-      dated banner, the way `club-timeline-engagement` records PD-356's Q1 — do not delete the
-      argument, it is what makes the chosen arm defensible.
-- [ ] 0.2 Get **Q3** answered: does the default club take introductions? Default is **no**. If the
-      answer flips, it is one clause in §D7's rule and one assertion — not a redesign.
-- [ ] 0.3 Confirm `092`–`096` are still DEV-only and that `097` is still the next free number:
+- [ ] 0.1 **Q1 is answered — arm A.** Required to post, dismissible. Nothing forks on it any more;
+      build the single arm in `design.md` §Q1 and do not reintroduce the others. If *"make it truly
+      mandatory"* is raised later, the seventh-door argument in that section is the answer.
+- [ ] 0.2 **Q3 is OPEN and must not be guessed.** The default club takes no prompt — that half is
+      settled. Whether the sheet's textarea carries an editable starter (arm a) or the Welcome club
+      gets an automatic canned introduction (arm b) is unanswered, and arm (b) carries an objection
+      that must be put to the owner rather than built around. Phase A ships with an empty textarea
+      and a placeholder; adopting (a) later is one string.
+- [ ] 0.3 Confirm `097` is still the next free number and that both projects are still level:
       `list_migrations` against both refs, against `ls supabase/migrations/ | tail -3`.
+      They were level at `096` on 2026-09-01; level is a state, not a property.
 - [ ] 0.4 Re-measure the two counts this change claims a delta against, on both projects, so the
       "unchanged" claims in §9 are measured rather than inherited:
       `select count(*) from pg_trigger where tgname='enforce_participation_gate' and not
@@ -94,7 +103,8 @@ way §5 says.
 - [ ] 4.1 Add the introduction schema to `src/lib/validation/clubs.ts`, bounds identical to
       `1.3`'s CHECK, exported as a constant the form's counter and `maxLength` both read.
 - [ ] 4.2 Add the introduction's types to `src/types/index.ts` — no inline types at call sites.
-- [ ] 4.3 If Q1 chose arm B, add the second RPC's signature here and fork §6.2 as well.
+- [ ] 4.3 A placeholder string for the textarea. **Not** a prefilled value — Q3 arm (a) is the
+      unanswered question about that, and a placeholder is what an empty field shows either way.
 
 ## 5. RLS assertions — paired with §§1–3, per `openspec/config.yaml`
 
@@ -166,8 +176,9 @@ Each of these is a policy or constraint change with no assertion until it is wri
 
 - [ ] 7.1 `IntroductionPrompt` — a sheet on `ContextMenu`'s scrim and geometry. **There is no v2
       frame**; log the composition in `docs/FIGMA-FIDELITY-TODO.md` §Club detail with the
-      `npm run figma -- ls` output that establishes it. Welcome copy, a `Textarea`, the submit rule
-      Q1 chose, and a way out that always exists.
+      `npm run figma -- ls` output that establishes it. Welcome copy naming what the rider can do
+      in the club, a `Textarea`, a Post that is inert until the field holds non-whitespace text
+      (Q1, decided), and a `Not now` that is always present.
 - [ ] 7.2 Mount it on the club detail, driven by 6.4, never by `joinClub`'s success path.
 - [ ] 7.3 Per-(rider, club) dismissal held for the session, cleared by `signOut` with the rest of
       the session state. Not a schema column — a dismissal is not a fact about the club.
@@ -182,10 +193,10 @@ Each of these is a policy or constraint change with no assertion until it is wri
 - [ ] 7.7 Keep the accessible name intact on both rows. The count is now a glyph and a number, so
       whatever the eye reads from it has to be in the label — `ClubTimelineThreadRow`'s existing
       `aria-label` composition is the model.
-- [ ] 7.8 The back target (Q4): a bounded origin parameter in `CREATE_CLUB_PARAM`'s shape in
-      `src/lib/routes.ts`, read by the thread page for **both** the header arrow and
-      `useSwipeBack` — they must not disagree. Absent → the thread list, which is today's
-      behaviour and what every deep link produces.
+- [ ] 7.8 **Phase A does NOT touch the back target.** It stays `routes.clubThreads(clubId)` for
+      both the header arrow and `useSwipeBack`, exactly as today. The whole return path is §11, so
+      that one session owns it end to end and two sessions do not both edit the thread page's
+      navigation.
 - [ ] 7.9 **Render the introduction on the thread detail**, above the messages, attributed to the
       thread's author. Gate the render on `introduction !== null` and **never** on
       `introduces_user_id` — after a leave the marker is NULL and the text survives, so a
@@ -235,12 +246,14 @@ Each of these is a policy or constraint change with no assertion until it is wri
       helper landed in `public` that belonged in `private`.
 - [ ] 9.4 Merge to `development` — that merge **is** the DEV deploy — and set the Linear issue to
       `Deployed to DEV`.
-- [ ] 9.5 **Promotion order.** `092`–`096` go first, in filename order, then `097`. `097` itself is
-      safe on either side of the build and the tasks pick **migration-first**: an older bundle
-      names none of it and nothing is triggered, while a newer bundle against a pre-`097` database
-      gets `PGRST202` and loses only the prompt. State the chosen side in the PR body rather than
-      inheriting "additive, so the order does not matter", which `CLAUDE.md` records as wrong in
-      both directions for the `092`–`096` group.
+- [ ] 9.5 **Promotion order — no gap to sequence.** Both projects are at `096`, so `097` applies
+      to each the same way. `097` is safe on **either** side of the build and the tasks pick
+      **migration-first**: an older bundle names none of it and nothing is triggered, while a newer
+      bundle against a pre-`097` database gets `PGRST202` and loses only the prompt. State the
+      chosen side in the PR body rather than inheriting "additive, so the order does not matter",
+      which `CLAUDE.md` records as wrong in both directions for the `092`–`096` group.
+      **Do not copy this ordering into story 3.** `098` adds notification types and must go
+      *after* its bundle is confirmed serving — the opposite side, per `089`.
 - [ ] 9.6 Repeat 9.1–9.3 against PROD after applying, and re-run 0.4's two counts there.
 
 ## 10. Documentation
@@ -255,3 +268,37 @@ Each of these is a policy or constraint change with no assertion until it is wri
       count moves by one. Write each beside the command that re-derives it.
 - [ ] 10.5 A `reviewer` pass on this proposal **before** any SQL is written — `openspec/` sits in
       CI's denylist and the RLS suite can only assert what somebody thought to write down.
+
+## 11. Phase B — the return anchor (Q4, answered: the scroll position is in scope)
+
+**A separate session and a separate PR.** No migration, no schema, no policy. It depends on phase A
+only because both edit `ClubTimelineEventRow` and the thread page, and one working tree is one
+writer — see `CLAUDE.md` §Delegating while the owner is at the keyboard.
+
+- [ ] 11.1 Extend `src/lib/routes.ts` with the return parameter: an **origin kind** from a closed
+      set and a **row key**, both bounded, in `CREATE_CLUB_PARAM`'s shape. Parse with the existing
+      id schemas, so the only route it can produce is `routes.club(<well-formed id>)` with a
+      fragment. No URL, no allowlist, no `BACK_ORIGINS` entry — `routes.ts` already says why that
+      list is the wrong reuse.
+- [ ] 11.2 Give every timeline row an anchor id derived from the ordering key `mergeClubTimeline`
+      already assigns it (`join:<uuid>`, `thread:<uuid>`, …), rather than a new identity. Covers
+      `ClubTimelineEventRow`, `ClubTimelineThreadRow`, `ClubTimelineRideCard` and the `postcard`
+      branch in `ClubTimeline`.
+- [ ] 11.3 Every link **out** of a timeline row carries the origin and its own row key. That is the
+      join row's introduction link (phase A), the thread rows, the reply rows and the ride card.
+- [ ] 11.4 The thread page reads the parameter and builds its back destination from it, for
+      **both** the header arrow and `useSwipeBack` — they must not disagree, which is the defect
+      PD-341 closed on this screen once already. Absent → `routes.clubThreads(clubId)`, today's
+      behaviour and what a notification tap, a shared URL and a reload all produce.
+- [ ] 11.5 The club detail applies the position **after its rows exist, once**. Not on mount — the
+      screen is client-rendered and has no rows at first paint, so native fragment handling finds
+      nothing. Not on every render — an arriving row or an invalidated cache would move a rider who
+      has started reading.
+- [ ] 11.6 An anchor that does not resolve is a **no-op**: render at the top, no retry, no message.
+      Deleted, past the horizon, and no-longer-readable are indistinguishable here and all three
+      are ordinary.
+- [ ] 11.7 A component test that the row anchors exist and match the stream's keys, and a test that
+      an unresolvable anchor renders the screen normally. Verify the second both ways: a version
+      that throws or reports on a missing anchor must fail it.
+- [ ] 11.8 `npm run walk` — the walk already discovers detail routes from the lists, so this is the
+      one gate that can see a back button landing somewhere wrong.
