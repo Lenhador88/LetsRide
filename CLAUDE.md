@@ -420,6 +420,9 @@ Four rules on `delete-account`, and they are why this does not contradict §What
 **Deploying is an owner action** — there is no `supabase` CLI in the build container, and the
 MCP server's `deploy_edge_function` is on `.claude/settings.json`'s `deny` list — so an edit under
 `supabase/functions/` is drift from the moment it merges, and CI has no path that would notice.
+`.github/workflows/deploy-functions.yml` is the owner's button for it: a `workflow_dispatch` that
+type-checks and deploys one or all functions to one project from a checked-in sha, once the
+`SUPABASE_ACCESS_TOKEN` secret exists. Its header says why it is not a push trigger.
 **Version numbers differ per project and always will** (they count deploys), so the
 `ezbr_sha256` is what says the two projects agree, and equality is not currency: compare the deploy
 against the file, and count the undeployed commits rather than reading a list anywhere:

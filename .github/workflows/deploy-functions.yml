@@ -1,0 +1,99 @@
+name: Deploy Edge Functions
+
+# Deploys one or all of `supabase/functions/*` to one project, from the
+# commit the owner points it at — on demand, never on merge.
+#
+# WHY IT EXISTS. Deploying is an owner action: there is no `supabase` CLI in
+# the build container and the MCP server's `deploy_edge_function` is on
+# `.claude/settings.json`'s deny list. That made every edit under
+# `supabase/functions/` drift from the moment it merged, with nothing red
+# anywhere — `resolve-ride-location` went stale twice in one day, once
+# carrying the fix that decides whether a map tile renders at all. This
+# workflow keeps the decision with the owner and removes the terminal: one
+# click, from a checked-in sha, with the CLI's own build of the bundle.
+#
+# WHY NOT ON PUSH. Two reasons, both concrete. A push trigger would let an
+# agent-merged PR deploy the function holding the service-role key with no
+# human between the merge and the deploy — the exact step the deny list
+# exists to keep. And a function can carry an ordering rule against the app
+# (PD-236: `resolve-ride-location` must deploy only AFTER the app carrying
+# `MapAttribution` is serving, or the map tile loses its licence credit for
+# the length of a Vercel build), which a push trigger firing beside Vercel's
+# cannot honour. If the owner decides the push trigger is wanted anyway, it
+# is an `on: push: branches:` block plus a project-ref switch on
+# `github.ref_name`; the deploy step below already takes both from inputs.
+#
+# WHAT IT NEEDS. One repository secret, `SUPABASE_ACCESS_TOKEN` — a personal
+# access token from the Supabase dashboard (Account → Access Tokens). Without
+# it the job stops at the gate step and says so, rather than failing inside
+# the CLI with a login error that reads like a broken workflow. The project
+# refs are not secrets: both ship in the client bundle as part of the
+# Supabase URL.
+#
+# UNVERIFIED. Written without a way to run it — the build container has no
+# CLI and jsr.io/supabase.com are off its allowlist — so the first dispatch
+# is the test. `--project-ref` is what lets `functions deploy` run without a
+# `supabase link` or a `config.toml`; if the CLI insists on one, `supabase
+# init` before the deploy step is the fix, not a committed config.
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: 'Which project to deploy to'
+        required: true
+        type: choice
+        options: [dev, prod]
+      function:
+        description: 'Which function — or all three'
+        required: true
+        type: choice
+        default: all
+        options: [all, delete-account, resolve-ride-location, search-places]
+
+jobs:
+  deploy:
+    name: ${{ inputs.function }} → ${{ inputs.project }}
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - name: Refuse without a token
+        if: env.SUPABASE_ACCESS_TOKEN == ''
+        run: |
+          echo "::error::SUPABASE_ACCESS_TOKEN is not set — add it under Settings → Secrets → Actions."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      # The same check CI's `functions` job runs, so a dispatch from a branch
+      # CI never saw still cannot deploy a file that does not compile.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type check before deploying
+        run: deno check supabase/functions/*/index.ts
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy
+        env:
+          # PROD is `letsride`; DEV is `letsride-dev`. Both refs are public —
+          # CLAUDE.md §Supabase Rules records them for the same reason.
+          PROJECT_REF: ${{ inputs.project == 'prod' && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.function }}" = "all" ]; then
+            names=$(ls supabase/functions/)
+          else
+            names="${{ inputs.function }}"
+          fi
+          for name in $names; do
+            echo "== $name -> $PROJECT_REF @ $GITHUB_SHA"
+            supabase functions deploy "$name" --project-ref "$PROJECT_REF"
+          done
+
+      - name: What is now deployed
+        run: supabase functions list --project-ref "${{ inputs.project == 'prod' && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}"

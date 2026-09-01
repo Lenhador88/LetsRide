@@ -63,7 +63,7 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 2960/2960 across 106 files
+npm run test:unit                     # 3008/3008 across 108 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 44 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
@@ -449,6 +449,17 @@ kept so existing pointers resolve.
 See `docs/reference/running-locally.md` §The walk.
 
 ## Where this left off — 2026-09-01, the club bundle is IN PRODUCTION
+
+**Later the same day — the process session (branch `claude/dev-process-improvements-94p8kc`).**
+Four things landed, none rider-visible: the write path got its first real tests
+(`src/lib/actions/__tests__/`, pinning the two cache invalidations); CI type-checks the three Edge
+Functions under Deno (`functions` job, scoped to `supabase/functions/**`); the docs spine was cut
+from ~112k tokens per session to ~40k by moving the handoff's reference sections into
+`docs/reference/` and rewriting `CLAUDE.md` to rules plus their commands; and
+`deploy-functions.yml` gives the owner a one-click Edge Function deploy. **That last one is
+written and unverified** — it needs `SUPABASE_ACCESS_TOKEN` as a repository secret, and its first
+dispatch is its test. The walk-in-CI proposal is not built: it needs a fixture account's
+credentials as secrets, and a decision on whether `WALK_FIXTURES=1` may write to DEV on every PR.
 
 **All four stories shipped to riders.** `PD-365` (the introduction, `097`), `PD-366` (the return
 anchor, no migration), `PD-367` (club-thread notifications, `098` plus `100`) and `PD-368` (the join
