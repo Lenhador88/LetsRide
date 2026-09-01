@@ -9,20 +9,21 @@ way §5 says.
 §11 is **phase B**, the return anchor, no migration. `proposal.md` §How this is built says why they
 are separate sessions and why the notification work is a third change entirely.
 
-**Nothing here is blocked.** Q1, Q4 and Q6 were answered on 2026-09-01. **Q3 is open and does not
-block phase A** — its recommended arm (a) is a placeholder string in one component, and arm (b) is
-a different story that this change does not build either way.
+**Nothing here is blocked and nothing is open.** Q1, Q3, Q4 and Q6 were answered by the product
+owner on 2026-09-01, and Q7 — raised by Q6's answer — is **PD-368** and is not this change.
 
 ## 0. Pre-flight — resolve before writing SQL
 
 - [ ] 0.1 **Q1 is answered — arm A.** Required to post, dismissible. Nothing forks on it any more;
       build the single arm in `design.md` §Q1 and do not reintroduce the others. If *"make it truly
       mandatory"* is raised later, the seventh-door argument in that section is the answer.
-- [ ] 0.2 **Q3 is OPEN and must not be guessed.** The default club takes no prompt — that half is
-      settled. Whether the sheet's textarea carries an editable starter (arm a) or the Welcome club
-      gets an automatic canned introduction (arm b) is unanswered, and arm (b) carries an objection
-      that must be put to the owner rather than built around. Phase A ships with an empty textarea
-      and a placeholder; adopting (a) later is one string.
+- [ ] 0.2 **Q3 is answered — arm (a).** The Welcome club still takes no prompt (`058`'s carve-out,
+      untouched), and every prompted club's textarea carries an editable starter. **Build it as a
+      `placeholder`, never a `defaultValue`** — a prefilled value is never empty, so it would make
+      Q1's inert Post live on open and let one tap post the canned sentence. The two answers
+      interact and this is the resolution; `design.md` §Q3 says what to change instead if the owner
+      ever overrules it. Arm (b), an auto-posted introduction into the Welcome club, is **refused**;
+      do not build it and do not delete its objection.
 - [ ] 0.3 Confirm `097` is still the next free number and that both projects are still level:
       `list_migrations` against both refs, against `ls supabase/migrations/ | tail -3`.
       They were level at `096` on 2026-09-01; level is a state, not a property.
@@ -103,8 +104,11 @@ a different story that this change does not build either way.
 - [ ] 4.1 Add the introduction schema to `src/lib/validation/clubs.ts`, bounds identical to
       `1.3`'s CHECK, exported as a constant the form's counter and `maxLength` both read.
 - [ ] 4.2 Add the introduction's types to `src/types/index.ts` — no inline types at call sites.
-- [ ] 4.3 A placeholder string for the textarea. **Not** a prefilled value — Q3 arm (a) is the
-      unanswered question about that, and a placeholder is what an empty field shows either way.
+- [ ] 4.3 The starter wording, as a **placeholder** string — Q3 arm (a). It is **copy**: no CHECK,
+      no column, no migration, and **no predicate anywhere may compare against it**, so a rider who
+      posts it verbatim has posted an ordinary introduction and nothing can tell. It must itself
+      satisfy the bounds in 4.1 (non-blank, within the maximum), or the sheet would suggest wording
+      the database refuses.
 
 ## 5. RLS assertions — paired with §§1–3, per `openspec/config.yaml`
 
@@ -177,8 +181,9 @@ Each of these is a policy or constraint change with no assertion until it is wri
 - [ ] 7.1 `IntroductionPrompt` — a sheet on `ContextMenu`'s scrim and geometry. **There is no v2
       frame**; log the composition in `docs/FIGMA-FIDELITY-TODO.md` §Club detail with the
       `npm run figma -- ls` output that establishes it. Welcome copy naming what the rider can do
-      in the club, a `Textarea`, a Post that is inert until the field holds non-whitespace text
-      (Q1, decided), and a `Not now` that is always present.
+      in the club, a `Textarea` whose starter is a **`placeholder`** and whose value starts empty
+      (Q3, decided), a Post that is inert until the field holds non-whitespace text (Q1, decided),
+      and a `Not now` that is always present.
 - [ ] 7.2 Mount it on the club detail, driven by 6.4, never by `joinClub`'s success path.
 - [ ] 7.3 Per-(rider, club) dismissal held for the session, cleared by `signOut` with the rest of
       the session state. Not a schema column — a dismissal is not a fact about the club.
@@ -217,6 +222,11 @@ Each of these is a policy or constraint change with no assertion until it is wri
       only checks something rendered, and this row has now lost one control and gained another.
 - [ ] 8.3 A component test asserting the wave control survives on the join row in both states, and
       is still absent on the viewer's own row. Verify it both ways: removing the wave must fail it.
+- [ ] 8.3a A component test on the prompt asserting the sheet opens with an **empty value** and a
+      non-empty **placeholder**, and that Post is inert in that state. One prop separates the two
+      spellings, both screenshot identically, and swapping them silently repeals Q1 — which is the
+      shape `PostcardCard`'s geometry test exists for. Verify both ways: switching the placeholder
+      to a value must fail it.
 - [ ] 8.4 A component test for the thread row asserting the floor mark survives the redesign, in
       **both** directions — `12+` must still render as `12+` on a row whose activity is `partial`,
       **and a row whose activity is not `partial` must render `12` with no mark**. The second case

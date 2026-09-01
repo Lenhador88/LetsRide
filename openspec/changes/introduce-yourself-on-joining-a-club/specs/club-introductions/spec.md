@@ -152,6 +152,30 @@ it.
 - **WHEN** a write supplies more than 1000 characters, bypassing the client entirely
 - **THEN** the database SHALL refuse it with a check-constraint violation
 
+### Requirement: The suggested starter SHALL be copy, and nothing SHALL be able to tell that a rider used it
+
+The prompt MAY show suggested wording to a rider who does not know what to write. That wording SHALL
+be **copy only**: it SHALL have no CHECK, no column, no migration and no representation in the
+schema of any kind.
+
+**No predicate anywhere SHALL compare against it** — not the rule that decides whether a rider is
+prompted, not a policy, not a trigger, not an assertion, and not a client-side branch. An
+introduction whose text happens to equal the suggestion SHALL be an ordinary introduction in every
+respect, and the system SHALL be unable to distinguish it from any other.
+
+The suggestion SHALL satisfy the bounds an introduction already carries — non-blank and within the
+maximum length — so that the wording shown to a rider is one the database would accept.
+
+#### Scenario: A verbatim introduction is an ordinary introduction
+- **WHEN** a rider posts the suggested wording unchanged
+- **THEN** it SHALL be stored, rendered, counted, commentable and deletable exactly as any other
+- **AND** no query, policy or screen SHALL treat it differently
+
+#### Scenario: The suggestion is not in the schema
+- **WHEN** the migration for this change is read
+- **THEN** it SHALL contain no copy of the suggested wording
+- **AND** no constraint SHALL reference it
+
 ### Requirement: A rider SHALL have at most one introduction per club, and a rejoin SHALL start with none
 
 Uniqueness SHALL be enforced by the database, keyed on the club and the subject, so a second
@@ -422,3 +446,8 @@ successor rather than as a property of introductions.
 - **THEN** a comment on an introduction SHALL notify on exactly the terms a comment on any other
   thread does
 - **AND** no branch SHALL test whether the thread is an introduction
+
+#### Scenario: Who learns of a join is not this change's rule
+- **WHEN** the join fan-out's recipient set changes
+- **THEN** no requirement of this capability SHALL need amending
+- **AND** the introduction's own behaviour SHALL be unaffected

@@ -4,8 +4,12 @@
 
 No notification type is added by this change, no fan-out trigger is hung, and neither notification
 CHECK constraint is widened. Writing an introduction produces exactly the notifications the join
-already produced — the club's owner and its admins learn that a rider joined, subject to the default
-club's existing carve-out — and nothing more.
+already produced, whatever those are, **and nothing more**.
+
+**This change SHALL NOT restate the join's recipient set**, and does not depend on it. That set is
+being widened from the club's owner and admins to every member by **PD-368**, separately and
+order-neutrally, so a copy of it written here would be wrong shortly after it was written — which is
+the shape of every stale claim this repo has paid for.
 
 **Comments and waves on club threads SHALL be notified, and by a separate change.** That was
 decided on 2026-09-01 and it is not this change's work: it needs a thread reference on
@@ -24,6 +28,11 @@ how every club thread already behaves, and is a scheduled gap rather than an acc
 - **WHEN** a rider joins a club and then introduces themselves
 - **THEN** the notifications written SHALL be exactly those the join wrote
 - **AND** no recipient SHALL receive a second row
+
+#### Scenario: Widening the join's recipients does not touch this change
+- **WHEN** the join fan-out's recipient set is widened by its own change
+- **THEN** nothing in this change SHALL need to be edited
+- **AND** no requirement here SHALL name that set
 
 #### Scenario: The successor is named, not merely awaited
 - **WHEN** this change's artifacts are read
