@@ -108,6 +108,49 @@ describe('classify', () => {
     const stringy = [{ n: 1, path: '/rest/v1/rides', status: '503' }]
     expect(classify(stringy).serverErrors).toHaveLength(1)
   })
+
+  it('counts a 300 on a PostgREST relation as a schema mismatch', () => {
+    // The PD-363 case, with its real number. `092` added an ordinary join
+    // table, `club_members`↔`profiles` gained a second candidate relationship,
+    // and PostgREST answered `PGRST201` rather than choosing — taking both club
+    // lists, the club roster and the club timeline down together. 65 of these
+    // landed in DEV's stream and this digest reported a clean day, because 300
+    // sorts BELOW every threshold a monitor reaches for.
+    const ambiguous = [{ n: 65, path: '/rest/v1/clubs', status: 300 }]
+    expect(classify(ambiguous).schemaMismatch).toEqual(ambiguous)
+    expect(isAlerting(classify(ambiguous))).toBe(true)
+  })
+
+  it('leaves the other 3xx alone — they are not failures', () => {
+    // The reason the filter names 300 rather than widening to `>= 300`. DEV's
+    // own window holds 304s on avatar fetches: a cache working. A redirect
+    // behaving is the same. Sweeping the band in would put routine traffic in
+    // an alert that is only credible while every row in it is a question.
+    const routine = [
+      { n: 7, path: '/storage/v1/object/sign/media/avatars/a.jpg', status: 304 },
+      { n: 4, path: '/rest/v1/rides', status: 307 },
+      { n: 2, path: '/rest/v1/clubs', status: 302 },
+    ]
+    expect(classify(routine).schemaMismatch).toEqual([])
+    expect(classify(routine).serverErrors).toEqual([])
+    expect(isAlerting(classify(routine))).toBe(false)
+  })
+
+  it('does not treat a 300 outside /rest/v1/ as a schema mismatch', () => {
+    // Same boundary the 404 case pins, in the other status. Only PostgREST
+    // speaks `PGRST201`; a 300 from anywhere else is not this defect.
+    const elsewhere = [{ n: 1, path: '/functions/v1/search-places', status: 300 }]
+    expect(classify(elsewhere).schemaMismatch).toEqual([])
+    expect(classify(elsewhere).other).toEqual(elsewhere)
+  })
+
+  it('catches a 300 whose status arrives as a string', () => {
+    // `AMBIGUOUS_EMBED` is compared with `Number(...)` for the same reason the
+    // 5xx test above exists: the cast lives in the SQL, and a `===` against a
+    // raw string would empty this bucket with nothing red.
+    const stringy = [{ n: 65, path: '/rest/v1/clubs', status: '300' }]
+    expect(classify(stringy).schemaMismatch).toHaveLength(1)
+  })
 })
 
 describe('isAlerting', () => {
@@ -135,7 +178,7 @@ describe('isAlerting', () => {
 describe('formatSummary', () => {
   it('says so plainly when nothing failed', () => {
     expect(formatSummary('letsride (PRODUCTION)', [], classify([]))).toContain(
-      'No 4xx or 5xx in the last 24 hours.',
+      'No 300, 4xx or 5xx in the last 24 hours.',
     )
   })
 

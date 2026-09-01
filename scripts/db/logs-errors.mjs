@@ -28,10 +28,20 @@
  *
  * NOT ALL 4xx ARE DEFECTS, and this is why `--ci` classifies rather than
  * counting. A 401 on `has_password_reset_grant` is the guard working; a 403 is
- * usually RLS refusing something correctly. Two shapes are ours: a 404 on
- * `/rest/v1/<table>` (schema ahead of the code, or behind it) and a 5xx of any
- * kind. Everything else is printed and reported, never alerted on — an alert
- * that fires on correct behaviour is one nobody reads by the second week.
+ * usually RLS refusing something correctly. Three shapes are ours: a 404 on
+ * `/rest/v1/<table>` (schema ahead of the code, or behind it), a **300** on
+ * one (`PGRST201` — the schema offers an embed more than one relationship, so
+ * PostgREST resolves none), and a 5xx of any kind. Everything else is printed
+ * and reported, never alerted on — an alert that fires on correct behaviour is
+ * one nobody reads by the second week.
+ *
+ * THE 300 IS WHY THE WINDOW IS NOT `>= 400`, and it was added after this digest
+ * sat through the outage it exists for. PD-363: `092` added an ordinary join
+ * table, `club_members`↔`profiles` gained a second candidate relationship, and
+ * both club lists, the club roster and the club timeline started returning
+ * nothing — 65 rows in DEV's stream, every one below the threshold this script
+ * was reading. A status class that means "your code and your schema disagree"
+ * is the whole remit here; that it sorts below 400 is an accident of HTTP.
  *
  * CREDENTIAL. Needs a Supabase *Management API* personal access token in
  * SUPABASE_ACCESS_TOKEN — not the publishable key, not the service-role key,
@@ -42,14 +52,24 @@
  *
  * VERIFICATION STATUS — the two halves of this file differ, so read both.
  *
- * The SQL below IS verified. Run against DEV (`fpmrimzxadewsaiwpsel`) and PROD
- * (`zwprydcyryvudhurbnye`) through the Supabase MCP `query_logs` tool on
- * 2026-08-31: it executes on both and returned no rows on either, which is a
- * real answer rather than a broken query — the same query without the status
- * filter returned DEV's ordinary 200s in the same sitting, so the shape below
- * is measured, not assumed:
+ * The SQL below IS verified, and the widened window is verified against real
+ * failures rather than against an empty answer. Run on both projects through
+ * the Supabase MCP `query_logs` tool on 2026-09-01, it executes on each and
+ * DEV returns the rows the old `>= 400` could not see:
  *
- *     {"result":[{"n":571,"path":"/storage/v1/object/sign/media","status":200}],"error":null}
+ *     {"n":67,"path":"/rest/v1/clubs","status":300}
+ *     {"n":8, "path":"/rest/v1/club_members","status":300}
+ *     {"n":12,"path":"/rest/v1/club_members","status":401}   <- `other`, never alerted on
+ *
+ * PROD returns `{"result":[]}` in the same sitting, which is the correct answer
+ * for a project still on `091` — it has no `club_join_waves` and therefore no
+ * ambiguity — and is the state this window is meant to keep true through the
+ * promotion.
+ *
+ * That is a stronger check than the one it replaces. The earlier note recorded
+ * both projects returning NO rows, with a 200 from an unfiltered query as the
+ * only evidence the shape worked at all; a filter that silently matches nothing
+ * looks identical to a quiet day, which is exactly how the 300s went unseen.
  *
  * The HTTP transport here is still NOT verified, and NO SESSION CAN VERIFY IT,
  * which is the reason not to spend an afternoon on it. `api.supabase.com:443` is a
@@ -81,7 +101,7 @@
  * PROD 5xx is how the alert stops being read:
  *
  *   0  ran, and nothing in the window is ours
- *   1  ran, and there is a 5xx or a /rest/v1/ 404 to look at
+ *   1  ran, and there is a 5xx, or a /rest/v1/ 404 or 300, to look at
  *   2  could not run — no token, no transport, or an envelope it cannot read
  *
  * Under `--ci` the reason is written to $GITHUB_STEP_SUMMARY in every one of the
@@ -108,16 +128,39 @@ select toInt32OrZero(log_attributes['response.status_code']) as status,
        count(*) as n
 from logs
 where source = 'edge_logs'
-  and toInt32OrZero(log_attributes['response.status_code']) >= 400
+  and (toInt32OrZero(log_attributes['response.status_code']) >= 400
+       or toInt32OrZero(log_attributes['response.status_code']) = 300)
 group by status, path
 order by n desc
 limit 50
 `.trim()
 
-// PostgREST serves every table read and write the app makes. A 404 here is not
-// a missing row — PostgREST answers those 200 with an empty array — it is a
-// missing *relation*, which means the deployed bundle and the schema disagree.
+// PostgREST serves every table read and write the app makes, and TWO statuses
+// there mean the deployed bundle and the schema disagree.
+//
+// A 404 is not a missing row — PostgREST answers those 200 with an empty array
+// — it is a missing *relation*.
+//
+// A 300 is `PGRST201`: an embed PostgREST will not resolve because the schema
+// offers it more than one relationship between the two tables. **300 is the
+// reason this filter is not simply `>= 400`.** It sits below every threshold a
+// monitor naturally reaches for, and it is not a rare curiosity: a migration
+// adding an ordinary join table makes an untouched embed ambiguous, so a
+// screen whose query, columns and policies did not change starts returning
+// nothing. That is PD-363 — `092` took both club lists, the club roster and
+// the club timeline down together, 65 of these landed in DEV's stream, and
+// this digest could not see one of them.
+//
+// The other 3xx are deliberately excluded rather than swept in by a `>= 300`:
+// a 304 is a cache working (DEV's window holds them on avatar fetches) and a
+// 301/302/307/308 is a redirect behaving. Widening to the band would put
+// routine traffic in an alert that is only credible while every row in it is a
+// question.
 const REST_SEGMENT = '/rest/v1/'
+
+// A `PGRST201` refusal. Named rather than inlined because `300` on its own,
+// three lines below a `>= 500`, reads like a typo for one of the thresholds.
+const AMBIGUOUS_EMBED = 300
 
 const isServerError = (row) => Number(row.status) >= 500
 
@@ -131,7 +174,8 @@ const isServerError = (row) => Number(row.status) >= 500
 // not PostgREST contains this substring, so the looser test costs no false
 // positives.
 const isSchemaMismatch = (row) =>
-  Number(row.status) === 404 && String(row.path ?? '').includes(REST_SEGMENT)
+  (Number(row.status) === 404 || Number(row.status) === AMBIGUOUS_EMBED) &&
+  String(row.path ?? '').includes(REST_SEGMENT)
 
 /**
  * Pull the rows out of the Management API envelope, or throw.
@@ -212,13 +256,14 @@ export function sanitisePath(path) {
 export function formatSummary(label, rows, classified) {
   const lines = [`## ${label}`, '']
   if (rows.length === 0) {
-    lines.push('No 4xx or 5xx in the last 24 hours.', '')
+    lines.push('No 300, 4xx or 5xx in the last 24 hours.', '')
     return lines.join('\n')
   }
   if (isAlerting(classified)) {
     lines.push(
       `**${classified.serverErrors.length} path(s) returned 5xx** and ` +
-        `**${classified.schemaMismatch.length} returned 404 under \`${REST_SEGMENT}\`**.`,
+        `**${classified.schemaMismatch.length} returned 404 or 300 under \`${REST_SEGMENT}\`** ` +
+        '(missing relation, or an embed the schema made ambiguous).',
       '',
     )
   } else {
