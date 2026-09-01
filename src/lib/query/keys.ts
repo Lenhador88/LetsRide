@@ -878,6 +878,7 @@ export const queryKeys = {
    * | `hidePostcard`, `unhidePostcard` | Every notification carrying a `postcard_id` is addressed to that postcard's author, and `009` made the author branch of the `postcards` SELECT policy unconditional — so hiding your own postcard is inert, and `011` deliberately keeps the hide predicate inside the *other* branch |
    * | `updateProfile`, `setProfileImage` | The `actor` embed is always somebody else, for the self-suppression reason above. Your own username and avatar never render in your own list |
    * | `blockRider`, `unblockRider` | Genuinely in the blast radius — a block stops the actor's `profiles` row resolving — and already covered by `invalidate(EVERYTHING)` |
+   * | `sendClubMessage`, `waveThread`, `unwaveThread` | `098`, PD-367. Same reason as the first row: `club_thread_replied` and `club_thread_waved` both self-suppress by addressing `club_threads.author_id` alone, never the poster or waver whose client runs the write. The recipient's badge is stale until their own next navigation — stated rather than fixed, `client-cache-invalidation`'s standing rule |
    *
    * `updateClub` names `all()` rather than `list()`, which the rule alone would
    * not give it: the privacy toggle is not only an embed change. Flipping a

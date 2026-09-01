@@ -15,6 +15,7 @@ function row(type: NotificationType, overrides: Partial<NotificationRow> = {}): 
     postcard: null,
     ride: { id: '44444444-4444-4444-8444-444444444444', title: 'Ardennes loop', organizer_id: ORGANIZER },
     club: { id: '55555555-5555-4555-8555-555555555555', name: 'Night Owls', avatar_path: null, avatar_url: null },
+    thread: { id: '66666666-6666-4666-8666-666666666666', title: 'Sunday run' },
     ...overrides,
   }
 }
@@ -133,6 +134,27 @@ describe('the two club invite types survive losing their club', () => {
     ['club_invited', 'invited you to Night Owls.'],
     ['club_invite_declined', 'declined your invite to Night Owls.'],
   ] as const)('%s names the club when it did resolve', (type, expected) => {
+    expect(notificationCopy(row(type), CREW)).toBe(expected)
+  })
+})
+
+/**
+ * `098`, PD-367's two — `thread_id` alone, never `club_id`, so these degrade
+ * to a generic phrase naming no thread rather than falling back to a club
+ * name the row does not carry.
+ */
+describe('the two thread types survive losing their thread', () => {
+  it.each([
+    ['club_thread_replied', 'replied to your post.'],
+    ['club_thread_waved', 'waved at your post.'],
+  ] as const)('%s degrades to a generic phrase', (type, expected) => {
+    expect(notificationCopy(row(type, { thread: null }), CREW)).toBe(expected)
+  })
+
+  it.each([
+    ['club_thread_replied', 'replied to Sunday run.'],
+    ['club_thread_waved', 'waved at Sunday run.'],
+  ] as const)('%s names the thread when it did resolve', (type, expected) => {
     expect(notificationCopy(row(type), CREW)).toBe(expected)
   })
 })
