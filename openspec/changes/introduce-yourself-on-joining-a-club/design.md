@@ -529,23 +529,49 @@ skip affordance. If the owner later wants the prompt at the *moment* of joining 
 rule already permits it: the action can open the same sheet eagerly, and the state rule is what
 catches everyone it misses.
 
-### Q3 — What does the default club do? **STILL OPEN. Product owner's.**
+### Q3 — What does the default club do? **ANSWERED 2026-09-01 — arm (a), the prefilled starter.**
 
-> *"q3 does not take instructions, so a default message should be prefilled?"*
+> Product owner: *"q3 does not take instructions, so a default message should be prefilled?"*, then
+> *"Q3 is A yes."*
 
-**The first half is settled: the default club is not prompted.** `058`'s carve-out stands, for the
-reason it exists there — every rider joins that club inside a wizard that has no skip affordance.
+**Two things were decided.** The Welcome club is still **not prompted** — `058`'s carve-out stands
+untouched, for the reason it exists there: every rider joins that club inside a wizard that has no
+skip affordance. And in every club the prompt *does* fire for, the sheet's textarea arrives with an
+**editable starter** to guide a rider who does not know what to write.
 
-**The second half has two readings and they are different changes. Do not pick one.**
+**The starter is a `placeholder`, not a `defaultValue`, and that is a decision rather than an
+implementation detail.** Q1 and Q3 were each answered sensibly and they interact badly:
 
-**(a) An editable starter in the textarea, in every club. — RECOMMENDED.** The sheet opens with
-suggested wording already in the field. The rider edits, replaces or clears it and still presses
-Post. It adds no rule, no policy and no schema; the words remain the rider's because sending them
-was their act. It also does nothing for the Welcome club, which is not prompted at all — so if the
-owner's concern was specifically *that* club, (a) does not answer it and (b) is what they meant.
+- Q1 landed on *Post is inert until there is non-whitespace text*.
+- A textarea carrying a prefilled **value** is never empty. Post is therefore enabled the instant
+  the sheet opens, and one tap posts the canned sentence unedited.
 
-**(b) A canned introduction posted automatically into the Welcome club on the auto-join. — CARRIES
-AN OBJECTION.** Stated concretely rather than as a preference:
+So a prefilled value silently repeals Q1's rule, and fills every club with the same sentence over
+and over. A **placeholder** does the guiding work the owner asked for — the wording is visible in
+the field, greyed, exactly where a value would be — while the field stays genuinely empty, so
+Post stays inert until the rider types something of their own and Q1 keeps its meaning.
+
+**A builder will be tempted to "fix" this back to a value, and must not.** The two rules only look
+independent; `client-render-shell`'s prompt table and `club-introductions`' starter requirement both
+state the placeholder explicitly for that reason.
+
+**If the owner overrules this and wants a real prefilled value, Q1's rule goes with it.** Do not
+ship both: a disabled-until-typed Post behind a pre-populated field is a rule that can never fire,
+which is worse than either answer alone. In that case the spec drops the inert-Post rule, says
+plainly that the sheet's Post is enabled on open, and the sheet's copy has to carry the "these are
+your words, edit them" work that the disabled button was doing.
+
+**The starter is copy and nothing else.** It carries no CHECK, no migration and no schema of any
+kind, and **no predicate anywhere may compare against it** — not the prompt's state rule, not a
+policy, not an assertion. A rider who posts it verbatim has posted an ordinary introduction and the
+system must be unable to tell. Its text has to satisfy the bounds the introduction already
+inherits — non-blank under `~ '\S'` and at most 1000 characters, matching
+`club_messages_body_length` — which any sentence does, but it is stated so nobody writes a starter
+that the database would refuse.
+
+**Arm (b) is REFUSED, and its objection is kept because "just auto-post one in the Welcome club" is
+the predictable next suggestion.** Arm (b) was: a canned introduction posted automatically into the
+Welcome club on the auto-join, since that club is never prompted. Concretely why not:
 
 - `club_threads.author_id` is `NOT NULL` with no default and cascades from `profiles`, so the row
   **must name the new rider as the author of a sentence they did not write**. This schema has no
@@ -557,8 +583,8 @@ AN OBJECTION.** Stated concretely rather than as a preference:
 - It is the exact shape `club-timeline-engagement` §D2 refused. This change was able to argue it
   was *not* reopening that refusal only because the rider types and posts; (b) removes that.
 
-**If the owner means (b) it needs its own story and its own decision**, because making the words
-attributable to the app rather than to the rider is a schema question this change does not answer.
+Making the words attributable to the app rather than to the rider is a schema question — a system
+actor, or a nullable author — and it is not one this change answers.
 
 ### Q4 — Does "at that section" include the scroll position? **ANSWERED 2026-09-01 — yes, in scope.**
 
@@ -655,13 +681,17 @@ default is the thread's author plus everyone who has already posted in it, minus
 blocked pairs — bounded by distinct posters, `055`'s shape), and whether deleting a message retracts
 a reply notification, given the notification's subject is the thread rather than the message.
 
-### Q7 — Does anybody learn that a new introduction exists? *Non-blocking. Product owner's. Raised by Q6's answer, not asked yet.*
+### Q7 — Does anybody learn that a new introduction exists? **ANSWERED 2026-09-01 — yes, and it is PD-368.**
 
-**Recommended default: no, and name it.** The join already notifies the club's owner and admins
-(`club_joined`); ordinary members are told nothing, so in a club of any size the introduction the
-owner wants replies on may be seen by nobody. Notifying **every member** on every introduction is
-the unbounded fan-out `036` avoids everywhere else, so the answer is not simply "add one" — and the
-timeline does surface it, at the top, where a member opening the club will see it.
+Raised by Q6's answer rather than asked in the original round: the join notifies the club's **owner
+and admins** only, so in a club of any size the introduction the owner wants replies on could be
+seen by nobody, and Q6's reply fan-out would have nothing to fire on.
 
-Named here because Q6's answer makes it visible: it is coherent to want replies notified and not to
-want the introduction itself broadcast, but it should be a decision rather than an accident.
+**Answered, and built elsewhere.** `private.notify_club_joined`'s recipient set widens from
+owner-plus-admins to **every member**. That is **PD-368**, its own story, and deliberately not this
+change: it adds no notification type and touches neither exhaustive client switch, so it is
+order-neutral with respect to the build — which is a different shape from both `097` and story 3's
+`098`, and a third reason not to fold it into either.
+
+Nothing in this change restates who learns of a join. Where the artifacts need to refer to it at
+all, they point at PD-368 rather than describing a recipient set that is about to change.

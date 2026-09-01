@@ -9,12 +9,15 @@
 > **PD-355** (`openspec/changes/add-club-timeline/`), both merged. `092`–`096` reached PROD on
 > 2026-09-01, so **both projects are level at `096`** and `097` is next on both.
 
-> **Q1, Q4 and Q6 were answered by the product owner on 2026-09-01, and two of them widened this
-> change.** Q1: *"A, yes mandatory but dismissable."* Q4: *"yes defers to that scroll position on
-> that discussion, announcement, etc."* — the scroll position is **in scope**, overruling the
-> recommendation to defer it. Q6: *"yes a comment or wave should notify"* — which is **two** new
-> fan-outs and a column on `notifications`, and is therefore **split into its own change**
-> (§How this is built). **Q3 is still open** and both its arms are specified below.
+> **Every question this change opened is answered, all on 2026-09-01, and two of the answers
+> widened it.** Q1: *"A, yes mandatory but dismissable."* Q3: *"Q3 is A yes"* — the Welcome club is
+> still never prompted and every prompted club's textarea carries an editable starter, built as a
+> **placeholder** rather than a value so Q1's rule survives (§Q3's answer and Q1's answer interact).
+> Q4: *"yes defers to that scroll position on that discussion, announcement, etc."* — the scroll
+> position is **in scope**, overruling the recommendation to defer it. Q6: *"yes a comment or wave
+> should notify"* — **two** new fan-outs and a column on `notifications`, therefore **split into its
+> own change** (§How this is built). Q7, which Q6's answer raised, is **PD-368** and is not built
+> here.
 
 ## ⚠ Read this first
 
@@ -57,7 +60,7 @@ and presses Post, so:
 | A system thread must name a living rider as `author_id` | The joiner **is** the author, because they wrote it |
 | The joiner can delete a thread others welcomed them in | They can delete **their own introduction**, which is what `081` gives every author and what account deletion does anyway |
 | A username is published into an immutable title that outlives the membership | The title is a **constant naming nobody** (§The shape); the rider's name is rendered from a live `profiles` read |
-| One thread per signup on the default club | The default club is **exempt** — §Q3, `058`'s own carve-out |
+| One thread per signup on the default club | The default club is **exempt**, and stayed exempt when Q3 was answered — §Q3, `058`'s own carve-out |
 | Carving out the default club is self-defeating | It was, for an automatic welcome. For a rider-authored one the alternative is ambushing them mid-wizard |
 
 **4. Everything below is measured against `letsride-dev` (`fpmrimzxadewsaiwpsel`) on 2026-09-01**,
@@ -325,8 +328,13 @@ delete from club_members ...   -- succeeds; a marker with no text is still 23514
 - **No editing an introduction.** `club_threads` has no UPDATE grant and no UPDATE policy for
   anyone, and this change adds neither. A rider who wants a different introduction deletes the
   thread and writes another — the same answer a thread title already gets.
-- **No introduction on the default club**, per §Q3 — and no backfill prompt for the **22**
-  memberships that already exist on DEV, six of them on the default club.
+- **No introduction on the default club**, per §Q3 — the carve-out survived that answer unchanged —
+  and no backfill prompt for the **22** memberships that already exist on DEV, six of them on the
+  default club.
+- **No auto-posted introduction anywhere**, which is §Q3's refused arm (b) and is a refusal rather
+  than a deferral. `design.md` §Q3 keeps the reason.
+- **No change to who is notified that a rider joined.** That widening is **PD-368** and this change
+  neither makes it nor restates the current recipient set.
 - **No introduction for a club's OWNER.** `054` makes the owner a member, so the state rule would
   otherwise prompt every founder to introduce themselves to the club they just founded.
 - **No Realtime.** The count is read on load like every other count in this app.
@@ -334,43 +342,51 @@ delete from club_members ...   -- succeeds; a marker with no text is still 23514
   partial unique index means a rider has at most one introduction per club, which is a tighter
   bound than `postcard_likes` carries.
 
-## Open decisions
+## Decisions — all seven are settled
 
-**Five of six are settled. One is open and it is the product owner's.** Each still carries its
-recommended default so the build can proceed and be corrected, per the standing
-*ambiguity → assume and proceed* instruction in `CLAUDE.md`. The full argument is in `design.md`.
+**Nothing here blocks a build.** Four were answered by the product owner on 2026-09-01 (Q1, Q3, Q4,
+Q6), a fifth question this change raised was answered with them (Q7, now **PD-368**), and two are
+engineering calls made under the standing *ambiguity → assume and proceed* instruction in
+`CLAUDE.md`. The full argument for each is in `design.md`; **two of the answers interact and the
+resolution is below the table**, because that is the one a builder could undo without noticing.
 
 | # | Question | Who answers | Status | Answer |
 |---|---|---|---|---|
 | **Q1** | Is the introduction mandatory? | Product owner | **ANSWERED** 2026-09-01 | **Arm A** — required to post, dismissible. Post inert until non-whitespace text; `Not now` closes it; it returns on the next visit and never twice in a session |
 | **Q2** | Prompt on the Join action, or on the state? | Agent | Settled | On the **state**: a membership with no introduction. Reaches all six doors |
-| **Q3** | What does the default club do? | **Product owner** | **OPEN** | Two arms, below. Do not pick one |
+| **Q3** | What does the default club do? | Product owner | **ANSWERED** 2026-09-01 | **Arm (a)** — the Welcome club is still never prompted, and every prompted club's textarea carries an editable starter. Built as a `placeholder`, not a value — see below |
 | **Q4** | Does "at that section" mean the scroll position? | Product owner | **ANSWERED** 2026-09-01 | **Yes — in scope.** Anchor per timeline row plus a fragment on the return URL, *not* browser scroll restoration |
 | **Q5** | Does the comment count keep its `+`? | Agent | Settled | **Yes**, on the thread row's reply entries. Its creation entries are exact and must not gain one (§D6) |
 | **Q6** | Should a comment or a wave notify? | Product owner | **ANSWERED** 2026-09-01 | **Yes, both** — and split into `notify-a-club-thread`, for every club thread rather than only introductions |
+| **Q7** | Does anybody learn a new introduction exists? | Product owner | **ANSWERED** 2026-09-01 | **Yes** — `notify_club_joined` widens to every member. **PD-368**, its own story, not this change |
 
-### Q3 is open, and its two arms are different work
+### Q3's answer and Q1's answer interact — the starter is a placeholder
 
-The owner's words were *"q3 does not take instructions, so a default message should be prefilled?"*
-The first half settles that **the default club is not prompted** — the carve-out stands. The second
-half has two readings and they are not the same change:
+**Answered: arm (a).** The Welcome club is still never prompted (`058`'s carve-out, unchanged), and
+in every club the prompt does fire for the textarea arrives with an editable starter, so a rider
+who does not know what to write has something to work from.
 
-**(a) An editable starter in the textarea, in every club.** The sheet opens with suggested wording
-already in the field; the rider edits it or replaces it and still presses Post themselves. Cheap,
-adds no rule, changes no policy, and the words are still the rider's because they chose to send
-them. This is the **recommended** reading.
+**The two answers collide, and the resolution is written down so nobody undoes it.** Q1 decided
+*Post is inert until there is non-whitespace text*; a textarea holding a prefilled **value** is
+never empty, so Post would be live on open and one tap would post the canned sentence unedited —
+repealing Q1's rule by accident and filling clubs with identical sentences.
 
-**(b) A canned introduction posted automatically into the Welcome club on the auto-join**, since
-that club is never prompted. **This one has an objection and it is not a matter of taste.** It is
-one thread per signup, authored by a rider who did not write the words — precisely the shape
-`club-timeline-engagement` §D2 refused, and the reason this change was able to argue it was *not*
-reopening that refusal is that the rider types and posts. Concretely: `club_threads.author_id` is
-`NOT NULL` and cascades from `profiles`, so the row must name the new rider as the author of a
-sentence they never wrote; `081`'s DELETE policy then lets them delete it, and account deletion
-takes it too; and it mints one thread per signup for ever in the one club every rider is in.
-**If the owner means (b), it needs its own decision and its own story**, and the words must be
-attributable to the app rather than to the rider — which this schema has no way to express today,
-because a thread has exactly one author and no system actor exists.
+**So the starter is a `placeholder`, not a `defaultValue`.** The wording is visible in the field
+where a value would be, the field is genuinely empty, Post stays inert until the rider types, and
+Q1 keeps its meaning. `design.md` §Q3 carries the argument and says what to change *instead* if the
+owner overrules it — in that case Q1's disabled-Post rule is dropped rather than shipped as a rule
+that can never fire.
+
+**The starter is copy.** No CHECK, no migration, no schema. **No predicate anywhere may compare
+against it** — a rider who posts it verbatim has posted an ordinary introduction, and nothing in the
+system may be able to tell. Its text must satisfy the bounds the introduction already inherits
+(`~ '\S'`, at most 1000 characters), which any sentence does.
+
+**Arm (b) — a canned introduction auto-posted into the Welcome club — is refused**, and its
+objection is kept in `design.md` §Q3 rather than deleted, because *"just auto-post one there"* is
+the predictable next suggestion. The short form: `club_threads.author_id` is `NOT NULL` with no
+default, so such a row must name the new rider as the author of a sentence they did not write, and
+this schema has no system actor to put there instead.
 
 ## How this is built — three stories, in this order
 
