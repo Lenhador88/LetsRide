@@ -163,6 +163,29 @@ because `.from()` calls scattered across a dozen files mean a renamed column is 
 find, which is exactly the trap `003` set by dropping `full_name`. Re-derive the spread with
 `git grep -c "\.from('" -- 'src/*.ts' 'src/*.tsx'`.
 
+**Every embed of `profiles` names its foreign key, and the reason is that a migration touching
+neither the query nor its policies can break it.** PostgREST resolves `alias:profiles(…)` by
+counting the relationships between the two tables, and it counts a **many-to-many** one through a
+third table when that table is a **junction**: two foreign keys, and a primary key that is exactly
+the union of their columns. **"Any third table holding a key to both" is the tempting rule and it
+is false** — `postcards` holds keys to `clubs` and `rides` and has never made `rides` → `clubs`
+ambiguous — and stating it that way is worse than useless, because it reads a dozen working embeds
+as broken and gets discounted as noise. The property that is actually dangerous is the ordinary
+join table, `primary key (a, b)` over its own two keys. `092` added the eighth on DEV —
+`club_join_waves`, at a membership and by a rider — and Your clubs, Explore clubs, the club roster
+and the club timeline all started answering `PGRST201` / **HTTP 300** together. **No gate here can see it** — `tsc` type-checks a template string, ESLint reads no SQL,
+Vitest mocks the client, `next build` issues no query, and the RLS suite runs on plain Postgres
+where PostgREST's relationship cache does not exist — so it reached DEV green and was found in the
+log stream, as a status nothing alerts on. A hinted embed cannot go ambiguous whatever a later
+migration adds; membership rows go through `MEMBER_PROFILE_EMBED` in `lib/data/columns.ts`, whose
+header carries the SQL that lists the real junctions and the measurement proving the hint resolves
+to the many-to-one. `src/lib/data/__tests__/embed-hints.test.ts` refuses an unhinted one — note
+that `!inner` is a **join modifier and not a hint**, which is the spelling that looks safe:
+
+```bash
+npx vitest run src/lib/data/__tests__/embed-hints.test.ts
+```
+
 **Writes go through `src/lib/actions/`**, one function per mutation — plain async functions in
 the browser, not Server Actions. The boundary is the point: one place that writes, named and
 typed per mutation. Two of the three arguments that created the directory still hold, and the
@@ -681,19 +704,29 @@ by anything, and has been deleted. It is unrelated to `letsride-dev`.
 **Applied state: 96 files; DEV is at `096` and PROD at `091` — measured 2026-09-01, so `092`–`096`
 are DEV-ONLY and awaiting promotion.** Count rather than trust it: `list_migrations` against both
 refs, against `ls supabase/migrations/`. `092`–`095` are the club batch (PD-356,
-PD-360, PD-348, PD-194) and `096` is the analytics opt-out (PD-353), and **all five are
-additive**, so the promotion applies them to PROD **before** its build
-serves — with two conditions that are not optional and the first of which is the reverse of the
-usual worry: `092` and
-`093` each widen an exhaustive client switch (`notificationCopy` and `NotificationsListItem`'s
-`describe`), so PROD must not receive a `club_waved`, `club_invited` or `club_invite_declined` row
-while an older bundle is still serving. And **`096` is the one whose order is decided by the NEWER
-bundle rather than the older one**: an older bundle names none of it and its trigger is a
-behavioural no-op, but a newer bundle against a pre-`096` database sends `posthog_session_id` and
-gets `PGRST204` — feedback submission down entirely for the length of the gap. So "additive, so
-the order does not matter" is wrong here, and the reason is worth carrying: the additive-first rule
-asks which side fails safe, and for a column a shipped client WRITES, migration-first is the only
-safe side. `036`'s hand-exercise gate fires on `096` per project. On DEV they went **after** the merge's deployment reached
+PD-360, PD-348, PD-194) and `096` is the analytics opt-out (PD-353). All five are additive, and
+**the promotion applies them in TWO groups on opposite sides of the build, which deliberately
+breaks filename order** — the one place in this repo where it is broken on purpose, and it is safe
+because `096` names nothing `092`–`095` create (its only mention of them is a comment) and they
+name nothing of its:
+
+- **`096` FIRST, before the build serves.** An older bundle names none of it and its trigger is a
+  behavioural no-op, but a newer bundle against a pre-`096` database sends `posthog_session_id`
+  and gets `PGRST204` — feedback submission down entirely for the length of the gap. For a column
+  a shipped client WRITES, migration-first is the only safe side.
+- **`092`–`095` AFTER the build is confirmed serving** — `089`'s footing, and `092` is the reason
+  it is not optional. `092` gives PostgREST a second `club_members`↔`profiles` relationship, so an
+  OLDER bundle's unhinted embed answers `PGRST201` / HTTP 300 the moment it applies: Your clubs,
+  Explore clubs, the club roster and the club timeline, all four dead for every rider until the
+  build lands (PD-363, and it is what happened on DEV). The bundle carrying
+  `MEMBER_PROFILE_EMBED` is correct against a pre- and post-`092` database alike, so deploy-first
+  has no unsafe side here — the new features simply answer `PGRST202` until their migration lands.
+  `092` and `093` also each widen an exhaustive client switch (`notificationCopy` and
+  `NotificationsListItem`'s `describe`), which this order satisfies too.
+
+So "additive, so the order does not matter" is wrong for both groups, in opposite directions: the
+additive-first rule asks which side fails safe, and here the two files disagree about which side
+that is. `036`'s hand-exercise gate fires on `096` per project. On DEV they went **after** the merge's deployment reached
 `READY` on the merge sha with `aliasError` null, which is `089`'s rule and is the order to repeat.
 Each change's `tasks.md` §7 carries its own. **Level is the exception, not the resting state** — DEV-ahead is where a
 migration lives between its merge and its promotion, so read a per-project difference as a pending
