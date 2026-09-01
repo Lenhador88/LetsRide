@@ -1158,22 +1158,50 @@ anchor, no migration), `PD-367` (club-thread notifications, `098` plus `100`) an
 fan-out widened, `099`). Both projects are at `100`; `main` and `development` are both at the
 promotion merge with identical trees.
 
-**The one thing still owed, and it is the biggest: NOTHING IN THIS BUNDLE HAS BEEN RENDERED.**
-`npm run walk` has not run over any of it — this container's Chromium cannot reach Supabase without
-`scripts/supabase-relay.mjs`, and the DEV walk account's password is not in the repo, not in the
-environment, and only the product owner has it. So the introduction sheet, the join row's new door,
-the return-anchor scroll and the two notification rows are verified by `tsc`, ESLint, Vitest,
-`next build` and the RLS suite and by **nothing that draws a pixel**. The introduction sheet also has
-**no v2 Figma frame**, so its composition and wording are inferred —
-`docs/FIGMA-FIDELITY-TODO.md` §Club detail carries the command that establishes it.
+**IT HAS NOW BEEN RENDERED — the walk ran against DEV on 2026-09-01 and is green.** 23/23 screens
+and 47/47 guard, navigation and sign-out checks, run twice: once as the club's OWNER and once as an
+ordinary MEMBER, which are different code paths on the club detail because the introduction prompt
+exempts an owner.
 
-**Why that was an acceptable risk at the promotion and will not be next time.** Production holds
+**Two durable DEV fixtures were created for it, and they are the reason the next walk needs no
+setup:**
+
+| Email | Username | State |
+|---|---|---|
+| `walk-fixture@letsride.dev` | `walkfixture` | Onboarded, has a location and a bike. **Owns `Walk fixture club`** (public, non-default) and a thread in it |
+| `walk-fixture-2@letsride.dev` | `walkfixture2` | Onboarded. A **member** of that club, so the introduction prompt fires for them; has posted an introduction |
+
+**Both share one password and it is NOT in this repo** — same rule as every other account here. It is
+with the product owner; ask for it, or read it from wherever they have stored it. Everything else
+about the fixtures is above, so the only thing a session needs handed to it is the password.
+
+**What was exercised end to end, through the real database under real RLS:** `introduce_to_club`
+wrote an introduction and **refused the second with `42501`** (one per membership); a reply and a
+wave each fired their fan-out; and the notifications screen rendered both new types as *"replied to
+Route planning for the weekend."* and *"waved at Route planning for the weekend."* — the thread
+TITLE resolved, which is the new hinted embed working, and the generic
+`did something on LetsRide.` fallback absent, which is both switch arms being present.
+
+**`/notifications` was added to the walk's route list in the same session**, with its reason at the
+site: it renders an exhaustive switch over `notifications.type` in two places and was the only route
+in the app the walk could not see, while `098` took that switch from fourteen arms to sixteen.
+
+**Two things are still NOT exercised, and neither is closable here.** **Realtime** — the relay does
+not proxy the WebSocket upgrade, so the walk suppresses the failures and reports the absence rather
+than hiding it. And the introduction **sheet's own interaction** — typing into it and tapping Post —
+was driven through the RPC rather than by clicking, so the sheet is proven to MOUNT without throwing
+and its writes are proven correct, but the button wiring itself is covered only by its component
+test. The introduction sheet also still has **no v2 Figma frame**, so its composition and wording
+remain inferred.
+
+**Why the promotion was low-risk even before the walk ran, which is worth keeping for the next one.** Production holds
 exactly ONE club — the Welcome club, `is_default = true` — with 0 threads and 0 messages, and every
 part of this bundle exempts or cannot reach that state: the introduction prompt and
 `introduce_to_club` both refuse the default club, `notify_club_joined` returns early on it, and the
-return anchor and thread notifications need a thread. So the bundle is **inert until somebody
-creates a real club**, and that moment — not the promotion — is what the walk should precede.
-Re-measure rather than trusting it, because one real club changes the answer:
+return anchor and thread notifications need a thread. So the bundle was **inert until somebody
+creates a real club** — which is why promoting ahead of the walk was defensible, and why the walk
+still mattered and was worth running the same evening. Re-measure rather than trusting it, because
+one real club changes the answer:
 
 ```sql
 select count(*) from public.clubs where not is_default;   -- 0 on PROD, 2026-09-01
