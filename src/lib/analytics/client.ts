@@ -216,6 +216,25 @@ export function initAnalytics(): AnalyticsStatus {
   }
 
   posthog.init(KEY, buildPostHogOptions())
+
+  // **Forced off, on every load, even though `opt_out_capturing_by_default` is
+  // already true — and this line is the one that actually closes the hole.**
+  //
+  // That option is a DEFAULT: posthog-js persists consent to `localStorage`, and
+  // a stored opt-IN from an earlier visit wins over it. So a rider who was
+  // recorded on this device and later opted out on ANOTHER one comes back
+  // opted in, and is recorded until the round trip below answers — on
+  // `/auth/login`, which under this app's unmasked pilot posture is the screen
+  // showing their email being typed. The preference cannot be read there at
+  // all: `my_analytics_opt_out()` is `security definer` on the caller's own row
+  // and there is no caller until a session exists (decision #1).
+  //
+  // The cost is one round trip of un-recorded session per load, and
+  // `applyAnalyticsPreference` fires the pageview it swallowed. That is the
+  // right way round: the failure is missing data rather than data from a rider
+  // who said no.
+  posthog.opt_out_capturing()
+
   status = 'initialised'
   if (pendingRider !== undefined) identifyAnalyticsRider(pendingRider)
   return status
@@ -231,11 +250,21 @@ export function initAnalytics(): AnalyticsStatus {
 export function applyAnalyticsPreference(optedOut: boolean | undefined): void {
   if (status !== 'initialised') return
   try {
-    if (optedOut === false) {
-      posthog.opt_in_capturing()
-    } else if (optedOut === true) {
+    if (optedOut === true) {
       posthog.opt_out_capturing()
+      return
     }
+    if (optedOut !== false) return
+
+    posthog.opt_in_capturing()
+
+    // The pageview `Observability` fired on mount was swallowed by the forced
+    // opt-out in `initAnalytics`, and its effect will not run again until the
+    // rider NAVIGATES — so without this the first screen of every session is
+    // missing, which is most of a funnel's entry point. Fired here rather than
+    // left to PostHog's own opt-in event, whose `$current_url` would carry the
+    // `?id=` this app puts on every detail route.
+    capturePageview(window.location.pathname)
   } catch {
     // Analytics must never be able to take a screen down.
   }
@@ -255,6 +284,13 @@ export function applyAnalyticsPreference(optedOut: boolean | undefined): void {
  * `reset()` on sign-out rather than `identify(null)`: it also drops the local
  * distinct id, so the next rider on a shared device does not inherit the
  * previous one's identity or their session.
+ *
+ * **`reset()` also clears the stored consent**, which with
+ * `opt_out_capturing_by_default` means the instance is opted out afterwards —
+ * so it must run BEFORE `opt_in_capturing()`, never after, or capturing stops
+ * silently. That ordering holds here by construction rather than by care:
+ * `writeSession` calls this, and `applyAnalyticsPreference` runs only once the
+ * stamp read that follows a sign-in has returned. Do not move either.
  */
 export function identifyAnalyticsRider(userId: string | null): void {
   pendingRider = userId

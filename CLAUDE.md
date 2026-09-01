@@ -174,8 +174,11 @@ first is why it must never be dissolved back into components:
    writes safe in the first place. A Server Action omitting a column was never a rule.
 
    **The participation gate is narrower than "every write", and stating it broader is how a gap
-   gets inherited as covered.** `enforce_participation_gate` is on **seventeen** tables on
-   BOTH projects — measured 2026-08-30, level again at #348's promotion, PROD having been eleven
+   gets inherited as covered.** `enforce_participation_gate` is on **twenty-two** tables on DEV and
+   **seventeen** on PROD — measured 2026-09-01, and the five-table gap is `092`–`095` awaiting
+   promotion, which is the ordinary DEV-ahead state rather than a defect. This sentence said
+   "seventeen on BOTH" for a day after `092`–`095` applied, which is why the rule below is to
+   count rather than read. PROD was eleven
    until `081`, `083`, `084`, `085` and `091` went with it (`086`–`090` add no gate) —
    `postcards`,
    `clubs`, `rides`, `club_members`, `ride_members`, `postcard_comments`, `postcard_likes`,
@@ -677,14 +680,22 @@ Two consequences worth carrying here rather than only there:
 A third project named `LetsRide` (`ylxnicopnaroltebvfnc`) existed briefly, was never referenced
 by anything, and has been deleted. It is unrelated to `letsride-dev`.
 
-**Applied state: 95 files; DEV is at `095` and PROD at `091` — measured 2026-08-31, so `092`–`095`
+**Applied state: 96 files; DEV is at `096` and PROD at `091` — measured 2026-09-01, so `092`–`096`
 are DEV-ONLY and awaiting promotion.** Count rather than trust it: `list_migrations` against both
-refs, against `ls supabase/migrations/`. Those four are the club batch (PD-356, PD-360, PD-348,
-PD-194), and **all four are additive**, so the promotion applies them to PROD **before** its build
-serves — with one condition that is not optional and is the reverse of the usual worry: `092` and
+refs, against `ls supabase/migrations/`. `092`–`095` are the club batch (PD-356,
+PD-360, PD-348, PD-194) and `096` is the analytics opt-out (PD-353), and **all five are
+additive**, so the promotion applies them to PROD **before** its build
+serves — with two conditions that are not optional and the first of which is the reverse of the
+usual worry: `092` and
 `093` each widen an exhaustive client switch (`notificationCopy` and `NotificationsListItem`'s
 `describe`), so PROD must not receive a `club_waved`, `club_invited` or `club_invite_declined` row
-while an older bundle is still serving. On DEV they went **after** the merge's deployment reached
+while an older bundle is still serving. And **`096` is the one whose order is decided by the NEWER
+bundle rather than the older one**: an older bundle names none of it and its trigger is a
+behavioural no-op, but a newer bundle against a pre-`096` database sends `posthog_session_id` and
+gets `PGRST204` — feedback submission down entirely for the length of the gap. So "additive, so
+the order does not matter" is wrong here, and the reason is worth carrying: the additive-first rule
+asks which side fails safe, and for a column a shipped client WRITES, migration-first is the only
+safe side. `036`'s hand-exercise gate fires on `096` per project. On DEV they went **after** the merge's deployment reached
 `READY` on the merge sha with `aliasError` null, which is `089`'s rule and is the order to repeat.
 Each change's `tasks.md` §7 carries its own. **Level is the exception, not the resting state** — DEV-ahead is where a
 migration lives between its merge and its promotion, so read a per-project difference as a pending
@@ -783,7 +794,7 @@ so from the moment it applies every like, comment, RSVP, ride creation and club 
 inside the rider's own transaction — and **a trigger that raises takes that rider's write down with
 it**. Exercise every affected path by hand on DEV first, in a rolled-back transaction.
 
-Suite **2949** assertions — re-derive rather than trust it:
+Suite **3035** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss, which is exactly
 what `038` did to one of `036`'s assertions.
@@ -824,7 +835,9 @@ rider with a NULL stamp no way out of the wizard. Inside a `security definer` fu
 and `012`'s guards — which begin `if current_user <> 'authenticated' then return new` —
 short-circuit and never run. CHECK constraints do still fire. Measured on Postgres 16.
 
-**Security advisors: twenty-seven, and only one is outstanding.** Re-derive rather than trust the number
+**Security advisors: twenty-seven on PROD and thirty-six on DEV, and only one is outstanding.**
+**The table below describes PROD** — measured 2026-09-01, and reading it against DEV produces a
+nine-advisor surplus that looks like a finding and is `092`–`096` awaiting promotion. Re-derive rather than trust the number
 — `get_advisors(security)` — but the *shape* is durable, because twenty-six of the twenty-seven are
 things this repo chose, and a bare count cannot tell a session whether a new WARN is expected:
 

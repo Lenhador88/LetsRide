@@ -206,10 +206,20 @@ export async function removeCountry(code: string): Promise<ActionState> {
  */
 export async function setAnalyticsOptOut(optOut: boolean): Promise<ActionState> {
   const supabase = await resolveSupabase()
-  const { error } = await supabase.rpc('set_analytics_opt_out', { p_opt_out: optOut })
+  // `p_opt_out` is load-bearing as a NAME: PostgREST maps a parameter name to
+  // the JSON key, so renaming it in the migration is a wire-format change.
+  //
+  // The function returns the EFFECTIVE stamp — a timestamptz when opted out,
+  // null when not — so the SDK is told what the database actually recorded
+  // rather than what was asked for. One message for every failure, matching the
+  // shape `096`'s siblings use: no session is `42501`, no profile row `P0002`,
+  // and a database that has not had `096` applied yet answers `PGRST202`.
+  // Branching on those would tell a rider which, and none of them is
+  // actionable from a toggle.
+  const { data, error } = await supabase.rpc('set_analytics_opt_out', { p_opt_out: optOut })
   if (error) return { error: 'Could not save that. Try again.' }
 
-  applyAnalyticsPreference(optOut)
+  applyAnalyticsPreference(data !== null)
   invalidate(queryKeys.profile.analyticsOptOut())
   return { error: null }
 }

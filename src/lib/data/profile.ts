@@ -338,6 +338,12 @@ export async function getProfileCountries(userId: string): Promise<string[]> {
  */
 export async function getAnalyticsOptOut(): Promise<boolean> {
   const supabase = await resolveSupabase()
-  const optedOut = unwrap(await supabase.rpc('my_analytics_opt_out'), 'your privacy settings')
-  return optedOut === true
+  // **A TIMESTAMP or null, never a boolean.** `096` returns the stamp itself so
+  // the answer carries *when* as well as *whether*, which is the idiom
+  // `terms_accepted_at` and `onboarding_completed_at` already use. Comparing
+  // this to `true` type-checks against `unwrap`'s generic and reads every rider
+  // as opted IN — which is the failure direction, and it is invisible without
+  // a real database because there is nothing to disagree with.
+  const stamp = unwrap(await supabase.rpc('my_analytics_opt_out'), 'your privacy settings')
+  return stamp !== null
 }

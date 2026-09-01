@@ -151,6 +151,38 @@ describe('what the source must and must not contain', () => {
     expect(source).toContain('get_session_id')
   })
 
+  it('forces capture OFF at init rather than trusting the default', () => {
+    // The hole this closes is invisible from the options object, which is why
+    // it is asserted here: `opt_out_capturing_by_default` is a DEFAULT, and
+    // posthog-js persists consent to localStorage, so a stored opt-IN from an
+    // earlier visit wins over it. A rider who was recorded on this device and
+    // later opted out on another one would come back opted in and be recorded
+    // on `/auth/login` — under an unmasked pilot posture, the screen showing
+    // their email being typed — because the preference cannot be read at all
+    // before a session exists.
+    //
+    // The call must be inside `initAnalytics`, after `posthog.init`.
+    const init = source.slice(source.indexOf('export function initAnalytics'))
+    const initBody = init.slice(0, init.indexOf('\n}'))
+    expect(initBody).toContain('posthog.init(KEY')
+    expect(initBody).toContain('posthog.opt_out_capturing()')
+    expect(initBody.indexOf('posthog.opt_out_capturing()')).toBeGreaterThan(
+      initBody.indexOf('posthog.init(KEY')
+    )
+  })
+
+  it('re-fires the pageview when it opts in, so the first screen is not lost', () => {
+    // The cost of forcing capture off above: the pageview `Observability` fired
+    // on mount was swallowed, and its effect will not run again until the rider
+    // NAVIGATES. Without this line the first screen of every session is
+    // missing, which is most of a funnel's entry point — and it fails silently,
+    // exactly like the SPA pageview problem it is a second instance of.
+    const apply = source.slice(source.indexOf('export function applyAnalyticsPreference'))
+    const applyBody = apply.slice(0, apply.indexOf('\n}'))
+    expect(applyBody).toContain('posthog.opt_in_capturing()')
+    expect(applyBody).toContain('capturePageview(')
+  })
+
   it('reads the key as a literal so the bundler inlines it', () => {
     // `process.env[name]` compiles to a runtime lookup against an object that
     // does not exist in the browser, which reads as "not configured" on every

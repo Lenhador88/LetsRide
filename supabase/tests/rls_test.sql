@@ -27550,6 +27550,594 @@ reset role;
 reset role;
 rollback to savepoint owner_leaves_095;
 
+-- ===========================================================================
+-- 096 · The analytics opt-out, and the replay link on feedback
+-- ===========================================================================
+-- PD-353. Two schema facts with opposite enforcement shapes, and the pairing is
+-- the point:
+--
+--   * `profiles.analytics_opt_out_at` is protected by an ABSENT GRANT. It is in
+--     none of `025`'s three column lists, so the refusal is identical for every
+--     reader, every subject and every statement shape — there is no predicate
+--     to be an oracle. 096.2 - 096.5 assert that from six directions.
+--   * `feedback.posthog_session_id` is protected by a TRIGGER that never
+--     raises. 096.7 asserts both branches, and the SUCCESS half is the one that
+--     would catch a trigger rewritten to refuse.
+--
+-- **The database cannot enforce the preference itself** — PostHog is a
+-- client-side SDK and nothing here is in its path. Everything below is about
+-- who may learn the preference and what a feedback row may carry, which is the
+-- whole of what SQL can say about it.
+--
+--   960001  opted IN. Owns club cA, organises ride r1, authors postcard p1
+--   960002  ** THE SUBJECT. ** Opted OUT. Member of cA, crew of r1
+--   960003  admin of cA
+--   960004  non-member, in nothing
+--   960005  has BLOCKED 960002
+--   960006  onboarded, terms_accepted_at NULL  -- 096.9
+--   960007  plain fellow member of cA
+savepoint analytics_096;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000960001', 'aoptin@example.com'),
+  ('00000000-0000-0000-0000-000000960002', 'aoptout@example.com'),
+  ('00000000-0000-0000-0000-000000960003', 'aadmin@example.com'),
+  ('00000000-0000-0000-0000-000000960004', 'astranger@example.com'),
+  ('00000000-0000-0000-0000-000000960005', 'ablocker@example.com'),
+  ('00000000-0000-0000-0000-000000960006', 'anoterms@example.com'),
+  ('00000000-0000-0000-0000-000000960007', 'amember@example.com');
+reset role;
+
+update profiles set username = 'aoptin',    location = 'Utrecht',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000960001';
+update profiles set username = 'aoptout',   location = 'Haarlem',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000960002';
+update profiles set username = 'aadmin',    location = 'Zeist',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000960003';
+update profiles set username = 'astranger', location = 'Breda',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000960004';
+update profiles set username = 'ablocker',  location = 'Gouda',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000960005';
+-- No terms_accepted_at, deliberately: the account created by calling GoTrue's
+-- /auth/v1/signup directly and never calling accept_terms(). 096.9 is what that
+-- rider must still be able to do.
+update profiles set username = 'anoterms',  location = 'Ede',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000960006';
+update profiles set username = 'amember',   location = 'Delft',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  where id = '00000000-0000-0000-0000-000000960007';
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000009600c1', 'Opt-out MC', true,
+   '00000000-0000-0000-0000-000000960001'),
+  ('00000000-0000-0000-0000-0000009600c2', 'A club to join', true,
+   '00000000-0000-0000-0000-000000960001');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000009600c1', '00000000-0000-0000-0000-000000960001', 'owner'),
+  ('00000000-0000-0000-0000-0000009600c1', '00000000-0000-0000-0000-000000960002', 'member'),
+  ('00000000-0000-0000-0000-0000009600c1', '00000000-0000-0000-0000-000000960003', 'admin'),
+  ('00000000-0000-0000-0000-0000009600c1', '00000000-0000-0000-0000-000000960007', 'member'),
+  ('00000000-0000-0000-0000-0000009600c2', '00000000-0000-0000-0000-000000960001', 'owner');
+insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id) values
+  ('00000000-0000-0000-0000-0000009600e1', 'The opt-out run', 'The Bridge',
+   now() + interval '7 days', true, '00000000-0000-0000-0000-000000960001');
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000009600e1', '00000000-0000-0000-0000-000000960002', 'going');
+insert into postcards (id, author_id, image_path, caption) values
+  ('00000000-0000-0000-0000-0000009600f1', '00000000-0000-0000-0000-000000960001',
+   'postcards/00000000-0000-0000-0000-000000960001/one.jpg', 'A road');
+-- Directional in the row, symmetric in effect: 096.4 reads it from both ends.
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000960005', '00000000-0000-0000-0000-000000960002');
+
+-- ---------------------------------------------------------------------------
+-- 096.1  The column exists, and `authenticated` holds NOTHING on it
+-- ---------------------------------------------------------------------------
+-- The existence assertion is not ceremony. Every refusal below is 42501, and a
+-- column that did not exist at all would answer 42703 — so `assert_rejected`
+-- with an explicit SQLSTATE is what makes those tests non-vacuous, and this is
+-- the second half of the same argument.
+select assert_eq(
+  (select count(*)::int from pg_attribute
+    where attrelid = 'public.profiles'::regclass
+      and attname = 'analytics_opt_out_at' and not attisdropped),
+  1, '096.1: profiles.analytics_opt_out_at exists ...');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'analytics_opt_out_at', 'select'),
+  false, '096.1: ... and `authenticated` holds no SELECT on it — the whole of the control, because RLS is row-level and the SELECT policy admits every non-blocked rider with a username');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'analytics_opt_out_at', 'insert'),
+  false, '096.1: ... no INSERT either, so a rider cannot arrive already opted out by writing their own row');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'analytics_opt_out_at', 'update'),
+  false, '096.1: ... and no UPDATE, which is what makes set_analytics_opt_out() the only write path rather than merely the intended one');
+
+-- The over-tightening guard, `025`'s shape. If these go false, 096 restated a
+-- grant list it was told not to touch and the app cannot render a byline.
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'username', 'select'),
+  true, '096.1: 025''s SELECT list is untouched — username ...');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'avatar_path', 'select'),
+  true, '096.1: ... avatar_path ...');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'location', 'select'),
+  true, '096.1: ... and location still read, so a member list still renders');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'username', 'update'),
+  true, '096.1: ... and username is still writable, so 096 did not narrow the UPDATE list either');
+-- The widths, which the four above cannot see: a list can keep every column it
+-- had and still have GAINED one. 8/7/6 is 025's shape, measured on DEV
+-- 2026-09-01 and unchanged by this file.
+select assert_eq(
+  (select count(*)::int from pg_attribute
+    where attrelid = 'public.profiles'::regclass and attnum > 0 and not attisdropped
+      and has_column_privilege('authenticated', 'public.profiles', attname, 'select')),
+  8, '096.1: 025''s SELECT list is still EIGHT columns wide — the assertion that catches a widening rather than a narrowing, which is the direction this file could actually have got wrong');
+select assert_eq(
+  (select count(*)::int from pg_attribute
+    where attrelid = 'public.profiles'::regclass and attnum > 0 and not attisdropped
+      and has_column_privilege('authenticated', 'public.profiles', attname, 'insert')),
+  7, '096.1: ... the INSERT list still seven ...');
+select assert_eq(
+  (select count(*)::int from pg_attribute
+    where attrelid = 'public.profiles'::regclass and attnum > 0 and not attisdropped
+      and has_column_privilege('authenticated', 'public.profiles', attname, 'update')),
+  6, '096.1: ... and the UPDATE list still six');
+select assert_eq(has_table_privilege('authenticated', 'public.profiles', 'select'),
+  false, '096.1: and no TABLE-level SELECT grant was restored while adding a column — 025''s shape survives, and a column-level revoke against a table grant would have been a documented no-op');
+
+-- ---------------------------------------------------------------------------
+-- 096.2  ** THE NEGATIVE CASE THIS COLUMN EXISTS FOR. ** Rider A cannot learn
+--        rider B's preference by ANY route
+-- ---------------------------------------------------------------------------
+-- Four statement shapes, because the app is a client-rendered bundle talking to
+-- PostgREST: a projection, an EMBED on a member list (`profiles(...)`, which is
+-- a join here), an ORDER and a FILTER. The last two matter most — neither
+-- returns the value, so a reviewer reading only the projection case would think
+-- the column was safe while `?order=analytics_opt_out_at` sorted every rider by
+-- whether they said no.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000960004', false);
+
+-- First, the positive half: A really can see B's ROW. Without this the four
+-- refusals below would pass against a rider who simply cannot see the row at
+-- all, which is a different (and absent) protection.
+select assert_eq(
+  (select username from profiles where id = '00000000-0000-0000-0000-000000960002'),
+  'aoptout', '096.2: a non-member CAN read the subject''s profile row — the SELECT policy admits it, which is exactly why the column needs a grant to hide behind');
+
+select assert_rejected($$
+  select analytics_opt_out_at from profiles
+   where id = '00000000-0000-0000-0000-000000960002'$$,
+  '42501', '096.2: ... but naming the column is refused — a projection cannot reach it');
+select assert_rejected($$
+  select p.username, p.analytics_opt_out_at
+    from club_members m join profiles p on p.id = m.user_id
+   where m.club_id = '00000000-0000-0000-0000-0000009600c1'$$,
+  '42501', '096.2: ... nor an embed on a member list, which is how a real screen would ask');
+select assert_rejected($$
+  select id from profiles order by analytics_opt_out_at$$,
+  '42501', '096.2: ... nor an ORDER BY, which returns the value in the ordering rather than in the projection');
+select assert_rejected($$
+  select id from profiles where analytics_opt_out_at is not null$$,
+  '42501', '096.2: ... nor a FILTER, which answers the question one row at a time without ever selecting it');
+select assert_rejected($$
+  select count(analytics_opt_out_at) from profiles$$,
+  '42501', '096.2: ... nor an aggregate, which would leak the count of opted-out riders without naming one');
+select assert_rejected($$
+  select * from profiles where id = '00000000-0000-0000-0000-000000960002'$$,
+  '42501', '096.2: ... and select * is refused, as it already was for the two consent stamps — noted as inherited rather than new, because this case would pass with 096 reverted');
+
+-- ---------------------------------------------------------------------------
+-- 096.3  ** THE FAILURE SHAPE IS NOT AN ORACLE. **
+-- ---------------------------------------------------------------------------
+-- The refusal must be byte-identical for an opted-OUT rider, an opted-IN rider
+-- and a rider who does not exist. It is, because the column is absent from a
+-- GRANT rather than guarded by a predicate — privilege is checked against the
+-- statement before a single row is considered. This is the assertion that would
+-- catch someone "fixing" 096.2 with a policy or a masking function later: both
+-- would answer differently per subject and hand a reader the very bit the
+-- column is meant to withhold.
+reset role;
+create function public.pd096_refusal(stmt text)
+returns text
+language plpgsql
+as $$
+begin
+  execute stmt;
+  return 'NOT REFUSED';
+exception
+  when others then
+    return sqlstate || ' | ' || sqlerrm;
+end;
+$$;
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000960004', false);
+select assert_eq(
+  public.pd096_refusal($$select analytics_opt_out_at from profiles where id = '00000000-0000-0000-0000-000000960002'$$),
+  public.pd096_refusal($$select analytics_opt_out_at from profiles where id = '00000000-0000-0000-0000-000000960001'$$),
+  '096.3: the refusal is IDENTICAL for an opted-out rider and an opted-in one — sqlstate and message both, so the error carries no bit of the answer');
+select assert_eq(
+  public.pd096_refusal($$select analytics_opt_out_at from profiles where id = '00000000-0000-0000-0000-000000960002'$$),
+  public.pd096_refusal($$select analytics_opt_out_at from profiles where id = '00000000-0000-0000-0000-000000969999'$$),
+  '096.3: ... and identical again for a rider who does not exist, so the shape does not even confirm the subject');
+select assert_eq(
+  public.pd096_refusal($$select analytics_opt_out_at from profiles where id = '00000000-0000-0000-0000-000000960002'$$),
+  '42501 | permission denied for table profiles',
+  '096.3: ... and the shape is a TABLE-level permission refusal rather than anything mentioning the column, which is what "absent from a grant list" looks like from the client');
+
+-- ---------------------------------------------------------------------------
+-- 096.4  The full role sweep — every relationship that reaches the row
+-- ---------------------------------------------------------------------------
+-- Each is the same refusal for the same reason, and that is the finding rather
+-- than a redundancy: ownership, club role, ride role and blocking play NO part
+-- in a column grant. Written per role so that a later migration granting the
+-- column "just for club admins" fails here rather than shipping.
+select set_config('test.uid', '00000000-0000-0000-0000-000000960001', false);
+select assert_rejected($$
+  select analytics_opt_out_at from profiles where id = '00000000-0000-0000-0000-000000960002'$$,
+  '42501', '096.4: a club OWNER cannot read a member''s opt-out ...');
+select assert_rejected($$
+  select p.analytics_opt_out_at from ride_members rm join profiles p on p.id = rm.user_id
+   where rm.ride_id = '00000000-0000-0000-0000-0000009600e1'$$,
+  '42501', '096.4: ... nor can a ride ORGANIZER read their own crew''s');
+select set_config('test.uid', '00000000-0000-0000-0000-000000960003', false);
+select assert_rejected($$
+  select analytics_opt_out_at from profiles where id = '00000000-0000-0000-0000-000000960002'$$,
+  '42501', '096.4: ... nor a club ADMIN, 019''s role playing no part in a column grant');
+select set_config('test.uid', '00000000-0000-0000-0000-000000960007', false);
+select assert_rejected($$
+  select analytics_opt_out_at from profiles where id = '00000000-0000-0000-0000-000000960002'$$,
+  '42501', '096.4: ... nor a fellow club MEMBER');
+select set_config('test.uid', '00000000-0000-0000-0000-000000960005', false);
+select assert_rejected($$
+  select analytics_opt_out_at from profiles where id = '00000000-0000-0000-0000-000000960002'$$,
+  '42501', '096.4: ... nor a rider who has BLOCKED the subject — doubly, since the block hides the row and the grant hides the column, and neither is relied on alone');
+select set_config('test.uid', '00000000-0000-0000-0000-000000960002', false);
+select assert_rejected($$
+  select analytics_opt_out_at from profiles where id = '00000000-0000-0000-0000-000000960005'$$,
+  '42501', '096.4: ... and not in the other direction either, blocks being symmetric in effect though directional in the row');
+
+-- ---------------------------------------------------------------------------
+-- 096.5  `anon` reaches none of it
+-- ---------------------------------------------------------------------------
+-- Decision #1, asserted on the new surface rather than assumed from 007's
+-- sweep. A signed-out visitor reaches the shell and no data.
+reset role;
+select assert_eq(has_column_privilege('anon', 'public.profiles', 'analytics_opt_out_at', 'select'),
+  false, '096.5: anon holds no SELECT on the column ...');
+select assert_eq(has_column_privilege('anon', 'public.profiles', 'analytics_opt_out_at', 'update'),
+  false, '096.5: ... and no UPDATE ...');
+select assert_eq(has_function_privilege('anon', 'public.my_analytics_opt_out()', 'execute'),
+  false, '096.5: ... and cannot call the reader ...');
+select assert_eq(has_function_privilege('anon', 'public.set_analytics_opt_out(boolean)', 'execute'),
+  false, '096.5: ... nor the writer');
+select assert_eq(has_column_privilege('anon', 'public.feedback', 'posthog_session_id', 'insert'),
+  false, '096.5: ... and cannot write a session id onto a feedback row either');
+
+-- Both accessors ARE callable by riders, or the whole feature is a dead end,
+-- and the private helper is callable by no client role at all.
+select assert_eq(has_function_privilege('authenticated', 'public.my_analytics_opt_out()', 'execute'),
+  true, '096.5: a rider CAN call the reader ...');
+select assert_eq(has_function_privilege('authenticated', 'public.set_analytics_opt_out(boolean)', 'execute'),
+  true, '096.5: ... and the writer');
+select assert_eq(has_function_privilege('authenticated', 'private.strip_feedback_session_id()', 'execute'),
+  false, '096.5: ... and holds no EXECUTE on the sanitiser, which is a trigger''s to run and nobody''s to call — 031''s shape, naming the role rather than calling the function');
+select assert_eq(
+  (select bool_and(prosecdef) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where (n.nspname, p.proname) in (('public','my_analytics_opt_out'),
+                                     ('public','set_analytics_opt_out'),
+                                     ('private','strip_feedback_session_id'))),
+  true, '096.5: all three functions are security definer — the reader and writer because 025 withholds the column grant, the sanitiser because it reads a column no client role can see');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where (n.nspname, p.proname) in (('public','my_analytics_opt_out'),
+                                     ('public','set_analytics_opt_out'),
+                                     ('private','strip_feedback_session_id'))
+      -- The STORED form is `search_path=""`, quotes included: matching on a
+      -- bare `search_path=` finds nothing and reads as three unpinned definer
+      -- functions. rls_test.sql:3342 carries the same warning for 036's sweep.
+      and p.proconfig @> array['search_path=""']),
+  3, '096.5: ... and all three pin search_path to the empty string, so a schema on the caller''s path cannot shadow a name inside a definer body');
+
+-- ---------------------------------------------------------------------------
+-- 096.6  The accessors: own row only, and idempotent in the opt-out direction
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000960002', false);
+select assert_eq(public.my_analytics_opt_out(), null::timestamptz,
+  '096.6: a rider who has not opted out reads NULL — the same answer a rider with no row gets, and the correct one: absence means opted IN');
+select assert_eq(public.set_analytics_opt_out(true) is not null, true,
+  '096.6: set_analytics_opt_out(true) stamps and returns the effective value, so the caller writes its cache from the answer rather than from what it hoped');
+select assert_eq(public.my_analytics_opt_out() is not null, true,
+  '096.6: ... and the reader sees it immediately');
+
+-- ** The idempotence assertion is written against a KNOWN PAST stamp rather
+-- than by calling the writer twice, and that is not stylistic. ** now() is
+-- transaction_timestamp and this whole suite is one transaction, so two calls
+-- would return the same value even from an implementation that MOVED the stamp
+-- on every call. The naive test passes against the defect it names.
+reset role;
+update profiles set analytics_opt_out_at = timestamptz '2026-02-02 09:00:00+00'
+  where id = '00000000-0000-0000-0000-000000960002';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000960002', false);
+select assert_eq(public.set_analytics_opt_out(true), timestamptz '2026-02-02 09:00:00+00',
+  '096.6: a SECOND opt-out keeps the FIRST stamp rather than moving it — accept_terms()''s idempotence, so the record says when the rider decided and not when they last opened the screen');
+select assert_eq(public.set_analytics_opt_out(false), null::timestamptz,
+  '096.6: opting back in clears the stamp outright, leaving no residue a rider cannot undo');
+select assert_eq(public.my_analytics_opt_out(), null::timestamptz,
+  '096.6: ... and the reader agrees');
+select assert_eq(public.set_analytics_opt_out(true) is not null, true,
+  '096.6: ... and a rider can opt out again afterwards, so the toggle is a toggle');
+
+-- No subject parameter exists, so a foreign preference is UNREPRESENTABLE
+-- rather than merely refused — accept_terms()'s property, and the reason this
+-- is an RPC instead of a column grant.
+reset role;
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname in ('my_analytics_opt_out','set_analytics_opt_out')
+      and p.pronargs > (case when p.proname = 'set_analytics_opt_out' then 1 else 0 end)),
+  0, '096.6: neither accessor takes a rider id — the reader takes no argument at all and the writer takes one boolean, so there is no row to choose but your own');
+select assert_eq(
+  (select pg_get_function_identity_arguments(p.oid) from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'set_analytics_opt_out'),
+  'p_opt_out boolean', '096.6: ... and the writer''s signature is exactly (p_opt_out boolean) — the NAME is pinned as well as the type, because PostgREST maps it to the JSON key the client sends and renaming it is a silent PGRST202 rather than a type error');
+
+-- One rider's preference is invisible to another's reader, which is the
+-- accessor half of 096.2.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000960001', false);
+select assert_eq(public.my_analytics_opt_out(), null::timestamptz,
+  '096.6: ** an opted-IN rider still reads NULL while another rider is opted out ** — my_analytics_opt_out() reads auth.uid()''s own row and nobody else''s');
+
+-- A NULL argument is a client bug, not a third position. Refused rather than
+-- resolved, because the else-branch would silently record an opt-IN for a
+-- rider whose intent is unknown.
+select assert_rejected($$select public.set_analytics_opt_out(null)$$,
+  '22004', '096.6: set_analytics_opt_out(null) is REFUSED rather than read as an opt-in — the one direction this function must never guess in');
+
+-- ---------------------------------------------------------------------------
+-- 096.7  ** THE TRIGGER, BOTH BRANCHES. ** An opted-out rider's feedback keeps
+--        no session id, AND STILL SENDS
+-- ---------------------------------------------------------------------------
+-- The success half is the assertion that matters. A trigger rewritten to raise
+-- would satisfy "an opted-out rider's feedback carries no session id" perfectly
+-- while making an opt-out silently disable bug reporting — a preference
+-- becoming an authorization gate, which is the thing this change forbids.
+select set_config('test.uid', '00000000-0000-0000-0000-000000960001', false);
+select assert_allowed($$
+  insert into feedback (user_id, body, posthog_session_id)
+  values ('00000000-0000-0000-0000-000000960001',
+          'Opted in, with a session', '0198f3c2-1111-7000-8000-000000000001')$$,
+  '096.7: an opted-in rider files feedback carrying a session id');
+-- assert_allowed unwinds its own statement, so each row is written a second
+-- time for the stored value to be readable. Both writes are made AS THE RIDER
+-- and name no `id`, because `id` is not in the INSERT grant — which is 084's
+-- shape and the reason the fixture cannot pick its own primary keys here. Read
+-- back as the OWNER by body: there is no SELECT grant on this table for any
+-- client role, including the author.
+insert into feedback (user_id, body, posthog_session_id)
+values ('00000000-0000-0000-0000-000000960001',
+        'Opted in, stored', '0198f3c2-1111-7000-8000-000000000001');
+select set_config('test.uid', '00000000-0000-0000-0000-000000960002', false);
+select assert_allowed($$
+  insert into feedback (user_id, body, posthog_session_id)
+  values ('00000000-0000-0000-0000-000000960002',
+          'Opted out, and this must still send', '0198f3c2-2222-7000-8000-000000000002')$$,
+  '096.7: ** an OPTED-OUT rider''s feedback insert SUCCEEDS ** — the trigger nulls, it never raises, because PD-353''s first rule is that feedback sends even when analytics did not');
+insert into feedback (user_id, body, posthog_session_id)
+values ('00000000-0000-0000-0000-000000960002',
+        'Opted out, stored', '0198f3c2-2222-7000-8000-000000000002');
+
+reset role;
+select assert_eq(
+  (select posthog_session_id from feedback where body = 'Opted in, stored'),
+  '0198f3c2-1111-7000-8000-000000000001',
+  '096.7: the opted-in rider''s session id is stored verbatim ...');
+select assert_eq(
+  (select posthog_session_id from feedback where body = 'Opted out, stored'),
+  null::text,
+  '096.7: ... and the opted-out rider''s identical id is stored as NULL — the one place in this schema where the preference is a database fact rather than a promise the client makes');
+select assert_eq(
+  (select body from feedback where body = 'Opted out, stored'),
+  'Opted out, stored',
+  '096.7: ... and the REPORT itself is untouched, which is the whole point of nulling instead of refusing');
+
+-- ** The trigger carries NO `when (current_user = ...)` clause, unlike 084's
+-- gate on the same table, and this is what that difference buys. ** The gate is
+-- a rule about what RIDERS may write; this is a rule about the ROW, so it must
+-- fire for every writer including the table owner in the dashboard and any
+-- future definer path. 036 §7's trap, read in both directions on one table.
+insert into feedback (id, user_id, body, posthog_session_id)
+values ('00000000-0000-0000-0000-0000009600a5', '00000000-0000-0000-0000-000000960002',
+        'Written by the owner, not by a rider', '0198f3c2-3333-7000-8000-000000000003');
+select assert_eq(
+  (select posthog_session_id from feedback where id = '00000000-0000-0000-0000-0000009600a5'),
+  null::text,
+  '096.7: ** the sanitiser fires for the TABLE OWNER too ** — it has no current_user guard, so a seed, a repair statement or a definer path cannot store an opted-out rider''s session id either');
+select assert_eq(
+  (select pg_get_expr(tgqual, tgrelid) from pg_trigger
+    where tgrelid = 'public.feedback'::regclass and tgname = 'strip_feedback_session_id'),
+  null::text,
+  '096.7: ... read off the trigger as well as off the outcome, because a WHEN clause added later would make the assertion above pass only while the fixture happens to run as the owner');
+select assert_eq(
+  (select pg_get_expr(tgqual, tgrelid) from pg_trigger
+    where tgrelid = 'public.feedback'::regclass and tgname = 'enforce_participation_gate'),
+  '(CURRENT_USER = ''authenticated''::name)',
+  '096.7: ... while 084''s gate on the SAME table still carries one, which is the pair that makes the absence deliberate rather than forgotten');
+select assert_eq(
+  (select tgtype::int from pg_trigger
+    where tgrelid = 'public.feedback'::regclass and tgname = 'strip_feedback_session_id'),
+  7, '096.7: ... and it is BEFORE INSERT FOR EACH ROW — 7, the same shape as the gate, so it can rewrite NEW rather than only observe it');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.feedback'::regclass and not tgisinternal),
+  2, '096.7: feedback carries exactly two triggers now — the gate and the sanitiser, in that firing order because Postgres runs BEFORE ROW triggers by NAME and e sorts before s');
+
+-- ---------------------------------------------------------------------------
+-- 096.8  The session id is best-effort in both directions: blank, absent, long
+-- ---------------------------------------------------------------------------
+-- A client bug must cost the replay link, never the report. And the ceiling is
+-- 200 rather than 40 on purpose: a tight CHECK on a value whose format PostHog
+-- owns is a live outage waiting on a vendor.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000960001', false);
+select assert_allowed($$
+  insert into feedback (user_id, body) values
+    ('00000000-0000-0000-0000-000000960001', 'No session id at all')$$,
+  '096.8: feedback with no session id at all still files — the column is nullable and the client omits it rather than sending an empty string');
+insert into feedback (user_id, body, posthog_session_id) values
+  ('00000000-0000-0000-0000-000000960001', 'Blank id', '');
+insert into feedback (user_id, body, posthog_session_id) values
+  ('00000000-0000-0000-0000-000000960001', 'Whitespace id', '   ');
+select assert_allowed($$
+  insert into feedback (user_id, body, posthog_session_id) values
+    ('00000000-0000-0000-0000-000000960001', 'A 200-character id', repeat('x', 200))$$,
+  '096.8: a 200-character id is accepted — the ceiling is deliberately generous, because the day PostHog lengthens its id a tight CHECK turns every feedback insert into 23514');
+select assert_rejected($$
+  insert into feedback (user_id, body, posthog_session_id) values
+    ('00000000-0000-0000-0000-000000960001', 'A 201-character id', repeat('x', 201))$$,
+  '23514', '096.8: ... and 201 is refused by the CHECK, which bounds a forged insert rather than expressing a format');
+reset role;
+select assert_eq(
+  (select count(*)::int from feedback
+    where body in ('Blank id', 'Whitespace id') and posthog_session_id is null),
+  2, '096.8: a blank and a whitespace-only id are both normalised to NULL and both inserts SUCCEED — refusing them would cost the report to save a link');
+
+-- ---------------------------------------------------------------------------
+-- 096.9  ** THE OPT-OUT IS A PREFERENCE, NEVER AN AUTHORIZATION GATE. **
+-- ---------------------------------------------------------------------------
+-- An opted-out rider loses no capability anywhere in the app. This is the
+-- requirement that would rot silently: nothing else in the suite would notice a
+-- future policy quietly reading the stamp, and a rider who found their rides
+-- disappearing after opting out could never work out why.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000960002', false);
+select assert_allowed($$
+  insert into rides (title, meeting_point, departure_at, is_public, organizer_id)
+  values ('An opted-out rider''s ride', 'The Docks', now() + interval '3 days', true,
+          '00000000-0000-0000-0000-000000960002')$$,
+  '096.9: an opted-out rider still creates a ride ...');
+select assert_allowed($$
+  insert into club_members (club_id, user_id, role)
+  values ('00000000-0000-0000-0000-0000009600c2', '00000000-0000-0000-0000-000000960002', 'member')$$,
+  '096.9: ... still joins a club ...');
+select assert_allowed($$
+  insert into postcards (author_id, image_path, caption)
+  values ('00000000-0000-0000-0000-000000960002',
+          'postcards/00000000-0000-0000-0000-000000960002/two.jpg', 'Still posting')$$,
+  '096.9: ... still posts a postcard ...');
+select assert_allowed($$
+  insert into postcard_comments (postcard_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000009600f1', '00000000-0000-0000-0000-000000960002', 'Nice road')$$,
+  '096.9: ... still comments ...');
+select assert_allowed($$
+  insert into postcard_likes (postcard_id, user_id)
+  values ('00000000-0000-0000-0000-0000009600f1', '00000000-0000-0000-0000-000000960002')$$,
+  '096.9: ... still likes ...');
+select assert_allowed($$
+  insert into ride_messages (ride_id, author_id, body)
+  values ('00000000-0000-0000-0000-0000009600e1', '00000000-0000-0000-0000-000000960002', 'On my way')$$,
+  '096.9: ... still posts in a ride chat ...');
+-- Read back rather than wrapped in assert_allowed, which the harness refuses
+-- for an UPDATE and is right to: RLS filters a forbidden UPDATE to zero rows
+-- rather than raising, so the wrapper would pass against a policy that forbids
+-- the write outright.
+update profiles set username = 'aoptout2', bio = 'Still editable'
+ where id = '00000000-0000-0000-0000-000000960002';
+select assert_eq(
+  (select username from profiles where id = '00000000-0000-0000-0000-000000960002'),
+  'aoptout2',
+  '096.9: ... and still edits their own profile — the stamp is in no policy, so nothing about it is an authorization fact');
+-- Asserted from the OTHER rider's identity, because ride_members' INSERT policy
+-- pins `auth.uid() = user_id`: a rider joins for themselves and never for
+-- somebody else. So this says the opted-out rider already in the crew is not a
+-- barrier to anyone else, which is the contagion case rather than the own-write
+-- case above.
+select set_config('test.uid', '00000000-0000-0000-0000-000000960004', false);
+select assert_allowed($$
+  insert into ride_members (ride_id, user_id, status)
+  values ('00000000-0000-0000-0000-0000009600e1', '00000000-0000-0000-0000-000000960004', 'going')$$,
+  '096.9: ... and an opted-out rider is not a barrier to ANOTHER rider joining the same ride either — nothing about the stamp is contagious');
+
+-- Opting out does not require consent. The participation gate is not on
+-- `profiles`, must not become so, and could not fire inside a security definer
+-- body anyway — 078's lesson, where current_user is the owner.
+select set_config('test.uid', '00000000-0000-0000-0000-000000960006', false);
+select assert_eq(public.set_analytics_opt_out(true) is not null, true,
+  '096.9: ** a rider with terms_accepted_at NULL can still opt out ** — a privacy choice is not a content write, so the participation gate is not on profiles and must not become so');
+select assert_rejected($$
+  insert into feedback (user_id, body)
+  values ('00000000-0000-0000-0000-000000960006', 'Still ungated for content')$$,
+  '23514', '096.9: ... while their CONTENT writes are still refused by 084''s gate, so the exemption above is the accessor''s and not a hole');
+
+-- ---------------------------------------------------------------------------
+-- 096.10  What 096 did NOT change
+-- ---------------------------------------------------------------------------
+-- 084's write-only contract, re-asserted because 096 touched that table's
+-- grants. A file that added `posthog_session_id` to a restated column list
+-- could have widened SELECT here without a line of it looking wrong.
+reset role;
+select assert_eq(has_table_privilege('authenticated', 'public.feedback', 'select'),
+  false, '096.10: feedback is still unreadable by any rider — 084''s contract, re-run because 096 issued a grant on this table');
+select assert_eq(has_table_privilege('authenticated', 'public.feedback', 'update'),
+  false, '096.10: ... still not editable ...');
+select assert_eq(has_table_privilege('authenticated', 'public.feedback', 'delete'),
+  false, '096.10: ... still not withdrawable ...');
+select assert_eq(has_table_privilege('authenticated', 'public.feedback', 'insert'),
+  false, '096.10: ... and still no TABLE-level INSERT grant, the grant being per column — which is what 096''s bare additive `grant insert (posthog_session_id)` preserves and a restated list would have risked');
+select assert_eq(has_column_privilege('authenticated', 'public.feedback', 'posthog_session_id', 'insert'),
+  true, '096.10: the new column IS insertable ...');
+select assert_eq(has_column_privilege('authenticated', 'public.feedback', 'posthog_session_id', 'select'),
+  false, '096.10: ... and not readable, so a rider cannot read back the id on their own row and nobody can read one on anybody else''s');
+select assert_eq(
+  (select count(*)::int from pg_attribute
+    where attrelid = 'public.feedback'::regclass and attnum > 0 and not attisdropped
+      and has_column_privilege('authenticated', 'public.feedback', attname, 'insert')),
+  5, '096.10: the INSERT list on feedback is FIVE columns wide — 084''s four plus this one, which is the assertion that catches a restated list quietly re-granting id or created_at');
+select assert_eq(has_column_privilege('authenticated', 'public.feedback', 'created_at', 'insert'),
+  false, '096.10: ... and created_at is still not among them, so the clock is still the server''s');
+select assert_eq(has_column_privilege('authenticated', 'public.feedback', 'id', 'insert'),
+  false, '096.10: ... nor is id');
+select assert_eq((select count(*)::int from pg_policies where tablename = 'feedback'),
+  1, '096.10: feedback still has exactly one policy ...');
+select assert_eq((select cmd::text from pg_policies where tablename = 'feedback'),
+  'INSERT', '096.10: ... and it is still the INSERT one — no read policy arrived alongside the read grant that did not arrive either');
+
+-- The gate count does not move. 096 adds no participation-gate trigger:
+-- `feedback` already carries one, it is BEFORE INSERT FOR EACH ROW, and it
+-- fires on the whole row regardless of which columns a statement names. 078 §9
+-- is the precedent for asserting an absence rather than leaving it to be
+-- inferred.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgname = 'enforce_participation_gate' and not tgisinternal),
+  22, '096.10: 096 adds NO participation-gate trigger — still twenty-two, because feedback already had one and profiles deliberately has none');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.profiles'::regclass and not tgisinternal
+      and tgname = 'enforce_participation_gate'),
+  0, '096.10: ... and profiles in particular still carries none, which is what lets 096.9''s unconsented rider opt out');
+
+drop function public.pd096_refusal(text);
+
+reset role;
+rollback to savepoint analytics_096;
+
 rollback;
 
 \echo ''
