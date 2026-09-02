@@ -193,10 +193,11 @@ See `docs/reference/running-locally.md` §The walk.
 ## Where this left off — 2026-09-02, the queue is rebuilt and waits on the owner's Routine
 
 **The hourly queue dispatched nothing from a firing between 2026-08-18 and 2026-09-02, and the
-cause was never any of the three the procedure documented.** A session the Routine mints for
-itself holds no session-management tools — `create_session` is built-in tooling, not a connector —
-so the relay could never spawn the dispatcher; every relay answered its firing with 40–80 output
-tokens, and every story since 08-28 was picked up by the owner opening a session by hand. The
+cause was never any of the three the procedure documented.** Every relay answered its firing with
+40–80 output tokens and spawned nothing, and every story since 08-28 was picked up by the owner
+opening a session by hand; the reading — a session the Routine mints for itself holds no
+`create_session`, which is built-in tooling rather than a connector — is inferred from that and
+is what the new procedure's inventory firing measures first. The
 measurements are on PD-241 (2026-09-02 comment), and `docs/reference/linear.md` §The queue is
 drained by one Routine, on one clock carries the shape that replaced it.
 

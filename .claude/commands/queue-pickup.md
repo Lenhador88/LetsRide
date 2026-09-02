@@ -323,6 +323,9 @@ Follow `CLAUDE.md` exactly. In particular:
   Run `PGPASSWORD=postgres npm test` if anything under `supabase/**` changed.
 - A migration that changes a policy must add an assertion.
 - Update `docs/HANDOFF.md` as part of landing the work, not as a separate task.
+- **If it turns out mid-build that this story needs something another unfinished issue is meant to
+  deliver, STEP 2c applies now** — a session arriving from `queue-run.md` STEP 5 never passed
+  through it, and this is the step where that discovery is made.
 
 **This step stops short of the PR on purpose.** STEP 4b decides whether anything else is
 travelling in it, and that decision has to be made while the branch is still open — so opening
@@ -1290,14 +1293,16 @@ design added:
 STEP 3.** `Needs help` is unchanged: any story parked there stops every firing, including the
 second story you might take at STEP 6.
 
-**Two things about this session are worth knowing before STEP 6 and STEP 7, and both are
-measured rather than feared:**
+**Two things about this session are worth knowing before STEP 6 and STEP 7 — one measured, one
+inferred and labelled as such:**
 
-- **A Routine-minted session holds no session-management tools** — no `get_session`, no
-  `archive_session`, no `list_triggers`, no `create_session`. STEP 6's budget gate therefore fails
+- **A Routine-minted session is not expected to hold the session-management tools** — no
+  `get_session`, no `archive_session`, no `list_triggers`, no `create_session`. That is **inferred**
+  from every relay's 40–80-token firings, not observed (`queue-run.md` §Why this shape has the
+  table), and its inventory firing is what measures it. Either way STEP 6's budget gate fails
   closed (one group per firing, then end), and STEP 7 keeps the session, which costs nothing because
-  trigger-run sessions are not in the owner's ordinary session list. A hand-spawned session holds
-  all of them and both steps work as written.
+  trigger-run sessions are not in the owner's ordinary session list (measured 2026-09-02). A
+  hand-spawned session holds all of them and both steps work as written.
 - **A permission prompt has nobody to answer it.** The auto-mode classifier declined a
   pre-authorized Linear read on 2026-08-29 (PD-349) and two Routine writes on 2026-09-02. Nothing in
   this file can prevent it; what it does is keep every write on the record as it happens, so a

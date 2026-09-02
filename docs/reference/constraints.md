@@ -62,15 +62,19 @@ on one clock, and the procedures are `.claude/commands/queue-run.md` (read the b
 group) and `.claude/commands/queue-pickup.md` (build it, same session).** What belongs here is the
 platform behaviour that will waste a session's time again if it is rediscovered:
 
-- **A session a Routine mints for itself holds the repo and the attached connectors and NO
-  session-management tools** — no `create_session`, `get_session`, `list_triggers`,
-  `archive_session`, `fire_trigger`. Those are built-in tooling a session gets when a person or
-  another session starts it, not a connector. Measured across every relay from 2026-08-18 to
+- **A session a Routine mints for itself holds the repo and the attached connectors, and — as far
+  as anything has shown — no `create_session`.** Measured across every relay from 2026-08-18 to
   2026-09-02: ~40–80 output tokens per firing, nothing spawned, while `last_run` read `SUCCEEDED`.
-  **Any queue design that needs a firing to spawn, fire or archive anything is dead on arrival**,
-  and every health check on the Routine will say it is fine.
-- **Trigger-fired sessions are excluded from `list_sessions` by default** — they carry
-  `origin: scheduled_trigger` and the tags `config:routine-lineage-none`, `routine:agent-minted`.
+  The reading — that the session-management tools are built-in tooling a session gets when a
+  person or another session starts it, not a connector — is **inferred** from that (PD-241 calls
+  it a hypothesis, twice), and whether `get_session`, `archive_session`, `list_triggers` or
+  `list_sessions` are held has not been measured at all; `queue-run.md`'s inventory firing is what
+  does. **Any queue design that needs a firing to spawn, fire or archive anything is dead on
+  arrival**, and every health check on the Routine will say it is fine.
+- **Trigger-fired sessions are excluded from `list_sessions` by default** — measured 2026-09-02:
+  the relay carried `origin: scheduled_trigger` and the tags `config:routine-lineage-none`,
+  `routine:agent-minted` on `get_session`, and was absent from a 40-row `list_sessions` the same
+  minute, which the tool's own description says is the default.
   Find one from `list_triggers`' `last_run.session_id` (fresh-session Routines) or
   `persistent_session_id` (bound ones), then `get_session` on it.
 - **No session can create, fire, edit or delete a Routine.** `create_trigger` refused the
@@ -108,12 +112,9 @@ of the session list, on the owner's instruction; the firing made the builder on 
 - **No owner-activity gate**, on the owner's instruction — *"we can indeed drop the gate whether I
   am here or not"*, with *"i do not edit files by hand, always prompting here"*.
 
-**The outage log, for the record rather than the reader** — each was diagnosed as the previous
-one's cause and none was: 2026-08-14 and 08-18, the Routine found stopped (`next_run_at` in the
-past); 08-18 to 08-24, a session id copied into the procedure went stale (PD-241); 08-24 to 08-28,
-the persistent relay never re-read the corrected file (PD-345); 08-29, a relay blocked on a
-permission prompt (PD-349); 08-29 to 09-02, a current, unblocked relay that had no `create_session`
-to call — the cause that was there all along. Nothing on the Routine detected any of them.
+**Five outages in three weeks were each diagnosed as the previous one's cause, and none was** —
+the one that was there all along is the first bullet above. PD-241, PD-345 and PD-349 hold the
+record; nothing on the Routine detected any of them.
 
 **The durable lesson from the session that prompted the 08-18 rebuild:** a session that keeps
 re-arming a check-in to watch one PR has no bound on what it spends, and its issue holds a queue

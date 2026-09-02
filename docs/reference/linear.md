@@ -181,12 +181,13 @@ next hour with nothing else to do.**
 
 **Why this shape, measured 2026-09-02 (PD-241).** The previous design — the Routine fires into a
 persistent *relay*, which spawns a fresh *dispatcher*, which spawns fresh *children* — needed the
-fired session to call `create_session`. A session the Routine mints for itself does not hold the
-session-management tools: they are built-in tooling a session gets when a person or another session
-starts it, not a connector anyone can attach. Every relay since the 2026-08-18 rebind answered its
-firing with 40–80 output tokens and spawned nothing; the only dispatchers that ever ran were spawned
-by hand from the owner's session, and three "fixes" to the procedure in between could not have
-changed that. It cost four silent outages in three weeks, about $1 per idle firing on a persistent
+fired session to call `create_session`. **Measured**: every relay since the 2026-08-18 rebind
+answered its firing with 40–80 output tokens and spawned nothing, the only dispatchers that ever ran
+were spawned by hand from the owner's session, and three "fixes" to the procedure in between could
+not have changed that. **Inferred from it, still unconfirmed** (no session can read another's
+transcript): a session the Routine mints for itself does not hold `create_session` — the
+session-management tools are built-in tooling a session gets when a person or another session
+starts it, not a connector anyone can attach. The new procedure's inventory firing measures it. It cost four silent outages in three weeks, about $1 per idle firing on a persistent
 session, and every queued story being picked up by the owner opening a session by hand.
 `queue-run.md` §Why this shape has the capability table this design is built on.
 
@@ -207,7 +208,7 @@ What has to be known outside those files:
   it in the Routines UI. Its persistent relay session is then idle and can be archived from the UI.
   **The fresh-session fallback `trig_01Gzy8eCiaXUUa1knvJnNpwy` does not exist**: absent from
   `list_triggers` at `limit=100 include_completed=true` on 2026-08-16, 2026-08-18 and 2026-09-02
-  (30 rows). The never-delete rule that used to sit in `CLAUDE.md` guarded a row that was already
+  (7, 27 and 30 rows respectively). The never-delete rule that used to sit in `CLAUDE.md` guarded a row that was already
   gone.
 - **Hourly is a server minimum** — `create_trigger` rejects anything more frequent. An hourly cron
   at minute 0 is **rewritten server-side to the minute you submitted it**, and **any UI edit
@@ -317,7 +318,7 @@ work. Carrying the N across writes `Ready: N` onto nearly every follow-up this r
 backlog then reads as entirely unstartable.
 
 Only the second of those three reasons has any automated backstop, and a weak one: the
-dispatcher checks `blockedBy` relations (`queue-dispatch.md` STEP 3) somebody wrote down. An owner action and a
+firing checks `blockedBy` relations (`queue-run.md` STEP 3) somebody wrote down. An owner action and a
 story wanting a proposal both sail straight through it.
 
 **An issue parked in `Needs decision` or `Needs help` also owes a comparison table of the ways

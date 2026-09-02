@@ -1307,10 +1307,13 @@ one case that needs no PR is a session that changed nothing.
 - **Don't create, fire, edit or delete a Routine from a session, and don't build a queue design
   that needs a firing to spawn a session.** The queue is one owner-created Routine firing a fresh
   session that reads `.claude/commands/queue-run.md` and builds one group itself. A session the
-  Routine mints holds the repo and the attached connectors and **no session-management tools** —
-  `create_session` is built-in tooling, not a connector — which is why the relay → dispatcher →
-  child design dispatched nothing for three weeks while every Routine field read healthy. And the
-  auto-mode classifier refuses `create_trigger` and `fire_trigger` from an interactive session
-  (measured 2026-09-02). Reading a Routine or a session by id is pre-authorized; everything else
-  about a Routine is the owner's, in the Routines UI. `docs/reference/linear.md` §The queue is
-  drained by one Routine, on one clock has the shape and the checks.
+  Routine mints holds the repo and the attached connectors and, on every measurement so far, **no
+  `create_session`** — inferred from 40–80-token firings that never spawned anything, since no
+  session can read another's transcript; `create_session` is built-in tooling, not a connector —
+  which is why the relay → dispatcher → child design dispatched nothing for three weeks while every
+  Routine field read healthy. And the auto-mode classifier refuses `create_trigger` and
+  `fire_trigger` from an interactive session (measured 2026-09-02). Reading a Routine or a session
+  by id is pre-authorized; everything else about a Routine is the owner's, in the Routines UI. **A
+  build session archiving ITSELF at the end of its own run stays permitted** (owner, 2026-08-28) —
+  the one archive a session may do. `docs/reference/linear.md` §The queue is drained by one
+  Routine, on one clock has the shape and the checks.

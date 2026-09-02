@@ -10,21 +10,25 @@ the board, take at most one group of stories into a free slot, build it end to e
 a session, and no session fires or messages another.** The next firing reads the board again.
 
 **Why this replaced the relay → dispatcher → child design on 2026-09-02.** That design needed the
-session the Routine fires into to *spawn* another (`create_session`), and a session the Routine
-mints for itself does not hold the session-management tools — they are built-in tooling a session
-gets when a person or another session starts it, not a connector anyone can attach. Every relay
-since the 2026-08-18 rebind answered its firing with 40–80 output tokens and spawned nothing, across
-three "fixes" to this procedure that could not have mattered; the only dispatchers that ever ran
-were spawned by hand from the owner's session. Four silent outages in three weeks, and a persistent
-session costing about $1 per idle firing. `docs/reference/linear.md` §The queue is drained by one
+session the Routine fires into to *spawn* another (`create_session`). **What is measured**: every
+relay since the 2026-08-18 rebind answered its firing with 40–80 output tokens and spawned nothing,
+across three "fixes" to this procedure that could not have mattered, and the only dispatchers that
+ever ran were spawned by hand from the owner's session. **What is inferred from that, and is still
+unconfirmed** (PD-241, 2026-08-27 and 2026-09-02: no session can read another's transcript): that a
+session the Routine mints for itself does not hold `create_session` — the session-management tools
+are built-in tooling a session gets when a person or another session starts it, not a connector
+anyone can attach, and the Routine attaches only connectors. Four silent outages in three weeks,
+and a persistent session costing about $1 per idle firing. `docs/reference/linear.md` §The queue is drained by one
 Routine, on one clock carries the measurements; PD-241 carries the record.
 
-**What a Routine-minted session DOES hold, measured, and this file uses nothing else:** the
-repository checkout (so this file, `CLAUDE.md` and `.claude/settings.json` are read), the
-connectors attached to the Routine (Linear, Supabase, Vercel), git push, and auto mode. **Whether it
-holds the GitHub tools (PR creation), `PushNotification`, `get_session` or `archive_session` is
+**What a Routine-minted session DOES hold, measured, and this file's board half uses nothing
+else:** the repository checkout (so this file, `CLAUDE.md` and `.claude/settings.json` are read —
+2026-08-17, a firing without one prompted for every call), the connectors attached to the Routine
+(Linear, Supabase, Vercel — every relay's board reads answered), and auto mode (`get_session` on the
+relay, 2026-09-02). **Whether it holds git push credentials, the GitHub tools (PR creation),
+`PushNotification`, `get_session`, `archive_session`, `list_sessions` or `create_session` is
 unknown until the inventory firing below reports it** — the previous design assumed a tool it did
-not have, so this one measures first.
+not have, so this one measures first and builds nothing until the answer is on the record.
 
 **The shape, as the owner stated it on 2026-08-18 and reaffirmed on 2026-09-02** — one firing an
 hour, at most two build sessions in flight, a group of up to three colliding stories per session.
@@ -60,7 +64,7 @@ just see the stories are in development?"* So:
 |---|---|---|
 | What may I take? | `Queued (AI)` | never `Todo AI`, which reads like permission |
 | What is already being built? | `Development (AI)` | not a session list, not a comment thread |
-| How many sessions are running? | the `slot-1` / `slot-2` labels on those issues | not `list_sessions`, which this session cannot call |
+| How many sessions are running? | the `slot-1` / `slot-2` labels on those issues | not `list_sessions`, which this session is not expected to hold — the inventory firing says |
 | What are they touching? | one `<!-- territory -->` comment per occupied slot | not a prediction |
 | Is the queue stopped? | any issue in `Needs help` | not a Routine field |
 
@@ -78,7 +82,8 @@ it. This firing puts one on every issue it takes; the build carries the same lab
 else it picks up. **A slot label present on an issue in `Development (AI)` means that slot is
 occupied**, however many issues carry it — so the free-slot count is `2 −` the number of *distinct*
 slot labels in that column, and it comes back in the same call as the board. Nothing else counts
-sessions, and nothing can: `list_sessions` is not available to a Routine-minted session.
+sessions, and nothing may — not even if `list_sessions` turns out to be reachable, because it costs
+~35k a call and reads state the board already carries.
 
 **An in-flight issue carrying NO slot label occupies no slot, and that is deliberate.** The
 ordinary cause is a hand move — the owner does that — and freezing the queue over it is the
@@ -98,22 +103,30 @@ never the name.
 **Read the mode line at the top of this file.** `build` → carry on to the board check below.
 Anything else → **inventory**:
 
-1. Call `ToolSearch` with each of these queries and record the answer verbatim — *resolved*, or
-   *No matching deferred tools found*:
-   - `select:mcp__Claude_Code_Remote__create_session,mcp__Claude_Code_Remote__get_session,mcp__Claude_Code_Remote__archive_session,mcp__Claude_Code_Remote__list_triggers`
+1. **Dedup first.** `list_comments issueId=PD-241` (`ToolSearch +list_comments linear`). If a
+   comment headed `**Inventory firing —` is already there from the last 24 hours, **end with the
+   single word `idle`** — the mode stays `inventory` until a human reads that comment and a session
+   flips the line, and a comment an hour is the shape STEP 6's stall marker exists to prevent. If
+   the Linear tools are absent, say so as the final message of this session and end — a
+   fresh-session Routine carries its run's final message in the push notification it sends.
+2. Call `ToolSearch` with each of these queries and record the answer verbatim — *resolved*, or
+   *No matching deferred tools found*. The first line is the one the whole design rests on:
+   - `select:mcp__Claude_Code_Remote__create_session,mcp__Claude_Code_Remote__get_session,mcp__Claude_Code_Remote__archive_session,mcp__Claude_Code_Remote__list_triggers,mcp__Claude_Code_Remote__list_sessions`
+     and then, by keyword, `+create_session claude code remote` and `+list_sessions claude code remote`
    - `+create_pull_request github` and `+merge_pull_request github`
    - `+list_issues linear` and `+save_issue linear`
    - `+execute_sql supabase`
    - `+list_deployments vercel`
    - `select:PushNotification`
-2. List every tool name you can see whose name starts with `mcp__`, verbatim.
-3. Read `get_session` with `session_id` omitted **if** it resolved, and note the id and
+3. List every tool name you can see whose name starts with `mcp__`, verbatim.
+4. **Does the checkout hold push credentials?** `git push --dry-run origin HEAD:refs/heads/claude/inventory-probe`
+   — a dry run creates nothing; record the first line of its output. Every build depends on this
+   and nothing has measured it from a firing.
+5. Read `get_session` with `session_id` omitted **if** it resolved, and note the id and
    `permission_mode` it returns.
-4. Post ONE Linear comment on **PD-241** carrying all of that, one line per tool, headed
+6. Post ONE Linear comment on **PD-241** carrying all of that, one line per tool, headed
    `**Inventory firing — <UTC date and time>**`, with the attribution footer `CLAUDE.md` requires.
-   If the Linear tools themselves are absent, say so as the final message of this session instead —
-   a fresh-session Routine carries its run's final message in the push notification it sends.
-5. **End.** Move nothing on the board, build nothing, spawn nothing.
+7. **End.** Move nothing on the board, build nothing, spawn nothing.
 
 **`build` mode — can you see the board?** Load `list_issues` via `ToolSearch` and call it. **If the
 Linear tools are not available, STOP and say so in the final message** (and with `PushNotification`
@@ -353,10 +366,14 @@ most an hour longer than it would have under the batch design, which never actua
    Premise, blockers and territory: still to do at queue-pickup.md STEP 3.
    ```
 
-   **Then read [`queue-pickup.md`](queue-pickup.md) and follow it from STEP 3.** The stories are
-   already in `Development (AI)` with your label, so confirm rather than re-claim. That file is the
-   authority from here on, including its exits: `Needs help` with a comparison table when stuck,
-   `Needs decision` on a stale premise, `Deployed to DEV` when the thing the title names exists.
+   **Then run STEP 6 — the stall check — and only after it read [`queue-pickup.md`](queue-pickup.md)
+   and follow it from STEP 3.** STEP 6 is the last thing this file does; nothing after the handover
+   comes back here, so a claim that skips it leaves the queue's only self-detection unrun on exactly
+   the firings that build. The stories are already in `Development (AI)` with your label, so confirm
+   rather than re-claim. That file is the authority from there on, including its exits: `Needs help`
+   with a comparison table when stuck, `Needs decision` on a stale premise, `Deployed to DEV` when
+   the thing the title names exists — and its STEP 2c, *out of sequence mid-build*, still applies
+   during its STEP 4 even though you never passed through it.
 
    **Three of its steps expect tools a Routine-minted session may not hold, and each already says
    what to do without them.** STEP 6's budget gate reads `get_session` and **fails closed** — no
@@ -373,12 +390,13 @@ most an hour longer than it would have under the batch design, which never actua
 
 **This step runs on EVERY firing that reached the board, whether or not anything was taken** — a
 claimed issue with nobody behind it holds a slot, and the board is now the only place that can
-notice. **It runs BEFORE the build when a group was taken** — after STEP 5's claim and before
-`queue-pickup.md` STEP 3 — because the build ends in that file and never returns here.
+notice. STEP 1 sends an idle firing here; STEP 5 bullet 3 sends a firing that claimed a group here
+**before** it opens `queue-pickup.md`, because the build ends in that file and never returns.
 
 Ask how long the oldest of these has been true:
 
-- **An issue in `Development (AI)` carrying the OTHER slot's label** — its session should have
+- **An issue in `Development (AI)` carrying a slot label this firing did not just claim** — on an
+  idle firing that is either label; after a claim it is the other one. Its session should have
   finished. Age the branch tip if there is one, because a live build keeps resetting it and a dead
   one does not:
 
@@ -405,6 +423,9 @@ the issue back to `Queued (AI)` and strip the label, which frees the slot on the
 age-based reaper that returns a story a live session is still building is the one failure worse
 than a held slot, and nothing here can tell those apart.
 
+**Then: a group was claimed at STEP 5 → open `queue-pickup.md` at STEP 3. Nothing was claimed →
+end**, with the final message below.
+
 ### What the final message says, and what it does not
 
 **A fresh-session Routine pushes its run's final message to the owner**, so the last thing this
@@ -430,20 +451,23 @@ cache-read tokens across 18 wakes, having built nothing since the first.
 
 ## Why this shape
 
-**Everything a Routine can and cannot do here was measured, and the design uses only the "can"
-column.**
+**What a Routine-minted session can and cannot do here, with how each row is known — and the
+design's board half uses only the rows marked measured.** The inventory firing turns the inferred
+rows into measured ones before anything builds.
 
-| A Routine-minted session… | Measured | Consequence |
+| A Routine-minted session… | How it is known | Consequence |
 |---|---|---|
-| holds the repo checkout when the Routine attaches one | 2026-08-17 (a firing with no repo prompted for every Linear call: no `.claude/settings.json`, no grants) | this file, `CLAUDE.md` and the grants load on every firing, fresh |
-| holds the connectors attached to the Routine | 2026-08-17 onwards: Linear, Supabase, Vercel reachable from firings | the board, the database and the deploy check are reachable |
-| does NOT hold the session-management tools | every relay since 2026-08-18: ~40–80 output tokens per firing, `create_session` never called, no dispatcher ever spawned by a firing (PD-241, 2026-08-27 and 2026-09-02) | nothing here spawns, fires, lists or archives a session |
-| can be stalled by a permission prompt nobody answers | 2026-08-29 (PD-349), and the account's other Routine on 2026-09-02 | STEP 0 keeps the calls before the first board read few, and STEP 5 is the first write |
-| is a fresh checkout every time | by construction — `create_new_session_on_fire` | **an edit to this file arrives at the next firing.** No relay to archive, no clone to age |
-| is excluded from the ordinary session list | trigger-fired runs carry `origin: scheduled_trigger` and do not appear in `list_sessions` by default | 24 idle firings a day do not clutter the owner's list, and STEP 7's "keep the session" costs nothing |
+| holds the repo checkout when the Routine attaches one | **Measured** 2026-08-17: a firing with no repo prompted for every Linear call — no `.claude/settings.json`, no grants | this file, `CLAUDE.md` and the grants load on every firing, fresh |
+| holds the connectors attached to the Routine | **Measured** 2026-08-17 onwards: Linear, Supabase, Vercel answered every relay's board reads | the board, the database and the deploy check are reachable |
+| does NOT hold `create_session` | **Inferred**, unconfirmed: every relay since 2026-08-18 answered with ~40–80 output tokens and no dispatcher was ever spawned by a firing (PD-241, 2026-08-27 and 2026-09-02). No session can read another's transcript, so the call itself was never observed | nothing here spawns a session; STEP 0 probes it |
+| does NOT hold `get_session`, `archive_session`, `list_triggers`, `list_sessions` | **Extrapolated** from the row above — the same tool family, nothing measured | nothing here needs them; `queue-pickup.md` STEP 6 and STEP 7 say what to do without them, and STEP 0 probes each |
+| holds git push credentials | **Unmeasured** — the relay's config carried an outcome branch, and no firing has ever pushed | STEP 0's dry run measures it before the first build |
+| can be stalled by a permission prompt nobody answers | **Measured** 2026-08-29 (PD-349), and the account's other Routine on 2026-09-02 | STEP 0 keeps the calls before the first board read few, and STEP 5 is the first write |
+| is a fresh checkout every time | by construction — a fresh session per firing | **an edit to this file arrives at the next firing.** No relay to archive, no clone to age |
+| is excluded from the ordinary session list | **Measured** 2026-09-02: the relay carried `origin: scheduled_trigger` and the tags `config:routine-lineage-none`, `routine:agent-minted` on `get_session`, and was absent from a 40-row `list_sessions` the same minute; the tool's own description says trigger-fired runs are excluded by default | 24 idle firings a day do not clutter the owner's list, and STEP 7's "keep the session" costs nothing |
 
-**What the previous design assumed and never had** — a firing that could spawn — is the one row
-in the "cannot" column, and every part of it that depended on that row is gone: the relay, the
+**What the previous design assumed and never had** — a firing that could spawn — is the inferred
+row, and every part of it that depended on that row is gone: the relay, the
 dispatcher, the `queue-dispatch-run` and `queue-dispatch` tags, the id in the file, the archive-
 on-edit rule, the batch of two groups per firing. **What survived unchanged is everything that
 reads or writes the board**: the three state queries, the slot labels, the territory comment, the
