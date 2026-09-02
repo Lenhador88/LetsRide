@@ -1,4 +1,4 @@
-# The signup post-mortem — moved from the handoff 2026-09-01
+# The signup post-mortem
 
 > How the flow broke against confirmation-on, how `signUp` branches now, and the end-to-end
 > proof. History with a verification command per claim; the rule it produced is decision #6.

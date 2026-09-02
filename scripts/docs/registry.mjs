@@ -452,7 +452,7 @@ export const claims = [
   },
   {
     id: 'server-rendered-pages-handoff',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/render-model.md',
     pattern: /git grep -L "\^'use client'" -- 'src\/app\/\*\*\/page\.tsx' {3}# (\w+) server pages — prints nothing/,
     extractStated: extractWord(),
     kind: 'shell',
@@ -527,7 +527,7 @@ export const claims = [
   },
   {
     id: 'rls-count-handoff-inline',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/ci.md',
     pattern: /PGPASSWORD=postgres npm test\s+# (\d+) assertions, 0 failures/,
     extractStated: (m) => Number(m[1]),
     kind: 'rls',
@@ -545,7 +545,7 @@ export const claims = [
   // ---- Unit test count + file count (two locations each) -----------------
   {
     id: 'unit-tests-count-inline',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/ci.md',
     pattern: /npm run test:unit\s+# (\d+)\/\d+ across (\d+) files/,
     extractStated: (m) => Number(m[1]),
     kind: 'vitest',
@@ -554,7 +554,7 @@ export const claims = [
   },
   {
     id: 'unit-tests-files-inline',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/ci.md',
     pattern: /npm run test:unit\s+# (\d+)\/\d+ across (\d+) files/,
     extractStated: (m) => Number(m[2]),
     kind: 'vitest',
@@ -590,7 +590,7 @@ export const claims = [
     // `output: 'export'` refuses to emit a document for", and only the pair
     // measures it.
     id: 'dynamic-routes-count',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/render-model.md',
     pattern: /grep -cE '\^\[┌├└│ \]\*\[ƒ●\] \/'\s+# routes the export cannot emit — (\d+)/,
     extractStated: (m) => Number(m[1]),
     kind: 'build',
@@ -599,7 +599,7 @@ export const claims = [
   },
   {
     id: 'static-routes-count',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/render-model.md',
     pattern: /`next build` reports\s+\*\*(\d+) static\*\* and \*\*\d+ dynamic\*\*/,
     extractStated: (m) => Number(m[1]),
     kind: 'build',
@@ -615,7 +615,7 @@ export const claims = [
     // (21/21 against a real 23/23) that `static-routes-count` cannot see,
     // because its anchor stops at the headline sentence above.
     id: 'generating-static-pages-total',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/render-model.md',
     pattern: /`Generating static pages \((\d+)\/\d+\)` line as the static route count/,
     extractStated: (m) => Number(m[1]),
     kind: 'build',
