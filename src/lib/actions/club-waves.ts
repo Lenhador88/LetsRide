@@ -27,9 +27,7 @@ import type { ActionState } from '@/lib/actions/state'
  * nothing of the waver's own to refetch, and no mechanism in this hand-rolled
  * cache to reach the recipient's. Their badge is stale until their own next
  * navigation; `unwaveJoin` below carries the identical absence for the
- * retraction. **This paragraph used to sit on `waveThread`**, retired with
- * the thread wave's client path (PD-372); it was always true of this action
- * too, and the join wave is now the only one an app can write.
+ * retraction.
  */
 export async function waveJoin(clubId: string, subjectUserId: string): Promise<ActionState> {
   const supabase = await resolveSupabase()

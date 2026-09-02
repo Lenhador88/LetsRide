@@ -50,7 +50,7 @@ describe('the announcement rule survives in every read that browses threads', ()
   it('getClubThreads keeps announcements off the Threads list and the timeline', () => {
     const code = source('src/lib/data/club-threads.ts')
 
-    expect(code).toContain(`.is(${'ANNOUNCEMENT_MARKER'}, null)`)
+    expect(code).toContain('.is(ANNOUNCEMENT_MARKER, null)')
     // In the query, beside the club filter — not after the read, which would
     // break the list's "is there more" signal and `boundedHorizon`'s
     // precondition that a source's rows ARE its window.
@@ -60,10 +60,11 @@ describe('the announcement rule survives in every read that browses threads', ()
   it('getClubThreadUnread narrows the map with the same column, asking the opposite question', () => {
     const code = source('src/lib/data/club-threads.ts')
 
-    expect(code).toContain(`.not(${'ANNOUNCEMENT_MARKER'}, 'is', null)`)
-    // Bounded by the unread set. `marked` is what the RPC actually flagged, so
-    // an `.in('id', …)` over anything else is the roster-bounded shape the
-    // proposal rejected.
+    expect(code).toContain(".not(ANNOUNCEMENT_MARKER, 'is', null)")
+    // Over the UNREAD set — `marked` is what the RPC actually flagged. An
+    // `.in('id', …)` over anything else is the shape the proposal rejected,
+    // which grows with the club's whole thread list rather than with what
+    // could light. It is a reduction rather than a bound; see the function.
     expect(code).toContain(`.in('id', marked)`)
   })
 

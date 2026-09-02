@@ -280,13 +280,28 @@ export async function getClubThreadMessages(
  * **cannot be cleared by visiting it**, because the thread it names is not on
  * it.
  *
- * **Bounded by the unread set, not by the roster, and skipped when nothing is
+ * **Proportional to the UNREAD set, and skipped entirely when nothing is
  * unread.** Only ids the RPC actually marked can light anything, so only those
  * are read back. Two shapes were rejected: intersecting with page 1 of
  * `getClubThreads` under-reports, because threads are listed by creation and an
  * old thread with a new comment sits past page 20 — a false negative traded for
- * a false positive; and reading every announcement in the club is bounded by
- * the membership rather than by the answer.
+ * a false positive; and reading every announcement in the club grows with the
+ * club's whole thread list rather than with what could light.
+ *
+ * **This is a REDUCTION, not a bound, and the difference is worth stating
+ * because every neighbouring read here has a real one** (`CLUB_THREADS_PAGE_SIZE`,
+ * `CLUB_TIMELINE_JOINS`, `CLUB_TIMELINE_REPLIES`). The unread set is unbounded
+ * in principle: `club_thread_unread` (`082`) reads a club's whole thread list
+ * with no limit, so a returning member of a very busy club can carry hundreds
+ * of ids into the `in()` below, and PostgREST puts them in a GET query string.
+ * Past the gateway's request-line cap the read errors, and the failure rule
+ * below then resolves the WHOLE map to `{}` — every mark in that club goes,
+ * including the legitimate ones, silently. That fails **closed**, which is the
+ * right direction, but it fails **totally**, and it fails worst in the club
+ * that most needs the marks. The exact threshold is INFERRED rather than
+ * measured; what is read off the code is that no cap exists. Capping the list
+ * is not the fix on its own — checking only the first N would leave the rest
+ * lit unverified, which the rule below forbids outright.
  *
  * A consequence worth naming rather than discovering: an announcement with
  * **nothing** unread keeps its `false` entry, because the corrective read never
@@ -321,9 +336,14 @@ export async function getClubThreadUnread(clubId: string): Promise<Record<string
     .in('id', marked)
     .not(ANNOUNCEMENT_MARKER, 'is', null)
 
-  if (markerError) return {}
+  // `!announcements` as well as the error, matching the RPC branch above: the
+  // rule is absolute — never return a mark this function could not verify —
+  // and a null payload verifies nothing. `postgrest-js` resolves a successful
+  // list select to an array, so this arm is unreachable today; it is written
+  // because the rule is what a later reader has to be able to trust.
+  if (markerError || !announcements) return {}
 
-  const hidden = new Set((announcements ?? []).map((row) => row.id))
+  const hidden = new Set(announcements.map((row) => row.id))
 
   return toUnreadMap(rows.filter((row) => !hidden.has(row.thread_id)))
 }

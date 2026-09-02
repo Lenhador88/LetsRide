@@ -178,10 +178,17 @@ export function ClubOptionsMenu({
    *
    * **The expression below is unchanged by PD-372; its INPUT narrowed.** The
    * map now answers only for threads the Threads list can show, so this dot
-   * clears by visiting where it points — an unread comment on a club
-   * introduction is drawn on the announcement's own join row on the timeline,
-   * not here. This is the only aggregate unread dot left in the app, which is
-   * what made the narrowing that function's business rather than this one's.
+   * clears by visiting where it points. This is the only aggregate unread dot
+   * left in the app, which is what made the narrowing that function's business
+   * rather than this one's.
+   *
+   * **The cost, stated because it is an open question rather than a solved
+   * one:** an unread comment on a club introduction is now marked NOWHERE — not
+   * here, and not on the announcement's join row, which carries no unread state
+   * and gains none in that change (`tasks.md` §8.3 excludes it; `proposal.md`
+   * Q2 is the owner's decision, recommended default *no*, on the grounds that
+   * the row's exact comment count is already the signal). Do not read this
+   * paragraph as saying the mark moved.
    */
   const unread = useQuery(open && isMember ? queryKeys.clubs.threadsUnread(clubId) : null, () =>
     getClubThreadUnread(clubId)

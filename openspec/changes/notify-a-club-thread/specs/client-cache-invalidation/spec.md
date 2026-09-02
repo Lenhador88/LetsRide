@@ -27,9 +27,15 @@ which is worse than the staleness it appears to fix.
 
 #### Scenario: Waving a thread invalidates the wave state, not the notifications
 
-- **WHEN** a rider waves or un-waves a club thread
-- **THEN** the existing `threadWaves` key SHALL be invalidated as it already is
-- **AND** neither notifications key SHALL be
+**SUPERSEDED by PD-372 — a rider can no longer wave a club thread, so this scenario's `WHEN`
+cannot occur.** `waveThread`, `unwaveThread` and `queryKeys.clubs.threadWaves` are all deleted; the
+club timeline's only waveable row is the announcement row. The rule the scenario expressed survives
+on the wave that remains, and is asserted there:
+
+- **WHEN** a rider waves or un-waves another rider's JOIN
+- **THEN** the existing `joinWaves` key SHALL be invalidated as it already is
+- **AND** neither notifications key SHALL be — `private.notify_club_waved` addresses the rider whose
+  join was waved, never the waver whose client runs the invalidation
 
 #### Scenario: The recipient's badge is stale for one navigation and no longer
 
