@@ -1,42 +1,47 @@
 name: Deploy Edge Functions
 
-# Deploys one or all of `supabase/functions/*` to one project, from the
-# commit the owner points it at — on demand, never on merge.
+# Deploys `supabase/functions/*` to the project a branch maps to — DEV on a
+# push to `development`, PROD on a push to `main` — and on demand for one
+# function or all, from a checked-in sha, with the CLI's own build.
 #
-# WHY IT EXISTS. Deploying is an owner action: there is no `supabase` CLI in
-# the build container and the MCP server's `deploy_edge_function` is on
-# `.claude/settings.json`'s deny list. That made every edit under
-# `supabase/functions/` drift from the moment it merged, with nothing red
-# anywhere — `resolve-ride-location` went stale twice in one day, once
-# carrying the fix that decides whether a map tile renders at all. This
-# workflow keeps the decision with the owner and removes the terminal: one
-# click, from a checked-in sha, with the CLI's own build of the bundle.
+# WHY IT EXISTS. There is no `supabase` CLI in the build container and the
+# MCP server's `deploy_edge_function` is on `.claude/settings.json`'s deny
+# list, so until 2026-09-02 every edit under `supabase/functions/` was drift
+# from the moment it merged, with nothing red anywhere — `resolve-ride-location`
+# went stale twice in one day, once carrying the fix that decides whether a
+# map tile renders at all. Product owner, 2026-09-02: *"deploy on every
+# merge, you should be autonomous on that."* So a merge deploys.
 #
-# WHY NOT ON PUSH. Two reasons, both concrete. A push trigger would let an
-# agent-merged PR deploy the function holding the service-role key with no
-# human between the merge and the deploy — the exact step the deny list
-# exists to keep. And a function can carry an ordering rule against the app
-# (PD-236: `resolve-ride-location` must deploy only AFTER the app carrying
-# `MapAttribution` is serving, or the map tile loses its licence credit for
-# the length of a Vercel build), which a push trigger firing beside Vercel's
-# cannot honour. If the owner decides the push trigger is wanted anyway, it
-# is an `on: push: branches:` block plus a project-ref switch on
-# `github.ref_name`; the deploy step below already takes both from inputs.
+# THE ORDERING RULE IS HONOURED BY WAITING, NOT BY HAND. A function can
+# depend on the app already serving — PD-236: `resolve-ride-location` sends
+# `attribution=none`, so the app's own `MapAttribution` must be live before
+# the function is, or the map tile loses its licence credit for the length
+# of a Vercel build. Vercel reports each deployment as a commit status with
+# context `Vercel` on the merge sha (measured on #373: `Deployment has
+# completed`), so the push-triggered run waits for that status to be
+# `success` before deploying, and refuses if it turns `failure` or never
+# arrives — the function is then still the old one, which is the side that
+# fails safe. A dispatch skips the wait: the owner pointed it at a sha on
+# purpose.
 #
 # WHAT IT NEEDS. One repository secret, `SUPABASE_ACCESS_TOKEN` — a personal
-# access token from the Supabase dashboard (Account → Access Tokens). Without
-# it the job stops at the gate step and says so, rather than failing inside
-# the CLI with a login error that reads like a broken workflow. The project
-# refs are not secrets: both ship in the client bundle as part of the
-# Supabase URL.
+# access token from the Supabase dashboard (Account → Access Tokens), PD-369.
+# Without it the deploy job is SKIPPED with a warning rather than red on
+# every merge: a job that can only be red trains everyone to ignore red. The
+# project refs are not secrets; both ship in the client bundle.
 #
-# UNVERIFIED. Written without a way to run it — the build container has no
-# CLI and jsr.io/supabase.com are off its allowlist — so the first dispatch
-# is the test. `--project-ref` is what lets `functions deploy` run without a
-# `supabase link` or a `config.toml`; if the CLI insists on one, `supabase
-# init` before the deploy step is the fix, not a committed config.
+# UNVERIFIED until the token exists — written without a way to run it (the
+# build container has no CLI and no route to supabase.com). `--project-ref`
+# is what lets `functions deploy` run without a `supabase link` or a
+# `config.toml`; if the CLI insists on one, `supabase init` before the
+# deploy step is the fix, not a committed config.
 
 on:
+  push:
+    branches: [main, development]
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/deploy-functions.yml'
   workflow_dispatch:
     inputs:
       project:
@@ -45,25 +50,50 @@ on:
         type: choice
         options: [dev, prod]
       function:
-        description: 'Which function — or all three'
+        description: 'Which function — or all of them'
         required: true
         type: choice
         default: all
         options: [all, delete-account, resolve-ride-location, search-places]
 
+# A `paths:` filter is fine HERE, unlike in ci.yml: this workflow is not a
+# status check anything requires, so a run that never triggers costs nothing.
+# It means a merge touching no function deploys nothing, which is the point.
+
 jobs:
-  deploy:
-    name: ${{ inputs.function }} → ${{ inputs.project }}
+  # Secrets are not readable in a job-level `if:`, so the gate is a job that
+  # reads the secret in a step and says whether the deploy may run.
+  gate:
+    name: Is the deploy configured?
     runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SUPABASE_ACCESS_TOKEN is not set — nothing deploys until it is (PD-369). The functions on both projects are drifting from this merge."
+          fi
+
+  deploy:
+    name: ${{ github.event_name == 'push' && format('all → {0}', github.ref_name) || format('{0} → {1}', inputs.function, inputs.project) }}
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      # PROD is `letsride`; DEV is `letsride-dev`. Both refs are public —
+      # CLAUDE.md §Supabase Rules records them for the same reason. On a push
+      # the branch decides; on a dispatch the input does.
+      PROJECT_REF: ${{ (github.event_name == 'push' && github.ref_name == 'main') || (github.event_name == 'workflow_dispatch' && inputs.project == 'prod') && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}
+      FUNCTION: ${{ github.event_name == 'push' && 'all' || inputs.function }}
     steps:
-      - name: Refuse without a token
-        if: env.SUPABASE_ACCESS_TOKEN == ''
-        run: |
-          echo "::error::SUPABASE_ACCESS_TOKEN is not set — add it under Settings → Secrets → Actions."
-          exit 1
-
       - uses: actions/checkout@v4
 
       # The same check CI's `functions` job runs, so a dispatch from a branch
@@ -74,26 +104,46 @@ jobs:
       - name: Type check before deploying
         run: deno check --node-modules-dir=none --no-lock $(find supabase/functions -mindepth 2 -maxdepth 2 -name index.ts | sort)
 
-      # Pinned, like everything else on a deploy path: two dispatches of the
-      # same sha must produce the same bundle. Bump it deliberately.
+      # PD-236's ordering, mechanised. Polls the commit's combined status for
+      # Vercel's context; `success` means the build is serving. Twenty
+      # minutes is well past a normal build. `failure`/`error` from Vercel
+      # or a timeout refuses the deploy — the old function keeps serving,
+      # which is the safe side.
+      - name: Wait for the app to be serving (push only)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 80); do
+            state=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/status" \
+              --jq '[.statuses[] | select(.context == "Vercel")] | first | .state // "none"' 2>/dev/null || echo "unreachable")
+            echo "Vercel status for ${GITHUB_SHA:0:7}: $state"
+            case "$state" in
+              success) exit 0 ;;
+              failure|error) echo "::error::Vercel reported $state for this sha — not deploying functions ahead of an app that is not serving"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::Vercel never reported this sha as deployed within 20 minutes — not deploying. Dispatch the workflow by hand once the app is serving."
+          exit 1
+
+      # Pinned, like everything else on a deploy path: two runs of the same
+      # sha must produce the same bundle. Bump it deliberately.
       - uses: supabase/setup-cli@v1
         with:
           version: 2.116.0
 
       - name: Deploy
-        env:
-          # PROD is `letsride`; DEV is `letsride-dev`. Both refs are public —
-          # CLAUDE.md §Supabase Rules records them for the same reason.
-          PROJECT_REF: ${{ inputs.project == 'prod' && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}
         run: |
           set -euo pipefail
           # A function is a directory holding an index.ts — not every entry
           # under supabase/functions/, so a `_shared/` directory never gets
           # deployed as one and never aborts the loop halfway.
-          if [ "${{ inputs.function }}" = "all" ]; then
+          if [ "$FUNCTION" = "all" ]; then
             names=$(find supabase/functions -mindepth 2 -maxdepth 2 -name index.ts | sort | xargs -n1 dirname | xargs -n1 basename)
           else
-            names="${{ inputs.function }}"
+            names="$FUNCTION"
           fi
           for name in $names; do
             echo "== $name -> $PROJECT_REF @ $GITHUB_SHA"
@@ -101,4 +151,4 @@ jobs:
           done
 
       - name: What is now deployed
-        run: supabase functions list --project-ref "${{ inputs.project == 'prod' && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}"
+        run: supabase functions list --project-ref "$PROJECT_REF"

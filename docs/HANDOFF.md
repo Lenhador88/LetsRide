@@ -456,9 +456,11 @@ Four things landed, none rider-visible: the write path got its first real tests
 Functions under Deno (`functions` job, scoped to `supabase/functions/**`); the docs spine was cut
 from ~112k tokens per session to ~40k by moving the handoff's reference sections into
 `docs/reference/` and rewriting `CLAUDE.md` to rules plus their commands; and
-`deploy-functions.yml` gives the owner a one-click Edge Function deploy. **That last one is
-written and unverified** — it needs `SUPABASE_ACCESS_TOKEN` as a repository secret, and its first
-dispatch is its test. The walk is wired into CI (`walk` job): it needs no credential because it mints
+`deploy-functions.yml` deploys the Edge Functions on every merge that touches them (owner's
+decision, 2026-09-02: autonomous), waiting for Vercel's commit status first so the app is serving
+before the function is (PD-236). **Written and unverified** — it needs `SUPABASE_ACCESS_TOKEN` as a
+repository secret (PD-369) and is skipped with a warning until then; the first run with the token
+is its test. The walk is wired into CI (`walk` job): it needs no credential because it mints
 its own rider, so the only thing it costs DEV is one signed-up-then-deleted rider per run. **It is
 skipped until the repository variable `WALK_CI=1` exists, because its guard step measured the
 Actions secrets naming PROD** — `docs/ENVIRONMENTS.md` §Owner setup item 5 was never done, and
