@@ -466,9 +466,10 @@ skipped until the repository variable `WALK_CI=1` exists, because its guard step
 Actions secrets naming PROD** — `docs/ENVIRONMENTS.md` §Owner setup item 5 was never done, and
 `CLAUDE.md` said the opposite until this session. Repoint the secrets, set the variable, and the job
 runs; **not a required check yet** — a branch-protection click once it has been green a few PRs
-(PD-370). One more thing measured on #373: **opening a PR through the GitHub MCP triggers
-no CI run** — the first run came with the next push. Check with
-`actions_list list_workflow_runs` filtered to the branch before reading a missing run as an outage.
+(PD-370). One thing measured both ways: on #373 opening the PR through the GitHub MCP
+triggered no CI run (the first came with the next push, seven hours later); on #374 it triggered one
+within a minute. So a missing run after a PR opens is not a rule either way — check with
+`actions_list list_workflow_runs` filtered to the branch, and push a commit if it stays absent.
 
 **All four stories shipped to riders.** `PD-365` (the introduction, `097`), `PD-366` (the return
 anchor, no migration), `PD-367` (club-thread notifications, `098` plus `100`) and `PD-368` (the join
