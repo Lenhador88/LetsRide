@@ -360,11 +360,18 @@ jobs:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
     steps:
+      # Says WHICH project it found without printing the value — both refs are
+      # public (CLAUDE.md §Supabase Rules), the key is not. The first run of
+      # this job refused here, which is how it was learned that the Actions
+      # secrets did not point where docs/ENVIRONMENTS.md said they did.
       - name: Refuse to walk anything but DEV
         run: |
           case "$NEXT_PUBLIC_SUPABASE_URL" in
-            *fpmrimzxadewsaiwpsel*) echo "DEV — proceeding" ;;
-            *) echo "::error::NEXT_PUBLIC_SUPABASE_URL is not the DEV project; the walk signs up and writes"; exit 1 ;;
+            *fpmrimzxadewsaiwpsel*) echo "DEV (letsride-dev) — proceeding" ;;
+            *zwprydcyryvudhurbnye*) echo "::error::NEXT_PUBLIC_SUPABASE_URL is PROD (letsride). The walk signs up and writes, so it refuses; point the Actions secrets at letsride-dev (docs/ENVIRONMENTS.md)"; exit 1 ;;
+            "") echo "::error::NEXT_PUBLIC_SUPABASE_URL is empty in this job"; exit 1 ;;
+            *supabase.co*) echo "::error::NEXT_PUBLIC_SUPABASE_URL is a Supabase host that is neither project"; exit 1 ;;
+            *) echo "::error::NEXT_PUBLIC_SUPABASE_URL is not a *.supabase.co URL"; exit 1 ;;
           esac
 
       - uses: actions/checkout@v4
@@ -407,7 +414,7 @@ jobs:
 
       - name: Server log
         if: failure()
-        run: tail -n 120 server.log
+        run: '[ -f server.log ] && tail -n 120 server.log || echo "no server.log — failed before the server started"'
 
   rls:
     name: RLS Policy Tests
