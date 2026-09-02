@@ -456,17 +456,23 @@ Four things landed, none rider-visible: the write path got its first real tests
 Functions under Deno (`functions` job, scoped to `supabase/functions/**`); the docs spine was cut
 from ~112k tokens per session to ~40k by moving the handoff's reference sections into
 `docs/reference/` and rewriting `CLAUDE.md` to rules plus their commands; and
-`deploy-functions.yml` gives the owner a one-click Edge Function deploy. **That last one is
-written and unverified** — it needs `SUPABASE_ACCESS_TOKEN` as a repository secret, and its first
-dispatch is its test. The walk is wired into CI (`walk` job): it needs no credential because it mints
+`deploy-functions.yml` deploys the Edge Functions on every merge that touches them (owner's
+decision, 2026-09-02: autonomous), waiting for Vercel's GitHub Deployment of that sha in that
+branch's environment first, so the app is serving before the function is (PD-236). **Written and
+unverified** — it needs `SUPABASE_ACCESS_TOKEN` as a repository secret (PD-369) and is skipped with
+a warning until then. **The day the token lands, one dispatch per project (`all`) is still owed**:
+`resolve-ride-location` on both projects predates PD-236's marker fix (`b343d6d`, measured
+2026-09-02 — the deployed `ezbr_sha256` is from 2026-08-27), and no future merge touches it. The
+push trigger fixes future drift, not that one. The walk is wired into CI (`walk` job): it needs no credential because it mints
 its own rider, so the only thing it costs DEV is one signed-up-then-deleted rider per run. **It is
 skipped until the repository variable `WALK_CI=1` exists, because its guard step measured the
 Actions secrets naming PROD** — `docs/ENVIRONMENTS.md` §Owner setup item 5 was never done, and
 `CLAUDE.md` said the opposite until this session. Repoint the secrets, set the variable, and the job
 runs; **not a required check yet** — a branch-protection click once it has been green a few PRs
-(PD-370). One more thing measured on #373: **opening a PR through the GitHub MCP triggers
-no CI run** — the first run came with the next push. Check with
-`actions_list list_workflow_runs` filtered to the branch before reading a missing run as an outage.
+(PD-370). One thing measured both ways: on #373 opening the PR through the GitHub MCP
+triggered no CI run (the first came with the next push, seven hours later); on #374 it triggered one
+within a minute. So a missing run after a PR opens is not a rule either way — check with
+`actions_list list_workflow_runs` filtered to the branch, and push a commit if it stays absent.
 
 **All four stories shipped to riders.** `PD-365` (the introduction, `097`), `PD-366` (the return
 anchor, no migration), `PD-367` (club-thread notifications, `098` plus `100`) and `PD-368` (the join

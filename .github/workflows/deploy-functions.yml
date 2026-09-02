@@ -1,42 +1,59 @@
 name: Deploy Edge Functions
 
-# Deploys one or all of `supabase/functions/*` to one project, from the
-# commit the owner points it at — on demand, never on merge.
+# Deploys `supabase/functions/*` to the project a branch maps to — DEV on a
+# push to `development`, PROD on a push to `main` — and on demand for one
+# function or all, from a checked-in sha, with the CLI's own build.
 #
-# WHY IT EXISTS. Deploying is an owner action: there is no `supabase` CLI in
-# the build container and the MCP server's `deploy_edge_function` is on
-# `.claude/settings.json`'s deny list. That made every edit under
-# `supabase/functions/` drift from the moment it merged, with nothing red
-# anywhere — `resolve-ride-location` went stale twice in one day, once
-# carrying the fix that decides whether a map tile renders at all. This
-# workflow keeps the decision with the owner and removes the terminal: one
-# click, from a checked-in sha, with the CLI's own build of the bundle.
+# WHY IT EXISTS. There is no `supabase` CLI in the build container and the
+# MCP server's `deploy_edge_function` is on `.claude/settings.json`'s deny
+# list, so until 2026-09-02 every edit under `supabase/functions/` was drift
+# from the moment it merged, with nothing red anywhere — `resolve-ride-location`
+# went stale twice in one day, once carrying the fix that decides whether a
+# map tile renders at all. Product owner, 2026-09-02: *"deploy on every
+# merge, you should be autonomous on that."* So a merge deploys.
 #
-# WHY NOT ON PUSH. Two reasons, both concrete. A push trigger would let an
-# agent-merged PR deploy the function holding the service-role key with no
-# human between the merge and the deploy — the exact step the deny list
-# exists to keep. And a function can carry an ordering rule against the app
-# (PD-236: `resolve-ride-location` must deploy only AFTER the app carrying
-# `MapAttribution` is serving, or the map tile loses its licence credit for
-# the length of a Vercel build), which a push trigger firing beside Vercel's
-# cannot honour. If the owner decides the push trigger is wanted anyway, it
-# is an `on: push: branches:` block plus a project-ref switch on
-# `github.ref_name`; the deploy step below already takes both from inputs.
+# IT FIXES FUTURE DRIFT ONLY. A push deploys only when it touches a function,
+# so whatever was already stale when this landed stays stale until one
+# manual dispatch catches it up — PD-369 step 3, `all` to each project.
+#
+# THE ORDERING RULE IS HONOURED BY WAITING, NOT BY HAND. A function can
+# depend on the app already serving — PD-236: `resolve-ride-location` sends
+# `attribution=none`, so the app's own `MapAttribution` must be live before
+# the function is, or the map tile loses its licence credit for the length
+# of a Vercel build. Vercel's GitHub integration records each build as a
+# GitHub Deployment on the sha, in environment `Production` (the `main`
+# build) or `Preview` (every other branch, `development` included), and
+# posts a deployment status when it is serving. The push-triggered run polls
+# the deployment for THIS branch's environment — not the bare commit status,
+# whose single `Vercel` slot cannot tell a Production build from a Preview
+# of the same sha, which is exactly the case after a promotion's
+# fast-forward — and deploys only on `success`. `failure`/`error`, or no
+# success within the window, refuses: the old function keeps serving, which
+# is the side that fails safe. A dispatch skips the wait; the owner pointed
+# it at a sha on purpose.
 #
 # WHAT IT NEEDS. One repository secret, `SUPABASE_ACCESS_TOKEN` — a personal
-# access token from the Supabase dashboard (Account → Access Tokens). Without
-# it the job stops at the gate step and says so, rather than failing inside
-# the CLI with a login error that reads like a broken workflow. The project
-# refs are not secrets: both ship in the client bundle as part of the
-# Supabase URL.
+# access token from the Supabase dashboard (Account → Access Tokens), PD-369.
+# Without it the deploy job is SKIPPED with a warning rather than red on
+# every merge: a job that can only be red trains everyone to ignore red. The
+# project refs are not secrets; both ship in the client bundle.
 #
-# UNVERIFIED. Written without a way to run it — the build container has no
-# CLI and jsr.io/supabase.com are off its allowlist — so the first dispatch
-# is the test. `--project-ref` is what lets `functions deploy` run without a
-# `supabase link` or a `config.toml`; if the CLI insists on one, `supabase
-# init` before the deploy step is the fix, not a committed config.
+# UNVERIFIED until the token exists — written without a way to run it (the
+# build container has no CLI, no route to supabase.com, and no deployments
+# endpoint on the GitHub MCP to confirm the environment names above; the
+# commit-status half WAS measured on #373). `--project-ref` is what lets
+# `functions deploy` run without a `supabase link` or a `config.toml`; if
+# the CLI insists on one, `supabase init` before the deploy step is the fix,
+# not a committed config.
 
 on:
+  push:
+    branches: [main, development]
+    # Only the functions — NOT this file: a merge editing the workflow must
+    # not be the first-ever execution of a deploy to the service-role
+    # function. The catch-up dispatch is the deliberate first run.
+    paths:
+      - 'supabase/functions/**'
   workflow_dispatch:
     inputs:
       project:
@@ -45,25 +62,74 @@ on:
         type: choice
         options: [dev, prod]
       function:
-        description: 'Which function — or all three'
+        description: 'Which function — or all of them'
         required: true
         type: choice
         default: all
         options: [all, delete-account, resolve-ride-location, search-places]
 
+# A `paths:` filter is fine HERE, unlike in ci.yml: this workflow is not a
+# status check anything requires (PD-185 names the three that are), so a run
+# that never triggers blocks nothing. A merge touching no function deploys
+# nothing, which is the point.
+
+# Declared rather than inherited: a 403 on the deployments API would otherwise
+# read as "Vercel is slow" for twenty minutes. `log-digest.yml` does the same.
+permissions:
+  contents: read
+  deployments: read
+  statuses: read
+
+# One deploy per branch at a time, QUEUED rather than cancelled: cancelling
+# mid-loop is a partial deploy, and queuing means the newest merge deploys
+# last, so the project ends on the newest bundle. `main` and `development`
+# are separate groups because they target separate projects.
+concurrency:
+  group: deploy-functions-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  deploy:
-    name: ${{ inputs.function }} → ${{ inputs.project }}
+  # Secrets are not readable in a job-level `if:`, so the gate is a job that
+  # reads the secret in a step and says whether the deploy may run.
+  gate:
+    name: Is the deploy configured?
     runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SUPABASE_ACCESS_TOKEN is not set — nothing deploys until it is (PD-369). The functions on both projects are drifting from this merge."
+          fi
+
+  deploy:
+    name: ${{ github.event_name == 'push' && format('all → {0}', github.ref_name) || format('{0} → {1}', inputs.function, inputs.project) }}
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    # Up to 20 minutes of waiting plus three sequential deploys; 30 sat too
+    # close to the worst case, and a cap hit mid-loop is a partial deploy.
+    timeout-minutes: 45
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      # PROD is `letsride`; DEV is `letsride-dev`. Both refs are public —
+      # CLAUDE.md §Supabase Rules records them for the same reason. On a push
+      # the branch decides; on a dispatch the input does.
+      # Fully parenthesised on purpose: `&&` binds tighter than `||` in
+      # GitHub expressions, so the unparenthesised form `A || B && PROD || DEV`
+      # evaluates to the boolean `true` on a push to main and deploys to a
+      # project called "true".
+      PROJECT_REF: ${{ ((github.event_name == 'push' && github.ref_name == 'main') || (github.event_name == 'workflow_dispatch' && inputs.project == 'prod')) && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}
+      FUNCTION: ${{ github.event_name == 'push' && 'all' || inputs.function }}
+      # Vercel's environment for this branch's build — see the header.
+      VERCEL_ENV: ${{ github.ref_name == 'main' && 'Production' || 'Preview' }}
     steps:
-      - name: Refuse without a token
-        if: env.SUPABASE_ACCESS_TOKEN == ''
-        run: |
-          echo "::error::SUPABASE_ACCESS_TOKEN is not set — add it under Settings → Secrets → Actions."
-          exit 1
-
       - uses: actions/checkout@v4
 
       # The same check CI's `functions` job runs, so a dispatch from a branch
@@ -74,26 +140,60 @@ jobs:
       - name: Type check before deploying
         run: deno check --node-modules-dir=none --no-lock $(find supabase/functions -mindepth 2 -maxdepth 2 -name index.ts | sort)
 
-      # Pinned, like everything else on a deploy path: two dispatches of the
-      # same sha must produce the same bundle. Bump it deliberately.
+      # PD-236's ordering, mechanised. Finds the GitHub Deployment Vercel
+      # created for this sha in this branch's environment and polls its
+      # latest status. Three consecutive API failures fail fast and say so,
+      # rather than spending the whole window on what is probably a
+      # permission problem. Twenty minutes is well past a normal build.
+      - name: Wait for the app to be serving (push only)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          unreachable=0
+          for _ in $(seq 1 80); do
+            if ! deployments=$(gh api "repos/${GITHUB_REPOSITORY}/deployments?sha=${GITHUB_SHA}&environment=${VERCEL_ENV}&per_page=5" 2>&1); then
+              unreachable=$((unreachable + 1))
+              echo "deployments API unreachable ($unreachable/3): $deployments"
+              [ "$unreachable" -ge 3 ] && { echo "::error::cannot read GitHub Deployments for this sha — check the workflow's permissions before blaming Vercel"; exit 1; }
+              sleep 15; continue
+            fi
+            unreachable=0
+            id=$(printf '%s' "$deployments" | jq -r 'sort_by(.created_at) | last | .id // empty')
+            if [ -z "$id" ]; then
+              echo "no ${VERCEL_ENV} deployment for ${GITHUB_SHA:0:7} yet"
+              sleep 15; continue
+            fi
+            state=$(gh api "repos/${GITHUB_REPOSITORY}/deployments/${id}/statuses?per_page=1" --jq 'first | .state // "none"' 2>/dev/null || echo "none")
+            echo "${VERCEL_ENV} deployment ${id} for ${GITHUB_SHA:0:7}: $state"
+            case "$state" in
+              success) exit 0 ;;
+              failure|error) echo "::error::Vercel reported $state for this sha's ${VERCEL_ENV} build — not deploying functions ahead of an app that is not serving"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::no successful ${VERCEL_ENV} deployment for this sha within 20 minutes — not deploying. Dispatch the workflow by hand once the app is serving."
+          exit 1
+
+      # Pinned, like everything else on a deploy path: two runs of the same
+      # sha must produce the same bundle. Bump it deliberately.
       - uses: supabase/setup-cli@v1
         with:
           version: 2.116.0
 
       - name: Deploy
-        env:
-          # PROD is `letsride`; DEV is `letsride-dev`. Both refs are public —
-          # CLAUDE.md §Supabase Rules records them for the same reason.
-          PROJECT_REF: ${{ inputs.project == 'prod' && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}
         run: |
           set -euo pipefail
           # A function is a directory holding an index.ts — not every entry
-          # under supabase/functions/, so a `_shared/` directory never gets
-          # deployed as one and never aborts the loop halfway.
-          if [ "${{ inputs.function }}" = "all" ]; then
+          # under supabase/functions/, so a `_shared/` directory is never
+          # deployed as one. A CLI failure part-way still stops the loop
+          # (a half-deployed set is better than deploying past an error);
+          # the listing below always runs, so it shows which half.
+          if [ "$FUNCTION" = "all" ]; then
             names=$(find supabase/functions -mindepth 2 -maxdepth 2 -name index.ts | sort | xargs -n1 dirname | xargs -n1 basename)
           else
-            names="${{ inputs.function }}"
+            names="$FUNCTION"
           fi
           for name in $names; do
             echo "== $name -> $PROJECT_REF @ $GITHUB_SHA"
@@ -101,4 +201,5 @@ jobs:
           done
 
       - name: What is now deployed
-        run: supabase functions list --project-ref "${{ inputs.project == 'prod' && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}"
+        if: always()
+        run: supabase functions list --project-ref "$PROJECT_REF"
