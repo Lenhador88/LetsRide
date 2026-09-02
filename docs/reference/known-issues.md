@@ -1,4 +1,4 @@
-# Known issues — moved from the handoff 2026-09-01
+# Known issues
 
 > The roadmap is Linear. This holds the issues that are *understood* — mechanism, the sites
 > to re-derive, and why each was not folded into the PR that found it. Ordered roughly by cost.

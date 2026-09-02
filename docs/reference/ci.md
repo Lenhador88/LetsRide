@@ -1,4 +1,4 @@
-# CI, read the jobs not the run — moved from the handoff 2026-09-02
+# CI, read the jobs not the run
 
 > The hand-gate to run when CI is unavailable, the runner-outage signature, and the two build
 > shapes. `CLAUDE.md` §Branching & CI has the rules; this is the procedure.
@@ -86,7 +86,7 @@ npm run release:check                 # only before a store submission — see �
   node -p "require('./node_modules/@fission-ai/openspec/package.json').version"   # 1.7.0
   ```
 
-## Edge Function currency — moved from CLAUDE.md 2026-09-02
+## Edge Function currency
 
 **Version numbers differ per project and always will** (they count deploys), so the
 `ezbr_sha256` is what says the two projects agree, and equality is not currency: compare the deploy

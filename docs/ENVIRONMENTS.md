@@ -855,7 +855,7 @@ keeps the list as procedure rather than a record.
 Then, in a session: apply the chain to DEV, run `npm run db:drift` to prove the three agree,
 seed it, and move the two `@letsride.test` fixtures off production.
 
-## Where the split stands — moved from the handoff 2026-09-02
+## Where the split stands
 
 **`docs/ENVIRONMENTS.md` is the contract.** Read it before touching either project. What
 belongs here is only which half is real.

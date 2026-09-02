@@ -233,7 +233,7 @@ The Sentry org and project, and the DSN in Vercel (Production and
 Preview/Development are separate scopes) and in the native build's environment.
 Until that lands the code ships and stays silent.
 
-## Position, 2026-09-01 — shipped, and silent until three owner actions land (moved from the handoff)
+## Position, 2026-09-01 — shipped, and silent until three owner actions land
 
 PD-315 (Sentry) and PD-353 (PostHog) built together because they share the privacy page, the
 layout mount and the env plumbing. The durable half is elsewhere and is not repeated here:
@@ -318,7 +318,7 @@ private API key in the function's secret store, which is a new secret and arguab
 Until then `/legal/privacy` and `/legal/account-deletion` both say plainly that deletion does not
 reach it, and name the email route that does. `ENVIRONMENTS.md` §Owner setup 7d.
 
-## The dependencies — moved from CLAUDE.md 2026-09-02
+## The dependencies
 
 **Three of the twelve are observability (PD-315, PD-353)**, and each is a doorway module in
 `src/lib/` that nothing else imports the package through — the same one-doorway shape as
@@ -329,7 +329,8 @@ property of the doorway:
   anywhere. They are a **pair**: `@sentry/capacitor` peers an exact `@sentry/react`, and its
   `init` falls through to the browser SDK on the web, so the pair covers both build shapes and
   `@sentry/nextjs` would be a second `Sentry.init` to keep in agreement for ever. It is also a
-  **native plugin**, so the rule below applies.
+  **native plugin**, so `CLAUDE.md` §Technology Decisions' rule on native plugins applies — each
+  needs a one-sentence justification.
 - **`posthog-js`** — the one product question SQL cannot reach is *which* onboarding step turns a
   rider away, because a rider who tries three usernames and closes the tab has written nothing.
   Eight of the ten questions in `docs/reference/analytics.md` are still a `select` and must stay one.

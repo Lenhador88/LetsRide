@@ -1,4 +1,4 @@
-# Constraints that will waste your time otherwise — moved from the handoff 2026-09-02
+# Constraints that will waste your time otherwise
 
 > Container, connector and tooling traps, each with the measurement that found it. Read the one
 > you are about to hit; none of them is position.
@@ -249,7 +249,7 @@ it.
 #      labels on those rows are the concurrency count; any Needs help row stops every dispatch
 ```
 
-## Connector rotation — moved from CLAUDE.md 2026-09-02
+## Connector rotation
 
 **A brief's `tools:` line is an exact-name allowlist, and an entry on it is neither guaranteed
 loaded nor guaranteed present.** `InputValidationError` means the schema arrived **deferred** —
@@ -274,7 +274,7 @@ owner's call.
 agent naming the passes that did not run; restoring the call is the owner's. Every brief reaching
 **Supabase** carries `ToolSearch` and a §Reaching Supabase block; `agent-briefs.test.ts` enforces it.
 
-## Two builds at once — moved from CLAUDE.md 2026-09-02
+## Two builds at once
 
 **A second concurrent build is not free, and the collisions are resources rather than files:**
 
@@ -292,7 +292,7 @@ agent naming the passes that did not run; restoring the call is the owner's. Eve
 The first two are overridable — `TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=`, `next dev -p`. The
 database half fails loudly; the port half passes, which is why it is the dangerous one.
 
-## Branch cleanup — moved from CLAUDE.md 2026-09-02
+## Branch cleanup
 
 **Branch cleanup is an owner action, and the branches on the orphaned root must never be
 deleted.** The repo's history was rewritten on 2026-08-04, so `main` and `development` root at

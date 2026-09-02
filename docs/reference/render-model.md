@@ -1,4 +1,4 @@
-# The render model — moved from the handoff 2026-09-02
+# The render model
 
 > The client-rendered migration is finished and archived; this holds the route census and the
 > commands that prove the shape still holds. `CLAUDE.md` §Technology Decisions carries the rule.

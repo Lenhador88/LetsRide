@@ -319,7 +319,7 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 # via the Supabase MCP: list_migrations -> md5(statements[1])
 ```
 
-## Applied state — the per-project log, moved from the handoff 2026-09-01
+## Applied state — the per-project log
 
 **`list_migrations` prints 99 rows on DEV and 91 on PROD against 96 files, and NONE of the DEV
 surplus is a gap.** DEV is level with the repo at `096` — every file has a recorded row, reconciled
@@ -1112,7 +1112,7 @@ the `041 → 044 → 046` ordering chain and the link in it that fails silently,
 `042`–`048`, and the hand reconciliation for every recorded statement that disagrees with its file.
 Read it before concluding either database has drifted.
 
-## Applying a large file — moved from CLAUDE.md 2026-09-02
+## Applying a large file
 
 **Applying a migration too large to pass as a string.** `apply_migration` takes SQL as a string,
 so a 61 KB file has to be reduced to its executing statements **preserving comments inside `$$`
@@ -1121,9 +1121,9 @@ file applied correctly**: `md5(string_agg(...))` over `pg_get_functiondef`, `pg_
 `pg_policies`, `information_schema.columns`, `pg_indexes` and the grants. **A recorded statement
 that does not equal `md5sum` of its file is therefore the NORM for a large migration**, on both
 projects, and it reads exactly like drift. Compare the OBJECT, never the recorded text;
-[`docs/reference/migrations.md`](docs/reference/migrations.md) has the reconciliation SQL.
+§What reads as drift, and why none of it is has the reconciliation SQL.
 
-## Security advisors — moved from CLAUDE.md 2026-09-02
+## Security advisors
 
 **Security advisors: thirty-seven on both projects, and only one is outstanding.** Re-derive
 rather than trust the number — `get_advisors(security)`, or, without the payload,

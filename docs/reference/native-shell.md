@@ -1,4 +1,4 @@
-# The native shell — moved from the handoff 2026-09-01
+# The native shell
 
 > Position notes for the Capacitor shell and the store submission. Every dated line is a
 > measurement; re-run the command beside it rather than trusting the date.

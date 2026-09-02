@@ -1,4 +1,4 @@
-# Running things in this container — moved from the handoff 2026-09-01
+# Running things in this container
 
 > The per-command table, the relay Chromium needs to reach Supabase, and the walk.
 > `CLAUDE.md` §Development Workflow has the short list; this is the long one.

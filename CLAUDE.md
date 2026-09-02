@@ -130,8 +130,8 @@ never be dissolved back into components, because:
    writes safe in the first place.
 
    **The participation gate is narrower than "every write"** — `enforce_participation_gate` sits on
-   twenty-two tables and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, the read-marker
-   tables, `push_devices` or any `storage.objects` policy, so an account that never called
+   twenty-two tables and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
+   `feed_reads`, `club_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
    `accept_terms()` can still set a username and upload an avatar. `docs/reference/schema.md`
    §The participation gate has the list, the `push_devices` exception and the count query.
 2. `useActionState` gives pending and error states without hand-rolled `useState` triples — and
@@ -484,7 +484,7 @@ removes with nothing red. `docs/reference/migrations.md` §The ordering chain ca
 recorded statement that does not equal `md5sum` of its file is the NORM on both projects and reads
 exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
-procedure and the reconciliation SQL.
+procedure, and §What reads as drift the reconciliation SQL.
 
 Suite **3335** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
@@ -702,11 +702,13 @@ openspec → reviewer → data → design-system → feature → test → review
 pipeline with no automated gate, since `openspec/` sits in the CI denylist and a visibility decision
 left unstated *"silently becomes whatever the migration author assumed"* — and the **final diff**,
 once, immediately before the PR. Its passes are scoped to what the diff touches, mirroring `ci.yml`'s
-denylist, except that the documentation-claims pass never narrows; `.claude/agents/reviewer.md`
-§Then: classify the diff is the list. `.claude/agents/*.md` and `.claude/commands/*.md` are reviewed
-as **logic** — `src/__tests__/agent-briefs.test.ts` runs on them — while `.claude/hooks/*.sh` and
-the rest of `.claude/` run zero jobs, so a diff there is a **security** review with nothing behind
-it.
+denylist; the documentation-claims pass never narrows, nor does the scope pass on a queue pickup,
+and four things override the scoping entirely — `.claude/agents/reviewer.md` §Then: classify the
+diff is the list. `.claude/agents/*.md` and `.claude/commands/*.md` are reviewed as **logic** —
+`src/__tests__/agent-briefs.test.ts` runs on them — and `.claude/settings.json` and
+`.claude/skills/` each run the job for one tripwire; **`.claude/hooks/*.sh` and the rest of
+`.claude/` run zero jobs**, so a diff touching the permission or execution surface is a
+**security** review with, at best, a cardinality check behind it.
 
 Skip `openspec` when the change has no domain rules — copy, styling, a dependency bump.
 Requiring a proposal for everything is how process gets ignored. Skip `data` when there's no
