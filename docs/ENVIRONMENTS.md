@@ -854,3 +854,58 @@ keeps the list as procedure rather than a record.
 
 Then, in a session: apply the chain to DEV, run `npm run db:drift` to prove the three agree,
 seed it, and move the two `@letsride.test` fixtures off production.
+
+## Where the split stands — moved from the handoff 2026-09-02
+
+**`docs/ENVIRONMENTS.md` is the contract.** Read it before touching either project. What
+belongs here is only which half is real.
+
+**Real, and exercised end to end on 2026-08-06** — the full loop ran once, deliberately:
+feature branch → `development` (#63) → `main` (#64), then a fast-forward back-merge leaving both
+branches at the same SHA.
+
+- **`development` is deployed**: `letsrideapp-git-development-pedro-projects1.vercel.app`,
+  Preview target, `READY`. Owner-only, because Preview carries Vercel SSO.
+- **Both custom hosts are attached since 2026-08-11**, with both Supabase Site URLs moved to
+  match — `PD-105`/`PD-106`, and `docs/ENVIRONMENTS.md` §Domains carries the probes.
+  `app.letsride.social` answers `200` with the app, verified. `app-dev.letsride.social` answers
+  `302` to Vercel SSO, which verifies it is attached and protected and **not** which build is
+  behind it — its `development` binding is set, not observed, and §Domains has the build-id check
+  that settles it. The `*.vercel.app` URLs still work and are still the fallback.
+- **CI triggers on a `development` base** — confirmed by run 149's own `pull_request` event.
+  `ci.yml` `on:` lists both branches on both triggers; a base missing from those lists runs
+  *zero* jobs and shows no red mark, which is indistinguishable from having nothing to check.
+- `npm run db:drift`, `npm run db:seed:check` (also a CI step), `supabase/seeds/development.sql`.
+
+**The DEV database is `Letsride-dev`, ref `fpmrimzxadewsaiwpsel`**, `eu-west-1`, same org.
+Confirmation is **off** there (`mailer_autoconfirm: true`) and on for PROD, which is the intended
+split. §Migrations below is the live comparison.
+
+**The Vercel half is not done, and that is now the only gap.** `NEXT_PUBLIC_SUPABASE_URL` is
+still scoped **Production and Preview** against PROD, so previews still read and write the live
+database — measured 2026-08-06, which finally answers `ENVIRONMENTS.md` §Owner setup item 1.
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` was narrowed to Production only mid-session, so Preview
+currently holds a URL and no key. Both need a second row scoped to **Preview with no branch
+filter** — a branch-scoped Preview variable applies to that branch alone, and feature branches
+deploy to Preview too.
+
+That misconfiguration does **not** fail the build — measured, `next build` exits 0 and ships,
+because `createClient()` is only called from an effect and the prerender pass never reaches it.
+`next.config.ts` now asserts both variables at build time so it turns red instead of
+green-and-broken.
+
+Two rules that bite immediately, before any of the owner steps happen:
+
+- **PRs go to `development`, not `main`.** The thing an agent gets wrong by habit. `main` takes
+  exactly one kind of PR: the promotion.
+- **Never promote a Vercel preview to production.** `NEXT_PUBLIC_SUPABASE_*` is inlined at
+  build time and Vercel's own API docs say promote *"does not rebuild the deployment"* — so it
+  would ship DEV credentials to riders with a green deploy and no error.
+
+Verify rather than trust, one line each:
+
+```bash
+git ls-remote --heads origin development          # does the branch exist
+grep -A 5 '^on:' .github/workflows/ci.yml         # both branches, both triggers
+npm run db:drift                                  # needs PROD_DATABASE_URL / DEV_DATABASE_URL
+```
