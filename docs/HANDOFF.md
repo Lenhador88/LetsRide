@@ -197,7 +197,7 @@ cause was never any of the three the procedure documented.** Every relay answere
 40–80 output tokens and spawned nothing, and every story since 08-28 was picked up by the owner
 opening a session by hand; the reading — a session the Routine mints for itself holds no
 `create_session`, which is built-in tooling rather than a connector — is inferred from that and
-is what the new procedure's inventory firing measures first. The
+is what the new procedure's STEP 0 self-check measures on every firing. The
 measurements are on PD-241 (2026-09-02 comment), and `docs/reference/linear.md` §The queue is
 drained by one Routine, on one clock carries the shape that replaced it.
 
@@ -214,16 +214,17 @@ are repointed. **Nothing fires it yet.** In this order:
    on `development`, connectors Linear + Supabase + Vercel (+ GitHub and Claude Code Remote, if
    either is offered — the second was not on 2026-09-02), hourly, push notification on completion,
    and the prompt in `queue-run.md` §Why this shape.
-3. **The first firing is inventory** — `queue-run.md`'s mode line reads `inventory`, so it posts
-   the tools it can reach as a comment on PD-241 and moves nothing. Read that comment: if the GitHub
-   tools are absent the build cannot open a PR, and that decides whether `queue-pickup.md` STEP 4c
-   needs a `git push` + comment fallback before the mode flips.
-4. **A session — flip the mode line to `build`** in a one-line PR. Live at the next hour.
+3. **Nothing else.** Every firing self-checks the three things a build cannot do without (Linear,
+   opening and merging a PR, git push) and builds if they pass; the first passing firing also posts the full
+   tool inventory on PD-241 for the record. A firing that fails the check posts what is missing and
+   ends with `self-check failed — read PD-241` — that notification is the one to act on, and the
+   likely fix is `queue-pickup.md` STEP 4c growing a `git push` + comment fallback.
 
 ```
 mcp__Claude_Code_Remote__list_triggers     # the new Routine present, next_run_at in the future;
                                            # …WJkMV gone or enabled:false
-mcp__Linear__list_comments  issueId=PD-241 # the inventory comment, then the board moving on its own
+mcp__Linear__list_comments  issueId=PD-241 # the inventory comment from the first passing firing,
+                                           # then the board moving on its own
 ```
 
 ## Where this left off — 2026-09-02, an introduction is listed only as its announcement

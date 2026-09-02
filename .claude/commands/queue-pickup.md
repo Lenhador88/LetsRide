@@ -1299,7 +1299,7 @@ inferred and labelled as such:**
 - **A Routine-minted session is not expected to hold the session-management tools** — no
   `get_session`, no `archive_session`, no `list_triggers`, no `create_session`. That is **inferred**
   from every relay's 40–80-token firings, not observed (`queue-run.md` §Why this shape has the
-  table), and its inventory firing is what measures it. Either way STEP 6's budget gate fails
+  table), and its STEP 0 inventory is what measures it. Either way STEP 6's budget gate fails
   closed (one group per firing, then end), and STEP 7 keeps the session, which costs nothing because
   trigger-run sessions are not in the owner's ordinary session list (measured 2026-09-02). A
   hand-spawned session holds all of them and both steps work as written.

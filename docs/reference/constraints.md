@@ -68,8 +68,9 @@ platform behaviour that will waste a session's time again if it is rediscovered:
   The reading — that the session-management tools are built-in tooling a session gets when a
   person or another session starts it, not a connector — is **inferred** from that (PD-241 calls
   it a hypothesis, twice), and whether `get_session`, `archive_session`, `list_triggers` or
-  `list_sessions` are held has not been measured at all; `queue-run.md`'s inventory firing is what
-  does. **Any queue design that needs a firing to spawn, fire or archive anything is dead on
+  `list_sessions` are held has not been measured at all; `queue-run.md` STEP 0's self-check is what
+  does — the three a build needs on every firing, the rest once when it first passes and again
+  whenever it fails. **Any queue design that needs a firing to spawn, fire or archive anything is dead on
   arrival**, and every health check on the Routine will say it is fine.
 - **Trigger-fired sessions are excluded from `list_sessions` by default** — measured 2026-09-02:
   the relay carried `origin: scheduled_trigger` and the tags `config:routine-lineage-none`,
