@@ -155,7 +155,7 @@ async function removeRideMapTiles(
  * The fix is the same `security definer` function this comment has named since
  * it was written, doing both inserts in one statement. Nothing asserts "a club
  * has an owner-membership row" as a CHECK or trigger, and that is the actual
- * gap. Logged in docs/HANDOFF.md §Known issues.
+ * gap. Logged in docs/reference/known-issues.md §Known issues.
  *
  * `club_id` is offered here for the first time. The column has existed since
  * `001` and no screen has ever set it, which meant a club's Rides sub-page

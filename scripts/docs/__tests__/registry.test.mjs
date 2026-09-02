@@ -394,7 +394,7 @@ describe('the rating block renders as five skimmable scores', () => {
     })
   }
 
-  it.each(['CLAUDE.md', 'docs/HANDOFF.md'])('%s separates every score from its reason', (file) => {
+  it.each(['CLAUDE.md', 'docs/HANDOFF.md', 'docs/reference/known-issues.md'])('%s separates every score from its reason', (file) => {
     const text = readFileSync(join(repoRoot, file), 'utf8')
     expect(gluedScoreLines(text)).toEqual([])
   })
@@ -411,7 +411,10 @@ describe('the rating block renders as five skimmable scores', () => {
     // it; the floor then only has to catch wholesale deletion.
     const LABELS = ['Recommendation', 'Complexity', 'Urgency', 'Customer value', 'This session']
 
-    for (const file of ['CLAUDE.md', 'docs/HANDOFF.md']) {
+    // `known-issues.md` rather than `docs/HANDOFF.md` since 2026-09-01: the handoff's
+    // three blocks moved out with its Known issues section, so a floor on the handoff
+    // would now be the vacuous pass this test exists to refuse.
+    for (const file of ['CLAUDE.md', 'docs/reference/known-issues.md']) {
       const lines = readFileSync(join(repoRoot, file), 'utf8').split('\n')
       const scored = lines.filter((l) => SCORE.test(l))
       expect(scored.length, `${file} has no rating blocks — the scan above passed vacuously`).toBeGreaterThanOrEqual(15)
@@ -433,8 +436,8 @@ describe('the rating block renders as five skimmable scores', () => {
     expect(gluedScoreLines(glued)).toHaveLength(1)
   })
 
-  it('catches a violation in an indented block, where HANDOFF keeps its blocks', () => {
-    // Every real block in docs/HANDOFF.md sits inside a list item, so the
+  it('catches a violation in an indented block, where known-issues.md keeps its blocks', () => {
+    // Every real block in docs/reference/known-issues.md sits inside a list item, so the
     // quote marker carries two leading spaces. A detector anchored to a
     // column-0 `>` would score all three of them as absent — clean, forever.
     const glued = ['  > **Urgency** 4/10', '  > both doors need a hand-rolled request'].join('\n')

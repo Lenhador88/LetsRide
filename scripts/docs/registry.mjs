@@ -321,7 +321,7 @@ export const claims = [
   },
   {
     id: 'migrations-count-handoff',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/migrations.md',
     // Pinned to the RELATIONSHIP as well as the count, exactly like its
     // CLAUDE.md sibling above — and for a second reason here: HANDOFF.md
     // carries this one-liner TWICE (the Migrations section's row-vs-file
@@ -472,7 +472,7 @@ export const claims = [
   },
   {
     id: 'nav-items-scoped-handoff',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/native-shell.md',
     pattern: /`Navbar\.tsx` draws (\w+) tabs and the `UNBUILT` machinery is deleted/,
     extractStated: extractWord(),
     kind: 'shell',
@@ -535,7 +535,7 @@ export const claims = [
   },
   {
     id: 'rls-count-handoff-table',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/running-locally.md',
     pattern: /`PGPASSWORD=postgres npm test 2>&1 \\\| grep -c "NOTICE: {2}ok"` — \*\*(\d+)\*\*, measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'rls',
@@ -563,7 +563,7 @@ export const claims = [
   },
   {
     id: 'unit-tests-count-table',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/running-locally.md',
     pattern: /`npm run test:unit` — \*\*(\d+) across (\d+) files on a clean tree\*\*/,
     extractStated: (m) => Number(m[1]),
     kind: 'vitest',
@@ -572,7 +572,7 @@ export const claims = [
   },
   {
     id: 'unit-tests-files-table',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/running-locally.md',
     pattern: /`npm run test:unit` — \*\*(\d+) across (\d+) files on a clean tree\*\*/,
     extractStated: (m) => Number(m[2]),
     kind: 'vitest',

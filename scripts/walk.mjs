@@ -115,7 +115,7 @@ const BASE = process.env.WALK_BASE ?? 'http://localhost:3000'
 if (Boolean(process.env.WALK_EMAIL) !== Boolean(process.env.WALK_PASSWORD)) {
   console.error(
     'Set both WALK_EMAIL and WALK_PASSWORD for a known account, or neither to mint a\n' +
-      'fresh one — see docs/HANDOFF.md §The walk.'
+      'fresh one — see docs/reference/running-locally.md §The walk.'
   )
   process.exit(2)
 }
@@ -134,7 +134,7 @@ const MINT_SUFFIX = `${Date.now().toString(36)}${Math.random().toString(36).slic
 
 // `@letsride.dev` — `supabase/seeds/development.sql` refuses to run while any
 // account outside that domain exists, so a walk account on any other domain
-// quietly blocks the seed (docs/HANDOFF.md §The walk).
+// quietly blocks the seed (docs/reference/running-locally.md §The walk).
 let EMAIL = process.env.WALK_EMAIL ?? `walk-${MINT_SUFFIX}@letsride.dev`
 // Well past `NEW_PASSWORD_MIN_LENGTH` (8) and never read back — nothing
 // stores this once the run using it ends, which is the whole point of
@@ -400,7 +400,7 @@ const SIGNUP_PROBE_PASSWORD = 'walk-signup-probe-PD-203'
  * environment, not of this phase.** `signUp` takes the `alreadyRegistered`
  * branch only when `supabase.auth.signUp` itself errors on the duplicate —
  * which is what happens with `mailer_autoconfirm: true` (DEV, decision #6,
- * and where this walk always runs, per docs/HANDOFF.md §The walk). With
+ * and where this walk always runs, per docs/reference/running-locally.md §The walk). With
  * confirmation ON (PROD) GoTrue's own duplicate-signup mitigation returns
  * **success** with an empty `identities` array instead, so `signUp` never
  * reaches this branch at all there — see the comment above the
@@ -494,7 +494,7 @@ async function checkRefusedSignup(targetPage) {
  * - **`CreatePostcardForm`.** Its submit stays `disabled` until an upload
  *   finishes, so exercising a refusal here would mean a real Storage write on
  *   every walk — and Storage from this container's Chromium hangs with no
- *   `onload`/`onerror` (docs/HANDOFF.md §The walk).
+ *   `onload`/`onerror` (docs/reference/running-locally.md §The walk).
  */
 
 /**
