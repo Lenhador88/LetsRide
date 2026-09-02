@@ -45,6 +45,15 @@ catch.
   nothing notifies. The unread map already held that thread's state; §D3 keeps the two consistent
   by construction, so the row arrives with whatever unread state it always had.
 
+- *A current member's introduction can fall out of every browse surface.* The announcement row is
+  windowed — `CLUB_TIMELINE_LIMIT` is 20, the timeline does not paginate, and no foot destination
+  draws an introduction door — so a member with twenty newer events above their join keeps a
+  deep link and a notification and nothing else. This is Arm B's own defect reaching the majority
+  case through Arm A, and it is **not remedied here**: the members list is the obvious carrier and
+  a second place an introduction appears contradicts the stated deliverable, which makes it the
+  owner's call. `proposal.md` §The announcement row is a WINDOW has the trigger, and why the
+  welcome club — the case that would have made this urgent — cannot produce it.
+
 **Inferred, not measured:** DEV holds **zero** ex-member introductions today
 (`introduction is not null and introduces_user_id is null` → 0 of 3), so the ex-member arm cannot be
 observed on DEV without making one. `tasks.md` §6 has the hand-exercise that creates one in a

@@ -22,8 +22,15 @@ term appearing anywhere in this diff is a review failure, not a detail.
       SELECT on `introduces_user_id` and `introduction`; **no** INSERT and **no** UPDATE on either.
 - [ ] 0.3 Confirm nothing has been added to the repo that writes `club_thread_waves` since the
       proposal was written:
-      `git grep -n "club_thread_waves\|waveThread\|unwaveThread\|threadWaves" -- src/`.
-      The expected set is the six files the proposal names; anything else is new scope.
+      `git grep -ln "club_thread_waves\|waveThread\|unwaveThread\|threadWaves" -- src/`.
+      **Read the result, do not count it.** At the base this returns six files and they are NOT the
+      five §The wave names: `ClubTimelineThreadRow.tsx` is absent (it takes a `wave` prop and
+      imports `ClubWaveButton`, and none of those four literals appear in it), while
+      `src/types/index.ts` and `src/lib/data/club-threads.ts` are present holding only true,
+      surviving comments about a table this change does not drop. Two counts agreeing at six is
+      exactly the coincidence `CLAUDE.md`'s comment trap warns about. What the grep is for is
+      **new writers**: an `upsert`, `insert` or `delete` against `club_thread_waves` outside
+      `lib/actions/club-waves.ts` is new scope; a comment is not.
 
 ## 1. The rule, expressed once
 

@@ -289,7 +289,7 @@ below is answered by a policy that already exists, and this change adds no term 
 
 | Role | Reach into an introduction, its comments and its counts | Changed by this? |
 |---|---|---|
-| **Owner** | Reads the thread and every comment; may moderate. Reaches it from the announcement row while the subject is a member, and from the Threads list once they are not | No |
+| **Owner** | Reads the thread and every comment; may moderate. Reaches it from the announcement row **while that row is still on the timeline** — see §The announcement row is a window, below — and from the Threads list once the subject has left | No |
 | **Admin** | Identical to the owner for this purpose — `club_members.role` has carried `admin` since `001` | No |
 | **Member** | Reads and comments; deletes only their own comment; deletes their own introduction | No |
 | **The subject** | As a member, plus deleting their own introduction's thread | No |
@@ -396,11 +396,44 @@ reads apply, plus the source-level test in `tasks.md` §4. The two call sites sp
 paths (`introduces_user_id` on the base table, `thread.introduces_user_id` through the embed), so
 one shared *string* cannot serve both; one shared *name and reason* can.
 
+### The announcement row is a WINDOW, and that is this arm's third cost
+
+**Raised by the proposal review, 2026-09-02, and it is the one state the enumeration above
+missed.** Every row of that table says a rider "reaches it from the announcement row", and the
+announcement row is not an unconditional surface: `CLUB_TIMELINE_LIMIT` is **20**, `ClubTimeline`
+has no pagination, and its foot leads to photos, rides, threads and members — none of which draws
+an introduction door. `attachClubIntroductions` is imported by `ClubTimeline` and
+`ClubTimelineEventRow` and by nothing else.
+
+So for a **current** member whose join has 20 or more newer timeline events above it, this change
+removes the last browse route to their introduction: the Threads list no longer lists it and the
+join row is off the bottom of the stream. What remains is a deep link and a `098` notification —
+which is verbatim the *"nobody browsing"* cell this document puts in Arm B's column. The same is
+true of the moderation argument at §The rule: an owner or admin loses the browse route too.
+
+**The trigger is smaller than it first looks, and the correction matters.** The review reasoned
+from *"the welcome club takes one join per signup"*, but `097` refuses an introduction to the
+default club outright (`and not c.is_default`, and `owesIntroduction` never offers the prompt
+there), so the highest-frequency-join club in the app holds **zero** introductions by
+construction. The real trigger is an ordinary club active enough to put twenty events above a
+member's join. On DEV today: zero clubs.
+
+**Not remedied here, and that is a decision rather than an omission.** The obvious carrier is the
+members list — the one foot destination that can never be empty, and a screen `attachClubIntroductions`
+could serve unchanged with its own cache key. But the deliverable this change was given says the
+announcement row is *the only place* a club introduction appears, and putting a door on the
+members list makes a second one. That is the product owner's call, not this change's, so the cost
+is written down here, in `ANNOUNCEMENT_MARKER`'s own doc where an implementer meets it, and filed
+as a follow-up.
+
 **There is no blocking question.** Every decision the issue raised is settled in this document.
 
 ## Impact
 
-- **Six client files**, no migration, no new component, no new dependency.
+- **Eight client files**, no migration, no new component, no new dependency: `lib/data/club-threads.ts`,
+  `lib/data/club-timeline.ts`, `lib/data/club-waves.ts`, `lib/actions/club-waves.ts`,
+  `lib/query/keys.ts`, `components/clubs/ClubTimeline.tsx`,
+  `components/clubs/ClubTimelineThreadRow.tsx`, `components/clubs/ClubOptionsMenu.tsx`.
 - **A club's Threads list gets shorter** by one row per member who has introduced themselves —
   three of eight threads on DEV today.
 - **The club timeline stops growing by one row per comment on an introduction**, which is the

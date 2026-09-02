@@ -63,6 +63,40 @@ oversight and removed for consistency by a session that notices the affordance i
 - **THEN** no policy, grant, constraint or trigger on either wave table SHALL be altered
 - **AND** the assertions covering them SHALL neither be changed nor removed
 
+### Requirement: A wave SHALL be withdrawable by its author regardless of whether its subject is still visible
+
+**Narrowed by this change to the DATABASE layer, and the app-level exception is named rather than
+left for a reader to discover.** Every clause of this requirement stands as written: the DELETE
+policy is still `using (user_id = auth.uid())` with no visibility conjunct, the own-row branch is
+still a disjunct of the whole SELECT policy, and all three of its scenarios still hold — they are
+database-level and this change touches no policy, no grant and no table.
+
+**What is no longer true is its stated REASON, for thread waves alone.** *"A rider must be able to
+withdraw a wave from a subject that has gone out of view, or the row is stranded"* — and after this
+change every existing `club_thread_waves` row IS stranded, because the control that reached the
+DELETE is gone with the rest of the client path. Three rows on DEV, measured 2026-09-02. The
+product owner asked for this directly (*"yes, only annoucements are waveable please"*), so the
+requirement is narrowed rather than contested:
+
+- **For `club_join_waves` it holds end to end** — the join row is the club timeline's only waveable
+  row, and its control still withdraws.
+- **For `club_thread_waves` it holds at the database and nowhere above it.** A rider who waved a
+  thread before this change SHALL NOT be offered a way to withdraw it, and the app SHALL NOT grow
+  one back: re-adding a control to reach a stranded row would re-add the double count this change
+  removed.
+
+**The remedy is the successor, not a control.** `proposal.md` §The table with no writer names what
+dropping the table owes; until then the rows are inert rather than repairable, and that is the
+cost of the instruction rather than an oversight in it. A session reading this capability end to
+end SHALL read this as a superseding decision and SHALL NOT file the contradiction as a bug.
+
+#### Scenario: A pre-existing thread wave cannot be withdrawn from the app
+- **WHEN** a rider who waved a club thread before this change opens that thread's row on the club
+  timeline
+- **THEN** no wave control SHALL be drawn, waved or not
+- **AND** the row SHALL remain in `club_thread_waves` with its DELETE policy unchanged
+- **AND** no new affordance SHALL be added to reach it
+
 ## ADDED Requirements
 
 ### Requirement: Retiring an affordance SHALL retire its whole client path, and a table left with no writer SHALL be named as such

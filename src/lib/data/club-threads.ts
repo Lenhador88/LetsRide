@@ -64,6 +64,20 @@ export const CLUB_MESSAGES_PAGE_SIZE = 200
  * `not … is null` rather than an `is null` in `getClubThreadUnread`, which
  * asks the opposite question. What must not drift is the rule and its reason.
  *
+ * **The cost this rule carries, so an implementer meets it here rather than in
+ * a bug report.** The announcement row is a WINDOW: `CLUB_TIMELINE_LIMIT` is
+ * 20, the club timeline does not paginate, and no destination in its foot
+ * draws an introduction door. So a **current** member with twenty newer events
+ * above their join has no browse route to their own introduction once this
+ * filter takes it off the Threads list — only a deep link or a `098`
+ * notification. That is deliberate and unremedied: the members list is the
+ * obvious carrier and a second place an introduction appears contradicts the
+ * deliverable, which makes it the product owner's call. The trigger is an
+ * ordinary club active enough to bury a join under twenty events —
+ * **not** the welcome club, which `097` refuses introductions to outright
+ * (`and not c.is_default`), so the highest-frequency-join club in the app
+ * cannot produce this state at all.
+ *
  * `097` grants `authenticated` SELECT on this column and no INSERT or UPDATE
  * (measured on DEV, 2026-09-02), which is what makes filtering on it safe
  * without a migration: no rider can set or clear their own marker, so no rider
