@@ -197,7 +197,9 @@ Four things landed, none rider-visible: the write path got its first real tests
 (`src/lib/actions/__tests__/`, pinning the two cache invalidations); CI type-checks the three Edge
 Functions under Deno (`functions` job, scoped to `supabase/functions/**`); the docs spine was cut
 from ~112k tokens per session to ~40k by moving the handoff's reference sections into
-`docs/reference/` and rewriting `CLAUDE.md` to rules plus their commands; and
+`docs/reference/` and rewriting `CLAUDE.md` to rules plus their commands — and to ~31k in a second
+pass on 2026-09-02 (this file ~9k, `CLAUDE.md` ~22k; measure with `wc -c`, divided by four). What is
+left in `CLAUDE.md` is rules and their anchored sentences; cutting further means deleting rules; and
 `deploy-functions.yml` deploys the Edge Functions on every merge that touches them (owner's
 decision, 2026-09-02: autonomous), waiting for Vercel's GitHub Deployment of that sha in that
 branch's environment first, so the app is serving before the function is (PD-236). **Written and

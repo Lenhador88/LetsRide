@@ -85,3 +85,20 @@ npm run release:check                 # only before a store submission — see �
   ```bash
   node -p "require('./node_modules/@fission-ai/openspec/package.json').version"   # 1.7.0
   ```
+
+## Edge Function currency — moved from CLAUDE.md 2026-09-02
+
+**Version numbers differ per project and always will** (they count deploys), so the
+`ezbr_sha256` is what says the two projects agree, and equality is not currency: compare the deploy
+against the file, and count the undeployed commits rather than reading a list anywhere:
+
+```bash
+ls supabase/functions/ | wc -l                                                     # what the repo has
+TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/<name>/   # newer than the deploy = stale
+TZ=UTC git log --oneline --since=<deploy timestamp> -- supabase/functions/<name>/      # by how many commits
+```
+```
+mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
+mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
+# updated_at vs the commit date; status ACTIVE, verify_jwt true, ezbr_sha256 equal across the two
+```

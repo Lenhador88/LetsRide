@@ -1111,3 +1111,37 @@ select md5(prosrc), md5(obj_description(oid, 'pg_proc')) from pg_proc
 the `041 → 044 → 046` ordering chain and the link in it that fails silently, the rollback SQL for
 `042`–`048`, and the hand reconciliation for every recorded statement that disagrees with its file.
 Read it before concluding either database has drifted.
+
+## Applying a large file — moved from CLAUDE.md 2026-09-02
+
+**Applying a migration too large to pass as a string.** `apply_migration` takes SQL as a string,
+so a 61 KB file has to be reduced to its executing statements **preserving comments inside `$$`
+bodies** — then **proved by diffing the resulting objects against the database that already has the
+file applied correctly**: `md5(string_agg(...))` over `pg_get_functiondef`, `pg_get_triggerdef`,
+`pg_policies`, `information_schema.columns`, `pg_indexes` and the grants. **A recorded statement
+that does not equal `md5sum` of its file is therefore the NORM for a large migration**, on both
+projects, and it reads exactly like drift. Compare the OBJECT, never the recorded text;
+[`docs/reference/migrations.md`](docs/reference/migrations.md) has the reconciliation SQL.
+
+## Security advisors — moved from CLAUDE.md 2026-09-02
+
+**Security advisors: thirty-seven on both projects, and only one is outstanding.** Re-derive
+rather than trust the number — `get_advisors(security)`, or, without the payload,
+
+```sql
+select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.prosecdef
+   and has_function_privilege('authenticated', p.oid, 'execute');
+```
+
+— but the *shape* is durable, because all but one are things this repo chose, and a bare count
+cannot tell a session whether a new WARN is expected:
+
+| Count | Advisor | Why it is there |
+|---|---|---|
+| 34 | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`). Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
+| 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design: `026` and `078` revoke everything on their table from the client roles, so a policy would be the thing that granted reach |
+| 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
+
+An unexpected advisor is one **not** in that table. A one-advisor difference between the projects
+is almost always a pending promotion.

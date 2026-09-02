@@ -317,3 +317,24 @@ them. `identify()` uses `auth.uid()` so the handle exists; wiring the erasure ne
 private API key in the function's secret store, which is a new secret and arguably its own story.
 Until then `/legal/privacy` and `/legal/account-deletion` both say plainly that deletion does not
 reach it, and name the email route that does. `ENVIRONMENTS.md` §Owner setup 7d.
+
+## The dependencies — moved from CLAUDE.md 2026-09-02
+
+**Three of the twelve are observability (PD-315, PD-353)**, and each is a doorway module in
+`src/lib/` that nothing else imports the package through — the same one-doorway shape as
+`lib/data/` and `lib/actions/`, enforced by a test in each case, because the privacy posture is a
+property of the doorway:
+
+- **`@sentry/capacitor` + `@sentry/react`** — a throw in a rider's browser reached no log
+  anywhere. They are a **pair**: `@sentry/capacitor` peers an exact `@sentry/react`, and its
+  `init` falls through to the browser SDK on the web, so the pair covers both build shapes and
+  `@sentry/nextjs` would be a second `Sentry.init` to keep in agreement for ever. It is also a
+  **native plugin**, so the rule below applies.
+- **`posthog-js`** — the one product question SQL cannot reach is *which* onboarding step turns a
+  rider away, because a rider who tries three usernames and closes the tab has written nothing.
+  Eight of the ten questions in `docs/reference/analytics.md` are still a `select` and must stay one.
+
+All three are pinned **exact**: a minor bump that changes replay masking or session storage is a
+privacy or sign-in regression with nothing red anywhere.
+`src/lib/analytics/__tests__/client.test.ts` asserts against the installed recorder that password
+inputs are still masked unconditionally.

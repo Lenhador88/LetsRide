@@ -47,31 +47,12 @@ where it will actually be seen: a PR comment, the commit message, or the handoff
 the top of its final report and the main thread does the holding. An agent that hits a genuine
 mistake mid-task reports it — it does not build around it and mention it in passing.
 
-**Branch cleanup is an owner action, and the branches on the orphaned root must never be
-deleted.** The repo's history was rewritten on 2026-08-04, so `main` and `development` root at
-`0ea7054` and every branch that had not merged by then sits on a root with **no merge base to
-`development` at all** — `git merge` cannot reach those commits, only `git show <sha> -- <path>`
-can. Deleting such a branch destroys the only copy of whatever was in flight that day. `PD-143`
-carries the do-not-touch list.
-
-**The safety question is *unmerged content*, not "is it an orphan".** An ahead-count and
-`git cherry` both report every commit of a squash-merged branch as unlanded for ever, so re-derive
-it with `merge-tree`, which needs no merge base. The answer is a snapshot — run it immediately
-before deleting anything:
-
-```bash
-devtree=$(git rev-parse origin/development^{tree})
-for b in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin |
-           grep -vE '^origin/(development|main|HEAD)$'); do
-  res=$(git merge-tree --write-tree origin/development "$b" 2>/dev/null | head -1)
-  [ -z "$res" ] && { echo "ORPHAN  $b"; continue; }          # no merge base at all
-  [ "$res" != "$devtree" ] && echo "UNMERGED $b"             # merging it would change something
-done
-```
-
-**No session can delete a branch here** — `git push origin --delete` returns **HTTP 403** from
-GitHub while ordinary pushes in the same session succeed, and the GitHub MCP server exposes
-`create_branch` with no delete counterpart. Do not spend a session rediscovering this.
+**Branch cleanup is an owner action, and no session can do it anyway** — `git push origin --delete`
+answers HTTP 403 here while ordinary pushes succeed. The branches rooted before the 2026-08-04
+history rewrite have **no merge base to `development`**, so deleting one destroys the only copy of
+what was in flight that day (`PD-143` is the do-not-touch list), and the safety question is
+*unmerged content*, which `git cherry` cannot answer for a squash-merged branch. The `merge-tree`
+snapshot that can is in `docs/reference/constraints.md` §Branch cleanup.
 
 ## Stack
 
@@ -106,24 +87,14 @@ feature. Count rather than trust that number:
 whether a thirty-line helper does the job. No UI component libraries at all — shadcn, Radix and
 MUI are out; extend `src/components/ui/*` instead.
 
-**Three of the twelve are observability (PD-315, PD-353)**, and each is a doorway module in
-`src/lib/` that nothing else imports the package through — the same one-doorway shape as
-`lib/data/` and `lib/actions/`, enforced by a test in each case, because the privacy posture is a
-property of the doorway:
-
-- **`@sentry/capacitor` + `@sentry/react`** — a throw in a rider's browser reached no log
-  anywhere. They are a **pair**: `@sentry/capacitor` peers an exact `@sentry/react`, and its
-  `init` falls through to the browser SDK on the web, so the pair covers both build shapes and
-  `@sentry/nextjs` would be a second `Sentry.init` to keep in agreement for ever. It is also a
-  **native plugin**, so the rule below applies.
-- **`posthog-js`** — the one product question SQL cannot reach is *which* onboarding step turns a
-  rider away, because a rider who tries three usernames and closes the tab has written nothing.
-  Eight of the ten questions in `docs/reference/analytics.md` are still a `select` and must stay one.
-
-All three are pinned **exact**: a minor bump that changes replay masking or session storage is a
-privacy or sign-in regression with nothing red anywhere.
+**Three of the twelve are observability (PD-315, PD-353)** — `@sentry/capacitor` + `@sentry/react`
+(a pair: the first peers an exact version of the second and falls through to the browser SDK on the
+web, so one `init` covers both build shapes) and `posthog-js` (for the one funnel question SQL cannot
+reach: which onboarding step turns a rider away). Each is a doorway module in `src/lib/` that nothing
+else imports the package through, enforced by a test, because the privacy posture is a property of
+the doorway; all three are pinned **exact**, and
 `src/lib/analytics/__tests__/client.test.ts` asserts against the installed recorder that password
-inputs are still masked unconditionally.
+inputs stay masked. `docs/reference/observability.md` §The dependencies has the reasoning.
 
 **Two of the twelve are the native shell's**, runtime by necessity because app code imports them:
 **`@capacitor/core`** (nothing reaches a native API without it) and
@@ -139,17 +110,11 @@ column is one place to find rather than a dozen. Re-derive the spread with
 `git grep -c "\.from('" -- 'src/*.ts' 'src/*.tsx'`.
 
 **Every embed of `profiles` names its foreign key, because a migration touching neither the query
-nor its policies can break it.** PostgREST resolves `alias:profiles(…)` by counting the
-relationships between the two tables, and it counts a many-to-many through a **junction** — a
-table whose primary key is exactly the union of its two foreign keys. (Any third table holding a
-key to both is *not* the rule; `postcards` holds keys to `clubs` and `rides` and has never made
-`rides` → `clubs` ambiguous.) `092` added such a junction and four screens started answering
-`PGRST201` / **HTTP 300** together, through every gate green — `tsc` type-checks a template
-string, ESLint reads no SQL, Vitest mocks the client, `next build` issues no query, and the RLS
-suite runs on plain Postgres with no PostgREST cache. A hinted embed cannot go ambiguous whatever a
-later migration adds; membership rows go through `MEMBER_PROFILE_EMBED` in `lib/data/columns.ts`,
-and `src/lib/data/__tests__/embed-hints.test.ts` refuses an unhinted one — `!inner` is a join
-modifier, not a hint:
+nor its policies can break it.** PostgREST counts relationships between two tables, a junction adds
+one, and `092` turned four screens into `PGRST201` / HTTP 300 through every gate green — none of
+them issues a query. Membership rows go through `MEMBER_PROFILE_EMBED` in `lib/data/columns.ts`, and
+`src/lib/data/__tests__/embed-hints.test.ts` refuses an unhinted one — `!inner` is a join modifier,
+not a hint. `docs/reference/schema.md` §Embed hints has the mechanism and what counts as a junction:
 
 ```bash
 npx vitest run src/lib/data/__tests__/embed-hints.test.ts
@@ -164,18 +129,11 @@ never be dissolved back into components, because:
    them into the database as a CHECK, a trigger or a grant, which is what made client-side
    writes safe in the first place.
 
-   **The participation gate is narrower than "every write".** `enforce_participation_gate` is on
-   **twenty-two** tables on both projects, and **not** on `profiles` UPDATE, `profile_countries`,
-   `blocks`, `postcard_hides`, `feed_reads`, `club_thread_reads`, `push_devices` or any
-   `storage.objects` policy. `push_devices` is the one omission whose safety depends on the gate
-   being restated INSIDE its RPC (`078`): every gate trigger carries
-   `when (current_user = 'authenticated')`, and `current_user` inside a `security definer`
-   function is the owner, so a trigger there could never fire — `078.9` asserts the absence for
-   that reason. So an account created by calling GoTrue's `/auth/v1/signup` directly, never
-   calling `accept_terms()`, **can still set a username, write a bio and upload an avatar with
-   `terms_accepted_at` NULL**. Count it rather than read it, and read a per-project difference as
-   a pending promotion before reading it as a gap:
-   `select count(*) from pg_trigger where tgname = 'enforce_participation_gate' and not tgisinternal`.
+   **The participation gate is narrower than "every write"** — `enforce_participation_gate` sits on
+   twenty-two tables and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, the read-marker
+   tables, `push_devices` or any `storage.objects` policy, so an account that never called
+   `accept_terms()` can still set a username and upload an avatar. `docs/reference/schema.md`
+   §The participation gate has the list, the `push_devices` exception and the count query.
 2. `useActionState` gives pending and error states without hand-rolled `useState` triples — and
    it works exactly the same with a plain async function as with a Server Action.
 
@@ -270,9 +228,9 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (54 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/__tests__/` exercises four actions against a mocked resolver — pinning that a refused write does not invalidate, that `setUsername` writes the username before the completion RPC and invalidates once after both, and that `signOut` clears both caches — and reads every action module on comment-stripped source to assert that each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Twenty-one** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence — the two trailing slots of `SectionHeader` surviving together and in order, the direction of `PostcardCard`'s growth, the ABSENCE of a claiming `useEffect` in `RideInviteJoin` and `ClubInviteJoin` (asserted on COMMENT-STRIPPED source, because each file's docstring says "there is no `useEffect` in this file"), the `+` on `ClubTimelineThreadRow` surviving in BOTH directions. Every one is verified both ways per §Working Principles: reintroducing the defect fails exactly the case written for it. All render through `renderToStaticMarkup`; the environment is still `node`, and jsdom is the answer only when something needs a layout or an event. Six carry a `vi.mock('next/navigation')`, standing in for a provider rather than for behaviour — count them, `grep -rl "vi.mock('next/navigation'" src/components \| wc -l` |
+| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (54 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/__tests__/` exercises four actions against a mocked resolver and reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Twenty-one** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways per §Working Principles; all render through `renderToStaticMarkup` under `environment: 'node'`, and jsdom is the answer only when something needs a layout or an event |
 | Edge Functions | `deno check`, CI's `functions` job | Type-checks every `index.ts` under the runtime it runs in, when `supabase/functions/**` or the workflow changes. `tsconfig.json` excludes the directory, but two helper modules (`gates.ts`, `shape.ts`) are imported by unit tests and `tsc` follows them in — `npx tsc --noEmit --listFiles \| grep supabase/functions` lists them — so the entrypoints are the part only the Deno job reads |
-| Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Refuses a sign-in, signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind; refuses a create and an edit and checks every field survives. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. `WALK_FIXTURES=1` creates the ride and club the detail routes need; a shrunken `N/N` is a skip, not a pass. **Wired into CI as the `walk` job (2026-09-02)**, minting its own rider (no credential — PD-268), scoped to what the build or the database reads — and **skipped until the repository variable `WALK_CI=1` is set**, because the Actions secrets name PROD and the guard step refuses to walk it; the job's own comment carries the retirement condition. Not a required check until it has been green for a while (PD-370) |
+| Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything**: signs in, walks every screen including detail routes discovered from the lists, checks the guard's redirects and sign-out, and refuses a create and an edit. Every other gate stays green through a screen that throws on load, or one nobody can reach (PD-125). `WALK_FIXTURES=1` creates the rows the detail routes need; a shrunken `N/N` is a skip, not a pass. **Wired into CI as the `walk` job (2026-09-02)**, minting its own rider (no credential — PD-268), and **skipped until the repository variable `WALK_CI=1` is set**, because the Actions secrets name PROD and the guard step refuses to walk it. Not a required check yet (PD-370) |
 | End-to-end | Playwright | Deferred as a full suite. The walk asks one question per route — did this render — and asserts behaviour only in its named phases, each covering a defect no other gate can see. Adding a phase means adding a reason, not broadening a remit |
 
 Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`.
@@ -299,16 +257,14 @@ carries the zone rule below.
 
 **A ride's times are wall-clock at its meeting point** — `rides.timezone`, `080` — and
 `APP_TIME_ZONE` (`Europe/Amsterdam`) is the **fallback**. Every `formatRide*` helper and
-`wallClockToUtc` take the zone as a **required** argument, `null` meaning "we do not know". The
-viewer's own zone is not the answer: the SSR pass runs on Vercel, so an unpinned formatter renders
-the server's zone into the HTML and the rider's on hydration. **The invariant is a database rule:**
-*the wall-clock the organizer typed is preserved; the zone says which instant that names.* A TYPED
-start cannot know its zone at submit (the geocode runs after the insert), so `080`'s
-`enforce_ride_timezone` shifts `departure_at` whenever a statement moves the zone. Two guards,
-neither redundant: Postgres validates against `pg_timezone_names`, and `rideZone()` falls back for
-anything `Intl` cannot format in, because an unknown `timeZone` throws and would take down every
-screen the ride appears on. `wallClockToUtc`'s tests assert offsets rather than strings, because
-`TZ=UTC` in `vitest.config.ts` would let a naive implementation pass a string comparison.
+`wallClockToUtc` take the zone as a **required** argument, `null` meaning "we do not know"; the
+viewer's own zone is never the answer, because the SSR pass renders the server's zone into the HTML
+and the rider's on hydration. **The invariant is a database rule** — *the wall-clock the organizer
+typed is preserved; the zone says which instant that names* — and `080`'s `enforce_ride_timezone`
+shifts `departure_at` whenever a statement moves the zone. `rideZone()` falls back for anything
+`Intl` cannot format in, because an unknown `timeZone` throws on every screen the ride appears on.
+`wallClockToUtc`'s tests assert offsets rather than strings, because `TZ=UTC` in `vitest.config.ts`
+would let a naive implementation pass a string comparison.
 
 **Deliberately undecided** — raise these rather than inventing an answer: i18n, and email
 delivery beyond Supabase's built-in auth mails.
@@ -431,20 +387,10 @@ function, so what was stale the day it landed (`resolve-ride-location` on both p
 PD-236's marker fix) stays stale until one manual dispatch per project catches it up. No session deploys by hand: there is no `supabase` CLI in
 the build container, and the MCP server's `deploy_edge_function` stays on `.claude/settings.json`'s
 `deny` list.
-**Version numbers differ per project and always will** (they count deploys), so the
-`ezbr_sha256` is what says the two projects agree, and equality is not currency: compare the deploy
-against the file, and count the undeployed commits rather than reading a list anywhere:
-
-```bash
-ls supabase/functions/ | wc -l                                                     # what the repo has
-TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/<name>/   # newer than the deploy = stale
-TZ=UTC git log --oneline --since=<deploy timestamp> -- supabase/functions/<name>/      # by how many commits
-```
-```
-mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
-mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
-# updated_at vs the commit date; status ACTIVE, verify_jwt true, ezbr_sha256 equal across the two
-```
+**Version numbers differ per project and always will** (they count deploys), so the `ezbr_sha256`
+is what says the two projects agree, and equality is not currency: compare `updated_at` against the
+last commit under `supabase/functions/<name>/`. `docs/reference/ci.md` §Edge Function currency has
+the three commands.
 
 **One redeploy has an ORDERING rule, and it runs the opposite way to a migration's.** PD-236 makes
 the deployed `resolve-ride-location` send `attribution=none`, so the app's own `MapAttribution`
@@ -534,14 +480,11 @@ fan-outs' rows rather than assuming them.
 issue an absolute `revoke` + `grant` list, so running `046` first lets `044` reinstate what `046`
 removes with nothing red. `docs/reference/migrations.md` §The ordering chain carries both links.
 
-**Applying a migration too large to pass as a string.** `apply_migration` takes SQL as a string,
-so a 61 KB file has to be reduced to its executing statements **preserving comments inside `$$`
-bodies** — then **proved by diffing the resulting objects against the database that already has the
-file applied correctly**: `md5(string_agg(...))` over `pg_get_functiondef`, `pg_get_triggerdef`,
-`pg_policies`, `information_schema.columns`, `pg_indexes` and the grants. **A recorded statement
-that does not equal `md5sum` of its file is therefore the NORM for a large migration**, on both
-projects, and it reads exactly like drift. Compare the OBJECT, never the recorded text;
-[`docs/reference/migrations.md`](docs/reference/migrations.md) has the reconciliation SQL.
+**A migration too large to pass as a string is applied reduced and proved by object diff**, so a
+recorded statement that does not equal `md5sum` of its file is the NORM on both projects and reads
+exactly like drift. Compare the OBJECT, never the recorded text —
+[`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
+procedure and the reconciliation SQL.
 
 Suite **3335** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
@@ -562,26 +505,15 @@ never run. `complete_onboarding` also joins the caller to the club carrying `clu
 (`058`), inside a `when others` block, because a raise there would roll the completion stamp back
 and decision #5 gives a rider with a NULL stamp no way out of the wizard.
 
-**Security advisors: thirty-seven on both projects, and only one is outstanding.** Re-derive
-rather than trust the number — `get_advisors(security)`, or, without the payload,
-
-```sql
-select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
- where n.nspname = 'public' and p.prosecdef
-   and has_function_privilege('authenticated', p.oid, 'execute');
-```
-
-— but the *shape* is durable, because all but one are things this repo chose, and a bare count
-cannot tell a session whether a new WARN is expected:
-
-| Count | Advisor | Why it is there |
-|---|---|---|
-| 34 | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`). Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
-| 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design: `026` and `078` revoke everything on their table from the client roles, so a policy would be the thing that granted reach |
-| 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
-
-An unexpected advisor is one **not** in that table. A one-advisor difference between the projects
-is almost always a pending promotion.
+**Security advisors: thirty-seven on both projects, and only one is outstanding** —
+`auth_leaked_password_protection`, a dashboard click. The other thirty-six are things this repo
+chose: one `authenticated_security_definer_function_executable` WARN per `security definer` RPC in
+`public` (each narrow by design — takes a row id, never a rider id, one raise site), and two
+`rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding
+two such functions adds two**, and one whose functions live in `private` adds none. Re-derive with
+`get_advisors(security)`; `docs/reference/migrations.md` §Security advisors has the per-migration
+accounting and the count query. An unexpected advisor is one not in that table; a one-advisor
+difference between the projects is almost always a pending promotion.
 
 **Scope a grant assertion to its grantee**, or use `has_table_privilege`: a table-wide
 DELETE-grant count reads 2 against a correct database, because `postgres` and `service_role` hold
@@ -725,18 +657,10 @@ every match with its flow and node id. **`tree` and `text` hide layers Figma has
 add `--all` to see them, marked `[hidden]`. Building from an unfiltered tree is how a back button
 ends up on the home screen.
 
-Refreshing it needs the network and is a **monthly** job:
-
-```bash
-npm run figma:check   # one cheap call — is the snapshot even stale?
-npm run figma:pull    # the expensive call; extracts automatically
-npm run figma:icons   # export Element / Icon / * as SVG
-npm run figma:components # SVGs -> React components (offline, run after figma:icons)
-npm run figma:check -- --probe   # sweep every endpoint when something looks blocked
-```
-
-If `figma:pull` returns 429 it prints `Retry-After` — a real countdown that requests do not
-reset. Come back then rather than polling; waits have been measured in days.
+Refreshing it is a **monthly** job that needs the network — `npm run figma:check` (cheap: is it
+stale?), `figma:pull`, `figma:icons`, `figma:components` (offline, after icons), and
+`figma:check -- --probe` when something looks blocked. A 429 prints `Retry-After`, a real countdown
+that requests do not reset — come back then rather than polling.
 
 **Environment variables** (never commit these): `NEXT_PUBLIC_SUPABASE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `FIGMA_ACCESS_TOKEN` — only needed to *refresh* the snapshot.
@@ -759,28 +683,14 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 | `test` | Vitest/Playwright infra and tests, **and running the app against DEV** — the walk, its fixtures, anything needing a real browser |
 | `reviewer` | Pre-merge review. Which passes run is scoped to what the diff touches — RLS/data-exposure on `src/` or `supabase/`, documentation-claims on everything including docs-only diffs |
 
-**A brief's `tools:` line is an exact-name allowlist, and an entry on it is neither guaranteed
-loaded nor guaranteed present.** `InputValidationError` means the schema arrived **deferred** —
-`ToolSearch select:<name>` *and then call it*. `No such tool available` means the name is
-**absent**, which is what a connector rotation does: the MCP servers re-register under a UUID
-prefix and the friendly name stops resolving, silently. **In a subagent, `ToolSearch` is filtered
-by that agent's own `tools:` line before it searches, so a rotated tool is never surfaced at all**
-and the agent cannot recover from inside itself. **A main thread has no `tools:` line**, so a
-keyword lookup (`+list_issues linear`) *does* recover a rotated connector there, which is why the
-queue procedures say to search again by keyword on a `select:` miss.
-
-**The fix is the `tools:` line carrying BOTH spellings** — the friendly name and the UUID-prefixed
-one — which every brief reaching Supabase, Linear or Figma does. `src/__tests__/agent-briefs.test.ts`
-is the check, and no grep is: every twin sits on one line, so `grep -c` answers 1 however many
-are there. Two things it does NOT cover: `github` has no twin on any brief, because no UUID for
-it has ever been seen, and `.claude/settings.json`'s `permissions.allow` name-matches its
-literal `mcp__*` entries too, so a rotated one comes back `requires approval`, which in an
-unattended firing is a hard stop. Pasting UUIDs there widens a permission surface and is the
-owner's call.
-
-**The report is still owed when a connector arrives under a spelling nobody has recorded** — an
-agent naming the passes that did not run; restoring the call is the owner's. Every brief reaching
-**Supabase** carries `ToolSearch` and a §Reaching Supabase block; `agent-briefs.test.ts` enforces it.
+**A brief's `tools:` line is an exact-name allowlist, and a connector rotation silently renames
+every MCP tool under a UUID prefix.** `InputValidationError` means the schema arrived deferred —
+`ToolSearch select:<name>` and call it; `No such tool available` means the name is absent. The fix is
+the `tools:` line carrying BOTH spellings, which `src/__tests__/agent-briefs.test.ts` enforces along
+with a §Reaching Supabase block on every brief reaching Supabase. A subagent cannot recover from a
+rotation on its own (its `ToolSearch` is filtered by its own line), so it reports the passes that did
+not run; restoring the call is the owner's. `docs/reference/constraints.md` §Connector rotation has
+the mechanics.
 
 **Standard order for a feature:**
 
@@ -788,24 +698,15 @@ agent naming the passes that did not run; restoring the call is the owner's. Eve
 openspec → reviewer → data → design-system → feature → test → reviewer → PR
 ```
 
-**`reviewer` runs twice, on two different artifacts.** The first pass reads the **proposal** —
-the only artifact in this pipeline with *no* automated gate, since `openspec/` sits in the CI
-denylist. `openspec/config.yaml` names the stake: a visibility decision left unstated *"does not
-fail loudly, it silently becomes whatever the migration author assumed."* The second pass reads
-the **final diff**, once, immediately before the PR.
-
-**Each pass is scoped to what the diff touches**, mirroring `ci.yml`'s denylist: the
-data-exposure and client-bundle passes cannot fire on a diff confined to `docs/`, `design/`,
-`openspec/`, `.claude/` or a root `*.md`. The documentation-claims pass does *not* narrow, and
-neither does the scope pass on anything from a queue pickup. Four things override the scoping
-entirely — `.claude/agents/reviewer.md` §Then: classify the diff is the list.
-
-`.claude/agents/*.md` and `.claude/commands/*.md` are reviewed as **logic** rather than prose —
-those two are carved out of `ci.yml`'s denylist so `src/__tests__/agent-briefs.test.ts` runs on
-them. `.claude/settings.json` and `.claude/skills/` run the job too, each for one tripwire;
-**`.claude/hooks/*.sh` and the rest of `.claude/` still run zero jobs**, so a diff touching the
-permission or execution surface is a **security** review with, at best, a cardinality check
-behind it.
+**`reviewer` runs twice, on two different artifacts**: the **proposal** — the only artifact in the
+pipeline with no automated gate, since `openspec/` sits in the CI denylist and a visibility decision
+left unstated *"silently becomes whatever the migration author assumed"* — and the **final diff**,
+once, immediately before the PR. Its passes are scoped to what the diff touches, mirroring `ci.yml`'s
+denylist, except that the documentation-claims pass never narrows; `.claude/agents/reviewer.md`
+§Then: classify the diff is the list. `.claude/agents/*.md` and `.claude/commands/*.md` are reviewed
+as **logic** — `src/__tests__/agent-briefs.test.ts` runs on them — while `.claude/hooks/*.sh` and
+the rest of `.claude/` run zero jobs, so a diff there is a **security** review with nothing behind
+it.
 
 Skip `openspec` when the change has no domain rules — copy, styling, a dependency bump.
 Requiring a proposal for everything is how process gets ignored. Skip `data` when there's no
@@ -891,21 +792,12 @@ place `reviewer`-before-the-PR bends, and only in ordering: the findings still l
 disagreement means stop and *wait*, not stop and mention it in the report.** Resolve the
 ambiguities into the brief before spawning.
 
-**A second concurrent build is not free, and the collisions are resources rather than files:**
-
-- **One test database.** `supabase/tests/run.sh` defaults `TEST_DB=letsride_test` and opens with
-  `drop database if exists`. A refused drop is not proof this is safe: every step is its own
-  `psql`, so a drop landing between two of them takes the other run down mid-chain.
-- **Two fixed ports.** The relay defaults to `:3001` and the walk targets `:3000`. `npm run dev`
-  pins no port, so the second agent's server slides to the next free one while its walk still
-  calls `:3000` — it walks the **first** agent's tree and reports **green**.
-- **One working tree, and the main thread is a writer too.** A verifying agent reads the tree,
-  so anything that writes it while a run is in flight makes the report describe a commit that no
-  longer exists. Commit and stand still for the length of a verification run, or hand the agent
-  `isolation: "worktree"`.
-
-The first two are overridable — `TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=`, `next dev -p`. The
-database half fails loudly; the port half passes, which is why it is the dangerous one.
+**A second concurrent build is not free, and the collisions are resources rather than files** —
+one test database (`run.sh` opens with `drop database if exists`), two fixed ports (the relay's
+`:3001`, the walk's `:3000` — a second dev server slides to the next port and the walk reports the
+FIRST tree green), and one working tree the main thread also writes. All three are overridable
+(`TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=`, `isolation: "worktree"`); the port half is the dangerous
+one because it passes. `docs/reference/constraints.md` §Two builds at once has the detail.
 
 **Agents do not write `CLAUDE.md` or `docs/HANDOFF.md`; the main thread does**, once the reports
 are in. That also keeps the git index single-writer.
@@ -965,12 +857,10 @@ override it.** The full grant is in §The Agent Squad → *When to delegate*. **
 every PR is the non-negotiable one**; the rest is judgement. A session has already deferred to
 that harness line, shipped unreviewed, and paid for it in a follow-up PR.
 
-**Default to the session that is already open.** A session's fixed cost is this file plus the
-handoff, paid **per session, not per fix** — measure it, `cat CLAUDE.md docs/HANDOFF.md | wc -c`,
-divided by four. **Spawn a second session only when the work is genuinely independent *and* long
-enough to earn that back.** The test is whether the two tracks would block each other. This is
-also the only lever that touches the docs-collision problem at its root: `docs/HANDOFF.md` and
-this file are each touched by most recent commits — re-derive it,
+**Default to the session that is already open.** Its fixed cost is this file plus the handoff, paid
+per session — `cat CLAUDE.md docs/HANDOFF.md | wc -c`, divided by four. Spawn a second session only
+when the work is genuinely independent *and* long enough to earn that back; the test is whether the
+two tracks would block each other, and both files are touched by most commits:
 `git log --pretty=format: --name-only origin/development -40 | grep -v '^$' | sort | uniq -c | sort -rn | head`.
 
 **Fix the tool, don't route around it.** When a connector is down, a quota is exhausted, or a

@@ -248,3 +248,74 @@ it.
 #   -> Queued (AI) is the queue; Development (AI) is what is being built, and the slot-1/slot-2
 #      labels on those rows are the concurrency count; any Needs help row stops every dispatch
 ```
+
+## Connector rotation — moved from CLAUDE.md 2026-09-02
+
+**A brief's `tools:` line is an exact-name allowlist, and an entry on it is neither guaranteed
+loaded nor guaranteed present.** `InputValidationError` means the schema arrived **deferred** —
+`ToolSearch select:<name>` *and then call it*. `No such tool available` means the name is
+**absent**, which is what a connector rotation does: the MCP servers re-register under a UUID
+prefix and the friendly name stops resolving, silently. **In a subagent, `ToolSearch` is filtered
+by that agent's own `tools:` line before it searches, so a rotated tool is never surfaced at all**
+and the agent cannot recover from inside itself. **A main thread has no `tools:` line**, so a
+keyword lookup (`+list_issues linear`) *does* recover a rotated connector there, which is why the
+queue procedures say to search again by keyword on a `select:` miss.
+
+**The fix is the `tools:` line carrying BOTH spellings** — the friendly name and the UUID-prefixed
+one — which every brief reaching Supabase, Linear or Figma does. `src/__tests__/agent-briefs.test.ts`
+is the check, and no grep is: every twin sits on one line, so `grep -c` answers 1 however many
+are there. Two things it does NOT cover: `github` has no twin on any brief, because no UUID for
+it has ever been seen, and `.claude/settings.json`'s `permissions.allow` name-matches its
+literal `mcp__*` entries too, so a rotated one comes back `requires approval`, which in an
+unattended firing is a hard stop. Pasting UUIDs there widens a permission surface and is the
+owner's call.
+
+**The report is still owed when a connector arrives under a spelling nobody has recorded** — an
+agent naming the passes that did not run; restoring the call is the owner's. Every brief reaching
+**Supabase** carries `ToolSearch` and a §Reaching Supabase block; `agent-briefs.test.ts` enforces it.
+
+## Two builds at once — moved from CLAUDE.md 2026-09-02
+
+**A second concurrent build is not free, and the collisions are resources rather than files:**
+
+- **One test database.** `supabase/tests/run.sh` defaults `TEST_DB=letsride_test` and opens with
+  `drop database if exists`. A refused drop is not proof this is safe: every step is its own
+  `psql`, so a drop landing between two of them takes the other run down mid-chain.
+- **Two fixed ports.** The relay defaults to `:3001` and the walk targets `:3000`. `npm run dev`
+  pins no port, so the second agent's server slides to the next free one while its walk still
+  calls `:3000` — it walks the **first** agent's tree and reports **green**.
+- **One working tree, and the main thread is a writer too.** A verifying agent reads the tree,
+  so anything that writes it while a run is in flight makes the report describe a commit that no
+  longer exists. Commit and stand still for the length of a verification run, or hand the agent
+  `isolation: "worktree"`.
+
+The first two are overridable — `TEST_DB=`, `RELAY_PORT=`, `WALK_BASE=`, `next dev -p`. The
+database half fails loudly; the port half passes, which is why it is the dangerous one.
+
+## Branch cleanup — moved from CLAUDE.md 2026-09-02
+
+**Branch cleanup is an owner action, and the branches on the orphaned root must never be
+deleted.** The repo's history was rewritten on 2026-08-04, so `main` and `development` root at
+`0ea7054` and every branch that had not merged by then sits on a root with **no merge base to
+`development` at all** — `git merge` cannot reach those commits, only `git show <sha> -- <path>`
+can. Deleting such a branch destroys the only copy of whatever was in flight that day. `PD-143`
+carries the do-not-touch list.
+
+**The safety question is *unmerged content*, not "is it an orphan".** An ahead-count and
+`git cherry` both report every commit of a squash-merged branch as unlanded for ever, so re-derive
+it with `merge-tree`, which needs no merge base. The answer is a snapshot — run it immediately
+before deleting anything:
+
+```bash
+devtree=$(git rev-parse origin/development^{tree})
+for b in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin |
+           grep -vE '^origin/(development|main|HEAD)$'); do
+  res=$(git merge-tree --write-tree origin/development "$b" 2>/dev/null | head -1)
+  [ -z "$res" ] && { echo "ORPHAN  $b"; continue; }          # no merge base at all
+  [ "$res" != "$devtree" ] && echo "UNMERGED $b"             # merging it would change something
+done
+```
+
+**No session can delete a branch here** — `git push origin --delete` returns **HTTP 403** from
+GitHub while ordinary pushes in the same session succeed, and the GitHub MCP server exposes
+`create_branch` with no delete counterpart. Do not spend a session rediscovering this.
