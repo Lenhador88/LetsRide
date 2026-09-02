@@ -689,8 +689,16 @@ npx vitest run scripts/docs/__tests__/crossrefs.test.mjs
 # and docs/reference/running-locally.md §The walk for the whole procedure
 NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://<dev ref>.supabase.co node scripts/supabase-relay.mjs &
 NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
-WALK_EMAIL=... WALK_PASSWORD=... npm run walk
+npm run walk                     # MINTS ITS OWN RIDER — no credential needed (PD-268)
+WALK_EMAIL=... WALK_PASSWORD=... npm run walk   # a KNOWN account, for WALK_FIXTURES reuse
 ```
+
+**Neither `WALK_EMAIL` nor `WALK_PASSWORD` is required, and reading them as required is how a
+session reports the walk blocked when it is not** — which happened on 2026-09-01. Unset, the walk
+signs a fresh rider up through the app's own forms and deletes it afterwards; DEV's
+`mailer_autoconfirm` is what allows it. Set, they name a known account, which is what
+`WALK_FIXTURES` needs to reuse run over run — `docs/HANDOFF.md` §Test accounts carries the two
+disposable ones **and their password**, under a carve-out granted for DEV walk fixtures alone.
 
 **Reading the design** — offline, from the committed snapshot in `design/`:
 

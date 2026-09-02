@@ -458,8 +458,8 @@ from ~112k tokens per session to ~40k by moving the handoff's reference sections
 `docs/reference/` and rewriting `CLAUDE.md` to rules plus their commands; and
 `deploy-functions.yml` gives the owner a one-click Edge Function deploy. **That last one is
 written and unverified** — it needs `SUPABASE_ACCESS_TOKEN` as a repository secret, and its first
-dispatch is its test. The walk-in-CI proposal is not built: it needs a fixture account's
-credentials as secrets, and a decision on whether `WALK_FIXTURES=1` may write to DEV on every PR.
+dispatch is its test. The walk-in-CI proposal is not built yet: the walk needs no credential (it mints
+its own rider), so what it needs is a decision on writing to DEV on every PR.
 
 **All four stories shipped to riders.** `PD-365` (the introduction, `097`), `PD-366` (the return
 anchor, no migration), `PD-367` (club-thread notifications, `098` plus `100`) and `PD-368` (the join
@@ -479,9 +479,11 @@ setup:**
 | `walk-fixture@letsride.dev` | `walkfixture` | Onboarded, has a location and a bike. **Owns `Walk fixture club`** (public, non-default) and a thread in it |
 | `walk-fixture-2@letsride.dev` | `walkfixture2` | Onboarded. A **member** of that club, so the introduction prompt fires for them; has posted an introduction |
 
-**Both share one password and it is NOT in this repo** — same rule as every other account here. It is
-with the product owner; ask for it, or read it from wherever they have stored it. Everything else
-about the fixtures is above, so the only thing a session needs handed to it is the password.
+**Both share one password and it IS in this repo** — §Test accounts has it, deliberately, under a
+carve-out the product owner granted on 2026-09-01 for disposable DEV walk fixtures. And it is a
+convenience rather than a key: **the walk mints its own rider when `WALK_EMAIL`/`WALK_PASSWORD` are
+unset**, so no session is ever blocked on a credential for it. A session reported exactly that
+blocker on 2026-09-01 without reading `scripts/walk.mjs`, which says so in its own header.
 
 **What was exercised end to end, through the real database under real RLS:** `introduce_to_club`
 wrote an introduction and **refused the second with `42501`** (one per membership); a reply and a
@@ -662,15 +664,51 @@ to re-derive and the reason each was not folded into the PR that found it.
 | `duskrider@letsride.test` | `duskrider` | Onboarded. **SQL-inserted**, never signed in |
 | `qa-verify@letsride.test` | `verify24321868` | Onboarded and consented. **SQL-inserted** originally |
 
-**Passwords are not in this repo and must never be.** `duskrider`'s lives with the product
-owner; `qa-verify`'s is in the git history of this file and should be treated as burned. Pass one
-in the environment, never on a command line that gets logged.
+**THE WALK NEEDS NO PASSWORD AT ALL — read this before reporting it as blocked, which a session
+did on 2026-09-01.** With `WALK_EMAIL`/`WALK_PASSWORD` both unset, `scripts/walk.mjs` **mints its
+own rider** through the app's own signup and username forms and deletes it afterwards as a
+non-fatal teardown. PD-268 made that true of the CODE rather than only of a paragraph, and DEV's
+`mailer_autoconfirm: true` is what allows it. So *"I cannot walk, nobody gave me a password"* is
+never true here, and the fixtures below are a convenience rather than a key.
 
-**DEV has its own two, and they are the ones to walk against** — `letsride-dev`
-(`fpmrimzxadewsaiwpsel`) holds `rider-1786033029156@letsride.dev` (consented, **no username, not
-onboarded** — the fixture for walking the wizard) and `rider-1786033088990@letsride.dev`
-(`devrider093453`, fully onboarded — the fixture for walking the app). A smoke walk that signs in
-as a real rider on the production project is a habit worth not forming.
+**Passwords for accounts that MATTER are not in this repo and must never be.** `duskrider`'s lives
+with the product owner; `qa-verify`'s is in the git history of this file and should be treated as
+burned. Pass one in the environment, never on a command line that gets logged.
+
+**DISPOSABLE WALK FIXTURES ARE THE DELIBERATE EXCEPTION, product owner 2026-09-01** — *"temporary
+users created for the walks, the dev passwords can be stored whichever place u can easily access
+them edit them etc."* Their password is written below on purpose. The reasoning, so it is not
+"corrected" back out by a later reader: the account is worth nothing (a DEV rider holding test data
+on a project with no real riders), it is **replaceable in two minutes** by the recipe in §The walk,
+and the alternative — an owner-held secret — reintroduces a human round trip for a check that was
+designed not to need one. **If it is ever a problem, delete the accounts rather than rotating the
+password**; that is what "disposable" buys and it is why burning it in git history costs nothing.
+This carve-out covers walk fixtures on **DEV only** and nothing else — a PROD credential, a
+service-role key or any account a person actually uses stays out, and `autoMode.hard_deny` still
+holds the service-role key absolutely.
+
+**DEV's walk fixtures, with their password, because they are disposable** — all on `letsride-dev`
+(`fpmrimzxadewsaiwpsel`). A smoke walk that signs in as a real rider on the production project is a
+habit worth not forming.
+
+| Email | Username | Password | What it carries |
+|---|---|---|---|
+| `walk-fixture@letsride.dev` | `walkfixture` | `6BAvGCB1jgHXsIz9BXTvvOMh` | Onboarded, has a location and a bike. **Owns `Walk fixture club`** (public, non-default) and a thread in it — so `/clubs/detail/thread` is walkable |
+| `walk-fixture-2@letsride.dev` | `walkfixture2` | same | Onboarded. A **member** of that club, not its owner, so the introduction prompt fires for them; has posted an introduction |
+| `rider-1786033029156@letsride.dev` | — | owner-held | Consented, **no username, not onboarded** — the fixture for walking the wizard |
+| `rider-1786033088990@letsride.dev` | `devrider093453` | owner-held | Fully onboarded, predates the two above |
+
+**The two `walk-fixture*` accounts are a PAIR and the second is the point.** A club's owner is
+exempt from the introduction prompt (`097`, and
+`openspec/changes/introduce-yourself-on-joining-a-club/design.md` §D7), so walking as the owner alone
+renders a code path the feature does not have. Walk as **both** when the club detail changes.
+
+**Replacing them, if they are ever lost or you want fresh ones:** sign up through
+`/auth/v1/signup` (DEV autoconfirms), then `accept_terms()`, then `PATCH /profiles?id=eq.<uid>` with
+a username — **`&select=id` is required**, because `025` makes `profiles` column-scoped and asking
+for the default full-row representation answers `42501` — then `complete_onboarding({p_location:
+null})`. That is the app's own order and its own reason: a refused username must never leave a rider
+stamped complete without one.
 
 **`devrider093453`'s `terms_accepted_at` is a REPAIRED value, not the original — 2026-08-24.** A
 session measuring `023`'s consent gate nulled it expecting its statement batch to roll back; it
