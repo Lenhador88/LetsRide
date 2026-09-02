@@ -91,7 +91,11 @@ jobs:
       # PROD is `letsride`; DEV is `letsride-dev`. Both refs are public —
       # CLAUDE.md §Supabase Rules records them for the same reason. On a push
       # the branch decides; on a dispatch the input does.
-      PROJECT_REF: ${{ (github.event_name == 'push' && github.ref_name == 'main') || (github.event_name == 'workflow_dispatch' && inputs.project == 'prod') && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}
+      # Fully parenthesised on purpose: `&&` binds tighter than `||` in
+      # GitHub expressions, so the unparenthesised form `A || B && PROD || DEV`
+      # evaluates to the boolean `true` on a push to main and deploys to a
+      # project called "true".
+      PROJECT_REF: ${{ ((github.event_name == 'push' && github.ref_name == 'main') || (github.event_name == 'workflow_dispatch' && inputs.project == 'prod')) && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}
       FUNCTION: ${{ github.event_name == 'push' && 'all' || inputs.function }}
     steps:
       - uses: actions/checkout@v4
