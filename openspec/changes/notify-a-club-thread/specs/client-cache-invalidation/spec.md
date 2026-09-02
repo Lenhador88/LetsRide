@@ -2,9 +2,16 @@
 
 ### Requirement: A mutation whose only effect on another rider is a notification SHALL invalidate nothing extra, and SHALL say so
 
-`postClubMessage` and the thread-wave action SHALL NOT gain
-`invalidate(keys.notifications.list())` or `invalidate(keys.notifications.unread())`. No new cache
-key SHALL be added for either new notification type.
+`sendClubMessage` SHALL NOT gain `invalidate(keys.notifications.list())` or
+`invalidate(keys.notifications.unread())`. No new cache key SHALL be added for either new
+notification type.
+
+**This requirement named a second action — the thread wave — and PD-372 deleted it.** `waveThread`
+and `unwaveThread` no longer exist, so a SHALL binding them would enter the canonical spec at
+archive time as a live rule about nothing; the scenario below carries the surviving half on the
+join wave. **The action's name is corrected here too**: it is `sendClubMessage`, never
+`postClubMessage` — that spelling appears nowhere in `src/` and is wrong in this change's
+`proposal.md`, `design.md` and `tasks.md` as well, which are left alone as history.
 
 **The actor is excluded from the recipient set by construction**, so the rider whose client would run
 the invalidation is exactly the rider the notification is not for. Invalidating their own

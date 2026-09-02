@@ -285,12 +285,14 @@ export async function getClubThreadMessages(
  * are read back. Two shapes were rejected: intersecting with page 1 of
  * `getClubThreads` under-reports, because threads are listed by creation and an
  * old thread with a new comment sits past page 20 — a false negative traded for
- * a false positive; and reading every announcement in the club grows with the
- * club's whole thread list rather than with what could light.
+ * a false positive; and reading every announcement in the club is bounded by
+ * the membership rather than by the answer — `097` writes one introduction per
+ * member, so that read grows with the roster.
  *
  * **This is a REDUCTION, not a bound, and the difference is worth stating
- * because every neighbouring read here has a real one** (`CLUB_THREADS_PAGE_SIZE`,
- * `CLUB_TIMELINE_JOINS`, `CLUB_TIMELINE_REPLIES`). The unread set is unbounded
+ * because every neighbouring read has a real one** — `CLUB_THREADS_PAGE_SIZE`
+ * and `CLUB_MESSAGES_PAGE_SIZE` in this file, `CLUB_TIMELINE_JOINS` and
+ * `CLUB_TIMELINE_REPLIES` next door. The unread set is unbounded
  * in principle: `club_thread_unread` (`082`) reads a club's whole thread list
  * with no limit, so a returning member of a very busy club can carry hundreds
  * of ids into the `in()` below, and PostgREST puts them in a GET query string.

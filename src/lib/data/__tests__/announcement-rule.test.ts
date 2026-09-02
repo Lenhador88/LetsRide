@@ -63,8 +63,8 @@ describe('the announcement rule survives in every read that browses threads', ()
     expect(code).toContain(".not(ANNOUNCEMENT_MARKER, 'is', null)")
     // Over the UNREAD set — `marked` is what the RPC actually flagged. An
     // `.in('id', …)` over anything else is the shape the proposal rejected,
-    // which grows with the club's whole thread list rather than with what
-    // could light. It is a reduction rather than a bound; see the function.
+    // which grows with the roster rather than with what could light. It is a
+    // reduction rather than a bound; see the function's own header.
     expect(code).toContain(`.in('id', marked)`)
   })
 

@@ -187,8 +187,7 @@ export function ClubOptionsMenu({
    * here, and not on the announcement's join row, which carries no unread state
    * and gains none in that change (`tasks.md` §8.3 excludes it; `proposal.md`
    * Q2 is the owner's decision, recommended default *no*, on the grounds that
-   * the row's exact comment count is already the signal). Do not read this
-   * paragraph as saying the mark moved.
+   * the row's exact comment count is already the signal).
    */
   const unread = useQuery(open && isMember ? queryKeys.clubs.threadsUnread(clubId) : null, () =>
     getClubThreadUnread(clubId)

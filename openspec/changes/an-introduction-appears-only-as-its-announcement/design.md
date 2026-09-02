@@ -109,7 +109,7 @@ it client-side:
 |---|---|---|
 | (a) Intersect with `getClubThreads` page 1 | Free on the club detail | **Rejected.** Threads are listed by creation, so an old thread with a new comment sits past page 20 and its dot never lights. A false negative in a notification is worse than the false positive being fixed, and the menu item's own comment already refuses page-1 data as a fact |
 | (b) Read every announcement id in the club | One read, bounded by the roster | **Rejected.** Bounded by members rather than by the answer |
-| (c) Correct only the ids that could light something | One read, bounded by the unread set; **skipped entirely when nothing is unread** | **Chosen** |
+| (c) Correct only the ids that could light something | One read over the unread set; **skipped entirely when nothing is unread**. A REDUCTION rather than a bound — the unread set has no cap, and `getClubThreadUnread`'s own header carries what that costs | **Chosen** |
 
 (c) in full: the RPC answers; take the ids it marked `has_unread`; if there are none, return the map
 as-is; otherwise read back which of those ids carry a marker and drop them.
