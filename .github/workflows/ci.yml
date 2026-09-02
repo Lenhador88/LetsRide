@@ -290,8 +290,12 @@ jobs:
           # archived and the file moves. The gate that a
           # *submitted* bundle carries the production ref and origin is
           # `npm run release:check`, which is deliberately not part of
-          # `build:native` — wiring it here would fail every PR, because this
-          # step builds against DEV.
+          # `build:native` — wiring it here would judge a throwaway bundle,
+          # and this step builds against whatever the Actions secrets hold:
+          # PROD today (measured 2026-09-02 by the walk job's guard step —
+          # docs/ENVIRONMENTS.md §Owner setup item 5 is the repoint), DEV
+          # once that lands, and the check would flip from passing for the
+          # wrong reason to failing every PR.
           NEXT_PUBLIC_CANONICAL_ORIGIN: https://app.letsride.social
 
   # Type-checks the Edge Function ENTRYPOINTS under the runtime they actually
@@ -349,10 +353,23 @@ jobs:
   #
   # Not a required check until it has been green for a while — that is a
   # branch-protection setting and the owner's call.
+  #
+  # GATED ON A REPOSITORY VARIABLE, AND HERE IS THE REASON AND THE RETIREMENT.
+  # The job's first two runs (PR #373, 2026-09-02) refused at the guard step:
+  # the Actions secrets name PROD, not DEV — docs/ENVIRONMENTS.md §Owner setup
+  # item 5, still outstanding — and a walk against PROD signs a rider up in
+  # real riders' data. Until the secrets are repointed the job can only ever
+  # be red, and a job that is red on every PR trains everyone to ignore red.
+  # So: skipped (reported as skipped, never as green) until the owner sets
+  # the repository variable WALK_CI=1 after repointing the secrets. The guard
+  # step below still runs first and still refuses PROD, so setting the
+  # variable early costs one red run and nothing else. DELETE this clause
+  # once the job has run green a few times; the variable then retires with
+  # it (PD-370).
   walk:
     name: Smoke walk (renders every screen against DEV)
     needs: changes
-    if: needs.changes.outputs.walk == 'true'
+    if: needs.changes.outputs.walk == 'true' && vars.WALK_CI == '1'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
