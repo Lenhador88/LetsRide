@@ -175,6 +175,13 @@ export function ClubOptionsMenu({
    *
    * It fails to nothing: `getClubThreadUnread` resolves to `{}` on a failure,
    * so the row is an entrance before it is a summary.
+   *
+   * **The expression below is unchanged by PD-372; its INPUT narrowed.** The
+   * map now answers only for threads the Threads list can show, so this dot
+   * clears by visiting where it points — an unread comment on a club
+   * introduction is drawn on the announcement's own join row on the timeline,
+   * not here. This is the only aggregate unread dot left in the app, which is
+   * what made the narrowing that function's business rather than this one's.
    */
   const unread = useQuery(open && isMember ? queryKeys.clubs.threadsUnread(clubId) : null, () =>
     getClubThreadUnread(clubId)

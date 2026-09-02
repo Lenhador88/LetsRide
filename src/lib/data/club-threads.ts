@@ -27,6 +27,53 @@ export const CLUB_THREADS_PAGE_SIZE = 20
  */
 export const CLUB_MESSAGES_PAGE_SIZE = 200
 
+/**
+ * The column that says a thread is an **announcement** rather than an ordinary
+ * one — `097`'s marker, `club_threads.introduces_user_id` (PD-372).
+ *
+ * > **An introduction is an announcement while its subject is a member. The
+ * > moment the marker goes, the thread is an ordinary thread and is listed as
+ * > one.**
+ *
+ * **This is a PRESENTATION rule, not a visibility one, and the distinction is
+ * the whole reason it is written down here.** `081` decides who may read a
+ * thread and this decides where a readable one is DRAWN — the announcement is
+ * already on the club timeline as the rider's join row, with its own door and
+ * its own comment count (`097`, `attachClubIntroductions`), so listing it a
+ * second and third time as a thread and as a reply drew one conversation three
+ * ways. Nothing here narrows an audience: every row this filter hides is a row
+ * the policy already returned and the join row already shows.
+ *
+ * **Why the marker and not `introduction`.** `097` NULLs the marker when the
+ * subject leaves the club and keeps the text and every comment — deliberately,
+ * *"leaving a club SHALL detach the introduction and SHALL destroy nothing"*.
+ * Filtering on `introduction` would keep those words alive and take away every
+ * way of arriving at them: off every list for ever, and unmoderatable in
+ * practice, since `094`'s takedown is entered from the thread screen which is
+ * entered from the list. `097` already refused that same disappearance one
+ * level down, on the thread screen itself (its tasks §7.9: *"gate the render on
+ * `introduction !== null` and **never** on `introduces_user_id`"*). So an
+ * ex-member's introduction comes BACK to the Threads list, at its original
+ * `created_at`, as what it now is: an ordinary thread titled `Introduction`
+ * with `Started by ana` beneath it, from `author_id`, which the leave does not
+ * touch.
+ *
+ * **The name is what is shared, not a literal.** The three reads spell three
+ * different things — `introduces_user_id` on the base table,
+ * `thread.introduces_user_id` through `getClubThreadReplies`' embed, and a
+ * `not … is null` rather than an `is null` in `getClubThreadUnread`, which
+ * asks the opposite question. What must not drift is the rule and its reason.
+ *
+ * `097` grants `authenticated` SELECT on this column and no INSERT or UPDATE
+ * (measured on DEV, 2026-09-02), which is what makes filtering on it safe
+ * without a migration: no rider can set or clear their own marker, so no rider
+ * can hide a thread and its whole conversation from a club without deleting
+ * it. That was a tidiness rule before this change and is load-bearing after
+ * it — a later proposal granting the column, or adding an UPDATE policy to
+ * `club_threads`, has to answer this.
+ */
+export const ANNOUNCEMENT_MARKER = 'introduces_user_id'
+
 const THREAD_SELECT = `
   id, club_id, author_id, title, created_at,
   author:profiles!author_id(id, username)
@@ -55,6 +102,22 @@ const THREAD_SELECT = `
  * `created_at DESC, id DESC` matches `081`'s index and is a total order; a
  * cursor over `created_at` alone would skip or repeat rows exactly at the
  * boundary where two threads share one `now()`.
+ *
+ * ## Announcements are not listed here — PD-372
+ *
+ * `.is(ANNOUNCEMENT_MARKER, null)` keeps a club introduction off this list and
+ * off the timeline's thread entries, because the join row already draws it.
+ * **It belongs in the paragraph above rather than beside it: it is the one
+ * predicate in this query that is NOT a copy of a policy**, because it is not
+ * an audience rule at all — see `ANNOUNCEMENT_MARKER`. A non-member of a
+ * public club reads `[]` from `081` with or without it, and if this line ever
+ * looks like what protects them, that reading is wrong and the policy is what
+ * to check.
+ *
+ * **In the query, not after it.** A post-read filter would break the Threads
+ * list's "is there more" signal — `lastCount === CLUB_THREADS_PAGE_SIZE`, so a
+ * full page holding five announcements would read as the end of the list — and
+ * `boundedHorizon`'s stated precondition that a source's rows ARE its window.
  */
 export async function getClubThreads(
   clubId: string,
@@ -74,6 +137,7 @@ export async function getClubThreads(
     .from('club_threads')
     .select(THREAD_SELECT)
     .eq('club_id', clubId)
+    .is(ANNOUNCEMENT_MARKER, null)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .limit(limit)
@@ -186,6 +250,39 @@ export async function getClubThreadMessages(
  * unread call must cost the decoration and nothing else: the list still renders,
  * unmarked. The reverse is what must never be drawn, and cannot be from here — a
  * mark can only ever appear beside a thread the list itself returned.
+ *
+ * ## The map answers only for threads the Threads list can show — PD-372
+ *
+ * The RPC answers for **every** thread in the club, announcements included, and
+ * this cannot change it: `club_thread_unread` is a database function and there
+ * is no migration here. So the correction is in the read.
+ *
+ * Two of the three consumers need nothing — `ClubThreadRow` and `ClubTimeline`
+ * both index by thread id, and after `getClubThreads`' own filter no
+ * announcement produces a row for them to look up. **The third aggregates**:
+ * `ClubOptionsMenu`'s `Threads` item is `Object.values(...).some(Boolean)`, and
+ * it is now the only aggregate dot in the app. Left alone, an unread comment on
+ * an introduction would light a dot that points at the Threads list and
+ * **cannot be cleared by visiting it**, because the thread it names is not on
+ * it.
+ *
+ * **Bounded by the unread set, not by the roster, and skipped when nothing is
+ * unread.** Only ids the RPC actually marked can light anything, so only those
+ * are read back. Two shapes were rejected: intersecting with page 1 of
+ * `getClubThreads` under-reports, because threads are listed by creation and an
+ * old thread with a new comment sits past page 20 — a false negative traded for
+ * a false positive; and reading every announcement in the club is bounded by
+ * the membership rather than by the answer.
+ *
+ * A consequence worth naming rather than discovering: an announcement with
+ * **nothing** unread keeps its `false` entry, because the corrective read never
+ * sees it. No consumer can act on a `false`, so the map's answer is the same
+ * either way — but it is a narrowing of what could light, not a purge of the
+ * marker from the map.
+ *
+ * The corrective read obeys the same failure rule as the RPC above: if it
+ * errors, the whole map resolves to `{}`. It must never return marks it could
+ * not verify.
  */
 export async function getClubThreadUnread(clubId: string): Promise<Record<string, boolean>> {
   if (!clubIdSchema.safeParse(clubId).success) return {}
@@ -196,5 +293,27 @@ export async function getClubThreadUnread(clubId: string): Promise<Record<string
   if (error || !data) return {}
 
   const rows = data as { thread_id: string; has_unread: boolean }[]
+  const marked = rows.filter((row) => row.has_unread).map((row) => row.thread_id)
+
+  // Nothing is marked, so nothing can light and there is nothing to correct —
+  // the `length === 0` early return `attachClubWaveState` and
+  // `attachClubIntroductions` both open with, here saving the round trip
+  // rather than an empty `in()`.
+  if (marked.length === 0) return toUnreadMap(rows)
+
+  const { data: announcements, error: markerError } = await supabase
+    .from('club_threads')
+    .select('id')
+    .in('id', marked)
+    .not(ANNOUNCEMENT_MARKER, 'is', null)
+
+  if (markerError) return {}
+
+  const hidden = new Set((announcements ?? []).map((row) => row.id))
+
+  return toUnreadMap(rows.filter((row) => !hidden.has(row.thread_id)))
+}
+
+function toUnreadMap(rows: { thread_id: string; has_unread: boolean }[]): Record<string, boolean> {
   return Object.fromEntries(rows.map((row) => [row.thread_id, row.has_unread]))
 }
