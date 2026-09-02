@@ -215,7 +215,7 @@ are repointed. **Nothing fires it yet.** In this order:
    either is offered — the second was not on 2026-09-02), hourly, push notification on completion,
    and the prompt in `queue-run.md` §Why this shape.
 3. **Nothing else.** Every firing self-checks the three things a build cannot do without (Linear,
-   PR creation, git push) and builds if they pass; the first passing firing also posts the full
+   opening and merging a PR, git push) and builds if they pass; the first passing firing also posts the full
    tool inventory on PD-241 for the record. A firing that fails the check posts what is missing and
    ends with `self-check failed — read PD-241` — that notification is the one to act on, and the
    likely fix is `queue-pickup.md` STEP 4c growing a `git push` + comment fallback.

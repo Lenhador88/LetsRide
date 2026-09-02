@@ -91,28 +91,37 @@ never the name.
 Each is a `ToolSearch` by keyword or one git command, and none touches the board:
 
 1. **Linear** — `+list_issues linear` and `+save_issue linear` both resolve.
-2. **A PR** — `+create_pull_request github` resolves.
+2. **A PR, opened AND merged** — `+create_pull_request github` and `+merge_pull_request github`
+   both resolve. They are separate tools and a session can hold one without the other (a review
+   session on 2026-09-02 held the GitHub reads and neither write); `gh` is absent and pushing onto
+   `development` is forbidden, so a build that can open a PR but not merge it ends as *committed
+   and pushed is not shipped*, unattended, once an hour.
 3. **Push** — `git push --dry-run origin HEAD:refs/heads/claude/self-check-probe` exits 0. A dry
    run creates nothing on the remote.
 
 **All three pass → carry on to the board check below.** Then, once only: `list_comments
-issueId=PD-241`, and if no comment headed `**Inventory firing —` exists there at all, post the full
-inventory (below) as that comment and carry on — the record gets the measured table without anyone
-having to read it first.
+issueId=PD-241`, and if no comment headed `**Inventory (self-check passed) —` exists there at all,
+post the inventory (below) under that heading and carry on — the record gets the measured table
+without anyone having to read it first. A failed firing's comment carries a different heading and
+does not count here.
 
 **Any of the three fails → this firing cannot build, so it measures and stops:**
 
-- `list_comments issueId=PD-241` first. If a comment headed `**Inventory firing —` is already there
-  from the last 24 hours, **end with the line `self-check failed — read PD-241`** — never `idle`,
-  which is the word for a healthy queue with nothing to do. A comment an hour is the shape STEP 6's
-  stall marker exists to prevent. If Linear itself is the missing piece, that line is the whole of
-  what this session can say; a fresh-session Routine carries its run's final message in the push
-  notification it sends.
-- Otherwise post ONE Linear comment on **PD-241** headed `**Inventory firing — <UTC date and
-  time>**`, with the attribution footer `CLAUDE.md` requires, carrying the full inventory: which of
-  the three failed, and one line per probe below — *resolved*, or *No matching deferred tools
-  found* — plus every tool name you can see whose name starts with `mcp__`, verbatim, and the
-  first line of the dry run's output.
+- `list_comments issueId=PD-241` first. If a comment headed `**Inventory (self-check FAILED) —` is
+  already there from the last 24 hours, **end with the line `self-check failed — read PD-241`** —
+  never `idle`, which is the word for a healthy queue with nothing to do. A comment an hour is the
+  shape STEP 6's stall marker exists to prevent. A *passed* inventory does not count here: the
+  first failure after a healthy firing must write its diagnostic. If Linear itself is the missing
+  piece, that line is the whole of what this session can say; a fresh-session Routine carries its
+  run's final message in the push notification it sends.
+- Otherwise post ONE Linear comment on **PD-241** headed `**Inventory (self-check FAILED) — <UTC
+  date and time>**`, with the attribution footer `CLAUDE.md` requires, carrying the inventory
+  (below).
+
+**The inventory, under either heading**: a first line saying which of the three failed, or that
+all three passed; then one line per probe below — *resolved*, or *No matching deferred tools
+found*; then every tool name you can see whose name starts with `mcp__`, verbatim, and the first
+line of the dry run's output.
   - `select:mcp__Claude_Code_Remote__create_session,mcp__Claude_Code_Remote__get_session,mcp__Claude_Code_Remote__archive_session,mcp__Claude_Code_Remote__list_triggers,mcp__Claude_Code_Remote__list_sessions`,
     and then each of the five by keyword (`+create_session claude code remote`, and so on) — only
     a keyword search coming back empty establishes absence, as the paragraph below says
@@ -126,11 +135,13 @@ having to read it first.
   nothing, spawn nothing.
 
 **Why the gate is these three and not the whole list.** A firing that can read and write the
-board, open a PR and push can finish a story; everything else on the list has a documented
+board, push, and open and merge a PR can finish a story. Four of the rest have a documented
 fallback in `queue-pickup.md` — STEP 6 fails closed without `get_session`, STEP 7 keeps the session
 without `archive_session`, STEP 5 bullet 5 ends with the notification line when
-`PushNotification` is absent, and the deploy check says "unverified" without Vercel. Gating on
-those would stop a queue that could have built.
+`PushNotification` is absent, and the deploy check says "unverified" without Vercel. Supabase is
+needed only by a story carrying a migration, and a build that reaches one it cannot apply parks
+that story into `Needs help` under `queue-pickup.md` §If you get stuck. Gating on any of those
+would stop a queue that could have built.
 
 **Can you see the board?** Load `list_issues` via `ToolSearch` and call it. A job that silently
 does nothing looks exactly like an empty queue, which is why the self-check above stops loudly.

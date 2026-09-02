@@ -200,8 +200,8 @@ What has to be known outside those files:
   firing, this repository attached, the three connectors, hourly, push on completion, and the
   prompt — is listed in `queue-run.md` §Why this shape. **Reading** a Routine or a session is
   pre-authorized (`.claude/settings.json` `autoMode.allow`).
-- **Every firing self-checks before it reads the board** — `queue-run.md` STEP 0: Linear, PR
-  creation and git push. A firing that has them builds; the first one that does also posts the
+- **Every firing self-checks before it reads the board** — `queue-run.md` STEP 0: Linear,
+  opening and merging a PR, and git push. A firing that has them builds; the first one that does also posts the
   full tool inventory on PD-241 for the record. One that lacks any of them posts what is missing
   and ends with `self-check failed — read PD-241`. The previous design assumed a tool it did not
   have; this one measures on every firing and needs nobody to flip anything.
