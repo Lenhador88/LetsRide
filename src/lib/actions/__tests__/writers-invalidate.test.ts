@@ -49,7 +49,10 @@ const TABLE_WRITER = /\.(?:insert|upsert|update|delete)\(|\.rpc\(/
 // `invalidate\w*(` rather than `invalidate(`: several modules claim through a
 // named helper — `invalidateRide()` in rides.ts, `invalidateClubMembership()`
 // shared from clubs.ts — and the helper's own body is where the key is spelled.
-const CACHE_CLAIM = /\binvalidate\w*\(|\bclearQueryCache\(|\bsetQueryData\(/
+// `invalidateOnboardingState` is excluded by name: it clears the GUARD cache,
+// not the query cache, and counting it would let a table writer pass rule 2 on
+// rule 1's call (review of PR #373 found onboarding.ts passing exactly so).
+const CACHE_CLAIM = /\binvalidate(?!OnboardingState\b)\w*\(|\bclearQueryCache\(|\bsetQueryData\(/
 
 const stampWriters = files.filter((f) => STAMP_WRITER.test(sources.get(f)!))
 const sessionEnders = files.filter((f) => SESSION_ENDER.test(sources.get(f)!))
@@ -74,6 +77,16 @@ describe('the detectors still see the files they exist for', () => {
     // Every action module bar a couple of pure helpers writes something. A
     // detector that finds three has stopped matching, not found a clean tree.
     expect(tableWriters.length).toBeGreaterThan(files.length / 2)
+  })
+
+  it('tells a query-cache claim from a guard-cache one', () => {
+    // The negative half for CACHE_CLAIM, against literal source rather than
+    // the tree: a detector that matched everything would pass every writer.
+    expect(CACHE_CLAIM.test("invalidate(queryKeys.rides.all())")).toBe(true)
+    expect(CACHE_CLAIM.test("invalidateClubMembership(clubId)")).toBe(true)
+    expect(CACHE_CLAIM.test("clearQueryCache()")).toBe(true)
+    expect(CACHE_CLAIM.test("invalidateOnboardingState()")).toBe(false)
+    expect(CACHE_CLAIM.test("await supabase.from('rides').insert(row)")).toBe(false)
   })
 })
 
@@ -108,7 +121,27 @@ describe('every table writer makes a cache claim', () => {
       'src/lib/actions/feedback.ts',
       () => expect(readFileSync('src/lib/query/keys.ts', 'utf8')).not.toMatch(/feedback/i),
     ],
+    [
+      // Onboarding writes the username and the two stamps before any screen
+      // has cached anything — the rider is inside the wizard, and the only
+      // cache holding state there is the guard's, which it does invalidate.
+      // The check: it still claims through the guard cache and still reaches
+      // for no query-cache import; the day it does, it owes a real claim.
+      'src/lib/actions/onboarding.ts',
+      () => {
+        const source = sources.get('src/lib/actions/onboarding.ts')!
+        expect(source).toMatch(/\binvalidateOnboardingState\(\)/)
+        expect(source).not.toMatch(/from '@\/lib\/query'/)
+      },
+    ],
   ])
+
+  it('exempts only files that are still table writers', () => {
+    // An exemption for a file that stopped writing is never evaluated and
+    // never fails; keep the map honest.
+    for (const file of exempt.keys()) expect(tableWriters).toContain(file)
+  })
+
   for (const file of tableWriters) {
     const stillExempt = exempt.get(file)
     it(file, () => {

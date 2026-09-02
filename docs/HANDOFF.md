@@ -458,8 +458,12 @@ from ~112k tokens per session to ~40k by moving the handoff's reference sections
 `docs/reference/` and rewriting `CLAUDE.md` to rules plus their commands; and
 `deploy-functions.yml` gives the owner a one-click Edge Function deploy. **That last one is
 written and unverified** — it needs `SUPABASE_ACCESS_TOKEN` as a repository secret, and its first
-dispatch is its test. The walk-in-CI proposal is not built yet: the walk needs no credential (it mints
-its own rider), so what it needs is a decision on writing to DEV on every PR.
+dispatch is its test. The walk now runs in CI too (`walk` job): it needs no credential because it mints
+its own rider, so the only thing it costs DEV is one signed-up-then-deleted rider per run.
+**Not a required check yet** — that is a branch-protection click, and the job should be green for
+a few PRs first. One more thing measured on #373: **opening a PR through the GitHub MCP triggers
+no CI run** — the first run came with the next push. Check with
+`actions_list list_workflow_runs` filtered to the branch before reading a missing run as an outage.
 
 **All four stories shipped to riders.** `PD-365` (the introduction, `097`), `PD-366` (the return
 anchor, no migration), `PD-367` (club-thread notifications, `098` plus `100`) and `PD-368` (the join
@@ -761,7 +765,7 @@ never NULL — GoTrue scans them into non-nullable strings and a NULL turns ever
 There is also one **real** signup (a Gmail address, 2026-08-04) with no consent, no username, no
 onboarding and no sign-in. That rider confirmed their address 13 seconds after signing up, hit
 *"we could not record your consent — sign in to continue"*, and never came back — they are the
-live proof of the bug §Signup describes, not an anomaly beside it.
+live proof of the bug `docs/reference/signup.md` §Signup describes, not an anomaly beside it.
 
 ## Where the open questions live
 

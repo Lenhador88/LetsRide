@@ -362,8 +362,8 @@ Paper Plane — was measured on the outline that has since been deleted. Re-runn
 outstanding verification on this icon.
 
 **No credential needed to be requested, and an earlier draft of this section wrongly said one did.**
-`WALK_EMAIL` / `WALK_PASSWORD` are not in the environment and are not meant to be — §Test accounts
-above already prescribes the route, and it takes about ten seconds: a session holds `execute_sql`
+`WALK_EMAIL` / `WALK_PASSWORD` are not in the environment and are not meant to be — `docs/HANDOFF.md`
+§Test accounts already prescribes the route, and it takes about ten seconds: a session holds `execute_sql`
 on DEV under the standing grant, so it sets a generated password on
 `rider-1786033088990@letsride.dev`, walks, and rotates it back to a value nobody holds. That is
 what happened here, and the password was rotated afterwards precisely because it had passed

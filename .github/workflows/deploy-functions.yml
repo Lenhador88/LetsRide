@@ -72,11 +72,13 @@ jobs:
         with:
           deno-version: v2.x
       - name: Type check before deploying
-        run: deno check --node-modules-dir=none --no-lock supabase/functions/*/index.ts
+        run: deno check --node-modules-dir=none --no-lock $(find supabase/functions -mindepth 2 -maxdepth 2 -name index.ts | sort)
 
+      # Pinned, like everything else on a deploy path: two dispatches of the
+      # same sha must produce the same bundle. Bump it deliberately.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.116.0
 
       - name: Deploy
         env:
@@ -85,8 +87,11 @@ jobs:
           PROJECT_REF: ${{ inputs.project == 'prod' && 'zwprydcyryvudhurbnye' || 'fpmrimzxadewsaiwpsel' }}
         run: |
           set -euo pipefail
+          # A function is a directory holding an index.ts — not every entry
+          # under supabase/functions/, so a `_shared/` directory never gets
+          # deployed as one and never aborts the loop halfway.
           if [ "${{ inputs.function }}" = "all" ]; then
-            names=$(ls supabase/functions/)
+            names=$(find supabase/functions -mindepth 2 -maxdepth 2 -name index.ts | sort | xargs -n1 dirname | xargs -n1 basename)
           else
             names="${{ inputs.function }}"
           fi

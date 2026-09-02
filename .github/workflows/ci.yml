@@ -20,8 +20,9 @@ jobs:
   # Deliberately NOT a workflow-level `paths:` filter. That skips the workflow
   # entirely, so the check never reports — and a required status check that never
   # reports leaves the PR blocked forever. A job skipped by `if:` still reports,
-  # and branch protection counts it as satisfied. That matters here because the
-  # protection rule recommended in docs/HANDOFF.md requires both job names below.
+  # and branch protection counts it as satisfied. That matters here because a
+  # protection rule (PD-185) names the checks `Type Check, Lint & Build`,
+  # `Edge Functions (Deno type check)` and `RLS Policy Tests` below.
   changes:
     name: Detect what changed
     runs-on: ubuntu-latest
@@ -29,6 +30,7 @@ jobs:
       app: ${{ steps.filter.outputs.app }}
       db: ${{ steps.filter.outputs.db }}
       functions: ${{ steps.filter.outputs.functions }}
+      walk: ${{ steps.filter.outputs.walk }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,6 +50,7 @@ jobs:
             echo "app=true" >> "$GITHUB_OUTPUT"
             echo "db=true" >> "$GITHUB_OUTPUT"
             echo "functions=true" >> "$GITHUB_OUTPUT"
+            echo "walk=true" >> "$GITHUB_OUTPUT"
             echo "Not a pull request — running everything."
             exit 0
           fi
@@ -178,10 +181,22 @@ jobs:
             functions=false
           fi
 
+          # The walk renders the built app against DEV, so its inputs are what
+          # the build reads plus the database the screens read — an allowlist,
+          # like the two above. NOT the `app` output: the doc carve-outs set
+          # that for a README typo, and a four-minute browser run on a
+          # docs-only PR is cost with nothing it could catch.
+          if echo "$files" | grep -qE '^(src/|public/|package(-lock)?\.json$|next\.config\.ts$|postcss\.config|tsconfig\.json$|supabase/|scripts/walk\.mjs$|\.github/workflows/)'; then
+            walk=true
+          else
+            walk=false
+          fi
+
           echo "app=$app" >> "$GITHUB_OUTPUT"
           echo "db=$db" >> "$GITHUB_OUTPUT"
           echo "functions=$functions" >> "$GITHUB_OUTPUT"
-          echo "-> app=$app db=$db functions=$functions"
+          echo "walk=$walk" >> "$GITHUB_OUTPUT"
+          echo "-> app=$app db=$db functions=$functions walk=$walk"
 
   ci:
     name: Type Check, Lint & Build
@@ -279,14 +294,18 @@ jobs:
           # step builds against DEV.
           NEXT_PUBLIC_CANONICAL_ORIGIN: https://app.letsride.social
 
-  # Type-checks the three Edge Functions under the runtime they actually run
-  # in. Nothing else reads them: `tsconfig.json` excludes `supabase/functions`
-  # because `include` is `**/*.ts` and they are Deno, so `npx tsc --noEmit`
-  # would fail on `Deno.serve` and take the app job with it. A separate job
-  # rather than a step in `ci` — it needs no `npm ci`, and `deno` in a
-  # directory holding a `package.json` expects a node_modules it would
-  # otherwise try to manage. The `jsr:` import is fetched from jsr.io, which
-  # the runner reaches and the build container does not.
+  # Type-checks the Edge Function ENTRYPOINTS under the runtime they actually
+  # run in. `tsconfig.json` excludes `supabase/functions` because `include` is
+  # `**/*.ts` and they are Deno, so `npx tsc --noEmit` would fail on
+  # `Deno.serve` — but two helper modules (`gates.ts`, `shape.ts`) are imported
+  # by unit tests and `tsc` follows them in, so those are covered twice and the
+  # `index.ts` files are covered only here. A separate job rather than a step
+  # in `ci` because it needs no `npm ci`. The `jsr:` import is fetched from
+  # jsr.io, which the runner reaches and the build container does not.
+  #
+  # The entrypoint list is derived from the layout the check depends on — a
+  # directory holding an `index.ts` — so a `_shared/` directory or an import
+  # map landing beside the functions does not break the glob.
   #
   # Deploying stays an owner action; this only says the file the owner will
   # deploy still compiles. No `deno test` because there are no tests to run.
@@ -309,7 +328,86 @@ jobs:
       # the first run of this job). `none` resolves npm packages from Deno's
       # own cache. `--no-lock` so it writes no deno.lock into the checkout.
       - name: Type check every function entrypoint
-        run: deno check --node-modules-dir=none --no-lock supabase/functions/*/index.ts
+        run: deno check --node-modules-dir=none --no-lock $(find supabase/functions -mindepth 2 -maxdepth 2 -name index.ts | sort)
+
+  # The only gate that renders anything, and until 2026-09-02 the only one
+  # that ran solely when somebody remembered. Two things the build container
+  # cannot do, this runner can: reach Supabase from a browser (so no relay —
+  # scripts/supabase-relay.mjs is the container's workaround, not the walk's
+  # requirement), and sign up — the walk MINTS ITS OWN RIDER through the app's
+  # own forms and deletes it afterwards as a non-fatal teardown (PD-268), so
+  # no credential is stored anywhere for this. It writes to DEV: one rider per
+  # run, removed at the end. `WALK_FIXTURES` is deliberately OFF here — a
+  # fixture is a ride and a club posted as a real rider on every PR, and DEV
+  # already holds public rows for the detail routes to discover.
+  #
+  # Its own job rather than steps in `ci`, for the same reason `functions` is:
+  # it depends on DEV being up and on a browser, and a walk that fails for a
+  # reason outside the diff must not take the type check down with it. The
+  # first step refuses any project but DEV before anything is built, because
+  # a walk against PROD signs up a rider in real riders' data.
+  #
+  # Not a required check until it has been green for a while — that is a
+  # branch-protection setting and the owner's call.
+  walk:
+    name: Smoke walk (renders every screen against DEV)
+    needs: changes
+    if: needs.changes.outputs.walk == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+    steps:
+      - name: Refuse to walk anything but DEV
+        run: |
+          case "$NEXT_PUBLIC_SUPABASE_URL" in
+            *fpmrimzxadewsaiwpsel*) echo "DEV — proceeding" ;;
+            *) echo "::error::NEXT_PUBLIC_SUPABASE_URL is not the DEV project; the walk signs up and writes"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The same web build `ci` makes; `next start` serves it. A second build
+      # rather than an artifact hand-off keeps this job independent of `ci`'s
+      # ordering, and it is a minute.
+      - name: Build
+        run: npm run build
+
+      - name: Serve
+        run: |
+          npm run start -- -p 3000 > server.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/auth/login && exit 0
+            sleep 1
+          done
+          echo "::error::next start did not answer within 60s"; cat server.log; exit 1
+
+      # The runner image ships Google Chrome; playwright-core launches it by
+      # path. The walk's default path is the build container's, which this
+      # runner does not have.
+      - name: Find a browser
+        run: |
+          for c in google-chrome google-chrome-stable chromium-browser chromium; do
+            if command -v "$c" >/dev/null; then echo "WALK_CHROMIUM=$(command -v "$c")" >> "$GITHUB_ENV"; exit 0; fi
+          done
+          echo "::error::no Chrome or Chromium on this runner"; exit 1
+
+      - name: Walk every screen
+        run: npm run walk
+
+      - name: Server log
+        if: failure()
+        run: tail -n 120 server.log
 
   rls:
     name: RLS Policy Tests

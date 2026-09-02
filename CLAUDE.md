@@ -271,8 +271,8 @@ Formik; the forms in this app are one to three fields.
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
 | Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (54 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/__tests__/` exercises four actions against a mocked resolver — pinning that a refused write does not invalidate, that `setUsername` writes the username before the completion RPC and invalidates once after both, and that `signOut` clears both caches — and reads every action module on comment-stripped source to assert that each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Twenty-one** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence — the two trailing slots of `SectionHeader` surviving together and in order, the direction of `PostcardCard`'s growth, the ABSENCE of a claiming `useEffect` in `RideInviteJoin` and `ClubInviteJoin` (asserted on COMMENT-STRIPPED source, because each file's docstring says "there is no `useEffect` in this file"), the `+` on `ClubTimelineThreadRow` surviving in BOTH directions. Every one is verified both ways per §Working Principles: reintroducing the defect fails exactly the case written for it. All render through `renderToStaticMarkup`; the environment is still `node`, and jsdom is the answer only when something needs a layout or an event. Six carry a `vi.mock('next/navigation')`, standing in for a provider rather than for behaviour — count them, `grep -rl "vi.mock('next/navigation'" src/components \| wc -l` |
-| Edge Functions | `deno check`, CI's `functions` job | Type-checks the three entrypoints under the runtime they run in, scoped to `supabase/functions/**`. `tsconfig.json` excludes them, so nothing else reads them |
-| Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Refuses a sign-in, signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind; refuses a create and an edit and checks every field survives. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. `WALK_FIXTURES=1` creates the ride and club the detail routes need; a shrunken `N/N` is a skip, not a pass. Not in CI yet: it needs a fixture account's credentials as secrets, an owner action |
+| Edge Functions | `deno check`, CI's `functions` job | Type-checks every `index.ts` under the runtime it runs in, when `supabase/functions/**` or the workflow changes. `tsconfig.json` excludes the directory, but two helper modules (`gates.ts`, `shape.ts`) are imported by unit tests and `tsc` follows them in — `npx tsc --noEmit --listFiles \| grep supabase/functions` lists them — so the entrypoints are the part only the Deno job reads |
+| Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything.** Refuses a sign-in, signs in, walks every screen including detail routes discovered from the lists, then checks the guard's redirects and that sign-out leaves nothing behind; refuses a create and an edit and checks every field survives. `tsc`, ESLint, Vitest, `next build` and the RLS suite all stay green through a screen that throws on load — and through a screen nobody can reach, which is what PD-125 shipped. `WALK_FIXTURES=1` creates the ride and club the detail routes need; a shrunken `N/N` is a skip, not a pass. **In CI as the `walk` job since 2026-09-02**, minting its own rider against DEV (no credential — PD-268), scoped to what the build or the database reads; not a required check until it has been green for a while, which is the owner's branch-protection call |
 | End-to-end | Playwright | Deferred as a full suite. The walk asks one question per route — did this render — and asserts behaviour only in its named phases, each covering a defect no other gate can see. Adding a phase means adding a reason, not broadening a remit |
 
 Chromium is pre-installed at `/opt/pw-browsers`; never run `playwright install`.
@@ -653,7 +653,7 @@ Four rules that must hold without opening it:
   appears the justification stops being true:
 
   ```bash
-  grep -ril figma .github/workflows/ scripts/docs/registry.mjs .claude/agents/reviewer.md   # 0
+  grep -rl use_figma .github/workflows/ scripts/docs/registry.mjs .claude/agents/reviewer.md   # 0
   ```
 
   So a component created in a session lands in the canonical design unreviewed, and the next
@@ -1343,6 +1343,9 @@ chain to a scratch database and asserts what each role can reach.
     `--cheap` a *skip* fails the run.
   - **`Edge Functions (Deno type check)`** runs `deno check` on the three entrypoints when
     `supabase/functions/**` or the workflow changes — its own job, because it needs no `npm ci`.
+  - **`Smoke walk`** builds the app, serves it and runs `npm run walk` against DEV with a
+    rider it mints itself, when `src/`, `public/`, `supabase/`, the build config or the workflow
+    changes. The only job that renders a screen. Not required by branch protection yet.
   - **`RLS Policy Tests`** (Postgres 17) runs only when `supabase/**` or the workflow
     changes — the migration chain and the assertions are its only inputs.
   - A push to either long-lived branch always runs all of them. Each is a deploy gate.

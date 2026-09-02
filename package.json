@@ -12,7 +12,7 @@
     "test": "./supabase/tests/run.sh",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
-    "functions:check": "deno check --node-modules-dir=none --no-lock supabase/functions/*/index.ts",
+    "functions:check": "deno check --node-modules-dir=none --no-lock $(find supabase/functions -mindepth 2 -maxdepth 2 -name index.ts | sort)",
     "figma": "node scripts/figma/query.mjs",
     "figma:pull": "node scripts/figma/pull.mjs",
     "figma:extract": "node scripts/figma/extract.mjs",
