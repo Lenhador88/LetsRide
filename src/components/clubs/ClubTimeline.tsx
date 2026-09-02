@@ -10,7 +10,7 @@ import { ErrorState } from '@/components/ui/ErrorState'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { resolveClubTimelineScrollTarget } from '@/lib/clubs/club-timeline-anchor'
-import { waveJoin, waveThread, unwaveJoin, unwaveThread } from '@/lib/actions/club-waves'
+import { waveJoin, unwaveJoin } from '@/lib/actions/club-waves'
 import { getClubThreadUnread, getClubThreads, CLUB_THREADS_PAGE_SIZE } from '@/lib/data/club-threads'
 import {
   CLUB_TIMELINE_RIDES,
@@ -124,44 +124,43 @@ export function ClubTimeline({
   const viewer = useQuery(isMember ? queryKeys.profile.me() : null, getCurrentProfile)
 
   /**
-   * The two wave reads — `092`, PD-356. **Not part of `combineQueries`
-   * below**, on `unread`'s own precedent just above: a decoration SHALL NOT
-   * gate the list it decorates (`client-render-shell`'s Loading/Error rows),
-   * so a slow or failed wave read must cost the wave controls and nothing
-   * else.
+   * The wave read — `092`, PD-356. **Not part of `combineQueries` below**, on
+   * `unread`'s own precedent just above: a decoration SHALL NOT gate the list
+   * it decorates (`client-render-shell`'s Loading/Error rows), so a slow or
+   * failed wave read must cost the wave controls and nothing else.
+   *
+   * **One read rather than two since PD-372.** The thread's creation row
+   * carried a wave of its own until the product owner retired it (*"yes, only
+   * annoucements are waveable please"*, 2026-09-02), so the join row is the
+   * club timeline's only waveable row and `queryKeys.clubs.threadWaves` is
+   * gone with `waveThread`/`unwaveThread`.
    *
    * **Gated on the SOURCE read having resolved, not merely on `isMember`.**
    * This cache has no notion of "refetch when an argument changed, only the
    * key" (`useQuery`'s own header): the KEY here is just the club id, so if
-   * the query activated before `threads.data`/`joins.data` existed it would
-   * fetch once against an empty id list and never fetch again for the ids
-   * that arrive a render later. Flipping the KEY itself from `null` to real
-   * only once the source ids are known — `clubs.preview`'s own pattern above
-   * — is what makes the scoping in `attachClubWaveState`'s docstring true
-   * rather than a race.
+   * the query activated before `joins.data` existed it would fetch once
+   * against an empty id list and never fetch again for the ids that arrive a
+   * render later. Flipping the KEY itself from `null` to real only once the
+   * source ids are known — `clubs.preview`'s own pattern above — is what
+   * makes the scoping in `attachClubWaveState`'s docstring true rather than a
+   * race.
    *
-   * Scoped to the SOURCE reads' own ids (`threads.data`/`joins.data`),
-   * before the merge's horizon/limit cut — `club-timeline-engagement`'s "the
-   * subject ids the timeline's own sources are already holding". Both source
-   * reads are already bounded (`CLUB_THREADS_PAGE_SIZE`, `CLUB_TIMELINE_
-   * JOINS`), so this can never be an unbounded read of either wave table,
-   * and decorating a few ids the merge later cuts is harmless overfetch, not
-   * a second horizon.
+   * Scoped to the SOURCE read's own ids (`joins.data`), before the merge's
+   * horizon/limit cut — `club-timeline-engagement`'s "the subject ids the
+   * timeline's own sources are already holding". That read is already bounded
+   * (`CLUB_TIMELINE_JOINS`), so this can never be an unbounded read of the
+   * wave table, and decorating a few ids the merge later cuts is harmless
+   * overfetch, not a second horizon.
    */
-  const threadWaves = useQuery(
-    isMember && threads.data !== undefined ? queryKeys.clubs.threadWaves(clubId) : null,
-    () => attachClubWaveState({ kind: 'thread', threadIds: (threads.data ?? []).map((t) => t.id) })
-  )
   const joinWaves = useQuery(
     isMember && joins.data !== undefined ? queryKeys.clubs.joinWaves(clubId) : null,
     () =>
-      attachClubWaveState({
-        kind: 'join',
+      attachClubWaveState(
         clubId,
         // `getClubJoins` returns a `ClubTimelineSource<ClubJoin>` — `{ rows,
         // horizon }` — not a bare array; the ids are in `.rows`.
-        subjectIds: (joins.data?.rows ?? []).map((member) => member.user_id),
-      })
+        (joins.data?.rows ?? []).map((member) => member.user_id)
+      )
   )
 
   /**
@@ -410,15 +409,11 @@ export function ClubTimeline({
                 at={event.at}
                 unread={event.unread}
                 activity={event.activity}
-                // The thread's own CREATION entry — the one target for a
-                // thread's wave, per `092`'s "not on `reply`, its thread
-                // already carries one". The `reply` branch below passes no
-                // `wave` prop at all.
-                wave={{
-                  state: resolveClubWaveState(threadWaves.data, event.thread.id),
-                  onWave: () => waveThread(clubId, event.thread.id),
-                  onUnwave: () => unwaveThread(clubId, event.thread.id),
-                }}
+                // **No wave on either thread branch since PD-372.** The
+                // creation entry carried one under `092`; the product owner
+                // made the announcement row the club timeline's only waveable
+                // row, so `ClubTimelineThreadRow` no longer takes the prop at
+                // all and neither branch can pass one.
               />
             ) : (
               <ClubTimelineThreadRow

@@ -333,29 +333,22 @@ export const queryKeys = {
       'replies',
     ],
     /**
-     * Which of a club's THREADS the viewer has waved, and the per-viewer
-     * count — `attachClubWaveState({ kind: 'thread', ... })` (`092`,
-     * PD-356).
+     * Which of a club's JOINS the viewer has waved, and the per-viewer
+     * count — `attachClubWaveState` (`092`, PD-356).
      *
-     * **Its own leaf, not nested under `threads`** — unlike `threadsUnread`
+     * **Its own leaf, not nested under `joins`** — unlike `threadsUnread`
      * and `threadReplies` above, which move WITH the thread list because a
      * new page of threads changes what an unread map or a reply window even
-     * means. A wave toggle changes neither the list nor the unread marks, so
-     * `waveThread`/`unwaveThread` invalidate this key ALONE
+     * means. A wave toggle moves neither the roster nor the join list, so
+     * `waveJoin`/`unwaveJoin` name this key and nothing else
      * (`client-cache-invalidation`'s "SHALL NOT invalidate
-     * `clubs.detail(clubId).threads`, whose rows have not changed, and SHALL
-     * NOT invalidate the unread map"). A sibling of `threads`, a child of
-     * `detail` like every other club sub-resource, so `clubs.all()` and
-     * `clubs.detail(clubId)` still reach it.
-     */
-    threadWaves: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'threadWaves'],
-    /**
-     * Which of a club's JOINS the viewer has waved, and the per-viewer
-     * count — `attachClubWaveState({ kind: 'join', ... })` (`092`, PD-356).
+     * `clubs.detail(clubId).joins`, whose rows have not changed"). A sibling
+     * of `joins`, a child of `detail` like every other club sub-resource, so
+     * `clubs.all()` and `clubs.detail(clubId)` still reach it.
      *
-     * A sibling of `joins` for the identical reason `threadWaves` is a
-     * sibling of `threads`: a wave moves neither the roster nor the join
-     * list, so `waveJoin`/`unwaveJoin` name this key and nothing else.
+     * **`threadWaves` stood beside this and is gone (PD-372)** — the club
+     * timeline's only waveable row is the announcement row, so a thread wave
+     * has no control and this is the only wave key a club has.
      */
     joinWaves: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'joinWaves'],
     /**
@@ -878,7 +871,8 @@ export const queryKeys = {
    * | `hidePostcard`, `unhidePostcard` | Every notification carrying a `postcard_id` is addressed to that postcard's author, and `009` made the author branch of the `postcards` SELECT policy unconditional — so hiding your own postcard is inert, and `011` deliberately keeps the hide predicate inside the *other* branch |
    * | `updateProfile`, `setProfileImage` | The `actor` embed is always somebody else, for the self-suppression reason above. Your own username and avatar never render in your own list |
    * | `blockRider`, `unblockRider` | Genuinely in the blast radius — a block stops the actor's `profiles` row resolving — and already covered by `invalidate(EVERYTHING)` |
-   * | `sendClubMessage`, `waveThread`, `unwaveThread` | `098`, PD-367. Same reason as the first row: `club_thread_replied` and `club_thread_waved` both self-suppress by addressing `club_threads.author_id` alone, never the poster or waver whose client runs the write. The recipient's badge is stale until their own next navigation — stated rather than fixed, `client-cache-invalidation`'s standing rule |
+   * | `sendClubMessage` | `098`, PD-367. Same reason as the first row: `club_thread_replied` self-suppresses by addressing `club_threads.author_id` alone, never the poster whose client runs the write. The recipient's badge is stale until their own next navigation — stated rather than fixed, `client-cache-invalidation`'s standing rule. `waveThread`/`unwaveThread` were on this row until PD-372 retired them; `club_thread_waved` still fans out from `098`, but nothing in the app writes the table any more |
+   * | `waveJoin`, `unwaveJoin` | `092`. `private.notify_club_waved` addresses the rider whose join was waved, never the waver — the same self-suppression, on the wave that survives |
    *
    * `updateClub` names `all()` rather than `list()`, which the rule alone would
    * not give it: the privacy toggle is not only an embed change. Flipping a
