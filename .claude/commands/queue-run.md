@@ -18,7 +18,7 @@ unconfirmed** (PD-241, 2026-08-27 and 2026-09-02: no session can read another's 
 session the Routine mints for itself does not hold `create_session`. PD-241 reads that as *the
 Claude Code Remote connector was never attached to the Routine*; the owner looked for that
 connector in the Routines UI on 2026-09-02 and it was not offered, which reads as *built-in tooling
-a session gets only when a person or another session starts it*. The inventory firing is what tells
+a session gets only when a person or another session starts it*. STEP 0's inventory is what tells
 the two apart, which is why the setup below says to attach it if the UI ever offers it. Four silent
 outages in three weeks, and a persistent session costing about $1 per idle firing. `docs/reference/linear.md` §The queue is drained by one
 Routine, on one clock carries the measurements; PD-241 carries the record.
@@ -29,8 +29,10 @@ else:** the repository checkout (so this file, `CLAUDE.md` and `.claude/settings
 (Linear, Supabase, Vercel — every relay's board reads answered), and auto mode (`get_session` on the
 relay, 2026-09-02). **Whether it holds git push credentials, the GitHub tools (PR creation),
 `PushNotification`, `get_session`, `archive_session`, `list_sessions` or `create_session` is
-unknown until the inventory firing below reports it** — the previous design assumed a tool it did
-not have, so this one measures first and builds nothing until the answer is on the record.
+unknown until STEP 0's self-check reports it** — the previous design assumed a tool it did not
+have, so every firing measures the three a build cannot do without before it touches the board,
+and the first firing that passes writes the whole inventory to PD-241. Nobody flips a switch: a
+firing that can build, builds; one that cannot says exactly what is missing and stops.
 
 **The shape, as the owner stated it on 2026-08-18 and reaffirmed on 2026-09-02** — one firing an
 hour, at most two build sessions in flight, a group of up to three colliding stories per session.
@@ -38,24 +40,6 @@ Concurrency is still the two slot labels: this firing takes one free slot; if a 
 still queued an hour later and the first is still building, the next firing takes the other slot.
 **Fewer than two in flight is the normal state, not a fault**, and a firing that finds nothing to
 do ends silently.
-
-## The mode line
-
-```
-mode: inventory
-```
-
-**That line is the switch, and it is read by every firing from its own fresh checkout** — so
-flipping it is one merged line, arriving at the next hour with no session to archive and no trigger
-to edit. Two values:
-
-- **`inventory`** — the first firings after the Routine is created. STEP 0 posts what the session
-  can actually reach and ends. **Nothing on the board moves.** The owner reads the comment, and a
-  one-line PR flips the mode.
-- **`build`** — the working mode. STEP 0 checks the board, STEP 1–5 pick and claim, then the
-  session becomes the build session and follows `queue-pickup.md`.
-
-Any other value → treat as `inventory`. A typo must not start a build.
 
 ## The board is the lock — read this before changing any step
 
@@ -66,7 +50,7 @@ just see the stories are in development?"* So:
 |---|---|---|
 | What may I take? | `Queued (AI)` | never `Todo AI`, which reads like permission |
 | What is already being built? | `Development (AI)` | not a session list, not a comment thread |
-| How many sessions are running? | the `slot-1` / `slot-2` labels on those issues | not `list_sessions`, which this session is not expected to hold — the inventory firing says |
+| How many sessions are running? | the `slot-1` / `slot-2` labels on those issues | not `list_sessions`, which this session is not expected to hold — STEP 0's inventory says |
 | What are they touching? | one `<!-- territory -->` comment per occupied slot | not a prediction |
 | Is the queue stopped? | any issue in `Needs help` | not a Routine field |
 
@@ -101,44 +85,55 @@ never the name.
 
 ---
 
-## STEP 0 — Mode, and can you see the board?
+## STEP 0 — Self-check, then the board
 
-**Read the mode line at the top of this file.** `build` → carry on to the board check below.
-Anything else → **inventory**:
+**Three things a build cannot do without, measured on every firing before the board is read.**
+Each is a `ToolSearch` by keyword or one git command, and none touches the board:
 
-1. **Dedup first.** `list_comments issueId=PD-241` (`ToolSearch +list_comments linear`). If a
-   comment headed `**Inventory firing —` is already there from the last 24 hours, **end with the
-   line `inventory: waiting on you — read PD-241 and flip the mode`** — never `idle`, which is the
-   word for a healthy queue with nothing to do. The mode stays `inventory` until a human reads that
-   comment and a session flips the line, and a comment an hour is the shape STEP 6's stall marker
-   exists to prevent. If
-   the Linear tools are absent, say so as the final message of this session and end — a
-   fresh-session Routine carries its run's final message in the push notification it sends.
-2. Call `ToolSearch` with each of these queries and record the answer verbatim — *resolved*, or
-   *No matching deferred tools found*. The first line is the one the whole design rests on:
-   - `select:mcp__Claude_Code_Remote__create_session,mcp__Claude_Code_Remote__get_session,mcp__Claude_Code_Remote__archive_session,mcp__Claude_Code_Remote__list_triggers,mcp__Claude_Code_Remote__list_sessions`
-     and then each of the five by keyword (`+create_session claude code remote`, and so on) —
-     only a keyword search coming back empty establishes absence, as the build-mode text below says
-   - `+create_pull_request github` and `+merge_pull_request github`
-   - `+list_issues linear` and `+save_issue linear`
-   - `+execute_sql supabase`
-   - `+list_deployments vercel`
-   - `select:PushNotification`
-3. List every tool name you can see whose name starts with `mcp__`, verbatim.
-4. **Does the checkout hold push credentials?** `git push --dry-run origin HEAD:refs/heads/claude/inventory-probe`
-   — a dry run creates nothing; record the first line of its output. Every build depends on this
-   and nothing has measured it from a firing.
-5. Read `get_session` with `session_id` omitted **if** it resolved, and note the id and
-   `permission_mode` it returns.
-6. Post ONE Linear comment on **PD-241** carrying all of that, one line per tool, headed
-   `**Inventory firing — <UTC date and time>**`, with the attribution footer `CLAUDE.md` requires.
-7. **End with the line `inventory posted — read PD-241 and flip the mode`.** Move nothing on the
-   board, build nothing, spawn nothing.
+1. **Linear** — `+list_issues linear` and `+save_issue linear` both resolve.
+2. **A PR** — `+create_pull_request github` resolves.
+3. **Push** — `git push --dry-run origin HEAD:refs/heads/claude/self-check-probe` exits 0. A dry
+   run creates nothing on the remote.
 
-**`build` mode — can you see the board?** Load `list_issues` via `ToolSearch` and call it. **If the
-Linear tools are not available, STOP and say so in the final message** (and with `PushNotification`
-if that tool resolves). Do not proceed on assumptions and do not pick work from the repo instead. A
-job that silently does nothing looks exactly like an empty queue.
+**All three pass → carry on to the board check below.** Then, once only: `list_comments
+issueId=PD-241`, and if no comment headed `**Inventory firing —` exists there at all, post the full
+inventory (below) as that comment and carry on — the record gets the measured table without anyone
+having to read it first.
+
+**Any of the three fails → this firing cannot build, so it measures and stops:**
+
+- `list_comments issueId=PD-241` first. If a comment headed `**Inventory firing —` is already there
+  from the last 24 hours, **end with the line `self-check failed — read PD-241`** — never `idle`,
+  which is the word for a healthy queue with nothing to do. A comment an hour is the shape STEP 6's
+  stall marker exists to prevent. If Linear itself is the missing piece, that line is the whole of
+  what this session can say; a fresh-session Routine carries its run's final message in the push
+  notification it sends.
+- Otherwise post ONE Linear comment on **PD-241** headed `**Inventory firing — <UTC date and
+  time>**`, with the attribution footer `CLAUDE.md` requires, carrying the full inventory: which of
+  the three failed, and one line per probe below — *resolved*, or *No matching deferred tools
+  found* — plus every tool name you can see whose name starts with `mcp__`, verbatim, and the
+  first line of the dry run's output.
+  - `select:mcp__Claude_Code_Remote__create_session,mcp__Claude_Code_Remote__get_session,mcp__Claude_Code_Remote__archive_session,mcp__Claude_Code_Remote__list_triggers,mcp__Claude_Code_Remote__list_sessions`,
+    and then each of the five by keyword (`+create_session claude code remote`, and so on) — only
+    a keyword search coming back empty establishes absence, as the paragraph below says
+  - `+create_pull_request github` and `+merge_pull_request github`
+  - `+list_issues linear` and `+save_issue linear`
+  - `+execute_sql supabase`
+  - `+list_deployments vercel`
+  - `select:PushNotification`
+  - `get_session` with `session_id` omitted, **if** it resolved: the id and `permission_mode`
+- **End with the line `self-check failed — read PD-241`.** Move nothing on the board, build
+  nothing, spawn nothing.
+
+**Why the gate is these three and not the whole list.** A firing that can read and write the
+board, open a PR and push can finish a story; everything else on the list has a documented
+fallback in `queue-pickup.md` — STEP 6 fails closed without `get_session`, STEP 7 keeps the session
+without `archive_session`, STEP 5 bullet 5 ends with the notification line when
+`PushNotification` is absent, and the deploy check says "unverified" without Vercel. Gating on
+those would stop a queue that could have built.
+
+**Can you see the board?** Load `list_issues` via `ToolSearch` and call it. A job that silently
+does nothing looks exactly like an empty queue, which is why the self-check above stops loudly.
 
 **Search by keyword, never by the `mcp__Linear__*` name — that prefix is not stable.** Connector
 ids rotated on 2026-08-08 and every literal name stopped resolving, silently, an absent tool being
@@ -446,10 +441,9 @@ session says is the whole of its reporting. Keep it to one or two lines, in this
 - **Empty queue, every candidate blocked, no free slot, `Needs help` occupied** → **end with no
   message at all beyond a single word, `idle`**, so the notification the Routine sends is one the
   owner can dismiss without reading.
-- **An inventory firing** → never `idle`: `inventory posted — read PD-241 and flip the mode` on the
-  firing that wrote the comment, `inventory: waiting on you — read PD-241 and flip the mode` on
-  every firing after it. The queue is not running in that mode, and the notification must not read
-  as if it were.
+- **The self-check failed** → never `idle`: `self-check failed — read PD-241`, on the firing that
+  wrote the inventory and on every firing after it until it passes. The queue is not running, and
+  the notification must not read as if it were.
 
 **No `fire_trigger`, no `send_later`, no `create_session`, no message to any session — ever.**
 Product owner, 2026-08-18: *"when the development ends, I dont want those new sessions to report
@@ -463,8 +457,9 @@ cache-read tokens across 18 wakes, having built nothing since the first.
 ## Why this shape
 
 **What a Routine-minted session can and cannot do here, with how each row is known — and the
-design's board half uses only the rows marked measured.** The inventory firing turns the inferred
-rows into measured ones before anything builds.
+design's board half uses only the rows marked measured.** STEP 0's self-check measures the three
+a build needs on every firing, and the first firing that passes writes the whole table's answer to
+PD-241.
 
 | A Routine-minted session… | How it is known | Consequence |
 |---|---|---|
@@ -499,7 +494,7 @@ hand:
 - **this repository attached**, default branch `development`, so the checkout exists;
 - **Linear, Supabase and Vercel attached**, plus GitHub — and Claude Code Remote — if the UI
   offers either as a connector (the owner did not find the second on 2026-09-02; attaching it if it
-  ever appears is what lets the inventory firing tell "not attached" from "not attachable");
+  ever appears is what lets STEP 0's inventory tell "not attached" from "not attachable");
 - **hourly** — the server minimum, and the only clock;
 - **push notification on completion** — the final message is the report;
 - **the prompt**: *Queue run for LetsRide. Read `.claude/commands/queue-run.md` in this repo and

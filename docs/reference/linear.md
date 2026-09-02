@@ -187,7 +187,7 @@ were spawned by hand from the owner's session, and three "fixes" to the procedur
 not have changed that. **Inferred from it, still unconfirmed** (no session can read another's
 transcript): a session the Routine mints for itself does not hold `create_session` — the
 session-management tools are built-in tooling a session gets when a person or another session
-starts it, not a connector anyone can attach. The new procedure's inventory firing measures it. It cost four silent outages in three weeks, about $1 per idle firing on a persistent
+starts it, not a connector anyone can attach. The new procedure's STEP 0 inventory measures it. It cost four silent outages in three weeks, about $1 per idle firing on a persistent
 session, and every queued story being picked up by the owner opening a session by hand.
 `queue-run.md` §Why this shape has the capability table this design is built on.
 
@@ -200,10 +200,11 @@ What has to be known outside those files:
   firing, this repository attached, the three connectors, hourly, push on completion, and the
   prompt — is listed in `queue-run.md` §Why this shape. **Reading** a Routine or a session is
   pre-authorized (`.claude/settings.json` `autoMode.allow`).
-- **The first firings run in inventory mode** — `queue-run.md`'s mode line — and post which tools
-  the session can actually reach as a comment on PD-241, moving nothing. Flipping the line to
-  `build` is a one-line PR, live at the next hour. The previous design assumed a tool it did not
-  have; this one measures first.
+- **Every firing self-checks before it reads the board** — `queue-run.md` STEP 0: Linear, PR
+  creation and git push. A firing that has them builds; the first one that does also posts the
+  full tool inventory on PD-241 for the record. One that lacks any of them posts what is missing
+  and ends with `self-check failed — read PD-241`. The previous design assumed a tool it did not
+  have; this one measures on every firing and needs nobody to flip anything.
 - **The old Routine `trig_01WJkMVXGzUVGDcC1njNmaan` is retired, not repaired** — the owner disables
   it in the Routines UI. Its persistent relay session is then idle and can be archived from the UI.
   **The fresh-session fallback `trig_01Gzy8eCiaXUUa1knvJnNpwy` does not exist**: absent from
