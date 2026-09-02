@@ -1,3 +1,4 @@
+import { ANNOUNCEMENT_MARKER } from '@/lib/data/club-threads'
 import { MEMBER_PROFILE_EMBED, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import { RIDES_PAGE_SIZE } from '@/lib/data/rides'
 import { resolveAvatarUrls } from '@/lib/data/media'
@@ -146,6 +147,14 @@ export const CLUB_TIMELINE_RIDES = RIDES_PAGE_SIZE
  * reason. The rows are small — five scalar columns and two narrow embeds — and
  * the cost of reading more of them is far below the cost of a club's busiest
  * week erasing its own history from the screen.
+ *
+ * **The bound did not move for PD-372; what the window HOLDS did.** It is now
+ * two hundred recent messages on *listed* threads — comments on a club
+ * introduction are filtered out in the query, so they no longer spend the
+ * window or set the horizon. Everything above still holds verbatim, and the
+ * filter makes the runaway case rarer rather than changing its shape: a
+ * welcome club taking one introduction per signup used to be able to fill this
+ * window with comments on announcements nothing drew.
  *
  * It is deliberately **excluded** from `CLUB_TIMELINE_LIMIT`'s inertness
  * argument and from the bound assertion in `club-timeline.test.ts`, because it
@@ -676,6 +685,38 @@ export function collapseToNewestPerThread(
  * at the return. This is where `getClubJoins`' rule stops being a nicety: that
  * read drops a handful of rows, so deriving its horizon from the survivors was
  * merely inexact; this one can drop fifty-nine of sixty.
+ *
+ * ## Recent messages on LISTED threads — PD-372
+ *
+ * `.is('thread.' + ANNOUNCEMENT_MARKER, null)` rides on the embed that already
+ * scopes the window to one club, so a comment on a club introduction produces
+ * no `reply` entry and no `ClubThreadActivity`. Before it, every comment on an
+ * announcement wrote a fresh `reply:<message id>` row at the top of the club
+ * timeline — the reported symptom of PD-372, and why replying to an
+ * introduction read as "always creates a new thread". The announcement's own
+ * comment count is drawn once, exactly, on the join row
+ * (`attachClubIntroductions`).
+ *
+ * **The window is now 200 messages on listed threads, and `horizon` and
+ * `partial` are still measured on THAT window, before the collapse** — which
+ * is precisely why the filter is in the query rather than after the read.
+ * Filtering afterwards would let a hundred and fifty introduction comments
+ * report an hour-old horizon and cut every ride, postcard and join beneath it,
+ * for events this screen never draws. `collapseToNewestPerThread` is untouched
+ * and never sees an announcement row.
+ *
+ * **The marker is filtered on but not SELECTED, which is measured rather than
+ * assumed.** PostgREST resolves a filter against the embedded table's columns
+ * rather than against the select list — probed on DEV, 2026-09-02: the same
+ * request with `thread.introduces_user_id=is.null` and no such column in the
+ * embed answers `401` (the anon grant, i.e. the filter parsed and resolved),
+ * while an invented `thread.no_such_column` answers `400` `42703`. So
+ * `ClubMessageRow` and `collapseToNewestPerThread` keep their exact contract,
+ * and the column the collapse never reads stays out of the type.
+ *
+ * The filter is presentation, not audience — `ANNOUNCEMENT_MARKER` has the
+ * distinction. `081`'s policy on `club_messages` is still the whole of who may
+ * read these rows.
  */
 export async function getClubThreadReplies(
   clubId: string,
@@ -692,6 +733,7 @@ export async function getClubThreadReplies(
         `id, created_at, thread_id, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}), thread:club_threads!inner(club_id, title)`
       )
       .eq('thread.club_id', clubId)
+      .is(`thread.${ANNOUNCEMENT_MARKER}`, null)
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })
       .limit(limit),
