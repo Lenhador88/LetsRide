@@ -387,8 +387,11 @@ Ask, specifically:
   by *content*. This is the one check that needs **both** refs rather than §First's
   one-ref-by-PR-type rule, because the comparison is the point. Probing the endpoint (a `401`
   from `POST /functions/v1/<name>`) shows only that *something* is deployed behind a JWT check.
-  **No session can deploy one**, so a diff here leaves both projects behind until the owner
-  redeploys — a PR body implying the change is live is a finding.
+  **No session can deploy one; a merge does** — `deploy-functions.yml` deploys on a push to
+  `development` or `main` that touches a function, after waiting for Vercel, once the
+  `SUPABASE_ACCESS_TOKEN` secret exists (PD-369). Until then a diff here leaves both projects
+  behind, and even after, a PR body implying the change is live before that job ran green is a
+  finding.
 - **CI touched?** Check the description in `CLAUDE.md` against `.github/workflows/ci.yml`.
 - **Files or directories added, moved or removed?** Check the repo-layout tree in
   `CLAUDE.md`. It is a hand-maintained copy of `ls` and drifts within days.

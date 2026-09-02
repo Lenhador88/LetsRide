@@ -420,11 +420,15 @@ Four rules on `delete-account`, and they are why this does not contradict §What
 **A merge deploys them** — product owner 2026-09-02, *"deploy on every merge, you should be
 autonomous on that."* `.github/workflows/deploy-functions.yml` runs on a push to `development`
 (→ DEV) or `main` (→ PROD) that touches `supabase/functions/**`, type-checks, **waits for Vercel's
-commit status on the merge sha to be `success`** (the PD-236 ordering below, mechanised), then
-deploys every function; a `workflow_dispatch` deploys one or all to a chosen project from any sha
-without the wait. **Nothing deploys until the `SUPABASE_ACCESS_TOKEN` secret exists (PD-369)** —
-the job is skipped with a warning, not red — so until that lands an edit under `supabase/functions/`
-is still drift from the moment it merges. No session deploys by hand: there is no `supabase` CLI in
+GitHub Deployment of that sha in that branch's environment to be `success`** (the PD-236 ordering
+below, mechanised — the bare `Vercel` commit status cannot tell a Production build from a Preview
+of the same sha after a promotion's fast-forward), then deploys every function; a
+`workflow_dispatch` deploys one or all to a chosen project from any sha without the wait.
+**Nothing deploys until the `SUPABASE_ACCESS_TOKEN` secret exists (PD-369)** — the job is skipped
+with a warning, not red — so until that lands an edit under `supabase/functions/` is still drift
+from the moment it merges. **It fixes future drift only**: a push deploys only when it touches a
+function, so what was stale the day it landed (`resolve-ride-location` on both projects, behind
+PD-236's marker fix) stays stale until one manual dispatch per project catches it up. No session deploys by hand: there is no `supabase` CLI in
 the build container, and the MCP server's `deploy_edge_function` stays on `.claude/settings.json`'s
 `deny` list.
 **Version numbers differ per project and always will** (they count deploys), so the
