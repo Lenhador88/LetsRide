@@ -110,7 +110,7 @@ openspec/                   # config.yaml, plus:
 └── changes/                # Active proposals; archive/ holds shipped ones
 .claude/
 ├── agents/                 # The specialist squad (see The Agent Squad)
-├── commands/               # Slash commands (opsx/*)
+├── commands/               # Slash commands (opsx/*), and the queue's two procedures (queue-run, queue-pickup)
 ├── skills/                 # Project skills
 ├── hooks/                  # two Stop hooks — handoff-landed-check.sh, session-wrapup-check.sh
 └── settings.json           # Hooks, permissions, and the autoMode classifier rules

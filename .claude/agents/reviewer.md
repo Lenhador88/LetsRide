@@ -502,11 +502,11 @@ names a component, a query or a cache key, so none can fire on a diff that touch
 story it picked, and **the argument that this is safe is you.** Nothing else looks at whether
 the diff matches the issue: CI checks that it compiles, not that it was asked for.
 
-**A diff carrying SEVERAL issues may be a dispatched group, and that is not scope creep.** The
-dispatcher hands colliding stories — shared paths, two migrations, one shared primitive — to a
+**A diff carrying SEVERAL issues may be a grouped pickup, and that is not scope creep.** A
+firing takes colliding stories — shared paths, two migrations, one shared primitive — into a
 single session on purpose, because building them apart is what produces duplicate migration
 numbers and divergent implementations of one component
-(`.claude/commands/queue-dispatch.md` STEP 4). So a multi-story branch is legitimate **when the
+(`.claude/commands/queue-run.md` STEP 4). So a multi-story branch is legitimate **when the
 caller names the issues and the collision that grouped them**, and STEP 4c requires it to. Judge
 each story against its own issue and its own commit range, exactly as you would a solo pickup.
 
