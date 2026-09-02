@@ -197,7 +197,7 @@ describe('agent briefs do not describe a world that has moved on', () => {
      * is a glob rather than the one file.** An editor renaming a step sees the
      * intra-file references in the same buffer; they do not see the ones in
      * CLAUDE.md, docs/HANDOFF.md, reviewer.md or linear.md. Two files define
-     * headings — queue-pickup.md and queue-dispatch.md — and each is also a
+     * headings — queue-run.md and queue-pickup.md — and each is also a
      * consumer of the other's; the rest are pure consumers.
      *
      * **Known gap, accepted rather than overlooked:** ci.yml's carve-out is
@@ -218,23 +218,23 @@ describe('agent briefs do not describe a world that has moved on', () => {
     const STEP = /\b(STEP [0-9]+(?:\.[0-9]+|[a-z])?)/g
 
     /*
-     * Two procedures define steps now — the dispatcher picks and hands out, the
-     * pickup builds — and they cite each other's steps freely, so the heading set
-     * is their UNION.
+     * Two procedures define steps — queue-run.md reads the board and claims a
+     * group, queue-pickup.md builds it in the same session — and they cite each
+     * other's steps freely, so the heading set is their UNION.
      *
      * That is weaker than checking each file against its own headings, and
      * measurably so rather than only in principle: the two heading sets OVERLAP
-     * on STEP 0, 3, 4 and 5, and in three of those the files mean different
-     * things (dispatch STEP 4 selects a batch, pickup STEP 4 builds). So a
+     * on STEP 0, 3, 4, 5 and 6, and in most of those the files mean different
+     * things (queue-run STEP 4 selects a group, pickup STEP 4 builds). So a
      * rename or deletion of a SHADOWED step passes silently — which is exactly
-     * what happened to STEP 1 and STEP 2 when they moved from pickup to
-     * dispatch, and those had to be re-pointed by hand.
+     * what happened to STEP 1 and STEP 2 when they moved from pickup to the
+     * picking procedure, and those had to be re-pointed by hand.
      *
      * Kept anyway, because the alternative bans the cross-citation the split
      * depends on, and the defect this test exists for — a reference to a step
      * that exists NOWHERE — is still caught in full.
      */
-    const procs = ['.claude/commands/queue-pickup.md', '.claude/commands/queue-dispatch.md']
+    const procs = ['.claude/commands/queue-run.md', '.claude/commands/queue-pickup.md']
     const headings = new Set(
       procs.flatMap((rel) =>
         [...read(rel).matchAll(/^## (STEP [0-9]+(?:\.[0-9]+|[a-z])?)/gm)].map((m) => m[1]),

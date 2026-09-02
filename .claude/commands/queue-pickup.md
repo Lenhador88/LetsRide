@@ -4,15 +4,15 @@ description: Build one dispatched Linear group end to end — the child session'
 
 # Queue pickup — build one group
 
-**You were dispatched to build the named stories in your prompt, and usually there is one.** The
-picking was done by [`queue-dispatch.md`](queue-dispatch.md) in another session: the queue was
-read, the blockers checked, and these were chosen against what the other live session is touching.
-**Do not pick different work.**
+**You hold the stories named either by [`queue-run.md`](queue-run.md) STEP 5 — in this same
+session, minutes ago — or by the prompt the owner handed you, and usually there is one.** The
+picking is done: the queue was read, the blockers checked, and these were chosen against what the
+other live session is touching. **Do not pick different work.**
 
-**You hold a slot, and the slot is the concurrency cap.** Your prompt names it — `slot-1` or
-`slot-2` — and the label is on every issue you were given. Two labels exist, so at most two build
-sessions run at once, and the dispatcher counts them off the board rather than off any session
-list. **Every issue you claim carries your label**, and nothing else may wear it.
+**You hold a slot, and the slot is the concurrency cap.** `queue-run.md` STEP 5's note, or your
+prompt, names it — `slot-1` or `slot-2` — and the label is on every issue you were given. Two
+labels exist, so at most two build sessions run at once, and every firing counts them off the board
+rather than off any session list. **Every issue you claim carries your label**, and nothing else may wear it.
 
 **You MAY take another story when these are finished, and STEP 6 is the whole of that rule.** It
 is bounded by a story count and a measured token budget, it never leaves your own slot, and it is
@@ -20,8 +20,8 @@ the cheapest work in this queue: a fresh session re-pays ~50k of process docs be
 line of code, and you have already paid that.
 
 **When your prompt names more than one, they are a *group*: stories that collide, which is why one
-session builds them rather than two** — `queue-dispatch.md` STEP 4 has the reasoning, and your
-prompt names the specific collision. What follows from it here is one thing, at STEP 4: **build
+session builds them rather than two** — `queue-run.md` STEP 4 has the reasoning, and the note
+written at its STEP 5 (or your prompt) names the specific collision. What follows from it here is one thing, at STEP 4: **build
 them in the order given**, so the migration numbers and the shared component are written once, in
 a decided sequence.
 
@@ -34,18 +34,18 @@ PR while this file can.
 
 **Your session is fresh and yours alone.** That is the change §Why this session is fresh records:
 there is no owner conversation above you, no earlier build's context, and nothing else will run in
-here. So there are no idle gates to clear — the queue's own locks are the dispatcher's now — and
-this file starts at "can you see the board".
+here. So there are no idle gates to clear — the queue's own locks were read at `queue-run.md`
+STEP 1 — and this file starts at "can you see the board".
 
 **One other story may be building in a parallel session right now**, and your prompt names the
 territory it declared. **Stay outside it.** If the story genuinely cannot be finished without
-editing across that boundary, that is §If you get stuck, not a judgement call — the dispatcher
-admitted your group on the assumption you would not.
+editing across that boundary, that is §If you get stuck, not a judgement call — your group was
+admitted on the assumption you would not.
 
-**You cannot report back to the dispatcher, and nothing you say in this session reaches the
-owner.** A cloud session receives messages and cannot answer into the conversation that spawned
-it. Everything that must be seen goes on the record: the Linear issue, the PR, and the push
-notification at STEP 5.
+**Nothing you say mid-session reaches the owner; only the record and the final message do.** A
+Routine-run session pushes its closing message to the owner's phone and nothing before it, and a
+hand-spawned one is read hours later. Everything that must be seen goes on the record: the Linear
+issue, the PR, and the push notification at STEP 5.
 
 Read `CLAUDE.md` fully before acting — it is the contract, and §The roadmap lives in Linear
 defines this board.
@@ -90,7 +90,7 @@ four times in one batch to the `project` field.
 
 **Two traps live in the `Type` column, and both are the kind that fail silently:**
 
-- **`Deployed to DEV` is typed `started`.** So is `Queued (AI)`. **Never widen the dispatcher's
+- **`Deployed to DEV` is typed `started`.** So is `Queued (AI)`. **Never widen the queue's
   lock to "any issue whose statusType is `started`"** — that would count every queued story and
   every story already shipped to DEV as work in flight, and the queue would freeze permanently
   while looking perfectly healthy. `Needs help` is the one name that stops the queue, and a
@@ -115,9 +115,10 @@ on assumptions and do not pick work from the repo instead.
 
 It must fail loudly — a job that silently does nothing looks exactly like an empty queue.
 
-**Two Claude Code Remote tools are needed too, and only at the end**: `get_session`, for STEP 6's
-budget gate and for STEP 7's own id, and `archive_session`, which STEP 7 calls with that id. Do not
-load either here — a build that never reaches those steps has no use for them, and their absence
+**Two Claude Code Remote tools are wanted too, and only at the end**: `get_session`, for STEP 6's
+budget gate and for STEP 7's own id, and `archive_session`, which STEP 7 calls with that id. **A
+Routine-minted session holds neither** (`queue-run.md` §Why this shape), and both steps say what
+to do without them. Do not load either here — a build that never reaches those steps has no use for them, and their absence
 must not stop a story that is otherwise buildable. Each step says what to do if its tool will not
 answer, and the two answer differently on purpose — stated as outcomes, because "fails open" is
 reversible on a step whose action is *archiving*: an unanswerable `get_session` at STEP 6 **ends**
@@ -140,9 +141,9 @@ ToolSearch  query="select:mcp__Linear__list_issues"   # exact — fails the mome
 once. So `mcp__github__create_pull_request` — STEP 4c, and the only route to a PR since `gh` is
 absent — carries the same hazard. **It fails in the honest direction**: no PR opens and the run
 stops visibly. **Not every unreachable connector fails that way, so decide per call rather than by
-habit** — the dispatcher's relay pre-check deliberately fails *open* (an unreadable board has not
-established that there is nothing to do), while STEP 6's budget read below fails *closed* (a budget
-you cannot read is not a budget you have cleared).
+habit** — `queue-run.md` STEP 0 stops the firing with a message when the board is unreadable,
+while STEP 6's budget read below fails *closed* silently (a budget you cannot read is not a budget
+you have cleared).
 
 Everywhere below writes `mcp__<connector>__<tool>` for readability. **Read it as "the tool called
 `<tool>` on that connector", whatever prefix it currently carries**, and reach it by keyword
@@ -159,17 +160,16 @@ why the fix there was to put both spellings on the brief. **Do not skip the keyw
 strength of it**: a firing that reads a `select:` miss as a dead connector and sends the
 cannot-reach-Linear push has stopped the queue over a recovery that works.
 
-**Send it yourself, with the `PushNotification` tool.** A self-bound Routine cannot carry
-completion notifications: the server rejects the `notifications` parameter for any trigger
-bound to a persistent session, so the only notification that will ever reach the owner from
-a firing is one this session sends. That is a change from the fresh-session Routine, which
-had `notifications.push` set on the trigger itself.
+**Send it with the `PushNotification` tool if that tool resolves, and end the session with the
+same line either way.** A fresh-session Routine pushes its run's final message to the owner
+(`queue-run.md` STEP 6 §What the final message says), and a hand-spawned session holds the tool.
+One of the two always reaches them; a duplicate is harmless and an absent one is not.
 
 ---
 
 ## STEP 2c — If it turns out to be out of sequence mid-build, stop
 
-The dispatcher's blocker check only sees blockers somebody wrote down. If the issue you are building
+The blocker check at `queue-run.md` STEP 3 only sees blockers somebody wrote down. If the issue you are building
 turns out to need something another unfinished issue is meant to deliver — its columns, its
 migration, its provider key, its design decision — and no relation says so, **do not build
 it, and do not quietly swap to a different story.** Move it to `Needs help`, comment naming
@@ -178,7 +178,7 @@ than archive it. Sequencing is the owner's to fix, and building
 in the wrong order is expensive in a way a skipped hour is not.
 
 Consider adding the missing `blockedBy` relation while you are there, so the next firing
-catches it at the dispatcher's blocker check (`queue-dispatch.md` STEP 3) instead.
+catches it at `queue-run.md` STEP 3 instead.
 
 **Send the push before you stop**, exactly as §If you get stuck requires and for the same reason:
 `Done ; ) <issue id> parked, needs you — waiting on <issue id>`. This exit never reaches STEP 5
@@ -194,9 +194,10 @@ comment**, since there is no PR body here to hold them.
 
 ## STEP 3 — Confirm the claim
 
-**The dispatcher already moved every issue in your group to `Development (AI)` before spawning
-you** — it claims first and spawns second, so the status is what stops a second dispatch handing
-the same story to a second session. Read them back and confirm; do not re-write them.
+**Every issue in your group is already in `Development (AI)` with your slot label** —
+`queue-run.md` STEP 5 claimed them before handing you here, or the owner did by hand, and the
+status is what stops a later firing taking the same story. Read them back and confirm; do not
+re-write them.
 
 **If one is in any other status, drop that story and build the rest.** Something changed since you
 were dispatched — most likely the owner moved it — and building it anyway is how work lands that
@@ -212,8 +213,8 @@ over one issue the owner moved on purpose.
 
 **This cannot detect a double dispatch, and do not write it as though it can.** Under a genuine
 double dispatch both children read `Development (AI)`, the status they expect, and both build.
-What prevents that is the dispatcher claiming before it spawns and reading the write back; this
-check catches only a change made by someone else afterwards.
+What prevents that is the claim at `queue-run.md` STEP 5 being read back before anything builds;
+this check catches only a change made by someone else afterwards.
 
 **That claim is per issue, not a lock on the queue.** Other stories are legitimately in
 `Development (AI)` at the same time; they are other sessions' and none of your business.
@@ -221,17 +222,17 @@ check catches only a change made by someone else afterwards.
 **Confirm your slot label is on each of them too.** If one carries the status but not the label,
 add it — read the issue's existing labels and pass them plus yours, because `labels` on
 `save_issue` **replaces the whole set** and a bare `["slot-1"]` strips `App`, `Database` and
-everything the owner filters on. An unlabelled in-flight issue occupies no slot for the dispatcher,
-so leaving it bare invites a second session over the same work.
+everything the owner filters on. An unlabelled in-flight issue occupies no slot for the next
+firing, so leaving it bare invites a second session over the same work.
 
 ### Then declare your territory, before you write any code
 
 **One comment, on EVERY issue you hold — the same body on each — and it is the only thing the next
-dispatcher can see about what you are touching.** It replaces the scout pass that used to predict
+firing can see about what you are touching.** It replaces the scout pass that used to predict
 this from outside: you know what you are about to edit, and a prediction made by an agent that
 never built it was both the weaker answer and the most expensive part of a firing.
 
-**On every issue rather than on the first, because the dispatcher reads whichever one it happens
+**On every issue rather than on the first, because the next firing reads whichever one it happens
 to pick.** It has your slot label on two or three rows and calls `list_comments` on one of them; a
 comment sitting only on the first is a coin flip, and a miss makes it treat your slot as touching
 *everything* and dispatch nothing into the other slot for as long as you run. Writing it three
@@ -255,10 +256,10 @@ primitive: N
   `src/components/icons/`.
 
 **Rewrite it — same shape, new comment — whenever it stops being true**: when you fold something in
-at STEP 4b, and whenever you take another story at STEP 6. The dispatcher reads the most recent one
-and nothing else.
+at STEP 4b, and whenever you take another story at STEP 6. The next firing reads the most recent
+one and nothing else.
 
-**A missing territory comment does not stop the queue, it stops the OTHER slot.** The dispatcher
+**A missing territory comment does not stop the queue, it stops the OTHER slot.** A firing
 treats a slot with no territory as touching everything, so forgetting this costs the next firing
 its whole batch while looking like a healthy build.
 
@@ -297,7 +298,7 @@ Follow `CLAUDE.md` exactly. In particular:
 
 - Branch off `development`, never `main`. Use the issue's `gitBranchName` if it has one — for a
   group, the first story's, since there is one branch for all of them.
-- **Build the stories in the order your prompt lists them** (the dispatcher orders a group by
+- **Build the stories in the order they were listed** (`queue-run.md` STEP 5 orders a group by
   priority), finishing and committing each before starting the next. The order matters most for
   the collision that grouped them: the migration numbers and the shared component get written once,
   in a decided sequence, which is the whole reason these are in one session.
@@ -322,6 +323,9 @@ Follow `CLAUDE.md` exactly. In particular:
   Run `PGPASSWORD=postgres npm test` if anything under `supabase/**` changed.
 - A migration that changes a policy must add an assertion.
 - Update `docs/HANDOFF.md` as part of landing the work, not as a separate task.
+- **If it turns out mid-build that this story needs something another unfinished issue is meant to
+  deliver, STEP 2c applies now** — a session arriving from `queue-run.md` STEP 5 never passed
+  through it, and this is the step where that discovery is made.
 
 **This step stops short of the PR on purpose.** STEP 4b decides whether anything else is
 travelling in it, and that decision has to be made while the branch is still open — so opening
@@ -466,8 +470,8 @@ items each rated 8/Y pass every gate above individually while collectively tripl
   and two stories each spending their full quota is a PR the single `reviewer` pass at STEP 4c has
   to cover in one read. **The group's own diff is the budget the fold-ins spend against**: if the
   extras across all stories together approach the size of the stories themselves, stop folding in
-  and file the rest. The dispatcher already spent this budget once when it capped the group at
-  three issues, and it had no way to see what a triage would add.
+  and file the rest. `queue-run.md` STEP 4 already spent this budget once when it capped the
+  group at three issues, and it had no way to see what a triage would add.
 
 **Two bounds have a partial remedy, and both are safe for the same one reason: their excess
 cannot contain a necessary fold-in.** The discretionary third is scoped to the optional half by
@@ -698,7 +702,7 @@ live RLS hole letting any signed-in rider post a ride into any club.
 
    **A conflict with `development` is yours to resolve, and it is NOT `§If you get stuck`.**
    Other stories merge while you build, so this is the expected case rather than an exception —
-   and the dispatcher's path caps deliberately exempt `docs/HANDOFF.md` and `CLAUDE.md`, whose
+   and the territory's path caps deliberately exempt `docs/HANDOFF.md` and `CLAUDE.md`, whose
    conflicts it calls "the cheap kind" precisely because this bullet resolves them. **Parking a
    built, green story into `Needs help` over a docs conflict stops the entire queue**, which is
    the worst available outcome and the one this paragraph exists to prevent.
@@ -742,7 +746,7 @@ live RLS hole letting any signed-in rider post a ride into any club.
    **Park properly — this is a §If you get stuck exit and owes everything that exit owes**: the
    push notification (`Done ; ) <ids> parked, needs you — CI red on <check>`), and the STEP 4b
    triage list filed before you stop, because STEP 5 will not run to file it. A park with no push
-   means the owner's first signal is the dispatcher's three-hour clock, with the whole queue
+   means the owner's first signal is the next firing's three-hour stall clock, with the whole queue
    stopped in the meantime.
 
    **One caveat worth naming, because it turns a bad day into a stopped queue:** *absent* counts as
@@ -797,8 +801,8 @@ table total:
 - **No report, still listed, spawned less than 30 minutes ago** → it is running. Do not re-spawn
   and do not idle — the completion re-invokes you, so do bullet 2 and drive CI. **Not the Linear
   writes**: STEP 5's are ordered behind the merge, and moving the issue to `Deployed to DEV`
-  early releases the dispatcher's per-issue claim, so a later dispatch could hand this same story
-  to a second session while you are still holding it. **Come back to this check before merging**;
+  early releases the per-issue claim, so a later firing could take this same story into a second
+  session while you are still holding it. **Come back to this check before merging**;
   nothing else will bring you back, because neither a death nor a hang emits an event.
 - **No report and it is not coming — not listed at all, or listed 30 minutes or more — and you
   have not re-run it yet** → **re-run it once**, with a freshly built packet, and re-enter this
@@ -814,7 +818,7 @@ table total:
 **The bound is what makes those branches distinguishable, and losing it fails in both
 directions.** Without it a hang has no exit at all: it cannot merge, and if it also cannot park
 it holds its issue in `Development (AI)` for ever with nothing on the board — which the
-dispatcher's stall alarm then has to catch hours later. Set too tight, it is the inverse: a re-run
+next firing's stall alarm then has to catch hours later. Set too tight, it is the inverse: a re-run
 spawned a minute ago has no report *yet*, and parking on that spends a `Needs help` — a lock
 name — on a review that was working. **30 minutes is ~6× a measured pass**, and the multiplier is
 deliberately generous because those two directions do not cost the same: setting it too long
@@ -896,8 +900,7 @@ That is why they are numbered and cross-referenced by number.
    **What a freed slot costs when you do end: it waits for the top of the hour.** Finish at 10:05
    and the next story starts at 11:00, not at 10:06 — unless STEP 6's gates let you take it
    yourself, which is exactly the case that cost is worth avoiding. It buys a queue with one clock:
-   nothing to double-fire, and at most one firing an hour that can land on a dispatcher still
-   working. **Pausing the Routine still cannot stop a session already building**, yours included.
+   nothing to double-fire, and at most one firing an hour, so no two ever overlap. **Pausing the Routine still cannot stop a session already building**, yours included.
 
    **The Claude Code Remote tools you need are two, and neither is a messaging one — which is the
    point of this paragraph, rather than the count.** STEP 6 reads your own token spend through
@@ -977,7 +980,7 @@ story, run this whole step — both gates, the collision check and the claim wri
 issues to `Deployed to DEV` afterwards.
 
 **What the natural order costs:** bullet 4 moves every issue you hold out of `Development (AI)`,
-which takes your slot label with them, and the dispatcher counts that slot **free**. An hourly
+which takes your slot label with them, and the next firing counts that slot **free**. An hourly
 firing landing in the seconds or minutes it then takes you to read the board, check a collision and
 claim will dispatch a fresh session into *your* slot. Two live sessions wear one label, three
 builds run against a cap of two, and the next firing reads whichever of the two territories it
@@ -1029,12 +1032,12 @@ Take the highest-priority candidate (Urgent → High → Medium → Low → No p
 `createdAt`) that clears **all** of these:
 
 - **`Needs help` is empty.** A parked story stops the whole queue, and that applies to you exactly
-  as it applies to the dispatcher. Any row → end the session, via STEP 7.
+  as it applies to `queue-run.md` STEP 1. Any row → end the session, via STEP 7.
 - **It does not collide with the OTHER slot's territory.** Read that slot's `<!-- territory -->`
-  comment the way the dispatcher does, and apply the same three caps: overlapping paths, both
-  adding a migration, both touching a shared primitive. **You are the one session that cannot see
-  the other's branch, so treat an uncertain overlap as a collision** — the dispatcher groups on
-  uncertainty because it can put both in one session, and you cannot.
+  comment the way `queue-run.md` STEP 2 does, and apply the same three caps: overlapping paths,
+  both adding a migration, both touching a shared primitive. **You are the one session that cannot
+  see the other's branch, so treat an uncertain overlap as a collision** — `queue-run.md` STEP 4
+  groups on uncertainty because it can put both in one session, and you cannot.
 - **It is not an epic** — a candidate with sub-issues is a container, not work.
 - **It is not blocked** — `get_issue includeRelations=true`, any `blockedBy` outside
   `Deployed to DEV`, `Done (in production)`, `Canceled` or `Duplicate` disqualifies it.
@@ -1051,9 +1054,8 @@ mcp__Linear__save_issue  id=<issue>  state=<Development (AI)>  labels=[<its exis
 ```
 
 **Read the write back, and check it for a second claimer as well as for your own fields.** A
-dispatcher may be mid-batch on the same column right now — nothing serialises the two of you, the
-same way nothing serialises two dispatchers (`queue-dispatch.md` STEP -1 accepts that race and says
-why). So confirm all three:
+firing may be claiming on the same column right now — nothing serialises the two of you. So
+confirm all three:
 
 - the status is `Development (AI)`,
 - **your** slot label is on it,
@@ -1071,14 +1073,14 @@ that both children read the status they expect.
   puts already-shipped commits into the next diff and makes `reviewer` read a branch that is not
   what it will merge.
 - **Rewrite your `<!-- territory -->` comment** on the new issue, naming what this story touches
-  rather than what the last one did. A stale territory is worse than none — the dispatcher trusts
-  the newest comment.
+  rather than what the last one did. A stale territory is worse than none — the next firing
+  trusts the newest comment.
 - **One story, one branch, one PR, one `reviewer` pass, one push notification.** Nothing about the
   second story is shared with the first except the session.
 
 **This is the one place a session picks its own work, and it stays inside one slot.** You never
 spawn a session, never take a story into a slot that is not yours, and never take a second one
-while the first is still open. `queue-dispatch.md` §The board is the lock is what those rules
+while the first is still open. `queue-run.md` §The board is the lock is what those rules
 protect.
 
 ---
@@ -1131,15 +1133,12 @@ mcp__<connector>__archive_session  session_id=<the id that call returned>
 ```
 
 **Pass the id `get_session` just returned and no other**, which is the whole of the safety story
-here: the only session this step can reach is the one running it. The relay is not reachable and
-never was — it exits at `queue-dispatch.md` STEP -1 without opening this file — so there is no id
-comparison to make, and `CLAUDE.md` §What Not To Do's rule against archiving the session the hourly
-Routine is bound to is about archiving *someone else's* session, which this step cannot do.
+here: the only session this step can reach is the one running it. There is no other session to
+reach — the hourly Routine mints a fresh one per firing and is bound to none — so there is no id
+comparison to make.
 
-**Do not reach for `list_triggers` to check that.** It would answer a question that cannot arise,
-it would hardcode the hourly Routine's trigger id into a step that has no other reason to know
-one, and it would not even be sound: `docs/HANDOFF.md` records the disabled fallback Routine not
-appearing in that listing at all, so a session bound to it would read no row and pass.
+**Do not reach for `list_triggers` to check that.** A Routine-minted session does not hold it, and
+it would answer a question that cannot arise.
 
 **If either call will not answer, end the session WITHOUT archiving, and say so.** This one fails
 **open**, which is the opposite of STEP 6's budget gate and for a reason worth stating: keeping a
@@ -1147,9 +1146,9 @@ session costs the owner one row in a list, and the harm this file guards against
 transcript that had something in it. Tell the two failures apart the way STEP 0 does —
 `InputValidationError` is a deferred schema, so `ToolSearch` by keyword and call it again;
 `No such tool available` after a keyword search means the connector is not on this session.
-**A permission prompt is the third case and it looks like neither**: `.claude/settings.json` carries
-no Claude Code Remote entry, so an unattended firing can be stopped by an approval request here.
-Treat all three the same — keep the session, and end.
+**A permission prompt is the third case and it looks like neither**: the auto-mode classifier can
+decline a session-management call, so an unattended firing can be stopped by an approval request
+here. Treat all three the same — keep the session, and end.
 
 **This changes no lock and reports to nobody.** Your slot label left `Development (AI)` at STEP 5
 bullet 4, so the slot was already free before this step ran; and archiving is not a message, so
@@ -1178,7 +1177,7 @@ call:
   afterwards and it sees nothing in `Needs help`, so the queue-wide lock does not hold and it
   dispatches into every free slot — burying the story that needs the owner under the merged PRs,
   which is the exact harm the lock exists to prevent. **The park is the only signal the queue
-  gets** — the push in bullet 5 goes to the owner, not to a dispatcher — and since bullet 6 no
+  gets** — the push in bullet 5 goes to the owner, not to the queue — and since bullet 6 no
   longer pokes anything, a late park is not late by seconds, it is simply missing when the hour
   turns.
 
@@ -1221,7 +1220,7 @@ re-run (STEP 4c bullet 1), or a decision that is the owner's to make.
 
 **Stopping into `Needs help` is always better than merging something you are not confident
 in.** It also parks the whole queue until the owner clears it, which is the intended behaviour —
-`Needs help` is the one status the dispatcher refuses to dispatch past, precisely so a story
+`Needs help` is the one status a firing refuses to build past, precisely so a story
 needing the owner does not get buried under the next batch of merged PRs.
 
 **Leave the branch and any PR open, and say so in the comment.** Nothing else will pick this up:
@@ -1231,7 +1230,7 @@ nothing to the queue** — STEP 5 bullet 6 applies to a park exactly as it appli
 the `Needs help` status is what the next hourly firing reads.
 
 **Then send the push, because a park is the one exit where nothing else will.** `Done ; ) <issue
-id> parked, needs you — <one line why>`. Parking freezes the whole queue and the dispatcher's
+id> parked, needs you — <one line why>`. Parking freezes the whole queue and the next firing's
 `Needs help` clock does not alarm until the story is over three hours old, so without this the
 owner's first signal is three to four hours after everything stopped. **This is not the poke coming
 back**: it goes to the owner, not to the queue, and it is the same `PushNotification` STEP 5 bullet
@@ -1243,7 +1242,7 @@ back**: it goes to the owner, not to the queue, and it is the same `PushNotifica
 
 **The stories in front of you are the scope** — the ones your prompt names, and nothing else — and
 *a scheduled session is the worst possible place for scope creep*. **A group does not widen this
-rule; it is the dispatcher having already decided the scope is two or three stories.** Picking up a
+rule; it is `queue-run.md` STEP 4 having already decided the scope is two or three stories.** Picking up a
 fourth because it touches the same files is the same overreach as picking one up when you were
 given one. The rule has two halves, and **STEP 4b is where they are applied**:
 
@@ -1270,53 +1269,41 @@ travels. The second is filed, or dropped.
 ## Why this session is fresh
 
 **This file used to run in one long-lived session reused every hour, and every awkward thing about
-it came from that.** A session spawned *by a Routine* gets its connectors from the trigger, and
-`create_trigger` refuses the `connectors` parameter for this organization — so a fresh-session
-Routine was one bad call away from a permanently connector-less job that only the owner could
-repair by hand. Binding to a session that already held its connections was the only way to have a
-job that could reach Linear at all.
+it came from that.** A session spawned *by a Routine* gets its connectors from the trigger, so the
+first design bound the Routine to a session that already held them — the shared `### Development
+###` session — and paid for it with context that accumulated across firings and could never be
+cleared. The second design (2026-08-18 to 2026-09-02) fired into a *relay* that was meant to spawn
+a fresh dispatcher, which spawned fresh children running this file; it never ran, because a session
+the Routine mints for itself holds no session-management tools, so the relay could not spawn
+anything. `queue-run.md` §Why this shape has the measurements.
 
-**A session spawned by another *session* inherits them.** Probed 2026-08-16 from a
-`create_session` child with the repo attached: `permission_mode: auto` inherited without
-complaint, and Linear, Supabase and the GitHub tools all reachable — re-probed and itemised
-2026-08-18, which [`queue-dispatch.md`](queue-dispatch.md) §Why this shape carries along with the
-two gaps it does not close. **Nothing in this file depends on the Claude Code Remote half of it
-any more**, since bullet 6 stopped poking. That probe is what made the dispatcher possible, and it
-retires four costs at once:
+**Since 2026-09-02 the Routine fires a fresh session with the repo and its connectors attached,
+and that session picks and builds itself.** It retires four costs at once, and a fifth the relay
+design added:
 
 | Cost of the reused session | How it is gone |
 |---|---|
 | The session was not idle by construction — a firing could land mid-conversation with the owner | Nothing else runs in here. The idle gates are deleted, not moved |
 | Context accumulated across firings, and no session can `/clear` itself | This window starts empty and is discarded after one group |
 | The build had to run in a subagent purely to stand in for that clear | STEP 4 — build in your own thread; only specialists and `reviewer` are delegated now |
-| One story at a time, because one session could only build one thing | The claim is per issue; other stories build in parallel sessions, and colliding ones build together in this one |
+| One story at a time, because one session could only build one thing | The claim is per issue; other stories build in parallel firings, and colliding ones build together in this one |
+| A procedure edit never reached the persistent session that executed it | Every firing clones `development` fresh; a merged edit is live at the next hour |
 
-**What changed again on 2026-08-18, and it is the reason STEP 6 exists.** The owner dropped the
-owner-activity gate — *"we can indeed drop the gate whether I am here or not"* — so the queue now
-runs through their working day, and the scout pass, the session-liveness reads and the dispatch
-records all went with it. What holds the concurrency now is two Linear labels and the territory
-comment you write at STEP 3. `Needs help` is unchanged: any story parked there stops every
-dispatch, including the one you might make at STEP 6.
+**What holds the concurrency now is two Linear labels and the territory comment you write at
+STEP 3.** `Needs help` is unchanged: any story parked there stops every firing, including the
+second story you might take at STEP 6.
 
-**Two things remain irreversible from inside a session**, and they are in `CLAUDE.md` §What Not To
-Do because the calls that trip them are CCR calls made by a session that is not reading this file:
+**Two things about this session are worth knowing before STEP 6 and STEP 7 — one measured, one
+inferred and labelled as such:**
 
-- **Never delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`** — the *disabled* fresh-session Routine, and the
-  fallback. Its three connectors were hand-attached and cannot be recreated from a session, so
-  deleting it destroys the only recoverable path; `update_trigger enabled: true` restores it
-  whole. **`…WJkMV` is the cheap hourly one and `…Gzy8e` is the irreplaceable one** — keep the two
-  straight in both directions. **A missing `enabled` key is not a disable**: measured 2026-08-18 at
-  20:05Z, none of the account's 27 rows carried one, including the hourly Routine, which had fired
-  at 17:09Z. The key appears once explicitly set, but it reports the flag and **not** whether the
-  Routine is firing — the one row that has ever carried it was hours past its due fire.
-  `next_run_at` is that answer. `queue-dispatch.md` §Why this shape has both measurements.
-- **Do not archive the session the dispatcher Routine is bound to** — not a never since
-  2026-08-28, but never a child's call either. `update_trigger` has no `persistent_session_id`
-  parameter, so a session cannot rebind the Routine itself if the rebind does not happen on its
-  own; when this happened on 2026-08-18 the trigger rebound *itself* within the hour. What did not
-  recover was the relay id copied into `queue-dispatch.md`, and the queue dispatched nothing for
-  six days — so no id decides a role any more. Deliberate archiving is now the documented repair
-  for a relay running a stale clone, and it belongs to the owner. See that file's §The three roles.
-
-And what it buys beyond the connectors: the session can see whether the owner is mid-request,
-which is the only reliable idle signal there is, and no fresh session could ever have it.
+- **A Routine-minted session is not expected to hold the session-management tools** — no
+  `get_session`, no `archive_session`, no `list_triggers`, no `create_session`. That is **inferred**
+  from every relay's 40–80-token firings, not observed (`queue-run.md` §Why this shape has the
+  table), and its inventory firing is what measures it. Either way STEP 6's budget gate fails
+  closed (one group per firing, then end), and STEP 7 keeps the session, which costs nothing because
+  trigger-run sessions are not in the owner's ordinary session list (measured 2026-09-02). A
+  hand-spawned session holds all of them and both steps work as written.
+- **A permission prompt has nobody to answer it.** The auto-mode classifier declined a
+  pre-authorized Linear read on 2026-08-29 (PD-349) and two Routine writes on 2026-09-02. Nothing in
+  this file can prevent it; what it does is keep every write on the record as it happens, so a
+  stalled session loses nothing the board does not already show.

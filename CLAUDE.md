@@ -779,8 +779,8 @@ the owner is present and asking about other stories.
 **Default: one build in flight, in the background, and the thread stays free.** Spawn the agent,
 reply at once, and keep answering questions about other stories while it runs. What this buys is
 **availability, not throughput**. The queue runs alongside this mode: an hourly firing may hand a
-story to a build session while this conversation is live, and `queue-dispatch.md` §The board is
-the lock holds the collision between two *builds* with two Linear labels and a declared territory.
+story to a build session while this conversation is live, and `queue-run.md` §The board is the
+lock holds the collision between two *builds* with two Linear labels and a declared territory.
 
 **Backgrounding it and then waiting on it is the same as not backgrounding it.** The point of the
 background is the *thread*, not the agent. While one runs, do every step that does not depend on
@@ -1119,7 +1119,7 @@ ever.
 evidence.** Name the command a careful person writes *first*, and say what it returns. If that is
 a plausible wrong answer, the warning is load-bearing; if they would simply get the right one, it
 is biography. The comment trap (§Technology Decisions) and the team-scoped lock
-(`.claude/commands/queue-dispatch.md` STEP 1) are the shape. `.claude/agents/reviewer.md` §The
+(`.claude/commands/queue-run.md` STEP 1) are the shape. `.claude/agents/reviewer.md` §The
 necessity gate enforces this, and carries a line budget so prose growth is measured rather than
 argued about.
 
@@ -1151,10 +1151,10 @@ from a visibility rule nobody wrote down. Rules live in `openspec/config.yaml`.
 
 ## The roadmap lives in Linear
 
-**Full detail — the anti-duplication contract, the status traps, sequencing, the queue dispatcher
-and its two triggers — is [`docs/reference/linear.md`](docs/reference/linear.md). Read it before
-the first Linear call of a session, and before ANY call that touches the dispatcher Routine, its
-triggers or the relay session it fires into.** What must be true without reading it:
+**Full detail — the anti-duplication contract, the status traps, sequencing, and the hourly
+Routine that drains the queue — is [`docs/reference/linear.md`](docs/reference/linear.md). Read it
+before the first Linear call of a session, and before ANY call that touches a Routine or a session
+a Routine fired.** What must be true without reading it:
 
 - Workspace **`lets-ride`**, team **Pedro & Dave (`PD`)**. **Pass the project id —
   `88f3f224-ecf0-46f0-a032-c86b7a12f81c`** — never the name: it holds a curly apostrophe, the
@@ -1304,18 +1304,16 @@ one case that needs no PR is a session that changed nothing.
 - Don't poll a Figma 429 — read its `Retry-After` instead.
 - Don't convert the Figma styles to variables — it would move the whole token layer behind
   the Enterprise-only Variables API, which 403s permanently on this plan.
-- **Don't delete `trig_01Gzy8eCiaXUUa1knvJnNpwy`** — the disabled fallback Routine. Its three
-  connectors were attached by hand and `create_trigger` refuses the `connectors` parameter for
-  this organization, so no session can recreate it; `update_trigger enabled: true` restores it
-  whole. `…WJkMV` is the cheap hourly one, `…Gzy8e` is the irreplaceable one.
-- **Don't archive the relay session on your own initiative** — the one
-  `trig_01WJkMVXGzUVGDcC1njNmaan` is bound to. **Read which session that is off the trigger, never
-  off a line in a file**: `list_triggers` carries the authoritative `persistent_session_id`. It is
-  the only session in the queue that is reused, and it decides nothing: a firing spawns a fresh
-  dispatcher and exits, so everything it spawns is disposable and archiving one is always fine —
-  a dispatcher carries `queue-dispatch-run` and a child carries `queue-dispatch`. A build child
-  archiving ITSELF when its work is done is permitted (owner, 2026-08-28) and a different act,
-  because `archive_session` is called with the id `get_session` returns for the caller and a
-  firing is never told the relay's id. Archiving the relay deliberately is the one documented
-  repair for a relay executing a stale clone of `queue-dispatch.md`, and it is the owner's call —
-  `queue-dispatch.md` STEP -1 is the procedure.
+- **Don't create, fire, edit or delete a Routine from a session, and don't build a queue design
+  that needs a firing to spawn a session.** The queue is one owner-created Routine firing a fresh
+  session that reads `.claude/commands/queue-run.md` and builds one group itself. A session the
+  Routine mints holds the repo and the attached connectors and, as far as anything has shown, **no
+  `create_session`** — inferred from 40–80-token firings that never spawned anything, since no
+  session can read another's transcript; `create_session` is built-in tooling, not a connector —
+  which is why the relay → dispatcher → child design dispatched nothing for three weeks while every
+  Routine field read healthy. And the auto-mode classifier refuses `create_trigger` and
+  `fire_trigger` from an interactive session (measured 2026-09-02). Reading a Routine or a session
+  by id is pre-authorized; everything else about a Routine is the owner's, in the Routines UI. **A
+  build session archiving ITSELF at the end of its own run stays permitted** (owner, 2026-08-28) —
+  the one archive a session may do. `docs/reference/linear.md` §The queue is drained by one
+  Routine, on one clock has the shape and the checks.
