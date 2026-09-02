@@ -72,7 +72,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Type check before deploying
-        run: deno check supabase/functions/*/index.ts
+        run: deno check --node-modules-dir=none --no-lock supabase/functions/*/index.ts
 
       - uses: supabase/setup-cli@v1
         with:

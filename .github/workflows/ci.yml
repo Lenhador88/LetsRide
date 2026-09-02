@@ -302,8 +302,14 @@ jobs:
         with:
           deno-version: v2.x
 
+      # `--node-modules-dir=none`: the repo root holds a package.json, which
+      # puts Deno in bring-your-own-node_modules mode, and the jsr package
+      # depends on npm:@supabase/realtime-js — so without the flag the check
+      # fails asking for a node_modules this job never installs (measured on
+      # the first run of this job). `none` resolves npm packages from Deno's
+      # own cache. `--no-lock` so it writes no deno.lock into the checkout.
       - name: Type check every function entrypoint
-        run: deno check supabase/functions/*/index.ts
+        run: deno check --node-modules-dir=none --no-lock supabase/functions/*/index.ts
 
   rls:
     name: RLS Policy Tests
