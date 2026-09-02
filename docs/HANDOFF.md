@@ -211,8 +211,9 @@ are repointed. **Nothing fires it yet.** In this order:
    nothing, and cost $103 in 4.5 days). Its relay session `session_01UJDMybf8mX4xbhK93P7EpL` can
    be archived from the UI afterwards.
 2. **Owner — create the new Routine** in the Routines UI: fresh session per firing, this repository
-   on `development`, connectors Linear + Supabase + Vercel (+ GitHub if offered), hourly, push
-   notification on completion, and the prompt in `queue-run.md` §Why this shape.
+   on `development`, connectors Linear + Supabase + Vercel (+ GitHub and Claude Code Remote, if
+   either is offered — the second was not on 2026-09-02), hourly, push notification on completion,
+   and the prompt in `queue-run.md` §Why this shape.
 3. **The first firing is inventory** — `queue-run.md`'s mode line reads `inventory`, so it posts
    the tools it can reach as a comment on PD-241 and moves nothing. Read that comment: if the GitHub
    tools are absent the build cannot open a PR, and that decides whether `queue-pickup.md` STEP 4c

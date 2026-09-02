@@ -112,7 +112,7 @@ of the session list, on the owner's instruction; the firing made the builder on 
 - **No owner-activity gate**, on the owner's instruction — *"we can indeed drop the gate whether I
   am here or not"*, with *"i do not edit files by hand, always prompting here"*.
 
-**Five outages in three weeks were each diagnosed as the previous one's cause, and none was** —
+**Four outages in three weeks were each diagnosed as the previous one's cause, and none was** —
 the one that was there all along is the first bullet above. PD-241, PD-345 and PD-349 hold the
 record; nothing on the Routine detected any of them.
 

@@ -15,10 +15,12 @@ relay since the 2026-08-18 rebind answered its firing with 40–80 output tokens
 across three "fixes" to this procedure that could not have mattered, and the only dispatchers that
 ever ran were spawned by hand from the owner's session. **What is inferred from that, and is still
 unconfirmed** (PD-241, 2026-08-27 and 2026-09-02: no session can read another's transcript): that a
-session the Routine mints for itself does not hold `create_session` — the session-management tools
-are built-in tooling a session gets when a person or another session starts it, not a connector
-anyone can attach, and the Routine attaches only connectors. Four silent outages in three weeks,
-and a persistent session costing about $1 per idle firing. `docs/reference/linear.md` §The queue is drained by one
+session the Routine mints for itself does not hold `create_session`. PD-241 reads that as *the
+Claude Code Remote connector was never attached to the Routine*; the owner looked for that
+connector in the Routines UI on 2026-09-02 and it was not offered, which reads as *built-in tooling
+a session gets only when a person or another session starts it*. The inventory firing is what tells
+the two apart, which is why the setup below says to attach it if the UI ever offers it. Four silent
+outages in three weeks, and a persistent session costing about $1 per idle firing. `docs/reference/linear.md` §The queue is drained by one
 Routine, on one clock carries the measurements; PD-241 carries the record.
 
 **What a Routine-minted session DOES hold, measured, and this file's board half uses nothing
@@ -82,8 +84,9 @@ it. This firing puts one on every issue it takes; the build carries the same lab
 else it picks up. **A slot label present on an issue in `Development (AI)` means that slot is
 occupied**, however many issues carry it — so the free-slot count is `2 −` the number of *distinct*
 slot labels in that column, and it comes back in the same call as the board. Nothing else counts
-sessions, and nothing may — not even if `list_sessions` turns out to be reachable, because it costs
-~35k a call and reads state the board already carries.
+sessions, and nothing may — not even if `list_sessions` turns out to be reachable, because it reads
+state the board already carries at a cost the board does not have (~140k characters at `limit=100`,
+measured 2026-08-18; 62k characters for 40 rows on 2026-09-02).
 
 **An in-flight issue carrying NO slot label occupies no slot, and that is deliberate.** The
 ordinary cause is a hand move — the owner does that — and freezing the queue over it is the
@@ -105,14 +108,17 @@ Anything else → **inventory**:
 
 1. **Dedup first.** `list_comments issueId=PD-241` (`ToolSearch +list_comments linear`). If a
    comment headed `**Inventory firing —` is already there from the last 24 hours, **end with the
-   single word `idle`** — the mode stays `inventory` until a human reads that comment and a session
-   flips the line, and a comment an hour is the shape STEP 6's stall marker exists to prevent. If
+   line `inventory: waiting on you — read PD-241 and flip the mode`** — never `idle`, which is the
+   word for a healthy queue with nothing to do. The mode stays `inventory` until a human reads that
+   comment and a session flips the line, and a comment an hour is the shape STEP 6's stall marker
+   exists to prevent. If
    the Linear tools are absent, say so as the final message of this session and end — a
    fresh-session Routine carries its run's final message in the push notification it sends.
 2. Call `ToolSearch` with each of these queries and record the answer verbatim — *resolved*, or
    *No matching deferred tools found*. The first line is the one the whole design rests on:
    - `select:mcp__Claude_Code_Remote__create_session,mcp__Claude_Code_Remote__get_session,mcp__Claude_Code_Remote__archive_session,mcp__Claude_Code_Remote__list_triggers,mcp__Claude_Code_Remote__list_sessions`
-     and then, by keyword, `+create_session claude code remote` and `+list_sessions claude code remote`
+     and then each of the five by keyword (`+create_session claude code remote`, and so on) —
+     only a keyword search coming back empty establishes absence, as the build-mode text below says
    - `+create_pull_request github` and `+merge_pull_request github`
    - `+list_issues linear` and `+save_issue linear`
    - `+execute_sql supabase`
@@ -126,7 +132,8 @@ Anything else → **inventory**:
    `permission_mode` it returns.
 6. Post ONE Linear comment on **PD-241** carrying all of that, one line per tool, headed
    `**Inventory firing — <UTC date and time>**`, with the attribution footer `CLAUDE.md` requires.
-7. **End.** Move nothing on the board, build nothing, spawn nothing.
+7. **End with the line `inventory posted — read PD-241 and flip the mode`.** Move nothing on the
+   board, build nothing, spawn nothing.
 
 **`build` mode — can you see the board?** Load `list_issues` via `ToolSearch` and call it. **If the
 Linear tools are not available, STOP and say so in the final message** (and with `PushNotification`
@@ -439,6 +446,10 @@ session says is the whole of its reporting. Keep it to one or two lines, in this
 - **Empty queue, every candidate blocked, no free slot, `Needs help` occupied** → **end with no
   message at all beyond a single word, `idle`**, so the notification the Routine sends is one the
   owner can dismiss without reading.
+- **An inventory firing** → never `idle`: `inventory posted — read PD-241 and flip the mode` on the
+  firing that wrote the comment, `inventory: waiting on you — read PD-241 and flip the mode` on
+  every firing after it. The queue is not running in that mode, and the notification must not read
+  as if it were.
 
 **No `fire_trigger`, no `send_later`, no `create_session`, no message to any session — ever.**
 Product owner, 2026-08-18: *"when the development ends, I dont want those new sessions to report
@@ -486,7 +497,9 @@ hand:
 
 - **a fresh session on every firing** — never bound to a persistent session;
 - **this repository attached**, default branch `development`, so the checkout exists;
-- **Linear, Supabase and Vercel attached**, plus GitHub if the UI offers it as a connector;
+- **Linear, Supabase and Vercel attached**, plus GitHub — and Claude Code Remote — if the UI
+  offers either as a connector (the owner did not find the second on 2026-09-02; attaching it if it
+  ever appears is what lets the inventory firing tell "not attached" from "not attachable");
 - **hourly** — the server minimum, and the only clock;
 - **push notification on completion** — the final message is the report;
 - **the prompt**: *Queue run for LetsRide. Read `.claude/commands/queue-run.md` in this repo and
