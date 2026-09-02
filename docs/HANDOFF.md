@@ -190,6 +190,35 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## Where this left off — 2026-09-02, an introduction is listed only as its announcement
+
+**PD-372, merged to `development`.** The club detail drew one conversation three ways — the join
+row, a thread creation row titled `Introduction`, and a fresh reply row every time somebody
+commented, which is why replying to an introduction read as *"always creates a new thread"*. Three
+browse reads now filter on `club_threads.introduces_user_id`, in the query rather than after it,
+and the club timeline's only waveable row is the announcement row (product owner, 2026-09-02:
+*"yes, only annoucements are waveable please"*).
+
+**Two things a later session will otherwise rediscover the hard way:**
+
+- **`club_thread_waves` is a LIVE table with no writer in the app.** Its `092` policies, its grants
+  and both `098` triggers are untouched, and the three rows on DEV can no longer be withdrawn by
+  the riders who placed them — which is `092`'s *"or the row is stranded"* coming true. Dropping it
+  is a separate, destructive call: `openspec/changes/an-introduction-appears-only-as-its-announcement/proposal.md`
+  §The table with no writer says what that owes, and `docs/reference/schema.md`'s row for the table
+  says the same at the point of use.
+- **The announcement row is a WINDOW, so an introduction can fall out of every browse surface.**
+  `CLUB_TIMELINE_LIMIT` is 20 and the timeline does not paginate, so a current member with twenty
+  newer events above their join keeps a deep link and nothing else. Filed rather than fixed — a
+  door on the members list would make a second place an introduction appears, which is the
+  deliverable's own line to cross. **Not** the welcome club: `097` refuses it introductions
+  outright, so the highest-frequency-join club cannot produce this state.
+
+```bash
+git grep -n "ANNOUNCEMENT_MARKER" -- src/          # the rule, and its three call sites
+npx vitest run src/lib/data/__tests__/announcement-rule.test.ts
+```
+
 ## Where this left off — 2026-09-01, the club bundle is IN PRODUCTION
 
 **Later the same day — the process session (branch `claude/dev-process-improvements-94p8kc`).**
@@ -227,6 +256,15 @@ promotion merge with identical trees.
 and 47/47 guard, navigation and sign-out checks, run twice: once as the club's OWNER and once as an
 ordinary MEMBER, which are different code paths on the club detail because the introduction prompt
 exempts an owner.
+
+**23 needs a `WALK_EMAIL`; a MINTED rider walks 22, and that is a pass rather than a shrink.**
+Re-measured 2026-09-02, both ways in one sitting. `/clubs/detail/thread` is discovered by scraping
+a link off the Threads list, and the walk's own fixtures create a ride and a club but **no thread**
+— so a freshly-minted rider's club has nothing to open and the walk says so in words
+(`(no threads in that club — /clubs/detail/thread unwalked)`). The guard-check total moves with it
+for the same reason: 47 as a minted rider, **44** as a named one, because minting adds three
+checks of its own. So compare a walk against the account it ran as, and read the parenthesised
+lines — the walk names every route it skipped.
 
 **Two durable DEV fixtures were created for it, and they are the reason the next walk needs no
 setup:**
@@ -450,10 +488,30 @@ habit worth not forming.
 
 | Email | Username | Password | What it carries |
 |---|---|---|---|
-| `walk-fixture@letsride.dev` | `walkfixture` | `6BAvGCB1jgHXsIz9BXTvvOMh` | Onboarded, has a location and a bike. **Owns `Walk fixture club`** (public, non-default) and a thread in it — so `/clubs/detail/thread` is walkable |
+| `walk-fixture@letsride.dev` | `walkfixture` | `WalkFixture2-2026-09-02` | Onboarded, has a location and a bike. **Owns `Walk fixture club`** (public, non-default) and a thread in it — so `/clubs/detail/thread` is walkable |
 | `walk-fixture-2@letsride.dev` | `walkfixture2` | same | Onboarded. A **member** of that club, not its owner, so the introduction prompt fires for them; has posted an introduction |
 | `rider-1786033029156@letsride.dev` | — | owner-held | Consented, **no username, not onboarded** — the fixture for walking the wizard |
 | `rider-1786033088990@letsride.dev` | `devrider093453` | owner-held | Fully onboarded, predates the two above |
+
+**The password in the row above was rotated on 2026-09-02, and the one it replaced did not work.**
+The recorded value answered `invalid_credentials` against DEV's own token endpoint — measured, not
+inferred — so a walk run with it signed in as nobody and reported `0/10 screens rendered clean`,
+which reads exactly like a broken build rather than a bad credential. That is the trap worth
+carrying: **a wrong `WALK_EMAIL`/`WALK_PASSWORD` fails the walk everywhere at once**, because every
+route then redirects to `/auth/login` and every guard check for a signed-in rider fails with it.
+Check the credential itself before believing the screens, in one call:
+
+```bash
+curl -s --noproxy '*' -X POST 'http://localhost:3001/auth/v1/token?grant_type=password' \
+  -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" -H 'Content-Type: application/json' \
+  -d '{"email":"walk-fixture-2@letsride.dev","password":"..."}'   # 200, not 400
+```
+
+Rotated rather than deleted, against §Test accounts' own "delete rather than rotate" advice, and
+deliberately: `walk-fixture-2` **holds the introduction** that makes the club-detail and Threads
+screens worth walking at all, and deleting it destroys the fixture PD-372 needed. Both accounts now
+share the new value. The reset was one SQL `update` on `auth.users.encrypted_password` through
+`extensions.crypt(…, gen_salt('bf'))` — no service-role key, no Auth admin API.
 
 **The two `walk-fixture*` accounts are a PAIR and the second is the point.** A club's owner is
 exempt from the introduction prompt (`097`, and
