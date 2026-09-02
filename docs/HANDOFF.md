@@ -190,6 +190,42 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## Where this left off — 2026-09-02, the queue is rebuilt and waits on the owner's Routine
+
+**The hourly queue dispatched nothing from a firing between 2026-08-18 and 2026-09-02, and the
+cause was never any of the three the procedure documented.** Every relay answered its firing with
+40–80 output tokens and spawned nothing, and every story since 08-28 was picked up by the owner
+opening a session by hand; the reading — a session the Routine mints for itself holds no
+`create_session`, which is built-in tooling rather than a connector — is inferred from that and
+is what the new procedure's inventory firing measures first. The
+measurements are on PD-241 (2026-09-02 comment), and `docs/reference/linear.md` §The queue is
+drained by one Routine, on one clock carries the shape that replaced it.
+
+**What landed:** `.claude/commands/queue-run.md` — every firing is the builder: read the board,
+take one group into a free slot, then follow `queue-pickup.md` in the same session.
+`queue-dispatch.md` is deleted; `queue-pickup.md`, `CLAUDE.md`, `docs/reference/linear.md`,
+`docs/reference/constraints.md`, `reviewer.md`, `settings.json` and the STEP cross-reference test
+are repointed. **Nothing fires it yet.** In this order:
+
+1. **Owner — disable `trig_01WJkMVXGzUVGDcC1njNmaan`** in the Routines UI (it fires hourly, does
+   nothing, and cost $103 in 4.5 days). Its relay session `session_01UJDMybf8mX4xbhK93P7EpL` can
+   be archived from the UI afterwards.
+2. **Owner — create the new Routine** in the Routines UI: fresh session per firing, this repository
+   on `development`, connectors Linear + Supabase + Vercel (+ GitHub and Claude Code Remote, if
+   either is offered — the second was not on 2026-09-02), hourly, push notification on completion,
+   and the prompt in `queue-run.md` §Why this shape.
+3. **The first firing is inventory** — `queue-run.md`'s mode line reads `inventory`, so it posts
+   the tools it can reach as a comment on PD-241 and moves nothing. Read that comment: if the GitHub
+   tools are absent the build cannot open a PR, and that decides whether `queue-pickup.md` STEP 4c
+   needs a `git push` + comment fallback before the mode flips.
+4. **A session — flip the mode line to `build`** in a one-line PR. Live at the next hour.
+
+```
+mcp__Claude_Code_Remote__list_triggers     # the new Routine present, next_run_at in the future;
+                                           # …WJkMV gone or enabled:false
+mcp__Linear__list_comments  issueId=PD-241 # the inventory comment, then the board moving on its own
+```
+
 ## Where this left off — 2026-09-02, an introduction is listed only as its announcement
 
 **PD-372, merged to `development`.** The club detail drew one conversation three ways — the join
