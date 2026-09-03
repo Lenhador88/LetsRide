@@ -261,8 +261,10 @@ npx vitest run src/lib/data/__tests__/announcement-rule.test.ts
 findings, then implemented — read `design.md` before touching any of this again). **This is what
 closes PD-374's hole**, which was cancelled on 2026-09-02 on the assumption that scrolling back
 through the timeline — rather than a second door on the members list — was the fix: an
-introduction is reachable again once its join row scrolls past the display cap, because the rider
-can now keep paging down to it.
+introduction is reachable again once its join row scrolls past the display cap, **bounded by
+`CLUB_TIMELINE_MAX_WINDOWS` (10 windows, ~600 joins) rather than at whatever depth** — a join
+older than that is still unreachable by browsing within one mount, which is a narrower fix than
+the issue first assumed but closes the case any real club is likely to hit.
 
 **The mechanism is horizon-lowering, not cursor-advancing.** Each of the five sources (rides,
 postcards, threads, joins, thread-replies-collapsed-to-one-per-thread) already carried a
