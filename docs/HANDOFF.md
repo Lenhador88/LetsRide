@@ -400,12 +400,16 @@ npx vitest run src/lib/__tests__/club-timeline-return.test.ts
   sub-questions put to the owner rather than guessed. Options comment posted, moved to
   `Needs decision`.
 
-**Owner action: the Linear workspace hit its free-plan issue-creation limit this session** —
-`save_issue` without an `id` (create) fails with `"You've exceeded the free issue limit for this
-workspace. Please upgrade or contact sales@linear.app for a free trial."`; updating an existing
-issue still works, which is how PD-380/PD-377 could still be closed out. Upgrading the plan (or
-archiving old issues, if the limit counts live rather than lifetime issues) is the fix; nothing in
-a session can do either.
+**The Linear issue-creation limit hit on 2026-09-03 has CLEARED — do not read it as a standing
+block.** For part of that day `save_issue` without an `id` failed with `"You've exceeded the free
+issue limit for this workspace"`, while updates kept working. **Creating works again**: PD-389 was
+created later the same day, read back with the right project and status. The cause is unknown from
+inside a session (a plan change, or the limit counting live rather than lifetime issues and old
+ones being archived), so treat it as a condition that can recur rather than as fixed for good.
+
+**Try the create; do not skip filing on the strength of this paragraph.** A session that files
+nothing because it expects a refusal loses the follow-up silently, which is worse than a failed call
+— the failure is loud and has an obvious fallback (record it in the PR body and say so).
 
 ```
 mcp__Linear__list_comments issueId=PD-380   # the staleness evidence and the PD-385 pointer
