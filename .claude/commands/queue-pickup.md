@@ -905,10 +905,13 @@ That is why they are numbered and cross-referenced by number.
    A queue that also messages itself has two records of the same fact, and the second one is the
    one that goes stale.
 
-   **Then go to STEP 6**, which decides whether you take another story or end — and, when it
-   ends, hands off to STEP 7, which decides whether this session is archived or left for the owner
-   to read. Those two are the only things that happen after this bullet, and neither sends
-   anything to anyone.
+   **Then go to STEP 6 — unless you already ran it between bullets 3 and 4, which is where it
+   belongs and where it sends you back here.** It decides whether you take another story or end,
+   and when it ends it hands off to STEP 7, which decides whether this session is archived or left
+   for the owner to read. **Never run it twice**: a second pass over a board that no longer holds
+   the story you just claimed will claim a *different* one into the same slot, which is the
+   "never take a second one while the first is still open" rule broken by bookkeeping. Those two
+   steps are the only things that happen after this bullet, and neither sends anything to anyone.
 
    **What a freed slot costs when you do end: it waits for the top of the hour.** Finish at 10:05
    and the next story starts at 11:00, not at 10:06 — unless STEP 6's gates let you take it
@@ -987,10 +990,16 @@ bullet 2.** Then:
 **Only after the merge and STEP 5's deploy check** — a session in the middle of a build has nothing
 to decide here.
 
-**Claim before you release, and this ordering is not cosmetic.** If you are going to take another
-story, run this whole step — both gates, the collision check and the claim write — **between STEP
-5's bullet 3 and bullet 4**, so your slot label never leaves `Development (AI)`. Move the finished
-issues to `Deployed to DEV` afterwards.
+**Claim before you release, and this ordering is not cosmetic.** Run this whole step — both gates,
+the collision check and the claim write — **between STEP 5's bullet 3 and bullet 4**, so your slot
+label never leaves `Development (AI)`.
+
+**Then go back and finish STEP 5 for the group you just merged — bullets 4, 5 AND 6 — before you
+start anything new.** Not bullet 4 alone: bullet 5 is the push notification and bullet 6 carries
+§The cost record's pointer, and a session that jumps straight from a claim into the next story
+leaves the finished group with no notification and no record, which is the same loss the
+fail-closed exit above is written to prevent. **This step is an interruption of STEP 5, not a
+replacement for its tail.**
 
 **What the natural order costs:** bullet 4 moves every issue you hold out of `Development (AI)`,
 which takes your slot label with them, and the next firing counts that slot **free**. An hourly
@@ -1111,7 +1120,8 @@ Losing a race costs one story an hour; winning one you should have lost costs tw
 one story on two branches, which nothing downstream can see — `queue-pickup.md` STEP 3 says plainly
 that both children read the status they expect.
 
-**Then start it clean, and start it at STEP 3:**
+**Finish STEP 5's bullets 4, 5 and 6 for the merged group first** — see the top of this step. Only
+then start the new story, clean, at STEP 3:
 
 - **A new branch off the freshly-pulled `development`**, never a second commit on the merged one:
   `git checkout -B claude/<slug> origin/development`. Your previous PR is merged; stacking on it

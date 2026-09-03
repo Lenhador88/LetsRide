@@ -264,8 +264,7 @@ bare route list, and the phase opens each with a 32-hex token that parses and ma
   is 2026-09-01/02 (`23`/`44` named, `22`/`47` minted), so the checks figure becomes 64 named and
   67 minted. The screens half is a projection over unchanged DEV data and is not a baseline.
   `docs/reference/running-locally.md` carries the table and the re-derivation command; **do not
-  copy a bare total out of it into here**, which is how this line was wrong once already. Nobody
-  has run the phase: Chromium here cannot reach Supabase without the relay and CI's `walk` job is
+  copy a bare total out of it into here.** Nobody has run the phase: Chromium here cannot reach Supabase without the relay and CI's `walk` job is
   skipped until `WALK_CI=1`.
 
 **PD-387 — `.claude/commands/queue-pickup.md` §The cost record.** One labelled block in one Linear
@@ -646,7 +645,10 @@ promotion merge with identical trees.
 **IT HAS NOW BEEN RENDERED — the walk ran against DEV on 2026-09-01 and is green.** 23/23 screens
 and 47/47 guard, navigation and sign-out checks, run twice: once as the club's OWNER and once as an
 ordinary MEMBER, which are different code paths on the club detail because the introduction prompt
-exempts an owner.
+exempts an owner. **Those two figures are from DIFFERENT accounts and no single run produces both**
+— 23 screens is a named account, whose check total is 44; 47 checks is a minted rider, which walks
+22. The paragraph below has the split; this line predates it and is kept for what it established
+rather than for the pair.
 
 **23 needs a `WALK_EMAIL`; a MINTED rider walks 22, and that is a pass rather than a shrink.**
 Re-measured 2026-09-02, both ways in one sitting. `/clubs/detail/thread` is discovered by scraping

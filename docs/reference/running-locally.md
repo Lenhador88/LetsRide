@@ -81,9 +81,9 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**Neither of the walk's two totals is a constant, and writing either one as a bare number here is
-how this paragraph has been wrong twice.** Both depend on *which account* the run uses, and the
-screens figure depends on DEV's data as well. What is durable is the arithmetic and the commands.
+**Neither of the walk's two totals is a constant; do not write either as a bare number here.**
+Both depend on *which account* the run uses, and the screens figure depends on DEV's data as well.
+What is durable is the arithmetic and the commands.
 
 **The last measured run is 2026-09-01/02**, not the `18/18`/`47/47` of 2026-08-24 that older
 paragraphs in this file still cite. It reported, at `STATIC_PATHS` = 10:
@@ -96,9 +96,10 @@ paragraphs in this file still cite. It reported, at `STATIC_PATHS` = 10:
 **PD-358 moves both, by a fixed amount on each basis.** It added `/rides/join` and `/clubs/join` to
 `STATIC_PATHS` (**+2 screens**), and `checkInviteLanding`, which makes **10 assertions per landing
 route** — 6 signed out, 4 signed in — **across two routes** (**+20 checks**). So the numbers to
-expect are **25 / 67** as a minted rider and **25 / 64** as a named one… except that the screens
-half of that is a *projection over unchanged DEV data* and the detail routes are discovered at run
-time. **Do not treat it as a baseline; re-derive the static half and let the run tell you the
+expect are **24 screens / 67 checks** as a minted rider and **25 / 64** as a named one — note the
+two totals move in OPPOSITE directions between the accounts, which is what makes them easy to
+transpose. **CI mints**, so 24/67 is the pair a CI walk will print. The screens half of either is a
+*projection over unchanged DEV data*, and the detail routes are discovered at run time. **Do not treat it as a baseline; re-derive the static half and let the run tell you the
 rest:**
 
 ```bash
