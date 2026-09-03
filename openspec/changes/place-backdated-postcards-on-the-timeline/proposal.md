@@ -106,13 +106,14 @@ renders positioned in the past rather than at the top.
   `044`'s posture on `created_at`), or editable after? The safer default is once-only, stated
   explicitly rather than left implicit.
 - **Migration:** one column, one CHECK, one index if placement needs one for feed pagination —
-  **and its own grant.** `postcards`' column grants are managed as the absolute
-  `041 → 044 → 046` list (`docs/reference/migrations.md` §The ordering chain): a bare
-  `alter table postcards add column displayed_at ...` does not itself grant `authenticated`
-  anything on the new column, and re-running an earlier file in that chain after this one lands
-  would revoke it again if the new grant is not folded into that same absolute list. The migration
-  task for this option is "add the column, add the CHECK, and extend the grant list," not just the
-  first two.
+  **and its own grants, on BOTH of `postcards`' two disjoint absolute chains, not one.** UPDATE is
+  `041 → 044 → 046`; SELECT is a separate absolute `grant select (<column list>)` chain at
+  `064 → 072 → 074` (`docs/reference/migrations.md` §The ordering chain covers both). `displayed_at`
+  needs writing (the composer sets it) *and* reading (every surface that renders the feed selects
+  it), so a migration extending only one chain either leaves the column unwritable or leaves the
+  read `select` erroring for every rider the moment it lists a column nobody granted — a whole
+  query failing, not a missing field. The migration task for this option is "add the column, add
+  the CHECK, and extend both grant lists," not just the column and one of the two.
   **Composer change:** one optional date field.
 
 ### C) Same as B, but `displayed_at` also becomes the unread key for the surfaces it changes
