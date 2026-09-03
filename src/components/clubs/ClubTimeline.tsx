@@ -515,20 +515,49 @@ export function ClubTimeline({
    *
    * **Two states, not one** — `huntState` ('hunting' → 'settled') answers "is
    * the hunt still running", latched on an OUTCOME (found, complete, or the
-   * budget spent); `scrolled` answers "may the screen still scroll", latched
-   * on the ACTION of scrolling. Reusing one boolean for both — the bug this
-   * replaces — ends the hunt on the very first `rowsReady`, before any
-   * hunting fetch could run, because every window the hunt itself fetches
-   * makes the rows "ready" again.
+   * budget spent); `mayScroll` answers "may the screen still scroll", latched
+   * the instant EITHER an actual scroll fires OR the hunt settles for any
+   * OTHER reason — not only after a scroll has already happened. Reusing one
+   * boolean for both questions — the bug this replaces — ends the hunt on the
+   * very first `rowsReady`, before any hunting fetch could run, because every
+   * window the hunt itself fetches makes the rows "ready" again.
+   *
+   * **`mayScroll` is a ref, flipped synchronously inside the effect body
+   * itself, not deferred behind the `setHuntState('settled')` timer below.**
+   * `huntState` is React state and only takes effect on the NEXT commit; a
+   * ref is visible to this very same effect the instant it re-enters, which
+   * is what makes reaching settled — for ANY reason, found or given up —
+   * permanently foreclose a scroll rather than merely block a SECOND one.
+   * `design.md` §D6's "a late refetch does not move a reading rider" is
+   * exactly this: once settled, nothing that happens afterwards may call
+   * `scrollIntoView`, even a re-entrant effect run that would otherwise
+   * recompute `'found'`.
    */
   const [huntState, setHuntState] = useState<'hunting' | 'settled'>('hunting')
   const [huntWindowsSpent, setHuntWindowsSpent] = useState(0)
-  const scrolled = useRef(false)
+  const mayScroll = useRef(true)
 
   // Every `setState` below is deferred a tick — see the connectivity effect
   // above for why: `react-hooks/set-state-in-effect` rejects a synchronous
   // call, and `scrollIntoView` (a side effect on an external system, not
   // React state) is the one call in here that is exempt and stays immediate.
+  //
+  // `fetching` is a dependency in its own right, not implied by `advance` or
+  // `huntWindowsSpent` changing. The `'fetch-window'` branch below bumps
+  // `huntWindowsSpent` and starts `fetchNextWindow` in the SAME timer
+  // callback; `fetchNextWindow` itself flips `fetchingRef.current`/`fetching`
+  // true SYNCHRONOUSLY before its first `await`, so the very next commit
+  // re-runs this effect, finds `fetchingRef.current` true and bails — with
+  // `huntWindowsSpent` already at its new value. Without `fetching` listed
+  // here, the LATER commit where the read actually lands and `fetching`
+  // flips back to `false` changes no OTHER listed dependency whenever the
+  // source is still cutting (`advance` reads the same `'fetch-window'` both
+  // times, `timeline.complete` stays `false`) — so React never re-runs the
+  // effect, and the hunt fetches exactly one window and then stalls forever,
+  // never checking whether the row it just fetched now exists. Verified by
+  // `ClubTimeline.test.tsx`'s "continues the hunt once a deferred read
+  // resolves on a LATER tick" case, which forces a real gap between the two
+  // commits and fails without `fetching` in this array.
   useEffect(() => {
     if (!rowsReady || huntState !== 'hunting' || fetchingRef.current) return
 
@@ -541,8 +570,8 @@ export function ClubTimeline({
     )
 
     if (step === 'found') {
-      if (!scrolled.current) {
-        scrolled.current = true
+      if (mayScroll.current) {
+        mayScroll.current = false
         const target = resolveClubTimelineScrollTarget(window.location.hash, (id) =>
           !!document.getElementById(id)
         )
@@ -552,6 +581,11 @@ export function ClubTimeline({
       return () => window.clearTimeout(timer)
     }
     if (step === 'give-up') {
+      // Forecloses a scroll immediately, synchronously — see `mayScroll`'s
+      // own doc. Nothing found this round, so there is nothing to scroll to
+      // regardless, but a later re-entrant run must not get to decide
+      // otherwise once the hunt has given up.
+      mayScroll.current = false
       const timer = window.setTimeout(() => setHuntState('settled'), 0)
       return () => window.clearTimeout(timer)
     }
@@ -571,10 +605,11 @@ export function ClubTimeline({
     }
     // `advance` is 'complete' or 'capped' here with the row still missing —
     // nothing left to try.
+    mayScroll.current = false
     const timer = window.setTimeout(() => setHuntState('settled'), 0)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowsReady, huntState, advance, timeline.complete, huntWindowsSpent])
+  }, [rowsReady, huntState, advance, timeline.complete, huntWindowsSpent, fetching])
 
   const photosHref = `/postcards?club=${encodeURIComponent(clubId)}`
 

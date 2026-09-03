@@ -488,4 +488,96 @@ describe('ClubTimeline — the anchor hunt scrolls once and never again (design.
     // a single flag does not merely double-fire, it starves the hunt.
     expect(scrollSpy).toHaveBeenCalledTimes(1)
   })
+
+  it('continues the hunt once a deferred read resolves on a LATER tick than the "fetching" commit', async () => {
+    // The class of bug the OTHER test above cannot see: every mock there
+    // resolves inside the same microtask turn `runAllTimersAsync` is already
+    // draining, so the render that flips `fetching: true` and the render
+    // that flips it back to `false` land inside one `flushTimers()` call
+    // with nothing to tell apart. Here the join read is deferred behind a
+    // promise THIS TEST releases by hand, strictly after the `fetching:
+    // true` render has already committed and the hunt effect has already
+    // run once against it — the exact ordering the bug lives on: the effect
+    // bails at the `fetchingRef.current` guard on that run, and if `fetching`
+    // is not itself a dependency, React records `huntWindowsSpent`
+    // (already bumped) and `advance` (still `'fetch-window'`, nothing else
+    // having changed) as this effect's new baseline — so the LATER render
+    // where `fetching` flips back to `false` changes no listed dependency,
+    // and the effect never re-runs to notice the row now exists.
+    //
+    // `replyHorizon` stays BELOW `joinHorizon` and is never satisfied in this
+    // test (the replies mock is pinned to it for the whole test) — that is
+    // what keeps `advance` reading `'fetch-window'` and `timeline.complete`
+    // reading `false` identically on BOTH sides of the bug's commit
+    // boundary, which is the exact condition the stale dependency array
+    // needs to hide behind. `oldJoin` sits ABOVE `replyHorizon` so it
+    // survives the merge's own horizon cut once the join source resolves —
+    // below it, the row would be fetched but withheld from display by the
+    // coherence horizon itself, for a reason that has nothing to do with
+    // this bug (`club-timeline.test.ts` owns that relationship). `oldRide`
+    // sits below `replyHorizon` so something is genuinely excluded from the
+    // very first render, which is what keeps `complete` false at all —
+    // without it a single join-row fixture reads `complete: true` on its own
+    // and the hunt never enters `'continue'` in the first place.
+    const replyHorizon = '2026-01-02T00:00:00Z'
+    const joinHorizon = '2026-01-04T00:00:00Z'
+    const ownerJoin = join('u-owner', '2026-01-05T00:00:00Z')
+    const oldJoin = join('u-old', '2026-01-03T00:00:00Z')
+    const oldRide = ride('r-old', '2026-01-01T00:00:00Z')
+
+    seedBase({
+      joins: { rows: [ownerJoin], horizon: joinHorizon, until: null, untilInclusive: true },
+      rides: [oldRide],
+      replies: { rows: [], horizon: replyHorizon, activity: {}, until: null, untilInclusive: true },
+    })
+
+    // Pinned to the SAME horizon for the whole test — see the note above.
+    getClubThreadRepliesMock.mockImplementation(async () => ({
+      rows: [],
+      horizon: replyHorizon,
+      activity: {},
+      until: replyHorizon,
+      untilInclusive: true,
+    }))
+
+    let releaseJoinFetch: (() => void) | null = null
+    getClubJoinsMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseJoinFetch = () =>
+            resolve({ rows: [oldJoin], horizon: null, until: joinHorizon, untilInclusive: true })
+        })
+    )
+
+    // Offline, matching the other test — isolates the hunt as the only thing
+    // that can call `fetchNextWindow` here.
+    onlineState.value = false
+    window.location.hash = '#join:u-old'
+
+    mount()
+
+    // Drains the hunt's first 'continue' timer: `fetchNextWindow` starts,
+    // flips `fetching` true synchronously, and then hangs on the deferred
+    // join read. This is the render the bug's stale dependency array gets
+    // stuck on.
+    await flushTimers()
+    expect(releaseJoinFetch).not.toBeNull()
+    expect(container!.innerHTML).not.toContain('join:u-old')
+
+    const scrollSpy = Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>
+    expect(scrollSpy).not.toHaveBeenCalled()
+
+    // Released only now — strictly after the "fetching: true" render and the
+    // hunt effect's one bailed-out run against it.
+    releaseJoinFetch!()
+    await flushTimers()
+    await flushTimers()
+
+    // The row is on screen either way — an ordinary re-render draws whatever
+    // `useQuery`'s cache now holds regardless of whether the anchor-hunt
+    // EFFECT itself ever re-ran. The scroll is the one signal that only
+    // fires if the effect noticed.
+    expect(container!.innerHTML).toContain('join:u-old')
+    expect(scrollSpy).toHaveBeenCalledTimes(1)
+  })
 })
