@@ -31229,10 +31229,17 @@ select assert_eq(
 -- genuine `insert … on conflict (ride_id, user_id) do update set ride_id/user_id/
 -- status` shape the client actually issues, and it is green under 102's new
 -- WITH CHECK. So the guard against §1b being tightened into a policy that
--- refuses every RSVP is THAT assertion plus 077.4, and this one adds the
--- narrower claim that the bare UPDATE path — which 048's `ride_id` grant also
--- leaves reachable — still works for a visible ride. Do not read it as the
--- upsert's coverage; it is not.
+-- refuses every RSVP is THAT assertion plus this one — and **NOT 077.4, which
+-- guards the opposite direction**. 077.4 is an `assert_rejected` on the seat
+-- move onto an INVISIBLE ride, so a §1b that is too STRICT leaves it refused,
+-- still with 42501, and still green; it only goes red if §1b is WEAKENED, which
+-- is how line 31217 above uses it. Measured rather than reasoned: adding
+-- `and false` to §1b's WITH CHECK fails first at ~line 9280 — 048's repeat-RSVP
+-- upsert — 6,800 lines before 077.4 is reached.
+--
+-- This assertion adds the narrower claim that the bare UPDATE path — which
+-- 048's `ride_id` grant also leaves reachable — still works for a visible ride.
+-- Do not read it as the upsert's coverage; it is not.
 savepoint seat_move_permitted_102;
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000102003', false);
@@ -31245,7 +31252,7 @@ select assert_eq(
   (select status from ride_members
     where ride_id = '00000000-0000-0000-0000-0000001020d1'
       and user_id = '00000000-0000-0000-0000-000000102003'),
-  'maybe', '102.6: a crew member still changes their own RSVP on a ride they can see — the WITH CHECK''s EXISTS runs under their own RLS and holds, so 102 §1b costs the ordinary path nothing. Without this, §1b could be tightened into a policy that refuses every RSVP and only 077.4 would notice');
+  'maybe', '102.6: a crew member still changes their own RSVP on a ride they can see — the WITH CHECK''s EXISTS runs under their own RLS and holds, so 102 §1b costs the ordinary path nothing. A §1b tightened into a policy that refuses every RSVP goes red HERE and at 048''s repeat-RSVP upsert (~9280), and NOT at 077.4, which only catches §1b being weakened');
 rollback to savepoint seat_move_permitted_102;
 
 reset role;
