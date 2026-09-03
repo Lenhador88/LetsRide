@@ -56,15 +56,18 @@ export function PostcardMenu({
   authorName: string
   isOwn: boolean
   /**
-   * Fired after a successful Hide or Block — `client-cache-invalidation`'s
-   * removal rule, PD-375. A paged screen's own refetch-of-page-one signal can
-   * only see the interval the first page covers, so a block acting on a row
-   * that exists only on a DEEPER page would otherwise leave it on screen —
-   * `design.md` §D4. This is the explicit second trigger: the control that
-   * owns the removal is the only thing that KNOWS, so it says so rather than
-   * being inferred from a burst of refetches indistinguishable from any other
-   * cache-wide invalidation. Absent on every other screen this menu renders
-   * on, which do not page.
+   * Fired after a successful Hide, Block **or Delete** — `client-cache-
+   * invalidation`'s removal rule, PD-375. A paged screen's own refetch-of-
+   * page-one signal can only see the interval the first page covers, so a
+   * removal acting on a row that exists only on a DEEPER page would
+   * otherwise leave it on screen — `design.md` §D4. This is the explicit
+   * second trigger: the control that owns the removal is the only thing that
+   * KNOWS, so it says so rather than being inferred from a burst of refetches
+   * indistinguishable from any other cache-wide invalidation. Absent on every
+   * other screen this menu renders on, which do not page. Delete is `isOwn`
+   * only and Hide/Block are the non-own branch, so exactly one of the three
+   * can ever fire per menu — all three still owe the signal, because each is
+   * a removal.
    */
   onRemoved?: () => void
 }) {
@@ -174,7 +177,7 @@ export function PostcardMenu({
             disabled={pending}
             onClick={() =>
               confirmingDelete
-                ? run(() => deletePostcard(postcardId), 'Postcard deleted')
+                ? run(() => deletePostcard(postcardId), 'Postcard deleted', { removes: true })
                 : setConfirmingDelete(true)
             }
           >
