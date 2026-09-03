@@ -910,8 +910,13 @@ That is why they are numbered and cross-referenced by number.
    and when it ends it hands off to STEP 7, which decides whether this session is archived or left
    for the owner to read. **Never run it twice**: a second pass over a board that no longer holds
    the story you just claimed will claim a *different* one into the same slot, which is the
-   "never take a second one while the first is still open" rule broken by bookkeeping. Those two
-   steps are the only things that happen after this bullet, and neither sends anything to anyone.
+   "never take a second one while the first is still open" rule broken by bookkeeping.
+
+   **When STEP 6 ends the run, those two steps are the only things that follow this bullet and
+   neither sends anything to anyone. When it took another story, what follows this bullet is
+   STEP 3 for that story** — STEP 6's tail says so, and this is the only place that says it
+   forwards. Ending here instead strands the story you just claimed in `Development (AI)` wearing
+   your slot label with nobody building it, which no firing can tell from a live build.
 
    **What a freed slot costs when you do end: it waits for the top of the hour.** Finish at 10:05
    and the next story starts at 11:00, not at 10:06 — unless STEP 6's gates let you take it
@@ -990,9 +995,9 @@ bullet 2.** Then:
 **Only after the merge and STEP 5's deploy check** — a session in the middle of a build has nothing
 to decide here.
 
-**Claim before you release, and this ordering is not cosmetic.** Run this whole step — both gates,
-the collision check and the claim write — **between STEP 5's bullet 3 and bullet 4**, so your slot
-label never leaves `Development (AI)`.
+**Claim before you release, and this ordering is not cosmetic.** Run both gates — and, if they
+pass, the collision check and the claim write — **between STEP 5's bullet 3 and bullet 4**, so your
+slot label never leaves `Development (AI)`.
 
 **Then go back and finish STEP 5 for the group you just merged — bullets 4, 5 AND 6 — before you
 start anything new.** Not bullet 4 alone: bullet 5 is the push notification and bullet 6 carries
@@ -1028,8 +1033,8 @@ happens to land on. **The slot is yours until you have either re-filled it or gi
    skips STEP 5's bullets 4, 5 and 6** — the record and the notification are written first,
    whichever way the gate goes, and only then does the session end via STEP 7.
 
-   **Evaluate both gates between bullets 3 and 4, always** — the top of this step already requires
-   it on the take-another-story path, and there is never a reason to do it later: gate 1 is
+   **Evaluate both gates between bullets 3 and 4, always** — the top of this step requires it
+   unconditionally, and there is never a reason to do it later: gate 1 is
    self-knowledge needing no call, and gate 2's input is in hand from the read above. Deferring
    past bullet 4 cannot be chosen anyway, because which path you are on is not knowable until the
    gates have answered — and if they then pass, bullet 4 has already moved your issues out of
@@ -1063,8 +1068,9 @@ owner-directed session's job rather than a firing's.
 tool exposes it, and the harness's own compaction is lossy summarisation you cannot trigger. **So
 ending the session IS the clear**, and these two numbers are what decide when to spend one.
 
-**If either gate fails, end the session — at STEP 7, not here.** Say nothing to anyone: STEP 5 already sent the
-notification and wrote the record, the leftover stories are still in `Queued (AI)`, and the next
+**If either gate fails, end the session — at STEP 7, not here.** Say nothing to anyone: STEP 5
+sent the notification and wrote the record — after bullets 4, 5 and 6, which this exit never
+skips — the leftover stories are still in `Queued (AI)`, and the next
 hourly firing will dispatch them into a fresh window.
 
 ### If both gates pass, take the next story
@@ -1422,6 +1428,16 @@ not be used for.
 | Review | ~10m |
 | Wrap-up | ~8m |
 ```
+
+**A session the owner started by hand takes its own stamp at its own STEP 0**, since
+`queue-run.md` never ran for it — that is the session most likely to reach a second story and the
+only one that can fill the token rows, so it is the worst one to have no clock. A run that took no
+stamp writes `not captured` and does not reconstruct one.
+
+**A second story taken at STEP 6 gets its own block on its own group**, with the wall clock read
+from the same stamp — so the second block's figure is cumulative for the firing rather than a
+measure of that story alone, and it says so. One block per group; never one block re-pasted, and
+never a second group left with none.
 
 **Name the three largest subagents individually and sum the rest** when a run spawned more than
 three — the total is what bounds the firing and the three largest are what explain it.

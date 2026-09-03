@@ -98,8 +98,9 @@ paragraphs in this file still cite. It reported, at `STATIC_PATHS` = 10:
 route** — 6 signed out, 4 signed in — **across two routes** (**+20 checks**). So the numbers to
 expect are **24 screens / 67 checks** as a minted rider and **25 / 64** as a named one — note the
 two totals move in OPPOSITE directions between the accounts, which is what makes them easy to
-transpose. **CI mints**, so 24/67 is the pair a CI walk will print. The screens half of either is a
-*projection over unchanged DEV data*, and the detail routes are discovered at run time. **Do not treat it as a baseline; re-derive the static half and let the run tell you the
+transpose. **CI mints** (`ci.yml`'s walk job sets neither `WALK_EMAIL` nor `WALK_PASSWORD`), so 24/67 is the
+pair to expect from CI — **the checks half exact, the screens half a projection**, because the
+detail routes are discovered from DEV's data at run time. **Do not treat it as a baseline; re-derive the static half and let the run tell you the
 rest:**
 
 ```bash

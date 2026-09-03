@@ -645,10 +645,9 @@ promotion merge with identical trees.
 **IT HAS NOW BEEN RENDERED — the walk ran against DEV on 2026-09-01 and is green.** 23/23 screens
 and 47/47 guard, navigation and sign-out checks, run twice: once as the club's OWNER and once as an
 ordinary MEMBER, which are different code paths on the club detail because the introduction prompt
-exempts an owner. **Those two figures are from DIFFERENT accounts and no single run produces both**
-— 23 screens is a named account, whose check total is 44; 47 checks is a minted rider, which walks
-22. The paragraph below has the split; this line predates it and is kept for what it established
-rather than for the pair.
+exempts an owner. **The two figures are from different accounts and no single run produces both**:
+23/23 screens is the named account, whose check total is 44; 47/47 checks is the minted rider,
+which walks 22. `docs/reference/running-locally.md` carries the split.
 
 **23 needs a `WALK_EMAIL`; a MINTED rider walks 22, and that is a pass rather than a shrink.**
 Re-measured 2026-09-02, both ways in one sitting. `/clubs/detail/thread` is discovered by scraping
