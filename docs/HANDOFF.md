@@ -190,6 +190,59 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## A ride's audience guard is about the TRANSITION, not the shape — 2026-09-03
+
+**PD-338 + PD-311, one branch.** `EditRideForm`'s `wouldStrand = !clubId && !isPublic` is gone;
+`narrowsToNobody(stored, submitted)` in `src/lib/rides/audience.ts` replaces it, and `updateRide`
+computes the same predicate against a **fresh read** rather than against the payload. A ride that
+arrived clubless and private — PD-320's composer default, and the ordinary ride for a rider in no
+clubs — is now editable; detaching a private ride from its club, and un-publishing a clubless
+public one, are still refused.
+
+**Four things a later session should not have to re-derive:**
+
+- **`Narrow` was a stated ASSUMPTION, not an owner decision.** Nobody was available; the proposal
+  says so at the top and
+  `openspec/changes/scope-the-strand-guard-to-the-transition/design.md` §Open questions Q1 carries
+  `Wide` (drop the guard) with its evidence. Wide is Narrow *minus one predicate*, so shipping this forecloses nothing — but if the
+  owner wanted Wide, PD-338 is not fully answered.
+- **The guard is advisory and always was.** The `rides` UPDATE policy carries **no `is_public`
+  predicate** — measured on DEV, which is why there is no migration and why a diff for this touching
+  `supabase/` would be wrong. Do not describe the action's copy as enforcement; it is now
+  check-then-act as well (read `previous`, then UPDATE), so a concurrent commit can move the stored
+  shape between the two statements.
+- **`createRide` still carries no guard, and the spec now says that is deliberate.** Creating in
+  the shape narrows nothing — no prior audience, no crew. The two write paths disagree by design;
+  a future reviewer "fixing" the asymmetry would re-break PD-338.
+- **The proposal review found the ex-member requirement naming `leaveClub` as its only route.**
+  `removeClubMember` → `public.remove_club_member` is a second one, and `club_members` carries no
+  admin DELETE policy, so a reader checking policies alone misses it. The spec now mandates copy
+  about the *state* ("no longer a member of X") rather than the act, because neither the client nor
+  the action can tell an ejection from a departure.
+
+**Two follow-ons this opened rather than closed.** `clear_ride_map_tiles` and
+`protect_picked_ride_location` now run for a population of rides that could not be updated at all
+before, so editing a meeting point clears the tiles and depends on `resolve-ride-location` to
+re-render them — which PD-385 is already open on. And the change directory is **implemented and
+not archived**: `/opsx:archive` it only *after* `add-ride-club-edit-delete`, whose still-active
+`ride-lifecycle` spec is the base text this delta attaches to.
+
+```bash
+git grep -n "narrowsToNobody\|RIDE_AUDIENCE_REFUSAL" -- src/
+npx vitest run src/lib/rides src/components/rides src/lib/actions/__tests__/ride-audience.test.ts
+```
+
+**PD-311, on the same branch and for the same guard.** `checkEditRetention` broke on the first
+candidate whose form *rendered*, flipped the public box and clicked Save — which on a clubless ride
+is the disabled button, so the phase timed out after 30 s with none of its own assertions run, and
+did so depending on what the walk account happened to own. It now picks the first candidate that
+renders **and** stays submittable after the flip (reading `isEnabled`, not re-deriving the rule, so
+it survives the guard being reshaped again), falls through to the club form, and reports a named
+failed assertion when nothing qualifies. `provision()` creates the club **first** and attaches the
+fixture ride to it — passing `owned.club` in, so a rider who already has a club still gets a clubbed
+ride. **PD-338 did not close PD-311 and was not expected to**: un-publishing a clubless *public*
+ride is still the refused transition.
+
 ## The welcome club CAN appear on Explore with a `Join club` button — 2026-09-03
 
 **`getExploreClubs`' public half filters on `is_public` alone and has no `is_default` exclusion**, so
