@@ -106,6 +106,14 @@ function ClubThreadScreen() {
   const rawAnchor = searchParams.get(RETURN_ANCHOR_PARAM)
 
   const thread = useQuery(queryKeys.clubs.thread(id), () => getClubThread(id))
+  // PD-381. Set the instant this screen's own delete succeeds — see
+  // `ThreadOptions`'s `onDeleted` header for why `router.replace` below is
+  // not enough on its own. State rather than a ref: the render below reads
+  // it, and `eslint-plugin-react-hooks`'s `refs` rule refuses a `.current`
+  // read during render for exactly the staleness reason `useQuery.ts`
+  // documents — a plain `useState` write from the event handler queues a
+  // re-render the same way, and it only ever needs to go true once.
+  const [removedByThisScreen, setRemovedByThisScreen] = useState(false)
   const messages = useQuery(queryKeys.clubs.threadMessages(id), () =>
     getClubThreadMessages(id)
   )
@@ -144,8 +152,10 @@ function ClubThreadScreen() {
 
   // `null` is decided — no such thread, or none this rider may see. `undefined`
   // is the effect not having answered yet, and 404ing on it would flash one on
-  // every load.
-  if (thread.data === null) notFound()
+  // every load. `removedByThisScreen` is the one exception: a `null` this
+  // screen's own delete produced is not "no such thread" to the rider, it is
+  // "gone, and you already saw the confirmation" — see `ThreadOptions`.
+  if (thread.data === null && !removedByThisScreen) notFound()
 
   return (
     <>
@@ -173,6 +183,7 @@ function ClubThreadScreen() {
               // roster row. Not `viewer_role === 'owner' || …`, which drops
               // the same ownerless owner `isOwner` above exists to catch.
               canModerate={club.data.viewer_is_owner || club.data.viewer_role === 'admin'}
+              onDeleted={() => setRemovedByThisScreen(true)}
             />
           ) : undefined
         }
