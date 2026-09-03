@@ -377,17 +377,23 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
  * turned "no such club" into `null` for the page to act on.
  */
 /**
+ * `club_stamp_postcard_ids`' OWN hard clamp — `086` line 135:
+ * `limit greatest(least(coalesce(page_size, 30), 100), 0)`. The accessor
+ * will never return more than this many ids no matter what `page_size` it is
+ * asked for, so `getClubFeedWindow`'s escalation ladder (below) must clamp
+ * its own requests to it and compare saturation against the CLAMPED value —
+ * asking for more than this and comparing against the raw ask is what let a
+ * page the accessor answers in full read as "short" on the last rung.
+ */
+export const CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE = 100
+
+/**
  * How many times `getClubFeedWindow` may re-ask `club_stamp_postcard_ids`
- * for a BIGGER page when a saturated page's every id gets filtered by this
- * rider's own RLS — a reviewer finding on the original fix below, and the
- * escalation that replaced two unsafe guesses (see that function's own
- * header). Each escalation doubles `page_size`, so the total ids ever asked
- * for in one call is bounded at `FEED_PAGE_SIZE * 2 ** 2` — four times the
- * ordinary page — at this constant's default of 2. Small on purpose: this
- * is extra ROUND TRIPS on the rider's own load, not a background job, and
- * two escalations already covers "every recent postcard from one blocked
- * author" without covering "the whole club is one blocked author", which is
- * the genuinely adversarial case the last-resort fallback exists for.
+ * for a bigger page when a saturated page's every id gets filtered by this
+ * rider's own RLS, before it stops climbing (either this many rounds, or
+ * `CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE`, whichever the ladder reaches first).
+ * At `FEED_PAGE_SIZE = 30` the ladder is 30 → 60 → 100 — it reaches the
+ * accessor's own ceiling on the last rung rather than overshooting it.
  */
 export const CLUB_FEED_HORIZON_ESCALATIONS = 2
 
@@ -397,59 +403,41 @@ export const CLUB_FEED_HORIZON_ESCALATIONS = 2
  * below is now a thin wrapper over this, so the two cannot drift.
  *
  * **The horizon comes from the ACCESSOR's id count against `page_size`, not
- * from the second read's rows — the fix this function exists for.**
- * `club_stamp_postcard_ids` returns up to `page_size` ids under its own
- * audience rule; the second, ordinary `postcards` read then re-reads those
- * ROWS under the CALLER's own RLS, and may legitimately return fewer — a
- * blocked author, a hide, a policy this rider's own state changes. Measuring
- * `boundedHorizon` on that second read (the defect this replaces) made a
- * window that saturated the accessor but lost one row to RLS read as SHORT —
- * no horizon, `complete` true, the club's founding drawn beneath postcards
- * nobody fetched. Two other sources already follow this rule —
+ * from the second read's rows.** `club_stamp_postcard_ids` returns up to
+ * `page_size` ids under its own audience rule; the second, ordinary
+ * `postcards` read then re-reads those ROWS under the CALLER's own RLS, and
+ * may legitimately return fewer — a blocked author, a hide, a policy this
+ * rider's own state changes. Measuring the horizon on that second read would
+ * make a window that saturated the accessor but lost every row to RLS read
+ * as SHORT — no horizon, `complete` true, the club's founding drawn beneath
+ * postcards nobody fetched. Two other sources follow the identical rule —
  * `getClubJoins` measures before its username filter, `getClubThreadReplies`
  * before its collapse.
  *
- * **The horizon VALUE still has to come from a row that carries `created_at`,
- * and the accessor's ids do not** — `club_stamp_postcard_ids` returns
- * `(id, from_ride)` only (`086`), and widening it is an RPC signature change
- * this no-migration proposal does not take. So the SATURATION test (full or
- * short) is the accessor's id count against `page_size`, and the horizon
- * VALUE, when saturated AND at least one row survives, is the oldest
- * SURVIVING postcard's `created_at` — a row at least as new as the true
- * accessor boundary, never older, so this errs toward cutting a little MORE
- * than the true boundary would rather than toward the unsafe direction
- * (asserting completeness that is not there).
+ * **When a saturated page has zero survivors, this ESCALATES rather than
+ * guessing a horizon.** The accessor returns `(id, from_ride)` with no
+ * `created_at` (`086`), so there is nothing to build a horizon from until a
+ * row actually survives — the escalation re-asks the SAME accessor call
+ * with a bigger `page_size` (`before` unchanged; it looks further INTO the
+ * same window, never past it), clamped to
+ * `CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE` and compared against that clamped
+ * value. It stops the moment EITHER a bigger page turns up a survivor (the
+ * horizon is that batch's own oldest surviving row's `created_at` — at least
+ * as new as the true boundary, never older, so this errs toward cutting a
+ * little MORE than the true boundary rather than toward asserting a
+ * completeness that is not there), or the accessor itself answers short of
+ * the (clamped) page size — genuine completion, horizon `null`.
  *
- * **A saturated page every one of whose rows the caller's own RLS then
- * refuses is the same defect wearing the boundary case, and it took TWO
- * tries to fix.** The first attempt read the horizon off `before` (a deeper
- * page) or `new Date().toISOString()` (the first page) whenever `withFlag`
- * came back empty. Both are unsafe, in opposite directions a reviewer pass
- * caught: `before` PINS the accumulated horizon there for ever —
- * `absorbClubTimelineWindow` folds a window whose horizon equals its own
- * `until` into an empty covered interval, so every later page asks the
- * SAME question and gets the SAME empty answer, capping every OTHER source
- * at that point too via the merge's own `max(horizons)`, for ever bounded
- * only by `CLUB_TIMELINE_MAX_WINDOWS` — rides, joins, threads and replies
- * that have nothing to do with the blocked author, frozen behind it. `now()`
- * on the first page is worse: it is NEWER than every real event in the club,
- * so the merge's cut at `max(horizons)` wipes rides, joins, threads and
- * replies too — a blank timeline on first load, strictly worse than the
- * original false-complete bug, which at least drew something.
- *
- * **So this ESCALATES instead of guessing.** A saturated page with zero
- * survivors re-asks the SAME accessor call for a bigger `page_size` (`before`
- * unchanged — the escalation looks further INTO the same window, not past
- * it), up to `CLUB_FEED_HORIZON_ESCALATIONS` times, and stops the moment
- * EITHER: a bigger page turns up a survivor (the horizon comes from THAT
- * batch's own oldest surviving row, the ordinary case above), or the
- * accessor itself answers short of the escalated `page_size` — genuine
- * completion, horizon `null`, exactly as an ordinary short page would be.
- * **Only if the escalation cap is spent with zero survivors throughout** —
- * dozens of consecutive posts from one blocked author, the adversarial case
- * this bound exists for — does it fall back to `before ?? now()`, and by
- * then the freeze/blank consequence above is a documented, rare last resort
- * rather than the first thing tried.
+ * **Only once `CLUB_FEED_HORIZON_ESCALATIONS` rounds or the accessor's own
+ * ceiling are BOTH exhausted with zero survivors throughout** — a full
+ * 100-row page entirely filtered, the genuinely adversarial "the whole
+ * recent window is one blocked author" case — does this fall back to
+ * `before ?? now()`: `before` on a deeper page (an honest "no progress",
+ * since `absorbClubTimelineWindow` folds a window whose horizon equals its
+ * own `until` into an empty covered interval) or `new Date().toISOString()`
+ * on the first page (no `before` to fall back to; more aggressive than the
+ * true boundary, but the alternative is the false-complete signal this
+ * function exists to close).
  */
 export async function getClubFeedWindow(
   clubId: string,
@@ -473,8 +461,15 @@ export async function getClubFeedWindow(
   // column at transaction time, which makes it merely very unlikely rather
   // than impossible; the remedy is a keyset `before_id` argument on the
   // accessor, which is a migration this change does not take.
-  let pageSize = limit
   for (let escalation = 0; ; escalation++) {
+    // Clamped BEFORE the call, and saturation is compared against this
+    // clamped value rather than the raw escalated one — the accessor cannot
+    // answer more than `CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE` regardless of what
+    // it is asked for, so asking for more and comparing against the ask is
+    // what made a page it answered IN FULL read as short.
+    const pageSize = Math.min(limit * 2 ** escalation, CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE)
+    const atAccessorCeiling = pageSize >= CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE
+
     const correlated = unwrap(
       await supabase.rpc('club_stamp_postcard_ids', {
         club: clubId,
@@ -513,8 +508,8 @@ export async function getClubFeedWindow(
     }))
 
     // Genuine completion: the accessor itself came back short of THIS
-    // round's page size, escalated or not — there is nothing further to
-    // find by asking again, however few of these rows survived.
+    // round's (clamped) page size — there is nothing further to find by
+    // asking again, however few of these rows survived.
     if (!saturated)
       return {
         rows: withFlag,
@@ -533,15 +528,15 @@ export async function getClubFeedWindow(
         untilInclusive: false,
       }
 
-    // Saturated AND zero survivors: escalate, unless the bound is spent.
-    if (escalation < CLUB_FEED_HORIZON_ESCALATIONS) {
-      pageSize *= 2
-      continue
-    }
+    // Saturated AND zero survivors: escalate further only while there is
+    // still room to grow — both budget (`CLUB_FEED_HORIZON_ESCALATIONS`)
+    // and headroom (`!atAccessorCeiling`). Asking again at the same clamped
+    // `pageSize` would return the identical page.
+    if (!atAccessorCeiling && escalation < CLUB_FEED_HORIZON_ESCALATIONS) continue
 
-    // The adversarial case named in this function's own header — see there
-    // for why `before ?? now()` is the least-bad answer only once escalation
-    // has genuinely failed to find a single readable row.
+    // Either budget is spent or the accessor's own ceiling is reached, with
+    // zero survivors throughout — the genuinely adversarial case named in
+    // this function's own header.
     return {
       rows: withFlag,
       horizon: before ?? new Date().toISOString(),
