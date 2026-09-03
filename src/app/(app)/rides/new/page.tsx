@@ -9,6 +9,7 @@ import { SkeletonForm } from '@/components/ui/Skeleton'
 import { getMyClubs } from '@/lib/data/clubs'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { createRideHeaderTitle } from '@/lib/rides/create-ride-header-title'
 import { CREATE_CLUB_PARAM, backFromCreateScreen } from '@/lib/routes'
 
 /**
@@ -34,6 +35,15 @@ import { CREATE_CLUB_PARAM, backFromCreateScreen } from '@/lib/routes'
  * **The `Suspense` boundary is not optional** — `useSearchParams()` outside one
  * opts the whole route out of prerendering, which `output: 'export'` refuses.
  * `src/lib/routes.ts` carries the full reasoning and the measurement.
+ *
+ * **The title names the club too, once it resolves (`PD-383`).** `CreateRideForm`
+ * already drops the picker for a club-scoped entry (PD-320's `seededClub`) — what
+ * it never had was a heading that agreed, so a rider mid-form could not tell
+ * from the header alone which club they were planning for.
+ * `createRideHeaderTitle` is the one definition of what the header says, and it
+ * is `seedClubId` underneath — the same "is this id one of the rider's own
+ * clubs" this screen's `<CreateRideForm>` already answers, so the heading and
+ * the hidden picker can never name two different clubs for the same id.
  */
 export default function NewRidePage() {
   return (
@@ -51,9 +61,11 @@ function NewRideScreen() {
   // — see `CreateRideForm`'s `initialClubId`.
   const fromClub = useSearchParams().get(CREATE_CLUB_PARAM)
 
+  const headerTitle = createRideHeaderTitle(fromClub, clubs.data)
+
   return (
     <>
-      <Header title="Create ride" backHref={backFromCreateScreen({ club: fromClub }, '/rides')} />
+      <Header title={headerTitle} backHref={backFromCreateScreen({ club: fromClub }, '/rides')} />
 
       <div className="px-4 pb-8">
         {/* The club picker is the only thing this screen reads, and a ride with
