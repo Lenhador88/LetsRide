@@ -85,23 +85,28 @@ relay itself cannot reach Supabase without it.
 Both depend on *which account* the run uses, and the screens figure depends on DEV's data as well.
 What is durable is the arithmetic and the commands.
 
-**The last measured run is 2026-09-01/02**, not the `18/18`/`47/47` of 2026-08-24 that older
-paragraphs in this file still cite. It reported, at `STATIC_PATHS` = 10:
+**Two changes landed on `development` the same day and the absolute totals are now in dispute.
+Quote only the DELTAS below.** PD-358 added the invite-landing phase (this section) and
+[#390](https://github.com/Lenhador88/LetsRide/pull/390) added four social-write phases; the
+`47/47` at the top of this section was updated by neither.
 
-| | Named account (`WALK_EMAIL`) | Minted rider (no credential) |
+**What disagrees, precisely.** `docs/HANDOFF.md` records the 2026-09-01/02 run as `23`/`44` for a
+**named** account and `22`/`47` for a **minted** rider — minting adds three checks of its own and
+cannot walk `/clubs/detail/thread`. #390's own commit then reports `56/56` on `walk-fixture`, a
+*named* account, as `47 + 9` — using 47 as the **named** base. **Those cannot both be right, and
+nothing in this container can settle it**: the walk needs the relay, and CI's `walk` job is skipped
+until `WALK_CI=1`. So do not add anything to either number, here or anywhere else, until somebody
+runs it.
+
+**The deltas ARE measured, off the code, and are what this section is responsible for:**
+
+| Change | Screens | Checks |
 |---|---|---|
-| Screens | `23/23` | `22/22` — `/clubs/detail/thread` is unwalked, and the walk says so |
-| Checks | `44/44` | `47/47` — minting adds three checks of its own |
+| PD-358 — `/rides/join` and `/clubs/join` in `STATIC_PATHS`, plus `checkInviteLanding` | **+2** | **+20** — 10 per landing route (6 signed out, 4 signed in) across two routes |
+| #390 — the four social-write phases | 0 | **+9** on its one measured run, and a ceiling rather than a constant: each phase skips when Explore offers no eligible row |
 
-**PD-358 moves both, by a fixed amount on each basis.** It added `/rides/join` and `/clubs/join` to
-`STATIC_PATHS` (**+2 screens**), and `checkInviteLanding`, which makes **10 assertions per landing
-route** — 6 signed out, 4 signed in — **across two routes** (**+20 checks**). So the numbers to
-expect are **24 screens / 67 checks** as a minted rider and **25 / 64** as a named one — note the
-two totals move in OPPOSITE directions between the accounts, which is what makes them easy to
-transpose. **CI mints** (`ci.yml`'s walk job sets neither `WALK_EMAIL` nor `WALK_PASSWORD`), so 24/67 is the
-pair to expect from CI — **the checks half exact, the screens half a projection**, because the
-detail routes are discovered from DEV's data at run time. **Do not treat it as a baseline; re-derive the static half and let the run tell you the
-rest:**
+**Re-derive the static half, and settle the base by running the walk rather than by adding to a
+number written down here:**
 
 ```bash
 node -e "const s=require('fs').readFileSync('scripts/walk.mjs','utf8');
