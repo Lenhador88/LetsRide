@@ -1725,14 +1725,34 @@ select assert_eq((select count(*)::int from postcards), 3,
   'and it is gone from their whole feed, not only from a targeted lookup');
 
 -- The hide reaches everything that delegates to the postcards select policy,
--- with no restatement anywhere: likes, comments and the Storage object behind
--- the image all go with it.
+-- with no restatement anywhere: OTHER RIDERS' likes and comments, and the
+-- Storage object behind the image, all go with it.
+--
+-- ** THE HIDER'S OWN ROWS DO NOT, SINCE 102 (PD-362), AND THAT IS THE WHOLE
+-- BEHAVIOURAL FOOTPRINT OF THAT MIGRATION ON THIS SUITE. ** Exactly one
+-- assertion in 3280 moved: this one, from 0 to 1. 102 hoisted the own-row branch
+-- out of the block conjunct on postcard_likes, postcard_comments and
+-- ride_members, so a rider keeps sight of the row THEY wrote after the parent
+-- goes out of view — and a hide is the purest instance of the parent going out
+-- of view, alongside a block and simply leaving the club.
+--
+-- It is the same argument the next block makes for the postcard itself, in 009's
+-- words: the author branch is unconditional "so a rider never loses their own
+-- photo", and **there is no 'hidden postcards' screen from which to undo it**.
+-- Un-hoisted, liking a postcard and then hiding it stranded that like for ever:
+-- 009's DELETE policy deliberately carries no visibility requirement — "or the
+-- row is stranded" — but RLS filters a DELETE by what the caller may read (081),
+-- so the delete matched nothing and reported success.
 select assert_eq((select count(*)::int from postcard_likes
                    where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
-  0, 'the hidden postcard''s likes go with it');
+  1, '102/PD-362: the hider still reads THEIR OWN like on the postcard they hid — so they can still withdraw it. This read 0 before 102 and the like was unwithdrawable by anybody, the rider''s own toggle flipping while the row survived');
+select assert_eq((select count(*)::int from postcard_likes
+                   where postcard_id = '00000000-0000-0000-0000-0000000000e1'
+                     and user_id <> '00000000-0000-0000-0000-00000000000c'),
+  0, '102/PD-362: ** ... AND NOBODY ELSE''S LIKE ON IT — the not-widened direction. ** 001b''s like is still gone with the postcard, because every row but the caller''s own still has to clear the parent EXISTS. Drop this and the hoist could widen to the whole list with nothing red');
 select assert_eq((select count(*)::int from postcard_comments
                    where postcard_id = '00000000-0000-0000-0000-0000000000e1'),
-  0, 'so do its comments');
+  0, 'so do its comments — and this one did NOT move under 102, because this hider never commented on this postcard. Kept as the control: the same hoist landed on postcard_comments, so a 1 here would mean it had widened past the caller''s own rows');
 select assert_eq((select count(*)::int from storage.objects
                    where name = 'postcards/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-00000000d1a1.jpg'),
   0, 'and so does the Storage object behind its image');
@@ -9490,10 +9510,20 @@ select assert_eq((select count(*)::int from storage.objects
 -- The ex-member: 000c holds a live ride_members row on d1 and still reads
 -- nothing. A crew-based predicate would have kept this reachable for ever,
 -- because nothing deletes a ride_members row when a rider leaves the club.
+--
+-- ** 102 (PD-362) MOVED THE PRECONDITION BELOW FROM 0 TO 1, AND IT MAKES THE
+-- TILE ASSERTION THAT FOLLOWS STRICTLY STRONGER. ** Before 102 the ex-member
+-- could not see their own crew row at all, so "the tile is refused" was proven
+-- against a rider who could not reach the row the tile predicate might have
+-- consulted — the weaker of the two readings. Now they CAN read their own row
+-- and the tile is refused anyway, which is the claim 051 actually wants: the
+-- ride-maps policy delegates to `rides` visibility and NOT to a crew-based
+-- predicate. If a later change ever routes that policy through ride_members,
+-- the next assertion is what goes red.
 select assert_eq((select count(*)::int from ride_members
                    where ride_id = '00000000-0000-0000-0000-0000000000d1'
                      and user_id = '00000000-0000-0000-0000-00000000000c'),
-  0, '051: (the ex-member''s own ride_members row is itself invisible to them — the row exists, which is what the next assertion needs)');
+  1, '051/102: (the ex-member DOES now read their own surviving ride_members row — 102 hoisted the own-row arm out of the block conjunct. The row exists and is visible to them, which is what makes the next assertion the strong form rather than the weak one)');
 select assert_eq((select count(*)::int from storage.objects
                    where name = 'ride-maps/00000000-0000-0000-0000-00000000000a/aaaaaaaa-0000-4000-8000-0000000d1ca1.jpg'),
   0, '051: an ex-member''s surviving ride_members row does NOT keep the tile reachable');
@@ -16097,6 +16127,17 @@ select assert_rejected($$
 -- thing that refuses a move onto an invisible ride was never the trigger — it
 -- is the SELECT policy applied to the NEW row. Worth re-asserting precisely
 -- because removing the trigger is the moment someone would assume otherwise.
+--
+-- ** AND IT IS NO LONGER THE SELECT POLICY. 102 (PD-362) MOVED THIS REFUSAL
+-- INTO THE UPDATE POLICY'S WITH CHECK, WHERE IT BELONGS. ** The unease in the
+-- paragraph above turned out to be justified: 102 hoists the own-row arm out of
+-- the block conjunct on ride_members SELECT, so the NEW row of this UPDATE now
+-- satisfies that policy on `user_id = auth.uid()` alone — and this assertion
+-- went GREEN-to-RED, catching a privilege escalation in which a non-member
+-- moves their seat onto a private club's ride. 102 §1b restates the requirement
+-- explicitly, so the SQLSTATE below is unchanged but its SOURCE is not: it is
+-- now the UPDATE policy's own WITH CHECK failing, not a read policy's
+-- association. 102.6 pins that policy text directly.
 --
 -- The target id is a LITERAL, and that is the whole assertion: written as a
 -- subquery it would run under the rider's own RLS, which hides exactly this
@@ -30828,6 +30869,370 @@ reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint thread_membership_100;
 
+
+-- ===========================================================================
+-- 102. THE OWN-ROW READ ARM IS A DISJUNCT OF THE WHOLE POLICY (PD-362)
+-- ===========================================================================
+-- 092 hoisted the own-row branch out of the block conjunct on its own two wave
+-- tables and named the rest as somebody else's — "do not 'simplify' §3.1 to
+-- match postcard_likes, which carries the same defect and is filed separately".
+-- 102 is that file. THREE of the seven are hoisted and FOUR are deliberately
+-- left alone; the migration header carries the per-policy reasoning and 102.4
+-- pins the four that did not move, so a later sweep cannot finish the job by
+-- accident.
+--
+-- ** WHY EVERY DETECTOR BELOW ENDS IN A DELETE. ** RLS filters a DELETE by what
+-- the caller may READ (081), so a row you cannot see is a row you cannot delete
+-- and PostgREST reports the no-op as success. The read is the mechanism; the
+-- stranded row is the harm. An assertion that only read the row back would go
+-- green against a policy that still refuses the withdrawal.
+--
+-- Move any own-row branch below back inside its block conjunct and these go
+-- red. Nothing else in the suite does, except one assertion in the hide block
+-- (~line 1730) which 102 moved from 0 to 1 and which says so at the site.
+-- ===========================================================================
+savepoint own_row_reads_102;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000102001', 'orgblocker@example.com'),
+  ('00000000-0000-0000-0000-000000102002', 'blockedcrew@example.com'),
+  ('00000000-0000-0000-0000-000000102003', 'othercrew@example.com'),
+  ('00000000-0000-0000-0000-000000102004', 'pcauthor@example.com'),
+  ('00000000-0000-0000-0000-000000102005', 'leaver@example.com'),
+  ('00000000-0000-0000-0000-000000102006', 'clubblocker@example.com'),
+  ('00000000-0000-0000-0000-000000102007', 'blockedmember@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000102001', 'orgblocker'),
+      ('00000000-0000-0000-0000-000000102002', 'blockedcrew'),
+      ('00000000-0000-0000-0000-000000102003', 'othercrew'),
+      ('00000000-0000-0000-0000-000000102004', 'pcauthor'),
+      ('00000000-0000-0000-0000-000000102005', 'leaver'),
+      ('00000000-0000-0000-0000-000000102006', 'clubblocker'),
+      ('00000000-0000-0000-0000-000000102007', 'blockedmember')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+-- A PUBLIC ride with no club, so nothing but the block can hide it. That is the
+-- point: the defect needs no private club and no membership to reach.
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-0000001020d1', 'The blocked crew ride', 'The Bridge',
+   now() + interval '1 day', true, null, '00000000-0000-0000-0000-000000102001');
+
+insert into ride_members (ride_id, user_id) values
+  ('00000000-0000-0000-0000-0000001020d1', '00000000-0000-0000-0000-000000102002'),
+  ('00000000-0000-0000-0000-0000001020d1', '00000000-0000-0000-0000-000000102003');
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000001020c1', 'Postcard Leavers MC', false, '00000000-0000-0000-0000-000000102004'),
+  ('00000000-0000-0000-0000-0000001020c2', 'Blocked Member MC',   false, '00000000-0000-0000-0000-000000102006');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000001020c1', '00000000-0000-0000-0000-000000102004', 'owner'),
+  ('00000000-0000-0000-0000-0000001020c1', '00000000-0000-0000-0000-000000102005', 'member'),
+  ('00000000-0000-0000-0000-0000001020c2', '00000000-0000-0000-0000-000000102006', 'owner'),
+  ('00000000-0000-0000-0000-0000001020c2', '00000000-0000-0000-0000-000000102007', 'member');
+
+insert into postcards (id, author_id, club_id, image_path) values
+  ('00000000-0000-0000-0000-0000001020e1', '00000000-0000-0000-0000-000000102004',
+   '00000000-0000-0000-0000-0000001020c1',
+   'postcards/00000000-0000-0000-0000-000000102004/aaaaaaaa-0000-4000-8000-000000102001.jpg');
+
+insert into postcard_likes (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-0000001020e1', '00000000-0000-0000-0000-000000102005'),
+  ('00000000-0000-0000-0000-0000001020e1', '00000000-0000-0000-0000-000000102004');
+
+insert into postcard_comments (postcard_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000001020e1', '00000000-0000-0000-0000-000000102005', 'what a road'),
+  ('00000000-0000-0000-0000-0000001020e1', '00000000-0000-0000-0000-000000102004', 'my own photo');
+
+-- The organizer blocks one of their own crew, and a club owner blocks one of
+-- their own members. Both are directional rows with symmetric effect (009).
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000102001', '00000000-0000-0000-0000-000000102002'),
+  ('00000000-0000-0000-0000-000000102006', '00000000-0000-0000-0000-000000102007');
+
+-- ---------------------------------------------------------------------------
+-- 102.1  ** THE PRIORITY CASE — a rider blocked by the ORGANIZER can now LEAVE **
+-- ---------------------------------------------------------------------------
+-- rides SELECT is `organizer_id = auth.uid() or (not is_blocked(...) and ...)`,
+-- so a block by the organizer kills the whole second disjunct and the ride is
+-- gone. Un-hoisted, the crew row went with it: DELETE 0, still on the crew,
+-- still counted, with a Leave control reporting success. And this app has no way
+-- to eject a rider from a ride, so nobody else could remove them either.
+savepoint blocked_crew_leaves_102;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000102002', false);
+select assert_eq(
+  (select count(*)::int from rides where id = '00000000-0000-0000-0000-0000001020d1'),
+  0, '102.1: the blocked rider genuinely cannot see the ride — the precondition, and the reason the crew row was unreachable. A PUBLIC ride with no club, so the block is the only thing hiding it');
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000001020d1'
+      and user_id = '00000000-0000-0000-0000-000000102002'),
+  1, '102.1: ... and they CAN read their own crew row, despite the parent being invisible. This read 0 before 102');
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000001020d1'
+      and user_id = '00000000-0000-0000-0000-000000102003'),
+  0, '102.1: ** ... AND NOT THE REST OF THE ROSTER — the not-widened direction. ** The other crew member''s row still has to clear the parent EXISTS, so the hoist returns the caller''s own row and nothing else. Drop this and the hoist could expose a whole roster with nothing red');
+delete from ride_members
+ where ride_id = '00000000-0000-0000-0000-0000001020d1'
+   and user_id = '00000000-0000-0000-0000-000000102002';
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000001020d1'
+      and user_id = '00000000-0000-0000-0000-000000102002'),
+  0, '102.1: ** THE UN-HOIST DETECTOR — THE ASSERTION THE HOIST EXISTS FOR. ** Read back as the TABLE OWNER, so this is a delete and not a visibility change: the blocked rider has really left the ride. Un-hoisted this is DELETE 0 with the row surviving, the rider still in the crew count, and the action reporting success');
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000001020d1'
+      and user_id = '00000000-0000-0000-0000-000000102003'),
+  1, '102.1: ... and they took nobody else out with them — ride_members DELETE is a bare `auth.uid() = user_id`, and the widened READ does not widen the delete');
+rollback to savepoint blocked_crew_leaves_102;
+
+-- The ordinary path did not narrow: an unblocked crew member still reads the
+-- whole roster, which is what the EXISTS is for and what 009 intended by it.
+savepoint ordinary_roster_read_102;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000102003', false);
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000001020d1'),
+  2, '102.1: an unblocked rider still reads the FULL crew roster — the hoist adds a disjunct and removes no reach, so the ordinary case is untouched');
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint ordinary_roster_read_102;
+
+-- ---------------------------------------------------------------------------
+-- 102.2  ** postcard_likes — NO BLOCK IS INVOLVED, and that is the point **
+-- ---------------------------------------------------------------------------
+-- The commoner instance, and the one 009 wrote the requirement for and then
+-- defeated in the same file: its DELETE policy's comment says there is
+-- deliberately no visibility requirement, "or the row is stranded". Leaving the
+-- club the postcard was posted to is enough.
+savepoint liker_leaves_club_102;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000102005', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000001020e1'),
+  1, '102.2: before leaving, the member can see the postcard they liked — so the zero below is the departure and not a broken fixture');
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000001020c1'
+   and user_id = '00000000-0000-0000-0000-000000102005';
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0000001020e1'),
+  0, '102.2: the leave really took and the postcard is out of view — private.is_club_member simply stops answering, with no block anywhere in this scenario');
+select assert_eq(
+  (select count(*)::int from postcard_likes
+    where postcard_id = '00000000-0000-0000-0000-0000001020e1'
+      and user_id = '00000000-0000-0000-0000-000000102005'),
+  1, '102.2: ... and they still read their OWN like on it. This read 0 before 102');
+select assert_eq(
+  (select count(*)::int from postcard_likes
+    where postcard_id = '00000000-0000-0000-0000-0000001020e1'
+      and user_id = '00000000-0000-0000-0000-000000102004'),
+  0, '102.2: ** ... AND NOT THE AUTHOR''S LIKE — the not-widened direction. ** Every row but the caller''s own still clears the parent EXISTS, so leaving the club did not hand them the like list');
+delete from postcard_likes
+ where postcard_id = '00000000-0000-0000-0000-0000001020e1'
+   and user_id = '00000000-0000-0000-0000-000000102005';
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from postcard_likes
+    where postcard_id = '00000000-0000-0000-0000-0000001020e1'
+      and user_id = '00000000-0000-0000-0000-000000102005'),
+  0, '102.2: ** THE UN-HOIST DETECTOR. ** Counted as the TABLE OWNER: the ex-member really withdrew the like they left behind. Un-hoisted the row survives, still counting for every remaining member, unwithdrawable by anybody — 009''s own "or the row is stranded" coming true');
+select assert_eq(
+  (select count(*)::int from postcard_likes
+    where postcard_id = '00000000-0000-0000-0000-0000001020e1'
+      and user_id = '00000000-0000-0000-0000-000000102004'),
+  1, '102.2: ... and the author''s own like is untouched by somebody else''s departure');
+rollback to savepoint liker_leaves_club_102;
+
+-- ---------------------------------------------------------------------------
+-- 102.3  ** postcard_comments — the third one, and PD-362 records it as NOT
+--        MEASURED. It is measured here and it is real. **
+-- ---------------------------------------------------------------------------
+-- Its DELETE policy carries NO parent EXISTS on either arm, so the SELECT shape
+-- was the whole of what refused the withdrawal. 011's comment on the SELECT
+-- policy claimed "Your own comment is unconditional, so you never lose sight of
+-- what you wrote" — which is exactly what the pre-102 shape prevented.
+savepoint commenter_leaves_club_102;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000102005', false);
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000001020c1'
+   and user_id = '00000000-0000-0000-0000-000000102005';
+select assert_eq(
+  (select count(*)::int from postcard_comments
+    where postcard_id = '00000000-0000-0000-0000-0000001020e1'
+      and author_id = '00000000-0000-0000-0000-000000102005'),
+  1, '102.3: an ex-member still reads the comment they wrote — 011''s stated intent, delivered for the first time by 102');
+select assert_eq(
+  (select count(*)::int from postcard_comments
+    where postcard_id = '00000000-0000-0000-0000-0000001020e1'
+      and author_id = '00000000-0000-0000-0000-000000102004'),
+  0, '102.3: ** ... AND NOT THE OTHER COMMENTS ON IT — the not-widened direction. ** The thread of somebody else''s conversation is still gone with the postcard');
+delete from postcard_comments
+ where postcard_id = '00000000-0000-0000-0000-0000001020e1'
+   and author_id = '00000000-0000-0000-0000-000000102005';
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from postcard_comments
+    where postcard_id = '00000000-0000-0000-0000-0000001020e1'
+      and author_id = '00000000-0000-0000-0000-000000102005'),
+  0, '102.3: ** THE UN-HOIST DETECTOR. ** Counted as the TABLE OWNER: the ex-member really deleted their own comment. Un-hoisted this is DELETE 0 — deleteComment reads that back through its `.select(''id'')` and cannot tell it from a refusal, which is why the action already carries a comment about the ambiguity');
+select assert_eq(
+  (select count(*)::int from postcard_comments
+    where postcard_id = '00000000-0000-0000-0000-0000001020e1'
+      and author_id = '00000000-0000-0000-0000-000000102004'),
+  1, '102.3: ... and the postcard author''s own comment survives, so the widened read did not widen the DELETE''s reach');
+rollback to savepoint commenter_leaves_club_102;
+
+-- ---------------------------------------------------------------------------
+-- 102.4  ** THE FOUR THAT DID NOT MOVE — pinned, so a sweep cannot finish the
+--        job by accident **
+-- ---------------------------------------------------------------------------
+-- PD-362 asked for a per-policy decision rather than a sweep, and these four
+-- each have their own reason (102's header carries them). The shared shape is
+-- `(own_id = auth.uid()) OR (NOT private.is_blocked(...))` sitting INSIDE the
+-- parent conjunct — so the substring below is present exactly while the arm is
+-- un-hoisted, and disappears the moment somebody hoists it.
+select assert_eq(
+  (select qual like '%(user_id = auth.uid()) OR (NOT private.is_blocked%'
+     from pg_policies
+    where schemaname = 'public' and tablename = 'club_members' and cmd = 'SELECT'),
+  true, '102.4: club_members is NOT hoisted, and must not be — it is a SEMANTIC NO-OP. private.is_club_member(club_id) resolves through is_club_member_for(auth.uid(), club_id), so any rider holding a row satisfies the parent for that row by construction. 102.4b proves that behaviourally');
+select assert_eq(
+  (select qual like '%(author_id = auth.uid()) OR (NOT private.is_blocked%'
+     from pg_policies
+    where schemaname = 'public' and tablename = 'club_messages' and cmd = 'SELECT'),
+  true, '102.4: club_messages is NOT hoisted — it has NO DELETE POLICY AT ALL, so there is no grant for the SELECT shape to disarm and nothing to strand. Hoisting would only widen READ, handing an ex-member back their messages in a club they left');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'club_messages' and cmd = 'DELETE'),
+  0, '102.4: ... and that claim is itself measured rather than asserted — club_messages really carries no DELETE policy. The moment one is added, club_messages joins the hoisted three and this assertion is the thing that goes red');
+select assert_eq(
+  (select qual like '%(author_id = auth.uid()) OR (NOT private.is_blocked%'
+     from pg_policies
+    where schemaname = 'public' and tablename = 'club_threads' and cmd = 'SELECT'),
+  true, '102.4: club_threads is NOT hoisted — its DELETE policy independently requires private.is_club_member(club_id), so hoisting SELECT enables no delete the database does not already refuse loudly. Hoisting would also contradict PD-367 Q8, which the product owner answered EVICT');
+select assert_eq(
+  (select qual like '%(author_id = auth.uid()) OR (NOT private.is_blocked%'
+     from pg_policies
+    where schemaname = 'public' and tablename = 'ride_messages' and cmd = 'SELECT'),
+  true, '102.4: ride_messages is NOT hoisted — its DELETE policy carries its own `exists (select 1 from rides r ...)`, so the parent must be visible for the delete whatever SELECT does. Its residual silent DELETE 0 comes from the is_ride_crew conjunct, not this one, and hoisting past is_ride_crew would break the documented invariant that its audience is an INTERSECTION');
+
+-- 102.4b  The behavioural half of the club_members claim above.
+savepoint blocked_member_leaves_club_102;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000102007', false);
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000001020c2'
+      and user_id = '00000000-0000-0000-0000-000000102007'),
+  1, '102.4b: a rider blocked by their club''s OWNER still reads their own membership row WITHOUT any hoist — because holding the row is what makes private.is_club_member true. This is why club_members needs no change and why hoisting it would be noise in a diff');
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000001020c2'
+   and user_id = '00000000-0000-0000-0000-000000102007';
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000001020c2'
+      and user_id = '00000000-0000-0000-0000-000000102007'),
+  0, '102.4b: ... and leaving really works for them, counted as the table owner. The ride_members case in 102.1 is the same rider in the same situation on a different table, and it did NOT work before 102 — the asymmetry is the whole finding');
+rollback to savepoint blocked_member_leaves_club_102;
+
+-- ---------------------------------------------------------------------------
+-- 102.5  The shape is recorded AT THE POLICY, not only in the migration
+-- ---------------------------------------------------------------------------
+-- 092 put its reasoning in a table comment and that is what a session grepping
+-- for the defect reaches first. Three policy comments carry it here, so an
+-- un-hoist has to delete a sentence saying "MUST STAY THERE" to happen quietly.
+select assert_eq(
+  (select count(*)::int from pg_policy p
+     join pg_description d on d.objoid = p.oid and d.classoid = 'pg_policy'::regclass
+    where p.polrelid = 'public.ride_members'::regclass
+      and p.polname = 'Ride rosters follow ride visibility'
+      and d.description like '%MUST STAY THERE%'),
+  1, '102.5: ride_members'' SELECT policy carries the own-row-is-a-disjunct rule at the object');
+select assert_eq(
+  (select count(*)::int from pg_policy p
+     join pg_description d on d.objoid = p.oid and d.classoid = 'pg_policy'::regclass
+    where p.polrelid = 'public.postcard_likes'::regclass
+      and p.polname = 'Likes follow postcard visibility'
+      and d.description like '%MUST STAY THERE%'),
+  1, '102.5: ... and postcard_likes'' does, which is the table 092''s own comment pointed at');
+select assert_eq(
+  (select count(*)::int from pg_policy p
+     join pg_description d on d.objoid = p.oid and d.classoid = 'pg_policy'::regclass
+    where p.polrelid = 'public.postcard_comments'::regclass
+      and p.polname = 'Comments follow postcard visibility'
+      and d.description like '%MUST STAY THERE%'),
+  1, '102.5: ... and postcard_comments'' does, the one PD-362 had not measured');
+
+-- ---------------------------------------------------------------------------
+-- 102.6  ** THE SEAT-MOVE GUARD — the part of 102 that NARROWS, and the reason
+--        the hoist is not a privilege escalation **
+-- ---------------------------------------------------------------------------
+-- 048 grants UPDATE on ride_members.ride_id, so this policy governs a SEAT MOVE
+-- as well as a status change. Before 102 a move onto an invisible ride was
+-- refused only as a side effect of the SELECT policy being applied to the NEW
+-- row; hoisting the own-row arm makes that new row pass on `user_id =
+-- auth.uid()` alone. 077.4's existing assertion caught it. 102 §1b puts the
+-- requirement in the WITH CHECK, and these two assert it from both sides.
+--
+-- 077.4 already asserts the REFUSAL end to end with a real private-club ride.
+-- What it cannot see is WHERE the refusal comes from, and that is exactly what
+-- 102 changed — so this pins the policy text, and then re-proves the permitted
+-- case still works.
+select assert_eq(
+  (select with_check like '%EXISTS%' and with_check like '%rides%'
+     from pg_policies
+    where schemaname = 'public' and tablename = 'ride_members' and cmd = 'UPDATE'),
+  true, '102.6: ride_members'' UPDATE policy carries its OWN visibility requirement in the WITH CHECK — not inherited from the SELECT policy''s association, which 102 §1 deliberately changed. Remove this EXISTS and 077.4 goes red with a non-member sitting in a private club''s crew');
+select assert_eq(
+  (select qual not like '%EXISTS%'
+     from pg_policies
+    where schemaname = 'public' and tablename = 'ride_members' and cmd = 'UPDATE'),
+  true, '102.6: ... and the USING side stays bare on purpose. Leaving a ride you can no longer see must keep working (102.1), so the visibility requirement belongs on the NEW row only — putting it in USING would re-break what 102 §1 fixed, one table over');
+
+-- The permitted case, so 102.6 above is not just a refusal with no counterpart:
+-- an RSVP change on a ride the rider CAN see still works. This is
+-- setRideAttendance's exact upsert shape, whose ON CONFLICT arm is an UPDATE
+-- and therefore runs through the new WITH CHECK.
+savepoint seat_move_permitted_102;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000102003', false);
+update ride_members set status = 'maybe'
+ where ride_id = '00000000-0000-0000-0000-0000001020d1'
+   and user_id = '00000000-0000-0000-0000-000000102003';
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select status from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000001020d1'
+      and user_id = '00000000-0000-0000-0000-000000102003'),
+  'maybe', '102.6: a crew member still changes their own RSVP on a ride they can see — the WITH CHECK''s EXISTS runs under their own RLS and holds, so 102 §1b costs the ordinary path nothing. Without this, §1b could be tightened into a policy that refuses every RSVP and only 077.4 would notice');
+rollback to savepoint seat_move_permitted_102;
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint own_row_reads_102;
 
 
 rollback;
