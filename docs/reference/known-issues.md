@@ -195,7 +195,7 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   so posting into a club badges it for your own post.
 
 - ~~**`createClub` and `createRide` can leave a club with no owner row, or a ride whose organizer
-  is not on its own crew.**~~ **FIXED by `PD-103` — `103_creator_membership.sql`, on DEV.** The
+  is not on its own crew.**~~ **FIXED by `PD-103` — `103_creator_membership.sql` + `104`, merged and applied to DEV in that order.** The
   entry is struck rather than deleted because its *mechanism* is still the thing to read before
   writing any new create: two inserts with no transaction, and a hand-rolled rollback that stopped
   being one when the writes moved to the browser. PostgREST has no multi-statement transaction, so
@@ -204,15 +204,12 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   `openspec/changes/enforce-creator-membership/` holds the reasoning, and `openspec/changes/enforce-creator-membership/design.md` §D1 says why
   a trigger rather than the `security definer` RPC both call sites named for months.
 
-  **Two things this entry used to say that were wrong, corrected rather than deleted:**
-
-  - It called the result *"a UI orphan rather than a hidden row"*. **True only for a PUBLIC club.**
-    A private orphan is on neither club list — `getYourClubs` reads membership, `getExploreClubs`
-    filters `is_public` — so it was reachable from **no screen at all, by anyone, including its
-    owner**.
-  - It named the fix as a `security definer` function *called by both actions*. An RPC binds only
-    the callers that choose to call it, and this app ships a publishable key that lets anyone
-    insert into `clubs` directly. The trigger is the only shape that binds every writer.
+  **One claim it made that was wrong, corrected rather than deleted, because a careful reader
+  reaches for it again:** it named the fix as a `security definer` function *called by both
+  actions*, which three repo comments also said. An RPC binds only the callers that choose to call
+  it, and this app ships a publishable key that lets anyone insert into `clubs` directly — only a
+  trigger binds every writer. (It also called the result "a UI orphan rather than a hidden row",
+  which held only for a *public* club; a private orphan was on neither club list.)
 
   **Still open, and deliberately:** `PD-194`'s ownership transfer shipped separately in `095`, so
   the club-side delete guard lives there rather than here. **PROD does not have `103` or `104`

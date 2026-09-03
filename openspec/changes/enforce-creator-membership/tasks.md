@@ -56,17 +56,31 @@
 >   already wrote, its compensating delete removes the club, and *every* club and ride creation
 >   reports failure. An outage, and not self-correcting.
 > - **deploy first** → a bundle with no second insert against a database with no trigger creates
->   orphans for the length of the gap, and **`103`'s backfill repairs exactly those**. Self-healing.
+>   orphans for the length of the gap, and **`103`'s backfill repairs exactly those**. Self-healing
+>   *on the server*.
 >
 > So this branch ships group 3's end state directly and applies `103` immediately after the DEV
-> deploy is confirmed serving. Group 1's `upsert … ignoreDuplicates` would have been a transitional
-> state with no moment at which anything depended on it.
+> deploy is confirmed serving.
 >
-> **This does NOT relax anything for the PROD promotion** — it fixes its order. Promote the code,
-> confirm it is serving, then apply `103`, then `104`. `104` is last in both plans, because it is
-> safe only once the deployed bundle has stopped sending `role: 'owner'`.
+> **The argument above models the client as flipping atomically, and it does not — this is the
+> caveat a pre-merge review supplied, and it is why the collapse is a DEV shortcut rather than a
+> better plan.** This is a client-rendered SPA. A tab that loaded the pre-merge bundle keeps its
+> JS, and `createClub` runs from an event handler, so nothing triggers a chunk refetch. From the
+> moment `103` applies, that tab issues the plain `.insert()` for a row the trigger already wrote →
+> `23505` → its own compensating delete removes the club → *"That club could not be created."* on
+> every attempt, for as long as the tab lives. After `104` the same tab gets `42501` with the same
+> outcome. That window is **unbounded**, where the merge→apply window is minutes.
+>
+> Collapsing was acceptable **on DEV only**, and for a reason that does not generalise: 24 profiles
+> and effectively no live tabs at the hour it ran.
+>
+> **So the PROD promotion should NOT copy this.** It should do what group 1 actually says: ship the
+> transitional `upsert … ignoreDuplicates`, **let it soak** until pre-merge tabs have turned over,
+> then apply `103`, then ship group 3, then apply `104`. Group 1's real job is that soak — the
+> earlier claim here, that it was "a transitional state with no moment at which anything depended
+> on it", was wrong and is corrected rather than deleted.
 
-- [x] 1.1 `createClub`: `supabase.from('club_members').insert(...)` becomes
+- [ ] ~~1.1~~ **NOT DONE — superseded, see the note above this group.** `createClub`: `supabase.from('club_members').insert(...)` becomes
   `.upsert({ club_id, user_id, role: 'owner' }, { onConflict: 'club_id,user_id', ignoreDuplicates: true })`.
   The shape `joinClub` already uses. **State the reason correctly:** `authenticated` **does**
   hold the table-level UPDATE grant on `club_members` — `019`'s own §Verification block says so
@@ -76,11 +90,11 @@
   affect nothing instead of erroring. The "no UPDATE grant" phrasing is inherited from a stale
   comment at `src/lib/actions/clubs.ts:253-254`; add it to group 5. **Keep the compensating
   delete** — it is still the only thing covering a genuine failure until `029` lands.
-- [x] 1.2 `createRide`: the same for `ride_members`, `onConflict: 'ride_id,user_id'`.
-- [x] 1.3 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build` green. No RLS
+- [ ] ~~1.2~~ **NOT DONE — superseded, see the note above this group.** `createRide`: the same for `ride_members`, `onConflict: 'ride_id,user_id'`.
+- [ ] ~~1.3~~ **NOT DONE — superseded, see the note above this group.** `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build` green. No RLS
   suite run is needed — nothing under `supabase/**` changed, and CI will skip it for the same
   reason.
-- [x] 1.4 Confirm the deployment is live before starting group 2, and record the commit sha.
+- [ ] ~~1.4~~ **NOT DONE — superseded, see the note above this group.** Confirm the deployment is live before starting group 2, and record the commit sha.
 
 ## 2. Step 2 — `029_creator_membership.sql`
 

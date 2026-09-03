@@ -27097,6 +27097,22 @@ select assert_rejected($$
    where club_id = '00000000-0000-0000-0000-0000009500c1'
      and user_id = '00000000-0000-0000-0000-000000950001'$$,
   '23514', '095.5: ** the owner cannot delete their own roster row ** — check_violation, never insufficient_privilege: a test accepting "any error" would pass when the wrong rule fired, and 42501 is what an ordinary RLS denial looks like');
+
+-- ** THE MESSAGE IS A CONTRACT with leaveClub **, and this pin was missing until
+-- PD-103 added the ride-side twin (103.4) and a review noticed the asymmetry.
+-- `leaveClub` branches on the substring rather than on the SQLSTATE alone —
+-- `018`'s text bounds raise 23514 too, so a code-only branch would report an
+-- overlong field as an ownership refusal. Nothing else in CI compares the two
+-- halves, so without this a reword of 095's raise leaves the suite green while
+-- a club owner silently drops from the actionable message to the generic
+-- "You could not be removed from that club."
+select assert_eq(
+  (select error_of($$
+     delete from club_members
+      where club_id = '00000000-0000-0000-0000-0000009500c1'
+        and user_id = '00000000-0000-0000-0000-000000950001'$$)
+        like '%cannot leave its roster%'),
+  true, '095.5: ... and the refusal message contains the exact phrase `cannot leave its roster`, which is what leaveClub matches on (103.4 is the ride-side twin)');
 reset role;
 select assert_eq(
   (select count(*)::int from club_members

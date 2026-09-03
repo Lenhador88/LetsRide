@@ -365,11 +365,21 @@ export async function setRideAttendance(
   // overran a field that they organize the ride.
   //
   // Reachable only by a direct call: `RideAttendanceBar` is hidden from the
-  // organizer (`!is_organizer`), so no screen offers this today. The invariant
-  // is PRESENCE, not status — an organizer may still move themselves to
-  // `maybe`, and only the withdrawal (`attendance === null`) is refused.
+  // organizer (`!is_organizer`), so no screen offers this today.
+  //
+  // ** The copy deliberately does NOT offer "set yourself to Maybe instead",
+  //    even though `103`'s own raise text suggests it and the guard permits
+  //    it. ** The database invariant is PRESENCE rather than status, so the
+  //    UPDATE really is allowed — but `withOrganizer` in `lib/data/rides.ts`
+  //    filters the organizer out of `crew.maybe` and prepends them to `going`,
+  //    so every screen renders them Going whatever the row says. Promising a
+  //    remedy the app then ignores is worse than not offering one. Closing the
+  //    gap properly means teaching `withOrganizer` to respect the stored
+  //    status, which is a read-path change this story does not carry — before
+  //    `103` the organizer had no row at all, so discarding it was correct by
+  //    construction and only becomes wrong now.
   if (error?.message?.includes('cannot leave its crew')) {
-    return { error: 'You organize this ride, so you are always on its crew. You can set yourself to Maybe instead.' }
+    return { error: 'You organize this ride, so you are always on its crew.' }
   }
 
   // A refusal is usually RLS deciding the ride is not visible, which from the

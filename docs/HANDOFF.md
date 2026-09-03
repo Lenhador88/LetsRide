@@ -461,13 +461,15 @@ trips left a club with an owner and no membership row. Two `AFTER INSERT` trigge
   riskier.** Applying `103` against a bundle that still writes the row is an **instant outage** of
   club and ride creation — `23505` on a row the trigger already wrote, then that bundle's own
   compensating delete removes the club, so every attempt reports *"That club could not be
-  created."* Deploying first only makes orphans, and **`103`'s backfill repairs exactly those**.
-  So: deploy → `103` → `104`, and `104` last because it is safe only once the deployed bundle has
-  stopped sending `role: 'owner'`. **This is what PROD's promotion owes.**
-- **`tasks.md` group 1 was collapsed into group 3, deliberately.** Step 1 (a transitional
-  `upsert … ignoreDuplicates` deploy) exists to make the *apply-first* order safe. Nothing needs it
-  when the order is deploy-first, and it would have been a state with no moment at which anything
-  depended on it. The reasoning is in `tasks.md` §1 so a later reader does not "restore" it.
+  created."* Deploying first only makes orphans on the server, and **`103`'s backfill repairs exactly
+  those**. So: deploy → `103` → `104`, and `104` last because it is safe only once the deployed
+  bundle has stopped sending `role: 'owner'`.
+- **The collapse of `tasks.md` group 1 was a DEV shortcut and PROD's promotion must NOT copy it.**
+  Deploy-first is self-healing for the *server* and **not for an already-loaded browser tab**,
+  which keeps the pre-merge JS and goes on issuing the plain insert — so from the moment `103`
+  applies it gets `23505`, its own compensating delete removes the club, and that lasts as long as
+  the tab does. Effectively zero tabs on DEV; not so on PROD. There, do what group 1 says: ship the
+  transitional idempotent upsert, **let it soak**, then apply. Caught by the pre-merge review.
 - **A seeding trigger with no `WHEN` clause binds every FIXTURE in the repo, and the proposal did
   not anticipate that** — ~1050 changed lines across `supabase/tests/seed.sql`,
   `supabase/tests/rls_test.sql` and `supabase/seeds/development.sql`, none of which had a task.
@@ -482,13 +484,14 @@ trips left a club with an owner and no membership row. Two `AFTER INSERT` trigge
   `security definer` is **correctness**: its parent probe cannot tell an invisible ride from a
   deleted one under invoker rights, and would fail open.
 
-The client reads the guards by **message**, not SQLSTATE — `018`'s text bounds raise `23514` too —
-so `103`'s raise string and `setRideAttendance`'s branch are coupled, and nothing but
-`invalidation.test.ts` compares them.
+The client reads the guards by **message**, not SQLSTATE — `018`'s text bounds raise `23514` too.
+**Each coupling needs BOTH pins, and the unit test is not the one that compares them**: the unit
+tests hardcode the message, so `rls_test.sql` 103.4 (ride) and 095.5 (club) are what go red on a
+reword. The club-side pair was missing entirely until the pre-merge review caught the asymmetry.
 
 ```bash
 git grep -n "cannot leave its crew" -- src/ supabase/   # the coupling, both ends
-PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3381, from 3310
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3382, from 3310
 ```
 
 ## Where this left off — 2026-09-03, a queue firing closed one stale story and one race, and parked one

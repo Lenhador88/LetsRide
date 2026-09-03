@@ -105,6 +105,7 @@ vi.mock('@/lib/supabase/session-store', async (importOriginal) => ({
 // Imported after the mocks are declared — `vi.mock` is hoisted, but keeping
 // the order visible is what makes the file readable.
 import { setRideAttendance } from '@/lib/actions/rides'
+import { leaveClub } from '@/lib/actions/clubs'
 import { acceptTerms, setUsername } from '@/lib/actions/onboarding'
 import { signOut } from '@/lib/actions/auth'
 import { invalidate, clearQueryCache } from '@/lib/query'
@@ -112,6 +113,7 @@ import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cac
 
 const USER = { id: '22222222-2222-4222-8222-222222222222' }
 const RIDE_ID = '11111111-1111-4111-8111-111111111111'
+const CLUB_ID = '33333333-3333-4333-8333-333333333333'
 
 type Result = { data: unknown; error: null | { code?: string; message?: string } }
 
@@ -214,9 +216,12 @@ describe('setRideAttendance', () => {
    * Both halves are load-bearing and each pins a way this silently degrades:
    *
    * 1. A refusal carrying the guard's phrase must produce the organizer copy.
-   *    If the migration ever rewords the exception, this goes red — which is
-   *    the only gate comparing the two, since nothing in CI reads both the SQL
-   *    and the TypeScript.
+   *    ** This test does NOT compare itself to the migration ** — it hardcodes
+   *    the message, so rewording `103`'s raise would leave it green. The gate
+   *    that actually pins the two together is `rls_test.sql` 103.4, which
+   *    asserts the raised text `like '%cannot leave its crew%'`. What this
+   *    test pins is the other half: that the client still recognises the
+   *    phrase. Both are needed and neither substitutes for the other.
    * 2. A `23514` that is NOT the guard — `018`'s text bounds raise the same
    *    code — must fall through to the generic message. A code-only branch
    *    would tell a rider who overran a field that they organize the ride.
@@ -230,7 +235,9 @@ describe('setRideAttendance', () => {
       data: null,
       error: {
         code: '23514',
-        message: 'a ride\'s organizer cannot leave its crew; the organizer is on the ride by construction',
+        // Verbatim from `103_creator_membership.sql`'s raise.
+        message:
+          "a ride's organizer cannot leave its crew; set your status to 'maybe' instead, or delete the ride",
       },
     })
     from.mockReturnValue(builder)
@@ -238,7 +245,10 @@ describe('setRideAttendance', () => {
     const state = await setRideAttendance(RIDE_ID, null)
 
     expect(state.error).toMatch(/You organize this ride/)
-    expect(state.error).toMatch(/Maybe/)
+    // The copy must NOT forward the migration's "set your status to maybe"
+    // suggestion: `withOrganizer` renders the organizer as Going whatever the
+    // row says, so offering it would promise something no screen delivers.
+    expect(state.error).not.toMatch(/[Mm]aybe/)
     expect(invalidate).not.toHaveBeenCalled()
   })
 
@@ -253,6 +263,49 @@ describe('setRideAttendance', () => {
 
     expect(state.error).toMatch(/Could not update your RSVP/)
     expect(state.error).not.toMatch(/You organize this ride/)
+  })
+})
+
+describe('leaveClub', () => {
+  /**
+   * The club-side twin of the organizer branch above, and it existed with a
+   * gate on NEITHER side until a review caught the asymmetry: `095` shipped
+   * the guard, PD-103 wired `leaveClub` to its message, and nothing compared
+   * them. `rls_test.sql` 095.5 now pins the SQL half; this pins the client's.
+   *
+   * The owner path normally goes through `leaveOwnedClub` (`095`'s transfer),
+   * so this branch is defence for a direct call — which is exactly why no
+   * screen would ever reveal it broken.
+   */
+  it('names the ownership refusal from the guard\u2019s message, not from its SQLSTATE', async () => {
+    const { builder } = chain({
+      data: null,
+      // Verbatim from `095_an_owner_leaves_their_club.sql`'s raise.
+      error: {
+        code: '23514',
+        message:
+          "a club's owner cannot leave its roster; hand the club on with public.leave_owned_club, or delete it with public.delete_owned_club",
+      },
+    })
+    from.mockReturnValue(builder)
+
+    const state = await leaveClub(CLUB_ID)
+
+    expect(state.error).toMatch(/You own this club/)
+    expect(invalidate).not.toHaveBeenCalled()
+  })
+
+  it('falls through to the generic message for a 23514 that is not the guard', async () => {
+    const { builder } = chain({
+      data: null,
+      error: { code: '23514', message: 'new row violates check constraint "clubs_name_length"' },
+    })
+    from.mockReturnValue(builder)
+
+    const state = await leaveClub(CLUB_ID)
+
+    expect(state.error).toMatch(/could not be removed/)
+    expect(state.error).not.toMatch(/You own this club/)
   })
 })
 

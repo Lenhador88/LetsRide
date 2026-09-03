@@ -321,13 +321,15 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 107 rows on DEV and 100 on PROD against 104 files. The DEV surplus is
-not a gap; the PROD shortfall IS one, and it is `101`, `102`, `103` and `104`.** DEV is level with the repo at `104`
-— every file has a recorded row, reconciled name by name on 2026-08-31, again for `096` on
-2026-09-01, and again for `101`–`104` on 2026-09-03.
+**`list_migrations` prints 105 rows on DEV and 100 on PROD against 104 files, and reads 107 on DEV
+once `103`/`104` are applied. The DEV surplus is not a gap; the PROD shortfall IS one, and it is
+`101`, `102`, `103` and `104`.** DEV is level with the repo at `102` when `103`/`104` merge and at
+`104` once they are applied — the apply is the step immediately after that merge and **cannot
+precede it** (see the ordering rule below). Reconciled name by name on 2026-08-31, again for `096`
+on 2026-09-01, and again for `101`/`102` on 2026-09-03.
 
-**`103_creator_membership` + `104_club_member_owner_arm` (PD-103) — applied to DEV 2026-09-03, and
-they are the ordering case rather than an exception to it.** `103` hangs two `AFTER INSERT` seeding
+**`103_creator_membership` + `104_club_member_owner_arm` (PD-103) — merged 2026-09-03 and applied
+to DEV immediately afterwards; they are the ordering case rather than an exception to it.** `103` hangs two `AFTER INSERT` seeding
 triggers (`private.establish_club_owner_membership`, `private.establish_ride_organizer_membership`,
 both with **no `WHEN` clause**, so they bind the seed and `service_role` too), backfills any
 existing orphan with `joined_at` from the parent's `created_at`, repairs a demoted owner row by
@@ -338,7 +340,15 @@ existing orphan with `joined_at` from the parent's `created_at`, repairs a demot
 bundle that still issues the second insert is serving is an instant outage: `23505` on a row the
 trigger already wrote, then that bundle's own compensating delete removes the club it just made.
 The reverse gap — a bundle with no second insert against a database with no trigger — makes
-orphans, and `103`'s backfill repairs exactly those, so it is self-healing. `104` is last because
+orphans, and `103`'s backfill repairs exactly those, so it is self-healing **for the server**.
+**It is NOT self-healing for an already-loaded browser tab**: this is a client-rendered SPA, so a
+tab that loaded the pre-merge bundle keeps its JS and goes on issuing the plain insert from an
+event handler with nothing to trigger a chunk refetch. From the moment `103` applies, that tab
+gets `23505`, its own compensating delete removes the club, and every attempt reports failure —
+for as long as the tab lives, which on mobile is days. That population is the whole reason the
+change carries a transitional group 1 (an idempotent upsert, deployed and left to **soak**), and
+**a PROD promotion should use it** rather than collapsing the steps the way the DEV apply did,
+where the tab count was effectively zero. `104` is last because
 it is only safe once the deployed bundle has stopped sending `role: 'owner'`.
 
 **Applied AFTER the merge was confirmed serving on DEV, deliberately**, which is why this file and
