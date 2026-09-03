@@ -207,6 +207,53 @@ describe('setRideAttendance', () => {
     expect(state.error).toMatch(/Could not update your RSVP/)
     expect(invalidate).not.toHaveBeenCalled()
   })
+
+  /**
+   * `103`'s organizer guard, read through its MESSAGE rather than its SQLSTATE.
+   *
+   * Both halves are load-bearing and each pins a way this silently degrades:
+   *
+   * 1. A refusal carrying the guard's phrase must produce the organizer copy.
+   *    If the migration ever rewords the exception, this goes red — which is
+   *    the only gate comparing the two, since nothing in CI reads both the SQL
+   *    and the TypeScript.
+   * 2. A `23514` that is NOT the guard — `018`'s text bounds raise the same
+   *    code — must fall through to the generic message. A code-only branch
+   *    would tell a rider who overran a field that they organize the ride.
+   *
+   * The third case is the one that already bit: a refusal with no `message` at
+   * all must not throw. `error?.message?.includes` rather than
+   * `error?.message.includes`, caught by the test above this one.
+   */
+  it('names the organizer refusal from the guard’s message, not from its SQLSTATE', async () => {
+    const { builder } = chain({
+      data: null,
+      error: {
+        code: '23514',
+        message: 'a ride\'s organizer cannot leave its crew; the organizer is on the ride by construction',
+      },
+    })
+    from.mockReturnValue(builder)
+
+    const state = await setRideAttendance(RIDE_ID, null)
+
+    expect(state.error).toMatch(/You organize this ride/)
+    expect(state.error).toMatch(/Maybe/)
+    expect(invalidate).not.toHaveBeenCalled()
+  })
+
+  it('falls through to the generic message for a 23514 that is not the guard', async () => {
+    const { builder } = chain({
+      data: null,
+      error: { code: '23514', message: 'new row violates check constraint "rides_title_length"' },
+    })
+    from.mockReturnValue(builder)
+
+    const state = await setRideAttendance(RIDE_ID, null)
+
+    expect(state.error).toMatch(/Could not update your RSVP/)
+    expect(state.error).not.toMatch(/You organize this ride/)
+  })
 })
 
 describe('acceptTerms', () => {

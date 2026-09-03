@@ -194,40 +194,29 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   carries a second, milder one: `club_unread_counts()` does not exclude the reader's own postcards,
   so posting into a club badges it for your own post.
 
-- **`createClub` and `createRide` can leave a club with no owner row, or a ride whose organizer
-  is not on its own crew.** `PD-103`. Two inserts, no transaction, and a hand-rolled rollback that
-  stopped being one when the writes moved to the browser — closing the tab between them is now
-  enough. There is a second door of the same width in `leaveClub`, and the same shape via
-  `setRideAttendance(rideId, null)`; both need a hand-rolled request, neither is reachable by
-  tapping. **Read `openspec/changes/enforce-creator-membership/` rather than a summary here** — it
-  holds the mechanism and the negative cases. **All three blocking questions are answered**: Q3 by
-  measurement on 2026-08-06, Q1 and Q2 by the product owner on 2026-08-11 — both *no*, both the
-  proposal's own default, so the change builds as drafted. An owner leaving as a **transfer** is
-  deferred to `PD-194`, not folded in here.
+- ~~**`createClub` and `createRide` can leave a club with no owner row, or a ride whose organizer
+  is not on its own crew.**~~ **FIXED by `PD-103` — `103_creator_membership.sql`, on DEV.** The
+  entry is struck rather than deleted because its *mechanism* is still the thing to read before
+  writing any new create: two inserts with no transaction, and a hand-rolled rollback that stopped
+  being one when the writes moved to the browser. PostgREST has no multi-statement transaction, so
+  **every** two-round-trip create has that window — the fix was to leave the intermediate state
+  unrepresentable (an `AFTER INSERT` trigger seeds the row), not to narrow the window.
+  `openspec/changes/enforce-creator-membership/` holds the reasoning, and `design.md` §D1 says why
+  a trigger rather than the `security definer` RPC both call sites named for months.
 
-  > **Recommendation** 8/10
-  >
-  > the last place a client can leave the database in a state no constraint forbids, and the
-  > invariant is unasserted in *two* places rather than one
-  >
-  > **Complexity** 5/10
-  >
-  > two migrations, four triggers, a backfill, three deploy steps
-  >
-  > **Urgency** 4/10
-  >
-  > both doors need a hand-rolled request. Rises the day a real rider abandons a create, and
-  > sharply if create gets a retry affordance or the store build ships
-  >
-  > **Customer value** 3/10
-  >
-  > a rider who abandons a create loses the club entirely — a private orphan is on no list and
-  > reachable from no screen, including its owner's. Rare, and total for whoever hits it
-  >
-  > **This session** Y
-  >
-  > nothing blocks it any more — the last two questions were answered on 2026-08-11, both as the
-  > drafted default, so `tasks.md` group 0 is clear down to 0.4
+  **Two things this entry used to say that were wrong, corrected rather than deleted:**
+
+  - It called the result *"a UI orphan rather than a hidden row"*. **True only for a PUBLIC club.**
+    A private orphan is on neither club list — `getYourClubs` reads membership, `getExploreClubs`
+    filters `is_public` — so it was reachable from **no screen at all, by anyone, including its
+    owner**.
+  - It named the fix as a `security definer` function *called by both actions*. An RPC binds only
+    the callers that choose to call it, and this app ships a publishable key that lets anyone
+    insert into `clubs` directly. The trigger is the only shape that binds every writer.
+
+  **Still open, and deliberately:** `PD-194`'s ownership transfer shipped separately in `095`, so
+  the club-side delete guard lives there rather than here. **PROD does not have `103` or `104`
+  yet** — they are applied to DEV only, pending the next promotion.
 
 - **Two riders deleting at the same moment can destroy a third rider's postcards.** `PD-175`, a
   sub-issue of `PD-102` because it sits inside the deletion deliverable. The narrow race that

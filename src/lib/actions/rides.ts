@@ -238,25 +238,32 @@ export async function createRide(
   }
   if (error || !ride) return { error: 'That ride could not be created.' }
 
-  const { error: crewError } = await supabase
-    .from('ride_members')
-    .insert({ ride_id: ride.id, user_id: user.id, status: 'going' })
+  // ** ONE statement, and the organizer's crew row is the database's to write. **
+  // `103`'s `establish_ride_organizer_membership` AFTER INSERT trigger writes
+  // `(new.id, new.organizer_id, 'going')` with `joined_at` from the ride's own
+  // `created_at`, so the second round trip and its compensating delete are gone.
+  // The reasoning is `createClub`'s and is written out there; the short version
+  // is that a two-round-trip create has a window the browser can lose the tab
+  // in, and the fix is to leave that state unrepresentable rather than narrow.
+  //
+  // ** The old comment here claimed this left "a club with an owner and no
+  // membership row" — a copy-paste from `createClub` that survived review. ** It
+  // left a ride whose `organizer_id` held no `ride_members` row, which is the
+  // worse half: `toRideListItem` draws the organizer "on the ride by
+  // construction" while `getRideCrew` reads `ride_members`, so the card and
+  // `/rides/detail/crew` disagreed about the same ride, and `RideAttendanceBar`
+  // is hidden from the organizer (`!is_organizer`) so they had no way back on.
+  //
+  // ** `getRideCrew` is deliberately NOT changed to synthesise the organizer. **
+  // After the trigger the rows agree with that reading by construction, and a
+  // second copy of the rule in the read path would be free to drift.
 
-  if (crewError) {
-    // Same as createClub: an unchecked rollback lets the failure message
-    // contradict the state it leaves behind.
-    const { error: rollbackError } = await supabase.from('rides').delete().eq('id', ride.id)
-    if (rollbackError) {
-      return {
-        error: 'That ride was only partly created. Check your rides before trying again.',
-      }
-    }
-    return { error: 'That ride could not be created.' }
-  }
-
-  // PD-104 §5.1. After the crew row and not before it: a rollback above deletes
-  // the ride, and a render already in flight against a deleted ride would spend
-  // a ledger row on a ride that no longer exists.
+  // PD-104 §5.1. This used to read "after the crew row and not before it",
+  // because a rollback above deleted the ride and a render already in flight
+  // against a deleted ride would spend a ledger row on a ride that no longer
+  // exists. **`103` removed that rollback**, so the ordering no longer defends
+  // anything — the ride is committed by the time this line runs. Kept here
+  // rather than moved, because nothing argues for moving it either.
   //
   // **Unconditional, and it must stay that way — PD-267.** An `if (!location)`
   // guard stood here while the deployed build geocoded unconditionally: against
@@ -351,6 +358,19 @@ export async function setRideAttendance(
             { ride_id: rideId, user_id: user.id, status: attendance },
             { onConflict: 'ride_id,user_id' }
           )
+
+  // `103`'s `protect_ride_organizer_membership` refuses the organizer's own crew
+  // row. ** Match on the MESSAGE, not on `23514` alone ** — `018`'s text bounds
+  // raise the same SQLSTATE, so a code-only branch would tell a rider who
+  // overran a field that they organize the ride.
+  //
+  // Reachable only by a direct call: `RideAttendanceBar` is hidden from the
+  // organizer (`!is_organizer`), so no screen offers this today. The invariant
+  // is PRESENCE, not status — an organizer may still move themselves to
+  // `maybe`, and only the withdrawal (`attendance === null`) is refused.
+  if (error?.message?.includes('cannot leave its crew')) {
+    return { error: 'You organize this ride, so you are always on its crew. You can set yourself to Maybe instead.' }
+  }
 
   // A refusal is usually RLS deciding the ride is not visible, which from the
   // rider's side looks like the ride being gone rather than a permission

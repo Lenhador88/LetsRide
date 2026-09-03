@@ -206,11 +206,18 @@ function byName(a: ClubListItem, b: ClubListItem) {
 /**
  * `Clubs - Your clubs` — every club this rider has joined, with its unread badge.
  *
- * Membership is the signal rather than `owner_id`, because `/clubs/new` writes
- * both rows and the design's own empty state is "You have no clubs, yet!". A
- * club owned without a membership row would appear on neither sub-page; that is
- * a create-flow integrity question, not something this read should paper over
- * by unioning two definitions of "yours".
+ * Membership is the signal rather than `owner_id`, and the design's own empty
+ * state is "You have no clubs, yet!". A club owned without a membership row
+ * would appear on neither sub-page — **that question is now answered, and the
+ * answer is that the state cannot occur**: `103`'s
+ * `establish_club_owner_membership` trigger writes the owner's row in the same
+ * statement as the club, so `owner_id` and membership agree by construction.
+ * `openspec/changes/enforce-creator-membership/` holds the reasoning.
+ *
+ * This read is deliberately unchanged by that. Unioning two definitions of
+ * "yours" would be a second copy of an invariant the database now holds — free
+ * to drift, and papering over exactly the disagreement that can no longer
+ * happen.
  */
 export async function getYourClubs(): Promise<ClubListItem[]> {
   const supabase = await resolveSupabase()
