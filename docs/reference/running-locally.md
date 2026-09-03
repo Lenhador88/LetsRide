@@ -81,32 +81,40 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `67/67 guard, navigation and sign-out checks correct` on a DEV where the walk
-account owns a ride and a club — and that figure is ARITHMETIC, not a measured run.** The measured
-one is `47/47`, 2026-08-24 on PD-293's branch, against a local `npm run dev` through the relay,
-`WALK_FIXTURES=1`, zero FAILs. PD-358 added `checkInviteLanding`, **10 assertions per landing
-route** (6 signed out, 4 signed in) **across two routes**, so 47 + 20 = **67**.
+**Neither of the walk's two totals is a constant, and writing either one as a bare number here is
+how this paragraph has been wrong twice.** Both depend on *which account* the run uses, and the
+screens figure depends on DEV's data as well. What is durable is the arithmetic and the commands.
 
-**The screens figure is NOT a constant and must not be written as one here.** It is
-`STATIC_PATHS.length` plus however many detail routes that particular run discovers, and the second
-half is DEV data — an empty list yields no path and the route is skipped. The measured `18/18` of
-2026-08-24 was **8 static + 10 discovered**; `STATIC_PATHS` is **12** today (`/notifications` and
-PD-358's two landing routes landed since), so the same DEV would now print `22/22`. Re-derive the
-static half rather than trusting either number:
+**The last measured run is 2026-09-01/02**, not the `18/18`/`47/47` of 2026-08-24 that older
+paragraphs in this file still cite. It reported, at `STATIC_PATHS` = 10:
+
+| | Named account (`WALK_EMAIL`) | Minted rider (no credential) |
+|---|---|---|
+| Screens | `23/23` | `22/22` — `/clubs/detail/thread` is unwalked, and the walk says so |
+| Checks | `44/44` | `47/47` — minting adds three checks of its own |
+
+**PD-358 moves both, by a fixed amount on each basis.** It added `/rides/join` and `/clubs/join` to
+`STATIC_PATHS` (**+2 screens**), and `checkInviteLanding`, which makes **10 assertions per landing
+route** — 6 signed out, 4 signed in — **across two routes** (**+20 checks**). So the numbers to
+expect are **25 / 67** as a minted rider and **25 / 64** as a named one… except that the screens
+half of that is a *projection over unchanged DEV data* and the detail routes are discovered at run
+time. **Do not treat it as a baseline; re-derive the static half and let the run tell you the
+rest:**
 
 ```bash
 node -e "const s=require('fs').readFileSync('scripts/walk.mjs','utf8');
   console.log((s.match(/const STATIC_PATHS = \[([\s\S]*?)\n\]/)[1].match(/^\s*'\//gm)||[]).length)"
 ```
 
-**This is the figure to get right**, because `CLAUDE.md` reads a shrunken `N/N` as a skip rather
-than a pass — so a baseline that is too low silently absorbs skipped screens and reads as clean.
-A previous revision of this paragraph said `20`, having mistaken that run's *static* count for its
-*discovered* count; the two are 8 and 10 and they are easy to transpose.
+**Compare a run against the account it ran as** — `CLAUDE.md` reads a shrunken `N/N` as a skip
+rather than a pass, so comparing a named run's total against a minted baseline manufactures a skip
+that is not there, and the reverse hides one that is. The walk names every route it skipped in
+parentheses; read those before the totals.
 
-**Nobody has run any of this**: this container's Chromium cannot reach Supabase without the relay,
-and CI's `walk` job is skipped until the repository variable `WALK_CI=1` exists. Replace this
-paragraph with a measurement the first time the walk is run against DEV.
+**The invite phase itself has never been run**, whatever the totals above say about the rest: this
+container's Chromium cannot reach Supabase without the relay, and CI's `walk` job is skipped until
+the repository variable `WALK_CI=1` exists. Replace the projections with a measurement the first
+time it is.
 
 It was `48/48` before 47 and `077` dropped the `max_riders survives it` assertion with the field it
 read. **If the invite phases are excluded and it comes back 48, the field is back.**
@@ -206,8 +214,10 @@ a failure here as a regression:
 select location from public.profiles where id = (select id from auth.users where email = '<WALK_EMAIL>');
 ```
 
-**Last run: 2026-08-24, `18/18` screens and `47/47` checks, on PD-293's branch at `fd7d146`.**
-That run is what answered the question `077` raised and nothing else could: `tsc`, ESLint,
+**2026-08-24, `18/18` screens and `47/47` checks, on PD-293's branch at `fd7d146` — this was the
+last run *for `077`'s question*, and it is NOT the walk's last run.** That is 2026-09-01/02, at the
+top of this file; a reader taking this heading literally reconstructs a superseded baseline, which
+is the failure the top paragraph is about. Kept because what it answered is still worth having: `tsc`, ESLint,
 Vitest, `next build` and the RLS suite are all green against a DEV whose `rides` has no
 `max_riders`, and **only the walk can say whether the ride detail and the edit form still
 render**. They do — the edit form drew every control populated, with no `max_riders` field and no

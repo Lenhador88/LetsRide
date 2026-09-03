@@ -1015,11 +1015,17 @@ happens to land on. **The slot is yours until you have either re-filled it or gi
    and taking it a few bullets early costs nothing and adds no call. A read taken after the comment
    is written is a row that says `not available` on a session that could have answered.
 
-   **That early read CACHES the answer; it does not move the EXIT.** Whenever this step's gates
-   are evaluated — between bullets 3 and 4 on the take-another-story path, as the top of this step
-   requires, or after bullet 6 otherwise — **the fail-closed exit never skips STEP 5's bullets 4, 5
-   and 6.** The record and the notification are written first, whichever way the gate goes, and
-   only then does the session end via STEP 7.
+   **That early read CACHES the answer; it does not move the EXIT.** **The fail-closed exit never
+   skips STEP 5's bullets 4, 5 and 6** — the record and the notification are written first,
+   whichever way the gate goes, and only then does the session end via STEP 7.
+
+   **Evaluate both gates between bullets 3 and 4, always** — the top of this step already requires
+   it on the take-another-story path, and there is never a reason to do it later: gate 1 is
+   self-knowledge needing no call, and gate 2's input is in hand from the read above. Deferring
+   past bullet 4 cannot be chosen anyway, because which path you are on is not knowable until the
+   gates have answered — and if they then pass, bullet 4 has already moved your issues out of
+   `Development (AI)` and taken your slot label with them, which is the race lines above call *not
+   cosmetic*.
 
    **Reading it as "the early read also decides early" ends the run before those bullets**, so the
    cost record is never written, no notification is sent, and this step's own *"STEP 5 already sent

@@ -259,10 +259,14 @@ bare route list, and the phase opens each with a 32-hex token that parses and ma
 - **The route-list entries carry no token deliberately.** `adoptInviteTokenFromLocation` strips the
   query with `history.replaceState`, so a token there makes `finalPath` come back without it and
   the loop reports a redirect that did not happen.
-- **`65/65` is ARITHMETIC and `47/47` is the last measured run** — 9 assertions per landing across
-  two routes, 47 + 18. Nobody has run it: Chromium here cannot reach Supabase without the relay and
-  CI's `walk` job is skipped until `WALK_CI=1`. `docs/reference/running-locally.md` says which is
-  which and asks the next real run to replace it.
+- **The phase adds 10 assertions per landing route across two routes — `+20` checks and `+2`
+  screens — and BOTH of the walk's totals depend on which account ran it.** The last measured run
+  is 2026-09-01/02 (`23`/`44` named, `22`/`47` minted), so the checks figure becomes 64 named and
+  67 minted. The screens half is a projection over unchanged DEV data and is not a baseline.
+  `docs/reference/running-locally.md` carries the table and the re-derivation command; **do not
+  copy a bare total out of it into here**, which is how this line was wrong once already. Nobody
+  has run the phase: Chromium here cannot reach Supabase without the relay and CI's `walk` job is
+  skipped until `WALK_CI=1`.
 
 **PD-387 — `.claude/commands/queue-pickup.md` §The cost record.** One labelled block in one Linear
 comment, one line in the PR body. Three things a later session should not re-derive:

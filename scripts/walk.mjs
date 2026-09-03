@@ -1750,12 +1750,16 @@ const DEAD_INVITE_TOKEN = 'deadbeef'.repeat(4)
  * absent SEPARATELY on the signed-out half, because neither implies the
  * other**: a marker keyed on the Join button passes a preview drawn without
  * its action slot, and one keyed on the data passes a screen drawing only the
- * button. Both are leaks. (The narrow gap left: a null `members_count` renders
- * `null riders`, which `\b\d+ riders?\b` does not match — the private-club
- * and organizer alternatives are what cover that.)
+ * button. Both are leaks. (One gap is open and is left open knowingly: a null
+ * `members_count` renders `null riders`, which `\b\d+ riders?\b` does not
+ * match. The ride kind is still covered — `is organizing` is unconditional —
+ * but `Private club` is gated on `!isPublic`, so a PUBLIC club with a null
+ * count matches neither alternative. Closing it wants a marker on the club's
+ * name, which the preview takes from data this phase does not have.)
  *
- * **The two copy constants below are what the waits watch for, and waiting for
- * the skeleton to GO instead is a no-op**: `RouteGuard`
+ * **The waits below watch for a TERMINAL state — `DEAD_LINK_COPY` plus the
+ * per-kind sources — and waiting for the skeleton to GO instead is a no-op**:
+ * `RouteGuard`
  * replaces `children` on boot, so on a cold `goto` the guard splash is alone in
  * the DOM and the landing screen has not mounted at all — a predicate of the
  * form "the skeleton is absent" is true on its first evaluation and the wait
@@ -1922,11 +1926,10 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
     `signed out: no ${kind} data on screen`,
     `${kind} data is on screen with no session`
   )
-  // **The control, separately from the data**, because the two are not the
-  // same assertion and the club route proves it: keying the data marker on the
-  // Join button (as this phase first did) meant a preview drawn WITHOUT its
-  // action slot passed, and keying it on the data alone means one drawn with
-  // ONLY the action slot passes. Both are leaks and neither implies the other.
+  // **The control, separately from the data**, because neither implies the
+  // other: a marker on the Join button passes a preview drawn WITHOUT its
+  // action slot, and one on the data passes a screen drawing ONLY the button.
+  // Both are leaks.
   report(
     !claim.test(anonText),
     'signed out: no Join control on screen',
