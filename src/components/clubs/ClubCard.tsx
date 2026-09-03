@@ -61,7 +61,17 @@ import type { ClubListItem } from '@/types'
  * above the static content and takes the taps; the action lifts back over it
  * with `relative z-10`.
  */
-export function ClubCard({ club, joined }: { club: ClubListItem; joined: boolean }) {
+export function ClubCard({
+  club,
+  joined,
+  onJoined,
+}: {
+  club: ClubListItem
+  joined: boolean
+  /** Forwarded to `JoinClubButton` — see its own header for why the sheet
+   *  lives above this row rather than inside it. Unused on a joined card. */
+  onJoined?: (clubId: string) => void
+}) {
   const overflow = club.members_count - club.riders.length
   const TypeIcon = club.is_public ? Globe2Icon : Lock2Icon
   // task 7.4 — see `Avatar`'s own comment for the shape of this, including
@@ -150,7 +160,7 @@ export function ClubCard({ club, joined }: { club: ClubListItem; joined: boolean
         {joined ? (
           <UnreadCounter count={club.unread ?? 0} />
         ) : club.is_public ? (
-          <JoinClubButton clubId={club.id} clubName={club.name} />
+          <JoinClubButton clubId={club.id} clubName={club.name} onJoined={onJoined} />
         ) : (
           // `085`. A private club reached through the discovery accessor is
           // asked rather than joined — `club_members`' own INSERT policy admits

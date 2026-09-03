@@ -1,9 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { ExploreClubsList } from '@/components/clubs/ExploreClubsList'
+import { IntroductionPrompt } from '@/components/clubs/IntroductionPrompt'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
+import { dismissIntroductionPrompt } from '@/lib/clubs/introduction-dismissal'
 import { getExploreClubs } from '@/lib/data/clubs'
 import { getMyLocationText } from '@/lib/data/profile'
 import { nearLabel } from '@/lib/location/near-label'
@@ -41,8 +44,20 @@ import { queryKeys } from '@/lib/query/keys'
  * under the same heading** — so the number the rider taps is the number they
  * land on. `ExploreClubsList` owns that split; a version where the strip
  * counted three and this screen listed twelve was caught in review.
+ *
+ * **This screen owns the introduction sheet for a join that happens here**
+ * (`PD-384`) — `JoinClubButton` cannot hold it itself, because the same
+ * invalidate that makes a joined row leave this list can unmount the row
+ * before a second round trip (`hasIntroducedClub`) decides whether one is
+ * owed. `introducingClubId` is set once that decision comes back `onJoined`,
+ * and this screen renders `IntroductionPrompt` once, off that state, rather
+ * than the club detail page's own `showIntroductionPrompt` (`097`, PD-365) —
+ * a rider who lands on the club afterwards still gets it there too, since
+ * that rule reads `hasIntroducedClub` fresh rather than trusting this screen
+ * remembered.
  */
 export default function ExploreClubsPage() {
+  const [introducingClubId, setIntroducingClubId] = useState<string | null>(null)
   // The same three reads as `/clubs`, under the same keys — which is what makes
   // arriving here from the strip a cache hit rather than a second fetch, and
   // what keeps the strip's near count equal to the `Near <name>` section below
@@ -89,11 +104,28 @@ export default function ExploreClubsPage() {
                 There are no public clubs, yet!
               </p>
             ) : (
-              <ExploreClubsList clubs={clubs.data} near={nearLabel(position, city.data)} />
+              <ExploreClubsList
+                clubs={clubs.data}
+                near={nearLabel(position, city.data)}
+                onJoined={setIntroducingClubId}
+              />
             )}
           </div>
         )}
       </div>
+
+      <IntroductionPrompt
+        clubId={introducingClubId ?? ''}
+        open={!!introducingClubId}
+        onDismiss={() => {
+          if (introducingClubId) dismissIntroductionPrompt(introducingClubId)
+          setIntroducingClubId(null)
+        }}
+        onPosted={() => {
+          if (introducingClubId) dismissIntroductionPrompt(introducingClubId)
+          setIntroducingClubId(null)
+        }}
+      />
     </>
   )
 }
