@@ -90,7 +90,9 @@ back.**
 The `48/48` it replaces was 47/47 measured 2026-08-12, plus the consent-box assertion PD-214
 added to the refused-signup phase, which has **not** been run against DEV. **The account that measures the full total
 is whoever currently organises the earliest-departing ride, not a fixed name**: `checkEditRetention`
-picks the first candidate whose form actually renders, and `discoverDetailPaths` hands it whichever
+picks the first candidate whose form renders **and stays submittable after it flips the public box**
+(PD-311 — a clubless ride disables Save one way round, and the phase falls through to the club form
+rather than clicking a disabled button), and `discoverDetailPaths` hands it whichever
 ride is soonest regardless of who created it or when. **That follows from the section order, not
 from one sort**: `getRides` orders the upcoming window ascending and the previous one descending,
 so the soonest ride is first in the DOM only because the upcoming section is drawn first. A DEV
@@ -264,7 +266,16 @@ WALK_FIXTURES=1 RELAY_UPSTREAM=https://$DEV.supabase.co \
 It creates a ride and a club **through `/rides/new` and `/clubs/new`** rather than by insert,
 which exercises the two create forms end to end — nothing else in this repo submits them. It
 fills **only what is missing**, so it is idempotent and needs no cleanup pass; a second run
-creates nothing and still walks the same routes. The ride is dated a year out on purpose, and
+creates nothing and still walks the same routes.
+
+**The club is created FIRST and the ride is attached to it (PD-311), and that ordering is
+load-bearing.** `EditRideForm` disables Save while `wouldStrand = !clubId && !isPublic`, so a
+clubless fixture ride is one `checkEditRetention` cannot submit once it flips the public box — it
+clicked a disabled button and threw 30 s later, *before* any of its own assertions ran. Because
+`wanted` asks only for what is missing, `owned.club` is passed in too: a rider who already has a
+club still gets a clubbed ride rather than a clubless one.
+
+The ride is dated a year out on purpose, and
 the reason changed shape when `/rides` grew its Past rides section rather than going away:
 a departed fixture used to vanish from the list, so the next run created another that nothing
 listed and nothing removed. It is now filed under Past rides instead — no longer a leak, but
