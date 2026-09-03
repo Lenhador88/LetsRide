@@ -4,6 +4,7 @@ import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
 import { routes } from '@/lib/routes'
+import { narrowsToNobody, RIDE_AUDIENCE_REFUSAL } from '@/lib/rides/audience'
 import { readRideLocation, resolveDepartureZone, rideSchema } from '@/lib/validation/rides'
 import { wallClockToUtc } from '@/lib/utils'
 import type { ActionState } from '@/lib/actions/state'
@@ -418,17 +419,6 @@ export async function updateRide(
     return { error: parsed.error.issues[0]?.message ?? 'Check the form and try again.' }
   }
 
-  // The zombie shape `029` names: neither public nor in a club is a ride only
-  // its organizer could ever see again, with `ride_members` rows still
-  // attached to it. `EditRideForm` disables Save on this combination already;
-  // this is the guard for whatever reaches the action anyway.
-  if (!parsed.data.club_id && !parsed.data.is_public) {
-    return {
-      error:
-        'A ride needs to be public or belong to a club, or nobody but you could ever see it again. Make it public, or pick a club.',
-    }
-  }
-
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to edit a ride.' }
@@ -440,11 +430,36 @@ export async function updateRide(
   // cached row: the cache can hold a path a later render has already superseded,
   // and deleting the wrong object is worse than deleting none. `updateClub` reads
   // its previous image paths the same way and for the same reason.
+  // `is_public, club_id` join this read for PD-338: the audience rule is about
+  // the TRANSITION, so it cannot be answered from the submitted payload alone.
   const { data: previous } = await supabase
     .from('rides')
-    .select('meeting_point, start_place_id, map_card_path, map_detail_path, timezone')
+    .select(
+      'meeting_point, start_place_id, map_card_path, map_detail_path, timezone, is_public, club_id'
+    )
     .eq('id', rideId)
     .maybeSingle()
+
+  // The rule `narrowsToNobody`'s header states, enforced again here for
+  // whatever reaches the action without going through `EditRideForm`.
+  //
+  // **The stored pair comes from this read and never from a form field** — a
+  // client that can post the payload can post a claim about the prior shape
+  // with it, which would make this copy decorative.
+  //
+  // **A null `previous` neither refuses nor permits.** The ride is gone, or the
+  // caller cannot see it; inventing a refusal would report an audience problem
+  // for a ride that does not exist, so this falls through and lets the update
+  // match zero rows, which the not-found path already reports.
+  if (
+    previous &&
+    narrowsToNobody(previous, {
+      club_id: parsed.data.club_id,
+      is_public: parsed.data.is_public,
+    })
+  ) {
+    return { error: RIDE_AUDIENCE_REFUSAL }
+  }
 
   // `IS DISTINCT FROM` is the whole comparison the trigger makes, so this is the
   // same test — a whitespace-only or case-only edit clears the tile, because

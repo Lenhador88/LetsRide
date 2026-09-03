@@ -1265,7 +1265,7 @@ function fixturesPermitted(ref) {
  * **The club is created BEFORE the ride, and the ride is attached to it.**
  * That ordering is PD-311 and it is load-bearing rather than tidy. A clubless
  * ride is one `EditRideForm` refuses to save whenever the public box ends up
- * unticked — `wouldStrand = !clubId && !isPublic` disables Save — so
+ * unticked — `narrowsToNobody` disables Save on that transition — so
  * `checkEditRetention` clicks a disabled button and times out 30 s later,
  * *before* any of its own assertions run. A FAIL meaning "this phase did not
  * run" is indistinguishable from one meaning "this phase found something".
@@ -1987,8 +1987,8 @@ async function checkEditRetention(candidates, unavailable) {
   //
   // **Owning the row is not enough — the flip below has to leave Save
   // clickable, and on the ride form it does not always (PD-311).**
-  // `EditRideForm` disables Save while `wouldStrand = !clubId && !isPublic`,
-  // so unticking "public" on a ride that belongs to no club disables the very
+  // `EditRideForm` disables Save on the transition `narrowsToNobody` names, so
+  // unticking "public" on a ride that belongs to no club disables the very
   // button this phase clicks next, and `page.click` then waits out its full
   // timeout and throws — with none of this phase's assertions having run.
   // Which ride trips it flipped with PD-320 (the composer's `is_public`
@@ -1996,11 +1996,15 @@ async function checkEditRetention(candidates, unavailable) {
   // the public one; either way it depends on what the account happens to own,
   // which is why it read as flakiness rather than as a defect.
   //
-  // **Read the button rather than re-deriving the rule.** Encoding
-  // `!clubId && !isPublic` here would be a second copy of a guard PD-338 is
-  // actively reshaping, and it would go stale silently. `isEnabled` asks the
-  // app what it will accept, so this survives the guard being narrowed,
-  // widened or dropped.
+  // **PD-338 narrowed that guard and deliberately did not close this**: a ride
+  // that ARRIVED clubless and private now saves, but un-publishing a clubless
+  // *public* one is still the refused transition, so the trap is narrower
+  // rather than gone.
+  //
+  // **Read the button rather than re-deriving the rule.** A second copy of the
+  // predicate here would go stale silently — it has already been rewritten
+  // once. `isEnabled` asks the app what it will accept, so this survives the
+  // guard being narrowed again, widened or dropped.
   //
   // The club form has no such guard, so it is the natural fallback — the loop
   // already had the club as a second candidate and simply never reached it,

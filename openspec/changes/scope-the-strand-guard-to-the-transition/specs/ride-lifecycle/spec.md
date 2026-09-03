@@ -27,8 +27,21 @@ organizer issued:
 |---|---|
 | `is_public` true, `club_id` NULL | every signed-in rider not blocked with the organizer |
 | `is_public` true, club is public | every signed-in rider not blocked with the organizer |
-| `club_id` not NULL | that club's members (`private.is_club_member`) |
+| `club_id` not NULL | that club's members (`private.is_club_member`) **not blocked with the organizer** |
 | `is_public` false and `club_id` NULL | **nobody but the organizer** |
+
+**Every row is dominated by the block check**, which the live `rides` SELECT policy applies once
+across all three of its arms — `NOT private.is_blocked(auth.uid(), organizer_id)`. The rows are a
+lookup on the stored shape, so where two apply (a public ride in a public club) they agree by
+construction: the predicate below asks only whether the audience is **empty**, never which row
+produced it.
+
+**One consequence is stated rather than fixed, because fixing it would break decision #2.** A
+two-person club whose only other member is blocked with the organizer has, in fact, no standing
+audience — but the client cannot know that, and SHALL NOT try: blocking is enforced in RLS once,
+symmetrically, and a second copy of it in a component is a copy that can disagree. So the
+refusal SHALL fire there, protecting a crew member who already cannot see the ride. The cost is
+one over-refusal in a club of two; the alternative is a block predicate in the browser.
 
 Riders holding a **live invite** are deliberately NOT counted as a standing audience. `083`'s
 fourth `rides` SELECT arm — `private.has_live_ride_invite(id)`, live on DEV — means such a ride is
@@ -187,7 +200,20 @@ club and then left that club **can never edit that ride again** — not the titl
 point, not the departure time. The `USING` clause passes (they are still the organizer); the
 `WITH CHECK` fails on a column they did not touch.
 
-This is a live dead end reachable by `leaveClub`, which already ships. It is not hypothetical.
+**Two shipped routes reach it, and the requirement is about the STATE rather than either act.**
+`leaveClub` is one. The other is being **ejected**: `removeClubMember` (`src/lib/actions/club-members.ts`)
+calls the `security definer` RPC `public.remove_club_member`, live on both projects — `club_members`
+carries no admin DELETE policy, so a reader checking policies alone misses this route entirely. An
+organizer ejected from club X hits the identical `WITH CHECK` failure on a column they never
+touched.
+
+**So the copy SHALL name the state — "you are no longer a member of <club>" — and SHALL NOT
+assert that the organizer left.** Telling an ejected rider that leaving caused the refusal is the
+same defect this whole change exists to remove: a refusal asserting something the rider knows to
+be false. Neither the client nor the action can distinguish the two routes — nothing records
+which happened — so the sentence must be true of both.
+
+It is not hypothetical.
 
 **Two exits exist and both are already permitted by the policies as written:**
 
@@ -209,8 +235,8 @@ build session decides.
 
 The UI SHALL **show the Edit affordance and surface the refusal**, not hide it. Hiding it makes
 the organizer's own ride look like someone else's, which is the same undiagnosable state as the
-permission-denied case. The message SHALL name the club, say that leaving it is why the save was
-refused, and offer the two exits above.
+permission-denied case. The message SHALL name the club, say that **no longer being a member of
+it** is why the save was refused, and offer the two exits above.
 
 **This change SHALL NOT widen the `rides` UPDATE policy**, and any future proposal that does must
 say loudly that it is a visibility change: removing the `is_club_member` conjunct would let an
@@ -222,8 +248,10 @@ the club's audience being written by an outsider.
 - **WHEN** a rider who organized a club ride calls `leaveClub` and then submits any edit to that
   ride
 - **THEN** the `WITH CHECK` SHALL refuse the row even though no club field was changed
-- **AND** the screen SHALL name the club, explain that leaving it caused the refusal, and offer
-  cancelling the ride or making it public and detaching it
+- **AND** the screen SHALL name the club, say that no longer being a member of it caused the
+  refusal, and offer cancelling the ride or making it public and detaching it
+- **AND** the same SHALL hold for an organizer EJECTED by an admin through `removeClubMember`,
+  who reaches the identical state by a route the copy must not contradict
 
 #### Scenario: An ex-member detaches the ride and leaves it private
 

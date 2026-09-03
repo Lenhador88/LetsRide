@@ -145,9 +145,24 @@ true iff the submitted pair is clubless-and-private **and** the stored pair is n
   not-found path already reports that.
 
 **Last-write-wins is unchanged** (base `design.md` §D3). Two tabs on the same ride can therefore
-show an enabled Save that the action then refuses, because the action's fresh read is
-authoritative. That refusal must keep the entered values, which `EditRideForm`'s controlled state
+show an enabled Save that the action then refuses, because the action's fresh read is later than
+the form's. That refusal must keep the entered values, which `EditRideForm`'s controlled state
 and `retaining` already guarantee.
+
+**The action-side copy becomes check-then-act, and it is not authoritative — say so rather than
+implying otherwise.** Today's guard is a pure function of the submitted payload and race-free by
+construction. After this change the action reads `previous` and then issues a separate `UPDATE`,
+so under READ COMMITTED a concurrent commit can move the stored shape between the two statements:
+a ride that had a club when the read landed can be detached by the other tab before the write.
+The window is small and the outcome is a permitted write that the rule would have refused — never
+a refused write that should have succeeded, and never a visibility change, since RLS is what
+actually decides who sees the row.
+
+**That is acceptable only because §D2 already establishes the rule as advisory.** A guard with no
+CHECK, trigger or policy behind it cannot be authoritative at any isolation level, and closing
+this window would mean expressing the rule in the database — which is the Wide-versus-Narrow
+question's neighbour and not this change's. Recorded so a later reader does not mistake the
+action's copy for enforcement.
 
 ### D4 — The copy, written out so the build session does not have to invent it
 
@@ -189,26 +204,66 @@ than narrate it. What survives is the one durable line: why the hint is shared, 
 
 ### D5 — The walk, and the PD-311 boundary
 
-`checkEditRetention` (`scripts/walk.mjs:1922`) picks a ride the walking rider owns, **flips
-`is_public` in whichever direction the ride happens to sit**, and then submits a whitespace-only
-required field to get a refusal it can measure retention against. Its own comment already records
-that it must read `role="status"` and never `role="alert"`, because both edit forms draw a live
-alert when the box is unticked.
+`checkEditRetention` picks a ride the walking rider owns, **flips `is_public` in whichever
+direction the ride happens to sit**, and then submits a whitespace-only required field to get a
+refusal it can measure retention against. Its own comment already records that it must read
+`role="status"` and never `role="alert"`, because both edit forms draw a live alert when the box
+is unticked.
+
+**Line numbers are deliberately not cited here.** The first draft cited `scripts/walk.mjs:1922`,
+which was `origin/development`'s; PD-311 travels on the same branch and had already moved it by
+the time this file was committed. A citation that goes stale inside one branch is worse than none.
 
 The interaction is exact and it is why the two issues share a territory:
 
-| Fixture ride | Flip | Today | After this change |
+| Fixture ride | Flip | Before PD-311 | After both |
 |---|---|---|---|
 | clubless, private | → public | fine | fine |
-| clubless, public | → private | **Save disabled, no submit, phase fails** | **still disabled — Narrow refuses this transition** |
+| clubless, public | → private | **Save disabled, no submit, phase fails** | **still disabled — Narrow refuses this transition — but the phase now skips the candidate instead of clicking it** |
 | in a club | either | fine | fine |
 
-So **Narrow does not fix PD-311**, and this change must not pretend it does. What it does is make
-the trap describable: the phase needs a ride whose flip does not cross the guard, or it needs to
-assert the disabled-Save state deliberately instead of tripping over it. The requirement above
-pins the two ARIA roles so whatever PD-311 does, it keeps reading the action's error rather than
-the live warning. Building the walk fix is PD-311's; this change's task list only records what
-PD-311 must be told.
+So **Narrow does not fix PD-311**, and this change must not pretend it does: un-publishing a
+clubless public ride is precisely the transition Narrow still refuses, so the flip still cannot
+reach the action.
+
+**PD-311 closes it from the other side, on this same branch, and the middle column above describes
+a walk that no longer exists here.** `checkEditRetention` now reads
+`page.isEnabled('form button[type="submit"]')` after the flip, un-flips and moves to the next
+candidate when Save is disabled — falling through to the club edit form, which carries no such
+guard — and `provision()` attaches the fixture ride to the fixture club so a usable candidate
+exists in the first place. Only when *no* candidate is submittable does it report a named failed
+assertion, instead of timing out 30 s on a disabled button before any of its own assertions run.
+
+The requirement above pins the two ARIA roles so that fix keeps reading the action's error rather
+than the live warning.
+
+### D5b — The `rides` UPDATE triggers this change makes reachable for a new population
+
+**Nothing here is new code and nothing here is a migration.** What is new is *who reaches it*: a
+clubless private ride could not be updated at all before this change — Save disabled, action
+refused — and PD-320 made that shape the composer's default output. So an entire population of
+rides is about to run the ordinary `BEFORE UPDATE` path for the first time. `rides` carries six
+triggers; two of them fire on this path and neither was mentioned in the first draft:
+
+- **`clear_ride_map_tiles`** — `WHEN (old.meeting_point IS DISTINCT FROM new.meeting_point OR
+  old.start_place_id IS DISTINCT FROM new.start_place_id)`. On a geocoded (non-picked) ride its
+  `else` branch nulls `start_place_id`, `latitude`, `longitude`, `geocode_confidence` and both
+  tile paths.
+- **`protect_picked_ride_location`** — nulls `geocode_confidence` and both tile paths.
+
+**Why this is a note rather than a task.** `updateRide` already re-invokes `resolve-ride-location`
+after a real location change, and has since `067`; the clearing and the re-render are one
+established pair that every *other* ride's edit has always used. This change routes more rides
+through it, it does not alter it. The motivating scenario in §Why — *fixing the meeting point you
+typed wrong* — is exactly that pair working.
+
+**What it does interact with is an already-open problem, and the connection is worth writing
+down.** The re-render depends on `resolve-ride-location`, which `CLAUDE.md` §Supabase Rules
+records as **deployed-stale on both projects** behind PD-236, with `deploy-functions.yml` skipped
+until `SUPABASE_ACCESS_TOKEN` lands (PD-369) — and PD-385 is open on rides that carry a real
+coordinate and still render no tile. If that function is not rendering, this change increases the
+number of rides that can *lose* a tile and not get it back. That is PD-385's to diagnose; the
+contribution here is naming the population it just grew.
 
 ### D6 — Every state of the edit screen, re-walked against the new predicate
 

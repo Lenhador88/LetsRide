@@ -9,6 +9,7 @@ import { PlaceSearchField, type PlaceValue } from '@/components/ui/PlaceSearchFi
 import { Textarea } from '@/components/ui/Textarea'
 import { createRide } from '@/lib/actions/rides'
 import { RECENT_STARTS } from '@/components/rides/recentStarts'
+import { RIDE_AUDIENCE_HINT } from '@/lib/rides/audience'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState } from '@/lib/actions/state'
 import { retaining, seedRetained, useRestoreSelection, wasChecked } from '@/lib/actions/retain'
@@ -350,10 +351,9 @@ export function CreateRideForm({
           label="Make this ride public"
           defaultChecked={wasChecked(state.retained, 'is_public', false)}
         />
-        <p className="pl-8 text-xs font-medium text-muted">
-          Anyone signed in can see and join a public ride. A private ride is visible to its club,
-          and to riders you invite.
-        </p>
+        {/* Shared with `EditRideForm` rather than copied — see
+            `RIDE_AUDIENCE_HINT`. The rendered sentence is unchanged. */}
+        <p className="pl-8 text-xs font-medium text-muted">{RIDE_AUDIENCE_HINT}</p>
       </div>
 
       {state.error && (
