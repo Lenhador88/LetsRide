@@ -35,12 +35,18 @@ import type { RideListItem } from '@/types'
  * mechanism already exists (`RideCard`'s own attendance controls), so this
  * change adds nothing here.
  *
- * **`anchorKey` is the scroll target only — PD-366.** It is `mergeClubTimeline`'s
- * own key for this row (`ride:<uuid>`), set as this card's DOM `id` so a Back
- * from elsewhere on the timeline can scroll to it. `RideCard`'s own link still
- * goes to the plain ride detail screen: that screen's own Back is unconditional
- * (`RideHeader`'s `current === 'plan'`), not driven by this parameter, and nothing
- * here changes that.
+ * **`anchorKey` is both ends of the return trip now — PD-366, then PD-378.** It
+ * is `mergeClubTimeline`'s own key for this row (`ride:<uuid>`), and it does two
+ * jobs with one value: it is this card's DOM `id`, so a Back from elsewhere on
+ * the timeline can scroll to it, and it rides out on `RideCard`'s link so the
+ * ride's own Back can come back to it.
+ *
+ * PD-366 wired only the first half, and this docstring recorded the gap: the
+ * ride detail's Back was unconditional (`RideHeader`'s `current === 'plan'` sent
+ * every rider to `/rides`), so a rider who opened a ride from a club timeline
+ * left the club entirely and lost their place on the way back. Passing the same
+ * key through `returnAnchor` closes it — one identity for the row, never a
+ * second one invented for the trip out.
  */
 export function ClubTimelineRideCard({
   ride,
@@ -70,7 +76,7 @@ export function ClubTimelineRideCard({
         </span>
       </p>
 
-      <RideCard ride={ride} showClub={false} />
+      <RideCard ride={ride} showClub={false} returnAnchor={anchorKey} />
     </section>
   )
 }

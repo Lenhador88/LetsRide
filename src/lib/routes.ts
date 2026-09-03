@@ -230,6 +230,77 @@ export function clubThreadFromTimeline(threadId: string, anchor: string): string
 }
 
 /**
+ * The same ride, opened from a specific row on a club's own timeline — PD-378.
+ * `clubThreadFromTimeline`'s shape one domain over, and deliberately the same
+ * parameter (`RETURN_ANCHOR_PARAM`) rather than a second one: the thing being
+ * carried is identical — `mergeClubTimeline`'s own key for the row that was
+ * tapped — and one name means `clubTimelineAnchorSchema` bounds both.
+ *
+ * **Only the club timeline builds this link**, which is why `RideCard` takes the
+ * anchor as an *optional* prop rather than this becoming the default shape.
+ * `/rides` and `/rides/explore` have no club row to return to at all and keep
+ * the plain `routes.ride`.
+ *
+ * **`/clubs/detail/rides` is the interesting one, and PD-378 asked about it
+ * directly** — *"whether the sub-page routes have the same problem … and whether
+ * the same fix covers them"*. It has the same problem (tap a ride there, press
+ * Back, and you land on `/rides` outside the club) and **this fix does not cover
+ * it**. The reason is structural rather than an oversight: what this pair
+ * carries is a *row*, and every anchor it can build resolves to
+ * `routes.club(id)` — the club's **timeline**. A rider who was on the club's
+ * Rides sub-page wants to come back to that sub-page, which is a return *route*,
+ * not a return row. Expressing one means carrying a path and therefore an
+ * allowlist to bound it (`back-navigation.ts`'s `BACK_ORIGINS`), which is a
+ * different mechanism with a redirect surface this one deliberately does not
+ * have. Filed rather than bolted on.
+ *
+ * Outside `routes` for `clubThreadFromTimeline`'s own reason — `bootRestoreTarget`'s
+ * suite calls every member of `routes` with one argument.
+ */
+export function rideFromClubTimeline(rideId: string, anchor: string): string {
+  return withReturnAnchor(detail(detailPaths.ride, rideId), anchor)
+}
+
+/**
+ * Where a ride plan's `Back` goes — PD-378. The header arrow and `useSwipeBack`
+ * both read it, so they cannot disagree; that is the defect PD-341 closed on the
+ * thread screen and the reason `clubThreadReturnTo` is one value read twice.
+ *
+ * **The club is the ride's own `club_id`, never a URL parameter**, and that is
+ * the load-bearing choice here. A club id in the link would be a second copy of
+ * a fact the row already owns, and one that can disagree with it — a ride moved
+ * between clubs, or a hand-edited URL, would send the rider back to a timeline
+ * the ride is not on. Reading it off the ride makes the wrong answer
+ * unrepresentable, and it is still parsed here rather than trusted, for
+ * `backFromCreateScreen`'s reason: the only string this can ever build is
+ * `routes.club(<uuid>)` with a fragment, so there is no path to allowlist and no
+ * open redirect to close.
+ *
+ * **The cost, stated because it is visible:** `club_id` arrives with the ride,
+ * so for the moment before that read lands this answers `fallback` — the rider
+ * who taps Back inside that window gets today's destination rather than the
+ * club. That is strictly better than today (which answers `fallback` always) and
+ * it is why the ride is not *awaited* here; the alternative was a `club` query
+ * parameter, which buys an immediately-correct arrow at the price of the
+ * disagreement above.
+ *
+ * **Absent or unparseable anchor answers `fallback`** — a notification tap, a
+ * pasted URL and a reload all produce exactly that, and all land the rider
+ * somewhere that certainly exists. It never asks whether the anchored row still
+ * exists: that is the club timeline's own no-op
+ * (`resolveClubTimelineScrollTarget`), evaluated once the rows are on the page.
+ */
+export function rideReturnTo(
+  clubId: string | null | undefined,
+  rawAnchor: string | null | undefined,
+  fallback: string
+): string {
+  if (!rawAnchor || !clubTimelineAnchorSchema.safeParse(rawAnchor).success) return fallback
+  if (!clubId || !clubIdSchema.safeParse(clubId).success) return fallback
+  return `${routes.club(clubId)}#${rawAnchor}`
+}
+
+/**
  * Which club a create screen was opened from (PD-283).
  *
  * It does two jobs and is deliberately one parameter for both: it seeds the

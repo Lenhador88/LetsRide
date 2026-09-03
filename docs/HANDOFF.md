@@ -215,6 +215,55 @@ select count(*) from profiles p
 **The durable rule: `is_default` is DATA and must be read, never asserted from a screen's position
 in the flow.** The same trap is available to any future list that grows a membership control.
 
+## Back from a ride returns to the club at that row — 2026-09-03
+
+**PD-378.** Opening a ride from a club timeline and pressing Back left the club altogether: the ride
+plan's arrow was `current === 'plan' ? '/rides' : …`, unconditional, so the rider landed on the rides
+list and had to navigate back into the club and scroll down again.
+
+**The issue's own premise was wrong in a way worth keeping**, because the next reader will make the
+same reading: it says *"the destination is already right … so this is about the offset, not the
+route"*, on the strength of PD-262 having fixed `ClubDetailHeader`'s back. That is a different
+screen's back button. The ride's own back never returned to the club at all, so this was route
+**and** offset, and fixing the offset alone would have fixed nothing.
+
+**The mechanism already existed and needed no new concept** — PD-366 built it for threads. A club
+timeline row's key (`ride:<uuid>`) is now carried out on the ride card's link in
+`RETURN_ANCHOR_PARAM` (the same `row=` the thread screen uses, so `clubTimelineAnchorSchema` bounds
+both) and turned back into `/clubs/detail?id=<club>#<anchor>` by `rideReturnTo`. The club timeline's
+existing anchor hunt does the rest — extending a paged stream to look for the row, **bounded by
+`CLUB_TIMELINE_ANCHOR_WINDOWS` (3) rather than searching until it finds it**. A ride far enough back
+in a long timeline is a silent no-op and the rider lands at the top, which is the original complaint;
+that bound is PD-375's and this story did not move it.
+
+Four things a later session should not have to re-derive:
+
+- **The club is read off `ride.club_id`, never a URL parameter**, so the wrong answer is
+  unrepresentable — a club id in the link is a second copy of a fact the row owns and can disagree
+  with it. **The stated cost:** `club_id` arrives with the ride, so the arrow answers `/rides` for the
+  moment before that read lands and then sharpens. Strictly better than before (which answered
+  `/rides` always); `rideReturnTo`'s docstring prices the alternative.
+- **`/clubs/detail/rides` has the same problem and this fix does NOT cover it** — PD-378 asked that
+  question directly and this is the answer. Tap a ride on a club's Rides sub-page, press Back, and
+  you land on `/rides`, outside the club. The reason is structural: this mechanism carries a *row*,
+  and every anchor it builds resolves to `routes.club(id)` — the **timeline**. Coming back to the
+  Rides sub-page is a return *route*, which means carrying a path and an allowlist to bound it
+  (`back-navigation.ts`'s `BACK_ORIGINS`) — a different mechanism with a redirect surface this one
+  deliberately does not have.
+- **Four ride screens drop the anchor on the way back to the plan**, deliberately and not silently.
+  Crew, Chat and Invite go back via `routes.ride`, which carries no `row`, and the links reaching
+  them carry none either — so plan → crew → back lands on a plan whose back is `/rides` again.
+  **`/rides/detail/edit` is the fourth and is easy to miss**, because it draws a plain `Header`
+  rather than `RideHeader` and so is invisible to a reader auditing that component.
+- **The browser/Android hardware back is untouched.** It is a history pop, not this arrow; this
+  change neither improves nor breaks it. The in-app arrow and the edge swipe share one value
+  (`useSwipeBack(backHref)`), so those two cannot disagree — the defect PD-341 closed once already.
+
+```bash
+git grep -n "rideFromClubTimeline\|rideReturnTo" -- src/
+npx vitest run src/lib/__tests__/club-timeline-return.test.ts
+```
+
 ## Where this left off — 2026-09-03, a queue firing closed one stale story and one race, and parked one
 
 **Group taken into `slot-2`: PD-380, PD-381, PD-377 — one dropped, two built.**
@@ -547,10 +596,11 @@ archived**; and **`docs/reference/schema.md` has no `notifications` row at all**
 list assumed it did — that absence predates this bundle and is the one documentation gap it did not
 close.
 
-**One scope narrowing, stated rather than silent:** PD-366's task 11.3 names the ride card among the
-links that should carry the return anchor, and its outbound link does not carry one. Nothing consumes
-it — only the thread screen reads the parameter — so it would be a prefill nothing reads. The ride
-card does get its anchor id, so returning TO it works.
+**One scope narrowing PD-378 has since closed:** PD-366's task 11.3 names the ride card among the
+links that should carry the return anchor, and it did not carry one — correctly at the time, because
+only the thread screen read the parameter, so it would have been a prefill nothing reads. PD-378 made
+the ride screen read it; the ride card carries it now, and both ends of that trip are one string. See
+§Back from a ride returns to the club at that row.
 
 ## The open OpenSpec changes, and the collision between two of them
 

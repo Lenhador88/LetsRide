@@ -22,7 +22,7 @@ import type { RiderLocation } from '@/lib/location/rider-location'
 import { useRiderPosition } from '@/lib/location/use-rider-position'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
-import { DETAIL_ID_PARAM, routes } from '@/lib/routes'
+import { DETAIL_ID_PARAM, RETURN_ANCHOR_PARAM, routes } from '@/lib/routes'
 import {
   cn,
   formatRelativeTime,
@@ -85,7 +85,13 @@ export default function RidePage() {
 }
 
 function RideScreen() {
-  const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
+  const params = useSearchParams()
+  const id = params.get(DETAIL_ID_PARAM) ?? ''
+  // PD-378. Read raw and passed on unvalidated — `rideReturnTo` parses it with
+  // `clubTimelineAnchorSchema` at the one point it is turned into a
+  // destination, so a junk value falls back there rather than being screened
+  // twice in two places that could drift apart.
+  const returnAnchor = params.get(RETURN_ANCHOR_PARAM)
   const ride = useQuery(queryKeys.rides.detail(id), () => getRide(id))
 
   // For the location row's `12 km away` (PD-340). Its own read on the shared
@@ -141,6 +147,13 @@ function RideScreen() {
         current="plan"
         isCrew={isCrew}
         isOrganizer={ride.data?.is_organizer}
+        // PD-378 — the club timeline row this ride was opened from, and the
+        // club it belongs to. The anchor comes out of the URL so it is there on
+        // the first pass; the club comes off the ride, so the arrow answers
+        // `/rides` until the read lands and then sharpens. `rideReturnTo` owns
+        // that trade and prices the alternative.
+        clubId={ride.data?.club_id}
+        returnAnchor={returnAnchor}
       />
 
       {/* No `.pt-header-sub-extra` any more: the shell reserves the 96px header
