@@ -64,18 +64,23 @@ export const CLUB_MESSAGES_PAGE_SIZE = 200
  * `not … is null` rather than an `is null` in `getClubThreadUnread`, which
  * asks the opposite question. What must not drift is the rule and its reason.
  *
- * **The cost this rule used to carry, closed by PD-375.** The announcement
- * row used to be a WINDOW: `CLUB_TIMELINE_LIMIT` was a wall at 20, the club
- * timeline did not paginate, and no destination in its foot drew an
- * introduction door — so a **current** member with twenty newer events above
- * their join had no browse route to their own introduction once this filter
- * took it off the Threads list. `add-club-timeline`'s cancellation of PD-374
- * was made on the strength of this closing: the timeline now pages
+ * **The cost this rule used to carry, closed by PD-375 — within a bound,
+ * not unconditionally.** The announcement row used to be a WINDOW:
+ * `CLUB_TIMELINE_LIMIT` was a wall at 20, the club timeline did not paginate,
+ * and no destination in its foot drew an introduction door — so a
+ * **current** member with twenty newer events above their join had no
+ * browse route to their own introduction once this filter took it off the
+ * Threads list. `add-club-timeline`'s cancellation of PD-374 was made on the
+ * strength of this closing: the timeline now pages
  * (`design.md` of `page-the-club-timeline-on-scroll`), so a rider who scrolls
- * far enough always reaches their own join row and its door, at whatever
- * depth. **Not** the welcome club either way, which `097` refuses
- * introductions to outright (`and not c.is_default`), so the
- * highest-frequency-join club in the app cannot produce this state at all.
+ * reaches their own join row and its door within `CLUB_TIMELINE_MAX_WINDOWS`
+ * windows of paging — roughly 600 joins deep, per that constant's own header
+ * — not "at whatever depth": the ceiling and the session-local paging state
+ * both bound a single visit, so a join older than that remains reachable
+ * only by a deep link or a `098` notification, same as before. **Not** the
+ * welcome club either way, which `097` refuses introductions to outright
+ * (`and not c.is_default`), so the highest-frequency-join club in the app
+ * cannot produce this state at all.
  *
  * `097` grants `authenticated` SELECT on this column and no INSERT or UPDATE
  * (measured on DEV, 2026-09-02), which is what makes filtering on it safe
