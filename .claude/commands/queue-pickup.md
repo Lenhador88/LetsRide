@@ -190,6 +190,10 @@ without reaching STEP 5, and STEP 4b deliberately creates nothing, so a follow-u
 way here is lost unless this step writes it out. **Put the sub-4 items in the `Needs help`
 comment**, since there is no PR body here to hold them.
 
+**§The cost record goes in that same comment**, headed `parked (Needs help)`. This exit is usually
+cheap — it is the one taken *before* building — and a short block saying so is exactly the datum
+that separates an hour wasted from ten minutes spent correctly.
+
 ---
 
 ## STEP 3 — Confirm the claim
@@ -320,7 +324,9 @@ Follow `CLAUDE.md` exactly. In particular:
   the *proposal* — the only artifact in this pipeline with no automated gate at all, since
   `openspec/` runs zero CI jobs.
 - Verify locally: `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`.
-  Run `PGPASSWORD=postgres npm test` if anything under `supabase/**` changed.
+  Run `PGPASSWORD=postgres npm test` if anything under `supabase/**` changed. **Time each one as
+  you run it** — `s=$(date +%s); <gate>; echo "$(( $(date +%s) - s ))s"` — because §The cost record
+  needs the durations and a gate is not re-run to measure it.
 - A migration that changes a policy must add an assertion.
 - Update `docs/HANDOFF.md` as part of landing the work, not as a separate task.
 - **If it turns out mid-build that this story needs something another unfinished issue is meant to
@@ -669,7 +675,8 @@ live RLS hole letting any signed-in rider post a ride into any club.
    date -u +%FT%TZ     # at spawn — and again at each check; the elapsed time is the bound's clock
    ```
 2. **Push the branch.** Then open **one** PR against **`development`**, with the `## Folded in`
-   section from STEP 4b in the body, or nothing there if nothing travelled.
+   section from STEP 4b in the body, or nothing there if nothing travelled — and §The cost record's
+   **one line**, which every PR a firing opens carries.
 
    **A group gets one PR naming every issue in it**, with a heading per story and a line saying
    which collision put them together — that sentence is the only place a reader of the merged
@@ -744,8 +751,10 @@ live RLS hole letting any signed-in rider post a ride into any club.
    above all **do not arm a check-in to come back to it later**.
 
    **Park properly — this is a §If you get stuck exit and owes everything that exit owes**: the
-   push notification (`Done ; ) <ids> parked, needs you — CI red on <check>`), and the STEP 4b
-   triage list filed before you stop, because STEP 5 will not run to file it. A park with no push
+   push notification (`Done ; ) <ids> parked, needs you — CI red on <check>`), the STEP 4b
+   triage list filed before you stop because STEP 5 will not run to file it, and §The cost record's
+   block in the `Needs help` comment — **three CI attempts is the expensive way to reach this exit,
+   so it is the one whose cost is most worth writing down**. A park with no push
    means the owner's first signal is the next firing's three-hour stall clock, with the whole queue
    stopped in the meantime.
 
@@ -872,6 +881,10 @@ That is why they are numbered and cross-referenced by number.
    one line on what landed **for that story**, what was folded into it, a link to each story filed
    **or updated**, and the deploy state from bullet 3. One shared comment pasted three times is
    worse than none — the owner reads an issue to find out what happened to *it*.
+
+   **Then §The cost record's block, on the FIRST issue of the group only**, with the other issues'
+   comments carrying its one-line summary and a pointer. It is a fact about the firing rather than
+   about a story, so it is the one thing here that is deliberately not written per issue.
 5. **Send one push notification** for the whole group with the `PushNotification` tool:
    `Done ; ) <issue ids> <short title>`. One session, one notification — three pushes for one
    merge is exactly the volume `CLAUDE.md` refuses, and they would all say the same thing. This is
@@ -892,10 +905,18 @@ That is why they are numbered and cross-referenced by number.
    A queue that also messages itself has two records of the same fact, and the second one is the
    one that goes stale.
 
-   **Then go to STEP 6**, which decides whether you take another story or end — and, when it
-   ends, hands off to STEP 7, which decides whether this session is archived or left for the owner
-   to read. Those two are the only things that happen after this bullet, and neither sends
-   anything to anyone.
+   **Then go to STEP 6 — unless you already ran it between bullets 3 and 4, which is where it
+   belongs and where it sends you back here.** It decides whether you take another story or end,
+   and when it ends it hands off to STEP 7, which decides whether this session is archived or left
+   for the owner to read. **Never run it twice**: a second pass over a board that no longer holds
+   the story you just claimed will claim a *different* one into the same slot, which is the
+   "never take a second one while the first is still open" rule broken by bookkeeping.
+
+   **When STEP 6 ends the run, those two steps are the only things that follow this bullet and
+   neither sends anything to anyone. When it took another story, what follows this bullet is
+   STEP 3 for that story** — STEP 6's tail says so, and this is the only place that says it
+   forwards. Ending here instead strands the story you just claimed in `Development (AI)` wearing
+   your slot label with nobody building it, which no firing can tell from a live build.
 
    **What a freed slot costs when you do end: it waits for the top of the hour.** Finish at 10:05
    and the next story starts at 11:00, not at 10:06 — unless STEP 6's gates let you take it
@@ -974,10 +995,16 @@ bullet 2.** Then:
 **Only after the merge and STEP 5's deploy check** — a session in the middle of a build has nothing
 to decide here.
 
-**Claim before you release, and this ordering is not cosmetic.** If you are going to take another
-story, run this whole step — both gates, the collision check and the claim write — **between STEP
-5's bullet 3 and bullet 4**, so your slot label never leaves `Development (AI)`. Move the finished
-issues to `Deployed to DEV` afterwards.
+**Claim before you release, and this ordering is not cosmetic.** Run both gates — and, if they
+pass, the collision check and the claim write — **between STEP 5's bullet 3 and bullet 4**, so your
+slot label never leaves `Development (AI)`.
+
+**Then go back and finish STEP 5 for the group you just merged — bullets 4, 5 AND 6 — before you
+start anything new.** Not bullet 4 alone: bullet 5 is the push notification and bullet 6 carries
+§The cost record's pointer, and a session that jumps straight from a claim into the next story
+leaves the finished group with no notification and no record, which is the same loss the
+fail-closed exit above is written to prevent. **This step is an interruption of STEP 5, not a
+replacement for its tail.**
 
 **What the natural order costs:** bullet 4 moves every issue you hold out of `Development (AI)`,
 which takes your slot label with them, and the next firing counts that slot **free**. An hourly
@@ -995,6 +1022,31 @@ happens to land on. **The slot is yours until you have either re-filled it or gi
    ```
    mcp__Claude_Code_Remote__get_session          # external_metadata.usage.output_tokens
    ```
+
+   **Take that read before STEP 5's bullet 4 writes its comment, on every path — not only the
+   path that takes another story.** STEP 6 runs either way, so the call is made either way; the
+   only thing at stake is whether its answer arrives in time for §The cost record's two token rows,
+   and taking it a few bullets early costs nothing and adds no call. A read taken after the comment
+   is written is a row that says `not available` on a session that could have answered.
+
+   **That early read CACHES the answer; it does not move the EXIT.** **The fail-closed exit never
+   skips STEP 5's bullets 4, 5 and 6** — the record and the notification are written first,
+   whichever way the gate goes, and only then does the session end via STEP 7.
+
+   **Evaluate both gates between bullets 3 and 4, always** — the top of this step requires it
+   unconditionally, and there is never a reason to do it later: gate 1 is
+   self-knowledge needing no call, and gate 2's input is in hand from the read above. Deferring
+   past bullet 4 cannot be chosen anyway, because which path you are on is not knowable until the
+   gates have answered — and if they then pass, bullet 4 has already moved your issues out of
+   `Development (AI)` and taken your slot label with them, which is the race lines above call *not
+   cosmetic*.
+
+   **Reading it as "the early read also decides early" ends the run before those bullets**, so the
+   cost record is never written, no notification is sent, and this step's own *"STEP 5 already sent
+   the notification and wrote the record"* becomes false. That is not a corner case: a
+   Routine-minted firing does not hold `get_session` at all (PD-241's inventory), so the
+   fail-closed branch is the *ordinary* path, and deciding on it early would silently strip the
+   record off every firing the queue runs.
 
    **If that tool will not answer, end the session (via STEP 7) — this one fails CLOSED.** An
    `InputValidationError` is a deferred schema, so `ToolSearch` (`+get_session claude code
@@ -1016,11 +1068,19 @@ owner-directed session's job rather than a firing's.
 tool exposes it, and the harness's own compaction is lossy summarisation you cannot trigger. **So
 ending the session IS the clear**, and these two numbers are what decide when to spend one.
 
-**If either gate fails, end the session — at STEP 7, not here.** Say nothing to anyone: STEP 5 already sent the
-notification and wrote the record, the leftover stories are still in `Queued (AI)`, and the next
+**If either gate fails, end the session — at STEP 7, not here.** Say nothing to anyone: STEP 5
+sent the notification and wrote the record — after bullets 4, 5 and 6, which this exit never
+skips — the leftover stories are still in `Queued (AI)`, and the next
 hourly firing will dispatch them into a fresh window.
 
 ### If both gates pass, take the next story
+
+**Everything below runs only in a session that holds `get_session`, which today means a
+hand-spawned one.** The gate above fails closed and a Routine-minted firing does not hold the
+connector at all (PD-241's inventory), so on every firing the queue actually runs this half is
+unreachable and the run ends after one group. It is kept whole rather than trimmed because the
+thing that makes it live again is a connector attachment rather than a code change — PD-241 is
+where that would be recorded.
 
 ```
 mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  state=<Queued (AI)>
@@ -1066,7 +1126,8 @@ Losing a race costs one story an hour; winning one you should have lost costs tw
 one story on two branches, which nothing downstream can see — `queue-pickup.md` STEP 3 says plainly
 that both children read the status they expect.
 
-**Then start it clean, and start it at STEP 3:**
+**Finish STEP 5's bullets 4, 5 and 6 for the merged group first** — see the top of this step. Only
+then start the new story, clean, at STEP 3:
 
 - **A new branch off the freshly-pulled `development`**, never a second commit on the merged one:
   `git checkout -B claude/<slug> origin/development`. Your previous PR is merged; stacking on it
@@ -1126,6 +1187,16 @@ test, and anything failing one of them stays:
 **Archiving is the LAST action of the run, after every write.** It ends the session, so anything
 not already in Linear, the PR or the push is lost with it — including a report you were about to
 give. Write first, archive second, and never the other way round.
+
+**§The cost record is one of those writes, and it is the one this step can silently eat.** Every
+figure in it lives in this transcript and nowhere else — the STEP 0 stamp, each subagent's
+completion notification, each gate's `date` — so archiving before writing it destroys the only
+copy. Confirm it is on the board before this step runs.
+
+**Its two token rows are filled from STEP 6's budget read, not from this step's call.** That read
+is taken before STEP 5's bullet 4 on every path (STEP 6 says so), so `external_metadata.usage` is
+in hand before the comment is written and nothing here adds a call to get it. A session that does
+not hold the tool wrote `not available` in those rows and nothing changes here.
 
 ```
 mcp__<connector>__get_session                      # session_id omitted -> describes the caller
@@ -1203,6 +1274,11 @@ parking exit in this file: here and STEP 2c. **"Tell me what you need" and "here
 options, ranked" are different messages**, and only the second is one the owner can act on
 without reconstructing the problem first.
 
+**Write §The cost record into the `Needs help` comment too.** This is the exit it exists for: a
+firing that spent an hour and parked is the run whose cost the owner most needs to see, and it is
+the run least likely to volunteer it. Same block, heading saying `parked (Needs help)` and why,
+every row it has — there is no PR body here, so the comment carries the whole of it.
+
 **File any follow-up you already rated before you stop — every exit path owes that, not just
 STEP 5's.** STEP 4b decides where each one goes but deliberately creates nothing, so this path,
 STEP 2c and STEP 4c's three-attempt CI bound are the three that leave with a triage list and no
@@ -1235,6 +1311,144 @@ id> parked, needs you — <one line why>`. Parking freezes the whole queue and t
 owner's first signal is three to four hours after everything stopped. **This is not the poke coming
 back**: it goes to the owner, not to the queue, and it is the same `PushNotification` STEP 5 bullet
 5 sends on the merge path — a path this exit never reaches.
+
+---
+
+## The cost record — where this firing's time and tokens went
+
+**Standing instruction, product owner 2026-09-03** (PD-387): *"upgrading our routine, so that
+sessions can keep track of the time they spent in developing, testing, using tools, etc."*
+
+**Who owes one: any firing that CLAIMED a story, whichever way it then ended** — a merged group
+(STEP 5 bullet 4), a park into `Needs help` (§If you get stuck, STEP 2c, STEP 4c's three-attempt
+CI bound), a stale premise moved to `Needs decision`, a group where nothing survived STEP 3.
+**A breakdown that only appears on the runs that went well is an advertisement, not an
+instrument**: the number worth having is the one nobody wants to write down, which is an hour
+spent producing nothing. Where there is no PR body, the record goes in the same comment that exit
+already writes — no extra call.
+
+An **idle** firing owes nothing: it writes no comment, its cost is uniform, and `queue-run.md`
+§Why this shape already carries the measured ~$1 per idle firing.
+
+### It must not become a reason to run longer
+
+**Measuring a run is not permission to extend it.** Every figure below is either handed to you
+already or is one `date` beside a command you were going to run anyway. **Nothing here authorises
+an extra tool call, an extra gate run, a re-run to get a cleaner number, or a minute spent
+reconstructing one.** A figure you did not capture at the time is written `not captured` — never
+re-derived and never estimated to fill a row, because a row filled by guesswork is exactly the
+thing §Measured, and self-reported exists to prevent.
+
+The bounds that stop a run are unchanged by this section and are not negotiable against a better
+record: STEP 4c's three CI attempts, STEP 6's two gates, and `CLAUDE.md`'s three-attempt PR bound.
+
+### Measured, and self-reported — the line that must never blur
+
+**Every row is labelled, because the failure mode is somebody tuning the queue on a narrated
+figure believing it was counted.**
+
+| Row | Where it comes from | Kind |
+|---|---|---|
+| Wall clock | `date -u` at `queue-run.md` STEP 0, and again at wrap-up. **From probe 3 onward** — the stamp shares probe 3's call, so session boot, `CLAUDE.md` loading and probes 1–2 are all before it. The figure under-reports the firing by that much and must not be read as "firing to wrap-up" | **Measured** |
+| Per subagent — duration, tokens, tool calls | each agent's own completion notification | **Measured** |
+| Gate durations | `date` either side of a command you already run | **Measured** |
+| This session's output and cache-read tokens | `get_session`, `session_id` omitted | **Measured**, when the tool answers |
+| Phase split | your own account of yourself | **SELF-REPORTED** |
+
+**A Routine-minted firing does not hold `get_session`, so its token rows read `not available`, and
+that is the expected shape rather than a fault.** PD-387's body lists that call among the numbers
+"already in front of every session"; PD-241's measured inventory says no `mcp__Claude_Code_Remote__*`
+tool exists in such a session at all. The inventory is the measurement and it wins. A hand-spawned
+session holds the call and fills the rows in.
+
+**There is no clock in the loop attributing wall time to activities**, so the phase split is
+narration and is marked as such in the block itself — not merely here, because the block is what
+gets read.
+
+```bash
+date -u +%FT%TZ                                    # at wrap-up, against STEP 0's stamp
+s=$(date +%s); npm run test:unit; echo "test:unit $(( $(date +%s) - s ))s"
+```
+
+### The block, and where each half goes
+
+**The full block goes in ONE Linear comment; the PR body gets one line.** A cost record is a fact
+about the *firing*, not about a story, so pasting it onto all three issues in a group is the
+duplication STEP 5 bullet 4 already refuses. Put it on the **first issue of the group** and give
+the others the one-line summary plus a pointer to it.
+
+**On a mixed exit — one story merged, another parked — it goes on the first issue that has a
+comment being written at all**, and the other issues' comments carry the pointer. Otherwise the
+rule collides with itself: STEP 5 bullet 4 writes only on issues that *move*, a parked issue does
+not move, and a group whose first issue is the parked one would have two homes for a block there
+is only ever one of.
+
+Both shapes below use this file's standing example ids, `PD-201` and `PD-207` — **the figures are
+illustrative and none of them is a default.** A row you cannot fill says `not captured`.
+
+The PR body's line, under the `## Folded in` section or on its own where nothing travelled:
+
+```
+**Cost** 1h 23m wall · 1 subagent (6m, 84k tok, 41 calls) · gates 2m 54s · session tokens not
+available · phase split self-reported — full record on PD-201.
+```
+
+The comment's block, opened with an HTML marker so a later firing can find it:
+
+```markdown
+<!-- cost -->
+**Cost — PD-201 + PD-207, slot-1 · merged (#391)**
+
+| Measured | |
+|---|---|
+| Wall clock | 21:42Z → 23:05Z, **1h 23m** |
+| Session output tokens | not available — no `get_session` on this session |
+| Session cache-read tokens | not available — same |
+
+| Subagent | Duration | Tokens | Tool calls |
+|---|---|---|---|
+| `reviewer` | 6m 12s | 84k | 41 |
+| **total (1)** | **6m 12s** | **84k** | **41** |
+
+| Gate | Duration |
+|---|---|
+| `npm run test:unit` | 48s |
+| `npm run build` | 2m 06s |
+| `PGPASSWORD=postgres npm test` | not run — nothing under `supabase/` changed |
+
+**Phases — SELF-REPORTED.** No clock attributes wall time to activities; this is the session's own
+account of itself, and tuning the queue on it as though it were counted is the one thing it must
+not be used for.
+
+| Phase | Approx |
+|---|---|
+| Board, claim, territory | ~5m |
+| Build | ~50m |
+| Gates | ~10m |
+| Review | ~10m |
+| Wrap-up | ~8m |
+```
+
+**A session the owner started by hand takes its own stamp at its own STEP 0**, since
+`queue-run.md` never ran for it — that is the session most likely to reach a second story and the
+only one that can fill the token rows, so it is the worst one to have no clock. A run that took no
+stamp writes `not captured` and does not reconstruct one.
+
+**A second story taken at STEP 6 gets its own block on its own group**, with the wall clock read
+from the same stamp — so the second block's figure is cumulative for the firing rather than a
+measure of that story alone, and it says so. One block per group; never one block re-pasted, and
+never a second group left with none.
+
+**Name the three largest subagents individually and sum the rest** when a run spawned more than
+three — the total is what bounds the firing and the three largest are what explain it.
+
+**A parked run's block says so in its heading** — `parked (Needs help)`, `stale premise`, `CI red
+after 3 attempts` — and fills every row it has. A short row set on a run that died early is the
+honest answer and is more informative than a full one on a run that went fine.
+
+**Where the numbers should ultimately surface, and what figure should stop a run, is deliberately
+not decided here** — that is PD-388, and it is the owner's. This section ships the measurement with
+the cheapest honest destination so it exists to be decided about.
 
 ---
 

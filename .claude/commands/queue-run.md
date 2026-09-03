@@ -99,6 +99,16 @@ Each is a `ToolSearch` by keyword or one git command, and none touches the board
 3. **Push** — `git push --dry-run origin HEAD:refs/heads/claude/self-check-probe` exits 0. A dry
    run creates nothing on the remote.
 
+**Take the run's start stamp in the same call as probe 3, and write it into your transcript.**
+It costs nothing there and **nothing later can recover it** — a firing holds no `list_triggers`
+to read its own `last_run.fired_at` off (measured; PD-241's inventory), and `queue-pickup.md`
+§The cost record has no other source for wall time. A run that forgets it writes `not captured`
+rather than reconstructing one.
+
+```bash
+date -u +%FT%TZ && git push --dry-run origin HEAD:refs/heads/claude/self-check-probe
+```
+
 **All three pass → carry on to the board check below.** Then, once only: `list_comments
 issueId=PD-241`, and if no comment headed `**Inventory (self-check passed) —` exists there at all,
 post the inventory (below) under that heading and carry on — the record gets the measured table
