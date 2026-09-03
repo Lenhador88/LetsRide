@@ -1040,18 +1040,32 @@ export async function getClubThreadReplies(
  * again here recomputes the sum rather than adding a second copy of it.
  */
 export function absorbClubReplyWindow(windows: ClubReplyWindow[]): ClubReplySource {
-  let source: ClubTimelineSource<ClubThreadReply> = { rows: [], horizon: null }
+  // The FIRST window seeds the accumulator directly rather than being folded
+  // through `absorbClubTimelineWindow` against a `{ rows: [], horizon: null }`
+  // placeholder. That placeholder's `null` means "reaches the club's
+  // beginning" to the absorb rule — the same `null` a genuinely finished
+  // source carries — so folding even a saturated first window into it would
+  // let the empty seed's `null` win outright (`absorbClubTimelineWindow`'s own
+  // rule), discard the window's real horizon, and then poison every later
+  // fold too, since `accumulated.horizon === null` short-circuits the min from
+  // then on. A club whose first window saturates would report `complete: true`
+  // one page in and draw the club-created floor entry under content it never
+  // saw. See `absorbClubReplyWindow`'s own test for the case this seed once
+  // failed on a single first window.
+  let source: ClubTimelineSource<ClubThreadReply> | null = null
   const messages = new Map<string, number>()
   const participants = new Map<string, Map<string, PublicProfile>>()
   const anyPartial = new Map<string, boolean>()
 
   for (const window of windows) {
-    source = absorbClubTimelineWindow(
-      source,
-      window,
-      (reply) => reply.created_at,
-      (reply) => reply.id
-    ).source
+    source = source
+      ? absorbClubTimelineWindow(
+          source,
+          window,
+          (reply) => reply.created_at,
+          (reply) => reply.id
+        ).source
+      : { rows: window.rows, horizon: window.horizon }
 
     for (const [threadId, activity] of Object.entries(window.activity)) {
       messages.set(threadId, (messages.get(threadId) ?? 0) + activity.messages)
@@ -1074,5 +1088,5 @@ export function absorbClubReplyWindow(windows: ClubReplyWindow[]): ClubReplySour
     }
   }
 
-  return { ...source, activity }
+  return { ...(source ?? { rows: [], horizon: null }), activity }
 }

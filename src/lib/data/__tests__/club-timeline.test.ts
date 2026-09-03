@@ -999,6 +999,31 @@ describe('absorbClubReplyWindow', () => {
     expect(absorbClubReplyWindow([after]).activity.t1.messages).toBe(6)
   })
 
+  it('a saturated FIRST window keeps its OWN horizon — folding must not start from a fake empty accumulator', () => {
+    // A club busy enough that its very first reply window saturates, with no
+    // deeper window fetched yet (PD-375's whole reason to exist: a busy
+    // club's first page is short of the truth). `foldWindows`'
+    // (`ClubTimeline.tsx`) sibling for the other four sources shares this
+    // exact seed and the exact bug — this is the one half of the pair that is
+    // exported and can be pinned directly.
+    const firstWindow = replyWindow([reply('m1', '2026-08-10T00:00:00Z', 't1')], {
+      t1: { messages: 60, participants: [], partial: true },
+    }, { horizon: '2026-08-01T00:00:00Z', until: null })
+
+    const result = absorbClubReplyWindow([firstWindow])
+
+    // Verified both ways per CLAUDE.md §Working Principles: the code this
+    // replaces folds every window — including the first — through
+    // `absorbClubTimelineWindow` starting from `{ rows: [], horizon: null }`.
+    // Since that function's own rule is "null wins", the empty seed's horizon
+    // beats the first window's real one on the very first fold, and every
+    // later fold inherits the poisoned `null` too (`accumulated.horizon ===
+    // null` short-circuits `absorbClubTimelineWindow`'s min forever after).
+    // A club whose first window saturates would report `complete: true` and
+    // draw the club-created floor entry under content it never saw.
+    expect(result.horizon).toBe('2026-08-01T00:00:00Z')
+  })
+
   it('dedups a boundary message both windows independently collapsed to', () => {
     const shallow = replyWindow([reply('boundary', '2026-08-05T00:00:00Z', 't1')], {
       t1: { messages: 1, participants: [], partial: false },

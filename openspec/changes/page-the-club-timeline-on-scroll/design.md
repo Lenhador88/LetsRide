@@ -239,6 +239,19 @@ list's cache entry, and that navigation costs one read it did not cost before. T
 trade: a warm cache is a round trip, and the alternative is a stream that draws the club's founding
 over postcards it never saw.
 
+**The fix above settles the SATURATION test; the horizon VALUE it reports is a second,
+smaller approximation, stated so it does not read as an oversight.** `club_stamp_postcard_ids`
+returns `(id, from_ride)` only (`086`) — no `created_at` — so the ids alone cannot supply the
+value a `ClubTimelineWindow.horizon` has to carry, only whether the window is full or short. The
+value is therefore the oldest **surviving** postcard's `created_at` — the second read's own
+output, after the caller's RLS has had its say — rather than the true id-boundary the accessor
+actually cut at. Naming a row RLS then hid would need a migration widening the accessor's return
+shape, which this change does not take. The direction is the same one the postcard boundary
+exception above chooses: a row RLS hid between the two reads is newer than the true boundary,
+never older, so this can only cut a little **more** than the exact answer would, never less — the
+stream stays honest about what it has not shown, and never claims a completeness it has not
+earned. `getClubFeedWindow`'s own docstring carries the same note at the point it is true.
+
 ### The boundary itself
 
 `044` writes `postcards.created_at` at **transaction** time and there is one postcard insert per
@@ -391,6 +404,23 @@ reply source's coverage. Under paging that coverage is the union of the reply wi
 by §D0 — so the argument survives verbatim **provided the counts are summed**. Taking the newest
 window's count instead would silently under-report an old thread's replies while labelling the
 number exact, which is the worst of both.
+
+**Summing has one residue of its own, stated rather than smoothed over: a message sitting exactly
+on a reply-window boundary can be counted in both windows' own tallies before the sum runs.**
+`getClubThreadReplies`' deeper reads are inclusive (`.lte`, §D3's general rule for every source but
+the club feed), so a message at precisely the shallower window's horizon is legitimately returned
+by both it and the next window down — the same overlap the row-level dedup exists for. Row-level
+dedup catches it there: `absorbClubTimelineWindow` drops the accumulated copy inside the new
+window's interval, so `.rows` still shows that thread's newest message exactly once. `activity` is
+not that path — `collapseToNewestPerThread` counts every row **in its own window** toward
+`messages`, so the boundary message contributes one count to each of the two windows that
+independently saw it, and `absorbClubReplyWindow` sums both. The result is a thread's reply count
+reading one higher than the true total, at most once per boundary crossed. The direction matches
+every other exception in this document: it can only ever OVERcount a busy thread by a rare
+off-by-one, never undercount one or read a floor as exact — the failure mode this module exists to
+prevent is the opposite of what this residue produces. An exact keyset bound on the accessor (the
+same remedy §D3 names for the postcard boundary) would close it; this change does not take it,
+because the message row itself is never duplicated on screen, only its count is nudged.
 
 **`partial` is derived from that same coverage, and is NOT accumulated.** The obvious rule — true
 if any contributing window saturated — is monotonic: once set it never clears, so a thread whose
