@@ -15,6 +15,7 @@ function row(overrides: Partial<ClubListRow> = {}): ClubListRow {
     id: 'club-1',
     name: 'Biker Mice from Mars',
     is_public: true,
+    is_default: false,
     avatar_path: null,
     cover_image_path: null,
     location_name: null,

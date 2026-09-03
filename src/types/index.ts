@@ -983,6 +983,17 @@ export type ClubListItem = {
   id: string
   name: string
   is_public: boolean
+  /**
+   * The welcome club (`058`), which every rider joins inside the onboarding
+   * wizard rather than by choosing it.
+   *
+   * Carried on the LIST row, not just on `getClub`, because Explore's `Join
+   * club` control has to answer `owesIntroduction` and the honest answer is a
+   * column rather than a constant. It reads `false` for every club a rider
+   * actually chose, so the only row it changes is the one nobody chose — see
+   * `JoinClubButton`.
+   */
+  is_default: boolean
   avatar_path: string | null
   cover_image_path: string | null
   avatar_url: string | null

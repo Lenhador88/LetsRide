@@ -32,18 +32,38 @@ import { hasIntroducedClub, owesIntroduction } from '@/lib/data/club-introductio
  * show a sheet. The caller owns a durable place to put it instead: `onJoined`
  * fires only once this rider is confirmed to still owe an introduction for
  * `clubId`, and the parent screen (which outlives this row) is what opens
- * `IntroductionPrompt`. A fresh join from Explore is never the owner and — the
- * default club auto-joins at signup, so it can never appear here with a `Join
- * club` control at all — never the default club either, which is why both are
- * asserted rather than read a second time.
+ * `IntroductionPrompt`.
+ *
+ * ## `isDefaultClub` is READ, never assumed
+ *
+ * A fresh join from Explore is never the owner, so `viewerRole: 'member'` is a
+ * sound constant. **The default club is not**, and asserting it was a real
+ * defect: this control claimed the welcome club *"can never appear here"*
+ * because it auto-joins at signup, and `getExploreClubs`' public half filters
+ * on `is_public` alone with no `is_default` exclusion. Two documented states
+ * put it back on this list with a `Join club` button — a member who LEAVES it
+ * (`club_members` DELETE is a bare `auth.uid() = user_id`, and `leaveClub` has
+ * no default-club guard; only the owner is refused, `095`/`059`), and a signup
+ * whose join silently selected zero rows, which `059` §2 documents as a
+ * SUCCESS that no exception block can see. Measured on DEV: the welcome club
+ * is `is_public = true` and 15 of 24 riders were not members of it.
+ *
+ * So the prompt would have asked those riders to introduce themselves to the
+ * one club nobody chose — exactly what `058`'s own reasoning excludes, and what
+ * the club detail page already gets right by reading `club.is_default`
+ * (`097`, PD-365). The two doors now read the same column instead of
+ * disagreeing about the same rider.
  */
 export function JoinClubButton({
   clubId,
   clubName,
+  isDefaultClub,
   onJoined,
 }: {
   clubId: string
   clubName: string
+  /** `clubs.is_default` for this row — see the header; never hardcoded. */
+  isDefaultClub: boolean
   onJoined?: (clubId: string) => void
 }) {
   const [pending, startTransition] = useTransition()
@@ -67,7 +87,7 @@ export function JoinClubButton({
             }
             const alreadyIntroduced = await hasIntroducedClub(clubId)
             if (
-              owesIntroduction({ viewerRole: 'member', isDefaultClub: false }, alreadyIntroduced)
+              owesIntroduction({ viewerRole: 'member', isDefaultClub }, alreadyIntroduced)
             ) {
               onJoined?.(clubId)
             }

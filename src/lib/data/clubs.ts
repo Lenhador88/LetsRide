@@ -64,7 +64,7 @@ export const CLUB_MEMBERSHIP_LIMIT = 100
  * where it stops being theoretical.
  */
 const CLUB_LIST_SELECT = `
-  id, name, is_public, avatar_path, cover_image_path,
+  id, name, is_public, is_default, avatar_path, cover_image_path,
   location_name, location_place_id, latitude, longitude,
   members_count:club_members(count),
   riders:club_members(user_id, ${MEMBER_PROFILE_EMBED})
@@ -74,6 +74,7 @@ export type ClubListRow = {
   id: string
   name: string
   is_public: boolean
+  is_default: boolean
   avatar_path: string | null
   cover_image_path: string | null
   location_name: string | null
@@ -97,6 +98,7 @@ export function toClubListItem(row: ClubListRow, unread?: number): ClubListItem 
     id: row.id,
     name: row.name,
     is_public: row.is_public,
+    is_default: row.is_default,
     avatar_path: row.avatar_path,
     cover_image_path: row.cover_image_path,
     location_name: row.location_name,
@@ -426,6 +428,15 @@ async function myRequestStatuses(
  *
  * `is_public` is `false` by construction — the accessor returns nothing else —
  * so the card's `Private club` type line is right without asking.
+ *
+ * `is_default` is `false` for the same kind of reason, and it is worth naming
+ * the line rather than reasoning from the welcome club's current settings:
+ * `085`'s accessor carries `and c.is_default = false` in its own WHERE clause
+ * (`085_club_join_requests.sql:209`), so the default club cannot be in this
+ * result set whatever its `is_public` happens to be. Nothing on this path
+ * consumes it today either — a private club's control is `RequestToJoinButton`,
+ * which never prompts — so this is the honest value rather than a load-bearing
+ * one.
  */
 function toDiscoverableListItem(
   row: DiscoverableClubRow,
@@ -435,6 +446,7 @@ function toDiscoverableListItem(
     id: row.id,
     name: row.name,
     is_public: false,
+    is_default: false,
     avatar_path: row.avatar_path,
     cover_image_path: null,
     avatar_url: null,

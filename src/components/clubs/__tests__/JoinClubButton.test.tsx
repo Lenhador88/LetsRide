@@ -8,13 +8,17 @@ const joinClub = vi.fn()
 vi.mock('@/lib/actions/clubs', () => ({ joinClub }))
 
 const hasIntroducedClub = vi.fn()
-vi.mock('@/lib/data/club-introductions', () => ({
+// Only the round trip is mocked. `owesIntroduction` is the REAL one, because a
+// reimplementation here cannot disagree with the module under test and so
+// cannot catch the case below — this file previously supplied its own copy and
+// asserted the arguments, which pinned a hardcoded `isDefaultClub: false` as
+// intended behaviour.
+vi.mock('@/lib/data/club-introductions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/data/club-introductions')>()),
   hasIntroducedClub,
-  owesIntroduction: (
-    club: { viewerRole: string | null; isDefaultClub: boolean },
-    introduced: boolean
-  ) => club.viewerRole !== null && club.viewerRole !== 'owner' && !club.isDefaultClub && !introduced,
 }))
+
+const { owesIntroduction } = await import('@/lib/data/club-introductions')
 
 const { JoinClubButton } = await import('@/components/clubs/JoinClubButton')
 
@@ -49,7 +53,7 @@ describe('JoinClubButton — onJoined fires from the action, never from render',
     hasIntroducedClub.mockClear()
     const onJoined = vi.fn()
     renderToStaticMarkup(
-      <JoinClubButton clubId="club-1" clubName="Test Club" onJoined={onJoined} />
+      <JoinClubButton clubId="club-1" clubName="Test Club" isDefaultClub={false} onJoined={onJoined} />
     )
     expect(joinClub).not.toHaveBeenCalled()
     expect(hasIntroducedClub).not.toHaveBeenCalled()
@@ -75,16 +79,31 @@ describe('JoinClubButton — onJoined fires from the action, never from render',
     expect(handler.indexOf('onJoined?.(clubId)')).toBeGreaterThan(handler.indexOf('owesIntroduction('))
   })
 
-  it('asserts a fresh Explore join as a member of a non-default club, not a second read', () => {
-    // The two facts a rider who just tapped Join in Explore always satisfies
-    // (never the owner of a club they just joined; the default club auto-joins
-    // at signup and so never renders this button) — see the component's own
-    // header for why these are asserted rather than fetched again.
-    expect(SOURCE).toContain("viewerRole: 'member', isDefaultClub: false")
+  it('reads isDefaultClub from its prop and never hardcodes it', () => {
+    // The regression this replaces: `isDefaultClub: false` was a literal, on the
+    // claim that the welcome club "can never appear here". `getExploreClubs`
+    // filters its public half on `is_public` alone, and a rider who leaves the
+    // welcome club — or whose signup join silently selected zero rows (`059`
+    // §2) — gets it back on Explore with this very button. The prompt would
+    // then ask them to introduce themselves to the one club nobody chose.
+    expect(SOURCE).toContain("viewerRole: 'member', isDefaultClub")
+    expect(SOURCE).not.toContain('isDefaultClub: false')
+    expect(SOURCE).toContain('isDefaultClub: boolean')
+  })
+
+  it('does not owe an introduction for the default club, on the real gate', () => {
+    // The real `owesIntroduction`, not a copy — so this fails if either the
+    // component's arguments or the rule itself stops excluding the welcome
+    // club. `hasIntroduced` is false: the rider has genuinely never introduced
+    // themselves, which is exactly the state that used to open the sheet.
+    expect(owesIntroduction({ viewerRole: 'member', isDefaultClub: true }, false)).toBe(false)
+    expect(owesIntroduction({ viewerRole: 'member', isDefaultClub: false }, false)).toBe(true)
   })
 
   it('still renders Join club and preventDefault/stopPropagation on the tap, unchanged by onJoined', () => {
-    const html = renderToStaticMarkup(<JoinClubButton clubId="club-1" clubName="Test Club" />)
+    const html = renderToStaticMarkup(
+      <JoinClubButton clubId="club-1" clubName="Test Club" isDefaultClub={false} />
+    )
     expect(html).toContain('Join club')
     expect(SOURCE).toContain('event.preventDefault()')
     expect(SOURCE).toContain('event.stopPropagation()')

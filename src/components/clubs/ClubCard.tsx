@@ -160,7 +160,12 @@ export function ClubCard({
         {joined ? (
           <UnreadCounter count={club.unread ?? 0} />
         ) : club.is_public ? (
-          <JoinClubButton clubId={club.id} clubName={club.name} onJoined={onJoined} />
+          <JoinClubButton
+            clubId={club.id}
+            clubName={club.name}
+            isDefaultClub={club.is_default}
+            onJoined={onJoined}
+          />
         ) : (
           // `085`. A private club reached through the discovery accessor is
           // asked rather than joined — `club_members`' own INSERT policy admits
