@@ -5,24 +5,26 @@
 
 ## Known issues, roughly by cost to fix
 
-**A ride created with the new private default cannot be edited afterwards, and the guard that
-refuses it is a written spec requirement rather than a stray `if` (PD-320 shipped, PD-338 open).**
+**CLOSED by PD-338 — the ride strand guard is now about the transition, not the shape.**
 
-`EditRideForm`'s `wouldStrand` disables Save, and `updateRide` refuses the same combination, when
-a ride is neither public nor in a club. PD-320 made exactly that combination the **default** for
-any ride created outside a club — so a rider with no clubs now creates a ride they can never
-rename. Two things make it worse than it looks: `createRide` has never carried that guard, so the
-state is reachable and always was; and the refusal's own message ("nobody but you could ever see
-it again") stopped being true when `083` shipped ride invites (PD-329), which is what made
-PD-320's flip safe in the first place.
+`EditRideForm`'s `wouldStrand` used to disable Save whenever a ride was neither public nor in a
+club, and PD-320 made exactly that combination the composer's default output — so a rider with no
+clubs created rides they could only edit by publishing them to everyone. `narrowsToNobody`
+(`src/lib/rides/audience.ts`) replaces it: an edit that *reduces* a ride's standing audience to
+its organizer alone is refused, an edit to a ride already in that shape saves.
 
-**It was NOT fixed in PD-320's own PR on purpose.** The refusal is
-`openspec/changes/add-ride-club-edit-delete/specs/ride-lifecycle/spec.md` §*Editing a ride SHALL
-NOT be able to strand its crew*, stated twice — as a requirement and as a scenario — and
-`add-account-deletion` reasons about the same zombie shape. Relaxing it is a visibility rule, so
-it is `openspec`'s and not a fold-in a build session may take. **Re-derive the sites before
-changing anything**, because a partial fix leaves the two halves disagreeing:
-`grep -rn "wouldStrand\|nobody but you" src/`.
+**Two things about the fix that a later reader will otherwise re-litigate.** The `Narrow` reading
+was a **stated assumption rather than an owner answer** — it was taken in an unattended run, and
+`openspec/changes/scope-the-strand-guard-to-the-transition/design.md` §Open questions Q1 carries
+the `Wide` alternative (drop the guard outright) with the evidence a later decision needs; Wide is
+Narrow minus one predicate, so nothing is foreclosed. And the guard is **advisory by design**:
+the `rides` UPDATE policy carries no `is_public` predicate at all, which is why the change needed
+no migration and why the action's copy of the rule must never be described as enforcement.
+
+```bash
+git grep -n "narrowsToNobody" -- src/          # the predicate, and its two call sites
+npx vitest run src/lib/rides src/components/rides src/lib/actions/__tests__/ride-audience.test.ts
+```
 
 **Private clubs are findable and requestable — and four things about them are decisions rather
 than gaps (`085`, PD-325).**
