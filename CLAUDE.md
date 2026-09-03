@@ -130,7 +130,7 @@ never be dissolved back into components, because:
    writes safe in the first place.
 
    **The participation gate is narrower than "every write"** — `enforce_participation_gate` sits on
-   twenty-two tables and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
+   twenty-one tables and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
    `feed_reads`, `club_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
    `accept_terms()` can still set a username and upload an avatar. `docs/reference/schema.md`
    §The participation gate has the list, the `push_devices` exception and the count query.
@@ -448,8 +448,8 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 100 files, and BOTH projects are at `100` — measured 2026-09-01, after the
-promotion. There is no gap.** Count rather than trust it: `list_migrations` against both refs,
+**Applied state: 101 files. DEV is at `101` and PROD at `100` — measured 2026-09-03. The gap is
+`101` alone, awaiting promotion.** Count rather than trust it: `list_migrations` against both refs,
 against `ls supabase/migrations/*.sql | wc -l`. DEV also records three hand-applied rows with no
 file, so its row count reads high; every file IS applied, which is the direction that matters.
 **Level is the exception, not the resting state** — DEV-ahead is where a migration lives between
@@ -486,7 +486,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3335** assertions — re-derive rather than trust it:
+Suite **3280** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 

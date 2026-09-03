@@ -3805,11 +3805,14 @@ rollback to savepoint stranded_wizard;
 -- would answer 42501 rather than a boolean.
 reset role;
 
--- Twenty-one since 093 gated BOTH club_invites and club_invite_links —
--- inviting a rider and minting a bearer token are each participation.
--- Nineteen since 092 gated BOTH wave tables — club_thread_waves and
--- club_join_waves, TWO not one, the same arithmetic 081 has and 078's own task
--- list got wrong about the equivalent advisor. Seventeen since 091 gated
+-- ** Twenty-ONE since 101 dropped club_thread_waves. ** It was twenty-two, and
+-- the removed gate went with the table rather than being taken off it: 092 gated
+-- BOTH of its wave tables and 101 retires only the thread one, `club_join_waves`
+-- keeping its gate and every other property. Nineteen after 092 for that same
+-- reason — TWO gates not one, the arithmetic 081 has and 078's own task list got
+-- wrong about the equivalent advisor. Twenty-one since 093 gated BOTH
+-- club_invites and club_invite_links — inviting a rider and minting a bearer
+-- token are each participation. Seventeen since 091 gated
 -- `ride_invite_links` — minting a bearer token for a
 -- private ride is participation. Sixteen since 085 gated `club_join_requests`.
 -- Fifteen since 083 gated
@@ -3822,7 +3825,7 @@ reset role;
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '069/081/082/083/084/085/091/092/093/094: twenty-two gate triggers, one per gated table — 081 added TWO, so does 092 and so does 093, because the advisor and the trigger sweep both fire once per table; 094 adds ONE, club_thread_reports being its only new table');
+  21, '069/081/082/083/084/085/091/092/093/094/101: twenty-one gate triggers, one per gated table — 081 added TWO, so did 092 and so did 093, because the advisor and the trigger sweep both fire once per table; 094 added ONE, club_thread_reports being its only new table; and 101 removed ONE by dropping club_thread_waves, 092''s OTHER table keeping its gate');
 -- Named rather than counted, because the total above cannot tell 091's new gate
 -- from one that moved off another table to land here.
 select assert_eq(
@@ -3856,7 +3859,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  22, '069/081/083/084/085/091/092/093/094: every gate trigger carries the WHEN guard that reads the invoking role');
+  21, '069/081/083/084/085/091/092/093/094/101: every gate trigger carries the WHEN guard that reads the invoking role');
 
 -- The two halves of the security-definer question, and they point opposite ways.
 -- The gate functions MUST be definer; the profile completion guard must NOT be,
@@ -4316,8 +4319,10 @@ select assert_eq(
 -- which is the only mechanism that will ever remove one; 091.22 is the
 -- behavioural half of this line.
 --
--- **29 since 092 added club_thread_waves.user_id AND club_join_waves.user_id**,
--- and TWO rather than three is the line worth reading: `club_join_waves` names
+-- **29 since 092 added club_thread_waves.user_id AND club_join_waves.user_id —
+-- and 32 rather than 33 today, because 101 dropped club_thread_waves and its
+-- key went with the table.** TWO rather than three is the line worth reading
+-- about 092, and it survives the drop with one of the two gone: `club_join_waves` names
 -- two riders and only ONE of them is a key into `profiles`. The subject is
 -- reached through `(club_id, subject_user_id) -> club_members(club_id,
 -- user_id)`, which cascades from `profiles` in its own right — so the subject's
@@ -4339,12 +4344,12 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass),
-  33, '029/061/069/078/081/083/084/085/091/092/093/094: thirty-three FKs reference public.profiles — 094''s club_thread_reports.reporter_id is the newest, and it is the whole of 094''s erasure surface: a report holds a reporter uuid, so deleting the account deletes the words');
+  32, '029/061/069/078/081/083/084/085/091/092/093/094/101: thirty-two FKs reference public.profiles — it was thirty-three until 101 dropped club_thread_waves and took club_thread_waves.user_id with it, the ONLY key this repo has ever removed from this count. 094''s club_thread_reports.reporter_id is still the newest, and it is the whole of 094''s erasure surface: a report holds a reporter uuid, so deleting the account deletes the words');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
       and confdeltype = 'c'),
-  33, '029/061/069/078/081/083/084/085/091/092/093/094: ... and every one of them is ON DELETE CASCADE');
+  32, '029/061/069/078/081/083/084/085/091/092/093/094/101: ... and every one of them is ON DELETE CASCADE');
 
 -- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
 -- grounds that pinning the path to owner_id makes any transfer raise 23514;
@@ -6034,12 +6039,12 @@ select assert_eq(
       and (has_function_privilege('authenticated', p.oid, 'execute')
         or has_function_privilege('anon', p.oid, 'execute')
         or has_function_privilege('service_role', p.oid, 'execute'))),
-  0, '036/083/085/089/090/092/093: no client role can call any of the sixteen fan-out functions directly');
+  0, '036/083/085/089/090/092/093/098/101: no client role can call any of the seventeen fan-out functions directly');
 select assert_eq(
   (select count(*)::int from pg_proc
     where pronamespace = 'private'::regnamespace
       and (proname like 'notify\_%' or proname like 'retract\_%')),
-  19, '036/083/085/089/090/092/093/098: ... and there are nineteen of them — 036''s six, 083''s notify_ride_invited and notify_ride_invite_answered, 085''s notify_club_join_requested and retract_club_join_requested, 089''s notify_club_join_request_declined and retract_club_join_request_declined, 092''s notify_club_waved and retract_club_waved, 093''s notify_club_invited and notify_club_invite_declined, and 098''s notify_club_thread_replied, notify_club_thread_waved and retract_club_thread_waved — so that assertion is not vacuous. NINETEEN since 098 added three, two notify and one retract; 090.2 is what names the one 090 took away, because a count cannot');
+  17, '036/083/085/089/090/092/093/098/101: ... and there are seventeen of them — 036''s six, 083''s notify_ride_invited and notify_ride_invite_answered, 085''s notify_club_join_requested and retract_club_join_requested, 089''s notify_club_join_request_declined and retract_club_join_request_declined, 092''s notify_club_waved and retract_club_waved, 093''s notify_club_invited and notify_club_invite_declined, and 098''s notify_club_thread_replied — so that assertion is not vacuous. It was NINETEEN after 098 added three, two notify and one retract, and 101 took back 098''s notify_club_thread_waved and retract_club_thread_waved with public.club_thread_waves. 092''s pair sits on club_join_waves and is NOT affected. 090.2 is what names the one 090 took away, because a count cannot');
 
 -- ---------------------------------------------------------------------------
 -- 7.5 — blocking, applied TWICE, with A and B exchanged
@@ -6553,7 +6558,7 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where not tgisinternal
       and (tgname like 'notify\_%' or tgname like 'retract\_%')),
-  20, '036/083/085/087/089/090/092/093/098: twenty fan-out triggers exist — seventeen until 098 hung notify_club_thread_replied on club_messages and notify_club_thread_waved / retract_club_thread_waved on club_thread_waves, fifteen until 093 hung notify_club_invited and notify_club_invite_declined on club_invites, thirteen until 092 hung notify_club_waved and retract_club_waved on club_join_waves, and fourteen until 090 dropped retract_ride_invited, which is named in 090.2 rather than left to this count. 098 adds TWO notifies and ONE retraction, and 098.22 is what says why there is no fourth on club_messages DELETE — a count cannot');
+  18, '036/083/085/087/089/090/092/093/098/101: eighteen fan-out triggers exist — TWENTY until 101 dropped notify_club_thread_waved and retract_club_thread_waved along with public.club_thread_waves itself, seventeen until 098 hung notify_club_thread_replied on club_messages and that pair on club_thread_waves, fifteen until 093 hung notify_club_invited and notify_club_invite_declined on club_invites, thirteen until 092 hung notify_club_waved and retract_club_waved on club_join_waves, and fourteen until 090 dropped retract_ride_invited, which is named in 090.2 rather than left to this count. 098 added TWO notifies and ONE retraction; 101 takes back one notify and the retraction and leaves the REPLY fan-out standing, so the net of 098+101 is +1. 092''s notify_club_waved / retract_club_waved are on club_join_waves and are NOT touched by 101 — the two wave tables are two features. 098.22 is what says why there is no fourth on club_messages DELETE — a count cannot');
 -- ** 087 CHANGED WHAT THIS ASSERTION HAD TO SAY. ** It used to read
 -- `tgqual is not null` = 0 — no WHEN clause at all — because the only WHEN
 -- anybody had ever put on one of these was 023's `current_user` guard, which
@@ -6614,7 +6619,7 @@ select assert_eq(
     where pronamespace = 'private'::regnamespace
       and (proname like 'notify\_%' or proname like 'retract\_%')
       and prosecdef and proconfig @> array['search_path=""']),
-  19, '036/083/085/089/090/092/093/098: every fan-out is SECURITY DEFINER with search_path pinned empty');
+  17, '036/083/085/089/090/092/093/098/101: every fan-out is SECURITY DEFINER with search_path pinned empty — seventeen since 101 dropped 098''s notify_club_thread_waved and retract_club_thread_waved with public.club_thread_waves');
 
 -- The count must be INVOKER. A definer count steps past the block predicate and
 -- every resolvability conjunct, producing a badge the rider can never clear.
@@ -16538,7 +16543,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '078.9c: ... and 078 itself added NO trigger — the total is twenty-two because 081, 092 and 093 each added two content tables with one each and 083, 084, 085, 091 and 094 added one more each, and push_devices is still not among them');
+  21, '078.9c: ... and 078 itself added NO trigger — the total is twenty-one because 081, 092 and 093 each added two content tables with one each, 083, 084, 085, 091 and 094 added one more each, 101 dropped 092''s club_thread_waves and took that table''s gate with it, and push_devices is still not among them');
 
 -- ---------------------------------------------------------------------------
 -- 078.10  The key is the installation, asserted against the catalogue.
@@ -18321,11 +18326,11 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
       and pg_get_triggerdef(oid) ilike '%current_user%'),
-  22, '081.20/085/091/092/093/094: ... and all twenty-two carry the WHEN guard that reads the invoking role — inside a security definer body current_user is the OWNER, so a guard moved into the function would fire for nobody');
+  21, '081.20/085/091/092/093/094/101: ... and all twenty-one carry the WHEN guard that reads the invoking role — inside a security definer body current_user is the OWNER, so a guard moved into the function would fire for nobody. It was twenty-two until 101 dropped club_thread_waves and its gate with it');
 select assert_eq(
   (select obj_description('public.enforce_participation_gate()'::regprocedure, 'pg_proc')
-     like '%twenty-two BEFORE INSERT triggers%'),
-  true, '081.20/083/084/085/091/092/093/094: ... and the function''s own comment is restamped to twenty-two — a database comment is the only documentation no edit to CLAUDE.md reaches (028, 033)');
+     like '%twenty-one BEFORE INSERT triggers%'),
+  true, '081.20/083/084/085/091/092/093/094/101: ... and the function''s own comment is restamped to twenty-one — a database comment is the only documentation no edit to CLAUDE.md reaches (028, 033). 101 restamps it DOWNWARD, which is the first time this ledger has moved that way, and it renumbers the ordinals after the seventeenth because they are positions in a list rather than identities');
 select assert_eq(
   (select obj_description('public.enforce_participation_gate()'::regprocedure, 'pg_proc')
      like '%club_join_requests (085)%'),
@@ -19646,8 +19651,8 @@ select assert_eq(
                  where n.nspname = 'private' and p.proname like 'retract\_%'
                  order by p.proname)),
   array['retract_club_join_request_declined', 'retract_club_join_requested',
-        'retract_club_thread_waved', 'retract_club_waved', 'retract_postcard_liked'],
-  '090.2: ... and THESE FIVE retractions are untouched — 089''s, 085''s, 092''s, 098''s and 036''s. 087''s club-join retraction shares only the word with the one 090 dropped, and a count would have read 3 both before 089 and after 090 for different reasons — which is why this is a name list and why 092''s and then 098''s addition edits it rather than passing silently. ** 098''s is the one 090''s own argument applies to most directly ** — proposal.md Q2 puts it to the product owner and 098 builds the stated default, which is to keep it');
+        'retract_club_waved', 'retract_postcard_liked'],
+  '090.2: ... and THESE FOUR retractions are untouched — 089''s, 085''s, 092''s and 036''s. 087''s club-join retraction shares only the word with the one 090 dropped, and a count would have read 3 both before 089 and after 090 for different reasons — which is why this is a name list and why every addition and removal edits it rather than passing silently. ** It was FIVE between 098 and 101 ** — 098''s retract_club_thread_waved was the one 090''s own re-notification argument applied to most directly, proposal.md Q2 put it to the product owner and 098 built the stated default of keeping it, and 101 (PD-373) dropped it with public.club_thread_waves rather than on that argument');
 
 -- ---------------------------------------------------------------------------
 -- 090.3  ** DECLINE IS STILL TERMINAL — 083 §4's DELETE SCOPE IS UNTOUCHED **
@@ -23309,16 +23314,17 @@ insert into club_threads (id, club_id, author_id, title) values
 
 -- ** EVERY WAVE BELOW IS WRITTEN THROUGH THE POLICY, AS ITS OWN AUTHOR, AND
 -- BEFORE THE BLOCKS EXIST. ** Placing them as the owner would skip the one
--- statement 092.1 and 092.8 are about, and every later assertion would then be
--- reading rows no client could have created. The order also models the real
--- sequence 009 §7 specifies: a wave placed before a block SURVIVES it — nothing
--- is deleted, only hidden — which is what makes 092.3 and 092.6 possible at
--- all.
+-- statement 092.1 is about, and every later assertion would then be reading rows
+-- no client could have created. The order also models the real sequence 009 §7
+-- specifies: a wave placed before a block SURVIVES it — nothing is deleted, only
+-- hidden — which is what makes 092.6 possible at all.
+--
+-- ** THE club_thread_waves HALF OF THIS FIXTURE IS GONE (101, PD-373). ** 092
+-- shipped two wave tables; only `club_join_waves` still exists, so only its rows
+-- are seeded here. The thread-wave riders keep their profiles and memberships
+-- because the surviving assertions still use them.
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000920003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009200d1', '00000000-0000-0000-0000-000000920003'),
-  ('00000000-0000-0000-0000-0000009200d2', '00000000-0000-0000-0000-000000920003');
 insert into club_join_waves (club_id, subject_user_id, user_id) values
   ('00000000-0000-0000-0000-0000009200c1', '00000000-0000-0000-0000-000000920004',
    '00000000-0000-0000-0000-000000920003'),
@@ -23326,32 +23332,20 @@ insert into club_join_waves (club_id, subject_user_id, user_id) values
    '00000000-0000-0000-0000-000000920003');
 
 select set_config('test.uid', '00000000-0000-0000-0000-000000920009', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009200d1', '00000000-0000-0000-0000-000000920009');
 insert into club_join_waves (club_id, subject_user_id, user_id) values
   ('00000000-0000-0000-0000-0000009200c1', '00000000-0000-0000-0000-000000920004',
    '00000000-0000-0000-0000-000000920009');
-
-select set_config('test.uid', '00000000-0000-0000-0000-000000920006', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009200d1', '00000000-0000-0000-0000-000000920006');
-
--- wvadmin waves d2 as well. Without a SECOND waver there, 092.4's "reads no
--- OTHER rider's wave on that thread" would be counting an empty set and would
--- pass against a policy that returned everything.
-select set_config('test.uid', '00000000-0000-0000-0000-000000920002', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009200d2', '00000000-0000-0000-0000-000000920002');
 reset role;
 
 -- Two DIRECTIONAL block rows, one each way, added LAST. private.is_blocked is
 -- symmetric, so a fixture with both directions is what proves the symmetry is
 -- resolved in the helper rather than at each call site.
---   920007 -> 920003 : the THREAD AUTHOR blocked the reader   (092.4, 092.6)
 --   920004 -> 920006 : the JOIN SUBJECT blocked the reader    (092.5)
---   920007 -> 920009 : the same THREAD AUTHOR blocked wvsecond, who holds no
---                       wave on d2 — so 092.4 can assert the INSERT refusal
---                       without colliding with a row the fixture already placed
+-- The two rows naming 920007 — the thread author who blocked the reader and
+-- wvsecond — served 092.3, 092.4 and 092.6's first two un-hoist detectors, all
+-- of which were club_thread_waves assertions and went with the table (101). They
+-- are kept: 092.6's surviving detector reads the club's threads, and a fixture
+-- with both block directions is what shows the symmetry lives in the helper.
 insert into blocks (blocker_id, blocked_id) values
   ('00000000-0000-0000-0000-000000920007', '00000000-0000-0000-0000-000000920003'),
   ('00000000-0000-0000-0000-000000920007', '00000000-0000-0000-0000-000000920009'),
@@ -23360,22 +23354,16 @@ insert into blocks (blocker_id, blocked_id) values
 -- ---------------------------------------------------------------------------
 -- 092.1  A non-member of a PUBLIC club, and the asymmetry the role table rests on
 -- ---------------------------------------------------------------------------
--- The two parents differ and the difference is INHERITED rather than written in
--- 092: `club_members` SELECT carries a public-club disjunct and `club_threads`
--- SELECT does not. So the same rider reads NO thread wave in a public club and
--- CAN read a join wave in it. Both halves are asserted, because reading only the
--- first would let a session "fix" the second as a bug.
+-- ** THE ASYMMETRY THIS SECTION USED TO ASSERT IS NO LONGER OBSERVABLE, AND THE
+-- SURVIVING HALF IS THE ONE THAT WAS COUNTER-INTUITIVE. ** 092's two parents
+-- differed and the difference was INHERITED rather than written in 092:
+-- `club_members` SELECT carries a public-club disjunct and `club_threads` SELECT
+-- does not, so the same rider read NO thread wave in a public club and COULD
+-- read a join wave in it. 101 dropped `club_thread_waves`, so only the join-wave
+-- half remains — and it is the half a session is most likely to "fix" as a bug,
+-- which is why it is asserted rather than left to the policy text.
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000920005', false);
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d3'),
-  0, '092.1: a non-member of a PUBLIC club reads ZERO thread waves in it — club_threads SELECT requires private.is_club_member and has no public disjunct, so the parent EXISTS is false. Fails if the parent EXISTS is dropped from this file');
-select assert_denied($$
-  insert into club_thread_waves (thread_id, user_id)
-  values ('00000000-0000-0000-0000-0000009200d3',
-          '00000000-0000-0000-0000-000000920005')$$,
-  '092.1: ... and cannot write one, because the INSERT policy''s EXISTS is the SAME one and not a second rule');
 -- ** THE HALF THE CAPABILITY SPEC''S ROLE TABLE GETS WRONG, ASSERTED AS THE
 -- DATABASE ACTUALLY BEHAVES. ** That table's "non-member of a PUBLIC club · may
 -- wave a join · no" cell contradicts the same spec's mandated INSERT policy
@@ -23387,7 +23375,7 @@ select assert_denied($$
 select assert_eq(
   (select count(*)::int from club_join_waves
     where club_id = '00000000-0000-0000-0000-0000009200c2'),
-  1, '092.1: ... while a JOIN wave in that same public club IS readable to them, because club_members SELECT carries a public-club disjunct. The asymmetry is inherited, not written here — and it is why 092.2 is a separate case rather than the same one');
+  1, '092.1: a JOIN wave in a PUBLIC club IS readable to a non-member, because club_members SELECT carries a public-club disjunct. Inherited, not written here — and until 101 this sat beside its opposite on club_thread_waves, whose parent club_threads has no such disjunct');
 select assert_allowed($$
   insert into club_join_waves (club_id, subject_user_id, user_id)
   values ('00000000-0000-0000-0000-0000009200c2',
@@ -23413,11 +23401,6 @@ select assert_eq(
   (select count(*)::int from club_join_waves
     where club_id = '00000000-0000-0000-0000-0000009200c1'),
   0, '092.2: ... and still reads ZERO join waves in a PRIVATE club they are not in. Fails if the EXISTS subquery leaves `club_id` unqualified, because club_members has a column of that name and the comparison becomes a tautology');
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id in ('00000000-0000-0000-0000-0000009200d1',
-                        '00000000-0000-0000-0000-0000009200d2')),
-  0, '092.2: ... and zero thread waves in it');
 select assert_denied($$
   insert into club_join_waves (club_id, subject_user_id, user_id)
   values ('00000000-0000-0000-0000-0000009200c1',
@@ -23426,98 +23409,28 @@ select assert_denied($$
   '092.2: ... and cannot write a join wave into a private club they are not in');
 
 -- ---------------------------------------------------------------------------
--- 092.3  A block hides the ROW and drops the COUNT, in EACH direction
+-- 092.3 and 092.4 WERE HERE, AND WENT WITH club_thread_waves (101, PD-373)
 -- ---------------------------------------------------------------------------
--- Two cases, not one: the row and the aggregate. The count in this app is a
--- PostgREST aggregate over the rows RLS returns, so if it did not move with the
--- rows there would be no single mechanism and the client would be subtracting.
-select set_config('test.uid', '00000000-0000-0000-0000-000000920002', false);
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'),
-  3, '092.3: an unblocked member (the admin) reads all THREE waves on the thread — wvmember, wvsecond and wvblocked');
-
-savepoint wave_block_forward_092;
-reset role;
-insert into blocks (blocker_id, blocked_id) values
-  ('00000000-0000-0000-0000-000000920002', '00000000-0000-0000-0000-000000920003');
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000920002', false);
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'
-      and user_id = '00000000-0000-0000-0000-000000920003'),
-  0, '092.3: after the READER blocks the waver, that waver''s row is gone from their read');
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'),
-  2, '092.3: ... and the COUNT drops by exactly one, from the same rows and not from a client-side subtraction');
-reset role;
-rollback to savepoint wave_block_forward_092;
-
-savepoint wave_block_reverse_092;
-reset role;
-insert into blocks (blocker_id, blocked_id) values
-  ('00000000-0000-0000-0000-000000920003', '00000000-0000-0000-0000-000000920002');
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000920002', false);
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'
-      and user_id = '00000000-0000-0000-0000-000000920003'),
-  0, '092.3: and the OTHER direction is identical — the waver blocked the reader. private.is_blocked is symmetric and the policy calls it once');
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'),
-  2, '092.3: ... with the same one-row drop in the count');
-reset role;
-rollback to savepoint wave_block_reverse_092;
-
--- The waver's own view is untouched by either block, which is the third
--- consequence D6 names: a wave placed before a block SURVIVES the block.
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000920003', false);
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'
-      and user_id = '00000000-0000-0000-0000-000000920003'),
-  1, '092.3: ... and the waver still reads their OWN wave throughout, which is the own-row arm and the reason a rider blocked by everyone still counts 1');
-
--- ---------------------------------------------------------------------------
--- 092.4  Blocked with the thread's AUTHOR — and the refusal comes from the PARENT
--- ---------------------------------------------------------------------------
--- d2 is wvblocker's thread and wvblocker has blocked wvmember. The reader is a
--- full member of c1, so nothing about membership is doing this work.
-select assert_eq(
-  (select count(*)::int from club_threads
-    where id = '00000000-0000-0000-0000-0000009200d2'),
-  0, '092.4: the reader cannot see the THREAD itself — club_threads SELECT''s own block arm on author_id, one table away');
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d2'
-      and user_id <> auth.uid()),
-  0, '092.4: ... so they read no OTHER rider''s wave on it — wvadmin''s wave on that thread exists and is withheld, the parent EXISTS being false for every row but their own');
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d2'
-      and user_id = auth.uid()),
-  1, '092.4: ** ... while their OWN wave on that invisible thread IS readable ** — §3.1''s hoisted branch, and the whole reason 092.6''s withdrawal works. Inside the block conjunct this branch would be a no-op and the row would be unreachable');
-select assert_eq(
-  (select count(*)::int from club_threads
-    where id = '00000000-0000-0000-0000-0000009200d1'),
-  1, '092.4: ... while the SAME reader still sees the club''s other thread, so the refusal is about that author and not about the club');
--- The INSERT half, asserted with wvsecond rather than wvmember: wvmember
--- already holds a wave on d2 (the fixture places it before the blocks, which is
--- what 092.6 needs), so their re-insert would collide on the primary key and a
--- 23505 would be indistinguishable from a policy refusal to a reader of this
--- file. wvsecond is blocked with the same author and holds no row there.
-select set_config('test.uid', '00000000-0000-0000-0000-000000920009', false);
-select assert_denied($$
-  insert into club_thread_waves (thread_id, user_id)
-  values ('00000000-0000-0000-0000-0000009200d2',
-          '00000000-0000-0000-0000-000000920009')$$,
-  '092.4: ... and a rider blocked with the AUTHOR cannot write a wave on their thread either — the INSERT policy''s EXISTS is the same one, so this needs no conjunct in 092 and gets none');
-select set_config('test.uid', '00000000-0000-0000-0000-000000920003', false);
+-- ** WHAT LAPSED IS NAMED RATHER THAN LEFT AS A SILENT GAP. ** Both sections
+-- were written entirely against `club_thread_waves` and had no `club_join_waves`
+-- half, so 101 removes them whole rather than narrowing them. Two properties of
+-- the SURVIVING table therefore have no behavioural assertion left, and a
+-- session adding one should add it against `club_join_waves`:
+--
+--   * 092.3 — a block hides the ROW and drops the COUNT, in EACH direction, the
+--     count moving with the rows rather than by a client-side subtraction; and a
+--     wave placed BEFORE a block surviving it. The block arm on the REACTOR is
+--     still pinned STRUCTURALLY in 092.7 (`is_blocked(auth.uid(), user_id)`,
+--     now once rather than twice) and behaviourally on the join table's SUBJECT
+--     in 092.5 — but the reactor arm's behaviour is no longer exercised.
+--   * 092.4 — the refusal arriving from the PARENT rather than from the wave
+--     table's own policy, with the own-row branch still returning the caller's
+--     row over an invisible parent. 092.6's surviving un-hoist detector covers
+--     the withdrawal half of that on `club_join_waves`; the READ half does not.
+--
+-- Neither is retargeted here, because writing new `club_join_waves` coverage is
+-- a change to a table 101 does not touch and belongs in its own change with its
+-- own review.
 
 -- ---------------------------------------------------------------------------
 -- 092.5  Blocked with the join's SUBJECT
@@ -23572,63 +23485,44 @@ select assert_denied($$
 -- below before the product owner ruled the policy wrong rather than the
 -- requirement.
 --
--- ** THE THREE CASES BELOW ARE THE UN-HOIST DETECTOR. ** Move the branch back
--- inside the block conjunct and all three go red; nothing else in the suite
--- does. Do not "simplify" §3.1 to match `postcard_likes`, which carries the
--- same defect and is filed separately.
+-- ** ONE UN-HOIST DETECTOR SURVIVES, AND IT IS THE ONE THE REQUIREMENT IS
+-- ACTUALLY ABOUT. ** There were three. Two ran against `club_thread_waves` and
+-- went with the table (101, PD-373): a rider blocked by a thread's AUTHOR still
+-- reading the wave they placed on it, and their DELETE matching it. The third —
+-- below — needs NO BLOCK AT ALL: leaving the club is enough, which is the case
+-- the capability's own wording names, and it covers `club_join_waves`, the table
+-- that still exists. Move the own-row branch back inside the block conjunct and
+-- it goes red; nothing else in the suite does. Do not "simplify" §3.1 to match
+-- `postcard_likes`, which carries the same defect and is filed separately.
 
 -- The ordinary path first: a rider who can still see the parent withdraws
 -- normally, and takes nobody else's row with them.
 savepoint wave_ordinary_withdrawal_092;
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000920003', false);
-delete from club_thread_waves
- where thread_id = '00000000-0000-0000-0000-0000009200d1'
-   and user_id = '00000000-0000-0000-0000-000000920003';
 delete from club_join_waves
  where club_id = '00000000-0000-0000-0000-0000009200c1'
    and subject_user_id = '00000000-0000-0000-0000-000000920004'
    and user_id = '00000000-0000-0000-0000-000000920003';
 reset role;
 select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'),
-  2, '092.6: a rider withdraws their own THREAD wave and the count falls by exactly one — read back as the owner, so this is a delete and not a visibility change');
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'
+      and user_id = '00000000-0000-0000-0000-000000920003'),
+  0, '092.6: a rider withdraws their own JOIN wave and it is really gone — read back as the owner, so this is a delete and not a visibility change');
 select assert_eq(
   (select count(*)::int from club_join_waves
     where club_id = '00000000-0000-0000-0000-0000009200c1'
       and user_id = '00000000-0000-0000-0000-000000920009'),
-  1, '092.6: ... and their JOIN wave too, leaving the other waver''s row alone. DELETE is `using (user_id = auth.uid())` with no visibility conjunct, which is 009''s rule');
+  1, '092.6: ... leaving the other waver''s row alone. DELETE is `using (user_id = auth.uid())` with no visibility conjunct, which is 009''s rule');
 rollback to savepoint wave_ordinary_withdrawal_092;
 
--- ** UN-HOIST DETECTOR 1/3 — blocked by the PARENT'S AUTHOR. ** wvmember waved
--- d2 before its author blocked them. 009 §7 is explicit that a block deletes
--- nothing, so the row is still there and every other member still sees it —
--- which is precisely why being unable to withdraw it would be a defect rather
--- than a curiosity.
-savepoint wave_withdraw_while_blocked_092;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000920003', false);
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where user_id = auth.uid()
-      and thread_id = '00000000-0000-0000-0000-0000009200d2'),
-  1, '092.6: ** UN-HOIST DETECTOR (1/3) ** — a rider blocked by a thread''s AUTHOR still READS the wave they placed on it, through §3.1''s whole-policy own-row branch. Reads 0 if that branch is moved back inside the block conjunct, where blocks_no_self_block makes it a no-op');
-delete from club_thread_waves
- where thread_id = '00000000-0000-0000-0000-0000009200d2'
-   and user_id = '00000000-0000-0000-0000-000000920003';
-reset role;
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d2'
-      and user_id = '00000000-0000-0000-0000-000000920003'),
-  0, '092.6: ** UN-HOIST DETECTOR (2/3) ** — and their DELETE MATCHED it, read back as the owner. Un-hoisted this is DELETE 0 with PostgREST reporting success and the row surviving, which is 081''s club_messages trap and is invisible from the DELETE policy alone');
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d2'
-      and user_id = '00000000-0000-0000-0000-000000920002'),
-  1, '092.6: ... and wvadmin''s wave on that same thread is untouched, so the withdrawal is scoped to the caller''s own row and the hoist grants nothing over anybody else''s');
-rollback to savepoint wave_withdraw_while_blocked_092;
+-- ** UN-HOIST DETECTORS 1/3 AND 2/3 WERE HERE AND WENT WITH club_thread_waves
+-- (101, PD-373). ** Both turned on a rider blocked by a THREAD's author still
+-- reading, and then deleting, the wave they had placed on that thread. There is
+-- no `club_join_waves` analogue of a blocked-with-the-parent's-author read that
+-- this fixture reaches, so they are removed rather than narrowed. The detector
+-- below is the third and it needs no block at all.
 
 -- ** UN-HOIST DETECTOR 3/3, and the commoner instance: NO BLOCK IS INVOLVED. **
 -- Leaving the club is enough, and it is the case the requirement's own wording
@@ -23644,23 +23538,17 @@ delete from club_members
 select assert_eq(
   (select count(*)::int from club_threads
     where id = '00000000-0000-0000-0000-0000009200d1'),
-  0, '092.6: a rider who has LEFT a private club can no longer read its threads at all — private.is_club_member simply stops answering, with no block anywhere');
-delete from club_thread_waves
- where thread_id = '00000000-0000-0000-0000-0000009200d1'
-   and user_id = '00000000-0000-0000-0000-000000920003';
+  0, '092.6: a rider who has LEFT a private club can no longer read its threads at all — private.is_club_member simply stops answering, with no block anywhere. Kept after 101 as the CHEAPEST proof that the leave really took effect, which is what makes the withdrawal below non-trivial');
 delete from club_join_waves
  where club_id = '00000000-0000-0000-0000-0000009200c1'
    and subject_user_id = '00000000-0000-0000-0000-000000920004'
    and user_id = '00000000-0000-0000-0000-000000920003';
 reset role;
 select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'
-      and user_id = '00000000-0000-0000-0000-000000920003')
-  + (select count(*)::int from club_join_waves
+  (select count(*)::int from club_join_waves
     where club_id = '00000000-0000-0000-0000-0000009200c1'
       and user_id = '00000000-0000-0000-0000-000000920003'),
-  0, '092.6: ** UN-HOIST DETECTOR (3/3) — THE ASSERTION THE HOIST EXISTS FOR ** — and they can still withdraw BOTH waves they left behind, each delete matching its row. Un-hoisted both are DELETE 0 with the rows surviving and every remaining member still seeing them, while the rider''s own toggle flips and unwaveThread reports success');
+  0, '092.6: ** THE UN-HOIST DETECTOR — THE ASSERTION THE HOIST EXISTS FOR ** — and they can still withdraw the join wave they left behind, the delete matching its row. Un-hoisted this is DELETE 0 with the row surviving and every remaining member still seeing it, while the rider''s own toggle flips and the action reports success. It read BOTH tables until 101 dropped club_thread_waves; the property is the SELECT policy''s shape and is identical on the table that remains');
 select assert_eq(
   (select count(*)::int from club_join_waves
     where club_id = '00000000-0000-0000-0000-0000009200c1'
@@ -23674,73 +23562,53 @@ rollback to savepoint wave_withdraw_after_leaving_092;
 savepoint wave_owner_cannot_delete_092;
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000920001', false);
-delete from club_thread_waves
- where thread_id = '00000000-0000-0000-0000-0000009200d1'
-   and user_id = '00000000-0000-0000-0000-000000920003';
 delete from club_join_waves
  where club_id = '00000000-0000-0000-0000-0000009200c1'
    and subject_user_id = '00000000-0000-0000-0000-000000920004';
 reset role;
 select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'),
-  3, '092.6: the CLUB OWNER''s delete matches zero rows — there is no moderation verb for a wave and no RPC that would be one. A block already removes a wave from the blocker''s view, and moderate_club_thread deletes the thread and cascades its waves');
-select assert_eq(
   (select count(*)::int from club_join_waves
     where club_id = '00000000-0000-0000-0000-0000009200c1'),
-  2, '092.6: ... on the join table too, asserted separately because a shared rule written twice is two policies');
+  2, '092.6: the CLUB OWNER''s delete matches zero rows — there is no moderation verb for a wave and no RPC that would be one. A block already removes a wave from the blocker''s view, and leaving the club cascades the join''s waves');
 rollback to savepoint wave_owner_cannot_delete_092;
 
 -- ---------------------------------------------------------------------------
--- 092.7  Owner, admin and member reach the SAME thing — and no policy says `role`
+-- 092.7  No policy says `role` — the catalogue half, which is now all of it
 -- ---------------------------------------------------------------------------
--- Two fixtures agreeing proves the roles coincide TODAY. The catalogue half is
--- what proves they cannot diverge, and it is the assertion that survives a new
--- rider being added to the fixture with the wrong row.
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000920001', false);
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'),
-  3, '092.7: the club OWNER reads three');
-select set_config('test.uid', '00000000-0000-0000-0000-000000920002', false);
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'),
-  3, '092.7: ... the ADMIN reads three');
-select set_config('test.uid', '00000000-0000-0000-0000-000000920009', false);
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'),
-  3, '092.7: ... and an ordinary MEMBER reads three. No role reaches further than another');
-
+-- ** THE BEHAVIOURAL HALF WENT WITH club_thread_waves (101, PD-373). ** Three
+-- fixtures — owner, admin and ordinary member each reading the same three waves
+-- on one thread — proved the roles coincide TODAY, and they ran against the
+-- dropped table. What survives is the half that proved they cannot DIVERGE, read
+-- off pg_policies, and it was always the stronger of the two: a fixture cannot
+-- see a predicate no rider in it triggers. A session restoring the behavioural
+-- half should write it against `club_join_waves`.
 reset role;
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public'
-      and tablename in ('club_thread_waves', 'club_join_waves')
+      and tablename = 'club_join_waves'
       and (coalesce(qual, '') || coalesce(with_check, '')) like '%role%'),
-  0, '092.7: ** and NO policy on either table mentions `role` at all ** — read off pg_policies rather than inferred from two fixtures agreeing, because a fixture cannot see a predicate no rider in it triggers');
+  0, '092.7: ** NO policy on club_join_waves mentions `role` at all ** — read off pg_policies rather than inferred from fixtures agreeing, because a fixture cannot see a predicate no rider in it triggers. It named both wave tables until 101 dropped one');
 -- The whole point of the inheritance: these four names appear in the PARENT
 -- policies and must appear in none of 092's. A copy here is a second predicate
 -- to keep in step, and the one that drifts is the one nobody reads.
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public'
-      and tablename in ('club_thread_waves', 'club_join_waves')
+      and tablename = 'club_join_waves'
       and ((coalesce(qual, '') || coalesce(with_check, '')) like '%is_club_member%'
         or (coalesce(qual, '') || coalesce(with_check, '')) like '%is_public%'
         or (coalesce(qual, '') || coalesce(with_check, '')) like '%owner_id%'
         or (coalesce(qual, '') || coalesce(with_check, '')) like '%author_id%')),
-  0, '092.7: ... and none names is_club_member, is_public, owner_id or author_id — the audience is INHERITED through the parent EXISTS, and 092.1/092.2/092.4/092.5 are the behavioural half of the same claim');
+  0, '092.7: ... and it names none of is_club_member, is_public, owner_id or author_id — the audience is INHERITED through the parent EXISTS, and 092.1/092.2/092.5 are the behavioural half of the same claim. 092.4 was the fourth and went with club_thread_waves (101)');
 -- Exactly one is_blocked call per policy body that has one, and its argument is
 -- the REACTOR. Two would mean the parent's arm had been copied.
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public'
-      and tablename in ('club_thread_waves', 'club_join_waves')
+      and tablename = 'club_join_waves'
       and (coalesce(qual, '') || coalesce(with_check, '')) like '%is_blocked(auth.uid(), user_id)%'),
-  2, '092.7: ... and the ONLY block arm on either table is on the REACTOR, in the two SELECT policies and nowhere else — the INSERT policies inherit the parent''s instead, which is why there are two and not four');
+  1, '092.7: ... and the ONLY block arm on the table is on the REACTOR, in its SELECT policy and nowhere else — the INSERT policy inherits the parent''s instead, which is why there is one and not two. This read 2 across BOTH wave tables until 101 dropped club_thread_waves; it is scoped to the surviving table so a later table landing beside it cannot make it stop testing its own intent');
 -- The qualification the tautology trap turns on, pinned structurally as well as
 -- behaviourally. 092.2 and 092.5 catch one half each; this catches both at once
 -- and does not depend on a fixture existing to trip it.
@@ -23752,10 +23620,15 @@ select assert_eq(
   2, '092.7: ** and BOTH club_join_waves policies that reach club_members qualify BOTH columns ** — SELECT and INSERT; DELETE names no parent at all. club_members has a column of each name, so an unqualified comparison deparses to `m.club_id = m.club_id` and the EXISTS becomes "can I read any roster row anywhere"');
 
 -- ---------------------------------------------------------------------------
--- 092.8  A self-welcome is refused; a self-wave on a thread is not
+-- 092.8  A self-welcome is refused
 -- ---------------------------------------------------------------------------
--- The asymmetry is deliberate (§Q3) and is asserted in both directions so it is
--- not read as an oversight and removed for consistency.
+-- ** THIS WAS AN ASYMMETRY AND IS NOW A PLAIN RULE. ** 092 refused a self-
+-- WELCOME and permitted a self-wave on a thread, matching postcard_likes'
+-- self-like, and asserted both directions so neither was read as an oversight.
+-- 101 dropped club_thread_waves, so only the refusal is left. It is still the
+-- WITH CHECK's `user_id <> subject_user_id` and it is still deliberate: a
+-- self-welcome expresses nothing, and keeping the row out of the fan-out's path
+-- is better than relying on the fan-out to exclude it.
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000920004', false);
 select assert_denied($$
@@ -23764,12 +23637,6 @@ select assert_denied($$
           '00000000-0000-0000-0000-000000920004',
           '00000000-0000-0000-0000-000000920004')$$,
   '092.8: a rider cannot welcome THEMSELVES — user_id <> subject_user_id in the WITH CHECK, which keeps a self-addressed row out of the fan-out''s path rather than relying on the fan-out to exclude it');
-select set_config('test.uid', '00000000-0000-0000-0000-000000920001', false);
-select assert_allowed($$
-  insert into club_thread_waves (thread_id, user_id)
-  values ('00000000-0000-0000-0000-0000009200d1',
-          '00000000-0000-0000-0000-000000920001')$$,
-  '092.8: ... while a rider MAY wave their own thread, matching postcard_likes'' self-like. There is no user_id <> author_id conjunct on club_thread_waves and there must not be');
 
 -- ---------------------------------------------------------------------------
 -- 092.9  anon reaches nothing, and every policy targets authenticated alone
@@ -23778,20 +23645,20 @@ reset role;
 select assert_eq(
   (select count(*)::int from information_schema.role_table_grants
     where table_schema = 'public'
-      and table_name in ('club_thread_waves', 'club_join_waves')
+      and table_name = 'club_join_waves'
       and grantee = 'anon'),
-  0, '092.9: anon holds NO privilege on either wave table — decision #1, and this change adds no anon policy anywhere');
+  0, '092.9: anon holds NO privilege on the wave table — decision #1, and 092 added no anon policy anywhere. It read across BOTH wave tables until 101 dropped club_thread_waves');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public'
-      and tablename in ('club_thread_waves', 'club_join_waves')
+      and tablename = 'club_join_waves'
       and not (roles = '{authenticated}')),
-  0, '092.9: ... and every policy on them targets authenticated and nothing else');
+  0, '092.9: ... and every policy on it targets authenticated and nothing else');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public'
-      and tablename in ('club_thread_waves', 'club_join_waves')),
-  6, '092.9: ... and there are SIX of them, three per table — SELECT, INSERT, DELETE — so the assertions above are not vacuous. proposal.md §Impact says eight and §What Changes says four each; both count a phantom UPDATE policy that tasks.md §3.4 forbids');
+      and tablename = 'club_join_waves'),
+  3, '092.9: ... and there are THREE of them — SELECT, INSERT, DELETE — so the assertions above are not vacuous. It was SIX across 092''s two tables until 101 dropped club_thread_waves, and it is deliberately scoped to ONE table now rather than left as a shared count: proposal.md §Impact said eight and §What Changes said four each, both counting a phantom UPDATE policy that tasks.md §3.4 forbids');
 
 -- ---------------------------------------------------------------------------
 -- 092.10  ** LEAVING TAKES THE JOIN'S WAVES, AND A REJOIN STARTS AT ZERO **
@@ -23853,10 +23720,6 @@ select assert_eq(
     where type = 'club_waved'
       and club_id = '00000000-0000-0000-0000-0000009200c1'),
   0, '092.10: ... and the cascaded delete fires the retraction, so the departing rider is not left holding a welcome to a membership that no longer exists. This is where "fires on cascaded deletes" is USEFUL rather than merely harmless');
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'),
-  3, '092.10: ... while THREAD waves are untouched by a leave, being keyed to the thread and not to any membership');
 rollback to savepoint wave_leave_private_092;
 
 -- A role change disturbs nothing: `role` is not part of the key.
@@ -23882,17 +23745,14 @@ savepoint wave_delete_reactor_092;
 reset role;
 delete from profiles where id = '00000000-0000-0000-0000-000000920003';
 select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where user_id = '00000000-0000-0000-0000-000000920003'),
-  0, '092.11: deleting the REACTOR''s account removes every thread wave they placed');
-select assert_eq(
   (select count(*)::int from club_join_waves
     where user_id = '00000000-0000-0000-0000-000000920003'),
-  0, '092.11: ... and every join wave they placed');
+  0, '092.11: deleting the REACTOR''s account removes every join wave they placed');
 select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'),
-  2, '092.11: ... and nobody else''s, so the cascade is keyed to the reactor rather than sweeping the parent');
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'
+      and user_id = '00000000-0000-0000-0000-000000920009'),
+  1, '092.11: ... and nobody else''s, so the cascade is keyed to the reactor rather than sweeping the parent. This pair read the thread table too until 101 dropped it');
 rollback to savepoint wave_delete_reactor_092;
 
 savepoint wave_delete_subject_092;
@@ -23910,29 +23770,28 @@ select assert_eq(
 rollback to savepoint wave_delete_subject_092;
 
 -- ---------------------------------------------------------------------------
--- 092.12  Every FK into profiles on these two tables LEADS an index
+-- 092.12  Every FK into profiles on this table LEADS an index
 -- ---------------------------------------------------------------------------
--- 029's catalog form, never a timing. Scoped to the two tables 092 adds, so it
--- keeps testing its own intent when a later table lands on the global version
--- of this at 029.
+-- 029's catalog form, never a timing. Scoped to the table 092 added that still
+-- exists, so it keeps testing its own intent when a later table lands on the
+-- global version of this at 029. It covered BOTH of 092's tables until 101
+-- dropped club_thread_waves along with club_thread_waves_user_idx.
 reset role;
 select assert_eq(
   (select count(*)::int from pg_constraint c
     where c.contype = 'f'
       and c.confrelid = 'public.profiles'::regclass
-      and c.conrelid in ('public.club_thread_waves'::regclass,
-                         'public.club_join_waves'::regclass)),
-  2, '092.12: TWO foreign keys into profiles across the two tables — the reactor on each. There is deliberately no third: the join''s SUBJECT is reached through club_members, which is what makes 092.10 possible');
+      and c.conrelid = 'public.club_join_waves'::regclass),
+  1, '092.12: ONE foreign key into profiles on club_join_waves — the reactor. There is deliberately no second: the join''s SUBJECT is reached through club_members, which is what makes 092.10 possible. It was TWO across 092''s pair, the other being club_thread_waves.user_id, dropped by 101');
 select assert_eq(
   (select count(*)::int from pg_constraint c
     where c.contype = 'f'
       and c.confrelid = 'public.profiles'::regclass
-      and c.conrelid in ('public.club_thread_waves'::regclass,
-                         'public.club_join_waves'::regclass)
+      and c.conrelid = 'public.club_join_waves'::regclass
       and not exists (select 1 from pg_index i
                        where i.indrelid = c.conrelid
                          and i.indkey[0] = c.conkey[1])),
-  0, '092.12: ... and each one LEADS an index of its own. Both primary keys lead with another column — thread_id and club_id — so neither serves the profiles cascade and an account deletion would be a sequential scan of both tables');
+  0, '092.12: ... and it LEADS an index of its own. The primary key leads with club_id, so it does not serve the profiles cascade and an account deletion would be a sequential scan without club_join_waves_user_idx');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where conrelid = 'public.club_join_waves'::regclass and contype = 'f'
@@ -23949,45 +23808,38 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where t.tgname = 'enforce_participation_gate'
-      and c.relname = 'club_thread_waves'),
-  1, '092.13: club_thread_waves carries the gate, named');
-select assert_eq(
-  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
-    where t.tgname = 'enforce_participation_gate'
       and c.relname = 'club_join_waves'),
-  1, '092.13: ... and so does club_join_waves — TWO new triggers, not one, which is 081''s arithmetic and the one 078''s task list got wrong');
+  1, '092.13: club_join_waves carries the gate, named. 092 added TWO — 081''s arithmetic, the one 078''s task list got wrong — and 101 removed the other by dropping club_thread_waves, so this is the half that survives');
+select assert_eq(
+  (select count(*)::int from pg_class
+    where relnamespace = 'public'::regnamespace and relname = 'club_thread_waves'),
+  0, '092.13/101: ... and club_thread_waves is GONE, so its gate went with the table rather than being taken off it. Asserted here because "one gate where there were two" is otherwise indistinguishable from a gate that was removed and a table that was not');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '092.13/093/094: ... and the flat total is TWENTY-TWO, having been twenty-one after 093, nineteen after 092 and seventeen before it. Both halves are asserted because neither implies the other, and the ABSOLUTE is only meaningful here because this suite replays the whole chain — on a hosted project it depends on which of 092-095 has applied, so the number that travels is the DELTA (+2 for 092, +2 for 093, +1 for 094, +0 for 095) and the table names');
+  21, '092.13/093/094/101: ... and the flat total is TWENTY-ONE, having been twenty-two after 094, twenty-one after 093, nineteen after 092 and seventeen before it. Both halves are asserted because neither implies the other, and the ABSOLUTE is only meaningful here because this suite replays the whole chain — on a hosted project it depends on which of 092-101 has applied, so the number that travels is the DELTA (+2 for 092, +2 for 093, +1 for 094, +0 for 095, -1 for 101) and the table names');
 select assert_eq(
   (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where t.tgname = 'enforce_participation_gate'
-      and c.relname in ('club_thread_waves', 'club_join_waves')
+      and c.relname = 'club_join_waves'
       and pg_get_triggerdef(t.oid) ilike '%current_user%'),
-  2, '092.13: ... and BOTH carry the WHEN guard. 023 §2: inside a security definer body current_user is the OWNER, so the guard moved into the function would fire for nobody and gate nothing while looking complete');
+  1, '092.13: ... and it carries the WHEN guard. 023 §2: inside a security definer body current_user is the OWNER, so the guard moved into the function would fire for nobody and gate nothing while looking complete. It read 2 across 092''s pair until 101');
 
 -- The refusal itself, from a rider who is a full member and lacks only the
 -- consent stamp — so nothing about the policy can be what refuses them.
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000920008', false);
 select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000009200d1'),
-  3, '092.13: the un-consented rider READS the waves normally — 023 gates writing, never reading, and a read refusal here would be a different bug wearing the same clothes');
-select assert_rejected($$
-  insert into club_thread_waves (thread_id, user_id)
-  values ('00000000-0000-0000-0000-0000009200d1',
-          '00000000-0000-0000-0000-000000920008')$$,
-  '23514',
-  '092.13: ... and is refused the thread wave by the GATE (23514), not by the policy (42501) — the account created by calling GoTrue''s /auth/v1/signup directly and never calling accept_terms()');
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'),
+  2, '092.13: the un-consented rider READS the waves normally — 023 gates writing, never reading, and a read refusal here would be a different bug wearing the same clothes');
 select assert_rejected($$
   insert into club_join_waves (club_id, subject_user_id, user_id)
   values ('00000000-0000-0000-0000-0000009200c1',
           '00000000-0000-0000-0000-000000920004',
           '00000000-0000-0000-0000-000000920008')$$,
   '23514',
-  '092.13: ... and the join wave too, asserted separately because two tables are two triggers');
+  '092.13: ... and is refused the join wave by the GATE (23514), not by the policy (42501) — the account created by calling GoTrue''s /auth/v1/signup directly and never calling accept_terms(). The thread-wave half of this pair went with club_thread_waves (101)');
 
 -- ---------------------------------------------------------------------------
 -- 092.14  The fan-out: EXACTLY ONE row, addressed to the joiner
@@ -24027,26 +23879,13 @@ select assert_eq(
   1, '092.14: ... whose user_id is the joiner and whose actor_id is the waver, both read from NEW rather than from auth.uid(), which is NULL in this suite and would have filtered every recipient out');
 rollback to savepoint wave_fanout_one_092;
 
--- A THREAD wave notifies nobody at all. §Q2, asserted as an absence.
-savepoint wave_thread_no_fanout_092;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000920002', false);
-insert into club_thread_waves (thread_id, user_id)
-values ('00000000-0000-0000-0000-0000009200d1',
-        '00000000-0000-0000-0000-000000920002');
-reset role;
-select assert_eq(
-  (select count(*)::int from notifications
-    where type = 'club_waved'
-      and club_id = '00000000-0000-0000-0000-0000009200c1'),
-  2, '092.14/098: ** waving a THREAD writes no club_waved row ** — that count is unmoved, and it stays an assertion after 098 because the two waves are different acts on different subjects: 098 gave the thread wave its OWN type, club_thread_waved, carrying thread_id and NOT club_id. A thread wave that reached this count would be 092''s join wave being written by the wrong trigger');
-select assert_eq(
-  (select array(select t.tgname::text from pg_trigger t join pg_class c on c.oid = t.tgrelid
-                 where c.relname = 'club_thread_waves' and not t.tgisinternal
-                 order by t.tgname)),
-  array['enforce_participation_gate', 'notify_club_thread_waved', 'retract_club_thread_waved'],
-  '092.14/098: ... and THESE THREE are what the table carries — 023''s gate plus 098''s fan-out pair. Read as a NAME LIST rather than 092''s original count of one: 092 asserted the absence of any fan-out here, 098 (PD-367) reverses that decision on the product owner''s instruction, and a bare count could not tell a notify from a retraction nor either from a fourth trigger nobody meant to add');
-rollback to savepoint wave_thread_no_fanout_092;
+-- ** 092's "A THREAD WAVE NOTIFIES NOBODY AT ALL" BLOCK IS GONE (101, PD-373).
+-- ** It asserted §Q2 as an absence, was rewritten by 098 when the product owner
+-- reversed that decision, and is removed here because its subject — the table,
+-- its fan-out pair and its trigger name list — no longer exists. The fact it
+-- last recorded still holds and is now trivial: a club_waved row names club_id
+-- and never thread_id, which 092.18's two CHECK assertions pin from the
+-- notifications side and which nothing can now write from the other.
 
 -- The self-exclusion, in the FUNCTION rather than only in the policy. The
 -- policy stops the row existing; this is what holds if a future path writes it
@@ -24147,36 +23986,28 @@ reset role;
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public'
-      and tablename in ('club_thread_waves', 'club_join_waves')
+      and tablename = 'club_join_waves'
       and cmd = 'UPDATE'),
-  0, '092.17: no UPDATE policy on either wave table');
+  0, '092.17: no UPDATE policy on the wave table — it read across BOTH until 101 dropped club_thread_waves');
 select assert_eq(
   (select count(*)::int from (values ('authenticated'), ('anon')) as r(role)
-    where has_table_privilege(r.role, 'public.club_thread_waves', 'update')
-       or has_table_privilege(r.role, 'public.club_join_waves', 'update')),
+    where has_table_privilege(r.role, 'public.club_join_waves', 'update')),
   0, '092.17: ... and no UPDATE grant either, scoped to the two client roles rather than counted table-wide — postgres and service_role hold everything by Supabase default and a bare count reads 2 against a correct database (015''s footer)');
 -- created_at is server-owned BY THE GRANT. A default alone would not do it:
 -- PostgREST will happily name a column a client holds a grant on.
-select assert_eq(
-  (select array(select column_name::text from information_schema.column_privileges
-                 where table_schema = 'public' and table_name = 'club_thread_waves'
-                   and grantee = 'authenticated' and privilege_type = 'INSERT'
-                 order by column_name)),
-  array['thread_id', 'user_id'],
-  '092.17: club_thread_waves'' INSERT grant names TWO columns and created_at is not one — the absent grant is the guard, not the default (034 §4b)');
 select assert_eq(
   (select array(select column_name::text from information_schema.column_privileges
                  where table_schema = 'public' and table_name = 'club_join_waves'
                    and grantee = 'authenticated' and privilege_type = 'INSERT'
                  order by column_name)),
   array['club_id', 'subject_user_id', 'user_id'],
-  '092.17: ... and club_join_waves'' names THREE, likewise without created_at');
+  '092.17: club_join_waves'' INSERT grant names THREE columns and created_at is not one — the absent grant is the guard, not the default (034 §4b). club_thread_waves'' two-column twin went with the table (101)');
 select assert_eq(
   (select count(*)::int from pg_class
     where relnamespace = 'public'::regnamespace
-      and relname in ('club_thread_waves', 'club_join_waves')
+      and relname = 'club_join_waves'
       and relrowsecurity),
-  2, '092.17: ... and RLS is enabled on both, which is the thing every assertion above silently assumes');
+  1, '092.17: ... and RLS is enabled on it, which is the thing every assertion above silently assumes');
 
 -- ---------------------------------------------------------------------------
 -- 092.18  Nothing denormalised, and no new PostgREST surface
@@ -28159,7 +27990,7 @@ select assert_eq((select cmd::text from pg_policies where tablename = 'feedback'
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '096.10: 096 adds NO participation-gate trigger — still twenty-two, because feedback already had one and profiles deliberately has none');
+  21, '096.10: 096 adds NO participation-gate trigger — twenty-one, because feedback already had one and profiles deliberately has none. It read twenty-two until 101 dropped club_thread_waves and its gate with it, which is a change to the CHAIN and not to 096');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgrelid = 'public.profiles'::regclass and not tgisinternal
@@ -28814,7 +28645,7 @@ reset role;
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '097.14: still TWENTY-TWO participation-gate triggers — 097 adds no table and therefore no gate, and its content write is gated inside the function instead');
+  21, '097.14: TWENTY-ONE participation-gate triggers — 097 adds no table and therefore no gate, and its content write is gated inside the function instead. It read twenty-two until 101 dropped club_thread_waves and its gate with it');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgrelid = 'public.club_threads'::regclass and not tgisinternal),
@@ -29050,28 +28881,14 @@ select assert_eq(
   2, '098.3: ... and the second replier DID write a row of their own — two rows, one per actor, so the zero above is a recipient set and not an empty fan-out');
 
 -- ---------------------------------------------------------------------------
--- 098.4  A wave notifies the author; waving your own thread notifies nobody
+-- 098.4  WAS "a wave notifies the author; waving your own thread notifies
+--        nobody" AND WENT WITH club_thread_waves (101, PD-373)
 -- ---------------------------------------------------------------------------
-savepoint wave_fanout_098;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980003');
-select set_config('test.uid', '00000000-0000-0000-0000-000000980002', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980002');
-reset role;
-select set_config('test.uid', '', false);
-select assert_eq(
-  (select count(*)::int from notifications
-    where type = 'club_thread_waved' and thread_id = '00000000-0000-0000-0000-0000009800d1'),
-  1, '098.4: a wave by another member writes exactly one row and the author waving their OWN thread writes none — two waves, one notification. 092 shipped this table deliberately silent and said so in the database; PD-367 reverses that on the product owner''s instruction');
-select assert_eq(
-  (select user_id from notifications
-    where type = 'club_thread_waved' and thread_id = '00000000-0000-0000-0000-0000009800d1'),
-  '00000000-0000-0000-0000-000000980002'::uuid,
-  '098.4: ... addressed to the thread''s author, with new.user_id as the actor — club_thread_waves names its rider user_id where club_messages names theirs author_id, which is the only difference between the two fan-out bodies');
-rollback to savepoint wave_fanout_098;
+-- 098 shipped TWO fan-outs at club threads and 101 removes one of them. The
+-- reply fan-out — private.notify_club_thread_replied on public.club_messages —
+-- is untouched and everything below still exercises it. What lapses here is only
+-- ever the wave half; where a section had both, the reply half is kept and the
+-- label says so rather than the pair being deleted wholesale.
 
 -- ---------------------------------------------------------------------------
 -- 098.5  ** THE ASSERTION THE COLUMN EXISTS FOR: two threads, one club, one
@@ -29182,13 +28999,7 @@ insert into club_messages (thread_id, author_id, body) values
 select assert_eq(
   (select count(*)::int from notifications
     where type = 'club_thread_replied' and thread_id = '00000000-0000-0000-0000-0000009800d5'),
-  1, '098.8: ** ... and the fan-out still fired. ** The three triggers carry NO when clause: a notification that silently does not happen for a seed, an RPC or a psql write is a gap with nothing to detect it, and it is this suite''s own writes that would stop firing');
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d5', '00000000-0000-0000-0000-000000980004');
-select assert_eq(
-  (select count(*)::int from notifications
-    where type = 'club_thread_waved' and thread_id = '00000000-0000-0000-0000-0000009800d5'),
-  1, '098.8: ... and so did the wave fan-out, asserted separately because the two are two triggers on two tables and one clause could be copied onto either');
+  1, '098.8: ** ... and the fan-out still fired. ** The trigger carries NO when clause: a notification that silently does not happen for a seed, an RPC or a psql write is a gap with nothing to detect it, and it is this suite''s own writes that would stop firing. 098 asserted the WAVE fan-out here too, separately, because they were two triggers on two tables and one clause could be copied onto either; 101 dropped that table');
 rollback to savepoint owner_write_098;
 
 -- ---------------------------------------------------------------------------
@@ -29207,12 +29018,10 @@ insert into blocks (blocker_id, blocked_id) values
   ('00000000-0000-0000-0000-000000980006', '00000000-0000-0000-0000-000000980002');
 insert into club_messages (thread_id, author_id, body) values
   ('00000000-0000-0000-0000-0000009800d6', '00000000-0000-0000-0000-000000980006', 'blocked reply');
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d6', '00000000-0000-0000-0000-000000980006');
 select assert_eq(
   (select count(*)::int from notifications
     where thread_id = '00000000-0000-0000-0000-0000009800d6'),
-  0, '098.9: with ACTOR→AUTHOR blocked, neither the reply nor the wave writes a row — the conjunct is `not private.is_blocked(actor, recipient)` in both fan-outs, and blocks is read through the security definer helper because the blocked party cannot read the row');
+  0, '098.9: with ACTOR→AUTHOR blocked, the reply writes no row — the conjunct is `not private.is_blocked(actor, recipient)`, and blocks is read through the security definer helper because the blocked party cannot read the row. 098 wrote a wave here too and asserted the pair; 101 dropped that fan-out');
 rollback to savepoint block_before_098;
 
 savepoint block_before_rev_098;
@@ -29220,8 +29029,6 @@ insert into blocks (blocker_id, blocked_id) values
   ('00000000-0000-0000-0000-000000980002', '00000000-0000-0000-0000-000000980006');
 insert into club_messages (thread_id, author_id, body) values
   ('00000000-0000-0000-0000-0000009800d6', '00000000-0000-0000-0000-000000980006', 'blocked reply');
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d6', '00000000-0000-0000-0000-000000980006');
 select assert_eq(
   (select count(*)::int from notifications
     where thread_id = '00000000-0000-0000-0000-0000009800d6'),
@@ -29379,8 +29186,6 @@ rollback to savepoint author_block_098;
 -- the author's own-row arm, which sits INSIDE the block conjunct — a reviewer
 -- reasoning from postcards' policy shape gets this exactly backwards.
 savepoint recipient_reads_098;
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980003');
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000980002', false);
 select assert_eq(
@@ -29388,11 +29193,6 @@ select assert_eq(
     where thread_id = '00000000-0000-0000-0000-0000009800d1'
       and type = 'club_thread_replied'),
   2, '098.13: the recipient READS their reply notifications back under their own session — both of them, on a PRIVATE club');
-select assert_eq(
-  (select count(*)::int from notifications
-    where thread_id = '00000000-0000-0000-0000-0000009800d1'
-      and type = 'club_thread_waved'),
-  1, '098.13: ... and the wave one too, asserted separately because the two types are two fan-outs and either could write a row the policy will not return');
 select assert_eq(
   (select count(*)::int from club_threads where id = '00000000-0000-0000-0000-0000009800d1'),
   1, '098.13: ... and the thread the row links to is readable by them in the same session, so the row''s destination opens rather than refusing — the state 036 forbids is a row that renders over a screen that will not');
@@ -29558,132 +29358,29 @@ select assert_eq(
 rollback to savepoint ownerless_098;
 
 -- ---------------------------------------------------------------------------
--- 098.18  Un-waving removes the matching row
+-- 098.18 - 098.21  THE RETRACTION'S FOUR SECTIONS WENT WITH
+--                   club_thread_waves (101, PD-373)
 -- ---------------------------------------------------------------------------
-savepoint retract_098;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980003');
-reset role;
-select assert_eq(
-  (select count(*)::int from notifications
-    where type = 'club_thread_waved' and thread_id = '00000000-0000-0000-0000-0000009800d1'),
-  1, '098.18: the wave wrote a row — precondition');
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-delete from club_thread_waves
- where thread_id = '00000000-0000-0000-0000-0000009800d1'
-   and user_id = '00000000-0000-0000-0000-000000980003';
-reset role;
-select assert_eq(
-  (select count(*)::int from notifications
-    where type = 'club_thread_waved' and thread_id = '00000000-0000-0000-0000-0000009800d1'),
-  0, '098.18: ** un-waving removes it, read or unread. ** The recipient''s unread count falls with it, which is accepted rather than compensated for');
-select assert_eq(
-  (select count(*)::int from notifications
-    where type = 'club_thread_replied' and thread_id = '00000000-0000-0000-0000-0000009800d1'),
-  2, '098.18: ... and the REPLY notifications on the same thread are untouched — `type` is in the retraction''s scope, which is what fixes the four subject columns the arm leaves NULL');
-rollback to savepoint retract_098;
-
--- ---------------------------------------------------------------------------
--- 098.19  ** TWO ACTORS: A's un-wave cannot reach B's row **
--- ---------------------------------------------------------------------------
--- A single-actor assertion cannot fail. A delete scoped by `type + thread_id`
--- alone is a write ONE RIDER CAN AIM AT ANOTHER RIDER'S ROW, in the one table in
--- this schema whose premise is that no rider can write to it — A holds no grant
--- on notifications, but the trigger does, and it is running on A's delete.
-savepoint retract_two_actors_098;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980003');
-select set_config('test.uid', '00000000-0000-0000-0000-000000980004', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980004');
-reset role;
-select assert_eq(
-  (select count(*)::int from notifications
-    where type = 'club_thread_waved' and thread_id = '00000000-0000-0000-0000-0000009800d1'),
-  2, '098.19: two riders waving the same thread write TWO rows — actor_id is in the collapse key');
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-delete from club_thread_waves
- where thread_id = '00000000-0000-0000-0000-0000009800d1'
-   and user_id = '00000000-0000-0000-0000-000000980003';
-reset role;
-select assert_eq(
-  (select array(select actor_id::text from notifications
-                 where type = 'club_thread_waved'
-                   and thread_id = '00000000-0000-0000-0000-0000009800d1' order by 1)),
-  array['00000000-0000-0000-0000-000000980004'],
-  '098.19: ** A un-waves and only A''s row goes; B''s survives. ** Read as an actor list rather than a count, so "one row left" cannot be satisfied by the wrong one surviving. actor_id in the scope is what makes it A''s own row; user_id is what stops a future multi-recipient type being cleared wholesale');
-rollback to savepoint retract_two_actors_098;
-
--- ---------------------------------------------------------------------------
--- 098.20  One rider, two threads by the same author — un-waving one leaves the
---         other. This is what thread_id in the SCOPE buys
--- ---------------------------------------------------------------------------
-savepoint retract_two_threads_098;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980003'),
-  ('00000000-0000-0000-0000-0000009800d2', '00000000-0000-0000-0000-000000980003');
-reset role;
-select assert_eq(
-  (select count(*)::int from notifications
-    where type = 'club_thread_waved'
-      and actor_id = '00000000-0000-0000-0000-000000980003'),
-  2, '098.20: one rider waving two threads by the same author writes two rows — the pair the seven-column key could not have told apart');
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-delete from club_thread_waves
- where thread_id = '00000000-0000-0000-0000-0000009800d1'
-   and user_id = '00000000-0000-0000-0000-000000980003';
-reset role;
-select assert_eq(
-  (select array(select thread_id::text from notifications
-                 where type = 'club_thread_waved'
-                   and actor_id = '00000000-0000-0000-0000-000000980003' order by 1)),
-  array['00000000-0000-0000-0000-0000009800d2'],
-  '098.20: ** ... and un-waving one removes ONLY that thread''s row. ** Read as a thread list: without thread_id in the retraction''s scope both would go, and the recipient would silently lose a notification about a thread nobody touched');
-rollback to savepoint retract_two_threads_098;
-
--- ---------------------------------------------------------------------------
--- 098.21  Wave → un-wave → wave leaves ONE row, and it is a NEW one. The cost
---         is asserted rather than hidden
--- ---------------------------------------------------------------------------
-savepoint retract_cycle_098;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980003');
-reset role;
-select set_config('test.row',
-  (select id from notifications
-    where type = 'club_thread_waved' and thread_id = '00000000-0000-0000-0000-0000009800d1')::text, false);
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-delete from club_thread_waves
- where thread_id = '00000000-0000-0000-0000-0000009800d1'
-   and user_id = '00000000-0000-0000-0000-000000980003';
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980003');
-reset role;
-select assert_eq(
-  (select count(*)::int from notifications
-    where type = 'club_thread_waved' and thread_id = '00000000-0000-0000-0000-0000009800d1'),
-  1, '098.21: wave, un-wave, wave again leaves exactly ONE live row');
-select assert_eq(
-  (select count(*)::int from notifications
-    where id = current_setting('test.row')::uuid),
-  0, '098.21: ** ... and it is a NEW row: the first one is gone. ** That is the accepted cost of keeping the retraction — 090''s argument, which applies here word for word, because the retraction is precisely what turns a one-tap toggle into a repeatable notification generator. proposal.md Q2 puts it to the product owner and 098 builds the stated default. The exposure is bounded by club_thread_waves'' primary key and by the recipient being one rider who can block the waver');
-select assert_eq(
-  (select read_at is null from notifications
-    where type = 'club_thread_waved' and thread_id = '00000000-0000-0000-0000-0000009800d1'),
-  true, '098.21: ... and it arrives UNREAD, which is the half of the cost that reaches the rider — a badge that lights again for an act they have already seen');
-rollback to savepoint retract_cycle_098;
+-- ** ALL FOUR WERE ABOUT private.retract_club_thread_waved AND NOTHING ELSE, SO
+-- ALL FOUR GO. ** What each pinned, recorded here so a session can tell a
+-- deliberate removal from a lost assertion:
+--
+--   098.18  un-waving removed the matching row, read or unread, and left the
+--           REPLY notifications on the same thread alone — `type` in the
+--           retraction's scope.
+--   098.19  two actors: A's un-wave could not reach B's row. 036 §7.2's rule,
+--           that a delete scoped by `type + thread_id` alone is a write one
+--           rider can aim at another's, in the one table no rider may write.
+--   098.20  one rider, two threads by one author: un-waving one left the other,
+--           which is what thread_id in the scope bought.
+--   098.21  wave -> un-wave -> wave left ONE row and it was a NEW one, arriving
+--           unread. 090's re-notification cost, accepted and asserted.
+--
+-- ** THE RULE THOSE FOUR ENFORCED IS STILL LIVE ELSEWHERE AND MUST STAY. **
+-- 092.15 asserts the same four-column scope on private.retract_club_waved, the
+-- join-wave retraction, which 101 does not touch — so 036 §7.2 keeps a working
+-- detector in this suite. Nothing else lapses: with the table gone there is no
+-- second retraction to get wrong.
 
 -- ---------------------------------------------------------------------------
 -- 098.22  ** DELETING A REPLY RETRACTS NOTHING, and the absence is asserted **
@@ -29732,14 +29429,9 @@ rollback to savepoint reply_delete_098;
 -- 098.23  Deleting the thread removes both types' rows
 -- ---------------------------------------------------------------------------
 savepoint thread_delete_098;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980003');
-reset role;
 select assert_eq(
   (select count(*)::int from notifications where thread_id = '00000000-0000-0000-0000-0000009800d1'),
-  3, '098.23: two reply rows and one wave row name this thread — the precondition, and the wave is what makes the retraction trigger fire at all on the cascade below');
+  2, '098.23: two reply rows name this thread — the precondition. 098 added a wave row here as well, because the WAVE is what made the retraction trigger fire on the cascade below; 101 dropped both');
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000980002', false);
 -- Through error_of rather than as a bare statement, and deliberately: this is
@@ -29750,41 +29442,45 @@ select set_config('test.uid', '00000000-0000-0000-0000-000000980002', false);
 select assert_eq(
   error_of($$delete from club_threads where id = '00000000-0000-0000-0000-0000009800d1'$$),
   '<no error>',
-  '098.23: the author''s delete of a WAVED thread completes — stated here as well as in 098.23a because this is where a raising retraction is reached first, and an unlabelled abort names no defect');
+  '098.23: the author''s delete of the thread completes — stated here as well as in 098.23a because this is the FIRST cascade in the section, and a bare delete that aborted would take the whole psql script down with an unlabelled `query returned no rows` instead of failing the assertion that names the defect');
 reset role;
 select assert_eq(
   (select count(*)::int from notifications where thread_id = '00000000-0000-0000-0000-0000009800d1'),
-  0, '098.23: deleting the thread destroys every notification naming it, both types, through notifications.thread_id''s ON DELETE CASCADE — a notification whose subject no longer exists must not survive as a tombstone');
+  0, '098.23: deleting the thread destroys every notification naming it — through notifications.thread_id''s ON DELETE CASCADE, which is what did the work all along (098.23b measured it) rather than any trigger. A notification whose subject no longer exists must not survive as a tombstone. It read BOTH types until 101 removed the writer of one');
 rollback to savepoint thread_delete_098;
 
 -- ---------------------------------------------------------------------------
 -- 098.23a  ** THE FOUR CASCADE ROUTES EACH SUCCEED — asserted as SUCCESS, not
 --          as an absent row **
 -- ---------------------------------------------------------------------------
--- ** THIS IS THE ASSERTION THAT CATCHES `select … into strict`, AND NOTHING ELSE
--- IN THIS FILE CAN. ** The retraction must JOIN club_threads for its recipient,
--- because club_thread_waves holds only (thread_id, user_id, created_at). On a
--- cascade the club_threads row is ALREADY GONE when the referencing delete fires
--- its AFTER DELETE triggers, so the join resolves nothing. An implementation
--- that raises there — INTO STRICT, PERFORM + FOUND, any raise on the empty case
--- — aborts the whole statement, and the notification is then absent too, because
--- the transaction rolled back. Only "the statement succeeded" tells them apart.
+-- ** THE DEFECT THESE FOUR WERE BUILT TO CATCH IS GONE WITH ITS TRIGGER, AND
+-- THE FOUR ROUTES ARE KEPT ANYWAY. ** 098's reason was
+-- private.retract_club_thread_waved: it had to JOIN club_threads for its
+-- recipient, on a cascade that row is ALREADY GONE when the referencing delete
+-- fires its AFTER DELETE triggers, and any raise on the empty case — INTO
+-- STRICT, PERFORM + FOUND — aborted the whole statement. 101 dropped that
+-- trigger, so no fan-out runs on any of these paths now.
 --
--- Each route is asserted SEPARATELY because they enter the cascade differently,
--- and each sets up a thread that HAS A WAVE, or the trigger never fires and the
--- assertion passes vacuously.
+-- They stay because what they assert is broader than the trigger that motivated
+-- them: FOUR DIFFERENT ENTRIES into the same cascade each complete, and each
+-- takes this thread's `club_thread_replied` notifications with it. A route that
+-- starts refusing — a new child table with a NO ACTION key, a future trigger on
+-- any table in the chain — is red here rather than found by a rider who cannot
+-- delete their own thread or by an admin who cannot moderate one.
+--
+-- Each route is asserted SEPARATELY because they enter the cascade differently.
+-- 098 also gave each one a WAVE, without which its trigger never fired and the
+-- assertion passed vacuously; those inserts are gone and the reply rows already
+-- on each thread are what makes the cascade observable now.
 
 -- Route 1 — the author's own delete, through 081's DELETE policy.
 savepoint cascade_author_098;
 set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980003');
 select set_config('test.uid', '00000000-0000-0000-0000-000000980002', false);
 select assert_eq(
   error_of($$delete from club_threads where id = '00000000-0000-0000-0000-0000009800d1'$$),
   '<no error>',
-  '098.23a: ** ROUTE 1 — the author deleting their own waved thread SUCCEEDS. ** Under `select … into strict` this reads `P0002 query returned no rows` and a rider cannot delete their own thread. The assertion is the SUCCESS: the notification is absent under the raising implementation too, because the transaction rolled back');
+  '098.23a: ** ROUTE 1 — the author deleting their own thread SUCCEEDS, through 081''s DELETE policy. ** The assertion is the SUCCESS and not the absent row: any implementation that RAISES inside the cascade leaves the notification absent too, because the transaction rolled back. Until 101 the raise this caught was the wave retraction''s `select … into strict`');
 reset role;
 select assert_eq(
   (select count(*)::int from club_threads where id = '00000000-0000-0000-0000-0000009800d1'),
@@ -29794,14 +29490,11 @@ rollback to savepoint cascade_author_098;
 -- Route 2 — public.moderate_club_thread, called by an ADMIN. security definer.
 savepoint cascade_moderate_098;
 set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980003');
 select set_config('test.uid', '00000000-0000-0000-0000-000000980005', false);
 select assert_eq(
   error_of($$select moderate_club_thread('00000000-0000-0000-0000-0000009800d1')$$),
   '<no error>',
-  '098.23a: ** ROUTE 2 — public.moderate_club_thread SUCCEEDS on a waved thread. ** A different entry into the same cascade: a security definer RPC rather than a policy-checked delete, so a raise here takes an ADMIN''s moderation down rather than a rider''s own delete');
+  '098.23a: ** ROUTE 2 — public.moderate_club_thread SUCCEEDS. ** A different entry into the same cascade: a security definer RPC rather than a policy-checked delete, so a raise here takes an ADMIN''s moderation down rather than a rider''s own delete');
 reset role;
 select assert_eq(
   (select count(*)::int from notifications where thread_id = '00000000-0000-0000-0000-0000009800d1'),
@@ -29812,19 +29505,14 @@ rollback to savepoint cascade_moderate_098;
 -- deliberately NOT security definer (prosecdef = false), which is the fact an
 -- earlier revision of design.md §D13 rested a different argument on.
 savepoint cascade_operator_098;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d1', '00000000-0000-0000-0000-000000980003');
-reset role;
 select set_config('test.uid', '', false);
 select assert_eq(
   error_of($$select private.remove_reported_thread('00000000-0000-0000-0000-0000009800d1')$$),
   '<no error>',
-  '098.23a: ** ROUTE 3 — private.remove_reported_thread SUCCEEDS on a waved thread. ** The operator''s path, run as the owner with no JWT at all, so auth.uid() is NULL throughout — which is also what would break a retraction written against it');
+  '098.23a: ** ROUTE 3 — private.remove_reported_thread SUCCEEDS. ** The operator''s path, run as the owner with no JWT at all, so auth.uid() is NULL throughout — which is what breaks any fan-out in the chain written against it');
 select assert_eq(
   (select count(*)::int from club_threads where id = '00000000-0000-0000-0000-0000009800d1'),
-  0, '098.23a: ... and the reported thread is gone. That function''s BODY still says notifications "has no thread_id column and is not in the chain", which 098 makes false; the correction is in its EXTERNAL comment, the in-body edit being filed separately because `create or replace` moves prosrc');
+  0, '098.23a: ... and the reported thread is gone. That function''s BODY still says notifications "has no thread_id column and is not in the chain", which 098 made false, and it still lists club_thread_waves among the thread''s children, which 101 makes false. Both are IN-BODY COMMENTS and neither is read at runtime; the 098 correction is in its EXTERNAL comment and the in-body edit stays filed separately, because `create or replace` moves prosrc — the value every DEV/PROD reconciliation compares');
 rollback to savepoint cascade_operator_098;
 
 -- Route 4 — a CLUB deletion, through delete_owned_club, reaching the waves two
@@ -29834,86 +29522,42 @@ set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
 insert into club_messages (thread_id, author_id, body) values
   ('00000000-0000-0000-0000-0000009800d8', '00000000-0000-0000-0000-000000980003', 'doomed');
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d8', '00000000-0000-0000-0000-000000980003');
 reset role;
 select assert_eq(
   (select count(*)::int from notifications where thread_id = '00000000-0000-0000-0000-0000009800d8'),
-  2, '098.23a: the doomed club''s thread carries one reply row and one wave row — precondition for route 4');
+  1, '098.23a: the doomed club''s thread carries one reply row — precondition for route 4. 098 gave it a wave row as well, for the retraction 101 dropped');
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000980001', false);
 select assert_eq(
   error_of($$select * from delete_owned_club('00000000-0000-0000-0000-0000009800c3')$$),
   '<no error>',
-  '098.23a: ** ROUTE 4 — deleting the CLUB SUCCEEDS, reaching club_thread_waves two cascades deep. ** clubs → club_threads → club_thread_waves, so the retraction fires with its parent thread already gone at a depth the other three routes do not exercise');
+  '098.23a: ** ROUTE 4 — deleting the CLUB SUCCEEDS, two cascades deep. ** clubs → club_threads → the thread''s children, a depth the other three routes do not exercise. Until 101 the third level was club_thread_waves and its retraction fired there with its parent thread already gone');
 reset role;
 select assert_eq(
   (select count(*)::int from notifications where thread_id = '00000000-0000-0000-0000-0000009800d8'),
-  0, '098.23a: ... and both notifications went with the club, through the thread — which holds WITHOUT notifications.club_id being set on either type, the club route being redundant rather than additional');
+  0, '098.23a: ... and the notification went with the club, through the thread — which holds WITHOUT notifications.club_id being set on the type, the club route being redundant rather than additional');
 rollback to savepoint cascade_club_098;
 
 -- ---------------------------------------------------------------------------
--- 098.23b  ** ON THE CASCADE THE RETRACTION DELETES ZERO ROWS — the FK does all
---          the work, and "the row is gone" must not be satisfiable by the wrong
---          mechanism **
+-- 098.23b and 098.24  THE RETRACTION'S CASCADE PAIR WENT WITH
+--                      club_thread_waves (101, PD-373)
 -- ---------------------------------------------------------------------------
--- Proved by taking the cascade AWAY and watching the delete be refused. With
--- notifications.thread_id made NO ACTION, deleting the thread can only succeed
--- if something else removed the referencing row first — and if the retraction
--- had reached it, this would pass. It raises 23503 instead, which is the
--- measurement: the retraction resolved no recipient and deleted nothing.
+-- The two only ever made sense together and neither survives its subject:
 --
--- An earlier revision of design.md §D6 called the cascade case "redundant … at
--- worst duplicated work and never wrong". That is FALSE, and this is the
--- assertion that says so: there is no duplicate removal, because the retraction
--- cannot reach the row at all. A description claiming redundancy is satisfied by
--- an implementation that RAISES, since the row is gone either way.
-savepoint cascade_mechanism_098;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d2', '00000000-0000-0000-0000-000000980003');
-reset role;
-select set_config('test.uid', '', false);
-select assert_eq(
-  (select count(*)::int from notifications
-    where type = 'club_thread_waved' and thread_id = '00000000-0000-0000-0000-0000009800d2'),
-  1, '098.23b: the wave notification exists — precondition');
-alter table public.notifications drop constraint notifications_thread_id_fkey;
-alter table public.notifications
-  add constraint notifications_thread_id_fkey
-  foreign key (thread_id) references public.club_threads(id);
-select assert_rejected($$
-  delete from club_threads where id = '00000000-0000-0000-0000-0000009800d2'$$,
-  '23503',
-  '098.23b: ** with the cascade removed, deleting the thread is REFUSED by the foreign key — so the retraction deleted ZERO rows on the cascade path and notifications.thread_id''s ON DELETE CASCADE is what actually does the work. ** The club_threads row is already gone when club_thread_waves fires its AFTER DELETE triggers, so the join resolves no recipient. Had the retraction reached the row, this delete would have succeeded and this assertion would be red');
-rollback to savepoint cascade_mechanism_098;
-
--- ---------------------------------------------------------------------------
--- 098.24  A rider un-waving still reaches their row when the thread is THERE —
---         the other half of 098.23b, so the retraction is not dead code
--- ---------------------------------------------------------------------------
--- 098.23b proves the retraction deletes nothing on a cascade. On its own that is
--- also satisfied by a retraction that deletes nothing EVER, which is why the
--- rider path is re-asserted here against the same trigger.
-savepoint retraction_live_098;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d2', '00000000-0000-0000-0000-000000980003');
-delete from club_thread_waves
- where thread_id = '00000000-0000-0000-0000-0000009800d2'
-   and user_id = '00000000-0000-0000-0000-000000980003';
-reset role;
-select set_config('test.uid', '', false);
-select assert_eq(
-  (select count(*)::int from notifications
-    where type = 'club_thread_waved' and thread_id = '00000000-0000-0000-0000-0000009800d2'),
-  0, '098.24: with the thread STILL PRESENT the retraction does reach the row — the rider case is the feature, and 098.23b''s zero must not be satisfiable by a retraction that never deletes anything. This pair is also why no pg_trigger_depth or TG_OP guard may be added: a guard that skips the cascade case is one refactor away from skipping this one');
-select assert_eq(
-  (select count(*)::int from club_threads where id = '00000000-0000-0000-0000-0000009800d2'),
-  1, '098.24: ... and the thread is still there, which is the difference between this assertion and 098.23b');
-rollback to savepoint retraction_live_098;
+--   098.23b  took the cascade AWAY — notifications.thread_id remade NO ACTION —
+--            and watched the thread delete be REFUSED with 23503, which is what
+--            measured that private.retract_club_thread_waved deleted ZERO rows
+--            on that path and that the FK did all the work. It is what refuted
+--            an earlier design.md §D6 calling the cascade case "redundant … at
+--            worst duplicated work".
+--   098.24   was its other half: with the thread still PRESENT the retraction
+--            DID reach the row, so 098.23b's zero could not be satisfied by a
+--            retraction that never deleted anything.
+--
+-- ** WHAT THEY PROVED IS NOW UNCONDITIONAL. ** With no trigger on the path,
+-- notifications.thread_id's ON DELETE CASCADE is the ONLY mechanism that removes
+-- a thread's notifications, which 098.23 and 098.23a assert directly. 092.15
+-- keeps the equivalent scope assertion for the surviving join-wave retraction.
 
 -- ---------------------------------------------------------------------------
 -- 098.25  Deleting the CLUB removes them, through the thread, with club_id NULL
@@ -29923,21 +29567,19 @@ set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
 insert into club_messages (thread_id, author_id, body) values
   ('00000000-0000-0000-0000-0000009800d8', '00000000-0000-0000-0000-000000980003', 'doomed too');
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000009800d8', '00000000-0000-0000-0000-000000980003');
 reset role;
 select set_config('test.uid', '', false);
 select assert_eq(
   (select count(*)::int from notifications
     where thread_id = '00000000-0000-0000-0000-0000009800d8' and club_id is null),
-  2, '098.25: both rows carry club_id NULL, which is the state that makes the next assertion interesting rather than trivial — there is no club route into these rows and none is needed');
+  1, '098.25: the row carries club_id NULL, which is the state that makes the next assertion interesting rather than trivial — there is no club route into it and none is needed. 098 asserted the same of the WAVE row beside it, and 101 dropped that type''s writer');
 select assert_eq(
   error_of($$delete from clubs where id = '00000000-0000-0000-0000-0000009800c3'$$),
   '<no error>',
-  '098.25: deleting the club completes — same reason as 098.23, the cascade reaching club_thread_waves two levels down');
+  '098.25: deleting the club completes — same reason as 098.23, the cascade reaching the thread''s children two levels down');
 select assert_eq(
   (select count(*)::int from notifications where thread_id = '00000000-0000-0000-0000-0000009800d8'),
-  0, '098.25: deleting the club destroys them anyway, through club_threads.club_id → clubs ON DELETE CASCADE and then the thread cascade. The club_id route would have been redundant, not additional — which is design.md §D9''s reason for leaving it NULL');
+  0, '098.25: deleting the club destroys it anyway, through club_threads.club_id → clubs ON DELETE CASCADE and then the thread cascade. The club_id route would have been redundant, not additional — which is design.md §D9''s reason for leaving it NULL');
 rollback to savepoint club_delete_098;
 
 -- ---------------------------------------------------------------------------
@@ -30229,40 +29871,37 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_proc p
     where p.pronamespace = 'private'::regnamespace
-      and p.proname in ('notify_club_thread_replied', 'notify_club_thread_waved',
-                        'retract_club_thread_waved')
+      and p.proname = 'notify_club_thread_replied'
       and (has_function_privilege('authenticated', p.oid, 'execute')
         or has_function_privilege('anon', p.oid, 'execute')
         or has_function_privilege('service_role', p.oid, 'execute'))),
-  0, '098.35: no client role and not service_role can execute any of 098''s three functions — revoking from `public` is what does the work, EXECUTE being granted to PUBLIC by default on creation');
+  0, '098.35: no client role and not service_role can execute 098''s surviving fan-out — revoking from `public` is what does the work, EXECUTE being granted to PUBLIC by default on creation. It covered all THREE of 098''s functions until 101 dropped the wave pair');
 select assert_eq(
   (select count(*)::int from pg_proc p
     where p.pronamespace = 'private'::regnamespace
       and p.proname in ('notify_club_thread_replied', 'notify_club_thread_waved',
                         'retract_club_thread_waved')),
-  3, '098.35: ... and all three exist, in `private` and nowhere PostgREST routes, so that zero is not vacuous — which is also why 098 adds no security advisor: the count moves by the number of PUBLIC functions only');
+  1, '098.35: ... and exactly ONE of 098''s three still exists, in `private` and nowhere PostgREST routes, so that zero is not vacuous. Written as a set of THREE names rather than one, deliberately: it is what says 101 removed the two it meant to and left the reply fan-out alone, and a resurrected wave function reads 2 here. Neither 098 nor 101 moves the security advisor count, which follows PUBLIC functions only');
 select assert_eq(
   (select count(*)::int from pg_proc p
     where p.pronamespace = 'private'::regnamespace
-      and p.proname in ('notify_club_thread_replied', 'notify_club_thread_waved',
-                        'retract_club_thread_waved')
+      and p.proname = 'notify_club_thread_replied'
       and p.prosecdef and p.proconfig @> array['search_path=""']),
-  3, '098.35: ... and each is SECURITY DEFINER with search_path pinned EMPTY. proconfig stores the pin as the literal search_path="" — matching on `search_path=` finds nothing and reads as a pass, which is how 055''s own assertion was first written wrong');
+  1, '098.35: ... and it is SECURITY DEFINER with search_path pinned EMPTY. proconfig stores the pin as the literal search_path="" — matching on `search_path=` finds nothing and reads as a pass, which is how 055''s own assertion was first written wrong');
 select assert_eq(
   (select count(*)::int from pg_proc p
     where p.pronamespace = 'private'::regnamespace
-      and p.proname in ('notify_club_thread_replied', 'notify_club_thread_waved',
-                        'retract_club_thread_waved')
+      and p.proname = 'notify_club_thread_replied'
       and (p.prosrc ilike '%auth.uid()%'
         or p.prosrc ilike '%current_user%'
         or p.prosrc ilike '%private.is_club_member(%')),
-  0, '098.35: ** ... and no body mentions auth.uid(), current_user or private.is_club_member. ** The actor comes from NEW; a current_user branch inside a definer body is the OWNER and gates nothing (087''s bug); and is_club_member reads auth.uid() internally, so a fan-out calling it computes the ACTOR''s membership and applies it to everybody. ** THE OPEN PAREN IS LOAD-BEARING AND WAS ADDED BY 100. ** Written as `%is_club_member%` this also matched private.is_club_member_FOR, the subject-taking twin 085 added for exactly this situation — the one helper a fan-out MUST use, since it takes the candidate rather than reading auth.uid(). 100 puts it in two of these three bodies, and the unparenthesised pattern refused the correct fix while its own label named a reason that applies only to the caller-scoped one');
+  0, '098.35: ** ... and its body mentions neither auth.uid(), nor current_user, nor private.is_club_member. ** The actor comes from NEW; a current_user branch inside a definer body is the OWNER and gates nothing (087''s bug); and is_club_member reads auth.uid() internally, so a fan-out calling it computes the ACTOR''s membership and applies it to everybody. ** THE OPEN PAREN IS LOAD-BEARING AND WAS ADDED BY 100. ** Written as `%is_club_member%` this also matched private.is_club_member_FOR, the subject-taking twin 085 added for exactly this situation — the one helper a fan-out MUST use, since it takes the candidate rather than reading auth.uid(). 100 puts it in two of these three bodies, and the unparenthesised pattern refused the correct fix while its own label named a reason that applies only to the caller-scoped one');
 select assert_eq(
   (select count(*)::int from pg_trigger t
     where t.tgname in ('notify_club_thread_replied', 'notify_club_thread_waved',
                        'retract_club_thread_waved')
       and not t.tgisinternal and t.tgqual is not null),
-  0, '098.35: ... and NOT ONE of the three triggers carries a WHEN clause — 023''s `when (current_user = ''authenticated'')` is correct on the participation gate that sits on these same two tables and would silently switch the fan-outs off for every seed, RPC and psql write, this suite''s own included');
+  0, '098.35: ... and the surviving trigger carries no WHEN clause — 023''s `when (current_user = ''authenticated'')` is correct on the participation gate that sits on the same table and would silently switch the fan-out off for every seed, RPC and psql write, this suite''s own included. All THREE names are still listed so a resurrected wave trigger with a guard is caught here too');
 select assert_eq(
   (select array(select t.tgname::text from pg_trigger t
                  where t.tgrelid = 'public.club_messages'::regclass and not t.tgisinternal
@@ -30276,13 +29915,12 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '098.36: still TWENTY-TWO participation-gate triggers — 098 adds no table, so it adds no gate. A count that stays still is worth asserting: a new table without one looks exactly like this number being right');
+  21, '098.36: TWENTY-ONE participation-gate triggers — 098 added no table so it added no gate, and 101 removed one by dropping club_thread_waves. A count that moves by exactly the table dropped is worth asserting: a new table without a gate looks exactly like this number being right');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal
-      and tgrelid in ('public.club_messages'::regclass,
-                      'public.club_thread_waves'::regclass)),
-  2, '098.36: ... and BOTH parent tables still carry theirs, asserted by table name rather than left to the total — which is what tells "the gate is on the right tables" from "the total happens to match"');
+      and tgrelid = 'public.club_messages'::regclass),
+  1, '098.36: ... and 098''s surviving parent table still carries its own, asserted by table name rather than left to the total — which is what tells "the gate is on the right table" from "the total happens to match". It named BOTH parents until 101 dropped club_thread_waves');
 
 -- ---------------------------------------------------------------------------
 -- 098.37  An UNCONSENTED rider is still refused both writes, and nothing fans
@@ -30295,12 +29933,7 @@ select assert_rejected($$
   insert into club_messages (thread_id, author_id, body)
   values ('00000000-0000-0000-0000-0000009800d1',
           '00000000-0000-0000-0000-000000980008', 'no consent')$$,
-  '23514', '098.37: a rider with terms_accepted_at NULL is still refused a club message — 023''s gate, and an account created by calling GoTrue''s /auth/v1/signup directly never reaches accept_terms()');
-select assert_rejected($$
-  insert into club_thread_waves (thread_id, user_id)
-  values ('00000000-0000-0000-0000-0000009800d1',
-          '00000000-0000-0000-0000-000000980008')$$,
-  '23514', '098.37: ... and a thread wave just the same');
+  '23514', '098.37: a rider with terms_accepted_at NULL is still refused a club message — 023''s gate, and an account created by calling GoTrue''s /auth/v1/signup directly never reaches accept_terms(). 098 asserted the same of a thread wave beside it; 101 dropped that table and its gate with it');
 reset role;
 select set_config('test.uid', '', false);
 -- Scoped to thread notifications: this rider's own JOIN to the club fanned out
@@ -30309,7 +29942,7 @@ select assert_eq(
   (select count(*)::int from notifications
     where actor_id = '00000000-0000-0000-0000-000000980008'
       and thread_id is not null),
-  0, '098.37: ... and ZERO thread notifications name them as actor afterwards — an AFTER trigger never runs behind a refused write, which is why both fan-outs are AFTER and not BEFORE');
+  0, '098.37: ... and ZERO thread notifications name them as actor afterwards — an AFTER trigger never runs behind a refused write, which is why the fan-out is AFTER and not BEFORE');
 rollback to savepoint ungated_098;
 
 -- ---------------------------------------------------------------------------
@@ -30873,7 +30506,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '099.9: still TWENTY-TWO participation-gate triggers — 099 adds no table and therefore no gate, and it changes a fan-out rather than a write path a rider owns');
+  21, '099.9: TWENTY-ONE participation-gate triggers — 099 adds no table and therefore no gate, and it changes a fan-out rather than a write path a rider owns');
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public' and tablename = 'notifications'),
@@ -31005,30 +30638,15 @@ select assert_eq(
 rollback to savepoint leave_then_reply_100;
 
 -- ---------------------------------------------------------------------------
--- 100.2  ** WRITE-AFTER-LEAVE, WAVE — the second fan-out, asserted separately **
+-- 100.2  WAS "WRITE-AFTER-LEAVE, WAVE" AND WENT WITH club_thread_waves
+--        (101, PD-373)
 -- ---------------------------------------------------------------------------
--- Two fan-outs are two function bodies. A fix applied to one and not the other
--- passes every assertion in 100.1 and leaves half the defect standing.
-savepoint leave_then_wave_100;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000100002', false);
-delete from club_members
- where club_id = '00000000-0000-0000-0000-0000001000c1'
-   and user_id = '00000000-0000-0000-0000-000000100002';
-select set_config('test.uid', '00000000-0000-0000-0000-000000100003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000001000d1', '00000000-0000-0000-0000-000000100003');
-reset role;
-select set_config('test.uid', '', false);
-select assert_eq(
-  (select count(*)::int from club_thread_waves
-    where thread_id = '00000000-0000-0000-0000-0000001000d1'),
-  1, '100.2: the wave itself was WRITTEN — club_thread_waves'' INSERT policy only asks that the waver can read the thread, and the WAVER is still a member, so nothing about this write is refused');
-select assert_eq(
-  (select count(*)::int from notifications
-    where thread_id = '00000000-0000-0000-0000-0000001000d1' and type = 'club_thread_waved'),
-  0, '100.2: ** ... and NO club_thread_waved row exists, counted as the table owner. ** private.notify_club_thread_waved carries the same private.is_club_member_for conjunct as its sibling, character for character, because the recipient is club_threads.author_id in both');
-rollback to savepoint leave_then_wave_100;
+-- 100 fixed the SAME defect in two fan-out bodies and asserted each separately,
+-- because a fix applied to one and not the other passes every assertion about
+-- the first and leaves half the defect standing. 101 dropped one of the two, so
+-- 100.1 is now the whole behavioural case: a thread's author who has LEFT the
+-- club is written no notification, because the recipient must still be able to
+-- READ the row at the instant it is written. 100.5 keeps the structural half.
 
 -- ---------------------------------------------------------------------------
 -- 100.3  ** BOTH WAYS: a still-member author IS written both rows, and reads
@@ -31039,28 +30657,21 @@ set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000100003', false);
 insert into club_messages (thread_id, author_id, body) values
   ('00000000-0000-0000-0000-0000001000d2', '00000000-0000-0000-0000-000000100003', 'good thread');
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000001000d2', '00000000-0000-0000-0000-000000100003');
 reset role;
 select set_config('test.uid', '', false);
 select assert_eq(
   (select count(*)::int from notifications
     where thread_id = '00000000-0000-0000-0000-0000001000d2' and type = 'club_thread_replied'
       and user_id = '00000000-0000-0000-0000-000000100004'),
-  1, '100.3: ** an author who is STILL a member is written their reply row. ** Every negative in 100.1 and 100.2 passes against a fan-out that writes nothing at all, so this is what makes them mean something');
-select assert_eq(
-  (select count(*)::int from notifications
-    where thread_id = '00000000-0000-0000-0000-0000001000d2' and type = 'club_thread_waved'
-      and user_id = '00000000-0000-0000-0000-000000100004'),
-  1, '100.3: ... and their wave row, the second fan-out asserted separately for the same reason 100.2 exists');
+  1, '100.3: ** an author who is STILL a member is written their reply row. ** Every negative in 100.1 passes against a fan-out that writes nothing at all, so this is what makes them mean something. 098''s wave row sat beside it until 101');
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000100004', false);
 select assert_eq(
   (select count(*)::int from notifications where thread_id = '00000000-0000-0000-0000-0000001000d2'),
-  2, '100.3: ** ... and the recipient READS both back under their own session ** — not "two rows were written". The recipient set is now EQUAL to the set notifications SELECT returns the row to rather than a superset of it, which is the property event-fanout-integrity asks for');
+  1, '100.3: ** ... and the recipient READS it back under their own session ** — not "a row was written". The recipient set is now EQUAL to the set notifications SELECT returns the row to rather than a superset of it, which is the property event-fanout-integrity asks for');
 select assert_eq(
   (select count(*)::int from club_threads where id = '00000000-0000-0000-0000-0000001000d2'),
-  1, '100.3: ... and the thread each row links to opens for them, so neither notification renders over a screen that refuses');
+  1, '100.3: ... and the thread the row links to opens for them, so the notification does not render over a screen that refuses');
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint stayer_100;
@@ -31079,8 +30690,6 @@ set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000100003', false);
 insert into club_messages (thread_id, author_id, body) values
   ('00000000-0000-0000-0000-0000001000d3', '00000000-0000-0000-0000-000000100003', 'nice club');
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000001000d3', '00000000-0000-0000-0000-000000100003');
 reset role;
 select set_config('test.uid', '', false);
 select assert_eq(
@@ -31088,11 +30697,6 @@ select assert_eq(
     where thread_id = '00000000-0000-0000-0000-0000001000d3' and type = 'club_thread_replied'
       and user_id = '00000000-0000-0000-0000-000000100005'),
   1, '100.4: ** the ownerless owner IS written their reply row. ** private.is_club_member_for unions a clubs.owner_id arm, so it answers TRUE for a rider holding no membership row in a club they own — `exists (select 1 from club_members ...)` in its place reads 0 here and silently stops notifying every such rider');
-select assert_eq(
-  (select count(*)::int from notifications
-    where thread_id = '00000000-0000-0000-0000-0000001000d3' and type = 'club_thread_waved'
-      and user_id = '00000000-0000-0000-0000-000000100005'),
-  1, '100.4: ... and their wave row');
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000100005', false);
 select assert_eq(
@@ -31100,104 +30704,75 @@ select assert_eq(
   1, '100.4: ** ... and they can still READ their own thread, which is WHY they must still be told. ** club_threads SELECT''s resolving arm is private.is_club_member(club_id), which delegates to the same twin with the same owner arm — so keeping them is not leniency, it is the recipient set matching the read policy exactly');
 select assert_eq(
   (select count(*)::int from notifications where thread_id = '00000000-0000-0000-0000-0000001000d3'),
-  2, '100.4: ... and they read both rows back, so neither is a row the policy will drop');
+  1, '100.4: ... and they read the row back, so it is not a row the policy will drop. It read 2 until 101 removed the wave fan-out beside it');
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint ownerless_author_100;
 
 -- ---------------------------------------------------------------------------
--- 100.5  The two function bodies, and the bindings create-or-replace preserved
+-- 100.5  The function body, and the binding create-or-replace preserved
 -- ---------------------------------------------------------------------------
+-- ** IT WAS TWO BODIES AND IS NOW ONE (101, PD-373). ** 100 wrote the identical
+-- conjunct into both club-thread fan-outs and asserted each separately; 101
+-- dropped private.notify_club_thread_waved with its table. Everything below is
+-- the reply fan-out's half, unchanged, plus one assertion that the wave pair is
+-- really gone rather than merely unasserted.
 savepoint fn_shape_100;
 select assert_eq(
   (select prosrc like '%private.is_club_member_for(t.author_id, t.club_id)%'
      from pg_proc where oid = 'private.notify_club_thread_replied()'::regprocedure),
   true, '100.5: private.notify_club_thread_replied asks the membership question against the RECIPIENT and the THREAD''S club — 085''s subject-taking twin, by name, on the two columns that identify them');
 select assert_eq(
-  (select prosrc like '%private.is_club_member_for(t.author_id, t.club_id)%'
-     from pg_proc where oid = 'private.notify_club_thread_waved()'::regprocedure),
-  true, '100.5: ... and private.notify_club_thread_waved carries the identical conjunct — the two bodies still differ ONLY in whether the actor column is author_id or user_id');
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and p.proname in ('notify_club_thread_waved', 'retract_club_thread_waved')),
+  0, '100.5: ... and NEITHER wave function exists any more — 101 dropped both with public.club_thread_waves. Asserted as an absence rather than left out, because an assertion silently deleted and a function silently resurrected look the same from this file');
 select assert_eq(
   (select count(*)::int from pg_proc
-    where oid in ('private.notify_club_thread_replied()'::regprocedure,
-                  'private.notify_club_thread_waved()'::regprocedure)
+    where oid = 'private.notify_club_thread_replied()'::regprocedure
       and prosrc like '%private.is_club_member(%'),
-  0, '100.5: ** NEITHER body calls private.is_club_member itself — 036 trap (c). ** It reads auth.uid() internally, so it answers "is the CALLER a member" and would apply the actor''s own answer to every candidate: TRUE for every write from a real session, because the actor must be a member to reply at all, and not-TRUE in psql, in seed.sql, in this suite and inside every security definer writer. A predicate that passes every positive assertion while testing nothing');
+  0, '100.5: ** the body does not call private.is_club_member itself — 036 trap (c). ** It reads auth.uid() internally, so it answers "is the CALLER a member" and would apply the actor''s own answer to every candidate: TRUE for every write from a real session, because the actor must be a member to reply at all, and not-TRUE in psql, in seed.sql, in this suite and inside every security definer writer. A predicate that passes every positive assertion while testing nothing');
 select assert_eq(
   (select count(*)::int from pg_proc
-    where oid in ('private.notify_club_thread_replied()'::regprocedure,
-                  'private.notify_club_thread_waved()'::regprocedure)
+    where oid = 'private.notify_club_thread_replied()'::regprocedure
       and prosrc like '%auth.uid()%'),
-  0, '100.5: ... and auth.uid() appears in NEITHER body — 036 trap (b). This suite sets test.uid and the fan-outs run with no caller identity of their own; the actor is read from NEW and the recipient from club_threads');
+  0, '100.5: ... and auth.uid() appears nowhere in it — 036 trap (b). This suite sets test.uid and the fan-outs run with no caller identity of their own; the actor is read from NEW and the recipient from club_threads');
 select assert_eq(
   (select count(*)::int from pg_proc
-    where oid in ('private.notify_club_thread_replied()'::regprocedure,
-                  'private.notify_club_thread_waved()'::regprocedure)
+    where oid = 'private.notify_club_thread_replied()'::regprocedure
       and prosecdef and proconfig @> array['search_path=""']),
-  2, '100.5: ... and BOTH are still SECURITY DEFINER with an empty search_path. proconfig stores the pin as the literal search_path="" — matching on `search_path=` finds nothing and reads as a pass, which is how 055''s own assertion was first written wrong');
+  1, '100.5: ... and it is still SECURITY DEFINER with an empty search_path. proconfig stores the pin as the literal search_path="" — matching on `search_path=` finds nothing and reads as a pass, which is how 055''s own assertion was first written wrong');
 select assert_eq(
   (select count(*)::int
      from (values ('authenticated'), ('anon'), ('service_role')) as r(role)
-    where has_function_privilege(r.role, 'private.notify_club_thread_replied()', 'execute')
-       or has_function_privilege(r.role, 'private.notify_club_thread_waved()', 'execute')),
-  0, '100.5: neither is reachable by any client role nor by service_role — 100 re-issues 098''s revokes, and `create or replace` preserves privileges rather than resetting them. Named by ROLE and never called, per 031: this suite runs as the table owner, for whom neither the schema barrier nor the EXECUTE barrier exists');
+    where has_function_privilege(r.role, 'private.notify_club_thread_replied()', 'execute')),
+  0, '100.5: it is reachable by no client role and not by service_role — 100 re-issues 098''s revokes, and `create or replace` preserves privileges rather than resetting them. Named by ROLE and never called, per 031: this suite runs as the table owner, for whom neither the schema barrier nor the EXECUTE barrier exists');
 select assert_eq(
   (select array(select tgname::text from pg_trigger
                  where tgrelid = 'public.club_messages'::regclass and not tgisinternal order by 1)),
   array['enforce_participation_gate', 'notify_club_thread_replied'],
   '100.5: club_messages still carries exactly those two triggers — `create or replace` keeps each function''s OID and the trigger references it by OID, so 100 issues no trigger DDL and a third here would be a failed apply rather than a finding');
 select assert_eq(
-  (select array(select tgname::text from pg_trigger
-                 where tgrelid = 'public.club_thread_waves'::regclass and not tgisinternal order by 1)),
-  array['enforce_participation_gate', 'notify_club_thread_waved', 'retract_club_thread_waved'],
-  '100.5: ... and club_thread_waves exactly those three, the retraction included');
-select assert_eq(
   (select count(*)::int from pg_trigger
     where not tgisinternal and tgqual is null
-      and ((tgrelid = 'public.club_messages'::regclass     and tgname = 'notify_club_thread_replied')
-        or (tgrelid = 'public.club_thread_waves'::regclass and tgname = 'notify_club_thread_waved'))),
-  2, '100.5: ... and both fan-out triggers still carry NO when clause — 036 trap (a). A `when (current_user = ''authenticated'')` copied from 023''s gate is false inside every security definer writer, and 097''s public.introduce_to_club creates club_threads rows from exactly such a body');
+      and tgrelid = 'public.club_messages'::regclass
+      and tgname = 'notify_club_thread_replied'),
+  1, '100.5: ... and the fan-out trigger still carries NO when clause — 036 trap (a). A `when (current_user = ''authenticated'')` copied from 023''s gate is false inside every security definer writer, and 097''s public.introduce_to_club creates club_threads rows from exactly such a body');
 rollback to savepoint fn_shape_100;
 
 -- ---------------------------------------------------------------------------
--- 100.6  ** THE RETRACTION DELIBERATELY DOES NOT GET THIS PREDICATE **
+-- 100.6  WAS "THE RETRACTION DELIBERATELY DOES NOT GET THIS PREDICATE" AND
+--        WENT WITH club_thread_waves (101, PD-373)
 -- ---------------------------------------------------------------------------
--- "Apply it consistently" is the wrong instinct one function over. The
--- retraction's job is to remove a row that was ALREADY written, so a membership
--- test there orphans a row whose recipient left between the wave and the
--- un-wave — the row survives its own subject, with nothing to remove it but the
--- thread's own deletion.
-savepoint retraction_across_leave_100;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000100003', false);
-insert into club_thread_waves (thread_id, user_id) values
-  ('00000000-0000-0000-0000-0000001000d2', '00000000-0000-0000-0000-000000100003');
-reset role;
-select set_config('test.uid', '', false);
-select assert_eq(
-  (select count(*)::int from notifications
-    where thread_id = '00000000-0000-0000-0000-0000001000d2' and type = 'club_thread_waved'),
-  1, '100.6: the wave notified the author, who was a member at that instant — the precondition, and the state 100 deliberately preserves');
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000000100004', false);
-delete from club_members
- where club_id = '00000000-0000-0000-0000-0000001000c1'
-   and user_id = '00000000-0000-0000-0000-000000100004';
-select set_config('test.uid', '00000000-0000-0000-0000-000000100003', false);
-delete from club_thread_waves
- where thread_id = '00000000-0000-0000-0000-0000001000d2'
-   and user_id = '00000000-0000-0000-0000-000000100003';
-reset role;
-select set_config('test.uid', '', false);
-select assert_eq(
-  (select count(*)::int from notifications
-    where thread_id = '00000000-0000-0000-0000-0000001000d2' and type = 'club_thread_waved'),
-  0, '100.6: ** the un-wave STILL reaches the row after its recipient left the club. ** This is the assertion that fails the day someone adds private.is_club_member_for to the retraction for symmetry: the row would survive the un-wave that was meant to remove it, addressed to a rider who cannot see it and cannot clear it');
-select assert_eq(
-  (select prosrc like '%is_club_member%'
-     from pg_proc where oid = 'private.retract_club_thread_waved()'::regprocedure),
-  false, '100.6: ... and private.retract_club_thread_waved names no membership helper at all, which is the same claim read off the body rather than off the behaviour — the two together distinguish "the predicate is absent" from "the predicate happened to answer true"');
-rollback to savepoint retraction_across_leave_100;
+-- ** THE RULE IT RECORDED OUTLIVES ITS SUBJECT AND IS WORTH CARRYING. ** "Apply
+-- it consistently" was the wrong instinct one function over: 100 put
+-- private.is_club_member_for into both NOTIFY bodies and deliberately not into
+-- private.retract_club_thread_waved, because a retraction removes a row that was
+-- ALREADY written, and a membership test there orphans a row whose recipient
+-- left between the wave and the un-wave. The assertion proved the un-wave still
+-- reached the row after its recipient left the club, and it went with the
+-- function 101 dropped. A future retraction anywhere in this schema owes the
+-- same reasoning; 092.15 is the surviving worked example.
 
 -- ---------------------------------------------------------------------------
 -- 100.7  The corrected reasoning is recorded in the DATABASE
@@ -31213,10 +30788,14 @@ select assert_eq(
   (select obj_description('private.notify_club_thread_replied()'::regprocedure, 'pg_proc')
      like '%Authoring the thread is NOT sufficient%'),
   true, '100.7: ... and says plainly that authoring the thread is not sufficient, which is the sentence 098''s header gets wrong and will keep asserting');
+-- 100 also commented private.notify_club_thread_waved, recording why its own
+-- retraction was exempt from the predicate, and 101 dropped that function with
+-- its table. The surviving reference is 092's notify_club_waved, which 101
+-- restamps to say the thread wave no longer exists at all.
 select assert_eq(
-  (select obj_description('private.notify_club_thread_waved()'::regprocedure, 'pg_proc')
-     like '%retract_club_thread_waved deliberately carries NO such test%'),
-  true, '100.7: ... and the wave fan-out''s comment records why its own retraction is exempt, at the object a reader reaching for symmetry would look at first');
+  (select obj_description('private.notify_club_waved()'::regprocedure, 'pg_proc')
+     like '%101%'),
+  true, '100.7/101: ... and the JOIN-wave fan-out''s comment — the only wave fan-out left — records that 101 dropped the thread one, at the object a session grepping "wave" reaches first. Without it that comment still claims a thread wave notifies');
 
 -- ---------------------------------------------------------------------------
 -- 100.8  THE REPAIR IS IN THE FAN-OUT, NOT IN THE POLICY
@@ -31240,7 +30819,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
-  22, '100.8: still TWENTY-TWO participation-gate triggers — 100 adds no table and therefore no gate; it replaces two function bodies and hangs nothing');
+  21, '100.8: TWENTY-ONE participation-gate triggers — 100 added no table and therefore no gate, it replaced two function bodies and hung nothing, and 101 removed one gate by dropping club_thread_waves');
 
 reset role;
 select set_config('test.uid', '', false);

@@ -20,10 +20,11 @@ type ClubWaveMap = Record<string, ClubWaveState>
  * waveable please"*), so `getThreadWaveState`, `queryKeys.clubs.threadWaves`
  * and `waveThread`/`unwaveThread` went with the control. The one-armed
  * discriminated union went too — a `kind` that can only ever be `'join'`
- * reads as a choice where there is none. **`club_thread_waves` itself is
- * still live**, with its `092` policies and both `098` triggers, and nothing
- * in the app writes it any more: `an-introduction-appears-only-as-its-announcement/proposal.md`
- * §The table with no writer is the pointer for whoever makes that call.
+ * reads as a choice where there is none. **`club_thread_waves` itself is now
+ * GONE** — `101` (PD-373) dropped the table with its `092` policies and grants,
+ * `023`'s gate and both `098` triggers, and kept the `club_thread_waved`
+ * notification rows and their CHECK arm so what was already written still
+ * renders. `club_join_waves`, which this module reads, is untouched.
  *
  * `ClubTimeline` calls this once, scoped to the ids `getClubJoins` is already
  * holding — never every wave a club has ever had.

@@ -227,6 +227,41 @@ mcp__Linear__list_comments  issueId=PD-241 # the inventory comment from the firs
                                            # then the board moving on its own
 ```
 
+## Where this left off — 2026-09-03, the thread wave is retired at the database
+
+**PD-373 (`101_retire_club_thread_waves.sql`), applied to DEV.** The successor PD-372 said it owed.
+Dropped: `public.club_thread_waves` — with its three policies, its grants, both indexes, `023`'s
+participation gate and its two outbound keys — plus `098`'s `notify_club_thread_waved` /
+`retract_club_thread_waved` triggers and the `private` functions behind them (bodies last written
+by `100`).
+
+**Three things a later session should not have to re-derive:**
+
+- **`club_join_waves` is UNTOUCHED and fully live.** `092` shipped two wave tables and only the
+  thread one is gone; waving a rider's ARRIVAL keeps its policies, grants, gate and both of its own
+  fan-outs. A session grepping `wave` is one table away from deleting the surviving feature.
+- **The decision on `notifications`: the `club_thread_waved` enum arm STAYS and no row was
+  deleted** (1 on DEV). `NotificationType`, `notificationCopy` and `NotificationsListItem`'s
+  `describe` keep their arm, so every row already written still renders and still opens its thread.
+  Nothing forces an enum to shrink because its writer is gone, and narrowing the two CHECKs would
+  have meant deleting real notification history for no observable gain. The stated cost: the
+  constraint now admits a type nothing can produce. `098`'s rollback ordering applies if anyone
+  ever removes it — delete the live rows BEFORE re-adding the validated CHECK.
+- **Two `club_join_waves` properties lost their only behavioural assertions**, because they were
+  written against the dropped table and 101 removed rather than retargeted them: the block arm on
+  the REACTOR hiding a row and dropping the per-viewer count in each direction (was `092.3`), and
+  three club roles reaching exactly the same rows (was `092.7`'s fixture half). Both are still
+  pinned STRUCTURALLY off `pg_policies`. Retargeting them is a change to a table `101` does not
+  touch and wants its own review; the suite says so at the point each was removed.
+
+```bash
+grep -c "NOTICE:  ok" <(PGPASSWORD=postgres npm test 2>&1)   # 3280, from 3335
+```
+
+**PROD is one behind: `101` is applied to DEV only** and is the whole of the gap. It is `090`'s
+case — every client path that could observe the dropped objects went with PD-372, which is already
+serving — so it has no unsafe side and no ordering constraint against a build.
+
 ## Where this left off — 2026-09-02, an introduction is listed only as its announcement
 
 **PD-372, merged to `development`.** The club detail drew one conversation three ways — the join
@@ -238,12 +273,12 @@ and the club timeline's only waveable row is the announcement row (product owner
 
 **Two things a later session will otherwise rediscover the hard way:**
 
-- **`club_thread_waves` is a LIVE table with no writer in the app.** Its `092` policies, its grants
-  and both `098` triggers are untouched, and the three rows on DEV can no longer be withdrawn by
-  the riders who placed them — which is `092`'s *"or the row is stranded"* coming true. Dropping it
-  is a separate, destructive call: `openspec/changes/an-introduction-appears-only-as-its-announcement/proposal.md`
-  §The table with no writer says what that owes, and `docs/reference/schema.md`'s row for the table
-  says the same at the point of use.
+- **`club_thread_waves` is DROPPED — `101_retire_club_thread_waves.sql` (PD-373), applied to DEV
+  2026-09-03.** It was a live table with no writer for one day: `092`'s policies and grants, `023`'s
+  gate and both `098` triggers all standing while nothing in `src/` could reach them, and the three
+  DEV rows unwithdrawable by the riders who placed them, which is `092`'s *"or the row is
+  stranded"* coming true. See the entry above for what the drop covers and what it deliberately
+  left alone.
 - **The announcement row is a WINDOW, so an introduction can fall out of every browse surface.**
   `CLUB_TIMELINE_LIMIT` is 20 and the timeline does not paginate, so a current member with twenty
   newer events above their join keeps a deep link and nothing else. Filed rather than fixed — a
