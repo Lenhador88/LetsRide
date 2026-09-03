@@ -1015,14 +1015,18 @@ happens to land on. **The slot is yours until you have either re-filled it or gi
    and taking it a few bullets early costs nothing and adds no call. A read taken after the comment
    is written is a row that says `not available` on a session that could have answered.
 
-   **That early read CACHES the answer and decides nothing.** The gate below — including the
-   fail-closed branch — is evaluated at this step's normal position, after STEP 5 has finished.
-   **Reading it the other way ends the run before bullets 4, 5 and 6**, so the cost record is
-   never written, no notification is sent, and this step's own "STEP 5 already sent the
-   notification and wrote the record" becomes false. That is not a corner case: a Routine-minted
-   firing does not hold `get_session` at all (PD-241's inventory), so the fail-closed branch is the
-   *ordinary* path, and taking it early would silently strip the record off every firing the queue
-   runs.
+   **That early read CACHES the answer; it does not move the EXIT.** Whenever this step's gates
+   are evaluated — between bullets 3 and 4 on the take-another-story path, as the top of this step
+   requires, or after bullet 6 otherwise — **the fail-closed exit never skips STEP 5's bullets 4, 5
+   and 6.** The record and the notification are written first, whichever way the gate goes, and
+   only then does the session end via STEP 7.
+
+   **Reading it as "the early read also decides early" ends the run before those bullets**, so the
+   cost record is never written, no notification is sent, and this step's own *"STEP 5 already sent
+   the notification and wrote the record"* becomes false. That is not a corner case: a
+   Routine-minted firing does not hold `get_session` at all (PD-241's inventory), so the
+   fail-closed branch is the *ordinary* path, and deciding on it early would silently strip the
+   record off every firing the queue runs.
 
    **If that tool will not answer, end the session (via STEP 7) — this one fails CLOSED.** An
    `InputValidationError` is a deferred schema, so `ToolSearch` (`+get_session claude code
@@ -1049,6 +1053,13 @@ notification and wrote the record, the leftover stories are still in `Queued (AI
 hourly firing will dispatch them into a fresh window.
 
 ### If both gates pass, take the next story
+
+**Everything below runs only in a session that holds `get_session`, which today means a
+hand-spawned one.** The gate above fails closed and a Routine-minted firing does not hold the
+connector at all (PD-241's inventory), so on every firing the queue actually runs this half is
+unreachable and the run ends after one group. It is kept whole rather than trimmed because the
+thing that makes it live again is a connector attachment rather than a code change — PD-241 is
+where that would be recorded.
 
 ```
 mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  state=<Queued (AI)>
@@ -1316,7 +1327,7 @@ figure believing it was counted.**
 
 | Row | Where it comes from | Kind |
 |---|---|---|
-| Wall clock | `date -u` at `queue-run.md` STEP 0, and again at wrap-up. **From the self-check onward** — session boot, `CLAUDE.md` loading and probes 1–2 are before the stamp and are not in it, so this under-reports the firing by that much and the block must not be read as "firing to wrap-up" | **Measured** |
+| Wall clock | `date -u` at `queue-run.md` STEP 0, and again at wrap-up. **From probe 3 onward** — the stamp shares probe 3's call, so session boot, `CLAUDE.md` loading and probes 1–2 are all before it. The figure under-reports the firing by that much and must not be read as "firing to wrap-up" | **Measured** |
 | Per subagent — duration, tokens, tool calls | each agent's own completion notification | **Measured** |
 | Gate durations | `date` either side of a command you already run | **Measured** |
 | This session's output and cache-read tokens | `get_session`, `session_id` omitted | **Measured**, when the tool answers |

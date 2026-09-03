@@ -1744,11 +1744,15 @@ const DEAD_INVITE_TOKEN = 'deadbeef'.repeat(4)
  * two drift, and the property being asserted is a property of the *pattern*.
  *
  * `dataMarker` is text that appears only once a preview has actually loaded —
- * **the leaked DATA, never the claim control**, so the assertion detects a
- * preview rendered without its action slot as well as one rendered with it.
- * Both kinds end on the crew/member count, which `RidePreviewCard` and
- * `ClubPreviewScreen` each draw unconditionally; the first alternative in each
- * is the kind's own most-obviously-private line.
+ * **the leaked DATA**, keyed on the crew/member count that `RidePreviewCard`
+ * and `ClubPreviewScreen` each draw unconditionally; the first alternative in
+ * each is the kind's own most-obviously-private line. **`claim` is asserted
+ * absent SEPARATELY on the signed-out half, because neither implies the
+ * other**: a marker keyed on the Join button passes a preview drawn without
+ * its action slot, and one keyed on the data passes a screen drawing only the
+ * button. Both are leaks. (The narrow gap left: a null `members_count` renders
+ * `null riders`, which `\b\d+ riders?\b` does not match — the private-club
+ * and organizer alternatives are what cover that.)
  *
  * **The two copy constants below are what the waits watch for, and waiting for
  * the skeleton to GO instead is a no-op**: `RouteGuard`
@@ -1779,9 +1783,15 @@ const INVITE_LANDINGS = [
   },
 ]
 
-/** The terminal states the waits below watch for — see the note above. */
+/**
+ * The one terminal string that is genuinely shared — both `DeadLink`s carry it
+ * verbatim. **The signed-out copy is deliberately NOT a module const**: it is a
+ * per-kind field, so a kind that diverges would leave a module-level wait
+ * watching a string that never appears, timing out the full 20s and then
+ * failing an assertion on text that was correct. The wait threads
+ * `signedOut.source` through instead, like `dataMarker` and `claim`.
+ */
 const DEAD_LINK_COPY = 'This link has expired'
-const SIGNED_OUT_COPY = 'Sign in or create an account'
 
 /**
  * The invite landing routes — the only screens a stranger can open — PD-358.
@@ -1865,10 +1875,20 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
   await anonPage
     .waitForFunction(
       (sources) => sources.some((x) => new RegExp(x, 'i').test(document.body.innerText)),
-      [SIGNED_OUT_COPY, DEAD_LINK_COPY, dataMarker.source],
+      [signedOut.source, DEAD_LINK_COPY, dataMarker.source],
       { timeout: 20_000 }
     )
     .catch(() => {})
+  // **A short settle the terminal-state wait cannot provide, and it is
+  // load-bearing for the RPC assertion below.** The wait resolves on the first
+  // frame after `SignedOutInvite` paints, so reading `anonPreviewCalls`
+  // straight after it gives a stray request no window to appear in — and the
+  // regression that assertion exists to catch (the null query key being
+  // removed, `RideInviteJoin`'s `signedIn && token ? … : null`) would dispatch
+  // in the same tick `signedIn` settles to false, racing that very paint. The
+  // old fixed `waitForTimeout(1500)` was providing this by accident; it is
+  // kept deliberately and small, rather than as a guess at a round trip.
+  await anonPage.waitForTimeout(400)
 
   const anonPath = new URL(anonPage.url()).pathname
   const anonText = await anonPage.evaluate(() => document.body.innerText).catch(() => '')
@@ -1902,6 +1922,16 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
     `signed out: no ${kind} data on screen`,
     `${kind} data is on screen with no session`
   )
+  // **The control, separately from the data**, because the two are not the
+  // same assertion and the club route proves it: keying the data marker on the
+  // Join button (as this phase first did) meant a preview drawn WITHOUT its
+  // action slot passed, and keying it on the data alone means one drawn with
+  // ONLY the action slot passes. Both are leaks and neither implies the other.
+  report(
+    !claim.test(anonText),
+    'signed out: no Join control on screen',
+    'a stranger is being offered a claim'
+  )
 
   await anonContext.close()
 
@@ -1913,16 +1943,9 @@ async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOu
   page.on('request', countPreview)
 
   await page.goto(target, { waitUntil: 'networkidle' }).catch(() => {})
-  // **A terminal state, never the skeleton's absence.** The obvious predicate
-  // here was `!document.querySelector('[aria-label="Loading invite"]')`, and it
-  // is a no-op: `RouteGuard` replaces `children` on boot, so on a cold `goto`
-  // the guard splash is alone in the DOM, the landing screen has not mounted,
-  // and the skeleton is absent on the FIRST evaluation. That wait returned
-  // immediately and left `networkidle` doing all the work by accident. Waiting
-  // on the states this half can actually end in — the dead-link message, an
-  // ErrorState retry, or the claim control — is the same reasoning as
-  // `refusedAttempt`'s wait, and a fixed sleep would redden a correct build on
-  // a slow link.
+  // **A terminal state, never the skeleton's absence** — see the note on
+  // INVITE_LANDINGS. The states this half can end in are the dead-link
+  // message, an `ErrorState` retry, and the claim control.
   await page
     .waitForFunction(
       (sources) =>

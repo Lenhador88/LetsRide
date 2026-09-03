@@ -81,27 +81,32 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `20/20` screens and `65/65 guard, navigation and sign-out checks correct` on a DEV
-where the walk account owns a ride and a club — and BOTH figures are ARITHMETIC, not a measured
-run.** The measured pair is `18/18` and `47/47`, 2026-08-24 on PD-293's branch, against a local
-`npm run dev` through the relay, `WALK_FIXTURES=1`, zero FAILs.
+**A clean run is `67/67 guard, navigation and sign-out checks correct` on a DEV where the walk
+account owns a ride and a club — and that figure is ARITHMETIC, not a measured run.** The measured
+one is `47/47`, 2026-08-24 on PD-293's branch, against a local `npm run dev` through the relay,
+`WALK_FIXTURES=1`, zero FAILs. PD-358 added `checkInviteLanding`, **10 assertions per landing
+route** (6 signed out, 4 signed in) **across two routes**, so 47 + 20 = **67**.
 
-PD-358 moved both. It added `/rides/join` and `/clubs/join` to `STATIC_PATHS`, taking it from 10
-entries to 12 — so the screens figure goes 18 → **20** (12 static plus the 8 discovered detail
-routes that run had). And it added `checkInviteLanding`, **9 assertions per landing route** (5
-signed out, 4 signed in) **across two routes**, so 47 + 18 = **65**.
+**The screens figure is NOT a constant and must not be written as one here.** It is
+`STATIC_PATHS.length` plus however many detail routes that particular run discovers, and the second
+half is DEV data — an empty list yields no path and the route is skipped. The measured `18/18` of
+2026-08-24 was **8 static + 10 discovered**; `STATIC_PATHS` is **12** today (`/notifications` and
+PD-358's two landing routes landed since), so the same DEV would now print `22/22`. Re-derive the
+static half rather than trusting either number:
 
 ```bash
 node -e "const s=require('fs').readFileSync('scripts/walk.mjs','utf8');
   console.log((s.match(/const STATIC_PATHS = \[([\s\S]*?)\n\]/)[1].match(/^\s*'\//gm)||[]).length)"
 ```
 
-**Nobody has run it**: this container's Chromium cannot reach Supabase without the relay, and CI's
-`walk` job is skipped until the repository variable `WALK_CI=1` exists. So treat 20 and 65 as the
-numbers to expect and 18/47 as the ones anyone has actually seen — and **the screens figure is the
-one that matters most here**, because `CLAUDE.md` reads a shrunken `N/N` as a skip rather than a
-pass, so a stale baseline is exactly what makes a real skip invisible. Replace this paragraph with a
-measurement the first time the walk is run against DEV.
+**This is the figure to get right**, because `CLAUDE.md` reads a shrunken `N/N` as a skip rather
+than a pass — so a baseline that is too low silently absorbs skipped screens and reads as clean.
+A previous revision of this paragraph said `20`, having mistaken that run's *static* count for its
+*discovered* count; the two are 8 and 10 and they are easy to transpose.
+
+**Nobody has run any of this**: this container's Chromium cannot reach Supabase without the relay,
+and CI's `walk` job is skipped until the repository variable `WALK_CI=1` exists. Replace this
+paragraph with a measurement the first time the walk is run against DEV.
 
 It was `48/48` before 47 and `077` dropped the `max_riders survives it` assertion with the field it
 read. **If the invite phases are excluded and it comes back 48, the field is back.**
