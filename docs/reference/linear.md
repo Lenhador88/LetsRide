@@ -287,6 +287,27 @@ The one thing this does **not** cover: deleting anything a human authored — an
 a document, or a label that is in use. Closing is reversible and leaves the record; deleting is
 neither. Ask first.
 
+### Creating an issue can be refused outright — the workspace is on Linear's free plan
+
+**Measured 2026-09-03**: `save_issue` with no `id` answers
+`400 invalid_request — "You've exceeded the free issue limit for this workspace"`. Reading,
+commenting and moving between statuses are unaffected; only *creation* is. Check rather than
+assume it still holds — the owner may have upgraded, and this is a plan setting with no file
+behind it:
+
+```
+# via the Linear MCP: save_issue team="Pedro & Dave" title="probe — delete me" — a 400 means it stands
+```
+
+**What to do when it refuses, rather than dropping the finding.** Post the issue body you were
+going to file as a **comment on the nearest existing issue**, opening with the refusal and the
+line *this wants its own row*. `.claude/commands/queue-pickup.md` STEP 5 files follow-ups, so a
+build session meets this at its wrap-up with the work already done — the comment keeps it, and
+moving it to a row later is one paste. Do **not** close or repurpose somebody else's issue to
+make room; only the owner clears the cap, by upgrading or by archiving the rows that have
+already reached `Done (in production)` — the bulk of the board, and the count is one
+`list_issues` call rather than a number worth writing down here.
+
 ### What an issue body opens with
 
 Two owner requests, covering different moments — one is how *every* issue reads, the other is what
