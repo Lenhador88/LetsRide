@@ -89,11 +89,17 @@ export default function ExploreClubsPage() {
 
   // Records the dismissal for the club that was actually on screen, then hands
   // the sheet to the next join waiting behind it.
-  const advanceIntroductions = () =>
-    setIntroducingClubIds((queue) => {
-      if (queue[0]) dismissIntroductionPrompt(queue[0])
-      return queue.slice(1)
-    })
+  //
+  // The write stays OUTSIDE the updater and reads `introducingClubId` from this
+  // render, which is the same `queue[0]` the sheet was showing. Inside, it would
+  // be a side effect in a function React requires to be pure:
+  // `dismissIntroductionPrompt` ends in `notify()`, which synchronously calls
+  // every `useSyncExternalStore` listener, and StrictMode invokes updaters twice
+  // on purpose to surface exactly this.
+  const advanceIntroductions = () => {
+    if (introducingClubId) dismissIntroductionPrompt(introducingClubId)
+    setIntroducingClubIds((queue) => queue.slice(1))
+  }
   // The same three reads as `/clubs`, under the same keys — which is what makes
   // arriving here from the strip a cache hit rather than a second fetch, and
   // what keeps the strip's near count equal to the `Near <name>` section below
