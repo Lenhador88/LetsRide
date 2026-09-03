@@ -46,8 +46,22 @@ the wrong implementation and the right one return exactly the same list.
   query cache; deeper windows are session-local, and a refetch of the first window is absorbed
   into them rather than replacing them.
 - **A refetch that REMOVES a row resets the deeper windows; one that only adds or updates does
-  not.** This is what keeps blocking and hiding compliant with `client-cache-invalidation` without
-  an epoch counter and without snapping a reading rider back on every new postcard.
+  not** — and, because that signal can only see the first window, **any control on this screen
+  that can remove a row says so explicitly** (a hide or a block from a postcard's own menu). Both
+  together are what keep blocking compliant with `client-cache-invalidation` without an epoch
+  counter and without snapping a reading rider back on every new postcard.
+- **A source that has gone short is never asked again.** Its `until` would be `null`, which means
+  *now* rather than "everything older", so re-asking it re-reads page one for ever. A step
+  therefore costs only the still-saturated sources' reads — usually one, not five.
+- **The club feed's saturation moves onto the read that knows it.** `getClubFeed` is two steps and
+  its horizon is currently measured on the second, so a window that saturated but lost a row to RLS
+  reads as short — which under paging makes `complete` true and draws the club's founding over
+  postcards nobody fetched.
+- **A thread's reply count improves as the rider pages**: exact-versus-floor is derived from the
+  reply source's accumulated coverage rather than latched when a window saturates.
+- **The decoration reads are chunked**, so no single request's id list grows with paging depth — a
+  decoration failure is silent by design, and a silently lost introduction door at depth is the
+  hole this change exists to close.
 - **The PD-366 return anchor pages to find its row**, within a fixed budget, instead of silently
   no-opping for any row past the first twenty.
 - **The wave and introduction decorations gain a depth segment on their cache key** and re-read
@@ -118,20 +132,26 @@ Stated as prohibitions, because each is a thing an implementation could plausibl
 **Code**
 
 - `src/lib/data/club-timeline.ts` — `ClubTimelineWindow`, `absorbClubTimelineWindow`,
-  `absorbClubReplyWindow`, `resolveClubTimelineAdvance`, the two new bounds, and a rewritten
+  `absorbClubReplyWindow`, `resolveClubTimelineAdvance`, `pendingClubTimelineSources`, the two new
+  bounds, the exact-versus-floor rule moving into the merge, and a rewritten
   `CLUB_TIMELINE_LIMIT` docstring (it becomes a page rather than a wall; the "deliberately no
   `load more`" paragraph is what this change reverses, and the reasoning it records is what the
   design had to answer).
 - `src/components/clubs/ClubTimeline.tsx` — the paging state, the sentinel, the three tail states,
   the anchor hunt, the depth-keyed decorations.
 - `src/components/ui/ScrollSentinel.tsx` — new; the repo's only `IntersectionObserver`.
-- `src/lib/data/rides.ts`, `src/lib/data/club-threads.ts`, `src/lib/data/postcards.ts` — an
-  `until` bound on `getClubRideAnnouncements`, `getClubThreads` and the club feed's existing
-  `before`. `getClubJoins` and `getClubThreadReplies` gain theirs in `club-timeline.ts`.
+- `src/lib/data/rides.ts`, `src/lib/data/club-threads.ts` — an `until` bound on
+  `getClubRideAnnouncements` and `getClubThreads`. `getClubJoins` and `getClubThreadReplies` gain
+  theirs in `club-timeline.ts`.
+- `src/lib/data/postcards.ts` — `getClubFeedWindow`, declaring its horizon from the accessor's id
+  count, with `getClubFeed` as a thin wrapper over it.
+- `src/lib/data/club-waves.ts`, `src/lib/data/club-introductions.ts` — chunked subject-id lists.
+- `src/components/postcards/PostcardCard.tsx` and `PostcardMenu.tsx` — an optional `onRemoved`,
+  fired after a successful hide or block.
 - `src/lib/query/keys.ts` — an optional depth segment on `clubs.joinWaves` and
-  `clubs.joinIntroductions`. The actions' existing `invalidate(queryKeys.clubs.joinWaves(clubId))`
-  reaches every depth unchanged, because `invalidate` matches on a key **prefix**
-  (`keyStartsWith`, `queryClient.ts`).
+  `clubs.joinIntroductions`, plus a key for the timeline's own postcard window. The actions'
+  existing `invalidate(queryKeys.clubs.joinWaves(clubId))` reaches every depth unchanged, because
+  `invalidate` matches on a key **prefix** (`keyStartsWith`, `queryClient.ts`).
 - `src/lib/clubs/club-timeline-anchor.ts` — the anchor hunt's decision, kept pure for the reason
   the existing resolver is: `renderToStaticMarkup` runs no effect.
 
@@ -152,8 +172,9 @@ Stated as prohibitions, because each is a thing an implementation could plausibl
 
 **Cost**
 
-One additional round trip of five parallel reads per fetched window — plus one decoration read
-when the join window advanced — against `eu-west-1`. The club detail holds **13** `useQuery` call
+One additional round trip per fetched window — at most five parallel reads, and usually fewer,
+since a source that has gone short is never asked again — plus the decoration reads when the join
+window advanced, against `eu-west-1`. The club detail holds **13** `useQuery` call
 sites on load today (9 in this component, 4 on the page; some conditional, and two sharing their
 key with `ClubThreadsRow`) — re-derive rather than trust it:
 `grep -c 'useQuery(' src/components/clubs/ClubTimeline.tsx 'src/app/(app)/clubs/detail/page.tsx'`.

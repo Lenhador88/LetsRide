@@ -30,24 +30,36 @@ returned to the first page by an unrelated write.
 - **THEN** the screen SHALL start at its first page
 - **AND** the later pages SHALL be re-read rather than restored from a stale copy
 
-### Requirement: A refetch that REMOVES a row SHALL discard the later pages; one that only adds or updates SHALL NOT
+### Requirement: A removal SHALL discard the later pages, and a control that can remove a row SHALL say so rather than be inferred
 
-The two kinds of refetch are indistinguishable to a cache and must be told apart by the screen: a
-refetched first page that fails to return a row it previously held, **inside the interval that
-page covers**, has had that row removed — blocked, hidden, deleted, or a membership ended.
+The two kinds of refetch are indistinguishable to a cache and must be told apart by the screen:
 
 - **A removal SHALL discard the pages below the first**, which are then re-read from a clean
   first page.
 - **An addition or an update SHALL leave them alone.**
 
-The removal branch is what keeps the standing blocking rule true on a paged screen. A block
-reaches every cached view through `invalidate(EVERYTHING)`, but pages held outside the cache are
-not cached views, and blocking is reachable without leaving the screen — a postcard's own menu
-carries Hide and Block. Without this rule a blocked rider's content would remain on screen, below
-the fold, until the rider navigated away.
+A refetched first page that fails to return a row it previously held, **inside the interval that
+page covers**, has had that row removed — blocked, hidden, deleted, or a membership ended — and
+SHALL discard the later pages.
 
-Snapping the rider back is acceptable **only** on this branch: they have just acted on the content
-themselves, so a stream that reshuffles is expected, where a stream that reshuffles because
+**That signal alone is NOT sufficient, and treating it as sufficient reintroduces the defect this
+requirement exists to close.** It can only see the interval the first page covers. A rider who has
+paged four pages down and blocks the author of a row that appears **only on page three** gets a
+first-page refetch that returns everything it held, reports no removal, and leaves the blocked
+rider's content on screen — which is exactly what the standing blocking rule forbids, and it is
+reachable without leaving the screen, because a postcard's own menu carries Hide and Block.
+
+So: **any control a paged screen renders whose action can remove rows SHALL discard the later
+pages itself, unconditionally, without waiting to observe whether the removed row was on the first
+page.** The signal SHALL be explicit — the component owning the control telling the screen — and
+SHALL NOT be inferred from a burst of refetches, which cannot be told apart from any other
+cache-wide invalidation.
+
+A screen adopting paging SHALL enumerate the removal-capable controls it renders, and a control
+added later either reports its removals or reopens this hole.
+
+Snapping the rider back is acceptable **only** on these branches: they have just acted on the
+content themselves, so a stream that reshuffles is expected, where a stream that reshuffles because
 somebody else posted a photo is the defect the requirement above forbids.
 
 #### Scenario: Blocking removes the blocked rider from the whole stream
@@ -55,6 +67,11 @@ somebody else posted a photo is the defect the requirement above forbids.
 - **THEN** the blocked rider's content SHALL disappear from the pages already drawn, not only from
   the next fetch
 - **AND** the later pages SHALL be discarded and re-read
+
+#### Scenario: A block acting on a deep page still clears the deep pages
+- **WHEN** the removed row appears only on a page below the first
+- **THEN** the later pages SHALL still be discarded
+- **AND** the screen SHALL NOT depend on the first page's refetch to notice, because it cannot
 
 #### Scenario: Hiding a row does not merely hide it above the fold
 - **WHEN** a rider hides a postcard that also appears in a later page
@@ -80,6 +97,19 @@ today reach every depth through the cache's prefix match, with no edit to any ac
 
 A decoration read SHALL NOT gate the rows it decorates, at any depth, and a display step that
 fetched no new rows SHALL trigger no decoration read.
+
+**No single request's subject list SHALL grow with paging depth.** A decoration read covering the
+accumulated set SHALL issue it in chunks of a named bound and merge the results. The reason is the
+interaction between two rules that are individually correct: a decoration must not gate its rows,
+so its failure is silent by design — and a request whose id list grows without bound eventually
+crosses a URI limit and fails. Silent plus unbounded means a decoration that simply stops
+appearing at depth, with nothing red anywhere. A ceiling on paging depth SHALL NOT be offered as
+the mitigation unless the limit it defends against has been measured.
+
+#### Scenario: A decoration request does not grow with depth
+- **WHEN** the accumulated subject set exceeds the chunk bound
+- **THEN** the read SHALL be issued as several bounded requests and merged
+- **AND** no request's subject list SHALL be a function of how deep the rider has paged
 
 #### Scenario: A newly paged row gets its decoration
 - **WHEN** a further page brings in rows that carry a decoration

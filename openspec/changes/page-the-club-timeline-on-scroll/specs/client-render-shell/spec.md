@@ -27,6 +27,10 @@ what is already on screen.
 - **WHEN** the device has no connectivity and the rider reaches the end of the list
 - **THEN** the tail SHALL say so specifically rather than showing the generic error state
 - **AND** no automatic retry SHALL be issued while offline
+- **AND** the tail SHALL NOT draw a loading treatment, which offline is the state that would leave
+  on screen for ever
+- **AND** the list SHALL resume extending on its own when connectivity returns, without the rider
+  navigating or tapping
 
 #### Scenario: The end of the data reads as an ending
 - **WHEN** there is genuinely nothing more to fetch

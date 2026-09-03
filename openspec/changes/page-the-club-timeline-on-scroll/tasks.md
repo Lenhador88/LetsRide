@@ -40,34 +40,54 @@ why §1 comes before any component work and why each of its functions is pure.
       when an accumulated row inside the interval was not returned.
 - [ ] 1.3 Implement `absorbClubReplyWindow(windows: ClubReplySource[])` — or the equivalent
       derivation from the window list — producing the accumulated `rows`, `horizon` and
-      `activity`, with counts **summed**, participants unioned shallowest-window-first, and
-      `partial` true if any contributing window saturated.
+      `activity`, with counts **summed** and participants unioned shallowest-window-first.
+      **It does NOT carry a `partial` forward** — see 1.6.
 - [ ] 1.4 Implement `resolveClubTimelineAdvance(timeline, limit, windowsFetched, maxWindows)`
       returning `'complete' | 'draw-more' | 'fetch-window' | 'capped'`: complete wins; then
       `events.length >= limit` means the cap is what cut, so raise it and fetch nothing; otherwise
-      the horizon cut, so fetch unless the ceiling is reached.
-- [ ] 1.5 Add `CLUB_TIMELINE_MAX_WINDOWS = 10` and `CLUB_TIMELINE_ANCHOR_WINDOWS = 3`, each with
-      the reasons `design.md` §D7 and §D6 record — memory, the decoration read's id-list growth,
-      and that the anchor hunt runs unasked on load.
-- [ ] 1.6 Rewrite `CLUB_TIMELINE_LIMIT`'s docstring: it is now a **page**, not a wall. Keep the
+      the horizon cut, so fetch unless the ceiling is reached. **This decides the TAIL, never which
+      reads to issue** — that is 1.7's job, and conflating them is what produces the `until = null`
+      defect.
+- [ ] 1.5 Add `CLUB_TIMELINE_MAX_WINDOWS = 10` and `CLUB_TIMELINE_ANCHOR_WINDOWS = 3`. Write the
+      justification `design.md` §D7 actually supports — **client memory and total reads** — and do
+      **not** restore the URL-length argument an earlier draft carried: the gateway limit is
+      unmeasured, and 3.5 is what removes the risk it was standing in for.
+- [ ] 1.6 Move the exact-vs-floor decision out of the accumulation and into the merge, per
+      `design.md` §D5: a thread's count is exact when the accumulated reply horizon is `null`, or
+      when the thread was created at or after it; otherwise a floor. `withExactCount` becomes the
+      case where the second clause holds by construction rather than a rule of its own. A flag
+      OR-ed across windows is monotonic and would leave `12+` on a thread the stream has since
+      proved complete.
+- [ ] 1.7 Implement `pendingClubTimelineSources(accumulated)` — the sources whose accumulated
+      horizon is still non-null. A source with a `null` horizon is **finished**: its `until` would
+      be `null`, which means *now*, so re-asking it silently re-reads page one for ever. Empty
+      means the stream is complete and no step can fetch.
+- [ ] 1.8 Rewrite `CLUB_TIMELINE_LIMIT`'s docstring: it is now a **page**, not a wall. Keep the
       inertness argument but scope it explicitly to the first window, and replace the "deliberately
       no `load more`" paragraph with what replaced it and why (the horizon is the cursor).
-- [ ] 1.7 Tests in `src/lib/data/__tests__/club-timeline.test.ts` for 1.2 — deeper window extends
+- [ ] 1.9 Tests in `src/lib/data/__tests__/club-timeline.test.ts` for 1.2 — deeper window extends
       coverage; short window imposes no horizon and needs no further read; **a refetched first
       window whose horizon moved up keeps the rows beneath it and keeps the deep horizon**; a row
       missing from the covered interval is dropped and sets `removed`; a row outside the interval
       is kept and does not set `removed`; an exclusive `until` retains the accumulated rows at the
       boundary instant while an inclusive one replaces them.
-- [ ] 1.8 Tests for 1.3 — two windows of one thread sum their counts; participants stay
+- [ ] 1.10 Tests for 1.3 and 1.6 — two windows of one thread sum their counts; participants stay
       newest-first across windows; a re-absorbed first window does not double a count; a creation
-      row above the deepest reply horizon still renders exact.
-- [ ] 1.9 Tests for 1.4 — a limit-cut stream advances with no fetch; a horizon-cut stream asks for
+      row above the deepest reply horizon still renders exact; **a thread that read as `12+` while
+      the reply horizon was set renders as `12` once that horizon is `null`**; a thread created
+      below a live horizon still renders as a floor.
+- [ ] 1.11 Tests for 1.4 — a limit-cut stream advances with no fetch; a horizon-cut stream asks for
       a window; the ceiling returns `capped`; a complete stream returns `complete`.
-- [ ] 1.10 **Verify each new test both ways**, as this repo's standing rule requires: break the
-      absorb rule to concatenation and confirm the hole case in 1.7 fails; take the newest window's
-      count
-      instead of the sum and confirm 1.8 fails. Record in the test file's header what each
-      inversion breaks, as the existing headers there do.
+- [ ] 1.12 Tests for 1.7 — a source whose horizon is `null` is absent from the pending set; a
+      still-saturated one is present; an all-null set is empty. Then the case that pins the defect:
+      **a step taken when four of five sources have gone short issues one read, not five**, and no
+      read is issued with an absent upper bound.
+- [ ] 1.13 **Verify each new test both ways**, as this repo's standing rule requires: break the
+      absorb rule to concatenation and confirm the hole case in 1.9 fails; take the newest window's
+      count instead of the sum and confirm 1.10 fails; OR the windows' saturation flags together
+      instead of reading the accumulated horizon and confirm the `12+`-that-never-clears case in
+      1.10 fails. Record in the test file's header what each inversion breaks, as the existing
+      headers there do.
 
 ## 2. The reads gain a bound
 
@@ -76,17 +96,31 @@ why §1 comes before any component work and why each of its functions is pure.
       **before** the username filter.
 - [ ] 2.2 `getClubThreadReplies(clubId, limit, until?)` — `.lte('created_at', until)`, window
       inclusive. The announcement exclusion and `!inner` stay exactly as they are; the horizon and
-      `partial` stay measured on the window **before** the collapse.
+      the window's own saturation stay measured on the window **before** the collapse.
 - [ ] 2.3 `getClubRideAnnouncements(clubId, limit, until?)` in `src/lib/data/rides.ts` —
       `.lte('created_at', until)`, inclusive.
 - [ ] 2.4 `getClubThreads(clubId, cursor?, limit, until?)` in `src/lib/data/club-threads.ts` —
       `.lte('created_at', until)`, inclusive, **beside** the existing keyset cursor rather than
       replacing it: `/clubs/detail/threads` keeps paging on the cursor and must not change
       behaviour.
-- [ ] 2.5 The club feed keeps its existing `before` (`getClubFeed(clubId, { before, limit })`).
-      Its window declares `untilInclusive: false`, because `club_stamp_postcard_ids` compares
-      `created_at < before` (`086`). Write the reason at the call site, not only here.
-- [ ] 2.6 Confirm no read gained a predicate that is not the club, the ordering window or the time
+- [ ] 2.5 **`getClubFeedWindow(clubId, page)` in `src/lib/data/postcards.ts`, returning a
+      `ClubTimelineWindow<Postcard>` whose horizon is measured on the ACCESSOR's id count against
+      `page_size` — not on the second read's rows.** `getClubFeed` becomes a wrapper returning
+      `.rows`, so there is one implementation and the Postcards list is untouched. The defect this
+      fixes is live today and paging is what makes it a lie: `club_stamp_postcard_ids` returns
+      ids, the `.in()` re-read applies RLS and may return **fewer**, and `boundedHorizon` over that
+      second read makes a saturated window read as short — no horizon, `complete` true, and the
+      `club-created` floor drawn beneath postcards nobody fetched. Same rule `getClubJoins` and
+      `getClubThreadReplies` already follow.
+- [ ] 2.6 The window declares `untilInclusive: false`, because the accessor compares
+      `created_at < before` (`086` line 130). Write the reason at the call site, not only here, and
+      note the remedy it forgoes (a keyset `before_id`, which is a migration this change does not
+      take).
+- [ ] 2.7 Give the timeline's postcard source its own cache key — a child of the club feed's, on
+      `clubs.edit`/`clubs.preview`'s precedent, because it holds a different shape. Record the cost
+      in `keys.ts` beside it: the club detail no longer warms the Postcards list's entry, so that
+      navigation costs one read it did not cost before.
+- [ ] 2.8 Confirm no read gained a predicate that is not the club, the ordering window or the time
       bound: `git diff` on `src/lib/data/` should show no membership, block, visibility or hide
       term anywhere. A term like that in this diff is a review failure, not a detail.
 
@@ -104,6 +138,18 @@ why §1 comes before any component work and why each of its functions is pure.
       real only once the ids exist — that gate is what makes the scoping true rather than a race.
 - [ ] 3.4 Confirm a display-cap step that fetched nothing leaves both decoration keys unchanged, so
       it issues no read.
+- [ ] 3.5 **Chunk the subject-id list in `attachClubWaveState` and `attachClubIntroductions`** at a
+      named bound, issuing several bounded requests and merging the maps. Both are a single
+      `.in('subject_user_id', …)` / `.in('introduces_user_id', …)` today, and the accumulated list
+      grows by up to `CLUB_TIMELINE_JOINS` ids per window. The two rules that make this necessary
+      are each correct on their own: a decoration must not gate its rows, so its failure is
+      **silent**; and an unbounded id list eventually crosses the gateway's URI limit. Together
+      they mean the introduction door quietly stops appearing at depth — the exact hole PD-375
+      exists to close, per PD-374's cancellation.
+- [ ] 3.6 Test the chunker directly: a list longer than the bound produces more than one request
+      and a merged map equal to what one request would have returned; a list shorter than the bound
+      still produces exactly one. **Do not** justify a paging ceiling with a URL-length argument
+      anywhere — the limit is unmeasured, and this task is what removes the need for one.
 
 ## 4. The scroll trigger
 
@@ -122,38 +168,62 @@ why §1 comes before any component work and why each of its functions is pure.
 
 - [ ] 5.1 Hold the fetched windows in component state — the first window from the existing
       `useQuery` keys, deeper ones local — and derive the accumulated five sources by absorbing in
-      order. Keep the first window's five keys **unchanged**: three are shared with other screens.
+      order. Keep the shared first-window keys **unchanged**: `clubs.threads(id)` and
+      `clubs.threadsUnread(id)` belong to other screens too. (The postcard source moves to its own
+      key in 2.7, and that is the only key this change may move.)
 - [ ] 5.2 Merge with a display cap of `CLUB_TIMELINE_LIMIT × steps`, and drive each step through
       `resolveClubTimelineAdvance`: raise the cap first, fetch only when the cap is no longer what
       cuts.
-- [ ] 5.3 Issue a window's five reads in **one** effect, in parallel, so a page costs one round
-      trip rather than five. One fetch in flight at a time; none while `useOnlineStatus()` is
-      false; none after a failure until the rider asks.
-- [ ] 5.4 The three tail states of `design.md` §D2: sentinel + skeleton while extendable; the
-      existing *"Older activity lives in…"* foot when capped or failed, with an `ErrorState`-style
-      *Try again* on the failure branch only; the `club-created` entry and no foot when complete.
+- [ ] 5.3 Issue a window's reads in **one** effect, in parallel, so a page costs one round trip
+      rather than five — but **only for the sources `pendingClubTimelineSources` returns**. A
+      source that has gone short is finished, and re-asking it sends `until = null`, which means
+      *now*: it would re-read page one on every step for ever and absorb it back over itself. One
+      fetch in flight at a time; none while `useOnlineStatus()` is false; none after a failure
+      until the rider asks.
+- [ ] 5.4 The four tail states of `design.md` §D2: sentinel while extendable, with the skeleton
+      gated on a fetch being **in flight** rather than on more being available; the offline line
+      when `useOnlineStatus()` is false, with **no** skeleton and the sentinel left mounted so
+      reconnecting resumes the stream on its own; the existing *"Older activity lives in…"* foot
+      when capped or failed, with an `ErrorState`-style *Try again* on the failure branch only; the
+      `club-created` entry and no foot when complete.
 - [ ] 5.5 Absorb a refetched first window rather than replacing it, and **discard the deeper
-      windows when the absorb reports `removed`** — the block/hide rule. Verify by hand on DEV:
-      block from a postcard's menu on a paged timeline and confirm that rider's rows are gone from
-      the whole stream, not only from the top.
-- [ ] 5.6 Keep `combineQueries` gating on the first window only. A deeper window's failure must
+      windows when the absorb reports `removed`**.
+- [ ] 5.6 **`removed` is not sufficient on its own — wire the explicit removal hook too.** It only
+      sees the interval the first window covers, so blocking or hiding a row that exists only in
+      window 3 leaves it on screen, which is what `client-cache-invalidation` forbids. Add an
+      optional `onRemoved` to `PostcardCard`, fired after a successful hide or block in
+      `PostcardMenu`, and have the timeline drop every window below the first when it fires. A prop
+      rather than an epoch or an "everything refetched at once" heuristic: the component owning the
+      control is the only thing that knows. Verify by hand on DEV — page three windows down, block
+      the author of a postcard **only** on the deepest one, and confirm it is gone from the whole
+      stream.
+- [ ] 5.7 Keep `combineQueries` gating on the first window only. A deeper window's failure must
       never blank the stream, and the decorations stay outside the gate at every depth.
-- [ ] 5.7 Confirm the non-member branch is untouched: no sentinel, no reads, the same refusal
+- [ ] 5.8 Confirm the non-member branch is untouched: no sentinel, no reads, the same refusal
       sentence. A non-member being able to trigger a page is the one failure in this change that is
       a visibility bug rather than a correctness one.
 
 ## 6. The return anchor
 
 - [ ] 6.1 Extend the anchor effect to hunt: while the fragment names no row on the page, extend —
-      up to `CLUB_TIMELINE_ANCHOR_WINDOWS` fetched windows — then scroll once, or give up.
-- [ ] 6.2 Terminate on all three conditions (found, `complete`, budget spent), and keep
-      `scrolledToAnchor` as the "only once" guard so a later refetch cannot yank a reading rider.
+      up to `CLUB_TIMELINE_ANCHOR_WINDOWS` fetched windows, **drawn from the mount's
+      `CLUB_TIMELINE_MAX_WINDOWS` allowance rather than added to it** — then scroll once, or give
+      up.
+- [ ] 6.2 **Two states, not one, and do NOT reuse `scrolledToAnchor` as the hunt's guard.** That
+      ref is set on the first `rowsReady`, before any hunting fetch has been issued, so every
+      window the hunt fetches makes the rows ready again and the reused guard returns immediately —
+      the hunt never runs. Hold `'hunting' → 'settled'` (latched on found, `complete`, or budget
+      spent) separately from the scroll-once flag (set at the moment it scrolls). Terminate on all
+      three conditions; once settled, a later refetch that makes the row exist SHALL NOT scroll.
 - [ ] 6.3 Keep the decision in a pure function beside `resolveClubTimelineScrollTarget`, for its
       stated reason: `renderToStaticMarkup` runs no effect, so a decision wired straight into the
       effect has no gate on it at all.
-- [ ] 6.4 Tests: a row found on the second window scrolls once; an anchor no window can contain
-      stops at the budget, renders normally and reports nothing; a `reply:` anchor superseded by a
-      newer message in its thread is the same ordinary no-op.
+- [ ] 6.4 Tests: a row found on the second window scrolls once; **a hunt is not ended by its own
+      results arriving** (the two-state case — verify it both ways by collapsing the two flags into
+      one and confirming this test fails); an anchor no window can contain stops at the budget,
+      renders normally and reports nothing; a `reply:` anchor superseded by a newer message in its
+      thread is the same ordinary no-op; a hunt that spent two windows leaves the mount's remaining
+      allowance at `CLUB_TIMELINE_MAX_WINDOWS - 2`.
 
 ## 7. Gates and records
 

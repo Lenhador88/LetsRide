@@ -78,6 +78,32 @@ function rather than as an `appendPage` and a `mergeRefetch`:
   and the new first-window horizon would be covered by nothing while the stream went on claiming
   the deep horizon.
 
+### A source with a `null` horizon is FINISHED, and asking it again re-reads page one for ever
+
+`until = null` means **now**, so it is the first window's bound and nothing else's. A source whose
+accumulated horizon is `null` has read back to the club's beginning — it can have no deeper window,
+and `until = accumulated.horizon` for such a source is `null`, which is not "everything older" but
+"start again from the top".
+
+So the per-source guard is not an optimisation, it is what stops a finished source from silently
+re-issuing its first page on every subsequent step, for ever, and absorbing it back over itself:
+
+> **A window SHALL be requested for a source only while that source's accumulated horizon is
+> non-null.** A deeper window with `until = null` is a defect, not a degenerate case.
+
+```ts
+/** Which sources still have anything below them. Empty means the stream is
+ *  complete and no step can fetch. */
+export function pendingClubTimelineSources(accumulated: ClubTimelineSources): ClubTimelineSourceKey[]
+```
+
+This is also what makes the cost of a step fall as the rider descends: the joins bound is 60 and
+the rides bound 30, so on most clubs the join source is the only one still saturated after a
+window or two, and a step costs **one** read rather than five. `resolveClubTimelineAdvance`
+answers for the stream (which tail to draw); `pendingClubTimelineSources` answers per source
+(which reads to issue). One verdict cannot do both jobs, and using the stream-wide one to decide
+the reads is what produces the `until = null` defect above.
+
 The reply source needs its own absorb, `absorbClubReplyWindow`, because it carries `activity`
 alongside `rows` — see §D5.
 
@@ -99,6 +125,12 @@ they keep their buttons).
 - **One fetch in flight at a time.** The sentinel can fire repeatedly while it is on screen; the
   handler is a no-op whenever a fetch is already running, whenever the tail is not `fetch-window`,
   and whenever the rider is offline.
+- **Inert offline is not the same as silent offline.** The handler declining to fetch is only half
+  the answer: the tail must *say* the stream is paused and must not sit on a skeleton that will
+  never resolve, which is `client-render-shell`'s rule and the offline row of §D2's table. The
+  sentinel stays mounted while offline, so when `useOnlineStatus()` flips back the next
+  intersection resumes the stream on its own — the automatic retry that same spec requires,
+  obtained without a retry loop.
 - **No button on this screen** — the product owner asked for scroll loading. A control does come
   back in exactly one state: after a page fetch has **failed**, where an automatic retry would
   hammer a failing endpoint and an offline rider would spin for ever. That control says
@@ -130,11 +162,17 @@ What does change is the tail, which now has **three** states rather than two:
 
 | State | Condition | What is drawn |
 |---|---|---|
-| **More coming** | `!complete`, budget remains | the sentinel, plus a three-row skeleton while a fetch is in flight |
+| **More coming** | `!complete`, online, budget remains | the sentinel, plus a three-row skeleton **while a fetch is actually in flight** |
+| **Paused — offline** | `!complete` and `useOnlineStatus()` false | *"You're offline — more will load once you're back."* No skeleton, no spinner, and the sentinel stays mounted so connectivity returning resumes the stream by itself |
 | **Cannot get more** | a page fetch failed, or `CLUB_TIMELINE_MAX_WINDOWS` reached | today's *"Older activity lives in photos, rides, threads and members"* foot, plus *Try again* on the failure branch |
 | **Nothing more exists** | `complete` | the `club-created` entry, and no foot |
 
-The middle row is why the foot survives this change rather than being deleted with the wall: it is
+**The skeleton is gated on a fetch being in flight, not on the tail being extendable**, and the
+offline row is why: a skeleton drawn whenever more *could* exist is exactly the never-resolving
+indicator `client-render-shell` forbids, and offline is the state in which it would sit there for
+ever.
+
+The third row is why the foot survives this change rather than being deleted with the wall: it is
 still the honest end of a stream that stops short, and it is the terminal state at the depth cap.
 
 **The floor entry keeps its one absolute rule** — it is drawn only when `complete`, because under
@@ -167,6 +205,42 @@ rows at the boundary instant, and the residual defect is precisely this:
 > Two postcards in one club sharing a `created_at` to the microsecond, straddling a page boundary,
 > lose the one below the cut.
 
+### The same read is measuring its saturation on the wrong step, today
+
+`getClubFeed` is **two** reads: `club_stamp_postcard_ids` returns up to `page_size` ids, and a
+second `.in(...)` re-select returns those rows **under the caller's own RLS** — which is the whole
+point of the two-step, and which means the second read can legitimately return *fewer* rows than
+the first asked for. The component then calls
+`boundedHorizon(postcards.data, FEED_PAGE_SIZE, …)` on the **second** read's output
+(`ClubTimeline.tsx`), so a window that saturated the accessor and lost one row to a policy reads
+as **short** — no horizon, nothing hidden below it.
+
+Today that is a bounded inaccuracy in a stream that stops at twenty anyway. **Under paging it is a
+lie**: a short-by-one second read makes `complete` true, which appends the `club-created` floor
+entry under the oldest postcard on screen and asserts that the club's whole history is above it.
+The floor entry is the one row on this stream whose entire content is a claim about what is
+missing.
+
+The fix is the rule two sources already follow — `getClubJoins` measures its horizon on the rows
+**before** its username filter, and `getClubThreadReplies` on the window **before** its collapse:
+
+> **A read that post-processes its window SHALL declare its horizon from what it fetched, not from
+> what survived.** For the club feed, that is the accessor's own id count against `page_size`.
+
+So `getClubFeedWindow(clubId, page)` returns a `ClubTimelineWindow<Postcard>` whose horizon comes
+from the ids, and `getClubFeed` becomes a thin wrapper returning `.rows` — one implementation, so
+the two cannot drift, and the Postcards list is untouched.
+
+**What that costs, stated because it weakens a claim §D4 makes:** the window has a different shape
+from `Postcard[]`, so the timeline's postcard source moves to its own cache key (a child of the
+club feed's, on `clubs.edit`/`clubs.preview`'s precedent — a narrower or wider shape gets its own
+child key rather than colliding on one). The club detail therefore stops warming the Postcards
+list's cache entry, and that navigation costs one read it did not cost before. That is the right
+trade: a warm cache is a round trip, and the alternative is a stream that draws the club's founding
+over postcards it never saw.
+
+### The boundary itself
+
 `044` writes `postcards.created_at` at **transaction** time and there is one postcard insert per
 transaction, so a tie requires two riders' inserts to begin in the same microsecond. It is not
 impossible, it is not detectable from the client, and the cost of it is one missing photo deep in
@@ -178,36 +252,61 @@ bug would misstate it: it is a bound this change chose.
 ## D4. What a refetch does to a rider who has paged
 
 **The first window stays in the shared query cache; deeper windows are session-local state** —
-`/clubs/detail/threads`' trade exactly, and adopted for its reason rather than by analogy. The
-first window's five keys are *shared with other screens*
-(`postcards.feed(filterSegment.club(id))` is the Postcards list's own key,
-`clubs.threads(id)` is the Threads list's and `ClubThreadsRow`'s), and a paging scheme that moved
-them into local state would break that sharing and let the two screens disagree.
+`/clubs/detail/threads`' trade exactly, and adopted for its reason rather than by analogy. Two of
+the first window's keys are *shared with other screens* — `clubs.threads(id)` is the Threads
+list's and `ClubThreadsRow`'s, and `clubs.threadsUnread(id)` is `ClubThreadsRow`'s — and a paging
+scheme that moved them into local state would break that sharing and let two screens disagree.
+(It was three until §D3: the postcard source moves to its own key so its saturation can be
+measured on the read that knows it.)
 
 So an invalidation — a new postcard, a wave, a join — refetches the **first window only**, and
 that refetch is **absorbed** (§D0) rather than replacing anything. The rider keeps their depth.
 This is the whole of point 4, and it works because the absorb rule was written for both
 directions.
 
-**The removal rule.** An absorb reports `removed` when the fresh first window failed to return a
-row the accumulated set held *inside the interval it covers*. That distinguishes the two kinds of
-refetch, which nothing else on the client can:
+**The removal rule, and why it takes TWO triggers rather than one.**
+
+An absorb reports `removed` when the fresh first window failed to return a row the accumulated set
+held *inside the interval it covers*. That distinguishes an addition from a removal, which nothing
+else on the client can:
 
 - **An addition or an update** — a new postcard, a like count, a wave — leaves the deeper windows
   alone. A rider forty entries down is not moved.
-- **A removal** — a block, a hide, a delete, a leave — **discards the deeper windows** and returns
-  the stream to its first page.
+- **A removal visible in the first window** — **discards the deeper windows** and returns the
+  stream to its first page.
 
-The removal branch exists because `client-cache-invalidation` requires a block to remove content
-*"from every cached view the blocker holds, not only from the next fetch"*, and blocking is
-reachable from this very screen without unmounting it: `PostcardCard` renders `PostcardMenu`,
-which carries **Hide** and **Block**, and `blockRider` calls `invalidate(EVERYTHING)`. Without the
-rule, a blocked rider's postcard sitting in a deeper window would stay on screen until the rider
-navigated away. With it, the deeper windows go and are re-fetched from a clean first page.
+**`removed` alone is not enough, and reading it as enough is the failure mode.** It is computed
+only over the interval the first window covers, which is `[h_new, +∞)` — the *top* of the stream.
+A rider who has paged four windows down, and blocks the author of a postcard that appears **only
+in window 3**, gets a first-window refetch that returns every row it held, `removed` false, and the
+blocked rider's photo still on screen. That is precisely what
+`client-cache-invalidation` says SHALL NOT happen — a block removes content *"from every cached
+view the blocker holds, not only from the next fetch"* — and it is reachable without leaving the
+screen, because `PostcardCard` renders `PostcardMenu`, which carries **Hide** and **Block**.
 
-**Yes, that snaps a paged rider back — and only in the case where correctness demands it.** They
-have just blocked or hidden something; a stream that reshuffles under that action is expected,
-where a stream that reshuffles because somebody posted a photo is the defect point 4 names.
+So the second trigger is **explicit rather than inferred**:
+
+> **Any control on this screen whose action can remove rows SHALL discard the deeper windows
+> itself, unconditionally, without waiting to see whether the row it removed happened to be in the
+> first window.**
+
+In practice that is one wiring: `PostcardCard` gains an optional `onRemoved` fired after a
+successful hide or block, and the timeline's handler drops every window below the first. It is a
+prop rather than an epoch counter or an "everything just refetched" heuristic, because the
+component that owns the control is the only thing that *knows*, and a heuristic over five
+simultaneous refetches would be indistinguishable from an `invalidate(EVERYTHING)` fired by
+something else.
+
+**The residue, stated so the next control does not reopen it:** a removal performed anywhere other
+than this screen unmounts the timeline (they are all on other routes), and a fresh mount holds no
+deeper window. So the two triggers together cover every path that exists today — and the rule
+above is written at the point of use, so a future control on this screen that can remove a row
+either calls `onRemoved` or reopens the hole.
+
+**Yes, both triggers snap a paged rider back — and only in the case where correctness demands
+it.** They have just blocked or hidden something; a stream that reshuffles under that action is
+expected, where a stream that reshuffles because somebody posted a photo is the defect point 4
+names.
 
 **On the next visit the timeline starts at twenty again**, because deeper windows die with the
 mount. That is the precedent's trade and it is acceptable here for a reason the precedent does not
@@ -245,6 +344,16 @@ Four properties, each load-bearing:
 - **Scoped to the source window rather than to the drawn rows**, which is what makes a display-cap
   bump free: the newly drawn join rows were already in the window whose depth the key names, so no
   decoration read fires for a step that fetched nothing.
+- **The request is chunked, so no single request's id list grows with depth.**
+  `attachClubWaveState` and `attachClubIntroductions` both issue one
+  `.in('…_user_id', subjectIds)`, and an id list that grows by up to 60 uuids per window walks
+  toward whatever URI limit the gateway in front of PostgREST enforces. **This design does not
+  know that limit and does not assume one** — which is the point: crossing it would answer 414 or
+  400, and because the decorations sit outside `combineQueries` *by design*, the failure would be
+  **silent**, costing the introduction door at depth. Losing the introduction door at depth is not
+  a cosmetic regression; it is the hole PD-374 was cancelled on the strength of closing. So both
+  accessors take their ids in chunks of a named bound and merge the maps, and the depth cap in §D7
+  no longer rests on a URL-length argument it cannot support.
 
 They stay **outside** `combineQueries`: a decoration must not gate the rows it decorates, so a
 failed or slow decoration read costs the wave controls and the introduction door and nothing else,
@@ -272,8 +381,8 @@ produces one entry per window, at two genuinely different instants.
 
 **`activity` accumulates by summing, and that is not optional.** The per-thread reply count is
 derived from the window, so the accumulated count for a thread is the **sum** of its per-window
-counts, its participants are the **union** in shallowest-window-first order (which preserves
-newest-first), and `partial` is true if **any** contributing window was saturated.
+counts, and its participants are the **union** in shallowest-window-first order (which preserves
+newest-first).
 
 Summing is what keeps `withExactCount` honest. A thread-creation row renders its count as exact
 rather than as a floor, and the argument for that is the horizon: a creation row that survives the
@@ -282,6 +391,25 @@ reply source's coverage. Under paging that coverage is the union of the reply wi
 by §D0 — so the argument survives verbatim **provided the counts are summed**. Taking the newest
 window's count instead would silently under-report an old thread's replies while labelling the
 number exact, which is the worst of both.
+
+**`partial` is derived from that same coverage, and is NOT accumulated.** The obvious rule — true
+if any contributing window saturated — is monotonic: once set it never clears, so a thread whose
+every message is demonstrably in hand keeps saying `12+` even after the rider has paged the whole
+stream to `complete`. It also contradicts the paragraph above, which derives exactness from
+coverage rather than from window saturation, and two rules for one flag means the flag means
+nothing.
+
+One rule, the one `withExactCount` already applies to creation rows, generalised:
+
+> A thread's count is **exact** when the reply source's accumulated horizon is `null` — the source
+> has read to the club's beginning, so nothing of any thread is outside it — **or** when the
+> thread is known to have been created at or after that horizon. Otherwise it is a **floor**.
+
+`withExactCount` becomes the case where the second clause is true by construction, rather than a
+separate rule, and the flag now *improves* as the rider pages: the same `12+` becomes `12` at the
+moment the coverage can prove it. `collapseToNewestPerThread` therefore stops deciding `partial`
+for the merged stream — it reports its window's saturation, and the merge decides the flag from
+the accumulated horizon and the thread's own `created_at` where the threads source supplies one.
 
 The absorb for the reply source therefore replaces `activity` per window rather than accumulating
 it incrementally: the accumulated map is derived from the window list, so a first-window refetch
@@ -300,12 +428,33 @@ is not on the page, it fetches the next window and looks again, up to
 - **Appending never disturbs a reader**, which is what makes an automatic fetch safe here: rows
   are added below what is on screen, so nothing above moves. This is also why the sentinel's own
   paging needs no scroll-anchoring machinery.
-- **The scroll still happens exactly once**, and `scrolledToAnchor` still guards it — a hunt that
-  ends without finding the row must not leave the screen able to yank a rider later, when an
-  arriving refetch happens to make the row exist.
+- **The hunt needs TWO states, and today's single `scrolledToAnchor` boolean cannot be one of
+  them.** That ref is set `true` on the *first* `rowsReady`, before any hunting fetch could have
+  happened, so reusing it as the "only once" guard makes every later `rowsReady` — which is
+  exactly what each hunted window produces — return immediately. The hunt would never run. The two
+  questions are genuinely different and each needs its own answer:
+
+  | Question | Value | Set when |
+  |---|---|---|
+  | Is the hunt still running? | `'hunting' → 'settled'` | settled on found, on `complete`, or on the budget being spent |
+  | May the screen still scroll? | `false → true`, once | set at the moment it scrolls, and never scrolls again |
+
+  A single boolean cannot express both, because "give up without ever scrolling later" and
+  "scroll exactly once" have different triggers: the first must latch on an *outcome*, the second
+  on an *action* that may never happen.
+
+  The guard that matters for the rider is the second one: once the hunt is `settled`, a refetch
+  arriving ten minutes later that happens to make the anchored row exist SHALL NOT scroll.
 - **The hunt terminates on three conditions**: the row appears, the stream is `complete`, or the
   budget runs out. The budget is smaller than `CLUB_TIMELINE_MAX_WINDOWS` because this runs
   unasked, on load, and three windows is already up to ~420 entries of hunting.
+- **The hunt spends the mount's ONE budget; it is not additional to it.** A mount may fetch
+  `CLUB_TIMELINE_MAX_WINDOWS` windows in total, and a hunt that spends three leaves seven for the
+  rider's own scrolling. The alternative — three *extra* windows — would make the worst case 13
+  rather than 10, a 30% swing in reads on the single most common entry to this screen (back from a
+  thread), bought for nothing: a rider who has just been paged three windows deep by the hunt is
+  further down the stream than a rider who scrolled there, so they need *less* remaining budget,
+  not the same amount.
 - **Some anchors are permanently unreachable and that is not a bug**, so the hunt must be bounded
   rather than "page until found". A `reply:<message id>` names one message, and the collapse keeps
   only the newest message per thread per window — so if a newer message arrives in that thread
@@ -327,10 +476,17 @@ Every "more" step first raises the cap; only when the cap is no longer what cuts
 happen. On a quiet club — where no source saturates, so the horizon is `null` — the rider reaches
 the club's founding with **zero** additional reads, and the floor entry appears.
 
-**What a fetched window costs**: five reads, issued in parallel from one effect, plus one
-decoration read when the join window advanced — so one round trip to `eu-west-1`, not five.
-`club_thread_unread` and the viewer profile are not re-read: the first is a club-wide RPC whose
-map already covers threads a deeper window brings in, and the second cannot change.
+**What a fetched window costs**: at most five reads, issued in parallel from one effect, plus the
+decoration reads when the join window advanced — so one round trip to `eu-west-1`, not five.
+**At most five, and usually fewer**: §D0's per-source guard skips every source that has already
+gone short, and the bounds differ by a factor of two to three (60 joins against 30 rides, 30
+postcards and 20 threads), so after a window or two the join source is typically the only one
+still saturated and a step costs one read.
+
+`club_thread_unread` and the viewer profile are not re-read: the first is a club-wide RPC —
+`082` returns a row for **every** thread in the club, verified in the migration body rather than
+assumed — so its map already covers threads a deeper window brings in, and the second cannot
+change.
 
 **Why it is acceptable**: the fetch happens on an explicit scroll gesture, 600px before it is
 needed, against a screen that is already interactive and stays interactive — nothing unmounts,
@@ -340,19 +496,24 @@ alternative on offer is not "no reads", it is four separate screens.
 **Two ceilings, both stated as decisions rather than defaults:**
 
 - **`CLUB_TIMELINE_MAX_WINDOWS = 10`.** A visit may fetch ten windows — on the constants above,
-  roughly 600 joins, 300 rides, 300 postcards, 200 threads and 2,000 messages deep. It bounds
-  three things at once: client memory on a phone (every accumulated row is held in JS, postcards
-  with their signed URLs among them), the growth of the decoration read's `.in()` list (~60 uuids
-  per window ≈ 2.2 KB of query string per window, and PostgREST is reached through a gateway with
-  a URL-length limit — at ten windows that list is ~22 KB and the ceiling is doing real work), and
-  the total reads one screen can issue. At the cap the tail becomes the *cannot get more* state,
-  which is the honest foot this screen already draws — a wall at several hundred entries rather
-  than at twenty.
-- **`CLUB_TIMELINE_ANCHOR_WINDOWS = 3`**, per §D6.
+  roughly 600 joins, 300 rides, 300 postcards, 200 threads and 2,000 messages deep — and the hunt
+  of §D6 spends from the same allowance. It bounds **two** things: client memory on a phone (every
+  accumulated row is held in JS, postcards with their signed URLs among them) and the total reads
+  one screen can issue. At the cap the tail becomes the *cannot get more* state, which is the
+  honest foot this screen already draws — a wall at several hundred entries rather than at twenty.
 
-**The trigger for revisiting both**: the day the decoration read is chunked or moved to an RPC
-taking a single club id, `MAX_WINDOWS` is bounded only by memory and can rise. Nothing forces that
-today, and it is not in this change.
+  **It does NOT rest on a URL-length argument**, and an earlier draft of this design said it did.
+  That argument required knowing the gateway's URI limit, which this design does not know and did
+  not measure; worse, if the limit were low the decoration read would fail **silently** — outside
+  `combineQueries` by design — costing the introduction door at depth, which is the one thing
+  PD-375 exists to restore. A ceiling justified by an unmeasured limit is not a ceiling, it is a
+  guess sitting where the real fix belongs, so the fix is in §D5 (chunk the `.in()`) and the
+  argument is gone from here.
+- **`CLUB_TIMELINE_ANCHOR_WINDOWS = 3`**, per §D6, spent from the ten rather than added to them.
+
+**The trigger for revisiting `MAX_WINDOWS`**: it is bounded by memory and total reads alone, so it
+can rise if a rider ever hits it in practice and the accumulated rows prove cheap. Nothing forces
+that today, and measuring it is not in this change.
 
 ## What this change deliberately does not do
 

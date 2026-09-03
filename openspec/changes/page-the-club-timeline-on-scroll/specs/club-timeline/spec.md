@@ -116,6 +116,22 @@ Absorbing a window into an accumulated source SHALL obey one rule in both direct
 This SHALL be a pure function with its own unit test, because it is where this change's silent
 failure lives.
 
+**A source whose accumulated horizon is `null` is finished and SHALL NOT be asked for another
+window.** The bound for a deeper window is that source's own horizon, and `null` denotes *now* —
+the first window's bound — so re-asking a finished source does not fetch older rows, it silently
+re-fetches page one on every subsequent step for ever. The per-source guard is therefore a
+correctness rule and not an optimisation, and it SHALL be expressed per source: a stream-wide
+verdict about which tail to draw cannot decide which reads to issue.
+
+**A read that post-processes or re-filters its window SHALL declare its horizon from what it
+fetched, not from what survived.** Two sources already do this — the joins read measures its
+horizon before dropping riders it cannot name, and the reply read measures its window before the
+collapse. A two-step read is the same case: where an accessor returns ids and a second query
+re-reads those rows under the caller's own RLS, the second read may legitimately return fewer
+rows, and saturation SHALL be taken from the first step. Taken from the second, a window that
+saturated but lost one row to a policy reads as short, imposes no horizon, and lets the stream
+declare itself `complete` — which draws the club's founding beneath rows it never saw.
+
 #### Scenario: A deeper window extends coverage without a gap
 - **WHEN** a source whose horizon is `h` is asked for the window below `h`
 - **THEN** the accumulated source SHALL cover from the new window's horizon up to now
@@ -125,6 +141,17 @@ failure lives.
 - **WHEN** a source's window comes back short of its bound
 - **THEN** it SHALL impose no horizon and SHALL NOT be re-read for a deeper window
 - **AND** a further page SHALL cost only the reads of the sources that are still saturated
+
+#### Scenario: A finished source is not re-read as if it were the first page
+- **WHEN** every source but one has gone short and the rider asks for another page
+- **THEN** only the saturated source's read SHALL be issued
+- **AND** no read SHALL be issued with an absent upper bound, which would fetch the newest rows
+  again rather than older ones
+
+#### Scenario: A two-step read declares its saturation from the step that knows it
+- **WHEN** an accessor returns a full page of ids and the RLS-filtered re-read returns fewer rows
+- **THEN** the source SHALL be treated as saturated and SHALL impose a horizon
+- **AND** the stream SHALL NOT report itself complete, and SHALL NOT draw the club's founding
 
 #### Scenario: A refetched first window does not open a hole beneath itself
 - **WHEN** the first window is refetched after new rows were added, so its own horizon moves
@@ -192,12 +219,29 @@ statement about a different period, and because a global collapse would delete t
 that a period had any conversation in it. The rule the collapse enforces — one club argument SHALL
 NOT bury everything else — is a within-window rule and SHALL stay exactly as strong.
 
-**A thread's accumulated activity SHALL be the sum of its per-window counts**, its participants
-the union in shallowest-window-first order, and its floor flag true if any contributing window was
-saturated. Summing is required rather than preferred: a thread-creation entry renders its reply
-count as **exact**, and that is only true if the count spans the whole of the reply source's
-contiguous coverage. The accumulated activity SHALL be derived from the window list rather than
-incremented in place, so that a refetched first window re-contributes instead of double-counting.
+**A thread's accumulated activity SHALL be the sum of its per-window counts**, and its participants
+the union in shallowest-window-first order. Summing is required rather than preferred: a
+thread-creation entry renders its reply count as **exact**, and that is only true if the count
+spans the whole of the reply source's contiguous coverage. The accumulated activity SHALL be
+derived from the window list rather than incremented in place, so that a refetched first window
+re-contributes instead of double-counting.
+
+**Whether a count is exact or a floor SHALL be derived from that same coverage, and SHALL NOT be
+accumulated.** A flag set true because some window saturated is monotonic — it never clears — so a
+thread whose every message is demonstrably in hand would keep announcing a floor even after the
+stream reached the club's founding, and the count would be governed by two contradictory rules at
+once. One rule, which the exactness of a creation entry is the special case of:
+
+> A thread's count is **exact** when the reply source's accumulated horizon is `null`, or when the
+> thread was created at or after that horizon. Otherwise it is a **floor**.
+
+A count SHALL therefore be able to *improve* as the rider pages: `12+` becomes `12` at the moment
+the coverage can prove it.
+
+#### Scenario: A floor becomes exact once the coverage proves it
+- **WHEN** the rider pages until the reply source has read back to the club's beginning
+- **THEN** every thread's reply count SHALL be rendered as exact
+- **AND** no count SHALL still announce a floor because an earlier window happened to saturate
 
 #### Scenario: A busy thread appears once per window, never as a transcript
 - **WHEN** one thread carries the whole of two consecutive message windows
@@ -239,6 +283,10 @@ the tail in the terminal-but-incomplete state rather than leaving the rider on a
 At most one extension SHALL be in flight at a time. An extension SHALL NOT be attempted while the
 rider is offline, and a failed extension SHALL NOT be retried automatically.
 
+**Declining to fetch is not the same as saying nothing.** An offline rider at the end of an
+extendable stream SHALL be told the stream is paused, SHALL NOT be shown a loading treatment that
+cannot resolve, and SHALL have the stream resume without a gesture when connectivity returns.
+
 #### Scenario: Reaching the end asks for more without a tap
 - **WHEN** the rider scrolls to within the sentinel's margin of the last entry
 - **THEN** the stream SHALL extend
@@ -247,6 +295,11 @@ rider is offline, and a failed extension SHALL NOT be retried automatically.
 #### Scenario: A step that needs no read issues none
 - **WHEN** the merged in-horizon stream holds more entries than the display cap draws
 - **THEN** the step SHALL raise the cap and SHALL NOT issue any read
+
+#### Scenario: An offline rider at the end of the stream is told, not spun
+- **WHEN** the rider reaches the end of an extendable stream with no connectivity
+- **THEN** the tail SHALL say the stream is paused and SHALL draw no loading treatment
+- **AND** the stream SHALL resume on its own when connectivity returns
 
 #### Scenario: The ceiling ends in the handoff, not in a spinner
 - **WHEN** a visit has fetched the maximum number of windows and the stream is still incomplete
@@ -304,9 +357,19 @@ stream, without a gesture, until that row exists — up to a stated budget of wi
 the extension ceiling because this runs unasked on load.
 
 The hunt SHALL terminate on any of three conditions: the row appears, the stream is complete, or
-the budget is spent. The scroll SHALL happen at most once per mount, and a hunt that ends without
-finding the row SHALL leave the screen unable to scroll later — an arriving refetch that happens
-to make the row exist SHALL NOT yank a rider who has started reading.
+the budget is spent. Its budget SHALL be drawn from the mount's own extension ceiling rather than
+added to it, so that a mount's worst case is the ceiling and not the ceiling plus the hunt.
+
+The scroll SHALL happen at most once per mount, and a hunt that ends without finding the row SHALL
+leave the screen unable to scroll later — an arriving refetch that happens to make the row exist
+SHALL NOT yank a rider who has started reading.
+
+**Those are two states and SHALL be held as two.** "The hunt is over" and "the screen has already
+scrolled" have different triggers — the first latches on an outcome that may be a failure, the
+second on an action that may never occur — so a single flag cannot express both. A flag raised
+when the rows first arrive, before any hunting fetch has been issued, SHALL NOT be used as the
+guard: it ends the hunt before it starts, because every window the hunt fetches makes the rows
+"ready" again.
 
 **An unreachable anchor SHALL remain an ordinary no-op**, never a throw, an error state or a
 report. Some anchors are unreachable in principle rather than merely deep: a `reply:<message id>`
@@ -327,3 +390,14 @@ whose author has since been blocked are the same shape.
 #### Scenario: A late refetch does not move a reading rider
 - **WHEN** the hunt has already finished and a refetch later makes the anchored row exist
 - **THEN** the screen SHALL NOT scroll
+
+#### Scenario: The hunt survives its own fetches
+- **WHEN** a hunted window lands and the rows become ready again
+- **THEN** the hunt SHALL continue rather than being ended by the arrival of its own results
+- **AND** the guard that prevents a second scroll SHALL NOT be what decides whether to keep
+  hunting
+
+#### Scenario: A hunt does not raise the mount's read ceiling
+- **WHEN** a hunt spends part of the budget and the rider then scrolls
+- **THEN** the windows the hunt fetched SHALL count against the same ceiling
+- **AND** the total windows fetched in that mount SHALL NOT exceed it
