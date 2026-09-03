@@ -24,7 +24,7 @@
  * The named phases are the exception — refused sign-in before the real sign-in,
  * refused signup right after it (it needs the session it establishes — see
  * `runRefusedSignup`), and refused ride create, refused club create, refused
- * ride or club edit, refused profile edit, the invite landing route,
+ * ride or club edit, refused profile edit, the two invite landing routes,
  * client-side navigation, the route guard and sign-out after that. They are
  * named individually rather than covered by a general claim: each exists
  * because a specific defect is invisible to every other gate in this repo, and
@@ -34,9 +34,11 @@
  * two were rendered by anything; the other two of the nine
  * (`/auth/forgot-password`, `CreatePostcardForm`) are recorded as deliberately
  * unexercised where `checkRefusedSignup` is defined below, rather than covered
- * here. PD-358 added `checkInviteLanding`, for `/rides/join` — the app's one
- * public route that is not an auth screen or static copy, and the first thing
- * in this file that asserts on a page loaded with **no session at all**.
+ * here. PD-358 added `checkInviteLanding`, for `/rides/join` and `/clubs/join`
+ * — the app's only public routes that are not auth screens or static copy, and
+ * the first thing in this file that asserts on a page loaded with **no session
+ * at all**. It runs once per route off `INVITE_LANDINGS`, because the property
+ * it asserts belongs to the pattern rather than to either screen.
  *
  * ## Running it, and the one thing that will otherwise waste an hour
  *
@@ -176,16 +178,18 @@ const STATIC_PATHS = [
   // than a real row. It renders for a rider with no notifications too, so it
   // costs nothing on an empty account.
   '/notifications',
-  // PD-358, and it is walked bare — no token — on purpose. This is the app's
-  // ONE public route that is not an auth screen or static copy, and until now
-  // the only gate that renders anything never opened it. Bare, a signed-in
-  // rider gets `DeadLink`, which is a real screen with a real body, so the
-  // loop's four flags mean what they mean here. **A token in this entry would
-  // break the loop rather than strengthen it**: `adoptInviteTokenFromLocation`
-  // strips it with `history.replaceState`, so `finalPath` comes back as
-  // `/rides/join` and the loop reports a redirect that did not happen. The
-  // two states that need a token get their own phase — `checkInviteLanding`.
+  // PD-358, and both are walked bare — no token — on purpose. These are the
+  // app's only public routes that are not auth screens or static copy, and
+  // until now the only gate that renders anything opened neither. Bare, a
+  // signed-in rider gets `DeadLink`, which is a real screen with a real body,
+  // so the loop's four flags mean what they mean here. **A token in either
+  // entry would break the loop rather than strengthen it**:
+  // `adoptInviteTokenFromLocation` strips it with `history.replaceState`, so
+  // `finalPath` comes back without the query and the loop reports a redirect
+  // that did not happen. The two states that need a token get their own phase
+  // — `checkInviteLanding`, which walks both routes.
   '/rides/join',
+  '/clubs/join',
 ]
 
 /**
@@ -1728,27 +1732,55 @@ async function checkSignOut() {
  */
 const DEAD_INVITE_TOKEN = 'deadbeef'.repeat(4)
 
-/** Matched against request URLs — see `getRideInviteLinkPreview`. */
-const RIDE_INVITE_PREVIEW_RPC = '/rpc/ride_invite_link_preview'
-
-/** The landing route, hardcoded like every other path in this file. */
-const RIDE_JOIN_PATH = '/rides/join'
+/**
+ * The two invite landing routes, hardcoded like every other path in this file.
+ *
+ * **There are two of them and PD-358's body says "the app's ONE public screen"
+ * — that was true when it was filed and stopped being true four days later.**
+ * `093` (PD-360) shipped `/clubs/join` as `/rides/join`'s twin: same seven
+ * states in the same order, the same generic copy signed out, the same 32-hex
+ * token shape, the same dead-link message, one RPC each. So the phase below
+ * takes a `kind` rather than being written twice — a second copy is how the
+ * two drift, and the property being asserted is a property of the *pattern*.
+ *
+ * `liveMarker` is the string that appears only once a preview has actually
+ * loaded. For a ride that is the organizer line; for a club it is the claim
+ * control itself, because `ClubPreviewScreen` draws no fixed string of its own
+ * — and it is the better marker of the two anyway, since a Join control
+ * offered to a stranger is worse than a leaked name.
+ */
+const INVITE_LANDINGS = [
+  {
+    kind: 'ride',
+    path: '/rides/join',
+    rpc: '/rpc/ride_invite_link_preview',
+    liveMarker: /is organizing/i,
+    claim: /Join this ride/i,
+  },
+  {
+    kind: 'club',
+    path: '/clubs/join',
+    rpc: '/rpc/club_invite_link_preview',
+    liveMarker: /Join club/i,
+    claim: /Join club/i,
+  },
+]
 
 /**
- * `/rides/join` — the one screen a stranger can open — PD-358.
+ * The invite landing routes — the only screens a stranger can open — PD-358.
  *
- * The route loop above visits it bare, which answers "does it render". This
+ * The route loop above visits each bare, which answers "does it render". This
  * answers the two questions the loop cannot, and the first of them is a shape
  * the walk had never done at all: **a visit with no session.**
  *
  * ## Signed out, holding a token: the screen must not become an oracle
  *
- * `RideInviteJoin`'s contract is that a visitor with no session sees generic
- * copy naming neither the ride nor its organizer, and that it **calls neither
- * RPC** — the preview needs `auth.uid()` for its block and participation
- * checks, so there is nothing to render before a session exists and nothing to
- * leak. Decision #1 is untouched and no `anon` grant exists to make this screen
- * richer.
+ * `RideInviteJoin`'s and `ClubInviteJoin`'s shared contract is that a visitor
+ * with no session sees generic copy naming neither the ride nor its organizer
+ * (neither the club nor its size), and that it **calls neither RPC** — each
+ * preview needs `auth.uid()` for its block and participation checks, so there
+ * is nothing to render before a session exists and nothing to leak. Decision #1
+ * is untouched and no `anon` grant exists to make either screen richer.
  *
  * **The load-bearing assertion is the RPC one, and the reason is worth stating
  * because the obvious reading of this phase is wrong.** A dead token cannot
@@ -1759,16 +1791,18 @@ const RIDE_JOIN_PATH = '/rides/join'
  * component ever reordered its guards so `DeadLink` were reached before the
  * `signedIn === false` branch, or issued the read anonymously, a stranger could
  * tell a live token from a dead one by opening it. That is an existence oracle
- * over every ride in the app, RLS would refuse none of it — the RPC is granted
- * to `authenticated`, so an anonymous call is a refusal rather than a leak, and
- * a refusal answers the question just as well as a row does — and no assertion
- * in `supabase/tests/` can see it. Two assertions close it: the dead token is
- * NOT reported as dead, and no request to the preview RPC leaves the page.
+ * over every ride and every club in the app, RLS would refuse none of it — each
+ * RPC is granted to `authenticated`, so an anonymous call is a refusal rather
+ * than a leak, and a refusal answers the question just as well as a row does —
+ * and no assertion in `supabase/tests/` can see it. Two assertions close it: the
+ * dead token is NOT reported as dead, and no request to the preview RPC leaves
+ * the page.
  *
  * ## Signed in, holding the same dead token: the read has to actually work
  *
- * `getRideInviteLinkPreview` calls `ride_invite_link_preview` by name. Nothing
- * in `tsc`, ESLint, Vitest or `next build` parses that string, and a wrong one
+ * `getRideInviteLinkPreview` and `getClubInviteLinkPreview` call
+ * `ride_invite_link_preview` and `club_invite_link_preview` by name. Nothing in
+ * `tsc`, ESLint, Vitest or `next build` parses those strings, and a wrong one
  * draws `ErrorState` with a retry that can never succeed — which is the app's
  * commonest silent failure and reads, to a rider, exactly like a broken invite.
  * **`ErrorState` and `DeadLink` are the two states this half exists to tell
@@ -1777,12 +1811,12 @@ const RIDE_JOIN_PATH = '/rides/join'
  *
  * ## What this phase deliberately does not do
  *
- * It never claims. `claimRideInviteLink` is reached by a tap and by nothing
- * else, and a claim is a write — so the Join control is asserted *absent* on a
- * dead link and is never pressed on a live one.
+ * It never claims. `claimRideInviteLink` and `claimClubInviteLink` are reached
+ * by a tap and by nothing else, and a claim is a write — so the Join control is
+ * asserted *absent* on a dead link and is never pressed on a live one.
  */
-async function checkInviteLanding() {
-  console.log('\nthe invite landing route (/rides/join):')
+async function checkInviteLanding({ kind, path, rpc, liveMarker, claim }) {
+  console.log(`\nthe ${kind} invite landing route (${path}):`)
   let bad = 0
   let ran = 0
   const report = (ok, label, detail) => {
@@ -1791,7 +1825,7 @@ async function checkInviteLanding() {
     console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
   }
 
-  const target = `${BASE}${RIDE_JOIN_PATH}?token=${DEAD_INVITE_TOKEN}`
+  const target = `${BASE}${path}?token=${DEAD_INVITE_TOKEN}`
 
   // A throwaway context, the same device `checkGuard`'s signed-out half uses
   // and for the same reason: it cannot see the session established above. That
@@ -1802,7 +1836,7 @@ async function checkInviteLanding() {
   const anonPage = await anonContext.newPage()
   let anonPreviewCalls = 0
   anonPage.on('request', (r) => {
-    if (r.url().includes(RIDE_INVITE_PREVIEW_RPC)) anonPreviewCalls += 1
+    if (r.url().includes(rpc)) anonPreviewCalls += 1
   })
 
   await anonPage.goto(target, { waitUntil: 'networkidle' }).catch(() => {})
@@ -1814,7 +1848,7 @@ async function checkInviteLanding() {
   const anonText = await anonPage.evaluate(() => document.body.innerText).catch(() => '')
 
   report(
-    anonPath === RIDE_JOIN_PATH,
+    anonPath === path,
     'signed out: the visitor is not bounced to /auth/login',
     `landed on ${anonPath}`
   )
@@ -1831,14 +1865,14 @@ async function checkInviteLanding() {
   report(
     anonPreviewCalls === 0,
     'signed out: the preview RPC is never called',
-    `${anonPreviewCalls} request(s) to ${RIDE_INVITE_PREVIEW_RPC}`
+    `${anonPreviewCalls} request(s) to ${rpc}`
   )
   // Trivially true for a dead token — see the header. Kept because it is the
   // assertion that fails if `SignedOutInvite` ever starts drawing a preview.
   report(
-    !/is organizing/i.test(anonText),
-    'signed out: no organizer, no crew count, no ride',
-    'ride data is on screen with no session'
+    !liveMarker.test(anonText),
+    `signed out: no ${kind} data on screen`,
+    `${kind} data is on screen with no session`
   )
 
   await anonContext.close()
@@ -1846,7 +1880,7 @@ async function checkInviteLanding() {
   // Phase 2, on the walk's own page, which is holding the session.
   let previewCalls = 0
   const countPreview = (r) => {
-    if (r.url().includes(RIDE_INVITE_PREVIEW_RPC)) previewCalls += 1
+    if (r.url().includes(rpc)) previewCalls += 1
   }
   page.on('request', countPreview)
 
@@ -1873,7 +1907,7 @@ async function checkInviteLanding() {
   report(
     previewCalls > 0,
     'signed in: the preview RPC is issued',
-    `no request to ${RIDE_INVITE_PREVIEW_RPC} — the read never left the page`
+    `no request to ${rpc} — the read never left the page`
   )
   report(
     !failedRead,
@@ -1886,7 +1920,7 @@ async function checkInviteLanding() {
     `body was ${JSON.stringify(text.slice(0, 120))}`
   )
   report(
-    !/Join this ride/i.test(text),
+    !claim.test(text),
     'signed in: no Join control on a dead link',
     'a dead token is offering a claim'
   )
@@ -2484,15 +2518,19 @@ if (isFullWalk) {
   guardFailures += profileRetention.bad
   retentionRan += profileRetention.ran
 
-  // **Before `checkSignOut`**, because its signed-IN half needs the session —
-  // and its signed-OUT half brings its own context, so it does not care where
-  // it sits. Same `.catch()` as the phases above and for the same reason.
-  const inviteLanding = await checkInviteLanding().catch((e) => {
-    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
-    return { bad: 1, ran: 1 }
-  })
-  guardFailures += inviteLanding.bad
-  inviteLandingRan = inviteLanding.ran
+  // **Before `checkSignOut`**, because each phase's signed-IN half needs the
+  // session — the signed-OUT half brings its own context, so it does not care
+  // where it sits. Caught PER LANDING, not around the loop: a throw on the ride
+  // route must not take the club route's assertions down with it, which is the
+  // same reasoning as the `.catch()` on every phase above.
+  for (const landing of INVITE_LANDINGS) {
+    const inviteLanding = await checkInviteLanding(landing).catch((e) => {
+      console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+      return { bad: 1, ran: 1 }
+    })
+    guardFailures += inviteLanding.bad
+    inviteLandingRan += inviteLanding.ran
+  }
 
   // Before the guard cases, which end on /auth/reset-password, and well before
   // `checkSignOut` takes the session away.

@@ -81,11 +81,18 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `47/47 guard, navigation and sign-out checks correct` on a DEV where the walk
-account owns a ride and a club — MEASURED 2026-08-24 on PD-293's branch**, against a local
-`npm run dev` through the relay, `WALK_FIXTURES=1`, zero FAILs. It was `48/48` and `077` dropped
-the `max_riders survives it` assertion with the field it read. **If it comes back 48 the field is
-back.**
+**A clean run is `65/65 guard, navigation and sign-out checks correct` on a DEV where the walk
+account owns a ride and a club — and that figure is ARITHMETIC, not a measured run.** The measured
+one is `47/47`, 2026-08-24 on PD-293's branch, against a local `npm run dev` through the relay,
+`WALK_FIXTURES=1`, zero FAILs. PD-358 then added `checkInviteLanding`, which contributes **9
+assertions per landing route** (5 signed out, 4 signed in) **across two routes** — `/rides/join`
+and `/clubs/join` — so 47 + 18 = 65. **Nobody has run it**: this container's Chromium cannot reach
+Supabase without the relay, and CI's `walk` job is skipped until the repository variable `WALK_CI=1`
+exists. So treat 65 as the number to expect and 47 as the number anyone has actually seen, and
+replace this paragraph with a measurement the first time the walk is run against DEV.
+
+It was `48/48` before 47 and `077` dropped the `max_riders survives it` assertion with the field it
+read. **If the invite phases are excluded and it comes back 48, the field is back.**
 
 The `48/48` it replaces was 47/47 measured 2026-08-12, plus the consent-box assertion PD-214
 added to the refused-signup phase, which has **not** been run against DEV. **The account that measures the full total
