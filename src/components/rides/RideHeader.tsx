@@ -5,7 +5,7 @@ import { RideChatButton } from '@/components/rides/RideChatButton'
 import { RideOptionsMenu } from '@/components/rides/RideOptionsMenu'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useSwipeBack } from '@/lib/actions/navigate'
-import { routes } from '@/lib/routes'
+import { rideReturnTo, routes } from '@/lib/routes'
 
 /**
  * The chrome the three ride screens share — title, back, and the one sub-row
@@ -71,6 +71,8 @@ export function RideHeader({
   isCrew,
   isOrganizer,
   ridersCount,
+  clubId,
+  returnAnchor,
 }: {
   rideId: string
   /** `undefined` while the ride is still being read — `Header` draws a
@@ -108,6 +110,24 @@ export function RideHeader({
   isOrganizer: boolean | undefined
   /** Chat only, and `undefined` until the roster lands. See the sub-row below. */
   ridersCount?: number
+  /**
+   * The club this ride belongs to, straight off `ride.club_id` — PD-378. Only
+   * the plan screen uses it, and only together with `returnAnchor`.
+   *
+   * **`undefined` while the ride is still being read**, which is deliberate and
+   * is why `rideReturnTo` takes a fallback rather than this being required: the
+   * arrow answers `/rides` for the moment before the ride lands and then
+   * sharpens to the club. That is strictly better than before PD-378, when it
+   * answered `/rides` always. `rideReturnTo`'s docstring prices the alternative.
+   */
+  clubId?: string | null
+  /**
+   * The club timeline row this ride was opened from — `RETURN_ANCHOR_PARAM` out
+   * of the URL, PD-378. Absent for every other route into a ride (the rides
+   * list, Explore, a notification, a pasted link), and absent is the ordinary
+   * case: `rideReturnTo` answers the fallback for all of them.
+   */
+  returnAnchor?: string | null
 }) {
   const onChat = current === 'chat'
 
@@ -115,7 +135,19 @@ export function RideHeader({
   // than to the list — the plan is the list's child, and the other two are the
   // ride's. `Ride - Chat` draws the same arrow for all three, which is exactly
   // the kind of thing a static frame cannot distinguish.
-  const backHref = current === 'plan' ? '/rides' : routes.ride(rideId)
+  //
+  // The plan's own back is `/rides` UNLESS the ride was opened from a club
+  // timeline row, in which case it returns to that row — PD-378.
+  //
+  // **The three sub-screens are deliberately untouched, and they drop the
+  // anchor.** They are the ride's children, so they go back to the ride — but
+  // `routes.ride` carries no `row`, and the links that reach them (on the plan
+  // screen) do not either, so plan → crew → back lands on a plan whose own back
+  // is `/rides` again. Closing that means threading the parameter through three
+  // more routes and their links, which is a wider change than the one-hop this
+  // story describes; it is stated here rather than left to be discovered.
+  const backHref =
+    current === 'plan' ? rideReturnTo(clubId, returnAnchor, '/rides') : routes.ride(rideId)
 
   // PD-341: the edge swipe is a second route to the arrow beside it, so it goes
   // to the same place by construction — one value, read twice. All four ride

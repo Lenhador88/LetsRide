@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { LocationFilledIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
-import { routes } from '@/lib/routes'
+import { rideFromClubTimeline, routes } from '@/lib/routes'
 import { cn, formatRideCardDay, formatStartDistance, formatRideTime } from '@/lib/utils'
 import type { RideAttendance, RideListItem } from '@/types'
 
@@ -97,9 +97,24 @@ type RideCardProps = {
    * belongs to the club already named by the selected tile.
    */
   showClub?: boolean
+  /**
+   * The club timeline row this card is drawn as, carried into the ride so its
+   * `Back` can return to that row rather than to `/rides` — PD-378.
+   *
+   * **Optional because only one caller has a row to return to.** Every other
+   * ride card in the app is drawn on a list, not a timeline, and
+   * `ClubTimelineRideCard` is the single site that passes it. An unset anchor
+   * keeps the plain `routes.ride` link, which is what the other four callers
+   * want and what this card did everywhere before PD-378.
+   *
+   * It is `mergeClubTimeline`'s own key for the row (`ride:<uuid>`) — the same
+   * string this card's wrapper sets as its DOM `id`, so the fragment the rider
+   * comes back on names an element that is actually on the page.
+   */
+  returnAnchor?: string
 }
 
-export function RideCard({ ride, showClub = true }: RideCardProps) {
+export function RideCard({ ride, showClub = true, returnAnchor }: RideCardProps) {
   const overflow = ride.riders_count - ride.riders.length
 
   // A tile that 404s or whose signature has expired must cost this row its
@@ -123,7 +138,7 @@ export function RideCard({ ride, showClub = true }: RideCardProps) {
 
   return (
     <Link
-      href={routes.ride(ride.id)}
+      href={returnAnchor ? rideFromClubTimeline(ride.id, returnAnchor) : routes.ride(ride.id)}
       className="flex gap-4 rounded-lg bg-surface p-1 pr-4 transition-colors active:bg-background"
     >
       <div className="relative w-20 shrink-0 self-stretch overflow-hidden rounded bg-border">
