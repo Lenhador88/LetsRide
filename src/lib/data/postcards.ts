@@ -377,6 +377,21 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
  * turned "no such club" into `null` for the page to act on.
  */
 /**
+ * How many times `getClubFeedWindow` may re-ask `club_stamp_postcard_ids`
+ * for a BIGGER page when a saturated page's every id gets filtered by this
+ * rider's own RLS — a reviewer finding on the original fix below, and the
+ * escalation that replaced two unsafe guesses (see that function's own
+ * header). Each escalation doubles `page_size`, so the total ids ever asked
+ * for in one call is bounded at `FEED_PAGE_SIZE * 2 ** 2` — four times the
+ * ordinary page — at this constant's default of 2. Small on purpose: this
+ * is extra ROUND TRIPS on the rider's own load, not a background job, and
+ * two escalations already covers "every recent postcard from one blocked
+ * author" without covering "the whole club is one blocked author", which is
+ * the genuinely adversarial case the last-resort fallback exists for.
+ */
+export const CLUB_FEED_HORIZON_ESCALATIONS = 2
+
+/**
  * The club timeline's own read — `getClubFeed`'s exact shape, widened to a
  * `ClubTimelineWindow<Postcard>` (`design.md` §D3, PD-375). `getClubFeed`
  * below is now a thin wrapper over this, so the two cannot drift.
@@ -403,27 +418,38 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
  * SURVIVING postcard's `created_at` — a row at least as new as the true
  * accessor boundary, never older, so this errs toward cutting a little MORE
  * than the true boundary would rather than toward the unsafe direction
- * (asserting completeness that is not there). Flagged here as the one place
- * this function's fix is an approximation rather than exact, because the
- * exact value is unreachable without a migration this change does not take.
+ * (asserting completeness that is not there).
  *
  * **A saturated page every one of whose rows the caller's own RLS then
- * refuses is the same defect wearing the boundary case** — `withFlag` is
- * empty, and reading the horizon off it (the ORIGINAL bug this whole function
- * exists to fix) reappears one level down: `null` again, `complete` true
- * again, the club's founding drawn over content this rider was never shown
- * but which plainly exists. There is no surviving row to take a `created_at`
- * from, so the fallback is `before` itself — the window's OWN requested
- * upper bound, which is also the accumulated horizon this fetch was asked to
- * improve on. Reporting it back unmoved is an honest "no progress", not a
- * guess: `absorbClubTimelineWindow` folds a window whose horizon equals its
- * own `until` into an EMPTY covered interval, so it changes nothing and
- * asserts nothing this rider was not already showing. The one window that
- * has no `before` to fall back to is the very first (`before` undefined,
- * asking for "now" down to `limit`) — `new Date().toISOString()` there, for
- * the identical reason `errs toward cutting more`: it is far more aggressive
- * than the true boundary, but the alternative is the false-complete signal
- * this function exists to close.
+ * refuses is the same defect wearing the boundary case, and it took TWO
+ * tries to fix.** The first attempt read the horizon off `before` (a deeper
+ * page) or `new Date().toISOString()` (the first page) whenever `withFlag`
+ * came back empty. Both are unsafe, in opposite directions a reviewer pass
+ * caught: `before` PINS the accumulated horizon there for ever —
+ * `absorbClubTimelineWindow` folds a window whose horizon equals its own
+ * `until` into an empty covered interval, so every later page asks the
+ * SAME question and gets the SAME empty answer, capping every OTHER source
+ * at that point too via the merge's own `max(horizons)`, for ever bounded
+ * only by `CLUB_TIMELINE_MAX_WINDOWS` — rides, joins, threads and replies
+ * that have nothing to do with the blocked author, frozen behind it. `now()`
+ * on the first page is worse: it is NEWER than every real event in the club,
+ * so the merge's cut at `max(horizons)` wipes rides, joins, threads and
+ * replies too — a blank timeline on first load, strictly worse than the
+ * original false-complete bug, which at least drew something.
+ *
+ * **So this ESCALATES instead of guessing.** A saturated page with zero
+ * survivors re-asks the SAME accessor call for a bigger `page_size` (`before`
+ * unchanged — the escalation looks further INTO the same window, not past
+ * it), up to `CLUB_FEED_HORIZON_ESCALATIONS` times, and stops the moment
+ * EITHER: a bigger page turns up a survivor (the horizon comes from THAT
+ * batch's own oldest surviving row, the ordinary case above), or the
+ * accessor itself answers short of the escalated `page_size` — genuine
+ * completion, horizon `null`, exactly as an ordinary short page would be.
+ * **Only if the escalation cap is spent with zero survivors throughout** —
+ * dozens of consecutive posts from one blocked author, the adversarial case
+ * this bound exists for — does it fall back to `before ?? now()`, and by
+ * then the freeze/blank consequence above is a documented, rare last resort
+ * rather than the first thing tried.
  */
 export async function getClubFeedWindow(
   clubId: string,
@@ -439,58 +465,89 @@ export async function getClubFeedWindow(
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const correlated = unwrap(
-    await supabase.rpc('club_stamp_postcard_ids', {
-      club: clubId,
-      before: before ?? null,
-      page_size: limit,
-    }),
-    "this club's postcards",
-  ) as { id: string; from_ride: boolean }[] | null
+  // `untilInclusive: false` on every return below: the accessor compares
+  // `created_at < before` (`086` line 130), never `<=` — `design.md` §D3's
+  // stated exception to "every deeper window is inclusive". The residue: two
+  // postcards in one club sharing a `created_at` to the microsecond and
+  // straddling a page boundary lose the one below the cut. `044` writes the
+  // column at transaction time, which makes it merely very unlikely rather
+  // than impossible; the remedy is a keyset `before_id` argument on the
+  // accessor, which is a migration this change does not take.
+  let pageSize = limit
+  for (let escalation = 0; ; escalation++) {
+    const correlated = unwrap(
+      await supabase.rpc('club_stamp_postcard_ids', {
+        club: clubId,
+        before: before ?? null,
+        page_size: pageSize,
+      }),
+      "this club's postcards",
+    ) as { id: string; from_ride: boolean }[] | null
 
-  if (!correlated || correlated.length === 0)
-    return { rows: [], horizon: null, until: before ?? null, untilInclusive: false }
+    if (!correlated || correlated.length === 0)
+      return { rows: [], horizon: null, until: before ?? null, untilInclusive: false }
 
-  const window = correlated.slice(0, limit)
-  const fromRide = new Map(window.map((row) => [row.id, row.from_ride]))
+    const window = correlated.slice(0, pageSize)
+    const saturated = window.length >= pageSize
+    const fromRide = new Map(window.map((row) => [row.id, row.from_ride]))
 
-  const rows = unwrapList(
-    await supabase
-      .from('postcards')
-      .select(POSTCARD_SELECT)
-      .in('id', window.map((row) => row.id))
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(limit),
-    "this club's postcards",
-  )
+    const rows = unwrapList(
+      await supabase
+        .from('postcards')
+        .select(POSTCARD_SELECT)
+        .in('id', window.map((row) => row.id))
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(pageSize),
+      "this club's postcards",
+    )
 
-  const postcards = await attachLikeState(supabase, rows as unknown as PostcardRow[], user?.id)
-  // Carried from the accessor rather than recomputed: `club_id` is readable
-  // here, but `ride_id` is not, so the client has no way to tell an app-wide
-  // postcard that reached this strip through a ride from one that did not.
-  const withFlag = postcards.map((postcard) => ({
-    ...postcard,
-    from_ride: fromRide.get(postcard.id) ?? false,
-  }))
+    const postcards = await attachLikeState(supabase, rows as unknown as PostcardRow[], user?.id)
+    // Carried from the accessor rather than recomputed: `club_id` is readable
+    // here, but `ride_id` is not, so the client has no way to tell an
+    // app-wide postcard that reached this strip through a ride from one that
+    // did not.
+    const withFlag = postcards.map((postcard) => ({
+      ...postcard,
+      from_ride: fromRide.get(postcard.id) ?? false,
+    }))
 
-  return {
-    rows: withFlag,
-    horizon: !(window.length >= limit)
-      ? null
-      : withFlag.length > 0
-        ? withFlag[withFlag.length - 1].created_at
-        : (before ?? new Date().toISOString()),
-    until: before ?? null,
-    // The accessor compares `created_at < before` (`086` line 130), never
-    // `<=` — `design.md` §D3's stated exception to "every deeper window is
-    // inclusive". The residue: two postcards in one club sharing a
-    // `created_at` to the microsecond and straddling a page boundary lose the
-    // one below the cut. `044` writes the column at transaction time, which
-    // makes it merely very unlikely rather than impossible; the remedy is a
-    // keyset `before_id` argument on the accessor, which is a migration this
-    // change does not take.
-    untilInclusive: false,
+    // Genuine completion: the accessor itself came back short of THIS
+    // round's page size, escalated or not — there is nothing further to
+    // find by asking again, however few of these rows survived.
+    if (!saturated)
+      return {
+        rows: withFlag,
+        horizon: null,
+        until: before ?? null,
+        untilInclusive: false,
+      }
+
+    // A survivor exists — the ordinary case, and the round we stop at is
+    // whichever one found it, so `rows` and `horizon` always agree.
+    if (withFlag.length > 0)
+      return {
+        rows: withFlag,
+        horizon: withFlag[withFlag.length - 1].created_at,
+        until: before ?? null,
+        untilInclusive: false,
+      }
+
+    // Saturated AND zero survivors: escalate, unless the bound is spent.
+    if (escalation < CLUB_FEED_HORIZON_ESCALATIONS) {
+      pageSize *= 2
+      continue
+    }
+
+    // The adversarial case named in this function's own header — see there
+    // for why `before ?? now()` is the least-bad answer only once escalation
+    // has genuinely failed to find a single readable row.
+    return {
+      rows: withFlag,
+      horizon: before ?? new Date().toISOString(),
+      until: before ?? null,
+      untilInclusive: false,
+    }
   }
 }
 
