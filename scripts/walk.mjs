@@ -1261,9 +1261,33 @@ function fixturesPermitted(ref) {
  * actions redirect to `routes.ride(id)`/`routes.club(id)` on success, and a
  * row reached that way is owned by construction: no probe needed, unlike
  * every other id this file has to establish ownership of.
+ *
+ * **The club is created BEFORE the ride, and the ride is attached to it.**
+ * That ordering is PD-311 and it is load-bearing rather than tidy. A clubless
+ * ride is one `EditRideForm` refuses to save whenever the public box ends up
+ * unticked — `wouldStrand = !clubId && !isPublic` disables Save — so
+ * `checkEditRetention` clicks a disabled button and times out 30 s later,
+ * *before* any of its own assertions run. A FAIL meaning "this phase did not
+ * run" is indistinguishable from one meaning "this phase found something".
+ *
+ * `existing.club` is the other half: `wanted` only asks for what is missing,
+ * so a rider who already owns a club gets no new one and the ride must be
+ * attached to the club they have. Passing it in is what keeps the fixture
+ * ride clubbed on a second run.
  */
-async function provision(wanted) {
+async function provision(wanted, existing = {}) {
   const created = { ride: null, club: null }
+
+  if (wanted.club) {
+    await page.goto(`${BASE}/clubs/new`, { waitUntil: 'networkidle' })
+    await page.fill('input[name="name"]', 'Walk fixture club')
+    await Promise.all([
+      page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
+      page.click('button[type="submit"]'),
+    ])
+    await page.waitForTimeout(1200)
+    created.club = new URL(page.url()).searchParams.get('id')
+  }
 
   if (wanted.ride) {
     // A year out, not ten days, and the reason changed shape rather than going
@@ -1282,23 +1306,30 @@ async function provision(wanted) {
     await page.fill('input[name="title"]', 'Walk fixture ride')
     await page.fill('input[name="meeting_point"]', 'Dam Square, Amsterdam')
     await page.fill('input[name="departure_at"]', departure)
+
+    // Attach it to a club — see the header. `CreateRideForm` draws the picker
+    // only when the rider is not already inside a club context, and it lists
+    // `getMyClubs`, so a club created seconds ago is there on this fresh load.
+    // Selected by VALUE rather than by index: `option:nth-child(2)` would pick
+    // whatever the list happens to order first, and "No club" is child 1 only
+    // until someone reorders it.
+    const clubForRide = created.club ?? existing.club ?? null
+    if (clubForRide) {
+      const attached = await page
+        .selectOption('select[name="club_id"]', clubForRide)
+        .then((values) => values.length > 0)
+        .catch(() => false)
+      if (!attached) {
+        console.log(`  ! the fixture ride could not be attached to a club — ${clubForRide}`)
+      }
+    }
+
     await Promise.all([
       page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
       page.click('button[type="submit"]'),
     ])
     await page.waitForTimeout(1200)
     created.ride = new URL(page.url()).searchParams.get('id')
-  }
-
-  if (wanted.club) {
-    await page.goto(`${BASE}/clubs/new`, { waitUntil: 'networkidle' })
-    await page.fill('input[name="name"]', 'Walk fixture club')
-    await Promise.all([
-      page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
-      page.click('button[type="submit"]'),
-    ])
-    await page.waitForTimeout(1200)
-    created.club = new URL(page.url()).searchParams.get('id')
   }
 
   return created
@@ -1328,7 +1359,9 @@ if (isFullWalk) {
     const permit = fixturesPermitted(await authenticatedProjectRef())
     if (permit.ok) {
       const wanted = { ride: !owned.ride, club: !owned.club }
-      const created = await provision(wanted)
+      // `owned.club` is passed so a rider who already has a club still gets a
+      // CLUBBED fixture ride — PD-311, see `provision`'s header.
+      const created = await provision(wanted, { club: owned.club })
 
       /**
        * **Report what landed, never what was attempted.** The first version
@@ -1937,9 +1970,10 @@ async function checkEditRetention(candidates, unavailable) {
   // assertion below then passed against a form nothing had submitted. The
   // action's own error is the `role="status"` one.
 
-  // **The first candidate whose form actually renders — confirmed via
-  // `probeOwnsEditable`, the same probe `discoverOwned` already ran on each
-  // of these before this function was ever called.** `/rides/detail/edit`
+  // **The first candidate whose form both renders and can be submitted after
+  // the flip — ownership confirmed via `probeOwnsEditable`, the same probe
+  // `discoverOwned` already ran on each of these before this function was
+  // ever called.** `/rides/detail/edit`
   // and `/clubs/detail/edit` both answer 200 for a rider who does not own the
   // row — they draw a "not yours" message rather than 404ing (PD-101) — so a
   // re-check here rather than trusting the earlier answer outright is
@@ -1947,15 +1981,62 @@ async function checkEditRetention(candidates, unavailable) {
   // that function's own header for why an uncaught reject or a fixed sleep
   // both misread this), and it is what leaves `page` sitting on the chosen
   // form afterwards, ready for the reads and the submit below.
+  //
+  // **Owning the row is not enough — the flip below has to leave Save
+  // clickable, and on the ride form it does not always (PD-311).**
+  // `EditRideForm` disables Save while `wouldStrand = !clubId && !isPublic`,
+  // so unticking "public" on a ride that belongs to no club disables the very
+  // button this phase clicks next, and `page.click` then waits out its full
+  // timeout and throws — with none of this phase's assertions having run.
+  // Which ride trips it flipped with PD-320 (the composer's `is_public`
+  // default went off), so before that it was the private ride and now it is
+  // the public one; either way it depends on what the account happens to own,
+  // which is why it read as flakiness rather than as a defect.
+  //
+  // **Read the button rather than re-deriving the rule.** Encoding
+  // `!clubId && !isPublic` here would be a second copy of a guard PD-338 is
+  // actively reshaping, and it would go stale silently. `isEnabled` asks the
+  // app what it will accept, so this survives the guard being narrowed,
+  // widened or dropped.
+  //
+  // The club form has no such guard, so it is the natural fallback — the loop
+  // already had the club as a second candidate and simply never reached it,
+  // because it broke on the first candidate that *rendered*.
   let chosen = null
+  let clubBefore = null
+  let publicWanted = null
+  const unusable = []
   for (const candidate of candidates) {
-    if (await probeOwnsEditable(candidate.kind, candidate.id)) {
-      chosen = candidate
-      break
+    if (!(await probeOwnsEditable(candidate.kind, candidate.id))) continue
+
+    const club = await page.inputValue(field('club_id')).catch(() => null)
+    const publicBefore = await page.isChecked(field('is_public'))
+
+    // Flip the checkbox, so what is asserted is the rider's change rather than
+    // whatever the row already was.
+    await page.click('form label:has(input[name="is_public"])')
+
+    if (!(await page.isEnabled('form button[type="submit"]').catch(() => false))) {
+      await page.click('form label:has(input[name="is_public"])').catch(() => {})
+      unusable.push(
+        `${candidate.label}: Save is disabled once "public" is ${publicBefore ? 'unticked' : 'ticked'}`
+      )
+      continue
     }
+
+    chosen = candidate
+    clubBefore = club
+    publicWanted = !publicBefore
+    break
   }
   if (!chosen) {
-    if (unavailable?.failed) {
+    if (unusable.length > 0) {
+      // **Not a skip.** The rider owns an editable row and the phase still
+      // could not run, which is the PD-311 failure named rather than timed
+      // out. CLAUDE.md: a shrunken N/N is a skip, not a pass — so this moves
+      // `ran` and `bad` instead of dropping out of the total.
+      report(false, 'an editable row this phase can submit was available', unusable.join('; '))
+    } else if (unavailable?.failed) {
       // Fixtures were permitted and asked for, and still nothing came out of
       // it — a `! FIXTURE FAILED` line already printed at the caller, and
       // CLAUDE.md is explicit that a shrunken N/N is a skip, not a pass. So
@@ -1972,14 +2053,7 @@ async function checkEditRetention(candidates, unavailable) {
     return { bad, ran }
   }
   console.log(`  (on ${chosen.label})`)
-
-  const clubBefore = await page.inputValue(field('club_id')).catch(() => null)
-  const publicBefore = await page.isChecked(field('is_public'))
-
-  // Flip the checkbox, so what is asserted is the rider's change rather than
-  // whatever the ride already was.
-  await page.click('form label:has(input[name="is_public"])')
-  const publicWanted = !publicBefore
+  for (const skipped of unusable) console.log(`  (skipped ${skipped})`)
 
   // **The refusal is whitespace, and the reason is worth keeping.** Neither
   // edit form carries `noValidate`, so anything the browser's own constraint
