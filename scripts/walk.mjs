@@ -1262,13 +1262,20 @@ function fixturesPermitted(ref) {
  * row reached that way is owned by construction: no probe needed, unlike
  * every other id this file has to establish ownership of.
  *
- * **The club is created BEFORE the ride, and the ride is attached to it.**
- * That ordering is PD-311 and it is load-bearing rather than tidy. A clubless
- * ride is one `EditRideForm` refuses to save whenever the public box ends up
- * unticked — `narrowsToNobody` disables Save on that transition — so
- * `checkEditRetention` clicks a disabled button and times out 30 s later,
- * *before* any of its own assertions run. A FAIL meaning "this phase did not
- * run" is indistinguishable from one meaning "this phase found something".
+ * **The club is created BEFORE the ride, and the ride is attached to it
+ * (PD-311) — as insurance, NOT as the fix.** Say which, because an earlier
+ * draft of this comment claimed the ordering was load-bearing and it is not:
+ * this function never ticks the public box, so its fixture ride is private
+ * (PD-320's composer default), and `checkEditRetention`'s flip is therefore
+ * private → **public** — a widening `EditRideForm` has always permitted. The
+ * direction that trips the guard, clubless *public* → private, is only
+ * reachable on a ride the account **already owned**, which `wanted` means this
+ * function never creates. What actually closes PD-311 is the submittable-
+ * candidate gate in `checkEditRetention`.
+ *
+ * The insurance is still worth having: the composer's `is_public` default has
+ * flipped once already, and a clubbed fixture ride is one whose flip cannot
+ * cross the guard in either direction.
  *
  * `existing.club` is the other half: `wanted` only asks for what is missing,
  * so a rider who already owns a club gets no new one and the ride must be

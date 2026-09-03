@@ -83,15 +83,22 @@ function payload(over: { club_id?: string; is_public?: boolean } = {}): FormData
 }
 
 /**
- * Answers the `previous` read with `stored`, and every later call with a
- * successful no-op — so a permitted update runs to completion rather than
- * throwing somewhere past the guard.
+ * Answers the `previous` read with `stored`, and the UPDATE that follows with a
+ * returned row — **so a permitted edit runs to `{ error: null }` rather than
+ * stopping at `!ride`.**
+ *
+ * That detail is the whole reason the permitted cases can assert `toBeNull()`
+ * instead of the far weaker `not.toBe(REFUSAL)`. `not.toBe` is satisfied by any
+ * *other* error, so it stays green against a guard reverted to the old
+ * shape-based rule — which returns a different literal — and the headline
+ * assertion would then be asserting the opposite of its own name. Answering the
+ * UPDATE is what makes "no error at all" reachable and therefore assertable.
  */
 function withStoredShape(stored: Record<string, unknown> | null) {
   let call = 0
   from.mockImplementation(() => {
     call += 1
-    return chain({ data: call === 1 ? stored : null, error: null }).builder
+    return chain({ data: call === 1 ? stored : { id: RIDE_ID }, error: null }).builder
   })
 }
 
@@ -128,6 +135,12 @@ describe('updateRide refuses only the transition that empties the audience', () 
     expect(state.error).toBe(RIDE_AUDIENCE_REFUSAL)
   })
 
+  // **`not.toBe(REFUSAL)` is NOT enough for a permitted case, and reading it as
+  // enough is how this file nearly shipped without a tripwire on its own
+  // headline.** Reverting the guard to the old shape-based rule returns a
+  // *different* literal, which satisfies `not.toBe` — so the assertion would
+  // have stayed green while asserting the opposite of its name. Assert the
+  // absence of an error instead.
   it('PERMITS an edit to a ride that already had no standing audience', async () => {
     // PD-338's headline on the action side. Before this change the same call
     // was refused, which is what made the composer's default output uneditable.
@@ -135,7 +148,7 @@ describe('updateRide refuses only the transition that empties the audience', () 
 
     const state = await updateRide(RIDE_ID, emptyActionState, payload())
 
-    expect(state.error).not.toBe(RIDE_AUDIENCE_REFUSAL)
+    expect(state.error).toBeNull()
   })
 
   it('permits detaching together with making the ride public', async () => {
@@ -143,7 +156,7 @@ describe('updateRide refuses only the transition that empties the audience', () 
 
     const state = await updateRide(RIDE_ID, emptyActionState, payload({ is_public: true }))
 
-    expect(state.error).not.toBe(RIDE_AUDIENCE_REFUSAL)
+    expect(state.error).toBeNull()
   })
 })
 
@@ -184,7 +197,9 @@ describe('where the stored pair comes from', () => {
 
     const state = await updateRide(RIDE_ID, emptyActionState, payload())
 
-    expect(state.error).not.toBe(RIDE_AUDIENCE_REFUSAL)
+    // Not `not.toBe(REFUSAL)` — see the note above; the point of this case is
+    // that no refusal is invented at all, which only an absent error states.
+    expect(state.error).toBeNull()
   })
 })
 

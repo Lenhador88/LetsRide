@@ -207,11 +207,19 @@ carries no admin DELETE policy, so a reader checking policies alone misses this 
 organizer ejected from club X hits the identical `WITH CHECK` failure on a column they never
 touched.
 
-**So the copy SHALL name the state — "you are no longer a member of <club>" — and SHALL NOT
-assert that the organizer left.** Telling an ejected rider that leaving caused the refusal is the
-same defect this whole change exists to remove: a refusal asserting something the rider knows to
-be false. Neither the client nor the action can distinguish the two routes — nothing records
+**So the copy SHALL name the state — "you are no longer a member of this ride's club" — and SHALL
+NOT assert that the organizer left.** Telling an ejected rider that leaving caused the refusal is
+the same defect this whole change exists to remove: a refusal asserting something the rider knows
+to be false. Neither the client nor the action can distinguish the two routes — nothing records
 which happened — so the sentence must be true of both.
+
+**The club is named by REFERENCE rather than by name, and that is a limit rather than a
+shortcut.** `RideForEdit.club` is `null` for a club the viewer cannot currently see — which is
+precisely this case whenever the club is private, as that type's own note records — and
+`updateRide` reaches this branch holding `previous.club_id` and no name. So an implementation that
+interpolated a name would print nothing, or an empty gap, for the population the requirement is
+written about. The club `<select>` renders whatever name the row still carries directly above the
+message, which is where the rider reads it.
 
 It is not hypothetical.
 
@@ -235,8 +243,9 @@ build session decides.
 
 The UI SHALL **show the Edit affordance and surface the refusal**, not hide it. Hiding it makes
 the organizer's own ride look like someone else's, which is the same undiagnosable state as the
-permission-denied case. The message SHALL name the club, say that **no longer being a member of
-it** is why the save was refused, and offer the two exits above.
+permission-denied case. The message SHALL identify the club — by reference where no name is
+readable, per the note above — say that **no longer being a member of it** is why the save was
+refused, and offer the two exits above.
 
 **This change SHALL NOT widen the `rides` UPDATE policy**, and any future proposal that does must
 say loudly that it is a visibility change: removing the `is_club_member` conjunct would let an
@@ -248,7 +257,7 @@ the club's audience being written by an outsider.
 - **WHEN** a rider who organized a club ride calls `leaveClub` and then submits any edit to that
   ride
 - **THEN** the `WITH CHECK` SHALL refuse the row even though no club field was changed
-- **AND** the screen SHALL name the club, say that no longer being a member of it caused the
+- **AND** the screen SHALL identify the club, say that no longer being a member of it caused the
   refusal, and offer cancelling the ride or making it public and detaching it
 - **AND** the same SHALL hold for an organizer EJECTED by an admin through `removeClubMember`,
   who reaches the identical state by a route the copy must not contradict

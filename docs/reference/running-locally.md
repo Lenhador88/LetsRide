@@ -268,12 +268,19 @@ which exercises the two create forms end to end — nothing else in this repo su
 fills **only what is missing**, so it is idempotent and needs no cleanup pass; a second run
 creates nothing and still walks the same routes.
 
-**The club is created FIRST and the ride is attached to it (PD-311), and that ordering is
-load-bearing.** `EditRideForm` disables Save while `wouldStrand = !clubId && !isPublic`, so a
-clubless fixture ride is one `checkEditRetention` cannot submit once it flips the public box — it
-clicked a disabled button and threw 30 s later, *before* any of its own assertions ran. Because
-`wanted` asks only for what is missing, `owned.club` is passed in too: a rider who already has a
-club still gets a clubbed ride rather than a clubless one.
+**The club is created FIRST and the ride is attached to it (PD-311).** `EditRideForm` refuses the
+edit that would leave a ride with no audience at all (`narrowsToNobody` — PD-338), so a clubless
+ride is one `checkEditRetention` cannot submit whenever its flip lands on private. Because `wanted`
+asks only for what is missing, `owned.club` is passed in too: a rider who already has a club still
+gets a clubbed ride rather than a clubless one.
+
+**What actually closes PD-311 is the candidate gate, not this ordering** — say so, because the
+first draft of this paragraph claimed the reverse. `provision()` never ticks the public box, so its
+fixture ride is private (PD-320's default) and the phase's flip is private → **public**, a widening
+that was permitted under the old guard and is permitted under the new one. The refused direction —
+clubless *public* → private — is only reachable on a ride the account **already owned**, which
+`provision()` by construction never creates. So the reorder is insurance against the composer's
+default flipping back, and the gate below is the fix.
 
 The ride is dated a year out on purpose, and
 the reason changed shape when `/rides` grew its Past rides section rather than going away:
