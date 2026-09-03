@@ -64,19 +64,18 @@ export const CLUB_MESSAGES_PAGE_SIZE = 200
  * `not … is null` rather than an `is null` in `getClubThreadUnread`, which
  * asks the opposite question. What must not drift is the rule and its reason.
  *
- * **The cost this rule carries, so an implementer meets it here rather than in
- * a bug report.** The announcement row is a WINDOW: `CLUB_TIMELINE_LIMIT` is
- * 20, the club timeline does not paginate, and no destination in its foot
- * draws an introduction door. So a **current** member with twenty newer events
- * above their join has no browse route to their own introduction once this
- * filter takes it off the Threads list — only a deep link or a `098`
- * notification. That is deliberate and unremedied: the members list is the
- * obvious carrier and a second place an introduction appears contradicts the
- * deliverable, which makes it the product owner's call. The trigger is an
- * ordinary club active enough to bury a join under twenty events —
- * **not** the welcome club, which `097` refuses introductions to outright
- * (`and not c.is_default`), so the highest-frequency-join club in the app
- * cannot produce this state at all.
+ * **The cost this rule used to carry, closed by PD-375.** The announcement
+ * row used to be a WINDOW: `CLUB_TIMELINE_LIMIT` was a wall at 20, the club
+ * timeline did not paginate, and no destination in its foot drew an
+ * introduction door — so a **current** member with twenty newer events above
+ * their join had no browse route to their own introduction once this filter
+ * took it off the Threads list. `add-club-timeline`'s cancellation of PD-374
+ * was made on the strength of this closing: the timeline now pages
+ * (`design.md` of `page-the-club-timeline-on-scroll`), so a rider who scrolls
+ * far enough always reaches their own join row and its door, at whatever
+ * depth. **Not** the welcome club either way, which `097` refuses
+ * introductions to outright (`and not c.is_default`), so the
+ * highest-frequency-join club in the app cannot produce this state at all.
  *
  * `097` grants `authenticated` SELECT on this column and no INSERT or UPDATE
  * (measured on DEV, 2026-09-02), which is what makes filtering on it safe
@@ -132,11 +131,17 @@ const THREAD_SELECT = `
  * list's "is there more" signal — `lastCount === CLUB_THREADS_PAGE_SIZE`, so a
  * full page holding five announcements would read as the end of the list — and
  * `boundedHorizon`'s stated precondition that a source's rows ARE its window.
+ *
+ * **`until` is PD-375's timeline paging bound, BESIDE `cursor` rather than
+ * instead of it** — `/clubs/detail/threads` keeps paging on the keyset cursor
+ * and must not change behaviour; the club timeline is the only caller that
+ * ever passes `until`, inclusive per `design.md` §D3.
  */
 export async function getClubThreads(
   clubId: string,
   cursor?: ClubThreadCursor,
-  limit = CLUB_THREADS_PAGE_SIZE
+  limit = CLUB_THREADS_PAGE_SIZE,
+  until?: string
 ): Promise<ClubThreadListItem[] | null> {
   // Same guard, same reason as `getClub`: a non-uuid segment reaches
   // `.eq('club_id', …)` as `22P02`, PostgREST turns it into a 400 and
@@ -161,6 +166,7 @@ export async function getClubThreads(
       `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
     )
   }
+  if (until) query = query.lte('created_at', until)
 
   return unwrapList(await query, "this club's threads") as unknown as ClubThreadListItem[]
 }

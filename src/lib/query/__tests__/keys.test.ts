@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { EVERYTHING, queryKeys } from '@/lib/query/keys'
+import { EVERYTHING, filterSegment, queryKeys } from '@/lib/query/keys'
 import { invalidate, setQueryData, type QueryKey } from '@/lib/query/queryClient'
 
 const SRC = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)))
@@ -77,6 +77,30 @@ describe('the cache-key contract', () => {
 
     const club = queryKeys.clubs.detail('c1')
     expect(queryKeys.clubs.members('c1').slice(0, club.length)).toEqual(club)
+  })
+
+  it('nests the club timeline\'s own postcard window under the club feed\'s key — PD-375', () => {
+    // `joinClub`/`leaveClub` invalidate `postcards.feed(filterSegment.club(id))`
+    // directly and need no edit for the timeline's own window to move with it.
+    const feed = queryKeys.postcards.feed(filterSegment.club('c1'))
+    const window = queryKeys.postcards.clubWindow('c1')
+    expect(window.slice(0, feed.length)).toEqual(feed)
+  })
+
+  it('reaches every depth of a paged decoration key from its depth-less form — PD-375', () => {
+    // `waveJoin`/`unwaveJoin`/`introduceToClub` keep invalidating the
+    // depth-less form and rely on `invalidate`'s prefix match to reach every
+    // depth a paged club timeline has fetched — task 3.2's own claim, checked
+    // rather than assumed.
+    const waves = queryKeys.clubs.joinWaves('c1')
+    const deepWaves = queryKeys.clubs.joinWaves('c1', 3)
+    expect(deepWaves.slice(0, waves.length)).toEqual(waves)
+    expect(deepWaves).not.toEqual(waves)
+
+    const introductions = queryKeys.clubs.joinIntroductions('c1')
+    const deepIntroductions = queryKeys.clubs.joinIntroductions('c1', 2)
+    expect(deepIntroductions.slice(0, introductions.length)).toEqual(introductions)
+    expect(deepIntroductions).not.toEqual(introductions)
   })
 
   it('uses the empty key for the two claims that mean everything', () => {

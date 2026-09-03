@@ -1,5 +1,6 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import type { ClubTimelineWindow } from '@/lib/data/club-timeline'
 import { resolveAvatarUrls, resolveClubImageUrls, signImagePaths } from '@/lib/data/media'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { clubIdSchema } from '@/lib/validation/clubs'
@@ -375,15 +376,47 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
  * the viewer cannot resolve look identical from here, and `getClub` has already
  * turned "no such club" into `null` for the page to act on.
  */
-export async function getClubFeed(
+/**
+ * The club timeline's own read — `getClubFeed`'s exact shape, widened to a
+ * `ClubTimelineWindow<Postcard>` (`design.md` §D3, PD-375). `getClubFeed`
+ * below is now a thin wrapper over this, so the two cannot drift.
+ *
+ * **The horizon comes from the ACCESSOR's id count against `page_size`, not
+ * from the second read's rows — the fix this function exists for.**
+ * `club_stamp_postcard_ids` returns up to `page_size` ids under its own
+ * audience rule; the second, ordinary `postcards` read then re-reads those
+ * ROWS under the CALLER's own RLS, and may legitimately return fewer — a
+ * blocked author, a hide, a policy this rider's own state changes. Measuring
+ * `boundedHorizon` on that second read (the defect this replaces) made a
+ * window that saturated the accessor but lost one row to RLS read as SHORT —
+ * no horizon, `complete` true, the club's founding drawn beneath postcards
+ * nobody fetched. Two other sources already follow this rule —
+ * `getClubJoins` measures before its username filter, `getClubThreadReplies`
+ * before its collapse.
+ *
+ * **The horizon VALUE still has to come from a row that carries `created_at`,
+ * and the accessor's ids do not** — `club_stamp_postcard_ids` returns
+ * `(id, from_ride)` only (`086`), and widening it is an RPC signature change
+ * this no-migration proposal does not take. So the SATURATION test (full or
+ * short) is the accessor's id count against `page_size`, and the horizon
+ * VALUE, when saturated, is the oldest SURVIVING postcard's `created_at` — a
+ * row at least as new as the true accessor boundary, never older, so this
+ * errs toward cutting a little MORE than the true boundary would rather than
+ * toward the unsafe direction (asserting completeness that is not there).
+ * Flagged here as the one place this function's fix is an approximation
+ * rather than exact, because the exact value is unreachable without a
+ * migration this change does not take.
+ */
+export async function getClubFeedWindow(
   clubId: string,
   { before, limit = FEED_PAGE_SIZE }: FeedPage = {}
-): Promise<Postcard[]> {
+): Promise<ClubTimelineWindow<Postcard>> {
   // Before `resolveSupabase()`, the guard `getRideJournal` carries for its ride
   // id and for the same reason: a non-uuid reaches the RPC as `22P02`,
   // PostgREST turns it into a 400 and `unwrapList` throws, which puts a rider
   // on the error boundary where a not-found belongs (PD-142).
-  if (!clubIdSchema.safeParse(clubId).success) return []
+  if (!clubIdSchema.safeParse(clubId).success)
+    return { rows: [], horizon: null, until: before ?? null, untilInclusive: false }
 
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
@@ -397,7 +430,8 @@ export async function getClubFeed(
     "this club's postcards",
   ) as { id: string; from_ride: boolean }[] | null
 
-  if (!correlated || correlated.length === 0) return []
+  if (!correlated || correlated.length === 0)
+    return { rows: [], horizon: null, until: before ?? null, untilInclusive: false }
 
   const window = correlated.slice(0, limit)
   const fromRide = new Map(window.map((row) => [row.id, row.from_ride]))
@@ -417,10 +451,35 @@ export async function getClubFeed(
   // Carried from the accessor rather than recomputed: `club_id` is readable
   // here, but `ride_id` is not, so the client has no way to tell an app-wide
   // postcard that reached this strip through a ride from one that did not.
-  return postcards.map((postcard) => ({
+  const withFlag = postcards.map((postcard) => ({
     ...postcard,
     from_ride: fromRide.get(postcard.id) ?? false,
   }))
+
+  return {
+    rows: withFlag,
+    horizon:
+      window.length >= limit && withFlag.length > 0
+        ? withFlag[withFlag.length - 1].created_at
+        : null,
+    until: before ?? null,
+    // The accessor compares `created_at < before` (`086` line 130), never
+    // `<=` — `design.md` §D3's stated exception to "every deeper window is
+    // inclusive". The residue: two postcards in one club sharing a
+    // `created_at` to the microsecond and straddling a page boundary lose the
+    // one below the cut. `044` writes the column at transaction time, which
+    // makes it merely very unlikely rather than impossible; the remedy is a
+    // keyset `before_id` argument on the accessor, which is a migration this
+    // change does not take.
+    untilInclusive: false,
+  }
+}
+
+export async function getClubFeed(
+  clubId: string,
+  page: FeedPage = {}
+): Promise<Postcard[]> {
+  return (await getClubFeedWindow(clubId, page)).rows
 }
 
 export async function getPostcard(id: string): Promise<Postcard | null> {

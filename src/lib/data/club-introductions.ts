@@ -1,4 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { chunkIds } from '@/lib/data/club-timeline'
 import { clubIdSchema } from '@/lib/validation/clubs'
 
 /**
@@ -44,6 +45,15 @@ type IntroductionRow = {
  * check in this file — the join row already has the subject's name from
  * `getClubJoins`, and an introduction's own author is always its subject by
  * construction.
+ *
+ * **Chunked at `CLUB_TIMELINE_SUBJECT_CHUNK`, since PD-375** —
+ * `attachClubWaveState`'s own reasoning verbatim: paging grows `subjectIds`
+ * with every fetched join window, a single `.in()` would eventually cross an
+ * unmeasured URI limit, and that failure is silent by design (a decoration
+ * must not gate its rows) — which is precisely how the introduction door goes
+ * quiet at depth, the hole PD-374 was cancelled on the strength of PD-375
+ * closing. One erroring chunk fails the whole map, matching the single-request
+ * rule this replaces.
  */
 export async function attachClubIntroductions(
   clubId: string,
@@ -53,24 +63,30 @@ export async function attachClubIntroductions(
 
   const supabase = await resolveSupabase()
 
-  const { data, error } = await supabase
-    .from('club_threads')
-    .select('id, introduces_user_id, messages_count:club_messages(count)')
-    .eq('club_id', clubId)
-    .in('introduces_user_id', subjectIds)
+  const results = await Promise.all(
+    chunkIds(subjectIds).map((ids) =>
+      supabase
+        .from('club_threads')
+        .select('id, introduces_user_id, messages_count:club_messages(count)')
+        .eq('club_id', clubId)
+        .in('introduces_user_id', ids)
+    )
+  )
 
-  if (error || !data) return {}
+  if (results.some((result) => result.error || !result.data)) return {}
 
   const state: Record<string, ClubIntroductionState> = {}
-  for (const row of data as unknown as IntroductionRow[]) {
-    // `introduces_user_id` is NULL on every ordinary thread; the `in()` filter
-    // above already excludes those, but the column stays nullable in the type
-    // because PostgREST does not narrow it, so this is a type guard rather
-    // than a real filter.
-    if (!row.introduces_user_id) continue
-    state[row.introduces_user_id] = {
-      threadId: row.id,
-      commentCount: row.messages_count?.[0]?.count ?? 0,
+  for (const result of results) {
+    for (const row of result.data as unknown as IntroductionRow[]) {
+      // `introduces_user_id` is NULL on every ordinary thread; the `in()`
+      // filter above already excludes those, but the column stays nullable in
+      // the type because PostgREST does not narrow it, so this is a type
+      // guard rather than a real filter.
+      if (!row.introduces_user_id) continue
+      state[row.introduces_user_id] = {
+        threadId: row.id,
+        commentCount: row.messages_count?.[0]?.count ?? 0,
+      }
     }
   }
   return state
