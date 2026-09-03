@@ -192,8 +192,9 @@ export async function getClubThreads(
  * (`ClubThreadPage`) gates on `introduction` and never on the marker — see
  * `ClubThreadDetail`'s own doc for why. `author` is hinted `author_id`,
  * matching `THREAD_SELECT` above — `club_threads` has no `user_id` column and
- * its relationship to `profiles` is already ambiguous through
- * `club_thread_reads` and `club_thread_waves` (`design.md` §D8).
+ * its relationship to `profiles` is ambiguous through `club_thread_reads`
+ * alone (`design.md` §D8); `club_thread_waves` was the second junction until
+ * `101` dropped it, and one is enough.
  */
 export async function getClubThread(id: string): Promise<ClubThreadDetail | null> {
   if (!clubThreadIdSchema.safeParse(id).success) return null

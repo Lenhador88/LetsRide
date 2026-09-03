@@ -312,8 +312,13 @@ export const claims = [
     // LEVEL. Two flips in one day is not the tripwire misbehaving — it is what
     // "budget for it" above meant, and the round trip took two edits in two
     // commits, never a relaxed regex.
+    // 2026-09-03: `101` (PD-373, retiring club_thread_waves) applied to DEV
+    // alone and this went red for the NINTH time, on the LEVEL sentence again.
+    // Pinned back to DEV AHEAD with both `at \`NNN\`` captures, which is what
+    // makes the direction unmissable without pinning the gap's size in words.
+    // Two edits, one commit. Still never a relaxed regex.
     pattern:
-      /\*\*Applied state: (\d+) files, and BOTH projects are at `\d+` — measured/,
+      /\*\*Applied state: (\d+) files\. DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
@@ -327,7 +332,11 @@ export const claims = [
     // carries this one-liner TWICE (the Migrations section's row-vs-file
     // reconciliation also runs it), so a pattern matching the bare command
     // is ambiguous and fails to locate rather than to compare. 2026-09-01.
-    pattern: /ls supabase\/migrations\/\*\.sql \| wc -l\s+# (\d+) — BOTH projects at \d+/,
+    // 2026-09-03: `101` (PD-373) went to DEV alone, so the LEVEL phrasing had to
+    // go and this went red with its CLAUDE.md sibling. Pinned to DEV AHEAD with
+    // both `at NNN` numbers, same rule — prose and pattern in one commit, never
+    // a relaxed regex, and the relationship stays pinned in both directions.
+    pattern: /ls supabase\/migrations\/\*\.sql \| wc -l\s+# (\d+) — DEV at \d+, PROD at \d+/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,

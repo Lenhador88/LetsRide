@@ -1798,8 +1798,10 @@ export type ClubThreadListItem = ClubThread & {
  *
  * `author` mirrors `ClubThreadListItem`'s, hinted `author_id` for the same
  * reason — `club_threads` has no `user_id` column and its relationship to
- * `profiles` is already ambiguous through `club_thread_reads` and
- * `club_thread_waves`.
+ * `profiles` is ambiguous through `club_thread_reads`, whose primary key is
+ * exactly the union of its two foreign keys. `club_thread_waves` was a second
+ * such junction until `101` dropped it; ONE is enough, so the hint is still
+ * required and removing it still answers `PGRST201` / HTTP 300.
  */
 export type ClubThreadDetail = ClubThread & {
   introduction: string | null

@@ -190,6 +190,52 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## Where this left off — 2026-09-03, a queue firing closed one stale story and one race, and parked one
+
+**Group taken into `slot-2`: PD-380, PD-381, PD-377 — one dropped, two built.**
+
+- **PD-380 (map tiles / attribution) was stale before any code was written.** `ATTRIBUTION_MODE =
+  'none'` has been committed (`#319`, 2026-08-27) and deployed to DEV
+  (`mcp__Supabase__get_edge_function` `updated_at` 2026-08-27T14:41Z, after that commit) for
+  **seven days** — the burned-in credit this issue asked to suppress was already gone when it was
+  filed. Moved to `Needs decision` with the measurement rather than closed, because the reported
+  symptom ("tiles missing") is real and unexplained: **6 of 9 upcoming rides on DEV carry a real
+  coordinate and still have no rendered `map_card_path`/`map_detail_path`.** Filed
+  [PD-385](https://linear.app/lets-ride/issue/PD-385) to diagnose that separately — it is a
+  tile-generation question, not an attribution one.
+- **PD-381 — a thread's own delete could 404 the rider on the way out.** `deleteClubThread`/
+  `moderateClubThread` invalidate the thread's own query key before returning, and the confirm
+  sheet's `router.replace` only *usually* wins the race against that invalidation's refetch
+  resolving to `null` on the still-mounted thread screen — the same pattern `DeleteRideControl`/
+  `DeleteClubControl` document as "safe by timing" for rides and clubs, which are exposed to the
+  identical race and have not been audited for it. `ThreadOptions` now takes an `onDeleted`
+  callback fired the instant delete succeeds, and the thread page uses it to stop calling
+  `notFound()` for a thread its own delete just removed — closes the race by construction rather
+  than relying on which side is faster. **Worth checking whether rides/clubs need the same guard**
+  — not done here, out of this story's scope. **Not filed as a Linear issue**: the workspace's
+  free-plan issue limit was hit partway through this session (creates fail, reads/updates still
+  work) — see the note below. Raise it by hand once the plan issue clears, or ask and this gets
+  filed on the next firing.
+- **PD-377 — decision proposal only, per the owner's own framing of the story.** Three options for
+  letting a rider post a photo of a past ride so it stays unread/new while displaying at the ride's
+  own time rather than the post time — `openspec/changes/place-backdated-postcards-on-the-timeline/`,
+  validated (`npx openspec validate place-backdated-postcards-on-the-timeline --strict`). Recommends
+  option B (a rider-supplied `displayed_at`, unread still keyed on `created_at`) with two open
+  sub-questions put to the owner rather than guessed. Options comment posted, moved to
+  `Needs decision`.
+
+**Owner action: the Linear workspace hit its free-plan issue-creation limit this session** —
+`save_issue` without an `id` (create) fails with `"You've exceeded the free issue limit for this
+workspace. Please upgrade or contact sales@linear.app for a free trial."`; updating an existing
+issue still works, which is how PD-380/PD-377 could still be closed out. Upgrading the plan (or
+archiving old issues, if the limit counts live rather than lifetime issues) is the fix; nothing in
+a session can do either.
+
+```
+mcp__Linear__list_comments issueId=PD-380   # the staleness evidence and the PD-385 pointer
+mcp__Linear__list_comments issueId=PD-377   # the options comment
+```
+
 ## Where this left off — 2026-09-02, the queue is rebuilt and waits on the owner's Routine
 
 **The hourly queue dispatched nothing from a firing between 2026-08-18 and 2026-09-02, and the
@@ -227,6 +273,49 @@ mcp__Linear__list_comments  issueId=PD-241 # the inventory comment from the firs
                                            # then the board moving on its own
 ```
 
+## Where this left off — 2026-09-03, the thread wave is retired at the database
+
+**PD-373 (`101_retire_club_thread_waves.sql`), applied to DEV.** The successor PD-372 said it owed.
+Dropped: `public.club_thread_waves` — with its three policies, its grants, both indexes, `023`'s
+participation gate and its two outbound keys — plus `098`'s `notify_club_thread_waved` /
+`retract_club_thread_waved` triggers and the `private` functions behind them (bodies last written
+by `100`).
+
+**Three things a later session should not have to re-derive:**
+
+- **`club_join_waves` is UNTOUCHED and fully live.** `092` shipped two wave tables and only the
+  thread one is gone; waving a rider's ARRIVAL keeps its policies, grants, gate and both of its own
+  fan-outs. A session grepping `wave` is one table away from deleting the surviving feature.
+- **The decision on `notifications`: the `club_thread_waved` enum arm STAYS and no row was
+  deleted** (1 on DEV). `NotificationType`, `notificationCopy` and `NotificationsListItem`'s
+  `describe` keep their arm, so every row already written still renders and still opens its thread.
+  Nothing forces an enum to shrink because its writer is gone, and narrowing the two CHECKs would
+  have meant deleting real notification history for no observable gain. The stated cost: the
+  constraint now admits a type nothing can produce. `098`'s rollback ordering applies if anyone
+  ever removes it — delete the live rows BEFORE re-adding the validated CHECK.
+- **Two `club_join_waves` properties lost their only behavioural assertions**, because they were
+  written against the dropped table and 101 removed rather than retargeted them: the block arm on
+  the REACTOR hiding a row and dropping the per-viewer count in each direction (was `092.3`), and
+  three club roles reaching exactly the same rows (was `092.7`'s fixture half). Both are still
+  pinned STRUCTURALLY off `pg_policies`. Retargeting them is a change to a table `101` does not
+  touch and wants its own review; the suite says so at the point each was removed.
+
+```bash
+grep -c "NOTICE:  ok" <(PGPASSWORD=postgres npm test 2>&1)   # 3280, from 3335
+```
+
+**PROD is one behind: `101` is applied to DEV only** and is the whole of the gap. **This is NOT
+`090`'s case, and reading it as one breaks PROD's club timeline.** `090`'s "no ordering constraint"
+held because the client path that could observe the dropped objects was already gone from the
+bundle *being promoted*. Here that bundle is PD-372 (`c7267e5`), and it is confirmed serving only
+on **DEV** — `git branch -r --contains c7267e5` does not list `origin/main`. PROD's live bundle
+still reads and writes `club_thread_waves`: `src/lib/data/club-waves.ts` and
+`src/lib/actions/club-waves.ts` on `origin/main`, measured 2026-09-03. **`101` must not be applied
+to PROD until the `development` → `main` promotion carrying PD-372 is confirmed serving there**
+(`READY` on the merge sha, `aliasError` null) — applying it earlier makes every PROD club timeline
+read a `PGRST200` on the wave-count embed and every wave tap error, the exact shape `024`'s
+`avatar_url` precedent describes in `docs/ENVIRONMENTS.md`.
+
 ## Where this left off — 2026-09-02, an introduction is listed only as its announcement
 
 **PD-372, merged to `development`.** The club detail drew one conversation three ways — the join
@@ -238,12 +327,12 @@ and the club timeline's only waveable row is the announcement row (product owner
 
 **Two things a later session will otherwise rediscover the hard way:**
 
-- **`club_thread_waves` is a LIVE table with no writer in the app.** Its `092` policies, its grants
-  and both `098` triggers are untouched, and the three rows on DEV can no longer be withdrawn by
-  the riders who placed them — which is `092`'s *"or the row is stranded"* coming true. Dropping it
-  is a separate, destructive call: `openspec/changes/an-introduction-appears-only-as-its-announcement/proposal.md`
-  §The table with no writer says what that owes, and `docs/reference/schema.md`'s row for the table
-  says the same at the point of use.
+- **`club_thread_waves` is DROPPED — `101_retire_club_thread_waves.sql` (PD-373), applied to DEV
+  2026-09-03.** It was a live table with no writer for one day: `092`'s policies and grants, `023`'s
+  gate and both `098` triggers all standing while nothing in `src/` could reach them, and the three
+  DEV rows unwithdrawable by the riders who placed them, which is `092`'s *"or the row is
+  stranded"* coming true. See the entry above for what the drop covers and what it deliberately
+  left alone.
 - **The announcement row falling out of the window is CLOSED by PD-375 (below), not by a members-list
   door.** `097` still refuses the welcome club introductions outright, so that club cannot produce the
   state either way.
