@@ -33,7 +33,7 @@ npm run test:unit                     # 3184/3184 across 119 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 44 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
-PGPASSWORD=postgres npm test          # 3280 assertions, 0 failures
+PGPASSWORD=postgres npm test          # 3310 assertions, 0 failures
 ```
 
 **And the second build shape, which nothing above covers** — PD-142 left the repo with two, and

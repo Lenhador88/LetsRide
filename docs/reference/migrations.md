@@ -321,10 +321,24 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 104 rows on DEV and 100 on PROD against 101 files. The DEV surplus is
-not a gap; the PROD shortfall IS one, and it is `101` alone.** DEV is level with the repo at `101`
+**`list_migrations` prints 105 rows on DEV and 100 on PROD against 102 files. The DEV surplus is
+not a gap; the PROD shortfall IS one, and it is `101` and `102`.** DEV is level with the repo at `102`
 — every file has a recorded row, reconciled name by name on 2026-08-31, again for `096` on
-2026-09-01, and again for `101` on 2026-09-03. **PROD is at `100`, so `101` is awaiting promotion**
+2026-09-01, and again for `101` and `102` on 2026-09-03.
+
+**`102_own_row_reads_survive_the_parent` (PD-362) — applied to DEV 2026-09-03, and it has NO
+ordering constraint in either direction.** It hoists the own-row branch out of the block conjunct on
+three SELECT policies (`ride_members`, `postcard_likes`, `postcard_comments`) and adds an explicit
+`exists` against `rides` to `ride_members`' UPDATE **WITH CHECK**. It widens a read no shipped bundle
+can currently obtain, narrows a write path no shipped screen offers (nothing in `src/` moves a seat
+between rides — `setRideAttendance` upserts status on one `ride_id`, verified by grep), and removes
+nothing, so an older bundle cannot observe it and a newer one needs no new column. **Applied
+REDUCED** — the file is 17 KB and mostly commentary — **and proved by object diff rather than by the
+recorded text**: `md5(string_agg(...))` over the four policies' `qual` + `with_check` is
+`27bd51a7c54cb57201287772463eb709` on both DEV and a local database built from the file itself. Adds
+no advisor (no new `security definer` function): both projects stay at thirty-seven.
+
+**PROD is at `100`, so `101` is awaiting promotion**
 (`101_retire_club_thread_waves`, PD-373 — destructive, and **NOT `090`'s case**: `090`'s "no unsafe
 side" held because the client that could observe the dropped objects was already gone from the
 bundle *being promoted*; here PD-372's `club_thread_waves` retirement is confirmed serving only on
@@ -1015,7 +1029,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 101 — DEV at 101, PROD at 100 (101 awaits promotion)
+ls supabase/migrations/*.sql | wc -l     # 102 — DEV at 102, PROD at 100 (101 and 102 await promotion)
 ```
 
 

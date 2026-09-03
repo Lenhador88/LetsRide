@@ -190,6 +190,55 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## Your own row survives the parent going out of view — 2026-09-03
+
+**PD-362, `102_own_row_reads_survive_the_parent.sql`, applied to DEV.** Seven SELECT policies wrote
+the own-row branch *inside* the block conjunct — `<parent EXISTS> and (own_id = auth.uid() or not
+is_blocked(...))` — where it is a no-op (`blocks_no_self_block` already makes `is_blocked(x, x)`
+false) and the parent EXISTS dominates. Since **RLS filters a DELETE by what the caller may READ**
+(`081`), that silently disarmed three DELETE policies written deliberately without a visibility
+requirement. **Three are hoisted, four are deliberately left alone**; the migration header carries
+the per-policy reasoning and `102.4` pins the four that did not move.
+
+**Five things a later session should not have to re-derive:**
+
+- **The hoist would have widened a WRITE, and §1b is the whole reason it does not.** On
+  `ride_members` alone, `048` grants UPDATE on `ride_id`, and the SELECT policy is applied to the
+  NEW row of an UPDATE — so hoisting the own-row arm let a **non-member move their seat onto a
+  private club's ride they cannot see**. `102` restates that refusal as an explicit `exists` against
+  `rides` in the UPDATE policy's **WITH CHECK**. The **USING** side stays bare on purpose: leaving a
+  ride you can no longer see must keep working, which is what §1 is for. **This was caught by an
+  existing assertion (077.4), not by reading the diff** — which is the argument for measuring each
+  of the seven rather than sweeping them.
+- **Three in-repo comments already claimed the property the shape defeated**, which is why this is a
+  defect rather than a design: `009`'s `postcard_likes` DELETE comment ("a rider must be able to
+  withdraw a like from a postcard that has since gone out of view, **or the row is stranded**"),
+  `011`'s `postcard_comments` SELECT comment ("Your own comment is unconditional, so you never lose
+  sight of what you wrote"), and `092`'s table comment naming `postcard_likes` outright — *"do not
+  'simplify' §3.1 to match `postcard_likes`, which carries the same defect and is filed separately."*
+- **`postcard_comments` was the one PD-362 recorded as NOT measured. It is real** — its DELETE policy
+  carries no parent EXISTS on either arm, so the SELECT shape was the whole of what refused an
+  ex-member's withdrawal.
+- **The four left alone each have their own reason, and a sweep would have got them wrong.**
+  `club_members` is a **semantic no-op** (holding the row is what makes `is_club_member` true —
+  `102.4b` proves it behaviourally); `club_messages` has **no DELETE policy at all**; `club_threads`'
+  DELETE independently requires membership *and* hoisting would contradict PD-367 Q8, which the owner
+  answered **EVICT**; `ride_messages`' DELETE carries its own `exists` against `rides`.
+- **`ride_messages` has a residual silent `DELETE 0` and it is NOT this migration's** — a rider who
+  leaves the crew of a ride they can still see. It comes from the `is_ride_crew` conjunct rather than
+  the block conjunct, and hoisting past `is_ride_crew` would break the documented invariant that this
+  table's audience is an INTERSECTION. Left open deliberately.
+
+**Two pre-existing assertions changed their expected value, both from 0 to 1, and both encoded the
+defect rather than a requirement** — the hider's own like in `011`'s hide block, and `051`'s
+ex-member precondition (which the change makes *strictly stronger*: the ride-map tile is now proven
+refused to a rider who **can** read their own surviving crew row). Suite **3310**, from 3280.
+
+```bash
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3310
+git grep -n "MUST STAY THERE" -- supabase/    # the rule, recorded at each policy
+```
+
 ## A ride's audience guard is about the TRANSITION, not the shape — 2026-09-03
 
 **PD-338 + PD-311, one branch.** `EditRideForm`'s `wouldStrand = !clubId && !isPublic` is gone;
@@ -428,7 +477,7 @@ by `100`).
   touch and wants its own review; the suite says so at the point each was removed.
 
 ```bash
-grep -c "NOTICE:  ok" <(PGPASSWORD=postgres npm test 2>&1)   # 3280, from 3335
+grep -c "NOTICE:  ok" <(PGPASSWORD=postgres npm test 2>&1)   # 3280 after 101, from 3335 — and 3310 after 102 (PD-362)
 ```
 
 **PROD is one behind: `101` is applied to DEV only** and is the whole of the gap. **This is NOT
