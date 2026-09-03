@@ -47,10 +47,11 @@
 
 ## 1. Step 1 — make the second insert idempotent, and deploy it
 
-> **COLLAPSED INTO GROUP 3 on 2026-09-03, deliberately, and the reason generalises.** Step 1
-> exists to make an **apply-first** order safe. It is not needed when the order is
-> **deploy-first**, and deploy-first is strictly the safer of the two here because only one
-> direction breaks:
+> **NOT DONE ON DEV — collapsed into group 3 on 2026-09-03. The reason does NOT generalise, and
+> this group is still owed by the PROD promotion; the four items below are deferred, not
+> superseded.** Step 1 exists to make an **apply-first** order safe. It is not needed when the
+> order is **deploy-first**, and deploy-first is the safer of the two on the server, because only
+> one direction breaks there:
 >
 > - **apply `103` first** → the serving bundle's second insert hits `23505` on a row the trigger
 >   already wrote, its compensating delete removes the club, and *every* club and ride creation
@@ -80,7 +81,7 @@
 > earlier claim here, that it was "a transitional state with no moment at which anything depended
 > on it", was wrong and is corrected rather than deleted.
 
-- [ ] ~~1.1~~ **NOT DONE — superseded, see the note above this group.** `createClub`: `supabase.from('club_members').insert(...)` becomes
+- [ ] 1.1 **DEFERRED TO THE PROD PROMOTION — not done on DEV, and NOT superseded.** `createClub`: `supabase.from('club_members').insert(...)` becomes
   `.upsert({ club_id, user_id, role: 'owner' }, { onConflict: 'club_id,user_id', ignoreDuplicates: true })`.
   The shape `joinClub` already uses. **State the reason correctly:** `authenticated` **does**
   hold the table-level UPDATE grant on `club_members` — `019`'s own §Verification block says so
@@ -90,11 +91,11 @@
   affect nothing instead of erroring. The "no UPDATE grant" phrasing is inherited from a stale
   comment at `src/lib/actions/clubs.ts:253-254`; add it to group 5. **Keep the compensating
   delete** — it is still the only thing covering a genuine failure until `029` lands.
-- [ ] ~~1.2~~ **NOT DONE — superseded, see the note above this group.** `createRide`: the same for `ride_members`, `onConflict: 'ride_id,user_id'`.
-- [ ] ~~1.3~~ **NOT DONE — superseded, see the note above this group.** `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build` green. No RLS
+- [ ] 1.2 **DEFERRED TO THE PROD PROMOTION — not done on DEV, and NOT superseded.** `createRide`: the same for `ride_members`, `onConflict: 'ride_id,user_id'`.
+- [ ] 1.3 **DEFERRED TO THE PROD PROMOTION — not done on DEV, and NOT superseded.** `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build` green. No RLS
   suite run is needed — nothing under `supabase/**` changed, and CI will skip it for the same
   reason.
-- [ ] ~~1.4~~ **NOT DONE — superseded, see the note above this group.** Confirm the deployment is live before starting group 2, and record the commit sha.
+- [ ] 1.4 **DEFERRED TO THE PROD PROMOTION — not done on DEV, and NOT superseded.** Confirm the deployment is live before starting group 2, and record the commit sha.
 
 ## 2. Step 2 — `029_creator_membership.sql`
 

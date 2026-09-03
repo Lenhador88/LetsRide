@@ -195,7 +195,7 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   so posting into a club badges it for your own post.
 
 - ~~**`createClub` and `createRide` can leave a club with no owner row, or a ride whose organizer
-  is not on its own crew.**~~ **FIXED by `PD-103` — `103_creator_membership.sql` + `104`, merged and applied to DEV in that order.** The
+  is not on its own crew.**~~ **CLOSED IN CODE by `PD-103` — `103_creator_membership.sql` + `104_club_member_owner_arm.sql`. NOT YET APPLIED to either project; the fix is not live until they are.** The
   entry is struck rather than deleted because its *mechanism* is still the thing to read before
   writing any new create: two inserts with no transaction, and a hand-rolled rollback that stopped
   being one when the writes moved to the browser. PostgREST has no multi-statement transaction, so
@@ -213,8 +213,9 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
 
   **Still open, and deliberately:** `PD-194`'s ownership transfer shipped separately in `095`, so
   the club-side delete guard lives there rather than here. **PROD does not have `103` or `104`
-  yet** — they are applied to DEV only, so the ratings below are for the promotion, which is all
-  that is left of this entry.
+  yet** — neither is applied anywhere yet. The apply to DEV follows the merge, gated on the deploy
+  being confirmed serving; PROD follows its own promotion. The ratings below are for that work,
+  which is all that is left of this entry. **Check, do not trust:** `list_migrations` on both refs.
 
   **The promotion has an ORDER and it is the one direction that breaks.** Deploy the code first,
   then apply `103`, then `104`. Applying `103` against a bundle that still issues the second

@@ -449,7 +449,7 @@ git grep -n "MARKER_STYLE =" -- supabase/functions/resolve-ride-location/gates.t
 
 ## The creator's membership row is the database's to write — 2026-09-03
 
-**PD-103, `103_creator_membership.sql` + `104_club_member_owner_arm.sql`, applied to DEV.**
+**PD-103, `103_creator_membership.sql` + `104_club_member_owner_arm.sql` — merged, and NOT YET APPLIED to either project.** The DEV apply follows this merge, gated on the deploy being confirmed serving (`READY` on the merge sha, `aliasError` null) rather than merely on the merge — `CLAUDE.md` §Supabase Rules' own sequencing rule, and `103` is exactly the class it names. Re-derive with `list_migrations` rather than trusting this line.
 `createClub` and `createRide` each did two inserts with no transaction; the compensating rollback
 stopped being one when the writes moved to the browser, so closing the tab between the two round
 trips left a club with an owner and no membership row. Two `AFTER INSERT` triggers now seed the row,

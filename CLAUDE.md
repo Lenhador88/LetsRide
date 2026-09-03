@@ -450,9 +450,10 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   filename order.
 
 **Applied state: 104 files. DEV is at `102` and PROD at `100` — measured 2026-09-03, in the minutes
-between `103`/`104` merging and being applied.** That apply is the step immediately after the merge
-and **cannot precede it**, so DEV reads `104` from then on and this line is one to re-derive rather
-than trust. `103`/`104` (PD-103) carry an **ordering rule and it breaks
+between `103`/`104` merging and being applied.** That apply follows the merge and **waits for the build to be
+confirmed serving** — `READY` on the merge sha with `aliasError` null, which is the sequencing rule
+below rather than "after the merge"; DEV reads `104` from then on, so re-derive this line rather
+than trusting it. `103`/`104` (PD-103) carry an **ordering rule and it breaks
 in one direction only**: deploy the code first, then apply `103`, then `104`. Applying `103`
 against a bundle that still writes the creator's membership row is an instant outage of club and
 ride creation. The reverse gap is *mostly* self-healing — `103`'s backfill repairs the orphans a

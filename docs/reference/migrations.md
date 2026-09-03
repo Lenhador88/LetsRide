@@ -324,12 +324,15 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 **`list_migrations` prints 105 rows on DEV and 100 on PROD against 104 files, and reads 107 on DEV
 once `103`/`104` are applied. The DEV surplus is not a gap; the PROD shortfall IS one, and it is
 `101`, `102`, `103` and `104`.** DEV is level with the repo at `102` when `103`/`104` merge and at
-`104` once they are applied — the apply is the step immediately after that merge and **cannot
-precede it** (see the ordering rule below). Reconciled name by name on 2026-08-31, again for `096`
+`104` once they are applied. **The apply follows the merge AND waits for the build to be
+confirmed serving** — `READY` on the merge sha with `aliasError` null, never merely "after the
+merge": `CLAUDE.md` §Supabase Rules names that distinction with a measured incident behind it (a
+destructive file applied 102 seconds after a merge, out from under a Preview still calling what it
+dropped), and `103` is exactly the class it describes. Reconciled name by name on 2026-08-31, again for `096`
 on 2026-09-01, and again for `101`/`102` on 2026-09-03.
 
-**`103_creator_membership` + `104_club_member_owner_arm` (PD-103) — merged 2026-09-03 and applied
-to DEV immediately afterwards; they are the ordering case rather than an exception to it.** `103` hangs two `AFTER INSERT` seeding
+**`103_creator_membership` + `104_club_member_owner_arm` (PD-103) — merged 2026-09-03, NOT YET
+APPLIED to either project; they are the ordering case rather than an exception to it.** `103` hangs two `AFTER INSERT` seeding
 triggers (`private.establish_club_owner_membership`, `private.establish_ride_organizer_membership`,
 both with **no `WHEN` clause**, so they bind the seed and `service_role` too), backfills any
 existing orphan with `joined_at` from the parent's `created_at`, repairs a demoted owner row by
@@ -351,8 +354,10 @@ change carries a transitional group 1 (an idempotent upsert, deployed and left t
 where the tab count was effectively zero. `104` is last because
 it is only safe once the deployed bundle has stopped sending `role: 'owner'`.
 
-**Applied AFTER the merge was confirmed serving on DEV, deliberately**, which is why this file and
-`CLAUDE.md` claim `104` in the same commit that adds the files. Adds **no** advisor: all three
+**To be applied only once the merge is confirmed SERVING on DEV**, which is why this file and
+`CLAUDE.md` claim `102` in the commit that adds the files — an earlier revision claimed `104` there
+and that was the pre-merge review's most serious finding, since the client half ships in the same
+PR and no longer writes the membership row. Adds **no** advisor: all three
 functions live in `private`, so `authenticated_security_definer_function_executable` does not fire
 and both projects stay at thirty-seven. Pre-flight on DEV, RLS bypassed: 17 clubs / 27 rides /
 24 profiles, **0 orphans of either kind**, 0 `admin` rows, 1 private club — so the backfill had
@@ -1069,7 +1074,9 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 104 — DEV at 104, PROD at 100 (101-104 await promotion)
+ls supabase/migrations/*.sql | wc -l     # 104 — DEV at 102, PROD at 100 (101-104 await promotion)
+# ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
+# compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
 
 
