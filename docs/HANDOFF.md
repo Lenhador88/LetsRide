@@ -244,16 +244,53 @@ and the club timeline's only waveable row is the announcement row (product owner
   is a separate, destructive call: `openspec/changes/an-introduction-appears-only-as-its-announcement/proposal.md`
   §The table with no writer says what that owes, and `docs/reference/schema.md`'s row for the table
   says the same at the point of use.
-- **The announcement row is a WINDOW, so an introduction can fall out of every browse surface.**
-  `CLUB_TIMELINE_LIMIT` is 20 and the timeline does not paginate, so a current member with twenty
-  newer events above their join keeps a deep link and nothing else. Filed rather than fixed — a
-  door on the members list would make a second place an introduction appears, which is the
-  deliverable's own line to cross. **Not** the welcome club: `097` refuses it introductions
-  outright, so the highest-frequency-join club cannot produce this state.
+- **The announcement row falling out of the window is CLOSED by PD-375 (below), not by a members-list
+  door.** `097` still refuses the welcome club introductions outright, so that club cannot produce the
+  state either way.
 
 ```bash
 git grep -n "ANNOUNCEMENT_MARKER" -- src/          # the rule, and its three call sites
 npx vitest run src/lib/data/__tests__/announcement-rule.test.ts
+```
+
+## Where this left off — 2026-09-03, the club timeline pages on scroll
+
+**PD-375, branch `claude/pd-375-club-timeline-load-more`.** `CLUB_TIMELINE_LIMIT` was a hard stop at
+20 entries with no `load more`; the club timeline now extends as the rider scrolls, via
+`openspec/changes/page-the-club-timeline-on-scroll/` (proposal reviewed once, revised against 8
+findings, then implemented — read `design.md` before touching any of this again). **This is what
+closes PD-374's hole**, which was cancelled on 2026-09-02 on the assumption that scrolling back
+through the timeline — rather than a second door on the members list — was the fix: an
+introduction is reachable again once its join row scrolls past the display cap, because the rider
+can now keep paging down to it.
+
+**The mechanism is horizon-lowering, not cursor-advancing.** Each of the five sources (rides,
+postcards, threads, joins, thread-replies-collapsed-to-one-per-thread) already carried a
+`horizon` — the point above which its window is known-complete — so a page step re-asks every
+still-open source for the window below the current floor and **absorbs** the result into what is
+already drawn, rather than layering a second, parallel notion of position on top. `complete` needed
+no redefinition: it already meant "nothing dropped at either end", which is exactly "reached the
+club's founding" once paging is the only way rows arrive.
+
+**Three correctness traps a later session would otherwise rediscover, each closed in the design
+rather than the code alone:**
+
+- **A short source's `until` must never be `null`.** `null` means "now" everywhere else in this
+  read, so a finished source asked again re-fetches page one forever. `pendingClubTimelineSources`
+  is what a page step must consult before issuing any read.
+- **Removing a row below the first window (a block, a hide) is not caught by the first window's own
+  refetch.** The first window's diff only sees `[h_new, +∞)`; a removal three windows deep produces
+  no visible change there. Screens with a removal-capable control (currently `PostcardCard`'s
+  Hide/Block) fire an explicit `onRemoved` that discards every deeper window outright, rather than
+  inferring removal from a refetch.
+- **A two-step read's saturation is measured on the wrong half.** `getClubFeed` re-selects its ids
+  under RLS, and that second read can legitimately come back short of what the first asked for —
+  measuring `boundedHorizon` on it can falsely declare "reached the founding" over rows RLS simply
+  filtered. `getClubFeedWindow` measures saturation on the id-fetching accessor instead.
+
+```bash
+git grep -n "CLUB_TIMELINE_MAX_WINDOWS\|pendingClubTimelineSources" -- src/lib/data/club-timeline.ts
+npx vitest run src/lib/data/__tests__/club-timeline.test.ts
 ```
 
 ## Where this left off — 2026-09-01, the club bundle is IN PRODUCTION
