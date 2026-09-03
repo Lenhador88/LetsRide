@@ -105,7 +105,14 @@ renders positioned in the past rather than at the top.
 - **Mutability:** open question — is `displayed_at` set once at posting time only (matching
   `044`'s posture on `created_at`), or editable after? The safer default is once-only, stated
   explicitly rather than left implicit.
-- **Migration:** one column, one CHECK, one index if placement needs one for feed pagination.
+- **Migration:** one column, one CHECK, one index if placement needs one for feed pagination —
+  **and its own grant.** `postcards`' column grants are managed as the absolute
+  `041 → 044 → 046` list (`docs/reference/migrations.md` §The ordering chain): a bare
+  `alter table postcards add column displayed_at ...` does not itself grant `authenticated`
+  anything on the new column, and re-running an earlier file in that chain after this one lands
+  would revoke it again if the new grant is not folded into that same absolute list. The migration
+  task for this option is "add the column, add the CHECK, and extend the grant list," not just the
+  first two.
   **Composer change:** one optional date field.
 
 ### C) Same as B, but `displayed_at` also becomes the unread key for the surfaces it changes

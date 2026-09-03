@@ -195,13 +195,14 @@ See `docs/reference/running-locally.md` §The walk.
 **Group taken into `slot-2`: PD-380, PD-381, PD-377 — one dropped, two built.**
 
 - **PD-380 (map tiles / attribution) was stale before any code was written.** `ATTRIBUTION_MODE =
-  'none'` has been committed (`#319`, 2026-08-27) and deployed to DEV (`get_edge_function`
-  `updated_at` 2026-08-27T14:41Z, after that commit) for six weeks — the burned-in credit this
-  issue asked to suppress was already gone. Moved to `Needs decision` with the measurement rather
-  than closed, because the reported symptom ("tiles missing") is real and unexplained: **6 of 9
-  upcoming rides on DEV carry a real coordinate and still have no rendered `map_card_path`/
-  `map_detail_path`.** Filed [PD-385](https://linear.app/lets-ride/issue/PD-385) to diagnose that
-  separately — it is a tile-generation question, not an attribution one.
+  'none'` has been committed (`#319`, 2026-08-27) and deployed to DEV
+  (`mcp__Supabase__get_edge_function` `updated_at` 2026-08-27T14:41Z, after that commit) for
+  **seven days** — the burned-in credit this issue asked to suppress was already gone when it was
+  filed. Moved to `Needs decision` with the measurement rather than closed, because the reported
+  symptom ("tiles missing") is real and unexplained: **6 of 9 upcoming rides on DEV carry a real
+  coordinate and still have no rendered `map_card_path`/`map_detail_path`.** Filed
+  [PD-385](https://linear.app/lets-ride/issue/PD-385) to diagnose that separately — it is a
+  tile-generation question, not an attribution one.
 - **PD-381 — a thread's own delete could 404 the rider on the way out.** `deleteClubThread`/
   `moderateClubThread` invalidate the thread's own query key before returning, and the confirm
   sheet's `router.replace` only *usually* wins the race against that invalidation's refetch
@@ -211,13 +212,24 @@ See `docs/reference/running-locally.md` §The walk.
   callback fired the instant delete succeeds, and the thread page uses it to stop calling
   `notFound()` for a thread its own delete just removed — closes the race by construction rather
   than relying on which side is faster. **Worth checking whether rides/clubs need the same guard**
-  — not done here, out of this story's scope, and not filed as a separate issue yet.
+  — not done here, out of this story's scope. **Not filed as a Linear issue**: the workspace's
+  free-plan issue limit was hit partway through this session (creates fail, reads/updates still
+  work) — see the note below. Raise it by hand once the plan issue clears, or ask and this gets
+  filed on the next firing.
 - **PD-377 — decision proposal only, per the owner's own framing of the story.** Three options for
   letting a rider post a photo of a past ride so it stays unread/new while displaying at the ride's
   own time rather than the post time — `openspec/changes/place-backdated-postcards-on-the-timeline/`,
   validated (`npx openspec validate place-backdated-postcards-on-the-timeline --strict`). Recommends
   option B (a rider-supplied `displayed_at`, unread still keyed on `created_at`) with two open
-  sub-questions put to the owner rather than guessed. Moved to `Needs decision`.
+  sub-questions put to the owner rather than guessed. Options comment posted, moved to
+  `Needs decision`.
+
+**Owner action: the Linear workspace hit its free-plan issue-creation limit this session** —
+`save_issue` without an `id` (create) fails with `"You've exceeded the free issue limit for this
+workspace. Please upgrade or contact sales@linear.app for a free trial."`; updating an existing
+issue still works, which is how PD-380/PD-377 could still be closed out. Upgrading the plan (or
+archiving old issues, if the limit counts live rather than lifetime issues) is the fix; nothing in
+a session can do either.
 
 ```
 mcp__Linear__list_comments issueId=PD-380   # the staleness evidence and the PD-385 pointer
