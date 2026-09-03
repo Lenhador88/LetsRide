@@ -1,5 +1,6 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
+import type { ClubTimelineWindow } from '@/lib/data/club-timeline'
 import { resolveAvatarUrls, resolveClubImageUrls, signImagePaths } from '@/lib/data/media'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { clubIdSchema } from '@/lib/validation/clubs'
@@ -375,52 +376,181 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
  * the viewer cannot resolve look identical from here, and `getClub` has already
  * turned "no such club" into `null` for the page to act on.
  */
-export async function getClubFeed(
+/**
+ * `club_stamp_postcard_ids`' OWN hard clamp — `086` line 135:
+ * `limit greatest(least(coalesce(page_size, 30), 100), 0)`. The accessor
+ * will never return more than this many ids no matter what `page_size` it is
+ * asked for, so `getClubFeedWindow`'s escalation ladder (below) must clamp
+ * its own requests to it and compare saturation against the CLAMPED value —
+ * asking for more than this and comparing against the raw ask is what let a
+ * page the accessor answers in full read as "short" on the last rung.
+ */
+export const CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE = 100
+
+/**
+ * How many times `getClubFeedWindow` may re-ask `club_stamp_postcard_ids`
+ * for a bigger page when a saturated page's every id gets filtered by this
+ * rider's own RLS, before it stops climbing (either this many rounds, or
+ * `CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE`, whichever the ladder reaches first).
+ * At `FEED_PAGE_SIZE = 30` the ladder is 30 → 60 → 100 — it reaches the
+ * accessor's own ceiling on the last rung rather than overshooting it.
+ */
+export const CLUB_FEED_HORIZON_ESCALATIONS = 2
+
+/**
+ * The club timeline's own read — `getClubFeed`'s exact shape, widened to a
+ * `ClubTimelineWindow<Postcard>` (`design.md` §D3, PD-375). `getClubFeed`
+ * below is now a thin wrapper over this, so the two cannot drift.
+ *
+ * **The horizon comes from the ACCESSOR's id count against `page_size`, not
+ * from the second read's rows.** `club_stamp_postcard_ids` returns up to
+ * `page_size` ids under its own audience rule; the second, ordinary
+ * `postcards` read then re-reads those ROWS under the CALLER's own RLS, and
+ * may legitimately return fewer — a blocked author, a hide, a policy this
+ * rider's own state changes. Measuring the horizon on that second read would
+ * make a window that saturated the accessor but lost every row to RLS read
+ * as SHORT — no horizon, `complete` true, the club's founding drawn beneath
+ * postcards nobody fetched. Two other sources follow the identical rule —
+ * `getClubJoins` measures before its username filter, `getClubThreadReplies`
+ * before its collapse.
+ *
+ * **When a saturated page has zero survivors, this ESCALATES rather than
+ * guessing a horizon.** The accessor returns `(id, from_ride)` with no
+ * `created_at` (`086`), so there is nothing to build a horizon from until a
+ * row actually survives — the escalation re-asks the SAME accessor call
+ * with a bigger `page_size` (`before` unchanged; it looks further INTO the
+ * same window, never past it), clamped to
+ * `CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE` and compared against that clamped
+ * value. It stops the moment EITHER a bigger page turns up a survivor (the
+ * horizon is that batch's own oldest surviving row's `created_at` — at least
+ * as new as the true boundary, never older, so this errs toward cutting a
+ * little MORE than the true boundary rather than toward asserting a
+ * completeness that is not there), or the accessor itself answers short of
+ * the (clamped) page size — genuine completion, horizon `null`.
+ *
+ * **Only once `CLUB_FEED_HORIZON_ESCALATIONS` rounds or the accessor's own
+ * ceiling are BOTH exhausted with zero survivors throughout** — a full
+ * 100-row page entirely filtered, the genuinely adversarial "the whole
+ * recent window is one blocked author" case — does this fall back to
+ * `before ?? now()`: `before` on a deeper page (an honest "no progress",
+ * since `absorbClubTimelineWindow` folds a window whose horizon equals its
+ * own `until` into an empty covered interval) or `new Date().toISOString()`
+ * on the first page (no `before` to fall back to; more aggressive than the
+ * true boundary, but the alternative is the false-complete signal this
+ * function exists to close).
+ */
+export async function getClubFeedWindow(
   clubId: string,
   { before, limit = FEED_PAGE_SIZE }: FeedPage = {}
-): Promise<Postcard[]> {
+): Promise<ClubTimelineWindow<Postcard>> {
   // Before `resolveSupabase()`, the guard `getRideJournal` carries for its ride
   // id and for the same reason: a non-uuid reaches the RPC as `22P02`,
   // PostgREST turns it into a 400 and `unwrapList` throws, which puts a rider
   // on the error boundary where a not-found belongs (PD-142).
-  if (!clubIdSchema.safeParse(clubId).success) return []
+  if (!clubIdSchema.safeParse(clubId).success)
+    return { rows: [], horizon: null, until: before ?? null, untilInclusive: false }
 
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const correlated = unwrap(
-    await supabase.rpc('club_stamp_postcard_ids', {
-      club: clubId,
-      before: before ?? null,
-      page_size: limit,
-    }),
-    "this club's postcards",
-  ) as { id: string; from_ride: boolean }[] | null
+  // `untilInclusive: false` on every return below: the accessor compares
+  // `created_at < before` (`086` line 130), never `<=` — `design.md` §D3's
+  // stated exception to "every deeper window is inclusive". The residue: two
+  // postcards in one club sharing a `created_at` to the microsecond and
+  // straddling a page boundary lose the one below the cut. `044` writes the
+  // column at transaction time, which makes it merely very unlikely rather
+  // than impossible; the remedy is a keyset `before_id` argument on the
+  // accessor, which is a migration this change does not take.
+  for (let escalation = 0; ; escalation++) {
+    // Clamped BEFORE the call, and saturation is compared against this
+    // clamped value rather than the raw escalated one — the accessor cannot
+    // answer more than `CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE` regardless of what
+    // it is asked for, so asking for more and comparing against the ask is
+    // what made a page it answered IN FULL read as short.
+    const pageSize = Math.min(limit * 2 ** escalation, CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE)
+    const atAccessorCeiling = pageSize >= CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE
 
-  if (!correlated || correlated.length === 0) return []
+    const correlated = unwrap(
+      await supabase.rpc('club_stamp_postcard_ids', {
+        club: clubId,
+        before: before ?? null,
+        page_size: pageSize,
+      }),
+      "this club's postcards",
+    ) as { id: string; from_ride: boolean }[] | null
 
-  const window = correlated.slice(0, limit)
-  const fromRide = new Map(window.map((row) => [row.id, row.from_ride]))
+    if (!correlated || correlated.length === 0)
+      return { rows: [], horizon: null, until: before ?? null, untilInclusive: false }
 
-  const rows = unwrapList(
-    await supabase
-      .from('postcards')
-      .select(POSTCARD_SELECT)
-      .in('id', window.map((row) => row.id))
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(limit),
-    "this club's postcards",
-  )
+    const window = correlated.slice(0, pageSize)
+    const saturated = window.length >= pageSize
+    const fromRide = new Map(window.map((row) => [row.id, row.from_ride]))
 
-  const postcards = await attachLikeState(supabase, rows as unknown as PostcardRow[], user?.id)
-  // Carried from the accessor rather than recomputed: `club_id` is readable
-  // here, but `ride_id` is not, so the client has no way to tell an app-wide
-  // postcard that reached this strip through a ride from one that did not.
-  return postcards.map((postcard) => ({
-    ...postcard,
-    from_ride: fromRide.get(postcard.id) ?? false,
-  }))
+    const rows = unwrapList(
+      await supabase
+        .from('postcards')
+        .select(POSTCARD_SELECT)
+        .in('id', window.map((row) => row.id))
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(pageSize),
+      "this club's postcards",
+    )
+
+    const postcards = await attachLikeState(supabase, rows as unknown as PostcardRow[], user?.id)
+    // Carried from the accessor rather than recomputed: `club_id` is readable
+    // here, but `ride_id` is not, so the client has no way to tell an
+    // app-wide postcard that reached this strip through a ride from one that
+    // did not.
+    const withFlag = postcards.map((postcard) => ({
+      ...postcard,
+      from_ride: fromRide.get(postcard.id) ?? false,
+    }))
+
+    // Genuine completion: the accessor itself came back short of THIS
+    // round's (clamped) page size — there is nothing further to find by
+    // asking again, however few of these rows survived.
+    if (!saturated)
+      return {
+        rows: withFlag,
+        horizon: null,
+        until: before ?? null,
+        untilInclusive: false,
+      }
+
+    // A survivor exists — the ordinary case, and the round we stop at is
+    // whichever one found it, so `rows` and `horizon` always agree.
+    if (withFlag.length > 0)
+      return {
+        rows: withFlag,
+        horizon: withFlag[withFlag.length - 1].created_at,
+        until: before ?? null,
+        untilInclusive: false,
+      }
+
+    // Saturated AND zero survivors: escalate further only while there is
+    // still room to grow — both budget (`CLUB_FEED_HORIZON_ESCALATIONS`)
+    // and headroom (`!atAccessorCeiling`). Asking again at the same clamped
+    // `pageSize` would return the identical page.
+    if (!atAccessorCeiling && escalation < CLUB_FEED_HORIZON_ESCALATIONS) continue
+
+    // Either budget is spent or the accessor's own ceiling is reached, with
+    // zero survivors throughout — the genuinely adversarial case named in
+    // this function's own header.
+    return {
+      rows: withFlag,
+      horizon: before ?? new Date().toISOString(),
+      until: before ?? null,
+      untilInclusive: false,
+    }
+  }
+}
+
+export async function getClubFeed(
+  clubId: string,
+  page: FeedPage = {}
+): Promise<Postcard[]> {
+  return (await getClubFeedWindow(clubId, page)).rows
 }
 
 export async function getPostcard(id: string): Promise<Postcard | null> {
