@@ -1015,6 +1015,15 @@ happens to land on. **The slot is yours until you have either re-filled it or gi
    and taking it a few bullets early costs nothing and adds no call. A read taken after the comment
    is written is a row that says `not available` on a session that could have answered.
 
+   **That early read CACHES the answer and decides nothing.** The gate below — including the
+   fail-closed branch — is evaluated at this step's normal position, after STEP 5 has finished.
+   **Reading it the other way ends the run before bullets 4, 5 and 6**, so the cost record is
+   never written, no notification is sent, and this step's own "STEP 5 already sent the
+   notification and wrote the record" becomes false. That is not a corner case: a Routine-minted
+   firing does not hold `get_session` at all (PD-241's inventory), so the fail-closed branch is the
+   *ordinary* path, and taking it early would silently strip the record off every firing the queue
+   runs.
+
    **If that tool will not answer, end the session (via STEP 7) — this one fails CLOSED.** An
    `InputValidationError` is a deferred schema, so `ToolSearch` (`+get_session claude code
    remote`) and call it again; `No such tool available` after a keyword search means the connector
@@ -1277,23 +1286,16 @@ back**: it goes to the owner, not to the queue, and it is the same `PushNotifica
 **Standing instruction, product owner 2026-09-03** (PD-387): *"upgrading our routine, so that
 sessions can keep track of the time they spent in developing, testing, using tools, etc."*
 
-**The queue's cost is invisible until it is enormous.** `CLAUDE.md` records one session that spent
-**84.5M cache-read tokens across twenty hours** re-arming a PR watch and building nothing after the
-first hour. That was found by hand, after the fact, because nothing measures a firing.
+**Who owes one: any firing that CLAIMED a story, whichever way it then ended** — a merged group
+(STEP 5 bullet 4), a park into `Needs help` (§If you get stuck, STEP 2c, STEP 4c's three-attempt
+CI bound), a stale premise moved to `Needs decision`, a group where nothing survived STEP 3.
+**A breakdown that only appears on the runs that went well is an advertisement, not an
+instrument**: the number worth having is the one nobody wants to write down, which is an hour
+spent producing nothing. Where there is no PR body, the record goes in the same comment that exit
+already writes — no extra call.
 
-**Who owes one: any firing that CLAIMED a story**, whichever way it then ended. An idle firing owes
-nothing — it writes no comment, its cost is uniform, and `queue-run.md` §Why this shape already
-carries the measured ~$1 per idle firing; twenty-four rows a day restating it would be noise, not
-an instrument.
-
-### It is written on the runs that went badly, and that is the point
-
-**Every exit that claimed a story writes one** — a merged group (STEP 5 bullet 4), a park into
-`Needs help` (§If you get stuck, STEP 2c, STEP 4c's three-attempt CI bound), a stale premise moved
-to `Needs decision`, a group where nothing survived STEP 3. **A breakdown that only appears on the
-runs that went well is an advertisement, not an instrument**: the number worth having is the one
-nobody wants to write down, which is an hour spent producing nothing. Where there is no PR body,
-the record goes in the same comment that exit already writes — no extra call.
+An **idle** firing owes nothing: it writes no comment, its cost is uniform, and `queue-run.md`
+§Why this shape already carries the measured ~$1 per idle firing.
 
 ### It must not become a reason to run longer
 
@@ -1314,7 +1316,7 @@ figure believing it was counted.**
 
 | Row | Where it comes from | Kind |
 |---|---|---|
-| Wall clock | `date -u` at `queue-run.md` STEP 0, and again at wrap-up | **Measured** |
+| Wall clock | `date -u` at `queue-run.md` STEP 0, and again at wrap-up. **From the self-check onward** — session boot, `CLAUDE.md` loading and probes 1–2 are before the stamp and are not in it, so this under-reports the firing by that much and the block must not be read as "firing to wrap-up" | **Measured** |
 | Per subagent — duration, tokens, tool calls | each agent's own completion notification | **Measured** |
 | Gate durations | `date` either side of a command you already run | **Measured** |
 | This session's output and cache-read tokens | `get_session`, `session_id` omitted | **Measured**, when the tool answers |
@@ -1339,9 +1341,14 @@ s=$(date +%s); npm run test:unit; echo "test:unit $(( $(date +%s) - s ))s"
 
 **The full block goes in ONE Linear comment; the PR body gets one line.** A cost record is a fact
 about the *firing*, not about a story, so pasting it onto all three issues in a group is the
-duplication STEP 5 bullet 4 already refuses. Put it on the **first issue of the group** — the one
-whose `gitBranchName` the branch took — and give the others the one-line summary plus a pointer to
-it.
+duplication STEP 5 bullet 4 already refuses. Put it on the **first issue of the group** and give
+the others the one-line summary plus a pointer to it.
+
+**On a mixed exit — one story merged, another parked — it goes on the first issue that has a
+comment being written at all**, and the other issues' comments carry the pointer. Otherwise the
+rule collides with itself: STEP 5 bullet 4 writes only on issues that *move*, a parked issue does
+not move, and a group whose first issue is the parked one would have two homes for a block there
+is only ever one of.
 
 Both shapes below use this file's standing example ids, `PD-201` and `PD-207` — **the figures are
 illustrative and none of them is a default.** A row you cannot fill says `not captured`.

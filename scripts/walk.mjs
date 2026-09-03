@@ -1743,28 +1743,45 @@ const DEAD_INVITE_TOKEN = 'deadbeef'.repeat(4)
  * takes a `kind` rather than being written twice — a second copy is how the
  * two drift, and the property being asserted is a property of the *pattern*.
  *
- * `liveMarker` is the string that appears only once a preview has actually
- * loaded. For a ride that is the organizer line; for a club it is the claim
- * control itself, because `ClubPreviewScreen` draws no fixed string of its own
- * — and it is the better marker of the two anyway, since a Join control
- * offered to a stranger is worse than a leaked name.
+ * `dataMarker` is text that appears only once a preview has actually loaded —
+ * **the leaked DATA, never the claim control**, so the assertion detects a
+ * preview rendered without its action slot as well as one rendered with it.
+ * Both kinds end on the crew/member count, which `RidePreviewCard` and
+ * `ClubPreviewScreen` each draw unconditionally; the first alternative in each
+ * is the kind's own most-obviously-private line.
+ *
+ * **The two copy constants below are what the waits watch for, and waiting for
+ * the skeleton to GO instead is a no-op**: `RouteGuard`
+ * replaces `children` on boot, so on a cold `goto` the guard splash is alone in
+ * the DOM and the landing screen has not mounted at all — a predicate of the
+ * form "the skeleton is absent" is true on its first evaluation and the wait
+ * returns before anything under test has settled.
  */
 const INVITE_LANDINGS = [
   {
     kind: 'ride',
     path: '/rides/join',
     rpc: '/rpc/ride_invite_link_preview',
-    liveMarker: /is organizing/i,
+    dataMarker: /is organizing|\b\d+ riders?\b/i,
     claim: /Join this ride/i,
+    // `SignedOutInvite`'s SECOND line, not its heading. The heading
+    // "You have been invited" is a prefix of the live preview's "You have been
+    // invited to a ride", so anchoring there would pass on a leaked preview.
+    signedOut: /Sign in or create an account/i,
   },
   {
     kind: 'club',
     path: '/clubs/join',
     rpc: '/rpc/club_invite_link_preview',
-    liveMarker: /Join club/i,
+    dataMarker: /Private club|\b\d+ riders?\b/i,
     claim: /Join club/i,
+    signedOut: /Sign in or create an account/i,
   },
 ]
+
+/** The terminal states the waits below watch for — see the note above. */
+const DEAD_LINK_COPY = 'This link has expired'
+const SIGNED_OUT_COPY = 'Sign in or create an account'
 
 /**
  * The invite landing routes — the only screens a stranger can open — PD-358.
@@ -1815,7 +1832,7 @@ const INVITE_LANDINGS = [
  * by a tap and by nothing else, and a claim is a write — so the Join control is
  * asserted *absent* on a dead link and is never pressed on a live one.
  */
-async function checkInviteLanding({ kind, path, rpc, liveMarker, claim }) {
+async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOut }) {
   console.log(`\nthe ${kind} invite landing route (${path}):`)
   let bad = 0
   let ran = 0
@@ -1840,9 +1857,18 @@ async function checkInviteLanding({ kind, path, rpc, liveMarker, claim }) {
   })
 
   await anonPage.goto(target, { waitUntil: 'networkidle' }).catch(() => {})
-  // The token resolves in a mount effect and `useSignedIn` settles from the
-  // session read, so the first paint is the skeleton on a correct build too.
-  await anonPage.waitForTimeout(1500)
+  // **A terminal state, never the skeleton's absence** — see the note on
+  // INVITE_LANDINGS for why the obvious predicate returns before the screen has
+  // mounted at all. Every state this half can legitimately end in is listed,
+  // plus the two it must NOT reach, so a wrong build is read rather than
+  // waited out.
+  await anonPage
+    .waitForFunction(
+      (sources) => sources.some((x) => new RegExp(x, 'i').test(document.body.innerText)),
+      [SIGNED_OUT_COPY, DEAD_LINK_COPY, dataMarker.source],
+      { timeout: 20_000 }
+    )
+    .catch(() => {})
 
   const anonPath = new URL(anonPage.url()).pathname
   const anonText = await anonPage.evaluate(() => document.body.innerText).catch(() => '')
@@ -1853,12 +1879,12 @@ async function checkInviteLanding({ kind, path, rpc, liveMarker, claim }) {
     `landed on ${anonPath}`
   )
   report(
-    /You have been invited/i.test(anonText),
+    signedOut.test(anonText),
     'signed out: the generic invite renders',
     `body was ${JSON.stringify(anonText.slice(0, 120))}`
   )
   report(
-    !/This link has expired/i.test(anonText),
+    !new RegExp(DEAD_LINK_COPY, 'i').test(anonText),
     'signed out: a dead token is NOT reported as dead',
     'the screen is an oracle — a stranger can tell a live token from a dead one'
   )
@@ -1868,9 +1894,11 @@ async function checkInviteLanding({ kind, path, rpc, liveMarker, claim }) {
     `${anonPreviewCalls} request(s) to ${rpc}`
   )
   // Trivially true for a dead token — see the header. Kept because it is the
-  // assertion that fails if `SignedOutInvite` ever starts drawing a preview.
+  // assertion that fails if `SignedOutInvite` ever starts drawing a preview,
+  // and it reads the DATA rather than the claim control, so a preview drawn
+  // without its action slot fails it too.
   report(
-    !liveMarker.test(anonText),
+    !dataMarker.test(anonText),
     `signed out: no ${kind} data on screen`,
     `${kind} data is on screen with no session`
   )
@@ -1885,13 +1913,26 @@ async function checkInviteLanding({ kind, path, rpc, liveMarker, claim }) {
   page.on('request', countPreview)
 
   await page.goto(target, { waitUntil: 'networkidle' }).catch(() => {})
-  // Wait for the skeleton to GO rather than for a fixed guess at how long a
-  // round trip to eu-west-1 takes — the same reasoning as `refusedAttempt`'s
-  // wait, and a fixed sleep here would redden a correct build on a slow link.
+  // **A terminal state, never the skeleton's absence.** The obvious predicate
+  // here was `!document.querySelector('[aria-label="Loading invite"]')`, and it
+  // is a no-op: `RouteGuard` replaces `children` on boot, so on a cold `goto`
+  // the guard splash is alone in the DOM, the landing screen has not mounted,
+  // and the skeleton is absent on the FIRST evaluation. That wait returned
+  // immediately and left `networkidle` doing all the work by accident. Waiting
+  // on the states this half can actually end in — the dead-link message, an
+  // ErrorState retry, or the claim control — is the same reasoning as
+  // `refusedAttempt`'s wait, and a fixed sleep would redden a correct build on
+  // a slow link.
   await page
-    .waitForFunction(() => !document.querySelector('[aria-label="Loading invite"]'), null, {
-      timeout: 20_000,
-    })
+    .waitForFunction(
+      (sources) =>
+        sources.some((x) => new RegExp(x, 'i').test(document.body.innerText)) ||
+        [...document.querySelectorAll('[role="alert"]')].some((el) =>
+          /try again/i.test(el.textContent ?? '')
+        ),
+      [DEAD_LINK_COPY, claim.source],
+      { timeout: 20_000 }
+    )
     .catch(() => {})
   page.off('request', countPreview)
 
@@ -1915,7 +1956,7 @@ async function checkInviteLanding({ kind, path, rpc, liveMarker, claim }) {
     'ErrorState with a retry is on screen — the RPC name or its arguments are wrong'
   )
   report(
-    /This link has expired/i.test(text),
+    new RegExp(DEAD_LINK_COPY, 'i').test(text),
     'signed in: the dead-link message renders',
     `body was ${JSON.stringify(text.slice(0, 120))}`
   )
