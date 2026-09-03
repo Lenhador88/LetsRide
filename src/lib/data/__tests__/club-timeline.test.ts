@@ -2,8 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { CLUB_THREADS_PAGE_SIZE } from '@/lib/data/club-threads'
 import { FEED_PAGE_SIZE } from '@/lib/data/postcards'
 import {
+  absorbClubReplyWindow,
+  absorbClubTimelineWindow,
   boundedHorizon,
+  chunkIds,
   collapseToNewestPerThread,
+  pendingClubTimelineSources,
+  resolveClubTimelineAdvance,
+  resolveClubTimelineTailState,
   CLUB_TIMELINE_JOINS,
   CLUB_TIMELINE_LIMIT,
   CLUB_TIMELINE_RIDES,
@@ -12,6 +18,7 @@ import {
   type ClubJoin,
   type ClubMessageRow,
   type ClubThreadReply,
+  type ClubTimeline,
   type ClubTimelineSources,
 } from '@/lib/data/club-timeline'
 import type { ClubThreadListItem, Postcard, PublicProfile, RideListItem } from '@/types'
@@ -393,18 +400,75 @@ describe('mergeClubTimeline', () => {
     expect(event?.kind === 'thread' && event.activity?.messages).toBe(2)
   })
 
-  it('leaves a REPLY row\'s floor flag alone, where it is earned', () => {
-    // An old thread's earlier messages can genuinely fall outside the window,
-    // so a reply row's count is a floor and the row says `12+`.
+  // PD-375, `design.md` §D5, task 1.6 — exact-versus-floor moved out of the
+  // accumulation and into this function, derived from the reply source's
+  // ACCUMULATED horizon and the thread's own creation date rather than
+  // latched at collapse time. The old version of this test set
+  // `replies.horizon: null` and still expected a floor, which the new rule
+  // makes definitionally wrong: a `null` reply horizon means the reply source
+  // has read to the club's beginning, so nothing of any thread can be outside
+  // it and every count IS exact. These four replace it.
+  it('renders a REPLY row as a floor when its thread\'s creation date is unknown', () => {
+    // `threads.rows` is empty (the default), so this merge has no creation
+    // date for `t1` — "known" is the word `design.md` §D5 uses, and this is
+    // the unknown case, which must default to the safe answer.
     const merged = eventsOf(
       sources({
-        replies: { rows: [reply('m1', '2026-08-04T10:00:00Z', 't1')], horizon: null },
+        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: '2026-08-15T10:00:00Z' },
         activity: { t1: { messages: 12, participants: [], partial: true } },
       })
     )
 
     const event = merged.find((e) => e.kind === 'reply')
     expect(event?.kind === 'reply' && event.activity?.partial).toBe(true)
+  })
+
+  it('renders a floor for a reply whose thread predates the reply horizon, even though the creation date is known', () => {
+    const merged = eventsOf(
+      sources({
+        threads: { rows: [thread('t1', '2026-08-01T10:00:00Z')], horizon: null },
+        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: '2026-08-15T10:00:00Z' },
+        activity: { t1: { messages: 12, participants: [], partial: true } },
+      })
+    )
+
+    const event = merged.find((e) => e.kind === 'reply')
+    expect(event?.kind === 'reply' && event.activity?.partial).toBe(true)
+  })
+
+  it('renders exact for a reply whose thread is known to have been created at or after the reply horizon', () => {
+    const merged = eventsOf(
+      sources({
+        threads: { rows: [thread('t1', '2026-08-20T10:00:00Z')], horizon: null },
+        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: '2026-08-15T10:00:00Z' },
+        activity: { t1: { messages: 12, participants: [], partial: true } },
+      })
+    )
+
+    const event = merged.find((e) => e.kind === 'reply')
+    expect(event?.kind === 'reply' && event.activity?.partial).toBe(false)
+  })
+
+  it('improves a floor to exact once the reply source\'s accumulated horizon clears — the same thread, before and after', () => {
+    const stillPaging = eventsOf(
+      sources({
+        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: '2026-08-15T10:00:00Z' },
+        activity: { t1: { messages: 12, participants: [], partial: true } },
+      })
+    )
+    const reachedFounding = eventsOf(
+      sources({
+        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: null },
+        activity: { t1: { messages: 12, participants: [], partial: true } },
+      })
+    )
+
+    const floorEvent = stillPaging.find((e) => e.kind === 'reply')
+    expect(floorEvent?.kind === 'reply' && floorEvent.activity?.partial).toBe(true)
+
+    const exactEvent = reachedFounding.find((e) => e.kind === 'reply')
+    expect(exactEvent?.kind === 'reply' && exactEvent.activity?.partial).toBe(false)
+    expect(exactEvent?.kind === 'reply' && exactEvent.activity?.messages).toBe(12)
   })
 
   it('is empty for a club with nothing in it', () => {
@@ -726,5 +790,341 @@ describe('collapseToNewestPerThread', () => {
     const orphan = { ...message('m1', '2026-08-04T12:00:00Z', 't1'), thread: null }
 
     expect(collapseToNewestPerThread([orphan], 10).rows).toEqual([])
+  })
+})
+
+/**
+ * `absorbClubTimelineWindow` — PD-375, `design.md` §D0. The one function the
+ * whole paging model rests on: it decides which rows a fresh window replaces,
+ * which it may not touch, and where the accumulated horizon lands. A stream
+ * assembled from windows with a hole in it is still a well-ordered array of
+ * valid events, so this is exactly the class of defect `tsc`, ESLint and
+ * `next build` cannot see — the same reason `club-timeline.test.ts` exists at
+ * all.
+ *
+ * **Verified both ways per CLAUDE.md §Working Principles**: replacing the
+ * absorb with plain concatenation fails 'drops a row missing from the
+ * covered interval' (the stale row would survive instead), and treating the
+ * exclusive postcard bound as inclusive fails the boundary-retention case
+ * below (the accumulated row at the boundary instant would be dropped instead
+ * of kept).
+ */
+describe('absorbClubTimelineWindow', () => {
+  const row = (id: string, at: string) => ({ id, at })
+  const at = (row: { at: string }) => row.at
+  const rowId = (row: { id: string }) => row.id
+
+  function window(
+    rows: { id: string; at: string }[],
+    over: { horizon?: string | null; until?: string | null; untilInclusive?: boolean } = {}
+  ) {
+    return {
+      rows,
+      horizon: over.horizon ?? null,
+      until: over.until ?? null,
+      untilInclusive: over.untilInclusive ?? true,
+    }
+  }
+
+  it('extends coverage with a deeper window and supplies the shared boundary row exactly once', () => {
+    const accumulated = { rows: [row('a', '2026-08-10')], horizon: '2026-08-10' }
+    const deeper = window(
+      [row('a', '2026-08-10'), row('b', '2026-08-05'), row('c', '2026-08-01')],
+      { horizon: '2026-08-01', until: '2026-08-10', untilInclusive: true }
+    )
+
+    const { source, removed } = absorbClubTimelineWindow(accumulated, deeper, at, rowId)
+
+    expect(source.rows.map(rowId).sort()).toEqual(['a', 'b', 'c'])
+    expect(source.horizon).toBe('2026-08-01')
+    expect(removed).toBe(false)
+  })
+
+  it('a window that came back short of its own bound imposes no horizon — null wins over the accumulated value', () => {
+    const accumulated = { rows: [row('a', '2026-08-10')], horizon: '2026-08-10' }
+    const shortDeeper = window([row('b', '2026-08-05')], {
+      horizon: null,
+      until: '2026-08-10',
+      untilInclusive: true,
+    })
+
+    const { source } = absorbClubTimelineWindow(accumulated, shortDeeper, at, rowId)
+
+    expect(source.horizon).toBe(null)
+  })
+
+  it('a refetched first window whose horizon moved UP keeps the rows beneath it and keeps the deep horizon', () => {
+    // The rider has already paged to 2026-06-01; a new row pushed the first
+    // window's own horizon up to 2026-08-10. There must be no hole between
+    // the two.
+    const accumulated = { rows: [row('deep', '2026-06-01')], horizon: '2026-06-01' }
+    const refetchedFirst = window([row('new', '2026-08-20')], {
+      horizon: '2026-08-10',
+      until: null,
+      untilInclusive: true,
+    })
+
+    const { source, removed } = absorbClubTimelineWindow(accumulated, refetchedFirst, at, rowId)
+
+    expect(source.rows.map(rowId).sort()).toEqual(['deep', 'new'])
+    expect(source.horizon).toBe('2026-06-01')
+    expect(removed).toBe(false)
+  })
+
+  it('drops an accumulated row missing from the covered interval and reports it as removed', () => {
+    const accumulated = {
+      rows: [row('a', '2026-08-10'), row('b', '2026-08-05')],
+      horizon: '2026-08-01',
+    }
+    // The window's own interval is [2026-08-05, +inf) — `b` sits exactly on
+    // the floor and this window did not return it, so it was removed (a
+    // block, a hide, a deletion) rather than merely un-fetched.
+    const refetchedFirst = window([row('a', '2026-08-10')], {
+      horizon: '2026-08-05',
+      until: null,
+      untilInclusive: true,
+    })
+
+    const { source, removed } = absorbClubTimelineWindow(accumulated, refetchedFirst, at, rowId)
+
+    expect(source.rows.map(rowId)).toEqual(['a'])
+    expect(removed).toBe(true)
+  })
+
+  it('keeps an accumulated row OUTSIDE the interval untouched, and does not report it as removed', () => {
+    const accumulated = { rows: [row('old', '2026-06-01'), row('a', '2026-08-10')], horizon: '2026-06-01' }
+    const refetchedFirst = window([row('a', '2026-08-10')], {
+      horizon: '2026-08-10',
+      until: null,
+      untilInclusive: true,
+    })
+
+    const { source, removed } = absorbClubTimelineWindow(accumulated, refetchedFirst, at, rowId)
+
+    expect(source.rows.map(rowId).sort()).toEqual(['a', 'old'])
+    expect(removed).toBe(false)
+  })
+
+  it('an EXCLUSIVE until retains the accumulated row at the boundary instant; an INCLUSIVE one replaces it', () => {
+    const accumulated = { rows: [row('boundary', '2026-08-10')], horizon: '2026-08-01' }
+
+    const exclusive = window([row('older', '2026-08-05')], {
+      horizon: '2026-08-05',
+      until: '2026-08-10',
+      untilInclusive: false,
+    })
+    const { source: keptBoundary } = absorbClubTimelineWindow(accumulated, exclusive, at, rowId)
+    expect(keptBoundary.rows.map(rowId).sort()).toEqual(['boundary', 'older'])
+
+    const inclusive = window([row('older', '2026-08-05')], {
+      horizon: '2026-08-05',
+      until: '2026-08-10',
+      untilInclusive: true,
+    })
+    const { source: replacedBoundary, removed } = absorbClubTimelineWindow(accumulated, inclusive, at, rowId)
+    expect(replacedBoundary.rows.map(rowId)).toEqual(['older'])
+    expect(removed).toBe(true)
+  })
+})
+
+/**
+ * `absorbClubReplyWindow` — `design.md` §D5. Needs its own absorb because it
+ * carries `activity` alongside `rows`: a thread's message count is the SUM of
+ * its per-window counts, derived from the whole window list rather than
+ * accumulated in place, which is what keeps a refetched first window from
+ * double-counting.
+ *
+ * **Verified both ways**: taking the newest window's count instead of summing
+ * fails 'sums a thread's message count across two windows' — it would report
+ * the shallower window's count alone.
+ */
+describe('absorbClubReplyWindow', () => {
+  function replyWindow(
+    rows: ClubThreadReply[],
+    activity: Record<string, { messages: number; participants: PublicProfile[]; partial: boolean }>,
+    over: { horizon?: string | null; until?: string | null } = {}
+  ) {
+    return {
+      rows,
+      activity,
+      horizon: over.horizon ?? null,
+      until: over.until ?? null,
+      untilInclusive: true,
+    }
+  }
+
+  it('sums a thread\'s message count across two windows', () => {
+    const shallow = replyWindow([reply('m2', '2026-08-10T00:00:00Z', 't1')], {
+      t1: { messages: 5, participants: [], partial: false },
+    })
+    const deep = replyWindow(
+      [reply('m1', '2026-08-01T00:00:00Z', 't1')],
+      { t1: { messages: 3, participants: [], partial: false } },
+      { horizon: '2026-08-01T00:00:00Z', until: '2026-08-05T00:00:00Z' }
+    )
+
+    const result = absorbClubReplyWindow([shallow, deep])
+
+    expect(result.activity.t1.messages).toBe(8)
+  })
+
+  it('unions participants in shallowest-window-first order', () => {
+    const bram = { id: 'bram', username: 'bram' } as PublicProfile
+    const ana = { id: 'ana', username: 'ana' } as PublicProfile
+    const shallow = replyWindow([reply('m2', '2026-08-10T00:00:00Z', 't1')], {
+      t1: { messages: 1, participants: [bram], partial: false },
+    })
+    const deep = replyWindow(
+      [reply('m1', '2026-08-01T00:00:00Z', 't1')],
+      { t1: { messages: 1, participants: [ana], partial: false } },
+      { horizon: '2026-08-01T00:00:00Z', until: '2026-08-05T00:00:00Z' }
+    )
+
+    const result = absorbClubReplyWindow([shallow, deep])
+
+    expect(result.activity.t1.participants.map((p) => p.id)).toEqual(['bram', 'ana'])
+  })
+
+  it('does not double a count when the first window is refetched — recomputed from the window list, not accumulated in place', () => {
+    const before = replyWindow([reply('m2', '2026-08-10T00:00:00Z', 't1')], {
+      t1: { messages: 5, participants: [], partial: false },
+    })
+    // The refetch REPLACES windows[0] entirely, matching how a shared
+    // `useQuery` key's latest data is used every render.
+    const after = replyWindow([reply('m2', '2026-08-10T00:00:00Z', 't1'), reply('m3', '2026-08-11T00:00:00Z', 't1')], {
+      t1: { messages: 6, participants: [], partial: false },
+    })
+
+    expect(absorbClubReplyWindow([before]).activity.t1.messages).toBe(5)
+    expect(absorbClubReplyWindow([after]).activity.t1.messages).toBe(6)
+  })
+
+  it('dedups a boundary message both windows independently collapsed to', () => {
+    const shallow = replyWindow([reply('boundary', '2026-08-05T00:00:00Z', 't1')], {
+      t1: { messages: 1, participants: [], partial: false },
+    }, { horizon: '2026-08-05T00:00:00Z', until: null })
+    const deep = replyWindow([reply('boundary', '2026-08-05T00:00:00Z', 't1')], {
+      t1: { messages: 1, participants: [], partial: false },
+    }, { horizon: '2026-08-01T00:00:00Z', until: '2026-08-05T00:00:00Z' })
+
+    const result = absorbClubReplyWindow([shallow, deep])
+
+    expect(result.rows.filter((row) => row.id === 'boundary')).toHaveLength(1)
+  })
+})
+
+/**
+ * `pendingClubTimelineSources` — `design.md` §D0's per-source guard. A stream-
+ * wide verdict cannot decide which reads to issue, because a source with a
+ * `null` horizon has read to the club's beginning, and asking it for `until:
+ * null` re-reads page one rather than reaching older rows.
+ */
+describe('pendingClubTimelineSources', () => {
+  it('excludes a source whose accumulated horizon is null', () => {
+    expect(pendingClubTimelineSources(sources())).not.toContain('rides')
+  })
+
+  it('includes a source that is still saturated', () => {
+    const pending = pendingClubTimelineSources(
+      sources({
+        rides: { rows: [ride('r1', '2026-08-01T00:00:00Z')], horizon: '2026-08-01T00:00:00Z' },
+      })
+    )
+    expect(pending).toContain('rides')
+  })
+
+  it('is empty when every source has gone short — the stream is complete and no step can fetch', () => {
+    expect(pendingClubTimelineSources(sources())).toEqual([])
+  })
+
+  it('names only the one source still saturated when four of five have gone short', () => {
+    const pending = pendingClubTimelineSources(
+      sources({
+        joins: { rows: [join('u1', '2026-08-01T00:00:00Z')], horizon: '2026-08-01T00:00:00Z' },
+      })
+    )
+    expect(pending).toEqual(['joins'])
+  })
+})
+
+/**
+ * `resolveClubTimelineAdvance` — decides the TAIL, never which reads to
+ * issue. `design.md` §D0 is explicit that conflating the two is what produces
+ * the `until = null` defect: a stream-wide verdict cannot know which of the
+ * five sources are still saturated.
+ */
+describe('resolveClubTimelineAdvance', () => {
+  const timelineOf = (count: number, complete: boolean): ClubTimeline => ({
+    events: Array.from({ length: count }, (_, i) => ({
+      kind: 'join',
+      at: `${i}`,
+      key: `join:${i}`,
+      member: join(`u${i}`, `${i}`),
+    })),
+    complete,
+  })
+
+  it('is complete when the stream is complete, regardless of the other arguments', () => {
+    expect(resolveClubTimelineAdvance(timelineOf(0, true), 20, 10, 10)).toBe('complete')
+  })
+
+  it('raises the cap without fetching when the CAP is what cut', () => {
+    expect(resolveClubTimelineAdvance(timelineOf(20, false), 20, 0, 10)).toBe('draw-more')
+  })
+
+  it('asks for a window when the HORIZON is what cut, below the ceiling', () => {
+    expect(resolveClubTimelineAdvance(timelineOf(5, false), 20, 0, 10)).toBe('fetch-window')
+  })
+
+  it('is capped once the ceiling is already spent', () => {
+    expect(resolveClubTimelineAdvance(timelineOf(5, false), 20, 10, 10)).toBe('capped')
+  })
+})
+
+/**
+ * `resolveClubTimelineTailState` — `design.md` §D2's four-row table, as a
+ * pure decision so the priority between its rows (complete beats offline
+ * beats failed/capped beats extendable) is one thing to read rather than
+ * four `if`s assembled differently at each call site.
+ */
+describe('resolveClubTimelineTailState', () => {
+  it('is complete when the stream is complete, regardless of connectivity or failure', () => {
+    expect(resolveClubTimelineTailState(true, false, true, 'capped')).toBe('complete')
+  })
+
+  it('is offline when the device has no connectivity, even if a fetch also failed', () => {
+    expect(resolveClubTimelineTailState(false, false, true, 'fetch-window')).toBe('offline')
+  })
+
+  it('is cannot-get-more on a failure while online', () => {
+    expect(resolveClubTimelineTailState(false, true, true, 'fetch-window')).toBe('cannot-get-more')
+  })
+
+  it('is cannot-get-more once the ceiling is reached, even with no failure', () => {
+    expect(resolveClubTimelineTailState(false, true, false, 'capped')).toBe('cannot-get-more')
+  })
+
+  it('is more-coming while online, unfailed and under the ceiling', () => {
+    expect(resolveClubTimelineTailState(false, true, false, 'fetch-window')).toBe('more-coming')
+    expect(resolveClubTimelineTailState(false, true, false, 'draw-more')).toBe('more-coming')
+  })
+})
+
+/**
+ * `chunkIds` — the bound that keeps a decoration read's `.in()` list from
+ * growing with paging depth (`design.md` §D5, task 3.5/3.6).
+ */
+describe('chunkIds', () => {
+  it('splits a list longer than the bound into several chunks, in order', () => {
+    const ids = Array.from({ length: 5 }, (_, i) => `id${i}`)
+    expect(chunkIds(ids, 2)).toEqual([['id0', 'id1'], ['id2', 'id3'], ['id4']])
+  })
+
+  it('returns exactly one chunk for a list at or under the bound', () => {
+    expect(chunkIds(['a', 'b'], 5)).toEqual([['a', 'b']])
+  })
+
+  it('returns no chunks for an empty list', () => {
+    expect(chunkIds([], 5)).toEqual([])
   })
 })

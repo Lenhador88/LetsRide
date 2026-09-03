@@ -75,16 +75,20 @@ export type ClubThreadReply = {
 }
 
 /**
- * How many entries the club timeline draws.
+ * How many entries one PAGE of the club timeline draws.
  *
- * A bound rather than a page, and there is deliberately no `load more`: the
- * timeline is a merge of four independently-bounded reads, so paging it would
- * mean four cursors advancing at four different rates — see `mergeClubTimeline`
- * for why the tail of such a merge is incoherent. Twenty is enough to say what
- * a club has been doing; the full lists are one tap away from the heading, the
- * action row and the foot.
+ * **This used to be a wall, and PD-375 is what reverses that.** The paragraph
+ * this replaces argued that paging was impossible because the timeline is a
+ * merge of five independently-bounded reads advancing at five different
+ * rates — true of five independent CURSORS, and the reason that design is
+ * rejected in `design.md` §D0. The model actually shipped pages by **lowering
+ * the horizon** instead: each source is re-asked for the window below the
+ * point IT stopped at, the windows accumulate (`absorbClubTimelineWindow`),
+ * and `mergeClubTimeline` below needs no change at all — it already cuts at
+ * the newest horizon, and paging just moves that horizon down. Twenty is a
+ * page size now, not a ceiling; `CLUB_TIMELINE_MAX_WINDOWS` is the ceiling.
  *
- * ## The horizon is live for one source and inert for the other four
+ * ## The horizon is live for one source and inert for the other four — on the FIRST window
  *
  * The four sources whose rows ARE their window — rides, postcards, threads,
  * joins — each read at least as many rows as this number, and while that holds
@@ -97,6 +101,11 @@ export type ClubThreadReply = {
  * Threads list and `FEED_PAGE_SIZE` to the feed — and can be lowered by someone
  * who never opens this file.
  *
+ * **Scoped to the first window on purpose.** Once a rider has paged, every
+ * source's horizon is live by construction — that is the entire point of
+ * paging — so this inertness argument, and the test that pins it, describe
+ * only the read a screen issues before any extension has happened.
+ *
  * **`CLUB_TIMELINE_REPLIES` is deliberately NOT in that argument**, and it is
  * the exception that makes the horizon real rather than ceremonial: that read
  * collapses its window to one row per thread, so sixty messages can return one
@@ -107,6 +116,54 @@ export type ClubThreadReply = {
  * than impossible; when it happens the foot says so.
  */
 export const CLUB_TIMELINE_LIMIT = 20
+
+/**
+ * How many windows one VISIT may fetch — `design.md` §D7.
+ *
+ * Bounds two things: client memory (every accumulated row is held in JS,
+ * postcards with their signed URLs among them) and the total reads one screen
+ * can issue. On the constants in this file that is roughly 600 joins, 300
+ * rides, 300 postcards, 200 threads and 2,000 messages deep — a wall at
+ * several hundred entries rather than at twenty. At the cap the tail becomes
+ * the *cannot get more* state, the same honest foot this screen already draws.
+ *
+ * **Not a URL-length argument.** An earlier draft justified this by an
+ * unmeasured gateway limit on the decoration reads' `.in()` list; that read is
+ * chunked instead (`CLUB_TIMELINE_SUBJECT_CHUNK`), so this ceiling rests only
+ * on memory and read count, both of which are this app's own decisions.
+ */
+export const CLUB_TIMELINE_MAX_WINDOWS = 10
+
+/**
+ * How many windows the PD-366 return anchor may fetch hunting for its row —
+ * `design.md` §D6. Spent FROM `CLUB_TIMELINE_MAX_WINDOWS`, never added to it:
+ * this hunt runs unasked, on load, so it must leave most of the mount's
+ * allowance for the rider's own scrolling rather than doubling the worst case.
+ */
+export const CLUB_TIMELINE_ANCHOR_WINDOWS = 3
+
+/**
+ * The bound on one decoration request's subject-id list — `attachClubWaveState`
+ * and `attachClubIntroductions`, `design.md` §D5.
+ *
+ * A decoration read must not gate the rows it decorates, so its failure is
+ * silent by design; an id list that grows without bound eventually crosses
+ * whatever URI limit sits in front of PostgREST and fails the same way. Silent
+ * plus unbounded is a decoration that quietly stops appearing at depth — the
+ * introduction door, specifically, which is the hole PD-375 exists to close.
+ * So both accessors chunk their `.in()` at this bound and merge the maps,
+ * rather than this file leaning on an unmeasured limit to justify a paging
+ * ceiling — see `CLUB_TIMELINE_MAX_WINDOWS`.
+ */
+export const CLUB_TIMELINE_SUBJECT_CHUNK = 50
+
+/** Splits a list into groups of at most `size`, in order — the one thing
+ *  `chunkIds` needs to do and the one thing worth testing about it directly. */
+export function chunkIds(ids: string[], size = CLUB_TIMELINE_SUBJECT_CHUNK): string[][] {
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size))
+  return chunks
+}
 
 /**
  * How many joins the timeline reads.
@@ -244,6 +301,156 @@ export function boundedHorizon<T>(rows: T[], bound: number, at: (row: T) => stri
 }
 
 /**
+ * One READ's contribution to a paged source — `ClubTimelineSource<T>` plus the
+ * interval it was asked to cover. `design.md` §D0 is the model this is built
+ * on: paging lowers the horizon rather than advancing five cursors, so the
+ * unit that accumulates is a WINDOW, and an accumulated source is built by
+ * folding windows together with `absorbClubTimelineWindow`.
+ *
+ * **The window declares its own interval for the reason `ClubTimelineSource`
+ * declares its own horizon**: only the read knows what bound it actually used.
+ */
+export type ClubTimelineWindow<T> = ClubTimelineSource<T> & {
+  /** The newest instant this window was asked for. `null` means *now* — the
+   *  first window of a source, which reaches the top of the stream. A source
+   *  whose ACCUMULATED horizon is `null` is finished; asking it again would
+   *  send `until = null` and silently re-fetch page one for ever rather than
+   *  reaching older rows — see `pendingClubTimelineSources`. */
+  until: string | null
+  /** Whether `until` itself is inside the window — most reads express `<=`
+   *  and the club feed cannot (`design.md` §D3), so this is declared rather
+   *  than assumed to always be `<=`. */
+  untilInclusive: boolean
+}
+
+/**
+ * Folds one fresh window into an accumulated source — the one place the
+ * accumulated source's invariant (`[horizon, now]` covered CONTIGUOUSLY) can
+ * break, so it is pure and carries its own tests. `design.md` §D0 has the
+ * proof; the rule in one paragraph:
+ *
+ * Inside the window's own covered interval — `[window.horizon ?? -∞,
+ * window.until ?? +∞]`, the top edge open when `untilInclusive` is false —
+ * the window is AUTHORITATIVE: accumulated rows there that it did not return
+ * are dropped, and the window's own rows are what remain. Outside that
+ * interval the accumulated rows are untouched. The accumulated horizon is the
+ * OLDER of the two (the smaller ISO-8601 string), with `null` — "reaches the
+ * club's beginning" — winning over any value.
+ *
+ * Both paging directions are this one rule: a DEEPER window's interval abuts
+ * the accumulated one exactly, so the union stays contiguous and the horizon
+ * moves down; a REFETCH of the first window (`until: null`) can only ever
+ * cover `[h_new, +∞)`, which sits ABOVE whatever the rider has already paged
+ * past, so step 3 keeps those rows untouched and step 4 keeps the deep
+ * horizon — there is no hole underneath a first window whose own horizon
+ * moved up.
+ *
+ * `removed` is true when step 2 actually dropped a row the window did not
+ * re-supply — `design.md` §D4 is what reads it, and why it alone is not
+ * sufficient to decide a removal (it can only see the interval THIS window
+ * covers).
+ */
+export function absorbClubTimelineWindow<T>(
+  accumulated: ClubTimelineSource<T>,
+  window: ClubTimelineWindow<T>,
+  at: (row: T) => string,
+  id: (row: T) => string
+): { source: ClubTimelineSource<T>; removed: boolean } {
+  const insideWindow = (atValue: string): boolean => {
+    const aboveFloor = window.horizon === null || atValue >= window.horizon
+    const belowCeiling =
+      window.until === null ||
+      (window.untilInclusive ? atValue <= window.until : atValue < window.until)
+    return aboveFloor && belowCeiling
+  }
+
+  const windowIds = new Set(window.rows.map(id))
+  let removed = false
+  const outside = accumulated.rows.filter((row) => {
+    if (!insideWindow(at(row))) return true
+    if (!windowIds.has(id(row))) removed = true
+    return false
+  })
+
+  const horizon =
+    accumulated.horizon === null || window.horizon === null
+      ? null
+      : accumulated.horizon < window.horizon
+        ? accumulated.horizon
+        : window.horizon
+
+  return { source: { rows: [...outside, ...window.rows], horizon }, removed }
+}
+
+/** Which of the five sources still have anything below them — `design.md`
+ *  §D0's per-source guard. A source whose accumulated horizon is `null` has
+ *  read to the club's beginning: it has no deeper window, and asking for one
+ *  anyway would send `until = null`, which means *now* rather than "older",
+ *  and silently re-read page one for ever. Empty means the whole stream is
+ *  complete and no step can fetch — this is what makes a step's cost fall as
+ *  the rider descends, since most sources go short well before the join
+ *  source does. */
+export type ClubTimelineSourceKey = 'rides' | 'postcards' | 'threads' | 'joins' | 'replies'
+
+export function pendingClubTimelineSources(
+  accumulated: ClubTimelineSources
+): ClubTimelineSourceKey[] {
+  const keys: ClubTimelineSourceKey[] = ['rides', 'postcards', 'threads', 'joins', 'replies']
+  return keys.filter((key) => accumulated[key].horizon !== null)
+}
+
+/**
+ * What one "more" step SHALL do — raise the display cap first, and fetch only
+ * once the cap is no longer what cuts (`client-render-shell`'s requirement).
+ * This decides the TAIL alone; which READS to issue is `pendingClubTimelineSources`'s
+ * question, and conflating the two is what produces the `until = null` defect
+ * `design.md` §D0 names — a stream-wide verdict cannot decide per-source reads.
+ *
+ * `complete` wins outright. Otherwise: if the merge drew exactly `limit`
+ * entries, the CAP is what cut and raising it costs no read; if it drew fewer,
+ * the HORIZON is what cut and a step must fetch, unless the mount's ceiling is
+ * already spent.
+ */
+export type ClubTimelineAdvance = 'complete' | 'draw-more' | 'fetch-window' | 'capped'
+
+export function resolveClubTimelineAdvance(
+  timeline: ClubTimeline,
+  limit: number,
+  windowsFetched: number,
+  maxWindows: number
+): ClubTimelineAdvance {
+  if (timeline.complete) return 'complete'
+  if (timeline.events.length >= limit) return 'draw-more'
+  return windowsFetched >= maxWindows ? 'capped' : 'fetch-window'
+}
+
+/**
+ * The tail's three-becomes-four states — `design.md` §D2, `client-render-shell`'s
+ * "a screen that grows SHALL define a tail state". Priority matters: `complete`
+ * wins outright, then offline (a paused stream, never a failure), then a
+ * genuine failure or the ceiling (both read as *cannot get more*), and
+ * otherwise the stream is still extendable.
+ *
+ * A pure decision for the reason every other one in this file is: the four
+ * states, their loading/error/offline treatment and which one is drawn when
+ * are exactly the kind of thing a refactor silently gets wrong, and nothing
+ * else in this repo would notice.
+ */
+export type ClubTimelineTailState = 'complete' | 'offline' | 'more-coming' | 'cannot-get-more'
+
+export function resolveClubTimelineTailState(
+  complete: boolean,
+  online: boolean,
+  failed: boolean,
+  advance: ClubTimelineAdvance
+): ClubTimelineTailState {
+  if (complete) return 'complete'
+  if (!online) return 'offline'
+  if (failed || advance === 'capped') return 'cannot-get-more'
+  return 'more-coming'
+}
+
+/**
  * What the screen draws, and whether it is the whole story.
  *
  * `complete` false means the merge dropped something — at the horizon, at the
@@ -313,6 +520,11 @@ export function mergeClubTimeline(
   sources: ClubTimelineSources,
   limit = CLUB_TIMELINE_LIMIT
 ): ClubTimeline {
+  // Every thread this merge has a creation DATE for — from the (possibly
+  // paged) threads source alone, never from a reply — so a reply whose thread
+  // has not itself been fetched this deep falls to the safe default below.
+  const threadCreatedAt = new Map(sources.threads.rows.map((thread) => [thread.id, thread.created_at]))
+
   const events: ClubTimelineEvent[] = [
     ...sources.rides.rows.map(
       (ride): ClubTimelineEvent => ({
@@ -337,15 +549,13 @@ export function mergeClubTimeline(
         key: `thread:${thread.id}`,
         thread,
         unread: sources.unread[thread.id] ?? false,
-        // **`partial` is forced false on a CREATION row, and the reasoning is
-        // the horizon's.** The stream is cut at the newest of the sources'
-        // horizons, and the reply source's is the oldest message it read — so a
-        // thread-creation event that survives the cut was created *after* that
-        // instant, which means every one of its replies is inside the window
-        // and the count is exact. The flag is earned on a REPLY row, where an
-        // old thread's earlier messages can genuinely fall outside; carried
-        // here it renders `2+ replies` on a thread that has exactly two.
-        activity: withExactCount(sources.activity[thread.id]),
+        // `design.md` §D5 — a creation row's own `created_at` IS the date
+        // `resolveThreadCount` compares against the reply horizon, so this is
+        // that rule rather than a special case of it: a creation row that
+        // survives the merge's cut was created after every source's horizon,
+        // the reply source's included, and every one of its replies is inside
+        // the accumulated coverage.
+        activity: resolveThreadCount(sources.activity[thread.id], sources.replies.horizon, thread.created_at),
       })
     ),
     ...sources.joins.rows.map(
@@ -366,7 +576,16 @@ export function mergeClubTimeline(
         // described identically wherever it appears rather than only at the
         // point it was started — which is usually the one below the fold.
         unread: sources.unread[reply.thread_id] ?? false,
-        activity: sources.activity[reply.thread_id] ?? null,
+        // The thread's own creation date, if this merge has it — see
+        // `threadCreatedAt` above. Missing is the safe default: an old
+        // thread's earlier messages can genuinely fall outside the reply
+        // source's coverage, so an unknown creation date reads as a floor
+        // rather than an unearned exact.
+        activity: resolveThreadCount(
+          sources.activity[reply.thread_id],
+          sources.replies.horizon,
+          threadCreatedAt.get(reply.thread_id)
+        ),
       })
     ),
   ]
@@ -419,11 +638,31 @@ export function mergeClubTimeline(
 }
 
 /**
- * A thread's activity with its floor flag cleared — see the call site above,
- * which is the only place clearing it is correct.
+ * The exact-versus-floor rule, generalised — `design.md` §D5, task 1.6.
+ *
+ * **Derived from the reply source's ACCUMULATED coverage, and NOT
+ * accumulated itself.** A flag set true because some window once saturated is
+ * monotonic — it never clears — so a thread whose every message is
+ * demonstrably in hand would keep announcing a floor even after the stream
+ * reached the club's founding, and it would contradict this very rule, which
+ * derives exactness from coverage rather than from window saturation.
+ *
+ * A thread's count is exact when the reply source's accumulated horizon is
+ * `null` (nothing of any thread is outside it) OR when the thread is KNOWN to
+ * have been created at or after that horizon. `withExactCount`'s old
+ * behaviour — force every creation row exact — is the case where the second
+ * clause holds by construction, since a creation row that survives the
+ * merge's own cut was created after every source's horizon including the
+ * reply source's.
  */
-function withExactCount(activity: ClubThreadActivity | undefined): ClubThreadActivity | null {
-  return activity ? { ...activity, partial: false } : null
+function resolveThreadCount(
+  activity: ClubThreadActivity | undefined,
+  repliesHorizon: string | null,
+  threadCreatedAt: string | undefined
+): ClubThreadActivity | null {
+  if (!activity) return null
+  const exact = repliesHorizon === null || (threadCreatedAt !== undefined && threadCreatedAt >= repliesHorizon)
+  return { ...activity, partial: !exact }
 }
 
 /**
@@ -466,24 +705,32 @@ function byNewestThenKey(a: ClubTimelineEvent, b: ClubTimelineEvent): number {
  */
 export async function getClubJoins(
   clubId: string,
-  limit = CLUB_TIMELINE_JOINS
-): Promise<ClubTimelineSource<ClubJoin>> {
+  limit = CLUB_TIMELINE_JOINS,
+  until?: string
+): Promise<ClubTimelineWindow<ClubJoin>> {
   // The guard every club read carries: a non-uuid reaches `.eq('club_id', …)`
   // as `22P02`, PostgREST turns it into a 400 and `unwrapList` throws, which
   // would put a rider on an error boundary offering `Try again` on an address
   // that can never succeed (PD-142). `[]` here rather than `null`, because the
   // page has already resolved the club through `getClub` by the time this runs.
-  if (!clubIdSchema.safeParse(clubId).success) return { rows: [], horizon: null }
+  if (!clubIdSchema.safeParse(clubId).success)
+    return { rows: [], horizon: null, until: until ?? null, untilInclusive: true }
 
   const supabase = await resolveSupabase()
 
+  let query = supabase
+    .from('club_members')
+    .select(`user_id, role, joined_at, ${MEMBER_PROFILE_EMBED}`)
+    .eq('club_id', clubId)
+    .order('joined_at', { ascending: false })
+  // Inclusive — `design.md` §D3 — so a `limit` slicing through a group of
+  // joins sharing one instant cannot lose the ones below the cut; the shared
+  // instant's rows are then re-supplied by this window and dropped from the
+  // accumulated set by `absorbClubTimelineWindow`, never doubled.
+  if (until) query = query.lte('joined_at', until)
+
   const rows = unwrapList(
-    await supabase
-      .from('club_members')
-      .select(`user_id, role, joined_at, ${MEMBER_PROFILE_EMBED}`)
-      .eq('club_id', clubId)
-      .order('joined_at', { ascending: false })
-      .limit(limit),
+    await query.limit(limit),
     "this club's recent riders",
   ) as unknown as ClubRosterMember[]
 
@@ -495,7 +742,12 @@ export async function getClubJoins(
   // counted against the limit, so one member with a NULL username in the newest
   // sixty would otherwise make a saturated read look short and report no
   // horizon at all.
-  return { rows: members, horizon: boundedHorizon(rows, limit, (row) => row.joined_at) }
+  return {
+    rows: members,
+    horizon: boundedHorizon(rows, limit, (row) => row.joined_at),
+    until: until ?? null,
+    untilInclusive: true,
+  }
 }
 
 
@@ -576,6 +828,14 @@ export function groupClubTimeline(events: ClubTimelineEvent[]): ClubTimelineGrou
  */
 export type ClubReplySource = ClubTimelineSource<ClubThreadReply> & {
   activity: Record<string, ClubThreadActivity>
+}
+
+/** One fetched reply window, plus the interval it covers — `getClubThreadReplies`'
+ *  own `ClubTimelineWindow`. Always `untilInclusive: true`: `.lte()` is what
+ *  the read applies, matching every other source but the club feed. */
+export type ClubReplyWindow = ClubReplySource & {
+  until: string | null
+  untilInclusive: boolean
 }
 
 /** One `club_messages` row as the read selects it, before the collapse. */
@@ -720,23 +980,28 @@ export function collapseToNewestPerThread(
  */
 export async function getClubThreadReplies(
   clubId: string,
-  limit = CLUB_TIMELINE_REPLIES
-): Promise<ClubReplySource> {
-  if (!clubIdSchema.safeParse(clubId).success) return { rows: [], horizon: null, activity: {} }
+  limit = CLUB_TIMELINE_REPLIES,
+  until?: string
+): Promise<ClubReplyWindow> {
+  if (!clubIdSchema.safeParse(clubId).success)
+    return { rows: [], horizon: null, activity: {}, until: until ?? null, untilInclusive: true }
 
   const supabase = await resolveSupabase()
 
+  let query = supabase
+    .from('club_messages')
+    .select(
+      `id, created_at, thread_id, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}), thread:club_threads!inner(club_id, title)`
+    )
+    .eq('thread.club_id', clubId)
+    .is(`thread.${ANNOUNCEMENT_MARKER}`, null)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+  // Inclusive, matching every source but the club feed — `design.md` §D3.
+  if (until) query = query.lte('created_at', until)
+
   const rows = unwrapList(
-    await supabase
-      .from('club_messages')
-      .select(
-        `id, created_at, thread_id, author:profiles!author_id(${PUBLIC_PROFILE_COLUMNS}), thread:club_threads!inner(club_id, title)`
-      )
-      .eq('thread.club_id', clubId)
-      .is(`thread.${ANNOUNCEMENT_MARKER}`, null)
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(limit),
+    await query.limit(limit),
     "this club's replies",
   ) as unknown as ClubMessageRow[]
 
@@ -749,5 +1014,65 @@ export async function getClubThreadReplies(
     supabase
   )
 
-  return summary
+  return { ...summary, until: until ?? null, untilInclusive: true }
+}
+
+/**
+ * Folds every fetched reply WINDOW into one accumulated reply source —
+ * `design.md` §D5's own absorb, needed because this source carries `activity`
+ * alongside `rows` and the two accumulate differently.
+ *
+ * **Rows fold through `absorbClubTimelineWindow`**, exactly as the other four
+ * sources do, keyed on the MESSAGE id (`ClubThreadReply.id`) — which is what
+ * makes the same boundary-instant rule apply here: a thread whose sole
+ * representative sits exactly on a window boundary is absorbed to one row, not
+ * two, even though the collapse that produced it runs independently per
+ * window.
+ *
+ * **`activity` does NOT fold through the same rule — it is summed from
+ * scratch over the whole window list on every call.** A thread's message
+ * count is the SUM of its per-window counts (a creation row's exactness
+ * depends on the sum spanning the reply source's whole contiguous coverage —
+ * see `resolveThreadCount`), and participants are unioned in
+ * shallowest-window-first order. Deriving it from the window LIST rather than
+ * accumulating it in place is what makes a refetched first window
+ * re-contribute instead of double-count: replacing `windows[0]` and folding
+ * again here recomputes the sum rather than adding a second copy of it.
+ */
+export function absorbClubReplyWindow(windows: ClubReplyWindow[]): ClubReplySource {
+  let source: ClubTimelineSource<ClubThreadReply> = { rows: [], horizon: null }
+  const messages = new Map<string, number>()
+  const participants = new Map<string, Map<string, PublicProfile>>()
+  const anyPartial = new Map<string, boolean>()
+
+  for (const window of windows) {
+    source = absorbClubTimelineWindow(
+      source,
+      window,
+      (reply) => reply.created_at,
+      (reply) => reply.id
+    ).source
+
+    for (const [threadId, activity] of Object.entries(window.activity)) {
+      messages.set(threadId, (messages.get(threadId) ?? 0) + activity.messages)
+      const seen = participants.get(threadId) ?? new Map<string, PublicProfile>()
+      for (const rider of activity.participants) if (!seen.has(rider.id)) seen.set(rider.id, rider)
+      participants.set(threadId, seen)
+      anyPartial.set(threadId, (anyPartial.get(threadId) ?? false) || activity.partial)
+    }
+  }
+
+  const activity: Record<string, ClubThreadActivity> = {}
+  for (const [threadId, count] of messages) {
+    activity[threadId] = {
+      messages: count,
+      participants: [...(participants.get(threadId)?.values() ?? [])],
+      // Vestigial once the merge computes the real flag from the accumulated
+      // horizon (`resolveThreadCount`) — carried anyway so this function's own
+      // output means something read in isolation, e.g. in a test.
+      partial: anyPartial.get(threadId) ?? false,
+    }
+  }
+
+  return { ...source, activity }
 }
