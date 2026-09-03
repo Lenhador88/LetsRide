@@ -274,10 +274,10 @@ ride is one `checkEditRetention` cannot submit whenever its flip lands on privat
 asks only for what is missing, `owned.club` is passed in too: a rider who already has a club still
 gets a clubbed ride rather than a clubless one.
 
-**What actually closes PD-311 is the candidate gate, not this ordering** — say so, because the
-first draft of this paragraph claimed the reverse. `provision()` never ticks the public box, so its
-fixture ride is private (PD-320's default) and the phase's flip is private → **public**, a widening
-that was permitted under the old guard and is permitted under the new one. The refused direction —
+**What actually closes PD-311 is the candidate gate, not this ordering.** `provision()` never
+ticks the public box, so its fixture ride is private (PD-320's default) and the phase's flip is
+private → **public**, a widening that was permitted under the old guard and is permitted under the
+new one. The refused direction —
 clubless *public* → private — is only reachable on a ride the account **already owned**, which
 `provision()` by construction never creates. So the reorder is insurance against the composer's
 default flipping back, and the gate below is the fix.

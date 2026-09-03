@@ -93,6 +93,16 @@ function payload(over: { club_id?: string; is_public?: boolean } = {}): FormData
  * shape-based rule — which returns a different literal — and the headline
  * assertion would then be asserting the opposite of its own name. Answering the
  * UPDATE is what makes "no error at all" reachable and therefore assertable.
+ *
+ * **What that buys, it also owes: a permitted case now runs to the END of
+ * `updateRide`.** It passes `if (!ride)` and reaches the
+ * `addressChanged || pickCleared || pickChanged` block, which calls
+ * `removeRideMapTiles` and `requestRideMapRender` — and this mock exposes only
+ * `from`, `rpc` and `auth`, no `.storage` and no `.functions`. All three flags
+ * are false today because `payload()` and `stored()` share one meeting point
+ * and a null `start_place_id`. **A new case that changes either would throw a
+ * `TypeError` rather than failing its assertion**, so change the fixture pair
+ * and stub those two before adding one.
  */
 function withStoredShape(stored: Record<string, unknown> | null) {
   let call = 0
@@ -135,12 +145,10 @@ describe('updateRide refuses only the transition that empties the audience', () 
     expect(state.error).toBe(RIDE_AUDIENCE_REFUSAL)
   })
 
-  // **`not.toBe(REFUSAL)` is NOT enough for a permitted case, and reading it as
-  // enough is how this file nearly shipped without a tripwire on its own
-  // headline.** Reverting the guard to the old shape-based rule returns a
-  // *different* literal, which satisfies `not.toBe` — so the assertion would
-  // have stayed green while asserting the opposite of its name. Assert the
-  // absence of an error instead.
+  // **`not.toBe(REFUSAL)` is not enough for a permitted case.** It is satisfied
+  // by any *other* error, so a guard reverted to the old shape-based rule —
+  // which returns a different literal — leaves the assertion green while it
+  // asserts the opposite of its own name. Assert the absence of an error.
   it('PERMITS an edit to a ride that already had no standing audience', async () => {
     // PD-338's headline on the action side. Before this change the same call
     // was refused, which is what made the composer's default output uneditable.

@@ -218,8 +218,15 @@ shortcut.** `RideForEdit.club` is `null` for a club the viewer cannot currently 
 precisely this case whenever the club is private, as that type's own note records — and
 `updateRide` reaches this branch holding `previous.club_id` and no name. So an implementation that
 interpolated a name would print nothing, or an empty gap, for the population the requirement is
-written about. The club `<select>` renders whatever name the row still carries directly above the
-message, which is where the rider reads it.
+written about.
+
+**And no control on the screen supplies one either, which is the sharper reason.** The club that
+has left `getMyClubs` renders through `EditRideForm`'s `currentClubOption`, whose name falls back
+to the literal **`Current club`** exactly when `ride.club` is null — the same private-club case. So
+a rider in this state sees no club name anywhere on the form, and a requirement demanding one would
+be unsatisfiable rather than merely inconvenient. **Naming the club by reference is the only
+honest option**, and any future change that makes a name reachable here should amend this
+requirement rather than quietly interpolate an empty string.
 
 It is not hypothetical.
 

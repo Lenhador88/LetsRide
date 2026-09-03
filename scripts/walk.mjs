@@ -1263,9 +1263,8 @@ function fixturesPermitted(ref) {
  * every other id this file has to establish ownership of.
  *
  * **The club is created BEFORE the ride, and the ride is attached to it
- * (PD-311) — as insurance, NOT as the fix.** Say which, because an earlier
- * draft of this comment claimed the ordering was load-bearing and it is not:
- * this function never ticks the public box, so its fixture ride is private
+ * (PD-311) — as insurance, NOT as the fix.** This function never ticks the
+ * public box, so its fixture ride is private
  * (PD-320's composer default), and `checkEditRetention`'s flip is therefore
  * private → **public** — a widening `EditRideForm` has always permitted. The
  * direction that trips the guard, clubless *public* → private, is only
