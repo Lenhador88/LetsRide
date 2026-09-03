@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { FEED_PAGE_SIZE, getRideJournal } from '@/lib/data/postcards'
+import { FEED_PAGE_SIZE, getClubFeedWindow, getRideJournal } from '@/lib/data/postcards'
 
 /**
  * `getRideJournal`'s two-step shape (`041`, PD-256): an id lookup through
@@ -128,5 +128,68 @@ describe('getRideJournal', () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'nope' } })
 
     await expect(getRideJournal(RIDE_ID)).rejects.toThrow()
+  })
+})
+
+/**
+ * `getClubFeedWindow` — `design.md` §D3's fix, and the boundary case a
+ * reviewer pass on PD-375 found in it: a saturated accessor page whose every
+ * row the caller's own RLS then refuses used to read as SHORT, because the
+ * horizon was still measured on `withFlag` (the second, RLS-filtered read)
+ * once nothing survived. That is the identical false-complete signal this
+ * function exists to close, one level down.
+ *
+ * Verified both ways per CLAUDE.md §Working Principles: reverting the
+ * `withFlag.length > 0` fallback to `null` fails 'does NOT report null...'
+ * below and leaves the other two cases here unchanged, which is what pins
+ * the fix to this exact boundary rather than to `getClubFeedWindow` in
+ * general.
+ */
+describe('getClubFeedWindow', () => {
+  const CLUB_ID = '22222222-2222-4222-8222-222222222222'
+
+  beforeEach(() => {
+    rpc.mockReset()
+    from.mockReset()
+    getUser.mockReset()
+    getUser.mockResolvedValue({ data: { user: null } })
+  })
+
+  it('imposes no horizon when the accessor itself comes back short', async () => {
+    rpc.mockResolvedValue({ data: [{ id: 'p1', from_ride: false }], error: null })
+    const { builder } = postcardsBuilder([])
+    from.mockReturnValue(builder)
+
+    const window = await getClubFeedWindow(CLUB_ID, { limit: FEED_PAGE_SIZE })
+
+    expect(window.horizon).toBeNull()
+  })
+
+  it('does NOT report null when the accessor saturates but every row is filtered by RLS', async () => {
+    const ids = Array.from({ length: FEED_PAGE_SIZE }, (_, i) => ({ id: `p${i}`, from_ride: false }))
+    rpc.mockResolvedValue({ data: ids, error: null })
+    // The second, RLS-filtered read returns nothing — every id the accessor
+    // found is unreadable to this caller (a block, a hide, a policy change).
+    const { builder } = postcardsBuilder([])
+    from.mockReturnValue(builder)
+
+    const before = '2026-01-01T00:00:00.000Z'
+    const window = await getClubFeedWindow(CLUB_ID, { before, limit: FEED_PAGE_SIZE })
+
+    expect(window.horizon).not.toBeNull()
+    // Falls back to the window's own requested bound — "no progress", not a
+    // guess — rather than asserting a completeness this fetch cannot see.
+    expect(window.horizon).toBe(before)
+  })
+
+  it('falls back to "now" on the very first window (no `before` to fall back to) when everything is filtered', async () => {
+    const ids = Array.from({ length: FEED_PAGE_SIZE }, (_, i) => ({ id: `p${i}`, from_ride: false }))
+    rpc.mockResolvedValue({ data: ids, error: null })
+    const { builder } = postcardsBuilder([])
+    from.mockReturnValue(builder)
+
+    const window = await getClubFeedWindow(CLUB_ID, { limit: FEED_PAGE_SIZE })
+
+    expect(window.horizon).not.toBeNull()
   })
 })

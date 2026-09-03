@@ -399,13 +399,31 @@ export async function getPostcardFilters(limit = FEED_PAGE_SIZE): Promise<Postca
  * `(id, from_ride)` only (`086`), and widening it is an RPC signature change
  * this no-migration proposal does not take. So the SATURATION test (full or
  * short) is the accessor's id count against `page_size`, and the horizon
- * VALUE, when saturated, is the oldest SURVIVING postcard's `created_at` — a
- * row at least as new as the true accessor boundary, never older, so this
- * errs toward cutting a little MORE than the true boundary would rather than
- * toward the unsafe direction (asserting completeness that is not there).
- * Flagged here as the one place this function's fix is an approximation
- * rather than exact, because the exact value is unreachable without a
- * migration this change does not take.
+ * VALUE, when saturated AND at least one row survives, is the oldest
+ * SURVIVING postcard's `created_at` — a row at least as new as the true
+ * accessor boundary, never older, so this errs toward cutting a little MORE
+ * than the true boundary would rather than toward the unsafe direction
+ * (asserting completeness that is not there). Flagged here as the one place
+ * this function's fix is an approximation rather than exact, because the
+ * exact value is unreachable without a migration this change does not take.
+ *
+ * **A saturated page every one of whose rows the caller's own RLS then
+ * refuses is the same defect wearing the boundary case** — `withFlag` is
+ * empty, and reading the horizon off it (the ORIGINAL bug this whole function
+ * exists to fix) reappears one level down: `null` again, `complete` true
+ * again, the club's founding drawn over content this rider was never shown
+ * but which plainly exists. There is no surviving row to take a `created_at`
+ * from, so the fallback is `before` itself — the window's OWN requested
+ * upper bound, which is also the accumulated horizon this fetch was asked to
+ * improve on. Reporting it back unmoved is an honest "no progress", not a
+ * guess: `absorbClubTimelineWindow` folds a window whose horizon equals its
+ * own `until` into an EMPTY covered interval, so it changes nothing and
+ * asserts nothing this rider was not already showing. The one window that
+ * has no `before` to fall back to is the very first (`before` undefined,
+ * asking for "now" down to `limit`) — `new Date().toISOString()` there, for
+ * the identical reason `errs toward cutting more`: it is far more aggressive
+ * than the true boundary, but the alternative is the false-complete signal
+ * this function exists to close.
  */
 export async function getClubFeedWindow(
   clubId: string,
@@ -458,10 +476,11 @@ export async function getClubFeedWindow(
 
   return {
     rows: withFlag,
-    horizon:
-      window.length >= limit && withFlag.length > 0
+    horizon: !(window.length >= limit)
+      ? null
+      : withFlag.length > 0
         ? withFlag[withFlag.length - 1].created_at
-        : null,
+        : (before ?? new Date().toISOString()),
     until: before ?? null,
     // The accessor compares `created_at < before` (`086` line 130), never
     // `<=` — `design.md` §D3's stated exception to "every deeper window is
