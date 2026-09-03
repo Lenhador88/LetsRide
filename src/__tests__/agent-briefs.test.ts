@@ -200,16 +200,15 @@ describe('agent briefs do not describe a world that has moved on', () => {
      * headings — queue-run.md and queue-pickup.md — and each is also a
      * consumer of the other's; the rest are pure consumers.
      *
-     * **Known gap, accepted rather than overlooked:** ci.yml's carve-out is
-     * `^\.claude/(agents|commands)/`, so a PR confined to `CLAUDE.md` or
-     * `docs/HANDOFF.md` sets `app=false` and never runs this test. The case that
-     * matters is covered — *renaming a heading* touches one of the two
-     * procedures, which does trigger it, and it then validates every cross-file
-     * reference at once. What escapes is a bad reference newly written in a
-     * docs-only PR.
-     * Widening the denylist to catch that would run the whole app job on every
-     * documentation change, which is the cost the scoping change exists to
-     * remove, so this is a deliberate trade rather than an oversight.
+     * **Which diffs run this, and the trap in reading ci.yml for it:** the
+     * carve-out naming `^\.claude/(agents|commands)/` is not the only trigger,
+     * and grepping for that one alone gives the wrong answer — a separate rule
+     * below it sets `app=true` for `^docs/|^[^/]*\.md$`, the doc-claim anchor
+     * sweep. So a PR confined to CLAUDE.md, docs/HANDOFF.md or
+     * docs/reference/linear.md runs this test too, and a reference newly
+     * written in one is caught in the diff that writes it. Every consumer
+     * below is reached by some trigger; the residual weakness is the SHADOWING
+     * described next, not the trigger set.
      *
      * Case-sensitive on purpose: CLAUDE.md's own list uses lowercase `step 5`
      * for a DIFFERENT step, and conflating the two is the documented collision.
