@@ -49,11 +49,24 @@ export function PostcardMenu({
   authorId,
   authorName,
   isOwn,
+  onRemoved,
 }: {
   postcardId: string
   authorId: string
   authorName: string
   isOwn: boolean
+  /**
+   * Fired after a successful Hide or Block — `client-cache-invalidation`'s
+   * removal rule, PD-375. A paged screen's own refetch-of-page-one signal can
+   * only see the interval the first page covers, so a block acting on a row
+   * that exists only on a DEEPER page would otherwise leave it on screen —
+   * `design.md` §D4. This is the explicit second trigger: the control that
+   * owns the removal is the only thing that KNOWS, so it says so rather than
+   * being inferred from a burst of refetches indistinguishable from any other
+   * cache-wide invalidation. Absent on every other screen this menu renders
+   * on, which do not page.
+   */
+  onRemoved?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -95,7 +108,7 @@ export function PostcardMenu({
   function run(
     action: () => Promise<{ error: string | null }>,
     confirmation: string,
-    { leavesTheThread = true }: { leavesTheThread?: boolean } = {}
+    { leavesTheThread = true, removes = false }: { leavesTheThread?: boolean; removes?: boolean } = {}
   ) {
     // Closed before the request rather than after it. Waiting left the sheet
     // open with every row disabled and no pending affordance, which reads as a
@@ -110,6 +123,9 @@ export function PostcardMenu({
         return
       }
       showBanner(confirmation)
+      // Fired on success only — a failed hide or block removed nothing, so a
+      // paged screen has no deeper pages to discard.
+      if (removes) onRemoved?.()
       // The popup first: a card can be inside it on any route, including the
       // thread route itself, and closing is the cheaper of the two exits.
       if (!leavesTheThread) return
@@ -169,14 +185,14 @@ export function PostcardMenu({
             <ContextMenuItem
               icon={<HideIcon className="h-6 w-6" />}
               disabled={pending}
-              onClick={() => run(() => hidePostcard(postcardId), 'Postcard hidden')}
+              onClick={() => run(() => hidePostcard(postcardId), 'Postcard hidden', { removes: true })}
             >
               Hide postcard for me
             </ContextMenuItem>
             <ContextMenuItem
               icon={<BlockAccountIcon className="h-6 w-6" />}
               disabled={pending}
-              onClick={() => run(() => blockRider(authorId), 'Account blocked')}
+              onClick={() => run(() => blockRider(authorId), 'Account blocked', { removes: true })}
             >
               Block account
             </ContextMenuItem>

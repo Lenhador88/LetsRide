@@ -31,6 +31,12 @@ type PostcardCardProps = {
    * which is why that mode gives it an explicit ratio instead.
    */
   fill?: boolean
+  /**
+   * Fired after a successful Hide or Block from this card's own menu — see
+   * `PostcardMenu`'s own doc. Absent everywhere but the club timeline, which
+   * is the one screen this card renders on that pages.
+   */
+  onRemoved?: () => void
 }
 
 /**
@@ -117,6 +123,7 @@ function PostcardCardComponent({
   postcard,
   linkToThread = true,
   fill = false,
+  onRemoved,
 }: PostcardCardProps) {
   const username = postcard.author?.username ?? 'Rider'
   // `null` for a typed-and-never-picked town, which has no vendor country
@@ -474,6 +481,7 @@ function PostcardCardComponent({
             authorId={postcard.author_id}
             authorName={username}
             isOwn={postcard.is_own ?? false}
+            onRemoved={onRemoved}
           />
         </div>
       </div>
