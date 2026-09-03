@@ -1,9 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { ExploreClubsList } from '@/components/clubs/ExploreClubsList'
+import { IntroductionPrompt } from '@/components/clubs/IntroductionPrompt'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
+import { dismissIntroductionPrompt } from '@/lib/clubs/introduction-dismissal'
 import { getExploreClubs } from '@/lib/data/clubs'
 import { getMyLocationText } from '@/lib/data/profile'
 import { nearLabel } from '@/lib/location/near-label'
@@ -41,8 +44,62 @@ import { queryKeys } from '@/lib/query/keys'
  * under the same heading** — so the number the rider taps is the number they
  * land on. `ExploreClubsList` owns that split; a version where the strip
  * counted three and this screen listed twelve was caught in review.
+ *
+ * **This screen owns the introduction sheet for a join that happens here**
+ * (`PD-384`) — `JoinClubButton` cannot hold it itself, because the same
+ * invalidate that makes a joined row leave this list can unmount the row
+ * before a second round trip (`hasIntroducedClub`) decides whether one is
+ * owed. `introducingClubIds` gains a club once that decision comes back
+ * `onJoined`, and this screen renders `IntroductionPrompt` once, off that
+ * state, rather than the club detail page's own `showIntroductionPrompt`
+ * (`097`, PD-365) — a rider who lands on the club afterwards still gets it
+ * there too, since that rule reads `hasIntroducedClub` fresh rather than
+ * trusting this screen remembered.
+ *
+ * **It is a QUEUE rather than one id, and the `key` is load-bearing.** Explore
+ * is a browse action — PD-384 says in as many words that *"a rider may join
+ * three clubs in a row"* — and each row owns its own `useTransition`, so
+ * `pending` disables only the row that was tapped. Every other `Join club`
+ * stays live across two round trips to `eu-west-1` (`joinClub`, then
+ * `hasIntroducedClub`). With a single `string | null` that window cost either
+ * correctness or the feature, depending only on which read landed first:
+ *
+ * - **A misdirected introduction.** Join A, join B, A's sheet opens, the rider
+ *   starts typing, B resolves and overwrites the id. Nothing remounts, so the
+ *   typed body survives while `clubId` flips underneath it and `submit()`
+ *   posts the rider's words about A into B.
+ * - **A dropped prompt.** The same two taps resolving the other way round: B
+ *   overwrites A before A is ever shown, and A is neither prompted nor
+ *   dismissed — PD-384's original defect, *"riders arrive silently and the club
+ *   never meets them"*, in a narrower window.
+ *
+ * Appending instead of assigning fixes the second (nothing is overwritten) and
+ * `key={current}` fixes the first (a different club is a different component
+ * instance, so no draft can outlive the club it was written for). Dismissing or
+ * posting advances the queue, so three joins ask three times, in tap order.
  */
 export default function ExploreClubsPage() {
+  const [introducingClubIds, setIntroducingClubIds] = useState<string[]>([])
+  const introducingClubId = introducingClubIds[0] ?? null
+
+  // Append-only, and de-duplicated: `joinClub` is an upsert, so a double tap on
+  // one row must not queue that club twice.
+  const enqueueIntroduction = (clubId: string) =>
+    setIntroducingClubIds((queue) => (queue.includes(clubId) ? queue : [...queue, clubId]))
+
+  // Records the dismissal for the club that was actually on screen, then hands
+  // the sheet to the next join waiting behind it.
+  //
+  // The write stays OUTSIDE the updater and reads `introducingClubId` from this
+  // render, which is the same `queue[0]` the sheet was showing. Inside, it would
+  // be a side effect in a function React requires to be pure:
+  // `dismissIntroductionPrompt` ends in `notify()`, which synchronously calls
+  // every `useSyncExternalStore` listener, and StrictMode invokes updaters twice
+  // on purpose to surface exactly this.
+  const advanceIntroductions = () => {
+    if (introducingClubId) dismissIntroductionPrompt(introducingClubId)
+    setIntroducingClubIds((queue) => queue.slice(1))
+  }
   // The same three reads as `/clubs`, under the same keys — which is what makes
   // arriving here from the strip a cache hit rather than a second fetch, and
   // what keeps the strip's near count equal to the `Near <name>` section below
@@ -89,11 +146,23 @@ export default function ExploreClubsPage() {
                 There are no public clubs, yet!
               </p>
             ) : (
-              <ExploreClubsList clubs={clubs.data} near={nearLabel(position, city.data)} />
+              <ExploreClubsList
+                clubs={clubs.data}
+                near={nearLabel(position, city.data)}
+                onJoined={enqueueIntroduction}
+              />
             )}
           </div>
         )}
       </div>
+
+      <IntroductionPrompt
+        key={introducingClubId}
+        clubId={introducingClubId ?? ''}
+        open={!!introducingClubId}
+        onDismiss={advanceIntroductions}
+        onPosted={advanceIntroductions}
+      />
     </>
   )
 }

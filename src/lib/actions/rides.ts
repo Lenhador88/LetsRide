@@ -226,8 +226,14 @@ export async function createRide(
   // an audience problem. The string is the one `enforce_ride_club_audience`
   // raises in 022; a named CHECK would read "violates check constraint ..."
   // instead, which is how the two stay distinguishable.
+  //
+  // **Only "untick", never "pick a public club" (PD-383).** A club-scoped entry
+  // hides the picker entirely (`CreateRideForm`'s `seededClub`), so a rider who
+  // reached this action from `/rides/new?club=<id>` has no control on screen
+  // that could act on the second half of that sentence — an instruction the
+  // screen makes impossible is worse than a shorter, always-actionable one.
   if (error?.code === '23514' && error.message.includes('private club cannot be public')) {
-    return { error: 'A ride in a private club cannot be public. Untick “Make this ride public”, or pick a public club.' }
+    return { error: 'A ride in a private club cannot be public. Untick “Make this ride public”.' }
   }
   if (error || !ride) return { error: 'That ride could not be created.' }
 

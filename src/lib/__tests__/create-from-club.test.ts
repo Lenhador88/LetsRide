@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { seedClubId } from '@/lib/clubs/seed-club-id'
+import { createRideHeaderTitle } from '@/lib/rides/create-ride-header-title'
 import { seedRideId } from '@/lib/rides/seed-ride-id'
 import { CREATE_CLUB_PARAM, CREATE_RIDE_PARAM, backFromCreateScreen, routes } from '@/lib/routes'
 
@@ -125,6 +126,38 @@ describe('the club-carrying links', () => {
       expect(carried).toBe(CLUB)
       expect(backFromCreateScreen({ club: carried }, '/rides')).toBe(routes.club(CLUB))
     }
+  })
+})
+
+describe('createRideHeaderTitle — the /rides/new header (PD-383)', () => {
+  const clubs = [{ id: CLUB, name: 'Ridge Riders' }, { id: OTHER, name: 'Coast Crew' }]
+
+  it('is the plain title with no club param, even before clubs.data resolves', () => {
+    expect(createRideHeaderTitle(null, undefined)).toBe('Create ride')
+    expect(createRideHeaderTitle(null, clubs)).toBe('Create ride')
+  })
+
+  it('waits (undefined) for a club-scoped entry until clubs.data resolves', () => {
+    // Header draws its own skeleton for `undefined` — this must never fall
+    // back to the plain title first and then swap to the named one, which
+    // would flash the wrong heading for one frame.
+    expect(createRideHeaderTitle(CLUB, undefined)).toBeUndefined()
+  })
+
+  it('names the club once it resolves', () => {
+    expect(createRideHeaderTitle(CLUB, clubs)).toBe('Create ride in Ridge Riders')
+  })
+
+  it('falls back to the plain title for an id that is not one of the rider’s own clubs', () => {
+    // The same fallback `seedClubId` uses — a rider-supplied id authorizes
+    // nothing, and the heading must not claim a club the picker itself would
+    // not have shown.
+    const strangerClub = '00000000-0000-4000-8000-000000000000'
+    expect(createRideHeaderTitle(strangerClub, clubs)).toBe('Create ride')
+  })
+
+  it('falls back to the plain title when the rider is in no clubs at all', () => {
+    expect(createRideHeaderTitle(CLUB, [])).toBe('Create ride')
   })
 })
 

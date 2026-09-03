@@ -34,41 +34,50 @@ import type { ClubListItem } from '@/types'
 export function ExploreClubsList({
   clubs,
   near,
+  onJoined,
 }: {
   clubs: ClubListItem[]
   /** Where distances were measured from, or null when there is no position. */
   near: NearLabel
+  /** Forwarded to every `JoinClubButton` on this list — see its own header. */
+  onJoined?: (clubId: string) => void
 }) {
   const nearby = near ? clubs.filter((club) => isNearby(club.distance_km)) : []
   const rest = near ? clubs.filter((club) => !isNearby(club.distance_km)) : clubs
 
   if (nearby.length === 0) {
-    return <ClubList clubs={rest} />
+    return <ClubList clubs={rest} onJoined={onJoined} />
   }
 
   return (
     <div className="flex flex-col gap-4">
       <section className="flex flex-col gap-2">
         <h3 className="px-2 text-sm font-semibold text-foreground">Near {near!.name}</h3>
-        <ClubList clubs={nearby} />
+        <ClubList clubs={nearby} onJoined={onJoined} />
       </section>
 
       {rest.length > 0 && (
         <section className="flex flex-col gap-2">
           <h3 className="px-2 text-sm font-semibold text-muted">More clubs</h3>
-          <ClubList clubs={rest} />
+          <ClubList clubs={rest} onJoined={onJoined} />
         </section>
       )}
     </div>
   )
 }
 
-function ClubList({ clubs }: { clubs: ClubListItem[] }) {
+function ClubList({
+  clubs,
+  onJoined,
+}: {
+  clubs: ClubListItem[]
+  onJoined?: (clubId: string) => void
+}) {
   return (
     <ul className="flex flex-col gap-2">
       {clubs.map((club) => (
         <li key={club.id}>
-          <ClubCard club={club} joined={false} />
+          <ClubCard club={club} joined={false} onJoined={onJoined} />
         </li>
       ))}
     </ul>
