@@ -239,6 +239,55 @@ PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3310
 git grep -n "MUST STAY THERE" -- supabase/    # the rule, recorded at each policy
 ```
 
+## The walk opens both invite landing routes, and a firing now records what it cost — 2026-09-03
+
+**PD-358 + PD-387, one branch.** Neither is rider-visible.
+
+**PD-358 — `checkInviteLanding`, and its signed-OUT half is the first thing in `scripts/walk.mjs`
+that asserts on a page loaded with no session at all.** `/rides/join` and `/clubs/join` join the
+bare route list, and the phase opens each with a 32-hex token that parses and matches nothing.
+
+- **The issue's premise "the app's ONE public screen" was true when filed and stopped being true
+  four days later** — `093` (PD-360) shipped `/clubs/join` as the twin, and it was equally
+  unwalked. The phase takes a `kind` off `INVITE_LANDINGS` rather than being written twice.
+- **The load-bearing assertions are the two about the oracle, not the one about ride data.** A dead
+  token cannot produce ride data whatever the screen does, so "no ride title on screen" would pass
+  on a build that leaks every ride. What a dead token *can* show is whether a stranger can tell a
+  live token from a dead one — which RLS cannot refuse, because each preview RPC is granted to
+  `authenticated` and a refusal answers the question as well as a row does. So: the dead token is
+  not reported as dead, and no request to the preview RPC leaves the page.
+- **The route-list entries carry no token deliberately.** `adoptInviteTokenFromLocation` strips the
+  query with `history.replaceState`, so a token there makes `finalPath` come back without it and
+  the loop reports a redirect that did not happen.
+- **The phase adds `+20` checks (10 per landing route × 2) and `+2` screens — and those DELTAS are
+  the only figures to quote.** #390 landed four social-write phases the same day and its commit
+  uses `47` as the *named* base where this file records `44`; nothing in a container can settle
+  that, so the absolute total is in dispute and adding to either number propagates the wrong one.
+  `docs/reference/running-locally.md` §The walk carries the disagreement and the re-derivation
+  command; **do not copy a bare total out of it into here.** Nobody has run the phase: Chromium here cannot reach Supabase without the relay and CI's `walk` job is
+  skipped until `WALK_CI=1`.
+
+**PD-387 — `.claude/commands/queue-pickup.md` §The cost record.** One labelled block in one Linear
+comment, one line in the PR body. Three things a later session should not re-derive:
+
+- **It is owed by any firing that CLAIMED a story, whichever way it ended** — so STEP 2c, §If you
+  get stuck and STEP 4c's three-attempt CI bound all write it into the comment they were already
+  writing. That is the requirement most likely to be quietly dropped, and the issue is explicit
+  about why: a breakdown that only appears on the runs that went well is an advertisement.
+- **The wall-clock stamp had to move to `queue-run.md` STEP 0.** PD-387 proposes reading `fired_at`
+  off `list_triggers` and `usage` off `get_session`; PD-241's measured inventory says no
+  `mcp__Claude_Code_Remote__*` tool exists in a Routine-minted session. Nothing recovers a run's
+  start time afterwards, so STEP 0 takes it in the same call as the push probe. The two token rows
+  read `not available` on a firing and the section says that is expected, not a fault.
+- **Every row is labelled measured or self-reported.** The phase split is narration — no clock in
+  the loop attributes wall time to activities — and it is marked as such *inside the block*, because
+  the block is what gets read. Where the numbers surface and what figure stops a run is PD-388's.
+
+```bash
+git grep -n "INVITE_LANDINGS\|checkInviteLanding" -- scripts/walk.mjs
+npx vitest run scripts/docs/__tests__/crossrefs.test.mjs src/__tests__/agent-briefs.test.ts
+```
+
 ## A ride's audience guard is about the TRANSITION, not the shape — 2026-09-03
 
 **PD-338 + PD-311, one branch.** `EditRideForm`'s `wouldStrand = !clubId && !isPublic` is gone;
@@ -600,7 +649,9 @@ promotion merge with identical trees.
 **IT HAS NOW BEEN RENDERED — the walk ran against DEV on 2026-09-01 and is green.** 23/23 screens
 and 47/47 guard, navigation and sign-out checks, run twice: once as the club's OWNER and once as an
 ordinary MEMBER, which are different code paths on the club detail because the introduction prompt
-exempts an owner.
+exempts an owner. **The two figures are from different accounts and no single run produces both**:
+23/23 screens is the named account, whose check total is 44; 47/47 checks is the minted rider,
+which walks 22. `docs/reference/running-locally.md` carries the split.
 
 **23 needs a `WALK_EMAIL`; a MINTED rider walks 22, and that is a pass rather than a shrink.**
 Re-measured 2026-09-02, both ways in one sitting. `/clubs/detail/thread` is discovered by scraping

@@ -81,11 +81,50 @@ never become a development convenience.
 `NODE_USE_ENV_PROXY=1` is separately not optional: Node's `fetch` ignores `HTTPS_PROXY`, so the
 relay itself cannot reach Supabase without it.
 
-**A clean run is `47/47 guard, navigation and sign-out checks correct` on a DEV where the walk
-account owns a ride and a club — MEASURED 2026-08-24 on PD-293's branch**, against a local
-`npm run dev` through the relay, `WALK_FIXTURES=1`, zero FAILs. It was `48/48` and `077` dropped
-the `max_riders survives it` assertion with the field it read. **If it comes back 48 the field is
-back.**
+**Neither of the walk's two totals is a constant; do not write either as a bare number here.**
+Both depend on *which account* the run uses, and the screens figure depends on DEV's data as well.
+What is durable is the arithmetic and the commands.
+
+**Two changes landed on `development` the same day and the absolute totals are now in dispute.
+Quote only the DELTAS below.** PD-358 added the invite-landing phase (this section) and
+[#390](https://github.com/Lenhador88/LetsRide/pull/390) added four social-write phases; the
+`47/47` at the top of this section was updated by neither.
+
+**What disagrees, precisely.** `docs/HANDOFF.md` records the 2026-09-01/02 run as `23`/`44` for a
+**named** account and `22`/`47` for a **minted** rider — minting adds three checks of its own and
+cannot walk `/clubs/detail/thread`. #390's own commit then reports `56/56` on `walk-fixture`, a
+*named* account, as `47 + 9` — using 47 as the **named** base. **Those cannot both be right, and
+nothing in this container can settle it**: the walk needs the relay, and CI's `walk` job is skipped
+until `WALK_CI=1`. So do not add anything to either number, here or anywhere else, until somebody
+runs it.
+
+**The deltas ARE measured, off the code, and are what this section is responsible for:**
+
+| Change | Screens | Checks |
+|---|---|---|
+| PD-358 — `/rides/join` and `/clubs/join` in `STATIC_PATHS`, plus `checkInviteLanding` | **+2** | **+20** — 10 per landing route (6 signed out, 4 signed in) across two routes |
+| #390 — the four social-write phases | 0 | **+9** on its one measured run, and a ceiling rather than a constant: each phase skips when Explore offers no eligible row |
+
+**Re-derive the static half, and settle the base by running the walk rather than by adding to a
+number written down here:**
+
+```bash
+node -e "const s=require('fs').readFileSync('scripts/walk.mjs','utf8');
+  console.log((s.match(/const STATIC_PATHS = \[([\s\S]*?)\n\]/)[1].match(/^\s*'\//gm)||[]).length)"
+```
+
+**Compare a run against the account it ran as** — `CLAUDE.md` reads a shrunken `N/N` as a skip
+rather than a pass, so comparing a named run's total against a minted baseline manufactures a skip
+that is not there, and the reverse hides one that is. The walk names every route it skipped in
+parentheses; read those before the totals.
+
+**The invite phase itself has never been run**, whatever the totals above say about the rest: this
+container's Chromium cannot reach Supabase without the relay, and CI's `walk` job is skipped until
+the repository variable `WALK_CI=1` exists. Replace the projections with a measurement the first
+time it is.
+
+It was `48/48` before 47 and `077` dropped the `max_riders survives it` assertion with the field it
+read. **If the invite phases are excluded and it comes back 48, the field is back.**
 
 The `48/48` it replaces was 47/47 measured 2026-08-12, plus the consent-box assertion PD-214
 added to the refused-signup phase, which has **not** been run against DEV. **The account that measures the full total
@@ -182,8 +221,10 @@ a failure here as a regression:
 select location from public.profiles where id = (select id from auth.users where email = '<WALK_EMAIL>');
 ```
 
-**Last run: 2026-08-24, `18/18` screens and `47/47` checks, on PD-293's branch at `fd7d146`.**
-That run is what answered the question `077` raised and nothing else could: `tsc`, ESLint,
+**2026-08-24, `18/18` screens and `47/47` checks, on PD-293's branch at `fd7d146` — this was the
+last run *for `077`'s question*, and it is NOT the walk's last run.** That is 2026-09-01/02, at the
+top of this file; a reader taking this heading literally reconstructs a superseded baseline, which
+is the failure the top paragraph is about. Kept because what it answered is still worth having: `tsc`, ESLint,
 Vitest, `next build` and the RLS suite are all green against a DEV whose `rides` has no
 `max_riders`, and **only the walk can say whether the ride detail and the edit form still
 render**. They do — the edit form drew every control populated, with no `max_riders` field and no
