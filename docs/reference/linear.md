@@ -289,24 +289,28 @@ neither. Ask first.
 
 ### Creating an issue can be refused outright — the workspace is on Linear's free plan
 
-**Measured 2026-09-03**: `save_issue` with no `id` answers
-`400 invalid_request — "You've exceeded the free issue limit for this workspace"`. Reading,
-commenting and moving between statuses are unaffected; only *creation* is. Check rather than
-assume it still holds — the owner may have upgraded, and this is a plan setting with no file
-behind it:
+**Measured 2026-09-03**: `save_issue` with no `id` answers `400 invalid_request — "You've
+exceeded the free issue limit for this workspace. Please upgrade or contact sales@linear.app for
+a free trial."` Reading, commenting and moving between statuses are unaffected; only *creation*
+is. **There is no probe here on purpose** — the only caller that needs the answer is a session
+about to file something, so attempt the create you already intended and read the `400`. A
+standalone check would create a real issue on its success path, spending one of the slots the cap
+is about, and deleting it is the one Linear operation a session may not do.
 
-```
-# via the Linear MCP: save_issue team="Pedro & Dave" title="probe — delete me" — a 400 means it stands
-```
+**What to do when it refuses, rather than dropping the finding.** Post the issue body as a
+comment on an issue that stays **open and that the owner reads** — a standing `Todo Human` row —
+opening with the refusal and the line *this wants its own row*. **Never on the story the session
+is closing**, which is what "the nearest issue" resolves to at a wrap-up: that is §Sequencing's
+closing-time split exactly, and a comment on a story moving to `Deployed to DEV` reads as handled
+and is never opened again. `.claude/commands/queue-pickup.md` STEP 5 is where a firing meets
+this, with the work already done.
 
-**What to do when it refuses, rather than dropping the finding.** Post the issue body you were
-going to file as a **comment on the nearest existing issue**, opening with the refusal and the
-line *this wants its own row*. `.claude/commands/queue-pickup.md` STEP 5 files follow-ups, so a
-build session meets this at its wrap-up with the work already done — the comment keeps it, and
-moving it to a row later is one paste. Do **not** close or repurpose somebody else's issue to
-make room; only the owner clears the cap, by upgrading or by archiving the rows that have
-already reached `Done (in production)` — the bulk of the board, and the count is one
-`list_issues` call rather than a number worth writing down here.
+Do **not** close or repurpose somebody else's issue to make room. Clearing the cap is the
+owner's, and only one route is established: **upgrading**. Archiving closed rows might also do
+it and is **untested** — nothing measured here says whether the limit counts live or lifetime
+issues, so do not send the owner to archive the board on the strength of this line. Nor is the
+count one call: `list_issues` caps at `limit=250` and answers `hasNextPage: true` today, and
+every call in this file is project-scoped while the limit is workspace-wide.
 
 ### What an issue body opens with
 
@@ -366,7 +370,10 @@ to the block, and do not drop it from the table.
   you start, `Deployed to DEV` when the PR merges, in the same session.
 - **Verify before you write.** An issue asserting a stale fact is worse than no issue, because a
   tracker reads as current by construction.
-- **A new owner action goes in Linear the moment it is found**, labelled `Owner only`.
+- **A new owner action goes in Linear the moment it is found**, labelled `Owner only` — unless
+  creation is refused (§Creating an issue can be refused outright), in which case it goes in
+  `docs/HANDOFF.md` under an **Owner action** heading, where the 2026-09-03 refusal itself is
+  recorded. A comment carries no label and appears in no filter the owner uses.
 - **A story's premise ages, and nothing marks it done except someone re-measuring.** Check it
   before building, not after — `.claude/commands/queue-pickup.md` STEP 3 is the procedure, and
   it applies to a story picked up by hand just as much as to one a dispatch takes off the queue.
