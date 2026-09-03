@@ -580,4 +580,51 @@ describe('ClubTimeline — the anchor hunt scrolls once and never again (design.
     expect(container!.innerHTML).toContain('join:u-old')
     expect(scrollSpy).toHaveBeenCalledTimes(1)
   })
+
+  it('settles via GIVE-UP, not found, and still never scrolls once the anchored row later appears', async () => {
+    // `complete: true` from the very first render — nothing here excludes
+    // anything, so the merge cuts nothing and the hunt's own FIRST check
+    // already reads `complete`. `resolveClubTimelineAnchorHunt` gives up
+    // immediately for a fragment naming no row on the page once the stream
+    // is complete, with no fetch ever issued — the OTHER termination path
+    // `design.md` §D6 names, distinct from the "found" case the test above
+    // covers.
+    const ownerJoin = join('u-owner', '2026-01-05T00:00:00Z')
+    seedBase({ joins: { rows: [ownerJoin], horizon: null, until: null, untilInclusive: true } })
+
+    window.location.hash = '#join:ghost'
+
+    mount()
+    // Drains the deferred `setHuntState('settled')` the give-up branch
+    // schedules.
+    await flushTimers()
+
+    const scrollSpy = Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>
+    expect(scrollSpy).not.toHaveBeenCalled()
+
+    // The row that named no page at all now exists — the shape of a rider
+    // elsewhere joining, or a background refetch bringing in a row this
+    // mount never fetched for itself. Mutating the seeded query data
+    // directly and re-rendering is this harness's way of simulating that;
+    // `resolveClubTimelineAnchorHunt` would call this `'found'` if the hunt
+    // effect ever evaluated it again.
+    const ghostJoin = join('ghost', '2026-01-04T00:00:00Z')
+    seedQuery(queryKeys.clubs.joins(clubId), {
+      rows: [ownerJoin, ghostJoin],
+      horizon: null,
+      until: null,
+      untilInclusive: true,
+    })
+    rerender()
+    await flushTimers()
+
+    expect(container!.innerHTML).toContain('join:ghost')
+    // Settled via give-up, not found — `huntState !== 'hunting'` forecloses
+    // the effect from ever calling `resolveClubTimelineAnchorHunt` again, on
+    // its own top-of-body guard. This is the observable half of the fix:
+    // `design.md` §D6's "a late refetch does not move a reading rider"
+    // applies identically whichever way the hunt stopped, not only after an
+    // actual scroll already happened.
+    expect(scrollSpy).not.toHaveBeenCalled()
+  })
 })
