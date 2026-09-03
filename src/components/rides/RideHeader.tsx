@@ -139,13 +139,16 @@ export function RideHeader({
   // The plan's own back is `/rides` UNLESS the ride was opened from a club
   // timeline row, in which case it returns to that row — PD-378.
   //
-  // **The three sub-screens are deliberately untouched, and they drop the
-  // anchor.** They are the ride's children, so they go back to the ride — but
-  // `routes.ride` carries no `row`, and the links that reach them (on the plan
-  // screen) do not either, so plan → crew → back lands on a plan whose own back
-  // is `/rides` again. Closing that means threading the parameter through three
-  // more routes and their links, which is a wider change than the one-hop this
-  // story describes; it is stated here rather than left to be discovered.
+  // **Every screen that returns to the plan drops the anchor, deliberately.**
+  // The three this component serves (`crew`, `chat`, `invite`) go back via
+  // `routes.ride`, which carries no `row`, and the links reaching them carry
+  // none either — so plan → crew → back lands on a plan whose own back is
+  // `/rides` again. **`/rides/detail/edit` is a fourth and is easy to miss**: it
+  // draws a plain `Header` rather than this one, with the same
+  // `backHref={routes.ride(id)}`, so it behaves identically and is NOT covered
+  // by reading this component alone. Closing it means threading the parameter
+  // through four routes and their links — wider than the one-hop this story
+  // describes, so it is stated rather than left to be discovered.
   const backHref =
     current === 'plan' ? rideReturnTo(clubId, returnAnchor, '/rides') : routes.ride(rideId)
 

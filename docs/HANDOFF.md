@@ -231,19 +231,30 @@ screen's back button. The ride's own back never returned to the club at all, so 
 timeline row's key (`ride:<uuid>`) is now carried out on the ride card's link in
 `RETURN_ANCHOR_PARAM` (the same `row=` the thread screen uses, so `clubTimelineAnchorSchema` bounds
 both) and turned back into `/clubs/detail?id=<club>#<anchor>` by `rideReturnTo`. The club timeline's
-existing anchor hunt does the rest, including extending a paged stream until the row is on the page.
+existing anchor hunt does the rest — extending a paged stream to look for the row, **bounded by
+`CLUB_TIMELINE_ANCHOR_WINDOWS` (3) rather than searching until it finds it**. A ride far enough back
+in a long timeline is a silent no-op and the rider lands at the top, which is the original complaint;
+that bound is PD-375's and this story did not move it.
 
-Three things a later session should not have to re-derive:
+Four things a later session should not have to re-derive:
 
 - **The club is read off `ride.club_id`, never a URL parameter**, so the wrong answer is
   unrepresentable — a club id in the link is a second copy of a fact the row owns and can disagree
   with it. **The stated cost:** `club_id` arrives with the ride, so the arrow answers `/rides` for the
   moment before that read lands and then sharpens. Strictly better than before (which answered
   `/rides` always); `rideReturnTo`'s docstring prices the alternative.
-- **The three ride sub-screens drop the anchor**, deliberately and not silently. Crew, Chat and
-  Invite go back to the ride via `routes.ride`, which carries no `row`, and the links reaching them
-  carry none either — so plan → crew → back lands on a plan whose back is `/rides` again. Closing it
-  means threading the parameter through three more routes and their links.
+- **`/clubs/detail/rides` has the same problem and this fix does NOT cover it** — PD-378 asked that
+  question directly and this is the answer. Tap a ride on a club's Rides sub-page, press Back, and
+  you land on `/rides`, outside the club. The reason is structural: this mechanism carries a *row*,
+  and every anchor it builds resolves to `routes.club(id)` — the **timeline**. Coming back to the
+  Rides sub-page is a return *route*, which means carrying a path and an allowlist to bound it
+  (`back-navigation.ts`'s `BACK_ORIGINS`) — a different mechanism with a redirect surface this one
+  deliberately does not have.
+- **Four ride screens drop the anchor on the way back to the plan**, deliberately and not silently.
+  Crew, Chat and Invite go back via `routes.ride`, which carries no `row`, and the links reaching
+  them carry none either — so plan → crew → back lands on a plan whose back is `/rides` again.
+  **`/rides/detail/edit` is the fourth and is easy to miss**, because it draws a plain `Header`
+  rather than `RideHeader` and so is invisible to a reader auditing that component.
 - **The browser/Android hardware back is untouched.** It is a history pop, not this arrow; this
   change neither improves nor breaks it. The in-app arrow and the edge swipe share one value
   (`useSwipeBack(backHref)`), so those two cannot disagree — the defect PD-341 closed once already.

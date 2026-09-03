@@ -236,10 +236,23 @@ export function clubThreadFromTimeline(threadId: string, anchor: string): string
  * carried is identical — `mergeClubTimeline`'s own key for the row that was
  * tapped — and one name means `clubTimelineAnchorSchema` bounds both.
  *
- * **Only the club timeline builds this link.** Every other ride card in the app
- * (`/rides`, `/rides/explore`, a club's Rides sub-page) has no timeline row to
- * return to and keeps the plain `routes.ride`, which is why `RideCard` takes the
+ * **Only the club timeline builds this link**, which is why `RideCard` takes the
  * anchor as an *optional* prop rather than this becoming the default shape.
+ * `/rides` and `/rides/explore` have no club row to return to at all and keep
+ * the plain `routes.ride`.
+ *
+ * **`/clubs/detail/rides` is the interesting one, and PD-378 asked about it
+ * directly** — *"whether the sub-page routes have the same problem … and whether
+ * the same fix covers them"*. It has the same problem (tap a ride there, press
+ * Back, and you land on `/rides` outside the club) and **this fix does not cover
+ * it**. The reason is structural rather than an oversight: what this pair
+ * carries is a *row*, and every anchor it can build resolves to
+ * `routes.club(id)` — the club's **timeline**. A rider who was on the club's
+ * Rides sub-page wants to come back to that sub-page, which is a return *route*,
+ * not a return row. Expressing one means carrying a path and therefore an
+ * allowlist to bound it (`back-navigation.ts`'s `BACK_ORIGINS`), which is a
+ * different mechanism with a redirect surface this one deliberately does not
+ * have. Filed rather than bolted on.
  *
  * Outside `routes` for `clubThreadFromTimeline`'s own reason — `bootRestoreTarget`'s
  * suite calls every member of `routes` with one argument.
