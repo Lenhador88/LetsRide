@@ -91,10 +91,15 @@
 --     regardless of what SELECT does. There IS a residual silent `DELETE 0`
 --     here — a rider who leaves the crew of a ride they can still see — but it
 --     is caused by the `private.is_ride_crew(ride_id)` conjunct rather than by
---     the block conjunct this file is about, and hoisting the own-row arm past
---     `is_ride_crew` would break the invariant `docs/reference/schema.md`
---     records for this table: its audience is an INTERSECTION and neither half
---     alone is it. Filed separately rather than absorbed here.
+--     the block conjunct this file is about. **This policy has TWO parent
+--     conjuncts, not one**, so the hoist applied above is not even available
+--     here: lifting the own-row arm to a whole-policy disjunct escapes
+--     `is_ride_crew` as well as the `rides` EXISTS, which breaks the invariant
+--     `docs/reference/schema.md` records for this table — its audience is an
+--     INTERSECTION and neither half alone is it. It needs a decision rather
+--     than a reassociation, so it is **PD-389**, not this file. Do NOT "finish
+--     the sweep" by copying §1's shape here; `102.4` pins the un-hoisted shape
+--     deliberately.
 --
 -- ---------------------------------------------------------------------------
 -- WHAT THE HOIST DOES AND DOES NOT WIDEN

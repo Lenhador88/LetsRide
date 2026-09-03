@@ -1728,9 +1728,10 @@ select assert_eq((select count(*)::int from postcards), 3,
 -- with no restatement anywhere: OTHER RIDERS' likes and comments, and the
 -- Storage object behind the image, all go with it.
 --
--- ** THE HIDER'S OWN ROWS DO NOT, SINCE 102 (PD-362), AND THAT IS THE WHOLE
--- BEHAVIOURAL FOOTPRINT OF THAT MIGRATION ON THIS SUITE. ** Exactly one
--- assertion in 3280 moved: this one, from 0 to 1. 102 hoisted the own-row branch
+-- ** THE HIDER'S OWN ROWS DO NOT, SINCE 102 (PD-362). ** This is ONE of the
+-- **TWO** assertions in 3280 whose expected value that migration moved from 0 to
+-- 1 — the other is 051's ex-member precondition at ~line 9520, which says so at
+-- its own site. There are exactly two and no more. 102 hoisted the own-row branch
 -- out of the block conjunct on postcard_likes, postcard_comments and
 -- ride_members, so a rider keeps sight of the row THEY wrote after the parent
 -- goes out of view — and a hide is the purest instance of the parent going out
@@ -30888,8 +30889,17 @@ rollback to savepoint thread_membership_100;
 -- green against a policy that still refuses the withdrawal.
 --
 -- Move any own-row branch below back inside its block conjunct and these go
--- red. Nothing else in the suite does, except one assertion in the hide block
--- (~line 1730) which 102 moved from 0 to 1 and which says so at the site.
+-- red. **TWO assertions outside this section also move**, and both are older
+-- ones whose expected value 102 changed from 0 to 1 because both encoded the
+-- defect: the hider's own like in 011's hide block (~line 1730) and 051's
+-- ex-member precondition (~line 9520). Each says so at its own site. Those two
+-- are the complete list — a verifier who un-hoists and sees a third has broken
+-- something this change did not touch.
+--
+-- Note that the hide-block one fires FIRST on a postcard_likes un-hoist, because
+-- it sits earlier in the file and the suite stops at the first failure. Measured:
+-- un-hoisting postcard_likes goes red at ~1748, postcard_comments at 102.3, and
+-- ride_members at the 051 precondition.
 -- ===========================================================================
 savepoint own_row_reads_102;
 
@@ -31212,9 +31222,17 @@ select assert_eq(
   true, '102.6: ... and the USING side stays bare on purpose. Leaving a ride you can no longer see must keep working (102.1), so the visibility requirement belongs on the NEW row only — putting it in USING would re-break what 102 §1 fixed, one table over');
 
 -- The permitted case, so 102.6 above is not just a refusal with no counterpart:
--- an RSVP change on a ride the rider CAN see still works. This is
--- setRideAttendance's exact upsert shape, whose ON CONFLICT arm is an UPDATE
--- and therefore runs through the new WITH CHECK.
+-- an RSVP change on a ride the rider CAN see still works.
+--
+-- ** THIS IS A PLAIN UPDATE, NOT setRideAttendance's UPSERT — and the upsert is
+-- already covered elsewhere. ** 048's repeat-RSVP assertion at ~line 9280 is the
+-- genuine `insert … on conflict (ride_id, user_id) do update set ride_id/user_id/
+-- status` shape the client actually issues, and it is green under 102's new
+-- WITH CHECK. So the guard against §1b being tightened into a policy that
+-- refuses every RSVP is THAT assertion plus 077.4, and this one adds the
+-- narrower claim that the bare UPDATE path — which 048's `ride_id` grant also
+-- leaves reachable — still works for a visible ride. Do not read it as the
+-- upsert's coverage; it is not.
 savepoint seat_move_permitted_102;
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000102003', false);
