@@ -130,7 +130,8 @@ never be dissolved back into components, because:
    writes safe in the first place.
 
    **The participation gate is narrower than "every write"** — `enforce_participation_gate` sits on
-   twenty-one tables and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
+   twenty-one tables on DEV and twenty-two on PROD (`101`/PD-373 dropped `club_thread_waves`' gate
+   on DEV only, awaiting promotion) and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
    `feed_reads`, `club_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
    `accept_terms()` can still set a username and upload an avatar. `docs/reference/schema.md`
    §The participation gate has the list, the `push_devices` exception and the count query.
