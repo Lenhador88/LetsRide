@@ -201,7 +201,7 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   being one when the writes moved to the browser. PostgREST has no multi-statement transaction, so
   **every** two-round-trip create has that window — the fix was to leave the intermediate state
   unrepresentable (an `AFTER INSERT` trigger seeds the row), not to narrow the window.
-  `openspec/changes/enforce-creator-membership/` holds the reasoning, and `design.md` §D1 says why
+  `openspec/changes/enforce-creator-membership/` holds the reasoning, and `openspec/changes/enforce-creator-membership/design.md` §D1 says why
   a trigger rather than the `security definer` RPC both call sites named for months.
 
   **Two things this entry used to say that were wrong, corrected rather than deleted:**
