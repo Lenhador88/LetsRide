@@ -618,8 +618,17 @@ export async function updateRide(
   // save that may not have touched `club_id` at all.
   if (error?.code === '42501') {
     return {
+      // **Names the STATE, not the act**, because two shipped routes reach it
+      // and nothing records which one happened: `leaveClub`, and being ejected
+      // by an admin through `removeClubMember` → `public.remove_club_member`
+      // (`club_members` carries no admin DELETE policy, so a reader checking
+      // policies alone misses the second). Telling an ejected organizer they
+      // left is a refusal asserting something they know to be false — the same
+      // defect class PD-338 removed from the audience message twelve lines of
+      // spec away. `ride-lifecycle`'s ex-member requirement mandates this
+      // wording.
       error:
-        'You’ve left this ride’s club, so changes can’t be saved while it stays linked. Delete the ride, or make it public and remove it from the club.',
+        'You’re no longer a member of this ride’s club, so changes can’t be saved while it stays linked. Delete the ride, or make it public and remove it from the club.',
     }
   }
 
