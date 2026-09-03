@@ -1315,8 +1315,11 @@ async function provision(wanted, existing = {}) {
     // until someone reorders it.
     const clubForRide = created.club ?? existing.club ?? null
     if (clubForRide) {
+      // Bounded, because the picker is genuinely absent when the composer is
+      // seeded with a club (`CreateRideForm` draws a hidden input instead) and
+      // the default 30 s wait would be paid for a fixture, not a finding.
       const attached = await page
-        .selectOption('select[name="club_id"]', clubForRide)
+        .selectOption('select[name="club_id"]', clubForRide, { timeout: 5_000 })
         .then((values) => values.length > 0)
         .catch(() => false)
       if (!attached) {
