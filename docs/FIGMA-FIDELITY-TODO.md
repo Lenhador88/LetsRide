@@ -533,6 +533,30 @@ is a drawn value this repo no longer builds:
       deviating from every other section heading in the app inside one screen is the worse of
       the two inconsistencies.
 
+- [ ] **The stream pages on scroll since PD-375, and none of the affordances that make that
+      visible are drawn anywhere — the frame is a static twenty-entry list.** `npm run figma --
+      ls Timeline` still returns the one frame measured above; nothing was added or re-pulled for
+      paging. Three things are the app's own rather than the design's:
+
+      - **The scroll sentinel itself** — an invisible 1px strip near the foot of the stream, the
+        repo's first `IntersectionObserver` (`ScrollSentinel`, `client-render-shell`). It draws
+        nothing and has no frame to draw from; PD-375 asked for scroll-triggered loading and
+        never a control, which is the only reason there is no button here either.
+      - **The tail's three-row loading skeleton**, drawn only while a page fetch is actually in
+        flight (`SkeletonList rows={3}`) — the same invented shape `Skeleton.tsx`'s own header
+        already logs for every other loading treatment in the app, none of which the committed
+        snapshot draws a frame for.
+      - **The offline and failure copy** — *"You're offline — more will load once you're back."*
+        and *"Could not load more."* plus a `Try again` link — both `ErrorState`'s own voice
+        carried to a new spot rather than read off a mock; there is no offline or failed-page
+        frame for this screen to deviate from.
+
+      **What stays measured**: everything the paging touches keeps its existing geometry — a
+      fetched window renders through the same `PostcardCard`, `ClubTimelineRideCard` and
+      `ClubTimelineThreadRow` the first twenty already used, and the `club-created` floor entry
+      and the *"Older activity lives in…"* foot are unchanged, just reachable at several hundred
+      entries instead of twenty.
+
 - [ ] **The section order and the Postcards section itself deviate further from the approved
       mock, 2026-08-18 (`club-details-dropdown-removal`, PD-262).** The product owner settled a
       new top-to-bottom order in conversation rather than in a redrawn frame: Upcoming rides,
@@ -1542,8 +1566,10 @@ absent from the mock or a product decision this pass had to make without one:
       retention window is "as long as the subject exists", i.e. unbounded, so the list needed a
       real second page — `getNotificationsPage`'s keyset cursor — and the screen needed some
       control to reach it. A plain secondary `Button` labelled "Load more" is invented rather
-      than an infinite-scroll trigger, matching this app's other bounded-list screens, none of
-      which auto-load either.
+      than an infinite-scroll trigger — a deliberate choice, not the only shape this app builds:
+      the club timeline auto-loads on scroll since PD-375 (`ScrollSentinel`), and
+      `/clubs/detail/threads` keeps this same button. Re-derive rather than trust which screens
+      currently auto-load: `git grep -n ScrollSentinel -- 'src/app/**/*.tsx' 'src/components/**/*.tsx'`.
 - [ ] **Opening the screen marks everything read, and nothing in the design draws that
       either.** `Inbox - Notifications` has no per-row dismiss and no "mark all read" control
       anywhere on it, so `MarkNotificationsRead` fires on mount, the same shape
