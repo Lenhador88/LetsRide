@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { FEED_PAGE_SIZE, getRideJournal } from '@/lib/data/postcards'
+import {
+  CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE,
+  CLUB_FEED_HORIZON_ESCALATIONS,
+  FEED_PAGE_SIZE,
+  getClubFeedWindow,
+  getRideJournal,
+} from '@/lib/data/postcards'
 
 /**
  * `getRideJournal`'s two-step shape (`041`, PD-256): an id lookup through
@@ -128,5 +134,277 @@ describe('getRideJournal', () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'nope' } })
 
     await expect(getRideJournal(RIDE_ID)).rejects.toThrow()
+  })
+})
+
+/**
+ * `getClubFeedWindow` — `design.md` §D3's fix, and the TWO further findings
+ * a reviewer pass on PD-375 caught in it, in order:
+ *
+ * 1. A saturated accessor page whose every row the caller's own RLS then
+ *    refuses used to read as SHORT, because the horizon was still measured
+ *    on `withFlag` (the second, RLS-filtered read) once nothing survived —
+ *    the identical false-complete signal this function exists to close, one
+ *    level down.
+ * 2. The FIX for (1) guessed a horizon instead of looking for one — `now()`
+ *    on the first page (newer than every real event, so the merge's
+ *    `max(horizons)` cut wipes the whole timeline) or `before` on a deeper
+ *    page (pins the accumulated horizon there for ever, freezing every
+ *    other source behind it via the same `max(horizons)`). The fix for
+ *    THAT is escalation: re-ask the same accessor for a bigger page before
+ *    guessing anything, and guess only once that has genuinely failed.
+ *
+ * A postcard row built with `image_path: ''` and `author: null` throughout —
+ * `attachLikeState`'s `signImagePaths`/`resolveAvatarUrls` both short-circuit
+ * on an empty/absent path, so a survivor fixture needs no Storage stub.
+ */
+function survivorRow(id: string, createdAt: string) {
+  return {
+    id,
+    author_id: 'author-1',
+    club_id: null,
+    image_path: '',
+    caption: null,
+    created_at: createdAt,
+    updated_at: createdAt,
+    taken_place_name: null,
+    taken_country_code: null,
+    author: null,
+    club: null,
+    likes_count: null,
+    comments_count: null,
+  }
+}
+
+describe('getClubFeedWindow', () => {
+  const CLUB_ID = '22222222-2222-4222-8222-222222222222'
+
+  function accessorIds(count: number) {
+    return Array.from({ length: count }, (_, i) => ({ id: `p${i}`, from_ride: false }))
+  }
+
+  /**
+   * A FAITHFUL accessor stub — it enforces the SAME clamp `086` line 135
+   * does (`least(page_size, 100)`), as well as "cannot return more than
+   * actually exists". This is the fix for the mock mistake that let the
+   * ceiling bug ship invisibly: a stub that echoed back whatever `page_size`
+   * it was asked for could return 120 ids for a 120-id ask, which the real
+   * `club_stamp_postcard_ids` can never do — so a test built on it could not
+   * see a caller that failed to clamp its own request before comparing
+   * against it.
+   */
+  function mockAccessorWithAvailable(available: number) {
+    rpc.mockImplementation(async (_fn: string, args: { page_size: number }) => ({
+      data: accessorIds(Math.min(args.page_size, available, CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE)),
+      error: null,
+    }))
+  }
+
+  beforeEach(() => {
+    rpc.mockReset()
+    from.mockReset()
+    getUser.mockReset()
+    getUser.mockResolvedValue({ data: { user: null } })
+  })
+
+  it('imposes no horizon when the accessor itself comes back short, on the first try', async () => {
+    rpc.mockResolvedValue({ data: [{ id: 'p1', from_ride: false }], error: null })
+    const { builder } = postcardsBuilder([])
+    from.mockReturnValue(builder)
+
+    const window = await getClubFeedWindow(CLUB_ID, { limit: FEED_PAGE_SIZE })
+
+    expect(window.horizon).toBeNull()
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * Case (1) from `design.md`/task list: a saturated DEEPER page with zero
+   * survivors escalates and finds one on the second accessor call. `before`
+   * stays IDENTICAL across the escalation — the escalation looks further
+   * INTO the same window, never past it — and the horizon comes from the
+   * escalated round's own survivor, never a guess.
+   */
+  it('escalates a saturated deeper page with zero survivors, and derives the horizon from the round that finds one', async () => {
+    const before = '2026-01-10T00:00:00.000Z'
+    const survivorCreatedAt = '2026-01-05T00:00:00.000Z'
+
+    rpc.mockResolvedValueOnce({ data: accessorIds(FEED_PAGE_SIZE), error: null })
+      .mockResolvedValueOnce({ data: accessorIds(FEED_PAGE_SIZE * 2), error: null })
+
+    const { builder: emptyBuilder } = postcardsBuilder([])
+    const { builder: survivorBuilder } = postcardsBuilder([survivorRow('p5', survivorCreatedAt)])
+    from.mockReturnValueOnce(emptyBuilder).mockReturnValueOnce(survivorBuilder)
+
+    const window = await getClubFeedWindow(CLUB_ID, { before, limit: FEED_PAGE_SIZE })
+
+    expect(rpc).toHaveBeenCalledTimes(2)
+    expect(rpc).toHaveBeenNthCalledWith(1, 'club_stamp_postcard_ids', {
+      club: CLUB_ID,
+      before,
+      page_size: FEED_PAGE_SIZE,
+    })
+    expect(rpc).toHaveBeenNthCalledWith(2, 'club_stamp_postcard_ids', {
+      club: CLUB_ID,
+      before,
+      page_size: FEED_PAGE_SIZE * 2,
+    })
+    // Not `now()`, not `before` — the escalated round's own survivor.
+    expect(window.horizon).toBe(survivorCreatedAt)
+    expect(window.rows).toHaveLength(1)
+  })
+
+  /**
+   * The same escalation on the FIRST page (`before` undefined) — the case
+   * that used to fall back to `new Date().toISOString()` and blank the
+   * whole merged timeline via `max(horizons)`.
+   */
+  it('escalates a saturated FIRST page with zero survivors, and derives the horizon from the round that finds one', async () => {
+    const survivorCreatedAt = '2026-01-05T00:00:00.000Z'
+
+    rpc.mockResolvedValueOnce({ data: accessorIds(FEED_PAGE_SIZE), error: null })
+      .mockResolvedValueOnce({ data: accessorIds(FEED_PAGE_SIZE * 2), error: null })
+
+    const { builder: emptyBuilder } = postcardsBuilder([])
+    const { builder: survivorBuilder } = postcardsBuilder([survivorRow('p5', survivorCreatedAt)])
+    from.mockReturnValueOnce(emptyBuilder).mockReturnValueOnce(survivorBuilder)
+
+    const window = await getClubFeedWindow(CLUB_ID, { limit: FEED_PAGE_SIZE })
+
+    expect(rpc).toHaveBeenCalledTimes(2)
+    // Concrete, not merely `not.toBeNull()` — the trap the original version
+    // of this test could not catch, because a fabricated `now()` also
+    // passes a bare non-null assertion. The fixture's own survivor is from
+    // 2026-01-05, well in the past relative to whenever this suite runs.
+    expect(window.horizon).toBe(survivorCreatedAt)
+    expect(new Date(window.horizon!).getTime()).toBeLessThan(Date.now())
+  })
+
+  /**
+   * The accessor genuinely runs out DURING escalation: the escalated call
+   * (`page_size` doubled once) returns fewer ids than it asked for — real
+   * completion, horizon `null`, and `rows` reflects that FINAL round's own
+   * full read rather than the first (empty) round's.
+   */
+  it('reports null once the accessor itself comes back short at an escalated page size, with rows from that round', async () => {
+    const survivorCreatedAt = '2026-01-03T00:00:00.000Z'
+    // Round 1: saturated (FEED_PAGE_SIZE ids), zero survivors. Round 2:
+    // escalated to FEED_PAGE_SIZE * 2, but the accessor only had
+    // FEED_PAGE_SIZE + 3 to give — short of what it was asked for, so this
+    // is genuine completion even though ONE of those ids survives RLS.
+    rpc.mockResolvedValueOnce({ data: accessorIds(FEED_PAGE_SIZE), error: null })
+      .mockResolvedValueOnce({ data: accessorIds(FEED_PAGE_SIZE + 3), error: null })
+
+    const { builder: emptyBuilder } = postcardsBuilder([])
+    const { builder: survivorBuilder } = postcardsBuilder([survivorRow('p5', survivorCreatedAt)])
+    from.mockReturnValueOnce(emptyBuilder).mockReturnValueOnce(survivorBuilder)
+
+    const window = await getClubFeedWindow(CLUB_ID, { limit: FEED_PAGE_SIZE })
+
+    expect(rpc).toHaveBeenCalledTimes(2)
+    expect(window.horizon).toBeNull()
+    expect(window.rows).toHaveLength(1)
+    expect(window.rows[0].id).toBe('p5')
+  })
+
+  /**
+   * The bug a fourth review pass found in the escalation fix itself: the raw
+   * ladder is 30 → 60 → 120, but the accessor can never serve more than
+   * `CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE` (100) regardless of what it is asked
+   * for (`086` line 135) — asking for 120 and comparing the reply against
+   * 120 made a page the accessor answered IN FULL (its own 100-row hard
+   * maximum) read as SHORT, which is the exact false-completeness defect
+   * this whole fix chain exists to close, one rung deeper. It fires whether
+   * zero or a few rows survive that round, because the un-clamped
+   * `!saturated` check ran before the survivor check.
+   *
+   * A precise `mockResolvedValueOnce` sequence rather than
+   * `mockAccessorWithAvailable` below, so the assertion on round 3's own
+   * `page_size` argument is the thing pinning the fix — the caller must ask
+   * for the clamped 100, never the raw 120.
+   */
+  it('does not mistake the accessor\'s own 100-row ceiling for a short (complete) page', async () => {
+    rpc.mockResolvedValueOnce({ data: accessorIds(FEED_PAGE_SIZE), error: null }) // round 0: 30, saturated
+      .mockResolvedValueOnce({ data: accessorIds(FEED_PAGE_SIZE * 2), error: null }) // round 1: 60, saturated
+      // round 2: asked for the CLAMPED 100 (never the raw 120) and the
+      // accessor answers IN FULL — its own hard maximum, not a short page.
+      .mockResolvedValueOnce({ data: accessorIds(CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE), error: null })
+
+    const { builder: empty1 } = postcardsBuilder([])
+    const { builder: empty2 } = postcardsBuilder([])
+    const { builder: empty3 } = postcardsBuilder([])
+    from.mockReturnValueOnce(empty1).mockReturnValueOnce(empty2).mockReturnValueOnce(empty3)
+
+    const window = await getClubFeedWindow(CLUB_ID, { limit: FEED_PAGE_SIZE })
+
+    expect(rpc).toHaveBeenCalledTimes(3)
+    expect(rpc).toHaveBeenNthCalledWith(3, 'club_stamp_postcard_ids', {
+      club: CLUB_ID,
+      before: null,
+      page_size: CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE,
+    })
+    // The bug: `window.length(100) >= pageSize(120)` is false, so this used
+    // to read as short/complete. Fixed: compared against the clamped 100,
+    // `100 >= 100` is saturated — the ceiling is recognised rather than
+    // mistaken for completeness, so the honest last-resort fallback runs
+    // instead of a false `null`.
+    expect(window.horizon).not.toBeNull()
+  })
+
+  /**
+   * The exhaustion case, end to end: every round saturates and every one
+   * comes back with zero survivors, all the way to the accessor's OWN
+   * ceiling. `mockAccessorWithAvailable` enforces the real accessor's clamp
+   * on every call — including the last one, which asks for 100 (not 120)
+   * and is genuinely told there are 500 more where that came from, so it
+   * answers with exactly 100, its own hard maximum. This is the one place a
+   * guess is unavoidable, and it must still be BOUNDED: the accessor is
+   * called `1 + CLUB_FEED_HORIZON_ESCALATIONS` times and no more, and the
+   * ladder climbs 30 → 60 → 100, never past the accessor's own ceiling.
+   */
+  it('stops escalating at the accessor\'s own ceiling and falls back to `before` only once every round has failed', async () => {
+    const before = '2026-01-10T00:00:00.000Z'
+    const totalRounds = 1 + CLUB_FEED_HORIZON_ESCALATIONS
+    mockAccessorWithAvailable(500) // far more than any one call will ever be served
+
+    for (let round = 0; round < totalRounds; round++) {
+      const { builder } = postcardsBuilder([])
+      from.mockReturnValueOnce(builder)
+    }
+
+    const window = await getClubFeedWindow(CLUB_ID, { before, limit: FEED_PAGE_SIZE })
+
+    expect(rpc).toHaveBeenCalledTimes(totalRounds)
+    expect(rpc).toHaveBeenNthCalledWith(1, 'club_stamp_postcard_ids', { club: CLUB_ID, before, page_size: FEED_PAGE_SIZE })
+    expect(rpc).toHaveBeenNthCalledWith(2, 'club_stamp_postcard_ids', { club: CLUB_ID, before, page_size: FEED_PAGE_SIZE * 2 })
+    // The last rung is the accessor's own ceiling, not the raw 120 the
+    // doubling ladder would otherwise ask for.
+    expect(rpc).toHaveBeenNthCalledWith(totalRounds, 'club_stamp_postcard_ids', {
+      club: CLUB_ID,
+      before,
+      page_size: CLUB_FEED_ACCESSOR_MAX_PAGE_SIZE,
+    })
+    expect(from).toHaveBeenCalledTimes(totalRounds)
+    // The documented last resort — "no progress" rather than a guess with no
+    // basis at all — reached only after real escalation failed throughout.
+    expect(window.horizon).toBe(before)
+    expect(window.rows).toEqual([])
+  })
+
+  it('falls back to "now" on the exhausted FIRST page (no `before` to fall back to)', async () => {
+    const totalRounds = 1 + CLUB_FEED_HORIZON_ESCALATIONS
+    const beforeCall = Date.now()
+    mockAccessorWithAvailable(500)
+
+    for (let round = 0; round < totalRounds; round++) {
+      const { builder } = postcardsBuilder([])
+      from.mockReturnValueOnce(builder)
+    }
+
+    const window = await getClubFeedWindow(CLUB_ID, { limit: FEED_PAGE_SIZE })
+
+    expect(rpc).toHaveBeenCalledTimes(totalRounds)
+    expect(window.horizon).not.toBeNull()
+    expect(new Date(window.horizon!).getTime()).toBeGreaterThanOrEqual(beforeCall)
   })
 })

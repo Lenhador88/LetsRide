@@ -1,4 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { chunkIds } from '@/lib/data/club-timeline'
 
 /**
  * The count and whether the viewer has waved — `postcard_likes`'
@@ -63,6 +64,21 @@ type ClubWaveMap = Record<string, ClubWaveState>
  * `getClubJoins` document for the tables they read. Naming a predicate here
  * would be the second copy `club-timeline-engagement`'s SELECT requirement
  * forbids.
+ *
+ * **Chunked at `CLUB_TIMELINE_SUBJECT_CHUNK`, since PD-375.** Paging grows
+ * `subjectIds` by up to `CLUB_TIMELINE_JOINS` per fetched window, and a single
+ * `.in()` serialises every id into the PostgREST query string — so an
+ * unbounded list eventually crosses whatever URI limit sits in front of it.
+ * That failure would be **silent**: this function already fails to `{}`
+ * rather than throwing, on the standing rule that a decoration must not gate
+ * the rows it decorates, which is exactly what would make a paging-depth URI
+ * limit costs the wave controls with nothing red anywhere. Chunking removes
+ * the unmeasured limit from the argument rather than resting on it — see
+ * `CLUB_TIMELINE_SUBJECT_CHUNK`'s own header. **One chunk erroring fails the
+ * whole map** rather than degrading partially, matching the single-request
+ * rule this replaces: a caller reading a possibly-absent map already cannot
+ * tell "some of this failed" from "none of it did", so a partial map would be
+ * a distinction with no reader.
  */
 export async function attachClubWaveState(
   clubId: string,
@@ -75,21 +91,27 @@ export async function attachClubWaveState(
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { data, error } = await supabase
-    .from('club_join_waves')
-    .select('subject_user_id, user_id')
-    .eq('club_id', clubId)
-    .in('subject_user_id', subjectIds)
+  const results = await Promise.all(
+    chunkIds(subjectIds).map((ids) =>
+      supabase
+        .from('club_join_waves')
+        .select('subject_user_id, user_id')
+        .eq('club_id', clubId)
+        .in('subject_user_id', ids)
+    )
+  )
 
-  if (error) return {}
+  if (results.some((result) => result.error)) return {}
 
   const state: ClubWaveMap = {}
   for (const id of subjectIds) state[id] = { count: 0, waved: false }
-  for (const row of (data ?? []) as JoinWaveRow[]) {
-    const entry = state[row.subject_user_id]
-    if (!entry) continue
-    entry.count += 1
-    if (user && row.user_id === user.id) entry.waved = true
+  for (const result of results) {
+    for (const row of (result.data ?? []) as JoinWaveRow[]) {
+      const entry = state[row.subject_user_id]
+      if (!entry) continue
+      entry.count += 1
+      if (user && row.user_id === user.id) entry.waved = true
+    }
   }
   return state
 }

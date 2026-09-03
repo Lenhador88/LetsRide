@@ -349,8 +349,27 @@ export const queryKeys = {
      * **`threadWaves` stood beside this and is gone (PD-372)** — the club
      * timeline's only waveable row is the announcement row, so a thread wave
      * has no control and this is the only wave key a club has.
+     *
+     * **`depth` is PD-375's paging segment.** On a paged timeline the subject
+     * id set grows with every fetched join window, and this cache refetches
+     * on a changed KEY rather than a changed argument — so the key has to
+     * carry the depth for the fetcher it activates to ever see ids beyond the
+     * first window's. `undefined` (the depth-less form, unchanged) still
+     * means "the first window's ids", so nothing at depth zero moves.
+     *
+     * **`waveJoin`/`unwaveJoin` need no edit for this.** They invalidate the
+     * depth-less form, and `invalidate` matches on a key PREFIX
+     * (`keyStartsWith`, `queryClient.ts`), so a call naming
+     * `['clubs','detail',id,'joinWaves']` reaches every depth-suffixed entry
+     * structurally.
      */
-    joinWaves: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'joinWaves'],
+    joinWaves: (clubId: string, depth?: number): QueryKey => [
+      'clubs',
+      'detail',
+      clubId,
+      'joinWaves',
+      ...(depth === undefined ? [] : [String(depth)]),
+    ],
     /**
      * A batch of a club's JOINS' introductions — the door and the count each
      * one's join row draws (`097`, PD-365, `attachClubIntroductions`).
@@ -361,12 +380,17 @@ export const queryKeys = {
      * one key would refetch one decoration every time the other moved for no
      * reason. `introduceToClub` names this key; `waveJoin`/`unwaveJoin` do
      * not reach it and must not.
+     *
+     * **`depth` is `joinWaves`' own segment, for the identical reason.**
+     * `introduceToClub` keeps invalidating the depth-less form and reaches
+     * every depth by prefix, matching `joinWaves`.
      */
-    joinIntroductions: (clubId: string): QueryKey => [
+    joinIntroductions: (clubId: string, depth?: number): QueryKey => [
       'clubs',
       'detail',
       clubId,
       'joinIntroductions',
+      ...(depth === undefined ? [] : [String(depth)]),
     ],
     /**
      * Whether the SIGNED-IN rider has already introduced themselves in this
@@ -481,6 +505,29 @@ export const queryKeys = {
      * and the next author to hold it will add a call site too.
      */
     journal: (rideId: string): QueryKey => ['postcards', 'journal', rideId],
+    /**
+     * The club timeline's own postcard source — `getClubFeedWindow` (PD-375,
+     * `design.md` §D3). A CHILD of `feed(filterSegment.club(clubId))`, on
+     * `clubs.edit`/`clubs.preview`'s precedent: the window carries `until` and
+     * `untilInclusive` alongside its rows, a wider shape than the plain
+     * `Postcard[]` the feed and `ClubPostcardCarousel` share, and two shapes
+     * sharing one entry is exactly the collision this file's header warns
+     * about.
+     *
+     * **Reached by everything that already reaches the feed key**, because
+     * `invalidate` matches by prefix: `postcards.all()` and `joinClub`/
+     * `leaveClub`'s existing `postcards.feed(filterSegment.club(clubId))` call
+     * both reach this without an edit. The cost this key was introduced to
+     * pay: the club detail no longer warms the Postcards list's own
+     * `feed(filterSegment.club(id))` entry, so that navigation costs one read
+     * it did not cost before — the trade `design.md` §D3 states plainly.
+     */
+    clubWindow: (clubId: string): QueryKey => [
+      'postcards',
+      'feed',
+      filterSegment.club(clubId),
+      'window',
+    ],
   },
 
   /**

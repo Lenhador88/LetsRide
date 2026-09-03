@@ -1338,10 +1338,16 @@ export async function getCrewRides(only?: string | null): Promise<RideOption[]> 
  *
  * No audience predicate: `022`'s `rides` SELECT policy owns it, so a private
  * club's rides come back for its members and nobody else.
+ *
+ * **`until` is PD-375's paging bound** — inclusive (`design.md` §D3), so a
+ * `limit` slicing through rides sharing one instant cannot drop the ones below
+ * the cut; `ClubTimeline` wraps this into a `ClubTimelineWindow` itself, since
+ * the shape returned here is unchanged and shared with nothing else.
  */
 export async function getClubRideAnnouncements(
   clubId: string,
-  limit = RIDES_PAGE_SIZE
+  limit = RIDES_PAGE_SIZE,
+  until?: string
 ): Promise<RideListItem[]> {
   // The guard every club-scoped read carries, and it moved with the function: a
   // non-uuid reaches `.eq('club_id', …)` as `22P02`, PostgREST turns it into a
@@ -1357,17 +1363,19 @@ export async function getClubRideAnnouncements(
 
   const dayStartMs = new Date(rideDayStartUtc()).getTime()
 
+  let query = supabase
+    .from('rides')
+    .select(RIDE_SELECT)
+    .eq('club_id', clubId)
+    // `id` as the tiebreak for `getClubThreads`' reason: two rides sharing a
+    // `now()` would otherwise page in an order Postgres does not promise, so
+    // the bound could drop one and repeat the other.
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+  if (until) query = query.lte('created_at', until)
+
   const rows = unwrapList(
-    await supabase
-      .from('rides')
-      .select(RIDE_SELECT)
-      .eq('club_id', clubId)
-      // `id` as the tiebreak for `getClubThreads`' reason: two rides sharing a
-      // `now()` would otherwise page in an order Postgres does not promise, so
-      // the bound could drop one and repeat the other.
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(limit),
+    await query.limit(limit),
     "this club's rides",
   ) as unknown as RideRow[]
 
