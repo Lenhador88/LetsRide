@@ -190,6 +190,31 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The welcome club CAN appear on Explore with a `Join club` button — 2026-09-03
+
+**`getExploreClubs`' public half filters on `is_public` alone and has no `is_default` exclusion**, so
+any screen reasoning *"the default club auto-joins at signup, so it cannot appear here"* is wrong.
+PD-384 shipped that assumption as a hardcoded `isDefaultClub: false` and the pre-merge review caught
+it; the fix carries `is_default` on `ClubListItem` so Explore and the club detail read one column.
+
+Two documented routes put a rider outside the welcome club, and **only the private half excludes it**
+(`085`'s `private.club_takes_join_requests_for` carries `and c.is_default = false`):
+
+- **Leaving.** `club_members` DELETE is a bare `auth.uid() = user_id` and `leaveClub` has no
+  default-club guard — only the *owner* is refused (`095`, `059`).
+- **The signup join doing nothing.** `059` §2: `complete_onboarding`'s insert can select zero rows,
+  which is a SUCCESS, so no exception block sees it.
+
+```sql
+-- how many riders are outside it? 15 of 24 on DEV, 2026-09-03
+select count(*) from profiles p
+ where not exists (select 1 from club_members m join clubs c on c.id = m.club_id
+                    where m.user_id = p.id and c.is_default);
+```
+
+**The durable rule: `is_default` is DATA and must be read, never asserted from a screen's position
+in the flow.** The same trap is available to any future list that grows a membership control.
+
 ## Where this left off — 2026-09-03, a queue firing closed one stale story and one race, and parked one
 
 **Group taken into `slot-2`: PD-380, PD-381, PD-377 — one dropped, two built.**
