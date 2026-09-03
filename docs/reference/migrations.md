@@ -325,9 +325,12 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 not a gap; the PROD shortfall IS one, and it is `101` alone.** DEV is level with the repo at `101`
 — every file has a recorded row, reconciled name by name on 2026-08-31, again for `096` on
 2026-09-01, and again for `101` on 2026-09-03. **PROD is at `100`, so `101` is awaiting promotion**
-(`101_retire_club_thread_waves`, PD-373 — destructive, and `090`'s case: PD-372 already retired
-every client path that could observe the dropped objects, so it has no unsafe side and no ordering
-constraint against a build). DEV's **surplus rows** are files applied there in increments: `063` in
+(`101_retire_club_thread_waves`, PD-373 — destructive, and **NOT `090`'s case**: `090`'s "no unsafe
+side" held because the client that could observe the dropped objects was already gone from the
+bundle *being promoted*; here PD-372's `club_thread_waves` retirement is confirmed serving only on
+DEV, PROD's `main` bundle still reads and writes the table, and `101` must wait until the
+`development` → `main` promotion carrying PD-372 is confirmed serving before it applies to PROD —
+`docs/HANDOFF.md`'s §Applied state entry for `101` has the measured detail). DEV's **surplus rows** are files applied there in increments: `063` in
 three — `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private`, where PROD
 holds the one consolidated file — and `080` in two, `rides_carry_their_meeting_points_zone` plus
 `rides_zone_is_not_cleared_with_the_location_group`. **DEV keeps all three `063` rows even though

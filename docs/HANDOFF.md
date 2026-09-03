@@ -258,9 +258,17 @@ by `100`).
 grep -c "NOTICE:  ok" <(PGPASSWORD=postgres npm test 2>&1)   # 3280, from 3335
 ```
 
-**PROD is one behind: `101` is applied to DEV only** and is the whole of the gap. It is `090`'s
-case — every client path that could observe the dropped objects went with PD-372, which is already
-serving — so it has no unsafe side and no ordering constraint against a build.
+**PROD is one behind: `101` is applied to DEV only** and is the whole of the gap. **This is NOT
+`090`'s case, and reading it as one breaks PROD's club timeline.** `090`'s "no ordering constraint"
+held because the client path that could observe the dropped objects was already gone from the
+bundle *being promoted*. Here that bundle is PD-372 (`c7267e5`), and it is confirmed serving only
+on **DEV** — `git branch -r --contains c7267e5` does not list `origin/main`. PROD's live bundle
+still reads and writes `club_thread_waves`: `src/lib/data/club-waves.ts` and
+`src/lib/actions/club-waves.ts` on `origin/main`, measured 2026-09-03. **`101` must not be applied
+to PROD until the `development` → `main` promotion carrying PD-372 is confirmed serving there**
+(`READY` on the merge sha, `aliasError` null) — applying it earlier makes every PROD club timeline
+read a `PGRST200` on the wave-count embed and every wave tap error, the exact shape `024`'s
+`avatar_url` precedent describes in `docs/ENVIRONMENTS.md`.
 
 ## Where this left off — 2026-09-02, an introduction is listed only as its announcement
 

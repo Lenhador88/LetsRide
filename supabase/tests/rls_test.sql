@@ -28698,10 +28698,9 @@ rollback to savepoint introductions_097;
 --   980002 tqauthor   MEMBER of cA and cC — ** the thread author, and therefore
 --                     the only recipient in this whole section **
 --   980003 tqreplier  MEMBER of cA, cB, cC and cD — the actor almost everywhere
---   980004 tqother    MEMBER of cA — the PRIOR REPLIER 098.3 needs, and the
---                     second waver 098.19 needs. Without a second participant
---                     an author-only recipient set is indistinguishable from a
---                     participants one
+--   980004 tqother    MEMBER of cA — the PRIOR REPLIER 098.3 needs. Was also
+--                     the second waver 098.19 needed, before 101 (PD-373)
+--                     removed that section with club_thread_waves
 --   980005 tqadmin    ADMIN of cA — the moderation path, and a member who must
 --                     receive nothing qua admin
 --   980006 tqblocker  MEMBER of cA — both block directions, 098.9/10/11
@@ -29515,8 +29514,10 @@ select assert_eq(
   0, '098.23a: ... and the reported thread is gone. That function''s BODY still says notifications "has no thread_id column and is not in the chain", which 098 made false, and it still lists club_thread_waves among the thread''s children, which 101 makes false. Both are IN-BODY COMMENTS and neither is read at runtime; the 098 correction is in its EXTERNAL comment and the in-body edit stays filed separately, because `create or replace` moves prosrc — the value every DEV/PROD reconciliation compares');
 rollback to savepoint cascade_operator_098;
 
--- Route 4 — a CLUB deletion, through delete_owned_club, reaching the waves two
--- cascades deep: clubs → club_threads → club_thread_waves.
+-- Route 4 — a CLUB deletion, through delete_owned_club, reaching the thread's
+-- children two cascades deep: clubs → club_threads → notifications. Until 101
+-- the third level was club_thread_waves, whose retraction fired there with its
+-- parent thread already gone.
 savepoint cascade_club_098;
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000980003', false);
@@ -30554,8 +30555,10 @@ rollback to savepoint club_joined_members_099;
 --                     load-bearing: an owning author resolves through the owner
 --                     arm and would never have been the defect **
 --   1000003 tfreplier MEMBER of cP and cQ — the actor throughout
---   1000004 tfstayer  MEMBER of cP and author of a thread there. Stays, except
---                     in 100.6 where the leave happens AFTER the write
+--   1000004 tfstayer  MEMBER of cP and author of a thread there. Stays — was
+--                     the exception in 100.6, where the leave happened AFTER
+--                     the write, before that section went with
+--                     club_thread_waves (101, PD-373)
 --   1000005 tfsolo    ** owns cQ (PUBLIC) and holds NO club_members row **
 -- ===========================================================================
 savepoint thread_membership_100;
