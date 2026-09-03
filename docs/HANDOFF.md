@@ -239,6 +239,52 @@ PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3310
 git grep -n "MUST STAY THERE" -- supabase/    # the rule, recorded at each policy
 ```
 
+## The walk opens both invite landing routes, and a firing now records what it cost — 2026-09-03
+
+**PD-358 + PD-387, one branch.** Neither is rider-visible.
+
+**PD-358 — `checkInviteLanding`, and its signed-OUT half is the first thing in `scripts/walk.mjs`
+that asserts on a page loaded with no session at all.** `/rides/join` and `/clubs/join` join the
+bare route list, and the phase opens each with a 32-hex token that parses and matches nothing.
+
+- **The issue's premise "the app's ONE public screen" was true when filed and stopped being true
+  four days later** — `093` (PD-360) shipped `/clubs/join` as the twin, and it was equally
+  unwalked. The phase takes a `kind` off `INVITE_LANDINGS` rather than being written twice.
+- **The load-bearing assertions are the two about the oracle, not the one about ride data.** A dead
+  token cannot produce ride data whatever the screen does, so "no ride title on screen" would pass
+  on a build that leaks every ride. What a dead token *can* show is whether a stranger can tell a
+  live token from a dead one — which RLS cannot refuse, because each preview RPC is granted to
+  `authenticated` and a refusal answers the question as well as a row does. So: the dead token is
+  not reported as dead, and no request to the preview RPC leaves the page.
+- **The route-list entries carry no token deliberately.** `adoptInviteTokenFromLocation` strips the
+  query with `history.replaceState`, so a token there makes `finalPath` come back without it and
+  the loop reports a redirect that did not happen.
+- **`65/65` is ARITHMETIC and `47/47` is the last measured run** — 9 assertions per landing across
+  two routes, 47 + 18. Nobody has run it: Chromium here cannot reach Supabase without the relay and
+  CI's `walk` job is skipped until `WALK_CI=1`. `docs/reference/running-locally.md` says which is
+  which and asks the next real run to replace it.
+
+**PD-387 — `.claude/commands/queue-pickup.md` §The cost record.** One labelled block in one Linear
+comment, one line in the PR body. Three things a later session should not re-derive:
+
+- **It is owed by any firing that CLAIMED a story, whichever way it ended** — so STEP 2c, §If you
+  get stuck and STEP 4c's three-attempt CI bound all write it into the comment they were already
+  writing. That is the requirement most likely to be quietly dropped, and the issue is explicit
+  about why: a breakdown that only appears on the runs that went well is an advertisement.
+- **The wall-clock stamp had to move to `queue-run.md` STEP 0.** PD-387 proposes reading `fired_at`
+  off `list_triggers` and `usage` off `get_session`; PD-241's measured inventory says no
+  `mcp__Claude_Code_Remote__*` tool exists in a Routine-minted session. Nothing recovers a run's
+  start time afterwards, so STEP 0 takes it in the same call as the push probe. The two token rows
+  read `not available` on a firing and the section says that is expected, not a fault.
+- **Every row is labelled measured or self-reported.** The phase split is narration — no clock in
+  the loop attributes wall time to activities — and it is marked as such *inside the block*, because
+  the block is what gets read. Where the numbers surface and what figure stops a run is PD-388's.
+
+```bash
+git grep -n "INVITE_LANDINGS\|checkInviteLanding" -- scripts/walk.mjs
+npx vitest run scripts/docs/__tests__/crossrefs.test.mjs src/__tests__/agent-briefs.test.ts
+```
+
 ## A ride's audience guard is about the TRANSITION, not the shape — 2026-09-03
 
 **PD-338 + PD-311, one branch.** `EditRideForm`'s `wouldStrand = !clubId && !isPublic` is gone;
