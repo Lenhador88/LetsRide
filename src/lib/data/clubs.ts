@@ -431,9 +431,13 @@ async function myRequestStatuses(
  *
  * `is_default` is `false` for the same kind of reason, and it is worth naming
  * the line rather than reasoning from the welcome club's current settings:
- * `085`'s accessor carries `and c.is_default = false` in its own WHERE clause
- * (`085_club_join_requests.sql:209`), so the default club cannot be in this
- * result set whatever its `is_public` happens to be. Nothing on this path
+ * `085`'s accessor carries `and c.is_default = false` — in the helper its
+ * WHERE clause calls, `private.club_takes_join_requests_for`
+ * (`085_club_join_requests.sql:209`), not inline in
+ * `discoverable_private_clubs` itself, so grepping that function's own body
+ * for the string finds nothing and the citation reads as wrong for a minute.
+ * Either way the default club cannot be in this result set, whatever its
+ * `is_public` happens to be. Nothing on this path
  * consumes it today either — a private club's control is `RequestToJoinButton`,
  * which never prompts — so this is the honest value rather than a load-bearing
  * one.
