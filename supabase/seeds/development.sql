@@ -138,12 +138,18 @@ from (values
 where p.id = v.id;
 
 -- ---------------------------------------------------------------------------
--- 3. A club, with the owner-membership row that createClub cannot guarantee
+-- 3. Clubs — the owner-membership rows are 103's, not this file's
 -- ---------------------------------------------------------------------------
--- Written as two inserts here for the same reason the app does it — there is no
--- transactional helper yet. That gap is the known issue behind
--- openspec/changes/enforce-creator-membership/; a seed running in one psql
--- transaction is not evidence that the app's path is safe.
+-- ** This section used to write them itself **, as two inserts, "for the same
+-- reason the app does it — there is no transactional helper yet". `103`
+-- (PD-103) closed that: an AFTER INSERT trigger with NO `WHEN` clause writes the
+-- creator's roster row in the same statement as the club, and it binds this file
+-- exactly as it binds the browser. Re-stating the owner row here raises 23505 on
+-- `club_members_pkey`.
+--
+-- The `joined_at` values are unchanged in effect: the trigger takes the parent's
+-- `created_at`, which every row below back-dates deliberately, so a seeded owner
+-- still joined when their club was created.
 insert into public.clubs (id, name, description, is_public, owner_id, created_at)
 values
   ('aaaaaaaa-0000-4000-8000-00000000aaaa', 'Atlantic Coast Riders',
@@ -154,10 +160,8 @@ values
    '33333333-3333-4333-8333-333333333333', now() - interval '15 days');
 
 insert into public.club_members (club_id, user_id, role, joined_at) values
-  ('aaaaaaaa-0000-4000-8000-00000000aaaa', '11111111-1111-4111-8111-111111111111', 'owner',  now() - interval '35 days'),
   ('aaaaaaaa-0000-4000-8000-00000000aaaa', '22222222-2222-4222-8222-222222222222', 'admin',  now() - interval '28 days'),
   ('aaaaaaaa-0000-4000-8000-00000000aaaa', '33333333-3333-4333-8333-333333333333', 'member', now() - interval '12 days'),
-  ('bbbbbbbb-0000-4000-8000-00000000bbbb', '33333333-3333-4333-8333-333333333333', 'owner',  now() - interval '15 days'),
   ('bbbbbbbb-0000-4000-8000-00000000bbbb', '44444444-4444-4444-8444-444444444444', 'member', now() - interval '9 days');
 
 -- `admin` is seeded on purpose: club_members.role has accepted it since 001 and
@@ -185,12 +189,10 @@ values
    now() + interval '14 days', false,
    '33333333-3333-4333-8333-333333333333', 'bbbbbbbb-0000-4000-8000-00000000bbbb', now() - interval '1 day');
 
+-- Organizer crew rows are 103's too, by the same trigger on `rides`.
 insert into public.ride_members (ride_id, user_id, status, joined_at) values
-  ('cccccccc-0000-4000-8000-00000000ccc1', '11111111-1111-4111-8111-111111111111', 'going', now() - interval '5 days'),
   ('cccccccc-0000-4000-8000-00000000ccc1', '22222222-2222-4222-8222-222222222222', 'going', now() - interval '4 days'),
   ('cccccccc-0000-4000-8000-00000000ccc1', '33333333-3333-4333-8333-333333333333', 'maybe', now() - interval '3 days'),
-  ('cccccccc-0000-4000-8000-00000000ccc2', '22222222-2222-4222-8222-222222222222', 'going', now() - interval '2 days'),
-  ('cccccccc-0000-4000-8000-00000000ccc3', '33333333-3333-4333-8333-333333333333', 'going', now() - interval '1 day'),
   ('cccccccc-0000-4000-8000-00000000ccc3', '44444444-4444-4444-8444-444444444444', 'going', now() - interval '12 hours');
 
 -- ---------------------------------------------------------------------------

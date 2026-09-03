@@ -216,7 +216,38 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
 
   **Still open, and deliberately:** `PD-194`'s ownership transfer shipped separately in `095`, so
   the club-side delete guard lives there rather than here. **PROD does not have `103` or `104`
-  yet** — they are applied to DEV only, pending the next promotion.
+  yet** — they are applied to DEV only, so the ratings below are for the promotion, which is all
+  that is left of this entry.
+
+  **The promotion has an ORDER and it is the one direction that breaks.** Deploy the code first,
+  then apply `103`, then `104`. Applying `103` against a bundle that still issues the second
+  insert is an instant outage of club and ride creation — `23505` on a row the trigger already
+  wrote, then the old compensating delete removes the club, so every attempt reports *"That club
+  could not be created."* The reverse gap is self-healing: a bundle with no second insert against
+  a database with no trigger makes orphans, and `103`'s backfill repairs exactly those.
+  `104` must come last, after the deployed bundle has stopped sending `role: 'owner'`.
+
+  > **Recommendation** 8/10
+  >
+  > the invariant is live on DEV and absent on PROD, which is the half of a split that goes stale
+  > quietly — and the ordering above is the kind of thing that is obvious now and lost in a month
+  >
+  > **Complexity** 2/10
+  >
+  > a promotion and two applies in a fixed order; no code, no decision
+  >
+  > **Urgency** 3/10
+  >
+  > PROD holds one club and few rides, so the window it closes is nearly empty today. Rises the
+  > day real riders create clubs, and sharply if the store build ships
+  >
+  > **Customer value** 2/10
+  >
+  > no rider sees it working; it is the harm of losing a club to a closed tab, prevented
+  >
+  > **This session** N
+  >
+  > a firing ends at `Deployed to DEV`, and the promotion is the owner's on their own timing
 
 - **Two riders deleting at the same moment can destroy a third rider's postcards.** `PD-175`, a
   sub-issue of `PD-102` because it sits inside the deletion deliverable. The narrow race that
