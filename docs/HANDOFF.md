@@ -449,7 +449,7 @@ git grep -n "MARKER_STYLE =" -- supabase/functions/resolve-ride-location/gates.t
 
 ## The creator's membership row is the database's to write — 2026-09-03
 
-**PD-103, `103_creator_membership.sql` + `104_club_member_owner_arm.sql` — written in this PR, applied to NEITHER project.** The DEV apply is gated on the deploy being confirmed serving (`READY` on the merge sha, `aliasError` null) rather than on the merge — `CLAUDE.md` §Supabase Rules' own rule, and `103` is exactly the class it names. **`list_migrations` settles the apply; `git ls-tree origin/development supabase/migrations/` settles the merge** — this line claimed both before either was true, twice.
+**PD-103, `103_creator_membership.sql` + `104_club_member_owner_arm.sql` — applied to DEV 2026-09-04.** The apply waited on the deploy being confirmed serving (`READY` on the merge sha, `aliasError` null) rather than on the merge — `CLAUDE.md` §Supabase Rules' own rule, and `103` is exactly the class it names. **PROD has neither.** `list_migrations` settles the apply and `git ls-tree origin/development supabase/migrations/` settles the merge; this line claimed both before either was true, twice, which is why it now names two different commands.
 `createClub` and `createRide` each did two inserts with no transaction; the compensating rollback
 stopped being one when the writes moved to the browser, so closing the tab between the two round
 trips left a club with an owner and no membership row. Two `AFTER INSERT` triggers now seed the row,
