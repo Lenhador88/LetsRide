@@ -180,7 +180,7 @@ that touches SQL is paired with its assertion task, per `openspec/config.yaml`.
   expected to be 0.
 - [x] 2.15 `PGPASSWORD=postgres npm test` green, and re-derive the assertion total rather than
   quoting it: `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`.
-- [ ] 2.16 Apply to the hosted project, run the footer queries against it, and **check the security
+- [x] 2.16 Apply to the hosted project, run the footer queries against it, and **check the security
   advisors**. Expect the count and identity to be **unchanged** — three new definer functions, all
   revoked from `authenticated`, so none should appear. A new
   `authenticated_security_definer_function_executable` finding means a `revoke` did not land, and
@@ -236,7 +236,7 @@ second insert against a database without the trigger is the original defect, del
   `owner` row, because the trigger is not `authenticated` and is unaffected. **Update rather than
   delete `019`'s "creator's own owner row is still permitted" assertion** — deleting it loses the
   record that the rule ever existed, and its replacement is what documents the narrowing.
-- [ ] 4.3 `PGPASSWORD=postgres npm test` green; apply; run the footer queries; check the advisors.
+- [x] 4.3 `PGPASSWORD=postgres npm test` green; apply; run the footer queries; check the advisors.
 
 ## 5. Documentation this change found wrong
 
