@@ -168,27 +168,25 @@ export async function createClub(
 
   if (error || !club) return { error: 'That club could not be created.' }
 
-  // `role` is stated here and nowhere else in this file: 001 defaults it to
-  // 'member', and the creator is the one membership that is not.
-  const { error: membershipError } = await supabase
-    .from('club_members')
-    .insert({ club_id: club.id, user_id: user.id, role: 'owner' })
-
-  if (membershipError) {
-    // The rollback can fail too, and discarding its error is how "could not be
-    // created" becomes a lie: the club survives, invisible on Your clubs (which
-    // reads membership) and visible on Explore to everyone. The rider retries
-    // and owns two. Surfacing it is not a fix — the fix is one statement in a
-    // security definer function — but it stops the message contradicting the
-    // state.
-    const { error: rollbackError } = await supabase.from('clubs').delete().eq('id', club.id)
-    if (rollbackError) {
-      return {
-        error: 'That club was only partly created. Check your clubs before trying again.',
-      }
-    }
-    return { error: 'That club could not be created.' }
-  }
+  // ** ONE statement, and the owner-membership row is the database's to write. **
+  // `103`'s `establish_club_owner_membership` AFTER INSERT trigger writes
+  // `(new.id, new.owner_id, 'owner')` with `joined_at` from the club's own
+  // `created_at`. There is deliberately no second round trip here and no
+  // compensating delete: PostgREST has no multi-statement transaction, so any
+  // two-round-trip create has a window in which the tab can close between them,
+  // and in the browser that window is reachable on demand rather than only on a
+  // Supabase error. Making the window smaller was never the fix; removing its
+  // representation was.
+  //
+  // ** Do not "restore" the insert, and do not reach for an RPC. ** An RPC binds
+  // only the callers that choose to call it, and this app ships a publishable
+  // key that lets anyone insert into `clubs` directly. The trigger is the only
+  // shape that binds every writer — see the change's `design.md` §D1, which
+  // contradicts the comment that stood here until now and says why.
+  //
+  // ** `role` is no longer stated anywhere in this file. ** `104` removes `019`'s
+  // `role = 'owner'` INSERT arm, so `authenticated` cannot self-assign it by any
+  // route; the trigger is not `authenticated` and is unaffected.
 
   // Both club lists at once: `clubs.all()` is the prefix over `yours`,
   // `explore` and `mine` (the picker on the create-ride and create-postcard
@@ -370,6 +368,19 @@ export async function leaveClub(clubId: string): Promise<ActionState> {
     .delete()
     .eq('club_id', clubId)
     .eq('user_id', user.id)
+
+  // `095`'s `protect_club_owner_membership` refuses an owner's own roster row.
+  // ** Match on the MESSAGE, not on `23514` alone: ** `018`'s text bounds raise
+  // the same SQLSTATE, so a code-only branch would tell a rider who overran a
+  // field that they own the club.
+  //
+  // Defence for a direct call rather than a screen change — `ClubOptionsMenu`
+  // routes an owner to `leaveOwnedClub` (`095`'s transfer) and never here. The
+  // copy names the STATE and the remedy rather than the act, because neither
+  // this action nor the database can tell which control the caller came from.
+  if (error?.message?.includes('cannot leave its roster')) {
+    return { error: 'You own this club. Hand it on to another member, or delete it, from the club’s menu.' }
+  }
 
   if (error) return { error: 'You could not be removed from that club.' }
 

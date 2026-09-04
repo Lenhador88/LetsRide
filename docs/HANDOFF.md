@@ -415,6 +415,85 @@ git grep -n "rideFromClubTimeline\|rideReturnTo" -- src/
 npx vitest run src/lib/__tests__/club-timeline-return.test.ts
 ```
 
+## Map tiles have been dead on BOTH projects since 2026-08-27, and only the DEPLOY is wrong — 2026-09-03
+
+**PD-385, diagnosed, not fixable from a session.** The deployed `resolve-ride-location` sends
+`MARKER_STYLE = 'type:material;color:#1A1A1A;…;contentcolor:#FFFFFF;size:40'`. **Uppercase hex is a
+hard 400 at the tile vendor** — `gates.ts`'s header carries the measurement (`color:#ff5050` → 200,
+`color:#FF5050` → 400). The repo has the lowercase fix; the deploy does not.
+
+**The whole diagnosis is one diff**: `index.ts` is byte-identical to the repo on both projects, and
+a comment-stripped diff of `gates.ts` returns exactly the `MARKER_STYLE` line. `67ab011` introduced
+it at 14:33Z, the deploy shipped it at **14:41Z**, `b343d6d` fixed it at **15:36Z — 55 minutes
+later** — and nothing has redeployed since.
+
+**Why one 400 empties both columns:** the marker is sent only for the detail tile, but
+`index.ts`'s `bothRendered = !!cardTile && !!detailTile` is PD-202's deliberate both-or-neither
+rule, so `tileColumns` becomes `{}`. For a *picked* ride `locationColumns` is `{}` too, so the
+payload is empty and the function returns `nothing_to_write`. Every observed row fits: rides
+created before 14:41 have tiles (3 of 3), every one after does not (0 of 7).
+
+**PROD carries the identical build** — same `ezbr_sha256` `c09a0474…`. It matters less only because
+PROD has few rides.
+
+**The durable lesson is PD-369's, now with a price.** `deploy-functions.yml` already redeploys on
+any push touching `supabase/functions/**`; it is skipped with a warning because
+`SUPABASE_ACCESS_TOKEN` does not exist. That missing secret cost seven days of silently missing map
+tiles on both projects. **A redeploy also does not heal the existing rows** — nothing re-renders a
+ride whose address did not change, so the affected rides need a deliberate pass.
+
+```bash
+# is the deployed build still behind? the only line that matters
+git grep -n "MARKER_STYLE =" -- supabase/functions/resolve-ride-location/gates.ts
+```
+
+## The creator's membership row is the database's to write — 2026-09-03
+
+**PD-103, `103_creator_membership.sql` + `104_club_member_owner_arm.sql` — written in this PR, applied to NEITHER project.** The DEV apply is gated on the deploy being confirmed serving (`READY` on the merge sha, `aliasError` null) rather than on the merge — `CLAUDE.md` §Supabase Rules' own rule, and `103` is exactly the class it names. **`list_migrations` settles the apply; `git ls-tree origin/development supabase/migrations/` settles the merge** — this line claimed both before either was true, twice.
+`createClub` and `createRide` each did two inserts with no transaction; the compensating rollback
+stopped being one when the writes moved to the browser, so closing the tab between the two round
+trips left a club with an owner and no membership row. Two `AFTER INSERT` triggers now seed the row,
+`104` removes `019`'s `role = 'owner'` INSERT arm, and both actions are one statement.
+
+**Five things a later session should not have to re-derive:**
+
+- **The ordering rule breaks in exactly one direction, and the safe direction is the one that looks
+  riskier.** Applying `103` against a bundle that still writes the row is an **instant outage** of
+  club and ride creation — `23505` on a row the trigger already wrote, then that bundle's own
+  compensating delete removes the club, so every attempt reports *"That club could not be
+  created."* Deploying first only makes orphans on the server, and **`103`'s backfill repairs exactly
+  those**. So: deploy → `103` → `104`, and `104` last because it is safe only once the deployed
+  bundle has stopped sending `role: 'owner'`.
+- **The collapse of `tasks.md` group 1 was a DEV shortcut and PROD's promotion must NOT copy it.**
+  Deploy-first is self-healing for the *server* and **not for an already-loaded browser tab**,
+  which keeps the pre-merge JS and goes on issuing the plain insert — so from the moment `103`
+  applies it gets `23505`, its own compensating delete removes the club, and that lasts as long as
+  the tab does. Effectively zero tabs on DEV; not so on PROD. There, do what group 1 says: ship the
+  transitional idempotent upsert, **let it soak**, then apply. Caught by the pre-merge review.
+- **A seeding trigger with no `WHEN` clause binds every FIXTURE in the repo, and the proposal did
+  not anticipate that** — ~1050 changed lines across `supabase/tests/seed.sql`,
+  `supabase/tests/rls_test.sql` and `supabase/seeds/development.sql`, none of which had a task.
+  Each stated the owner/organizer tuple the database now owns and raised `23505` **on its own
+  insert**. The trigger's insert runs FIRST and succeeds, so `on conflict do nothing` on it would
+  have fixed nothing and would have masked a real PK violation — the tuples were removed instead.
+- **`054`'s "ownerless owner" and the isolated organizer arm of `is_ride_crew` are now unreachable
+  by any client.** Nine sites in the suite relied on that state arising by accident; each now
+  manufactures it as the table owner. Any prose describing it as reachable is false.
+- **All three functions live in `private`, not the proposal's `public`** (following `095`), so the
+  advisor count does not move — both projects stay at thirty-seven. On the ride guard
+  `security definer` is **correctness**: its parent probe cannot tell an invisible ride from a
+  deleted one under invoker rights, and would fail open.
+
+The client reads the guards by **message**, not SQLSTATE — `018`'s text bounds raise `23514` too.
+**Each coupling needs BOTH pins, and the unit test is not the one that compares them**: the unit
+tests hardcode the message, so `rls_test.sql` 103.4 (ride) and 095.5 (club) are what go red on a
+reword. The club-side pair was missing entirely until the pre-merge review caught the asymmetry.
+
+```bash
+git grep -n "cannot leave its crew" -- src/ supabase/   # the coupling, both ends
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3382, from 3310
+```
+
 ## Where this left off — 2026-09-03, a queue firing closed one stale story and one race, and parked one
 
 **Group taken into `slot-2`: PD-380, PD-381, PD-377 — one dropped, two built.**

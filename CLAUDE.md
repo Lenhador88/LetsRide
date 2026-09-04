@@ -449,8 +449,21 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 102 files. DEV is at `102` and PROD at `100` — measured 2026-09-03. The gap is
-`101` and `102`, both awaiting promotion.** Count rather than trust it: `list_migrations` against both refs,
+**Applied state: 104 files. DEV is at `102` and PROD at `100` — measured 2026-09-03.** `103` and
+`104` are in the repo and applied to **neither** project. They apply only once the build carrying
+them is confirmed **serving** — `READY` on the merge sha with `aliasError` null — which is the
+sequencing rule below and is not the same as "after the merge"; that gate has no deadline and can
+hold indefinitely. **`list_migrations` against both refs is the only honest answer to this line**,
+which was written wrong three times in one day, every time in the direction of claiming an apply
+that had not happened. `103`/`104` (PD-103) carry an **ordering rule and it breaks
+in one direction only**: deploy the code first, then apply `103`, then `104`. Applying `103`
+against a bundle that still writes the creator's membership row is an instant outage of club and
+ride creation. The reverse gap is *mostly* self-healing — `103`'s backfill repairs the orphans a
+newly-deployed bundle can leave — but **not for an already-loaded browser tab**, which keeps the
+pre-merge JS and goes on issuing the plain insert until it is reloaded. That population is what
+the change's own group 1 (a transitional idempotent upsert, left to soak) exists for, and it is
+why a PROD promotion should use it rather than collapsing the steps as the DEV apply did.
+Count rather than trust it: `list_migrations` against both refs,
 against `ls supabase/migrations/*.sql | wc -l`. DEV also records three hand-applied rows with no
 file, so its row count reads high; every file IS applied, which is the direction that matters.
 **Level is the exception, not the resting state** — DEV-ahead is where a migration lives between
@@ -487,7 +500,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3310** assertions — re-derive rather than trust it:
+Suite **3382** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 

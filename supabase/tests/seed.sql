@@ -46,32 +46,43 @@ update profiles set username = 'halfway',
 -- Mid-onboarding, step 1: nothing chosen yet. Left exactly as the trigger made
 -- it — this is the ghost row the select policy has to hide.
 
+-- ---------------------------------------------------------------------------
+-- 103: the creator's own membership row is NO LONGER SEEDED HERE
+-- ---------------------------------------------------------------------------
+-- `establish_club_owner_membership` and `establish_ride_organizer_membership`
+-- are AFTER INSERT triggers with NO `WHEN` clause, so they bind this file
+-- exactly as they bind the browser — that is the point of `022`'s shape. Every
+-- `insert into clubs` below therefore already carries its `(club_id, owner_id,
+-- 'owner')` row by the time the next statement runs, and re-stating it here
+-- raises 23505 on `club_members_pkey`.
+--
+-- ** So an owner/organizer row absent from this file is the trigger's, not an
+-- omission. ** Every roster and crew count the suite asserts is unchanged: the
+-- trigger writes the same row with the same role, differing only in `joined_at`,
+-- which it takes from the parent's `created_at` rather than from this
+-- statement's `now()` — a few microseconds earlier, and the same ordering.
+
 -- A private club with one member besides the owner.
 insert into clubs (id, name, is_public, owner_id) values
   ('00000000-0000-0000-0000-0000000000c1', 'Secret Riders', false, '00000000-0000-0000-0000-00000000000a');
 insert into club_members (club_id, user_id, role) values
-  ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000000a', 'owner'),
   ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000000b', 'member');
 
 -- A public club, so the suite can tell "locked down" apart from "broken".
+-- Its owner row is 103's; see above.
 insert into clubs (id, name, is_public, owner_id) values
   ('00000000-0000-0000-0000-0000000000c2', 'Open Riders', true, '00000000-0000-0000-0000-00000000000a');
-insert into club_members (club_id, user_id, role) values
-  ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-00000000000a', 'owner');
 
--- A club-only ride: not public, belongs to the private club.
+-- A club-only ride: not public, belongs to the private club. Its organizer crew
+-- row is 103's.
 insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
   ('00000000-0000-0000-0000-0000000000d1', 'Dawn Run', 'The Bridge', now() + interval '1 day',
    false, '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000000a');
-insert into ride_members (ride_id, user_id, status) values
-  ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-00000000000a', 'going');
 
 -- A public ride.
 insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id) values
   ('00000000-0000-0000-0000-0000000000d2', 'Coast Run', 'The Pier', now() + interval '2 days',
    true, '00000000-0000-0000-0000-00000000000a');
-insert into ride_members (ride_id, user_id, status) values
-  ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-00000000000a', 'going');
 
 -- ---------------------------------------------------------------------------
 -- 009: postcards, likes and blocks
@@ -101,7 +112,6 @@ insert into blocks (blocker_id, blocked_id) values
 insert into clubs (id, name, is_public, owner_id) values
   ('00000000-0000-0000-0000-0000000000c4', 'Block Test Club', true, '00000000-0000-0000-0000-00000000000a');
 insert into club_members (club_id, user_id, role) values
-  ('00000000-0000-0000-0000-0000000000c4', '00000000-0000-0000-0000-00000000000a', 'owner'),
   ('00000000-0000-0000-0000-0000000000c4', '00000000-0000-0000-0000-00000000001a', 'member'),
   ('00000000-0000-0000-0000-0000000000c4', '00000000-0000-0000-0000-00000000001b', 'member');
 
@@ -110,7 +120,6 @@ insert into rides (id, title, meeting_point, departure_at, is_public, organizer_
   ('00000000-0000-0000-0000-0000000000d3', 'Block Test Run', 'The Cafe', now() + interval '3 days',
    true, '00000000-0000-0000-0000-00000000000a');
 insert into ride_members (ride_id, user_id, status) values
-  ('00000000-0000-0000-0000-0000000000d3', '00000000-0000-0000-0000-00000000000a', 'going'),
   ('00000000-0000-0000-0000-0000000000d3', '00000000-0000-0000-0000-00000000001a', 'going'),
   ('00000000-0000-0000-0000-0000000000d3', '00000000-0000-0000-0000-00000000001b', 'going');
 
@@ -119,8 +128,6 @@ insert into ride_members (ride_id, user_id, status) values
 insert into rides (id, title, meeting_point, departure_at, is_public, organizer_id) values
   ('00000000-0000-0000-0000-0000000000d4', 'Blocked Rider Run', 'The Wall', now() + interval '4 days',
    true, '00000000-0000-0000-0000-00000000001b');
-insert into ride_members (ride_id, user_id, status) values
-  ('00000000-0000-0000-0000-0000000000d4', '00000000-0000-0000-0000-00000000001b', 'going');
 
 -- The two friendship fixtures here were dropped with the table in 013.
 
@@ -134,8 +141,6 @@ insert into ride_members (ride_id, user_id, status) values
 -- CHECK exists to stop.
 insert into clubs (id, name, is_public, owner_id) values
   ('00000000-0000-0000-0000-0000000000c5', 'Outsiders MC', true, '00000000-0000-0000-0000-00000000000b');
-insert into club_members (club_id, user_id, role) values
-  ('00000000-0000-0000-0000-0000000000c5', '00000000-0000-0000-0000-00000000000b', 'owner');
 
 -- Postcards.
 --   e1  global, by the club owner            -- the ordinary feed case

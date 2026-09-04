@@ -194,40 +194,58 @@ for it. The census that justifies that, and the bucketing trap inside it, are in
   carries a second, milder one: `club_unread_counts()` does not exclude the reader's own postcards,
   so posting into a club badges it for your own post.
 
-- **`createClub` and `createRide` can leave a club with no owner row, or a ride whose organizer
-  is not on its own crew.** `PD-103`. Two inserts, no transaction, and a hand-rolled rollback that
-  stopped being one when the writes moved to the browser — closing the tab between them is now
-  enough. There is a second door of the same width in `leaveClub`, and the same shape via
-  `setRideAttendance(rideId, null)`; both need a hand-rolled request, neither is reachable by
-  tapping. **Read `openspec/changes/enforce-creator-membership/` rather than a summary here** — it
-  holds the mechanism and the negative cases. **All three blocking questions are answered**: Q3 by
-  measurement on 2026-08-06, Q1 and Q2 by the product owner on 2026-08-11 — both *no*, both the
-  proposal's own default, so the change builds as drafted. An owner leaving as a **transfer** is
-  deferred to `PD-194`, not folded in here.
+- ~~**`createClub` and `createRide` can leave a club with no owner row, or a ride whose organizer
+  is not on its own crew.**~~ **CLOSED IN CODE by `PD-103` — `103_creator_membership.sql` + `104_club_member_owner_arm.sql`. NOT YET APPLIED to either project; the fix is not live until they are.** The
+  entry is struck rather than deleted because its *mechanism* is still the thing to read before
+  writing any new create: two inserts with no transaction, and a hand-rolled rollback that stopped
+  being one when the writes moved to the browser. PostgREST has no multi-statement transaction, so
+  **every** two-round-trip create has that window — the fix was to leave the intermediate state
+  unrepresentable (an `AFTER INSERT` trigger seeds the row), not to narrow the window.
+  `openspec/changes/enforce-creator-membership/` holds the reasoning, and `openspec/changes/enforce-creator-membership/design.md` §D1 says why
+  a trigger rather than the `security definer` RPC both call sites named for months.
+
+  **One claim it made that was wrong, corrected rather than deleted, because a careful reader
+  reaches for it again:** it named the fix as a `security definer` function *called by both
+  actions*, which three repo comments also said. An RPC binds only the callers that choose to call
+  it, and this app ships a publishable key that lets anyone insert into `clubs` directly — only a
+  trigger binds every writer. (It also called the result "a UI orphan rather than a hidden row",
+  which held only for a *public* club; a private orphan was on neither club list.)
+
+  **Still open, and deliberately:** `PD-194`'s ownership transfer shipped separately in `095`, so
+  the club-side delete guard lives there rather than here. **PROD does not have `103` or `104`
+  yet** — neither is applied anywhere yet. The apply to DEV follows the merge, gated on the deploy
+  being confirmed serving; PROD follows its own promotion. The ratings below are for that work,
+  which is all that is left of this entry. **Check, do not trust:** `list_migrations` on both refs.
+
+  **The promotion has an ORDER and it is the one direction that breaks.** Deploy the code first,
+  then apply `103`, then `104`. Applying `103` against a bundle that still issues the second
+  insert is an instant outage of club and ride creation — `23505` on a row the trigger already
+  wrote, then the old compensating delete removes the club, so every attempt reports *"That club
+  could not be created."* The reverse gap is self-healing: a bundle with no second insert against
+  a database with no trigger makes orphans, and `103`'s backfill repairs exactly those.
+  `104` must come last, after the deployed bundle has stopped sending `role: 'owner'`.
 
   > **Recommendation** 8/10
   >
-  > the last place a client can leave the database in a state no constraint forbids, and the
-  > invariant is unasserted in *two* places rather than one
+  > the invariant is live on DEV and absent on PROD, which is the half of a split that goes stale
+  > quietly — and the ordering above is the kind of thing that is obvious now and lost in a month
   >
-  > **Complexity** 5/10
+  > **Complexity** 2/10
   >
-  > two migrations, four triggers, a backfill, three deploy steps
+  > a promotion and two applies in a fixed order; no code, no decision
   >
-  > **Urgency** 4/10
+  > **Urgency** 3/10
   >
-  > both doors need a hand-rolled request. Rises the day a real rider abandons a create, and
-  > sharply if create gets a retry affordance or the store build ships
+  > PROD holds one club and few rides, so the window it closes is nearly empty today. Rises the
+  > day real riders create clubs, and sharply if the store build ships
   >
-  > **Customer value** 3/10
+  > **Customer value** 2/10
   >
-  > a rider who abandons a create loses the club entirely — a private orphan is on no list and
-  > reachable from no screen, including its owner's. Rare, and total for whoever hits it
+  > no rider sees it working; it is the harm of losing a club to a closed tab, prevented
   >
-  > **This session** Y
+  > **This session** N
   >
-  > nothing blocks it any more — the last two questions were answered on 2026-08-11, both as the
-  > drafted default, so `tasks.md` group 0 is clear down to 0.4
+  > a firing ends at `Deployed to DEV`, and the promotion is the owner's on their own timing
 
 - **Two riders deleting at the same moment can destroy a third rider's postcards.** `PD-175`, a
   sub-issue of `PD-102` because it sits inside the deletion deliverable. The narrow race that
