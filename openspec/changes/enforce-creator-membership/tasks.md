@@ -70,7 +70,8 @@
 > moment `103` applies, that tab issues the plain `.insert()` for a row the trigger already wrote →
 > `23505` → its own compensating delete removes the club → *"That club could not be created."* on
 > every attempt, for as long as the tab lives. After `104` the same tab gets `42501` with the same
-> outcome. That window is **unbounded**, where the merge→apply window is minutes.
+> outcome. That window is **unbounded** — it ends only when the tab is reloaded — where the
+> deploy→apply window is short and under the operator's control.
 >
 > Collapsing was acceptable **on DEV only**, and for a reason that does not generalise: 24 profiles
 > and effectively no live tabs at the hour it ran.

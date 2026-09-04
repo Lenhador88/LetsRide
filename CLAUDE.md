@@ -449,11 +449,13 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 104 files. DEV is at `102` and PROD at `100` — measured 2026-09-03, in the minutes
-between `103`/`104` merging and being applied.** That apply follows the merge and **waits for the build to be
-confirmed serving** — `READY` on the merge sha with `aliasError` null, which is the sequencing rule
-below rather than "after the merge"; DEV reads `104` from then on, so re-derive this line rather
-than trusting it. `103`/`104` (PD-103) carry an **ordering rule and it breaks
+**Applied state: 104 files. DEV is at `102` and PROD at `100` — measured 2026-09-03.** `103` and
+`104` are in the repo and applied to **neither** project. They apply only once the build carrying
+them is confirmed **serving** — `READY` on the merge sha with `aliasError` null — which is the
+sequencing rule below and is not the same as "after the merge"; that gate has no deadline and can
+hold indefinitely. **`list_migrations` against both refs is the only honest answer to this line**,
+which was written wrong three times in one day, every time in the direction of claiming an apply
+that had not happened. `103`/`104` (PD-103) carry an **ordering rule and it breaks
 in one direction only**: deploy the code first, then apply `103`, then `104`. Applying `103`
 against a bundle that still writes the creator's membership row is an instant outage of club and
 ride creation. The reverse gap is *mostly* self-healing — `103`'s backfill repairs the orphans a

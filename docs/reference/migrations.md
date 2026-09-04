@@ -331,8 +331,8 @@ destructive file applied 102 seconds after a merge, out from under a Preview sti
 dropped), and `103` is exactly the class it describes. Reconciled name by name on 2026-08-31, again for `096`
 on 2026-09-01, and again for `101`/`102` on 2026-09-03.
 
-**`103_creator_membership` + `104_club_member_owner_arm` (PD-103) — merged 2026-09-03, NOT YET
-APPLIED to either project; they are the ordering case rather than an exception to it.** `103` hangs two `AFTER INSERT` seeding
+**`103_creator_membership` + `104_club_member_owner_arm` (PD-103) — written 2026-09-03, applied to
+NEITHER project; they are the ordering case rather than an exception to it.** `103` hangs two `AFTER INSERT` seeding
 triggers (`private.establish_club_owner_membership`, `private.establish_ride_organizer_membership`,
 both with **no `WHEN` clause**, so they bind the seed and `service_role` too), backfills any
 existing orphan with `joined_at` from the parent's `created_at`, repairs a demoted owner row by
