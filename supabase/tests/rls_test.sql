@@ -7852,10 +7852,21 @@ select assert_eq(
 
 -- 041 is additive and INERT. Unlike 036 it hangs nothing off an existing write
 -- path, so the trigger count on this shipped table must not have moved.
+--
+-- ** 107 moved it to 3, and it is the first change that ever has. ** The third
+-- is `reap_ownerless_club`, an AFTER DELETE trigger that removes an ownerless
+-- club (107) once its last postcard is gone. This assertion is doing exactly its
+-- job by making that a deliberate edit: hanging anything off `postcards` is
+-- hanging it off a shipped write path, where a raise takes a rider's own delete
+-- down with it. 107 §5 carries the five properties that answers, and the
+-- hand-exercise results are in its §Verification — the RLS suite does not
+-- satisfy `CLAUDE.md`'s hand-exercise rule and is not offered as satisfying it.
+--
+-- 041's own claim is untouched: it still added no fan-out. Only the total moved.
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgrelid = 'public.postcards'::regclass and not tgisinternal),
-  2, '041: postcards still carries exactly two triggers — the participation gate and the updated_at stamp. 041 added no fan-out');
+  3, '041: postcards carries the participation gate, the updated_at stamp, and — since 107 — reap_ownerless_club. ** 041 itself still added no fan-out **; a FOURTH arriving here is the next deliberate edit to this line, and it wants the same hand-exercise gate 107 §5 ran');
 
 rollback to savepoint ride_tag_041;
 
@@ -12126,10 +12137,22 @@ select assert_eq(
 -- decision #2's own logic argues for. Then a member blocked with the CLUB OWNER
 -- but not with the RIDE ORGANIZER passes can_read_ride, fails clubs SELECT, and
 -- gets a row nobody can ever read.
+-- ** 107 re-pinned this string, and did so having moved the helper in the SAME
+-- migration — which is what the message below asks for and NOT what a lazy
+-- re-pin does. ** The change is `is_public` -> `(is_public and owner_id is not
+-- null)`, so an ownerless club (107) is invisible through the policy; the same
+-- narrowing landed in private.can_read_club in 107 §3c, and 107.5 below is the
+-- assertion that fails if only one of the two copies moves.
+--
+-- ** This pin is why the helper moved at all. ** 107's task list said in as many
+-- words not to touch can_read_club, on the grounds that it already failed
+-- closed. It does not — its is_public arm no more goes NULL with the owner than
+-- the policy's does — and this assertion is the only thing in the repo that
+-- caught the omission.
 select assert_eq(
   (select qual from pg_policies
     where schemaname = 'public' and tablename = 'clubs' and cmd = 'SELECT'),
-  '(is_public OR (owner_id = auth.uid()) OR private.is_club_member(id))',
+  '((is_public AND (owner_id IS NOT NULL)) OR (owner_id = auth.uid()) OR private.is_club_member(id))',
   '060: clubs SELECT is TEXTUALLY what private.can_read_club restates — the twin of the pin above. A block arm added here is exactly the change that makes the club conjunct start excluding people, and it must arrive at the helper in the same change');
 
 -- ---------------------------------------------------------------------------
@@ -17736,8 +17759,8 @@ select assert_eq(
 select assert_eq(
   (select qual from pg_policies
     where schemaname = 'public' and tablename = 'clubs' and cmd = 'SELECT'),
-  '(is_public OR (owner_id = auth.uid()) OR private.is_club_member(id))',
-  '081.6: ... and its three arms are exactly the ones that make the child''s EXISTS redundant — pinned in full, so a fourth arm is a deliberate edit to this line');
+  '((is_public AND (owner_id IS NOT NULL)) OR (owner_id = auth.uid()) OR private.is_club_member(id))',
+  '081.6: ... and its three arms are exactly the ones that make the child''s EXISTS redundant — pinned in full, so a fourth arm is a deliberate edit to this line. ** 107 narrowed the FIRST arm to (is_public and owner_id is not null) and did not add a fourth **, so the redundancy argument is unchanged: an ownerless club satisfies no arm, which is strictly fewer rows rather than a different shape');
 set role authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -18210,10 +18233,31 @@ select assert_eq((select count(*)::int from club_thread_reads
   0, '081.16b: ... and every watermark, including one belonging to a rider who is not being deleted');
 -- The gap, pinned from the function body rather than only from the behaviour
 -- above, so that adding the check is a deliberate edit that turns this red.
+--
+-- ** 107 IS THAT DELIBERATE EDIT, and it flips this from false to true — but it
+-- did NOT close the gap this assertion was written about. ** Read both halves
+-- before changing anything here:
+--
+--   * The behavioural assertions above are UNCHANGED and still pass: the
+--     no-successor branch still deletes the welcome club outright, with its
+--     threads, messages and watermarks. 029/059's gap is exactly where 081 found
+--     it.
+--   * `is_default` appears in the body for the OPPOSITE reason to the one this
+--     assertion anticipated. 107 lets a memberless club SURVIVE, ownerless, when
+--     third-party postcards are in it — and excludes the welcome club from that
+--     new arm, because public.complete_onboarding is security definer and
+--     force-joins every new rider to clubs.is_default with no owner_id
+--     predicate. An ownerless welcome club would therefore hand its preserved
+--     postcards to the entire signup stream, through a door no policy governs.
+--     107 §4b carries the reasoning and the rejected alternative.
+--
+-- So the welcome club reaches the SAME end state as before 107, by a body that
+-- now names it. A future change that closes 029/059's actual gap will make the
+-- behavioural assertions above go red, which is the pin that matters.
 select assert_eq(
   (select prosrc like '%is_default%' from pg_proc
     where oid = 'private.transfer_owned_clubs(uuid)'::regprocedure),
-  false, '081.16b: private.transfer_owned_clubs mentions is_default NOWHERE in its body — the recorded gap, asserted so closing it is deliberate');
+  true, '081.16b: private.transfer_owned_clubs names is_default since 107 — to EXCLUDE the welcome club from the new ownerless arm, not to spare it from deletion. The recorded 029/059 gap is untouched and the behavioural assertions above still pin it');
 set role authenticated;
 rollback to savepoint transfer_no_successor_081;
 
@@ -20318,8 +20362,8 @@ insert into blocks (blocker_id, blocked_id) values
 select assert_eq(
   (select qual from pg_policies
     where schemaname = 'public' and tablename = 'clubs' and cmd = 'SELECT'),
-  '(is_public OR (owner_id = auth.uid()) OR private.is_club_member(id))',
-  '085.1: clubs SELECT is UNCHANGED by 085 — a private club is discoverable through public.discoverable_private_clubs and through nothing else');
+  '((is_public AND (owner_id IS NOT NULL)) OR (owner_id = auth.uid()) OR private.is_club_member(id))',
+  '085.1: clubs SELECT is UNCHANGED by 085 — a private club is discoverable through public.discoverable_private_clubs and through nothing else. ** The string moved in 107, not here **: its public arm became (is_public and owner_id is not null), which touches no private club and so leaves 085''s claim exactly as it was');
 
 -- ---------------------------------------------------------------------------
 -- 085.2  ... and its restatement did not move either
@@ -22023,8 +22067,8 @@ select assert_eq(
 select assert_eq(
   (select qual from pg_policies
     where schemaname = 'public' and tablename = 'clubs' and cmd = 'SELECT'),
-  '(is_public OR (owner_id = auth.uid()) OR private.is_club_member(id))',
-  '089.7: clubs SELECT is UNCHANGED by 089 — a private club is still discoverable through public.discoverable_private_clubs and through nothing else, and the decline notification resolves through a conjunct on NOTIFICATIONS rather than through a grant on clubs');
+  '((is_public AND (owner_id IS NOT NULL)) OR (owner_id = auth.uid()) OR private.is_club_member(id))',
+  '089.7: clubs SELECT is UNCHANGED by 089 — a private club is still discoverable through public.discoverable_private_clubs and through nothing else, and the decline notification resolves through a conjunct on NOTIFICATIONS rather than through a grant on clubs. ** The string moved in 107, not here **, and only in its public arm, which no private club satisfies either way');
 
 -- ---------------------------------------------------------------------------
 -- 089.8  ** THE AVATAR SHIPS AND THE COVER DOES NOT. **
@@ -24803,13 +24847,13 @@ reset role;
 select assert_eq(
   (select md5(qual) from pg_policies
     where schemaname = 'public' and tablename = 'clubs' and cmd = 'SELECT'),
-  '4299c23bc61a3b5f53c580631cdf941c',
-  '093.7: `clubs` SELECT is byte-identical to what 085 and 091 pinned — 093 adds NO audience arm, so an invitee and a token holder reach the club through a definer accessor or not at all');
+  '54035a71114aedd8527886677f71eb2e',
+  '093.7: `clubs` SELECT is byte-identical to what 085 and 091 pinned — 093 adds NO audience arm, so an invitee and a token holder reach the club through a definer accessor or not at all. ** The hash moved once, in 107, which NARROWED the public arm to (is_public and owner_id is not null) — a subtraction, not an audience arm **, so this heading''s rule is intact: 093 still adds nothing, and 107 removes rather than adds. The plain-text pins at 060, 081.6, 085.1, 089.7 and 099.9 carry the readable form of the same string');
 select assert_eq(
   (select md5(prosrc) from pg_proc
     where proname = 'can_read_club' and pronamespace = 'private'::regnamespace),
-  'a8d7f5ad4785bf8bff0c3cbded7c53da',
-  '093.7: ... and private.can_read_club''s body is unchanged, measured on DEV and on this chain before 093 applied');
+  '06166c9537629666ea0bacb092c196bc',
+  '093.7: ... and private.can_read_club''s body is unchanged, measured on DEV and on this chain before 093 applied. ** Moved once, in 107, in the SAME migration as the policy hash above and for the same reason ** — the helper restates that policy, so the two hashes must always move together or not at all. If exactly one of these two lines is stale, the change that touched it is wrong: that is the drift 060 exists to catch, and 107 is the first change to move either');
 select assert_eq(
   (select md5(qual) from pg_policies
     where schemaname = 'public' and tablename = 'club_members' and cmd = 'SELECT'),
@@ -30624,8 +30668,8 @@ select assert_eq(
 select assert_eq(
   (select qual from pg_policies
     where schemaname = 'public' and tablename = 'clubs' and cmd = 'SELECT'),
-  '(is_public OR (owner_id = auth.uid()) OR private.is_club_member(id))',
-  '099.9: clubs SELECT still carries private.is_club_member(id) as its third disjunct — that IS the widened arm''s predicate, and it is the whole reason 099 can write every member a row none of them will find unreadable. A block arm added here is the change that makes the subset argument false, and it must arrive with a can_read_club conjunct in the fan-out');
+  '((is_public AND (owner_id IS NOT NULL)) OR (owner_id = auth.uid()) OR private.is_club_member(id))',
+  '099.9: clubs SELECT still carries private.is_club_member(id) as its third disjunct — that IS the widened arm''s predicate, and it is the whole reason 099 can write every member a row none of them will find unreadable. A block arm added here is the change that makes the subset argument false, and it must arrive with a can_read_club conjunct in the fan-out. ** 107 narrowed the first arm and left this third one untouched **, so the subset argument still holds; and 107 did move can_read_club in the same migration, which is what this message asks of any change to this string');
 
 -- The function's own contract, per 031: assert the ROLE, never the call. The
 -- suite runs as the table owner, for whom neither the schema barrier nor the
@@ -32737,6 +32781,467 @@ select assert_eq(
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint hidden_list_106;
+
+-- ===========================================================================
+-- 107. A CLUB MAY OUTLIVE ITS LAST MEMBER (PD-98)
+-- ===========================================================================
+-- `private.transfer_owned_clubs`' no-successor arm used to delete the club
+-- outright, and `postcards.club_id -> clubs` is ON DELETE CASCADE — so a rider
+-- erasing their account destroyed postcards belonging to riders who had left
+-- that club earlier. 029 §2 believed that impossible ("entirely their own by
+-- construction"); nothing removes a postcard when its author leaves, so the arm
+-- that fires precisely when the club is supposedly the departing rider's alone
+-- is the arm most likely to be wrong about it.
+--
+-- 107 splits that arm. With a third-party postcard in the club, the club is KEPT
+-- with `owner_id` NULL; with none, 032's delete is unchanged.
+--
+-- ** THE AUDIENCE ONLY EVER MOVES NARROWER, and that is the whole security
+-- argument. ** A preserved postcard goes from "the club's members" to "its
+-- author alone", because nobody can be a member of an ownerless club. Every
+-- assertion below is either that narrowing or one of the doors that would undo
+-- it.
+--
+-- The fixture runs the REAL sequence rather than the function alone: the
+-- transfer commits first and the `profiles` cascade follows, which is the order
+-- `delete-account` uses. Calling the transfer and stopping would leave the
+-- departing rider's own `club_members` row in place (103 seeds it at creation),
+-- and every "no members" assertion below would be vacuously wrong.
+--
+-- ** VERIFIED BOTH WAYS against the applied migration, 2026-09-05 — each of
+-- these reverts turns the named assertion red rather than passing quietly:
+--   * drop `and owner_id is not null` from clubs SELECT ............... 107.5
+--   * drop it from private.can_read_club .............................. 107.6
+--   * drop it from the club_members INSERT policy ..................... 107.7
+--   * drop `not club.is_default` from the new arm ..................... 107.9
+--   * null owner_id and the paths in two statements instead of one ..... 107.3
+-- ===========================================================================
+savepoint club_outlives_107;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000107001', 'pd98_departing@example.com'),
+  ('00000000-0000-0000-0000-000000107002', 'pd98_exmember@example.com'),
+  ('00000000-0000-0000-0000-000000107003', 'pd98_outsider@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000107001', 'pd98departing'),
+      ('00000000-0000-0000-0000-000000107002', 'pd98exmember'),
+      ('00000000-0000-0000-0000-000000107003', 'pd98outsider')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+-- C1 is PUBLIC deliberately: the narrowed arm of `clubs` SELECT is the
+-- `is_public` one, so a private fixture would satisfy 107.5 for the wrong
+-- reason and pass with the guard removed.
+--
+-- The avatar path exists so 107.3 can assert it is surrendered. It has to match
+-- 016's SHAPE regex (`club-avatars/<uuid>/<uuid>.jpg`) as well as its ownership
+-- CHECK, and only the second of those two stops biting when the owner is NULL.
+--
+-- No `club_members` row is written for either club: 103's trigger seeds the
+-- creator's, and an explicit insert raises 23505 on its own row.
+insert into clubs (id, name, is_public, owner_id, avatar_path) values
+  ('00000000-0000-0000-0000-0001070000c1', 'PD98 Survives MC', true,
+   '00000000-0000-0000-0000-000000107001',
+   'club-avatars/00000000-0000-0000-0000-000000107001/aaaaaaaa-0000-4000-8000-000000107001.jpg');
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001070000c2', 'PD98 Wholly Theirs MC', true,
+   '00000000-0000-0000-0000-000000107001');
+
+-- f1 is the third-party postcard the whole change exists to protect: authored
+-- by a rider who LEFT C1, so they hold no club_members row. f2 is the departing
+-- rider's own, in C2, which is therefore "entirely theirs" and still deletes.
+insert into postcards (id, author_id, club_id, image_path, caption, taken_place_name, taken_location_precision) values
+  ('00000000-0000-0000-0000-0001070000f1', '00000000-0000-0000-0000-000000107002',
+   '00000000-0000-0000-0000-0001070000c1',
+   'postcards/00000000-0000-0000-0000-000000107002/cccccccc-0000-4000-8000-000000107001.jpg',
+   'the photo of a rider who left', 'Zandvoort', 'place'),
+  ('00000000-0000-0000-0000-0001070000f2', '00000000-0000-0000-0000-000000107001',
+   '00000000-0000-0000-0000-0001070000c2',
+   'postcards/00000000-0000-0000-0000-000000107001/cccccccc-0000-4000-8000-000000107002.jpg',
+   'the departing rider''s own photo', 'Assen', 'place');
+
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0001070000c1'
+      and user_id <> '00000000-0000-0000-0000-000000107001'),
+  0, '107.0: the departing rider is C1''s only member — the ex-member holds no row, which is what makes the succession find nobody and this arm run at all');
+
+-- ---------------------------------------------------------------------------
+-- 107.1  THE SPLIT — one club survives ownerless, the other still deletes
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000107001')),
+  1, '107.1: the transfer surrenders exactly ONE Storage path — C1''s avatar. Emitted BEFORE the branch, so the bytes are surrendered on the ownerless arm exactly as on the transfer and delete arms');
+
+-- The profiles cascade, which in the real flow follows the transfer's commit.
+-- It is what removes the departing rider's own membership row and makes C1
+-- genuinely memberless.
+delete from profiles where id = '00000000-0000-0000-0000-000000107001';
+
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  1, '107.1: ** C1 SURVIVES its owner''s erasure ** — a postcard in it was authored by somebody else, so deleting it would destroy content belonging to a rider who is not party to this erasure');
+select assert_eq(
+  (select owner_id is null from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  true, '107.1: ... and it survives with NO OWNER. Nobody inherits a club they never joined — the option this change rejected');
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c2'),
+  0, '107.1: ** C2 still deletes **, because every postcard in it was the departing rider''s own. 009''s original reasoning holds exactly there, and an empty ownerless club would be a tombstone bought for nothing');
+select assert_eq(
+  (select count(*)::int from club_members where club_id = '00000000-0000-0000-0000-0001070000c1'),
+  0, '107.1: ... and the surviving club has no members at all once the cascade has run');
+
+-- ---------------------------------------------------------------------------
+-- 107.2  THE POSTCARD SURVIVES, AND KEEPS ITS CLUB
+-- ---------------------------------------------------------------------------
+-- The owner chose this option over detaching precisely because `club_id` is
+-- part of what the postcard means. Detaching would ALSO have published it:
+-- `club_id is null` is the app-wide arm of the postcards SELECT policy.
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0001070000f1'),
+  1, '107.2: ** the third-party postcard SURVIVES the erasure. ** This is the defect PD-98 names, and the assertion that fails if the cascade ever reaches it again');
+select assert_eq(
+  (select club_id from postcards where id = '00000000-0000-0000-0000-0001070000f1'),
+  '00000000-0000-0000-0000-0001070000c1',
+  '107.2: ... with club_id UNCHANGED and not null. ** Never "repair" this to null: `club_id is null` is the postcards SELECT policy''s app-wide arm, so nulling it would publish a private club''s photos to every signed-in rider ** — the rejected option, and the reason it was rejected twice over');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0001070000f2'),
+  0, '107.2: ... and the departing rider''s OWN postcard is gone, through the profiles cascade rather than the club one. Their content leaves with their account, which is what an erasure request asked for');
+
+-- ---------------------------------------------------------------------------
+-- 107.3  ** BOTH IMAGE PATHS ARE SURRENDERED, and the CHECK cannot enforce it **
+-- ---------------------------------------------------------------------------
+-- 016's ownership CHECK is `avatar_path is null or avatar_path like
+-- 'club-avatars/' || owner_id || '/%'`. With a NULL owner that expression is
+-- NULL, and a CHECK rejects only on FALSE — so it ACCEPTS a path containing the
+-- erased rider's uid, indefinitely. 029 §D2 rejected exactly that state as "the
+-- opposite of what an erasure request asked for". Nothing but this assertion
+-- stops it coming back.
+select assert_eq(
+  (select avatar_path is null and cover_image_path is null from clubs
+    where id = '00000000-0000-0000-0000-0001070000c1'),
+  true, '107.3: ** the ownerless club surrenders both image paths **, so no erased rider''s uid survives inside a live path. The CHECK that pins a path to its owner goes NULL with the owner and stops biting, so this is enforced by the function and asserted here or not at all');
+select assert_eq(
+  (select ('club-avatars/x/a.jpg' is null
+           or 'club-avatars/x/a.jpg' like 'club-avatars/' || null::uuid || '/%') is null),
+  true, '107.3: ... and the reason, stated as an executable fact rather than a comment: the ownership CHECK evaluates to NULL against a NULL owner, and a CHECK passes on NULL. ** This is the general hazard of making owner_id nullable ** — CHECKs fail OPEN where RLS `using` clauses fail CLOSED');
+
+-- ---------------------------------------------------------------------------
+-- 107.4  THE AUTHOR KEEPS THEIR PHOTO; NOBODY ELSE GAINS IT
+-- ---------------------------------------------------------------------------
+-- 011 made the author branch of postcards SELECT unconditional so "a rider can
+-- never lose their own photo — including one in a club they left". That is the
+-- invariant this change had to preserve, and it is what makes "narrower" land on
+-- the author alone rather than on nobody.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000107002', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0001070000f1'),
+  1, '107.4: ** the AUTHOR still reads their own preserved postcard **, through 011''s unconditional author branch. Preserving the row would be worthless if its author could not see it');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000107003', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0001070000f1'),
+  0, '107.4: ** an outsider who was NEVER in the club cannot read it. ** Before the erasure they could not either — the audience moved from "the club''s members" to "its author alone", which is strictly narrower and gains nobody anything');
+
+-- ---------------------------------------------------------------------------
+-- 107.5  ** THE LOAD-BEARING ONE — an ownerless club is invisible **
+-- ---------------------------------------------------------------------------
+-- C1 is PUBLIC and still carries `is_public = true`. Left alone, the public arm
+-- of `clubs` SELECT would keep it on Explore with a working Join button, and one
+-- tap makes is_club_member TRUE, which un-hides every preserved postcard to a
+-- rider who was never there. That is the exposure this change exists to prevent
+-- arriving one tap later by another door.
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  0, '107.5: ** an ownerless PUBLIC club is invisible to an ordinary rider. ** Drop `and owner_id is not null` from the clubs SELECT policy and this reads 1, the club returns to Explore, and the postcards follow one join later');
+-- Read as the table owner, so the row is seen without the policy: the point is
+-- that `is_public` is STILL TRUE and the policy is the only thing withholding
+-- the club. Asserted from outside RLS because a rider cannot see the row at all
+-- — which is what the assertion above just established.
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select is_public from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  true, '107.5: ... and it is still flagged public. ** The ownerless state does NOT flip is_public **, so nothing but the narrowed policy arm stands between this club and Explore — and `getExploreClubs` filters on is_public alone');
+
+-- ---------------------------------------------------------------------------
+-- 107.6  can_read_club AGREES WITH THE POLICY — the twin 060 pins
+-- ---------------------------------------------------------------------------
+-- 060 asserts the two are textually the same rule. This asserts they agree
+-- BEHAVIOURALLY on the row that distinguishes them, which a string comparison
+-- cannot: a helper narrowed differently would still match its own pin.
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  private.can_read_club('00000000-0000-0000-0000-000000107003',
+                        '00000000-0000-0000-0000-0001070000c1'),
+  false, '107.6: private.can_read_club refuses an ownerless club, exactly as the policy does. ** 107''s own task list said not to touch this helper on the grounds that it already failed closed; it did not — its is_public arm no more goes NULL with the owner than the policy''s does, and rls_test 060 is what caught the omission **');
+select assert_eq(
+  private.can_read_club('00000000-0000-0000-0000-000000107002',
+                        '00000000-0000-0000-0000-0001070000c1'),
+  false, '107.6: ... and it refuses the postcard''s own author too. Their photo is theirs through 011''s author branch; the CLUB is not theirs and never was');
+
+-- ---------------------------------------------------------------------------
+-- 107.7  NOBODY MAY ACT ON IT — join, edit, delete
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000107003', false);
+select assert_denied(
+  $$insert into club_members (club_id, user_id, role)
+    values ('00000000-0000-0000-0000-0001070000c1',
+            '00000000-0000-0000-0000-000000107003', 'member')$$,
+  '107.7: ** an ownerless club cannot be JOINED **, which is the second half of closing 107.5''s exposure. Sight and join are both required to reach the postcards, so both are closed rather than either');
+-- Data-modifying CTEs: an UPDATE/DELETE cannot sit in a plain subquery. Zero
+-- rows affected is the RLS refusal — a policy that admits nobody filters the
+-- statement to nothing rather than raising, which is why these count rows
+-- instead of using assert_denied.
+with u as (
+  update clubs set name = 'seized'
+   where id = '00000000-0000-0000-0000-0001070000c1'
+  returning 1
+)
+select assert_eq(
+  (select count(*)::int from u),
+  0, '107.7: ** nobody can EDIT it. ** No new predicate does this: `auth.uid() = owner_id` is NULL rather than TRUE once the owner is gone, so the UPDATE policy fails closed on its own. Asserted because it rests on NULL semantics rather than on anything visible in the policy text');
+with d as (
+  delete from clubs
+   where id = '00000000-0000-0000-0000-0001070000c1'
+  returning 1
+)
+select assert_eq(
+  (select count(*)::int from d),
+  0, '107.7: ** and nobody can DELETE it **, by the same NULL comparison. "Nobody inherits anything" is enforced by three-valued logic, and this is the assertion that notices if a future change replaces that comparison with a coalesce');
+
+-- ---------------------------------------------------------------------------
+-- 107.8  A CLUB CANNOT BE BORN OWNERLESS
+-- ---------------------------------------------------------------------------
+-- NULL is a terminal state reachable only through the transfer. The INSERT
+-- policy pins owner_id to auth.uid(), so a NULL fails it — but the column is
+-- nullable now, and nothing else says so.
+select assert_denied(
+  $$insert into clubs (id, name, is_public, owner_id)
+    values ('00000000-0000-0000-0000-0001070000c9', 'Born ownerless', true, null)$$,
+  '107.8: ** no client can create an ownerless club. ** Dropping NOT NULL made the state representable; this is what keeps it unreachable except through private.transfer_owned_clubs');
+
+reset role;
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 107.9  ** THE WELCOME CLUB IS EXCLUDED, and this is a SECURITY condition **
+-- ---------------------------------------------------------------------------
+-- public.complete_onboarding is security definer and force-joins every new rider
+-- to clubs.is_default with no owner_id predicate — its own comment says the
+-- club_members INSERT policy "does not apply". So an ownerless welcome club
+-- would hand its preserved postcards to the entire signup stream through a door
+-- 107.7 cannot reach, widening over time rather than being a one-off.
+--
+-- The stated cost is real and is NOT hidden: third-party postcards in the
+-- welcome club are still destroyed. 081.16b already records that this arm
+-- destroys the welcome club and everything in it; 107 leaves that path exactly
+-- as it found it rather than half-fixing it while opening a leak.
+savepoint welcome_club_107;
+update clubs set is_default = false where is_default;
+insert into clubs (id, name, is_public, owner_id, is_default) values
+  ('00000000-0000-0000-0000-0001070000d1', 'PD98 Welcome MC', true,
+   '00000000-0000-0000-0000-000000107002', true);
+insert into postcards (id, author_id, club_id, image_path, caption, taken_place_name, taken_location_precision) values
+  ('00000000-0000-0000-0000-0001070000f9', '00000000-0000-0000-0000-000000107003',
+   '00000000-0000-0000-0000-0001070000d1',
+   'postcards/00000000-0000-0000-0000-000000107003/cccccccc-0000-4000-8000-000000107009.jpg',
+   'a third party''s photo in the welcome club', 'Utrecht', 'place');
+select assert_eq(
+  (select count(*)::int from private.transfer_owned_clubs('00000000-0000-0000-0000-000000107002')),
+  0, '107.9: the welcome club carries no image path to surrender ...');
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000d1'),
+  0, '107.9: ** ... and the welcome club is DELETED even though a third party''s postcard is in it. ** It is excluded from the new arm because complete_onboarding force-joins every new rider to it through a security definer path no policy governs, so an ownerless one would leak its preserved postcards to the whole signup stream. Drop `not club.is_default` from the arm and this reads 1');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0001070000f9'),
+  0, '107.9: ... and that third party''s postcard goes with it — ** the stated, accepted cost of the exclusion **, unchanged from before 107 and recorded rather than discovered later');
+rollback to savepoint welcome_club_107;
+
+-- ---------------------------------------------------------------------------
+-- 107.10  THE OTHER DOORS INTO A CLUB, asserted rather than assumed
+-- ---------------------------------------------------------------------------
+-- A security definer accessor bypasses the SELECT policy entirely, so narrowing
+-- the policy does not narrow these. Each is checked against the ownerless club.
+select assert_eq(
+  private.club_takes_join_requests_for('00000000-0000-0000-0000-000000107003',
+                                       '00000000-0000-0000-0000-0001070000c1'),
+  false, '107.10: private.club_takes_join_requests_for refuses an ownerless club — and it does so WITHOUT a new predicate, because `c.owner_id <> candidate` is NULL rather than TRUE. Asserted because that is an accident of three-valued logic rather than a written rule, and 085 is one `coalesce` away from losing it');
+select assert_eq(
+  (select count(*)::int from public.discoverable_private_clubs(
+     '00000000-0000-0000-0000-0001070000c1')),
+  0, '107.10: ... so the private-club discovery accessor returns it to nobody either. This is the definer path 085.1 and 089.7 name as the ONLY other route to a club, which is why it is checked here rather than reasoned about');
+select assert_eq(
+  private.is_club_member_for('00000000-0000-0000-0000-000000107002',
+                             '00000000-0000-0000-0000-0001070000c1'),
+  false, '107.10: ... and no rider is a member of it, including the author whose postcard it preserves');
+
+-- ---------------------------------------------------------------------------
+-- 107.11  THE ADVISOR SURFACE DID NOT MOVE
+-- ---------------------------------------------------------------------------
+-- Every function 107 touches already existed and stays where it was. A
+-- security definer function in `public` adds one
+-- authenticated_security_definer_function_executable advisor; one in `private`
+-- adds none. 107 creates no function at all.
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef
+      and p.proname in ('transfer_owned_clubs', 'can_read_club',
+                        'club_invite_is_answerable_for', 'notify_club_joined',
+                        'notify_ride_created_in_club', 'club_takes_join_requests_for',
+                        'club_invite_link_reachable_by', 'notify_club_invited',
+                        'notify_club_join_requested', 'reap_ownerless_club')),
+  0, '107.11: ** none of the ten private functions 107 writes lives in `public` **, so the security-advisor count is unchanged at 39 DEV / 37 PROD. reap_ownerless_club is the only NEW function in the change and it is in `private` for exactly this reason. complete_onboarding is deliberately absent from this list — it is a pre-existing `public` definer function with an advisor of its own, and 107 rewrites its body without moving it');
+select assert_eq(
+  has_function_privilege('authenticated', 'private.transfer_owned_clubs(uuid)', 'execute'),
+  false, '107.11: ... and the rewritten transfer is still unreachable by a rider. Asserted by ROLE rather than by a call — 031''s lesson, and how 029 shipped a worker service_role could not reach with nothing red');
+select assert_eq(
+  has_function_privilege('service_role', 'private.transfer_owned_clubs(uuid)', 'execute'),
+  true, '107.11: ... while service_role keeps the EXECUTE 031 granted it. `create or replace` preserves an ACL, and this is the assertion that notices if a future drop-and-create does not');
+
+-- ---------------------------------------------------------------------------
+-- 107.12  ** THE REAPER — and every property that fails SILENTLY **
+-- ---------------------------------------------------------------------------
+-- Without it an ownerless club whose last postcard goes is unreachable by every
+-- role for ever. The trigger hangs on `postcards` DELETE, an already-shipped
+-- write path, so each property below is one a plausible implementation gets
+-- wrong without anything going red.
+savepoint reaper_107;
+
+-- The ordinary path first: deleting an app-wide postcard, and one in a club that
+-- still has an owner, must both be untouched.
+-- Read the WHEN expression out of pg_get_triggerdef rather than matching the
+-- whole definition: the parenthesisation Postgres renders is not stable enough
+-- to pin, and the substance is the predicate.
+select assert_eq(
+  (select substring(pg_get_triggerdef(t.oid) from 'WHEN \((.*)\) EXECUTE')
+     from pg_trigger t
+    where t.tgrelid = 'public.postcards'::regclass
+      and t.tgname = 'reap_ownerless_club'
+      and not t.tgisinternal),
+  '(old.club_id IS NOT NULL)',
+  '107.12: the trigger carries a WHEN clause on old.club_id, so deleting an app-wide postcard does not call the function at all. 6 of 11 postcards on DEV are app-wide and that deletion must pay nothing');
+select assert_eq(
+  (select p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'reap_ownerless_club'),
+  true, '107.12: ** the reaper is SECURITY DEFINER, and this is the property that fails SILENTLY. ** The clubs DELETE policy is `auth.uid() = owner_id`, which is NULL for an ownerless club and admits nobody — a security invoker version deletes ZERO rows with no error and passes any assertion that only checks the postcard delete succeeded');
+
+-- The reap itself. C1 is the ownerless club preserved above; removing its last
+-- postcard removes its reason to exist.
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  1, '107.12: C1 is still standing before its last postcard goes ...');
+delete from postcards where id = '00000000-0000-0000-0000-0001070000f1';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  0, '107.12: ** ... and reaped the moment it is gone. ** The tombstone lasts exactly as long as the content it was preserved for');
+rollback to savepoint reaper_107;
+
+-- ** IT MUST NOT REAP WHILE A RIDE REMAINS. ** rides.club_id is ON DELETE SET
+-- NULL, so reaping out from under a surviving private ride strands precisely
+-- the zombie 032 §2 exists to prevent — a private ride with a NULL club,
+-- visible only to its organizer while its ride_members rows survive. 107 §4
+-- keeps those rides deliberately; the reaper must not undo that.
+savepoint reaper_rides_107;
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('00000000-0000-0000-0000-0001070000e1',
+          'A ride that outlives the postcard', 'Zandvoort',
+          now() + interval '10 days', false,
+          '00000000-0000-0000-0000-0001070000c1',
+          '00000000-0000-0000-0000-000000107002');
+delete from postcards where id = '00000000-0000-0000-0000-0001070000f1';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  1, '107.12: ** the club SURVIVES its last postcard while a ride is still attached. ** Drop the rides conjunct from the reaper and this reads 0, and the ride below is stranded');
+select assert_eq(
+  (select club_id from rides where id = '00000000-0000-0000-0000-0001070000e1'),
+  '00000000-0000-0000-0000-0001070000c1',
+  '107.12: ... and the ride keeps its club rather than being SET NULL into a zombie its crew cannot see');
+rollback to savepoint reaper_rides_107;
+
+-- A MULTI-ROW delete fires the trigger once per row, after the statement, and
+-- each invocation sees zero remaining postcards. The first reaps; the rest must
+-- find nothing and no-op rather than raise.
+savepoint reaper_multi_107;
+insert into postcards (id, author_id, club_id, image_path, caption, taken_place_name, taken_location_precision) values
+  ('00000000-0000-0000-0000-0001070000fa', '00000000-0000-0000-0000-000000107002',
+   '00000000-0000-0000-0000-0001070000c1',
+   'postcards/00000000-0000-0000-0000-000000107002/cccccccc-0000-4000-8000-00000010700a.jpg',
+   'a second surviving photo', 'Assen', 'place');
+delete from postcards where club_id = '00000000-0000-0000-0000-0001070000c1';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  0, '107.12: ** a multi-row delete reaps once and does not raise on the second invocation. ** Both rows go in one statement, both AFTER-ROW firings see zero postcards remaining, and the second finds no club to delete');
+rollback to savepoint reaper_multi_107;
+
+-- A club that still has an OWNER is never touched, whatever happens to its
+-- postcards. This is the ordinary case and the one a wrong `owner_id` test
+-- would take down.
+savepoint reaper_owned_107;
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001070000c3', 'PD98 Still Owned MC', true,
+   '00000000-0000-0000-0000-000000107002');
+insert into postcards (id, author_id, club_id, image_path, caption, taken_place_name, taken_location_precision) values
+  ('00000000-0000-0000-0000-0001070000fb', '00000000-0000-0000-0000-000000107002',
+   '00000000-0000-0000-0000-0001070000c3',
+   'postcards/00000000-0000-0000-0000-000000107002/cccccccc-0000-4000-8000-00000010700b.jpg',
+   'the only photo in an owned club', 'Utrecht', 'place');
+delete from postcards where id = '00000000-0000-0000-0000-0001070000fb';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c3'),
+  1, '107.12: ** an OWNED club is never reaped **, however empty it becomes. The reap is scoped to owner_id is null, which is the whole difference between housekeeping and deleting a live rider''s club out from under them');
+rollback to savepoint reaper_owned_107;
+
+-- ---------------------------------------------------------------------------
+-- 107.13  THE SITES THAT WERE CLOSED ONLY BY A NEIGHBOURING CONJUNCT
+-- ---------------------------------------------------------------------------
+-- Each of these already refused an ownerless club before 107, by a comparison
+-- written for another purpose that happens to go NULL. 107 states the condition
+-- explicitly, because the change adds a requirement forbidding exactly that
+-- reliance — and shipping the rule beside four counter-examples would make it
+-- advisory on the day it lands. So these assert a property that ALREADY held:
+-- their value is that they pin it to a written predicate rather than an accident.
+select assert_eq(
+  (select prosrc like '%owner_id is not null%' from pg_proc
+    where oid = 'private.club_takes_join_requests_for(uuid, uuid)'::regprocedure),
+  true, '107.13: club_takes_join_requests_for names the condition rather than leaning on `c.owner_id <> candidate` going NULL. One coalesce on that comparison and the accident stops saving it');
+select assert_eq(
+  (select prosrc like '%k.owner_id is not null%' from pg_proc
+    where oid = 'private.club_invite_link_reachable_by(text, uuid, boolean)'::regprocedure),
+  true, '107.13: ... club_invite_link_reachable_by likewise — its own `not is_blocked(uid, k.owner_id)` conjunct fails OPEN against a NULL owner, so `uid <> k.owner_id` was carrying it alone');
+select assert_eq(
+  (select prosrc like '%c.owner_id is not null%' from pg_proc
+    where oid = 'private.notify_club_invited()'::regprocedure),
+  true, '107.13: ... notify_club_invited, whose owner-block test is `not exists (... and is_blocked(x, owner_id))` — TRUE for an ownerless club, so the guard had to be written as a POSITIVE existence test rather than added to the negative one');
+select assert_eq(
+  (select prosrc like '%c.owner_id is not null%' from pg_proc
+    where oid = 'private.notify_club_join_requested()'::regprocedure),
+  true, '107.13: ... and notify_club_join_requested, which carries the same NULL-recipient hazard as the two fan-outs 107 §3b fixes and was missed by the first pass over them');
+select assert_eq(
+  (select prosrc like '%c.owner_id is not null%' from pg_proc
+    where oid = 'public.complete_onboarding(text)'::regprocedure),
+  true, '107.13: ** and complete_onboarding, the ONLY membership-conferring definer function in the schema that had no owner_id predicate. ** All four inserters into club_members were enumerated; establish_club_owner_membership cannot fire with a NULL owner, join_club_from_invite and join_club_from_request both open with `if v_owner is null`, and this one did not');
+select assert_eq(
+  (select prosrc like '%is_default and c.owner_id is not null%' from pg_proc
+    where oid = 'public.complete_onboarding(text)'::regprocedure),
+  true, '107.13: ... and 059''s warning condition was widened with it. ** This is what makes the guard above SAFE to add **: an ownerless welcome club still satisfies `is_default`, so without this every new rider would join nothing for ever and the warning would stay silent — 059''s own worst failure, reintroduced by a security fix');
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint club_outlives_107;
 
 
 rollback;
