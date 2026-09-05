@@ -83,6 +83,34 @@ describe.each([
   })
 })
 
+describe('the composite reports the join landing, and cannot be called without a listener', () => {
+  const ACTION = read('../../../lib/actions/club-introductions.ts')
+
+  it('declares onMembershipExists as required', () => {
+    // **`tsc` cannot catch this one by mutation and that is the point.** Making
+    // the parameter optional still type-checks against every existing caller,
+    // because a caller that passes one satisfies an optional parameter too —
+    // the defect only appears when a FUTURE caller omits it, at which point
+    // there is no error to see. So the requirement is pinned on the source
+    // instead.
+    //
+    // What omitting it costs: the sheet gets one pending window spanning both
+    // writes, so `Join later` stays on screen over a committed join and the
+    // dismissal lock is held past the membership write — the two rules this
+    // callback exists to make possible.
+    expect(ACTION).toContain('onMembershipExists: () => void')
+    expect(ACTION).not.toContain('onMembershipExists?: () => void')
+    expect(ACTION).not.toContain('onMembershipExists?.()')
+  })
+
+  it('fires it between the two writes, not after both', () => {
+    const body = ACTION.slice(ACTION.indexOf('const joined = await joinClub(clubId)'))
+    expect(body.indexOf('onMembershipExists()')).toBeLessThan(
+      body.indexOf('await introduceToClub(')
+    )
+  })
+})
+
 describe('the shared queue records a dismissal only when a membership exists', () => {
   it('takes the fact as a parameter rather than assuming it', () => {
     // The rule moved into `useIntroductionQueue` when the pre-merge review
