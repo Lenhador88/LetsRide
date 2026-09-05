@@ -892,12 +892,23 @@ measurement as current.
   - [ ] **The empty state is gone with the strip, and nothing replaces it.** A ride's timeline is
         never empty — the founding entry is its floor — so the `Nothing yet · Prep shots count`
         tile has nothing left to say. What it carried that still matters is the `Add`, which is
-        the `(+)` on the timeline's heading now, crew only (`041` requires
-        `private.is_ride_crew` to tag).
-  - [ ] **There is no create BAR, unlike the club's `ClubCreateBar`.** The sticky bottom slot on
-        a ride is `RideAttendanceBar`, so a bar there would collide on every upcoming ride the
-        viewer does not organize. All three actions already have an entrance — the `(+)` (add a
-        photo), `RideChatRow` and the header bubble (chat), and `RideOptionsMenu` (invite).
+        crew only (`041` requires `private.is_ride_crew` to tag) and lands in one of two places
+        since PD-401 — `RideCreateBar` in the sticky slot, or the `(+)` on the timeline's
+        heading when the RSVP bar has that slot. See the create-bar bullet below.
+  - [ ] **There IS a create bar now, and it holds the slot only when the RSVP bar does not**
+        (PD-401, 2026-09-05 — this bullet said the opposite until then). `RideCreateBar` is
+        `ClubCreateBar`'s slot, geometry and border rule with **one** action rather than a
+        three-row sheet, because a ride creates exactly one thing today
+        (`routes.newPostcardInRide`); PD-402 is what makes a second exist, and the sheet shape
+        becomes right on the day it lands. `RideAttendanceBar` still wins the slot outright on
+        an upcoming ride the viewer does not organize, and there the `(+)` on the timeline
+        heading survives as the fallback — so the two entrances are complementary and a crew
+        member always has exactly one. `resolveRideDetailActions` is that decision, with an
+        exhaustive test.
+        **The frame deviation to price is what is NOT done here:** PD-401's own recommendation
+        was to move the RSVP out of the sticky slot into the page body, which contradicts
+        `2375:8771` drawing it stacked ON the navigation bar. Left for the owner, alongside
+        PD-404's floating-action question, which is the same frame decision one step further.
   - [ ] **The stream does not page, and the club's does.** Both sources are read whole at their
         own bounds; a ride that overruns them is cut at the horizon and says so, handing off to
         the crew list. See `src/lib/data/ride-timeline.ts` for why a bounded event does not
