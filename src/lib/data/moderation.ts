@@ -69,8 +69,11 @@ export type HiddenPostcardsCursor = { hiddenAt: string; postcardId: string }
 
 /**
  * The postcards this rider has hidden, newest hide first, keyset-paged on
- * `hidden_at` — `011`'s `postcard_hides (user_id, created_at desc)` index serves
- * the cursor exactly.
+ * `(hidden_at, postcard_id)`. `011`'s `postcard_hides (user_id, created_at desc)`
+ * index serves the range scan; the tiebreaker column is **not** in it, so the
+ * equal-timestamp arm is a filter on top rather than a pure index walk. Free at
+ * any cardinality a rider's own hide list reaches, and stated so that whoever
+ * finds this list slow knows where to look first.
  *
  * **Each row is a postcard id and a date, and that is the entire shape on
  * purpose.** `105` also returned a `restorable` flag and a preview; a pre-merge

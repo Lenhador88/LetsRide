@@ -252,7 +252,7 @@ fix, and each carries a visibility rule, which is why this went through `openspe
 
 ```bash
 git grep -n "my_blocked_riders\|my_hidden_postcards" -- src/ supabase/
-PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3431, from 3382
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3440, from 3382
 ```
 ## The ride detail is a timeline now — 2026-09-05
 

@@ -529,9 +529,10 @@ export const queryKeys = {
      */
     journal: (rideId: string): QueryKey => ['postcards', 'journal', rideId],
     /**
-     * `getHiddenPostcards` — PD-298's undo list, read from `105`'s
-     * `public.my_hidden_postcards()`. No `revalidatePath` predecessor: nothing
-     * ever rendered this.
+     * `getHiddenPostcards` — PD-298's undo list, read from `106`'s
+     * `public.my_hidden_postcards()` (`105` shipped an eight-column version
+     * that `106` dropped, because its `restorable` flag was a block detector).
+     * No `revalidatePath` predecessor: nothing ever rendered this.
      *
      * **Under `postcards` deliberately, and it is the placement that matters
      * rather than the name.** Its two writers are `hidePostcard` and

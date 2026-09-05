@@ -43,7 +43,10 @@ import type { HiddenPostcard } from '@/types'
  *
  * The cost is real and was accepted: a rider with many hides cannot tell which
  * row is which. What the screen buys is that the tap is no longer permanent,
- * which is the complaint PD-298 was filed about.
+ * which is the complaint PD-298 was filed about — and the recovery is cheap
+ * enough to say out loud, which the intro copy does: unhide one, look, hide it
+ * again if it was not the one you meant. Both writes are idempotent and neither
+ * notifies anybody.
  *
  * ## Paging
  *
@@ -133,7 +136,8 @@ export function HiddenPostcardsList() {
   return (
     <Section>
       <p className="text-sm text-muted">
-        Hidden postcards are removed from your feed only. Unhide one to put it back.
+        Hidden postcards are removed from your feed only. Unhide one to put it back — if it
+        wasn’t the one you meant, hide it again.
       </p>
 
       <ul className="flex flex-col gap-3">

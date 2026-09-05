@@ -71,8 +71,14 @@ It SHALL be `security definer` and live in `public`, for the reason above: `011`
 predicate inside the `postcards` SELECT policy, so a hidden postcard is unreadable to the rider
 who hid it.
 
-The accessor SHALL restate the `postcards` audience predicate **with the hide conjunct removed
-and every other conjunct intact**, and SHALL accept a keyset cursor.
+The accessor SHALL return **only the caller's own hide facts** — the postcard's id and when this
+rider hid it — and SHALL apply **no audience predicate at all**. It SHALL accept a keyset cursor.
+
+An earlier draft required it to restate the `postcards` audience predicate with the hide conjunct
+removed and every other conjunct intact. **That requirement is withdrawn and must not be
+reinstated**: the resulting per-row flag reduces to `not private.is_blocked(auth.uid(),
+author_id)` for every postcard whose club membership the rider already knows, which is every
+postcard they hid — making the list a block detector. The scenarios below are the binding form.
 
 #### Scenario: A rider sees what they hid
 - **WHEN** a signed-in rider calls the accessor

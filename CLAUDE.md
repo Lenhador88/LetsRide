@@ -450,10 +450,12 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   filename order.
 
 **Applied state: 106 files. DEV is at `106` and PROD at `100` — measured 2026-09-05.** The gap is
-`101`–`106`, all awaiting promotion. `105`/`106` (PD-298) are additive — two `security definer`
-accessors and one index, then a narrowing of one of them, with no policy, grant, CHECK or trigger
-touched — so neither has an unsafe side and both may be promoted before or after their build
-serves. `103`/`104` (PD-103) were applied only after the build carrying
+`101`–`106`, all awaiting promotion. **`105`/`106` (PD-298) go MIGRATION-FIRST on the PROD
+promotion**, and "additive, so the order does not matter" is the wrong reading: they add two
+`security definer` accessors that the promoted bundle CALLS, so a build serving ahead of them
+answers `PGRST202` on both Privacy-sheet lists — the shipped-client-reads case in the sequencing
+rule below. They touch no policy, grant, CHECK or trigger, so migration-first has no unsafe side
+of its own. `103`/`104` (PD-103) were applied only after the build carrying
 them was confirmed **serving** on DEV (`READY` on the merge sha, `aliasError` null) — that gate is
 the sequencing rule below and is not the same as "after the merge". **`list_migrations` against both
 refs is the only honest answer to this line**, which was written wrong three times in one day before
