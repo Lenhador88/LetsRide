@@ -30,19 +30,6 @@ State the objection concretely: the query that breaks, the row that leaks, the m
 cannot be reversed, the RSVP that can now be written twice. "This seems risky" is not an
 objection, it is a mood.
 
-**Put a decision as the rider's state, never as the mechanism.** Standing instruction, product
-owner 2026-09-05. A question phrased as *"what should the default location precision be?"* cannot
-be answered, because it hides which rider is standing in front of you — the same words covered
-three different people, and the owner answered a different one than the code was asking about.
-Phrased as the state, it answers itself:
-
-> *Which value lands when the rider types a place name into the location field, never selects one
-> from the autocomplete, and never taps a precision mode?*
-
-Name the screen, what the rider **did**, and what they **did not do**; then say what each answer
-**stores**, which is rarely the same question as what it shows. This governs a decision put in
-chat and the body of any issue parked in `Needs decision` alike.
-
 **One hold per issue.** If the decision is reaffirmed, build the *full* request as asked and
 drop it. Do not re-raise it later in the session, and do not quietly narrow the work as a
 silent protest. Recording the concern once — in the commit message, or `docs/HANDOFF.md` if
@@ -1058,6 +1045,17 @@ a decision to them.** The point is the **compression**, not the headings:
 - **Proposals** — the lettered blocks above, each with its title, its line of context, and its
   ratings. Skip entirely when there is nothing to decide.
 - **Question** — the single thing you need answered, phrased so a one-word reply works.
+
+**Put that question as the rider's state, never as the mechanism.** Standing instruction, product
+owner 2026-09-05. *"What should the default location precision be?"* cannot be answered, because
+it hides which rider is standing in front of you. Phrased as the state, it answers itself:
+
+> *Which value lands when the rider types a place name into the location field, never selects one
+> from the autocomplete, and never taps a precision mode?*
+
+Name the screen, what the rider **did**, and what they **did not do**; then say what each answer
+**stores**, which is rarely the same question as what it shows. This governs a decision put in
+chat and the body of any issue parked in `Needs decision` or `Needs help` alike.
 
 **The reasoning goes in the commit, the PR and the Linear issue — never in the reply.** If a
 point needs a paragraph to defend, the paragraph belongs in the record and the reply gets the
