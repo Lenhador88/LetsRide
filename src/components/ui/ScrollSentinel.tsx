@@ -4,11 +4,17 @@ import { useEffect, useRef } from 'react'
 
 /**
  * The repo's first `IntersectionObserver` — `git grep -n IntersectionObserver
- * -- src/` was 0 before this file, per `design.md` §D1 (PD-375). It has
- * exactly one caller today, the club timeline's scroll-triggered paging;
+ * -- src/` was 0 before this file, per `design.md` §D1 (PD-375). Two callers
+ * today — count them with `git grep -l ScrollSentinel -- 'src/components/**'`:
+ * the club timeline's scroll-triggered paging, and the ride timeline's
+ * display-cap step (PD-393), which fetches nothing at all and only raises how
+ * many already-held rows are drawn.
+ *
  * `/clubs/detail/threads` and `/notifications` keeping their `Load more`
- * buttons is a decision (PD-375 scopes the mechanism to the club timeline
- * alone), not an oversight this component's existence somehow argues against.
+ * buttons is still a decision rather than an oversight — PD-375 scoped the
+ * PAGING mechanism to the club timeline, and PD-393 borrowing the sentinel for
+ * a free cap bump does not widen that scope to a screen that would have to
+ * fetch.
  *
  * An empty `div`, observed by an `IntersectionObserver` created **in an
  * effect** and disconnected in its cleanup — never during render. The reason

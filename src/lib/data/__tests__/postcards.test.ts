@@ -76,7 +76,7 @@ describe('getRideJournal', () => {
   it('returns nothing, and never reaches postcards, when the accessor finds no tag', async () => {
     rpc.mockResolvedValue({ data: [], error: null })
 
-    expect(await getRideJournal(RIDE_ID)).toEqual([])
+    expect(await getRideJournal(RIDE_ID)).toEqual({ rows: [], horizon: null })
     expect(from).not.toHaveBeenCalled()
   })
 
@@ -118,7 +118,7 @@ describe('getRideJournal', () => {
   })
 
   it('refuses a malformed ride id without calling the database at all', async () => {
-    expect(await getRideJournal('not-a-uuid')).toEqual([])
+    expect(await getRideJournal('not-a-uuid')).toEqual({ rows: [], horizon: null })
     expect(rpc).not.toHaveBeenCalled()
     expect(from).not.toHaveBeenCalled()
   })
@@ -135,7 +135,59 @@ describe('getRideJournal', () => {
 
     await expect(getRideJournal(RIDE_ID)).rejects.toThrow()
   })
+
+  /**
+   * The horizon — PD-393. It says how far back this source's picture reaches,
+   * and `mergeRideTimeline` cuts the whole stream at the newest such point, so
+   * getting it wrong does not shorten the timeline, it makes it **wrong**: a
+   * horizon claimed where there is nothing behind cuts the join stream at that
+   * instant for no reason a rider could see.
+   *
+   * Counted from the IDS rather than from the rows, which is what these two
+   * cases separate — `boundedHorizon` over the rows would report one in the
+   * second case, where the accessor has already said there is nothing behind.
+   */
+  it('reports no horizon when the accessor returned no more ids than the page', async () => {
+    const ids = Array.from({ length: FEED_PAGE_SIZE }, (_, i) => `postcard-${i}`)
+    rpc.mockResolvedValue({ data: ids, error: null })
+    const { builder } = postcardsBuilder(journalRows(FEED_PAGE_SIZE))
+    from.mockReturnValue(builder)
+
+    expect((await getRideJournal(RIDE_ID)).horizon).toBeNull()
+  })
+
+  it('reports the oldest row it drew as the horizon when ids remain behind it', async () => {
+    const ids = Array.from({ length: FEED_PAGE_SIZE + 5 }, (_, i) => `postcard-${i}`)
+    rpc.mockResolvedValue({ data: ids, error: null })
+    const { builder } = postcardsBuilder(journalRows(FEED_PAGE_SIZE))
+    from.mockReturnValue(builder)
+
+    const source = await getRideJournal(RIDE_ID)
+    expect(source.rows).toHaveLength(FEED_PAGE_SIZE)
+    expect(source.horizon).toBe(source.rows[FEED_PAGE_SIZE - 1].created_at)
+  })
 })
+
+/**
+ * Rows shaped only as far as this file needs them: newest first, and every
+ * media path null so `signImagePaths` and `resolveAvatarUrls` short-circuit on
+ * their own `length === 0` guards rather than this file having to stub Storage
+ * — the same trick the empty-rows builder above relies on.
+ */
+function journalRows(count: number) {
+  // Strictly descending, because the query's own `created_at desc, id desc`
+  // is what the real read returns and the horizon is "the oldest row we drew".
+  // A fixture in any other order would let an implementation taking the FIRST
+  // row pass this file while cutting every ride's timeline at its newest photo.
+  return Array.from({ length: count }, (_, i) => ({
+    id: `postcard-${i}`,
+    created_at: new Date(Date.UTC(2026, 8, 5, 12) - i * 60_000).toISOString(),
+    image_path: null,
+    author: null,
+    likes_count: null,
+    comments_count: null,
+  }))
+}
 
 /**
  * `getClubFeedWindow` — `design.md` §D3's fix, and the TWO further findings

@@ -323,10 +323,10 @@ export const CREATE_CLUB_PARAM = 'club'
 /**
  * Which ride a create screen was opened from — the same job as
  * `CREATE_CLUB_PARAM`, one param later (PD-256). Only the postcard composer
- * reads it: `RideJournal`'s `Add` tile — drawn by it or by `RideJournalEmpty`,
- * whichever the ride's postcards currently render — is the one place a
- * create screen is reached from a ride rather than a club, and it seeds the
- * composer's Ride `<select>` and the club that ride belongs to
+ * reads it: the `(+)` on the ride timeline's own heading — `RideJournal`'s
+ * `Add` tile until PD-393 dissolved that strip into the stream — is the one
+ * place a create screen is reached from a ride rather than a club, and it
+ * seeds the composer's Ride `<select>` and the club that ride belongs to
  * (`seedRideId`), plus the header's back destination through
  * `backFromCreateScreen` below.
  */
