@@ -254,6 +254,51 @@ fix, and each carries a visibility rule, which is why this went through `openspe
 git grep -n "my_blocked_riders\|my_hidden_postcards" -- src/ supabase/
 PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3440, from 3382
 ```
+## The introduction sheet is the join now — 2026-09-05
+
+**PD-392, [PR #395](https://github.com/Lenhador88/LetsRide/pull/395).** `IntroductionPrompt` opened
+*after* `joinClub` had written the `club_members` row, so `Not now` read as *"don't join yet"* and
+meant *"you have joined"*. On the Join-button path it now offers **Post** (join, then introduce) and
+**Join later** (write nothing, join nothing). No migration — the sheet opening for a non-member is a
+client mode, not a relaxation of `owesIntroduction`, whose `viewerRole !== null` conjunct is
+untouched.
+
+**Five things a later session should not have to re-derive:**
+
+- **The order is forced and cannot be swapped.** `097`'s `introduce_to_club` refuses a non-member
+  via `private.is_club_member`, so the membership lands first. The two writes are separately
+  failable with no transaction across them, and a failed introduction deliberately leaves a member
+  who owes one — `097`'s own first-class state. **No compensating delete**: a join-then-leave has
+  the `club_joined` notification wake the story refuses, and `095`'s owner guard makes it not even
+  total.
+- **The dismissal rule is an iff and it has THREE call sites**, not the one the proposal first
+  named: `record a session dismissal ⟺ a membership exists`. The sheet reports the fact out through
+  `onDismiss` because it is the only thing that knows its own write returned; reading it back off
+  the cache races `invalidateClubMembership`. `onPosted`'s unconditional write **is** the iff, not
+  an exception to it.
+- **`ExploreClubsList` is mounted TWICE** — `/clubs/explore` and `/clubs`' first-run screen — and
+  the first cut wired only one. Every `Join club` on the screen a rider sees before joining anything
+  did nothing at all: no membership, no sheet, no error, because the handler returns before the
+  write. `onIntroduce` is **required** now and `ClubCard` is a discriminated union on `joined`, so a
+  repeat is a type error. The queue is `src/lib/clubs/use-introduction-queue.ts` — one home, because
+  two copies is how the two screens drift.
+- **The latch is per sheet INSTANCE and hoisting it to a page is a defect.** After club A's `Post`
+  lands, a page-level latch would open club B's sheet in member mode, `introduceToClub` alone would
+  be refused for a non-member, and **B would become unjoinable** — surfacing as an introduction
+  error rather than anything about joining. Both screens key the sheet per club for this.
+- **The default club still joins in one tap.** It is exempt from introductions and reachable today
+  with a live `Join club` button, so a sheet-only membership would make it unjoinable.
+  `ClubMembershipButton` gained `is_default` as a required prop, **read as data** — asserting it
+  from a screen's position in the flow is PD-384's defect.
+
+**One open question is the owner's:** whether `Join later` emits an analytics event. Default taken —
+no.
+
+```bash
+git grep -n "joinAndIntroduceToClub\|useIntroductionQueue" -- src/
+npx vitest run src/components/clubs src/lib/actions/__tests__/join-and-introduce.test.ts
+```
+
 ## The ride detail is a timeline now — 2026-09-05
 
 **PD-393, [PR #393](https://github.com/Lenhador88/LetsRide/pull/393).** `/rides/detail` adopts the

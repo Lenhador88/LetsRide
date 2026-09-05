@@ -4,11 +4,13 @@ import { Header } from '@/components/layout/Header'
 import { ClubCard } from '@/components/clubs/ClubCard'
 import { ExploreClubsList } from '@/components/clubs/ExploreClubsList'
 import { ExploreClubsStrip } from '@/components/clubs/ExploreClubsStrip'
+import { IntroductionPrompt } from '@/components/clubs/IntroductionPrompt'
 import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getExploreClubs, getYourClubs } from '@/lib/data/clubs'
 import { getMyLocationText } from '@/lib/data/profile'
+import { useIntroductionQueue } from '@/lib/clubs/use-introduction-queue'
 import { isNearby } from '@/lib/location/distance'
 import { nearLabel, type NearLabel } from '@/lib/location/near-label'
 import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
@@ -103,6 +105,27 @@ export default function ClubsPage() {
   // `undefined` is "not yet", and gets the strip like every other state.
   const hasNoClubs = yours.data?.length === 0
 
+  /**
+   * The first-run screen's introduction sheet — PD-392.
+   *
+   * **It is mounted HERE rather than inside `NoClubsYet`, and that is the whole
+   * reason this state is not local to that component.** `NoClubsYet` renders
+   * only while `yours.data` is empty, which stops being true the instant
+   * `Post`'s join lands — so a sheet owned by it would unmount itself
+   * mid-write, with the rider's typed introduction in it. That is PD-384's
+   * hazard exactly, one level up: the sheet has to be owned by something that
+   * outlives the thing the join removes.
+   *
+   * `onIntroduce` is required, so a screen that mounts the list without a
+   * sheet is a type error rather than a Join button that silently does
+   * nothing.
+   */
+  const {
+    current: introducingClubId,
+    enqueue: enqueueIntroduction,
+    advance: advanceIntroductions,
+  } = useIntroductionQueue()
+
   return (
     <>
       <Header title="Clubs" secondaryAction={<NotificationsHeaderControl />} />
@@ -113,7 +136,7 @@ export default function ClubsPage() {
           `Create ride`. */}
       <div className="pb-navbar-action-extra">
         {hasNoClubs ? (
-          <NoClubsYet explore={explore} near={label} />
+          <NoClubsYet explore={explore} near={label} onIntroduce={enqueueIntroduction} />
         ) : (
           <>
             {/* Outside the gate below, and ungated on `explore` — the strip
@@ -164,6 +187,19 @@ export default function ClubsPage() {
           </>
         )}
       </div>
+
+      {/* Always `pre-join`: this screen's Join control writes nothing and opens
+          the sheet instead, so every sheet it mounts starts before a membership
+          exists. The sheet latches itself to member mode when its own join
+          lands — see `IntroductionPrompt`. */}
+      <IntroductionPrompt
+        key={introducingClubId}
+        clubId={introducingClubId ?? ''}
+        mode="pre-join"
+        open={!!introducingClubId}
+        onDismiss={(membershipExists) => advanceIntroductions(membershipExists)}
+        onPosted={() => advanceIntroductions(true)}
+      />
     </>
   )
 }
@@ -184,9 +220,13 @@ export default function ClubsPage() {
 function NoClubsYet({
   explore,
   near,
+  onIntroduce,
 }: {
   explore: UseQueryResult<ClubListItem[]>
   near: NearLabel
+  /** Opens the pre-join sheet, which the PAGE owns — this component unmounts
+   *  the moment the join lands. See the caller. */
+  onIntroduce: (clubId: string) => void
 }) {
   if (explore.error) return <ErrorState onRetry={explore.refetch} />
   if (!explore.data) return <SkeletonList />
@@ -211,7 +251,7 @@ function NoClubsYet({
           There are no public clubs, yet!
         </p>
       ) : (
-        <ExploreClubsList clubs={explore.data} near={near} />
+        <ExploreClubsList clubs={explore.data} near={near} onIntroduce={onIntroduce} />
       )}
     </div>
   )

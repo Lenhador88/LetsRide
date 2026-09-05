@@ -602,6 +602,20 @@ It borrows `ContextMenu`'s scrim and geometry so it is at least consistent with 
 were measured. **Nothing here has been rendered against DEV**; `npm run walk` has not run over
 it, which is the gate that would catch a sheet that throws on open.
 
+**It has a SECOND mode since PD-392 (2026-09-05), and that one is ours too.** The sheet now opens
+before a rider joins, offering `Join later` where a member sees `Not now`, and `Post` is what
+writes the membership. Its heading, its body line and both control labels are
+`CLUB_INTRODUCTION_COPY` in `src/lib/validation/clubs.ts` — no frame, no measurement, same
+standing as the first mode. Re-run the command above rather than trusting this: the search terms
+that found nothing for the member sheet find nothing for this one either, and a frame appearing
+later is exactly what would make both entries stale.
+
+Member mode's wording is **unchanged**, so what is inferred here is only the new half:
+
+```bash
+git grep -n "CLUB_INTRODUCTION_COPY\|CLUB_INTRODUCTION_PARTIAL_FAILURE" -- src/lib/validation/clubs.ts
+```
+
 **The join row swapped a control and did not merely gain one.** PD-356's ⋯ overflow with
 `Say welcome` is deleted; a comment glyph and count sit in its place, and the wave control is
 unchanged and still absent — not disabled — on the viewer's own row. The row's measured 44×326

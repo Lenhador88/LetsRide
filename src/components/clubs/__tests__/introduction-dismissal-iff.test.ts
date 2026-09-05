@@ -1,0 +1,165 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
+
+/**
+ * The dismissal iff, pinned at **both** call sites — PD-392, `design.md` §D2.
+ *
+ *     a session dismissal is recorded  <=>  a membership exists at that moment
+ *
+ * **Why this is its own file, and why it asserts on source.** The rule is one
+ * sentence applied in two screens, and the pre-build review caught the proposal
+ * fixing one of them: the club detail's `onDismiss` was as unconditional as
+ * Explore's, and `ContextMenu`'s scrim and Escape both close through it. A
+ * rider who taps `Join later` on club X's own screen and is then admitted to X
+ * by an approved request or an invite link **in the same session** would never
+ * be asked to introduce themselves — a prompt suppressed on a fact the rider
+ * never asserted. That is what three requirements of this change forbid, and it
+ * is reachable on the screen the story's own copy is about.
+ *
+ * Neither screen is renderable under `environment: 'node'` — both mount
+ * `useQuery` trees and `ContextMenu` draws nothing without a `document` — and
+ * the defect is a *missing condition*, which no static render can see anyway.
+ * So this reads the source, comment-stripped, the shape
+ * `JoinClubButton.test.tsx` and `ClubInviteJoin.test.tsx` already use. The
+ * stripping matters more than usual here: both screens explain this rule at
+ * length in prose that names `dismissIntroductionPrompt`, so an unstripped
+ * match would pass against the comment describing the bug.
+ *
+ * Verified both ways per CLAUDE.md §Working Principles: making either
+ * `onDismiss` call `dismissIntroductionPrompt` unconditionally — the shape
+ * before this change — fails the guarded-call assertion for that screen.
+ */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+}
+
+function read(relative: string): string {
+  return stripComments(
+    readFileSync(path.resolve(fileURLToPath(new URL(relative, import.meta.url))), 'utf8')
+  )
+}
+
+const DETAIL = read('../../../app/(app)/clubs/detail/page.tsx')
+const EXPLORE = read('../../../app/(app)/clubs/explore/page.tsx')
+const FIRST_RUN = read('../../../app/(app)/clubs/page.tsx')
+const QUEUE = read('../../../lib/clubs/use-introduction-queue.ts')
+const JOIN_BUTTON = read('../JoinClubButton.tsx')
+const MEMBERSHIP_BUTTON = read('../ClubMembershipButton.tsx')
+
+describe('the club detail screen records a dismissal only when a membership exists', () => {
+  it('guards its onDismiss on the fact the sheet reports', () => {
+    // The sheet is the only thing that knows — it issued the write. Reading it
+    // back off the cache instead would race `invalidateClubMembership`.
+    expect(DETAIL).toContain('onDismiss={(membershipExists) => {')
+    expect(DETAIL).toContain('if (membershipExists) dismissIntroductionPrompt(id)')
+  })
+
+  it('has no unconditional dismissal left on the dismiss path', () => {
+    // Exactly one bare call survives and it is `onPosted`'s, which IS the iff
+    // rather than an exception to it: a successful Post means a membership
+    // exists. The count is the assertion — a second bare call is the bug.
+    const bare = DETAIL.match(/^\s*dismissIntroductionPrompt\(id\)$/gm) ?? []
+    expect(bare).toHaveLength(1)
+    expect(DETAIL).toContain('onPosted={() => {')
+  })
+})
+
+describe.each([
+  ['JoinClubButton', JOIN_BUTTON] as const,
+  ['ClubMembershipButton', MEMBERSHIP_BUTTON] as const,
+])('%s requires its opener rather than accepting undefined', (_name, SOURCE) => {
+  it('declares onIntroduce as required and calls it unconditionally', () => {
+    // BOTH controls have the same failure mode, and only one of them had a
+    // second mount point when it bit: without an opener the handler returns
+    // before `joinClub`, so the button writes nothing, opens nothing and
+    // reports no error. `ClubMembershipButton` has one call site today — so did
+    // `JoinClubButton`, right up until it did not.
+    expect(SOURCE).toContain('onIntroduce: (clubId: string) => void')
+    expect(SOURCE).not.toContain('onIntroduce?: (clubId: string) => void')
+    expect(SOURCE).toContain('onIntroduce(clubId)')
+    expect(SOURCE).not.toContain('onIntroduce?.(')
+  })
+})
+
+describe('the composite reports the join landing, and cannot be called without a listener', () => {
+  const ACTION = read('../../../lib/actions/club-introductions.ts')
+
+  it('declares onMembershipExists as required', () => {
+    // **`tsc` cannot catch this one by mutation and that is the point.** Making
+    // the parameter optional still type-checks against every existing caller,
+    // because a caller that passes one satisfies an optional parameter too —
+    // the defect only appears when a FUTURE caller omits it, at which point
+    // there is no error to see. So the requirement is pinned on the source
+    // instead.
+    //
+    // What omitting it costs: the sheet gets one pending window spanning both
+    // writes, so `Join later` stays on screen over a committed join and the
+    // dismissal lock is held past the membership write — the two rules this
+    // callback exists to make possible.
+    expect(ACTION).toContain('onMembershipExists: () => void')
+    expect(ACTION).not.toContain('onMembershipExists?: () => void')
+    expect(ACTION).not.toContain('onMembershipExists?.()')
+  })
+
+  it('fires it between the two writes, not after both', () => {
+    const body = ACTION.slice(ACTION.indexOf('const joined = await joinClub(clubId)'))
+    expect(body.indexOf('onMembershipExists()')).toBeLessThan(
+      body.indexOf('await introduceToClub(')
+    )
+  })
+})
+
+describe('the shared queue records a dismissal only when a membership exists', () => {
+  it('takes the fact as a parameter rather than assuming it', () => {
+    // The rule moved into `useIntroductionQueue` when the pre-merge review
+    // found `/clubs`' first-run screen mounting the same list with no opener
+    // at all. One home, two screens — two hand-written copies is how one of
+    // them drifts, and how one of them ends up without this guard.
+    expect(QUEUE).toContain('const advance = (recordDismissal: boolean) =>')
+    expect(QUEUE).toContain('if (recordDismissal && current) dismissIntroductionPrompt(current)')
+  })
+
+  it('appends rather than assigns, so no queued club is silently dropped', () => {
+    // PD-384's dropped-prompt defect. Kept because the hook is now the only
+    // copy of it.
+    expect(QUEUE).toContain('[...queue, clubId]')
+  })
+})
+
+describe.each([
+  ['Explore', EXPLORE] as const,
+  ['the first-run Clubs screen', FIRST_RUN] as const,
+])('%s mounts the sheet correctly', (_name, SOURCE) => {
+  it('passes the answer through on dismiss, and true on a successful post', () => {
+    expect(SOURCE).toContain(
+      'onDismiss={(membershipExists) => advanceIntroductions(membershipExists)}'
+    )
+    expect(SOURCE).toContain('onPosted={() => advanceIntroductions(true)}')
+  })
+
+  it('opens its sheet in pre-join mode — nothing is written before Post', () => {
+    // The Join control writes nothing, so every sheet these screens mount
+    // starts before a membership exists. A `member` here would put "Welcome to
+    // the club!" over a rider who has not joined.
+    expect(SOURCE).toContain('mode="pre-join"')
+  })
+
+  it('keys the sheet per club, so a draft cannot follow the queue', () => {
+    // PD-384's misdirected-introduction defect: the id flipping under a live
+    // draft posts the rider's words about club A into club B. The key is what
+    // makes a different club a different component instance.
+    expect(SOURCE).toContain('key={introducingClubId}')
+  })
+
+  it('actually supplies an opener to the list', () => {
+    // The defect the pre-merge review caught, and the reason this is asserted
+    // on BOTH screens rather than on the one the change started from:
+    // `ExploreClubsList` is mounted twice, and the first-run screen had no
+    // `onIntroduce` at all — so every `Join club` there did nothing, with no
+    // membership, no sheet and no error. `tsc` now refuses it too; this says
+    // why, where a reader will look.
+    expect(SOURCE).toContain('onIntroduce=')
+  })
+})
