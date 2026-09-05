@@ -45,6 +45,8 @@ const DETAIL = read('../../../app/(app)/clubs/detail/page.tsx')
 const EXPLORE = read('../../../app/(app)/clubs/explore/page.tsx')
 const FIRST_RUN = read('../../../app/(app)/clubs/page.tsx')
 const QUEUE = read('../../../lib/clubs/use-introduction-queue.ts')
+const JOIN_BUTTON = read('../JoinClubButton.tsx')
+const MEMBERSHIP_BUTTON = read('../ClubMembershipButton.tsx')
 
 describe('the club detail screen records a dismissal only when a membership exists', () => {
   it('guards its onDismiss on the fact the sheet reports', () => {
@@ -61,6 +63,23 @@ describe('the club detail screen records a dismissal only when a membership exis
     const bare = DETAIL.match(/^\s*dismissIntroductionPrompt\(id\)$/gm) ?? []
     expect(bare).toHaveLength(1)
     expect(DETAIL).toContain('onPosted={() => {')
+  })
+})
+
+describe.each([
+  ['JoinClubButton', JOIN_BUTTON] as const,
+  ['ClubMembershipButton', MEMBERSHIP_BUTTON] as const,
+])('%s requires its opener rather than accepting undefined', (_name, SOURCE) => {
+  it('declares onIntroduce as required and calls it unconditionally', () => {
+    // BOTH controls have the same failure mode, and only one of them had a
+    // second mount point when it bit: without an opener the handler returns
+    // before `joinClub`, so the button writes nothing, opens nothing and
+    // reports no error. `ClubMembershipButton` has one call site today — so did
+    // `JoinClubButton`, right up until it did not.
+    expect(SOURCE).toContain('onIntroduce: (clubId: string) => void')
+    expect(SOURCE).not.toContain('onIntroduce?: (clubId: string) => void')
+    expect(SOURCE).toContain('onIntroduce(clubId)')
+    expect(SOURCE).not.toContain('onIntroduce?.(')
   })
 })
 

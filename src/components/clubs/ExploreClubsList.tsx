@@ -43,13 +43,11 @@ export function ExploreClubsList({
    * Forwarded to every `JoinClubButton` on this list — *open the pre-join
    * sheet*, not *a join happened* (PD-392). See that component's header.
    *
-   * **Required, and that is the fix for a defect this list actually shipped
-   * into review.** Every card here is unjoined, so every one draws a Join
-   * control, and since PD-392 that control writes nothing on its own: without
-   * an opener it is a button that does nothing at all — no membership, no
-   * sheet, no error. This list is mounted from two screens and one of them was
-   * wired without it. An optional prop made that invisible to `tsc`; a required
-   * one makes every mount point declare where its sheet lives.
+   * **Required.** Every card here is unjoined, so every one draws a Join
+   * control, and since PD-392 that control writes nothing on its own — without
+   * an opener it does nothing at all. **This list is mounted from two
+   * screens**, so the requirement is what makes each of them declare where its
+   * sheet lives.
    */
   onIntroduce: (clubId: string) => void
 }) {

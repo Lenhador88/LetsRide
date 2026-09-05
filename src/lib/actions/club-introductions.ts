@@ -125,7 +125,20 @@ export type JoinAndIntroduceResult =
  */
 export async function joinAndIntroduceToClub(
   clubId: string,
-  body: string
+  body: string,
+  /**
+   * Fired the moment the membership write returns without an error, before the
+   * introduction is attempted.
+   *
+   * **The caller cannot observe that moment any other way, and two rules depend
+   * on it.** The sheet's second control must stop saying `Join later` as soon
+   * as the join lands — it is a lie from that instant — and its dismissal lock
+   * covers the membership write and *no longer*, because once a membership
+   * exists `097`'s "always dismissible, pending or not" applies again. Without
+   * this the caller sees one pending window spanning both writes, so both rules
+   * silently become "until the introduction resolves" instead.
+   */
+  onMembershipCreated?: () => void
 ): Promise<JoinAndIntroduceResult> {
   // Parsed BEFORE the join, so a body the database would refuse never costs a
   // membership the rider did not ask for on its own. `introduceToClub` parses
@@ -141,6 +154,8 @@ export async function joinAndIntroduceToClub(
 
   const joined = await joinClub(clubId)
   if (joined.error) return { outcome: 'join-failed', error: joined.error }
+
+  onMembershipCreated?.()
 
   const introduced = await introduceToClub(clubId, parsed.data)
   if (introduced.error) return { outcome: 'introduction-failed', error: introduced.error }

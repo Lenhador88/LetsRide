@@ -199,11 +199,20 @@ describe('IntroductionPrompt — the latch', () => {
 
 describe('IntroductionPrompt — the in-flight dismissal lock covers the scrim, not just the button', () => {
   it('ignores a scrim click while the membership write is out, and accepts one after', async () => {
-    let settle: (value: { outcome: string }) => void = () => {}
-    joinAndIntroduceToClub.mockReturnValue(
-      new Promise((resolve) => {
-        settle = resolve
-      })
+    // The composite reports the membership landing through its callback,
+    // BEFORE it resolves — which is the only way the sheet can tell the two
+    // writes apart. This mock reproduces that shape: hold the promise, and let
+    // the test fire the callback to simulate the join landing while the
+    // introduction is still out.
+    let settle: (value: { outcome: string; error?: string }) => void = () => {}
+    let landTheJoin: () => void = () => {}
+    joinAndIntroduceToClub.mockImplementation(
+      (_clubId: string, _body: string, onMembershipCreated?: () => void) => {
+        landTheJoin = () => onMembershipCreated?.()
+        return new Promise((resolve) => {
+          settle = resolve
+        })
+      }
     )
     const onDismiss = vi.fn()
     render(
@@ -226,16 +235,30 @@ describe('IntroductionPrompt — the in-flight dismissal lock covers the scrim, 
     // static test does, leaves this path entirely uncovered. A dismissal
     // landing here would close a sheet labelled `Join later` over a join that
     // may already have committed.
-    const scrim = document.querySelector('.fixed.inset-0') as HTMLElement
-    expect(scrim).not.toBeNull()
-    click(scrim)
+    const scrim = () => document.querySelector('.fixed.inset-0') as HTMLElement
+    expect(scrim()).not.toBeNull()
+    click(scrim())
     expect(onDismiss).not.toHaveBeenCalled()
 
-    // Once the membership exists the sheet is in member mode, where `097`'s
-    // "always dismissible, pending or not" applies again — the lock covers the
-    // membership write and no more.
+    // **The release, and it needs its own assertion.** The membership has now
+    // landed and the INTRODUCTION is still in flight — `pending` is still true.
+    // `097`'s "always dismissible, pending or not" applies again from this
+    // instant, because the rider is a member and has nothing at stake in the
+    // second write. A lock that simply tracked `pending` would hold the sheet
+    // shut here, and an earlier version of this test could not tell the two
+    // apart: it settled the whole promise first, so `pending` was false by the
+    // time it looked.
+    act(() => landTheJoin())
+
+    // The control relabels at the same instant, because `Join later` is a lie
+    // the moment the join commits.
+    expect(() => button('Join later')).toThrow()
+
+    click(scrim())
+    expect(onDismiss).toHaveBeenCalledWith(true)
+
     await act(async () => {
-      settle({ outcome: 'joined-and-introduced' })
+      settle({ outcome: 'introduction-failed', error: 'nope' })
     })
   })
 })

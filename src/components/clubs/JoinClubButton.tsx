@@ -104,14 +104,11 @@ export function JoinClubButton({
    * Open the pre-join sheet for this club. Nothing has been written when it
    * fires — see the header.
    *
-   * **Required, and it is the prop that carries the entire write.** It was
-   * optional through one review, and that made a real defect invisible to
-   * `tsc`: `/clubs`' first-run screen mounted this control with no opener, so
-   * every `Join club` on the screen a rider sees *before they have joined
-   * anything* did nothing at all — no membership, no sheet, and no error,
-   * because the handler returns before the write. `mode` and `isDefaultClub`
-   * were made required in the same change for the same reason; this one had
-   * the most to lose by not being.
+   * **Required, because it carries the entire write.** Without an opener this
+   * handler returns before `joinClub`, so the control writes nothing, opens
+   * nothing and reports no error — a `Join club` button that does nothing at
+   * all. `mode`, `isDefaultClub` and `ClubMembershipButton`'s own opener are
+   * required for the same reason.
    */
   onIntroduce: (clubId: string) => void
 }) {

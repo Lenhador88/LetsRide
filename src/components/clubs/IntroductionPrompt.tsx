@@ -163,7 +163,14 @@ export function IntroductionPrompt({
         return
       }
 
-      const result = await joinAndIntroduceToClub(clubId, body)
+      // The latch flips from the callback, NOT from the resolved result — the
+      // join lands first and the introduction is still in flight after it, and
+      // both the control's label and the dismissal lock have to move at that
+      // instant rather than at the end. Reading it off the result would collapse
+      // one pending window over both writes, which keeps `Join later` on screen
+      // over a committed join and holds the sheet shut past the rule that
+      // releases it.
+      const result = await joinAndIntroduceToClub(clubId, body, () => setJoined(true))
       if (result.outcome === 'join-failed') {
         // Nothing was written and the rider is still not a member, so the sheet
         // stays exactly as it was — `Join later` still means what it says and
@@ -172,9 +179,10 @@ export function IntroductionPrompt({
         return
       }
 
-      // Both remaining outcomes mean the membership landed, so the latch flips
-      // before anything else: it is what relabels the second control and what
-      // `onDismiss` reports out.
+      // Belt and braces: both remaining outcomes mean the membership landed, so
+      // the latch is already true via the callback above. Setting it again is a
+      // no-op React bails out of, and it keeps this function correct if a future
+      // caller passes no callback.
       setJoined(true)
 
       if (result.outcome === 'introduction-failed') {

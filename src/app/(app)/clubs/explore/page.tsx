@@ -63,9 +63,7 @@ import { queryKeys } from '@/lib/query/keys'
 export default function ExploreClubsPage() {
   // The queue, its de-duplication, and the dismissal iff all live in
   // `useIntroductionQueue` — shared with `/clubs`' first-run screen, which
-  // mounts the same list. Two hand-written copies is how one of them ends up
-  // without an opener, which is exactly what happened before the pre-merge
-  // review caught it.
+  // mounts the same list.
   const {
     current: introducingClubId,
     enqueue: enqueueIntroduction,

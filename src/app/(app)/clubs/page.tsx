@@ -116,10 +116,9 @@ export default function ClubsPage() {
    * hazard exactly, one level up: the sheet has to be owned by something that
    * outlives the thing the join removes.
    *
-   * The screen was left with no opener at all in the first cut of PD-392, so
-   * every `Join club` here did nothing — no membership, no sheet, no error.
-   * `onIntroduce` is a required prop now, which is what makes a repeat a type
-   * error rather than a silent one.
+   * `onIntroduce` is required, so a screen that mounts the list without a
+   * sheet is a type error rather than a Join button that silently does
+   * nothing.
    */
   const {
     current: introducingClubId,

@@ -68,8 +68,18 @@ export function ClubMembershipButton({
   clubId: string
   /** `clubs.is_default`, read by the caller off the club it already holds. */
   isDefaultClub: boolean
-  /** Open the pre-join sheet. Nothing has been written when it fires. */
-  onIntroduce?: (clubId: string) => void
+  /**
+   * Open the pre-join sheet. Nothing has been written when it fires.
+   *
+   * **Required, for the reason `JoinClubButton`'s twin is.** This control has
+   * the identical failure mode: without an opener it reads the freshness
+   * guard, returns before `joinClub`, and is a `Join Club` button that writes
+   * nothing, opens nothing and reports no error. It has one call site today
+   * and so did `JoinClubButton` — until a second one appeared and shipped
+   * exactly that. An optional prop makes it invisible to `tsc`; a required one
+   * makes every mount point declare where its sheet lives.
+   */
+  onIntroduce: (clubId: string) => void
 }) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -86,7 +96,7 @@ export function ClubMembershipButton({
             const alreadyIntroduced = await hasIntroducedClub(clubId)
 
             if (owesIntroduction({ viewerRole: 'member', isDefaultClub }, alreadyIntroduced)) {
-              onIntroduce?.(clubId)
+              onIntroduce(clubId)
               return
             }
 

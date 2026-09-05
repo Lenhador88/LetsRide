@@ -88,6 +88,35 @@ describe('joinAndIntroduceToClub — both writes succeed', () => {
   })
 })
 
+describe('joinAndIntroduceToClub — it reports the membership landing mid-flight', () => {
+  it('fires onMembershipCreated AFTER the join and BEFORE the introduction', async () => {
+    // The sheet cannot observe the intermediate state any other way: from the
+    // outside this is one awaited call, so without the callback there is one
+    // pending window spanning both writes. Two rules ride on the boundary — the
+    // second control must stop saying `Join later` the instant the join
+    // commits, and the dismissal lock must release there rather than holding
+    // shut for the introduction's flight.
+    await joinAndIntroduceToClub(CLUB, 'Hi, I ride a Ténéré.', () =>
+      calls.push('membership-reported')
+    )
+
+    expect(calls).toEqual(['join', 'membership-reported', 'introduce'])
+  })
+
+  it('does not fire it when the join failed', async () => {
+    joinClub.mockImplementation(async () => {
+      calls.push('join')
+      return { error: 'That club could not be joined.' }
+    })
+
+    await joinAndIntroduceToClub(CLUB, 'Hi.', () => calls.push('membership-reported'))
+
+    // No membership exists, so nothing may relabel `Join later` or release the
+    // lock — both would be claiming a join that did not happen.
+    expect(calls).toEqual(['join'])
+  })
+})
+
 describe('joinAndIntroduceToClub — the join fails', () => {
   it('never attempts the introduction, and reports the join as the failure', async () => {
     joinClub.mockImplementation(async () => {

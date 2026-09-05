@@ -128,9 +128,13 @@ function ClubScreen() {
    * below turns TRUE the instant `Post`'s membership write lands (`viewer_role`
    * becomes `member`, `hasIntroduced` is still `false`, nothing is dismissed) —
    * while the rider's words are on screen and the introduction is still in
-   * flight. Both openers feed ONE `<IntroductionPrompt>` element with no `key`
-   * on it, so that transition changes neither the mount nor the draft: it is an
-   * `open` expression that stays true, not a second sheet. `design.md` §D3.
+   * flight. Both openers feed **one** `<IntroductionPrompt>` element, so that
+   * transition changes neither the mount nor the draft: it is an `open`
+   * expression that stays true, not a second sheet. `design.md` §D3.
+   *
+   * The element is keyed on `id`, and that does not weaken this — `id` comes
+   * from the URL and cannot move while the sheet is open. See the `key`'s own
+   * comment for what it is there for.
    */
   const [preJoinClubId, setPreJoinClubId] = useState<string | null>(null)
 
@@ -434,9 +438,11 @@ function ClubScreen() {
           onboarding's auto-join, creating the club. The pre-join opener is
           `ClubMembershipButton`'s and reaches nobody else.
 
-          **No `key`, deliberately**, so the moment `Post`'s join makes
+          **One element, so the moment `Post`'s join makes
           `showIntroductionPrompt` true underneath an open pre-join sheet, this
-          is the same element with the same draft rather than a remount.
+          is the same element with the same draft rather than a remount.** The
+          `key` below is on `id`, which the URL owns and which cannot move
+          during that transition, so it does not reintroduce a remount.
 
           `onDismiss` records the session dismissal **if and only if a
           membership exists** — PD-392. It was unconditional, and
