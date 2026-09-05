@@ -192,6 +192,35 @@ able to raise on the ordinary path.
 route to removal, and the next session to meet one has no way to tell it from corruption. Reaping is
 what makes "ownerless" a *state* rather than a leak in the lifecycle.
 
+> **[corrected] This section as first written contradicted §D8, and the contradiction landed on
+> third-party content — the exact thing the change exists to protect.**
+>
+> `rides.club_id` is `ON DELETE SET NULL`. §D8 keeps a club's private rides *because the club
+> survives*, so nothing is orphaned. But the reap condition above never looked at rides — so a
+> club that went ownerless holding a rider's postcard **and** their private ride would be reaped
+> the moment they deleted the postcard, stranding the ride with a NULL `club_id`: visible only to
+> its organizer while its `ride_members` rows survive. That is precisely the zombie `032` §2
+> exists to prevent, re-created by the fix for something else.
+>
+> **The reap therefore also requires that no ride remains.** A ride is third-party content too, and
+> the tombstone's job is to protect third-party content. Deleting the rides at reap time was
+> rejected as re-creating PD-98's own defect one level down; accepting the orphan was rejected
+> because nothing would ever notice it.
+>
+> **Four further properties the implementation owes, none of which fails loudly:**
+>
+> - **`SECURITY DEFINER`, and this is the one that fails SILENTLY.** The `clubs` DELETE policy is
+>   `auth.uid() = owner_id`, NULL for an ownerless club, so it admits *nobody* — including the
+>   rider whose postcard deletion is running the trigger. A `security invoker` version deletes zero
+>   rows with no error and passes any assertion that only checks the postcard delete succeeded.
+> - **`old.club_id is null` is tested first**, and again in the trigger's `WHEN` clause so the
+>   function is not called at all. 6 of 11 postcards on DEV are app-wide.
+> - **A multi-row delete fires it once per row, after the statement.** Each firing sees zero
+>   remaining postcards; the first reaps and the rest must no-op rather than raise.
+> - **It re-enters itself** — `delete from clubs` cascades to `postcards`, firing the same trigger.
+>   Harmless, because the delete only runs when no postcard remains, but it must be written knowing
+>   that.
+
 ### D7 — `public.delete_owned_club` (`043`) is NOT touched, and the reason is who is standing there
 
 Both paths end in `delete from public.clubs`, and both cascade third-party postcards away. It is
@@ -226,6 +255,11 @@ ride is orphaned. Deleting a private ride there would destroy a third party's ri
 chat during someone else's account erasure — **the same defect class this change exists to close**,
 left standing in the same function.
 
+> **[corrected] "No ride is orphaned" is only true for as long as the club survives, and §D6 reaps
+> it.** The decision here is unchanged and right; the *reasoning* above was incomplete, and taken
+> literally it justified a reap condition that stranded the very rides this section preserves. The
+> guarantee is completed in §D6: the club is not reaped while any ride remains.
+
 So: the new arm deletes nothing. The **delete** arm keeps `032`'s statement verbatim.
 
 **No audience widens.** A private ride in an ownerless club is readable by its organizer and by a
@@ -246,22 +280,46 @@ rules about who may claim and what they may then do.
 ### D10 — Every other route to a club, audited from the catalogue rather than from a list
 
 §D3 narrows the SELECT **policy**. A `security definer` function has no policy beneath it, so
-narrowing the policy narrows **none** of these. Each was read and each is stated:
+narrowing the policy narrows **none** of these. Each was read and each is stated.
+
+> **This table was WRONG when first written, in three ways, and the corrections are the most
+> valuable thing in this file.** The pre-build review and the build found them; they are marked
+> **[corrected]** below rather than silently fixed, because each is a mistake the next reader is
+> likely to repeat.
+>
+> 1. **`can_read_club` was recorded as "Closed … gated by §D3". It is not gated by §D3 at all** —
+>    it is a `security definer` function carrying *its own* `c.is_public` test, which is exactly
+>    what this section's own opening sentence says a policy change cannot reach. The table
+>    contradicted its own premise at its single most load-bearing row.
+> 2. **The policy count was given as 4, then 5, and is 7.** Both wrong numbers came from scoping
+>    the catalogue query to `schemaname = 'public'`, which cannot see the two `storage.objects`
+>    policies. A schema-scoped catalogue query is a list with a filter on it.
+> 3. **Four further sites were absent**, three of them carrying §D2's fourth-row hazard.
 
 | Route | With NULL `owner_id` | Why |
 |---|---|---|
 | `clubs` UPDATE / DELETE / INSERT policies | **Closed** | `auth.uid() = owner_id` → NULL; a policy admits only TRUE |
 | `private.is_club_member_for` | **FALSE for everyone** | Roster arm empty; owner arm `owner_id = candidate` → NULL |
 | `private.is_club_admin_for` | **FALSE for everyone** | Both arms as above |
-| `private.can_read_club` | **Closed** | `is_public OR owner_id = candidate OR is_club_member_for` — public arm gated by §D3 |
-| `private.club_takes_join_requests_for` | **Closed** | `c.owner_id <> candidate` → NULL → no row. Also gates `discoverable_private_clubs` and `club_avatar_is_discoverable` |
+| `private.can_read_club` | **[corrected] OPEN via its OWN `is_public`** | **Not** reached by §D3 — a definer body has no policy beneath it. Narrowed identically, in the same migration. `rls_test.sql` 060 pins the two against each other and is what caught this |
+| `private.club_takes_join_requests_for` | **[corrected] Closed by a NEIGHBOUR** | `c.owner_id <> candidate` → NULL saves it, while its own `not is_blocked(candidate, c.owner_id)` fails OPEN. Made explicit. Also gates `discoverable_private_clubs` and `club_avatar_is_discoverable` |
 | `private.club_takes_invites_for` | **Closed** | Same conjunct |
-| `private.club_invite_link_reachable_by` | **Closed** | `uid <> k.owner_id` → NULL → no row |
+| `private.club_invite_link_reachable_by` | **[corrected] Closed by a NEIGHBOUR** | `uid <> k.owner_id` → NULL saves it; its own `not is_blocked(uid, k.owner_id)` fails OPEN. Made explicit |
 | `private.join_club_from_invite` | **Closed already** | `085` wrote `if v_owner is null … return false` |
+| `private.join_club_from_request` | **[added] Closed already** | Same guard, verbatim. Deserves the same credit `join_club_from_invite` gets |
+| `private.establish_club_owner_membership` | **[added] Unreachable** | `AFTER INSERT ON clubs`, and the INSERT policy demands `auth.uid() = owner_id` |
+| **`public.complete_onboarding`** | **[added] OPEN — and the only real one** | `security definer`, force-joins every rider to `clubs.is_default` with **no `owner_id` predicate**. See §D12 |
 | `club_members` INSERT policy | **OPEN via `is_public`** | Closed by §D3, plus an explicit `owner_id is not null` conjunct |
 | `private.club_invite_is_answerable_for` | **OPEN — §D2's fourth row** | `not private.is_blocked(candidate, c.owner_id)` returns TRUE |
 | `private.notify_club_joined` / `notify_ride_created_in_club` | **Closed, by accident** | A NULL recipient is dropped by `recipient <> new.user_id` → NULL |
+| `private.notify_club_join_requested` | **[added] Closed, by the same accident** | Identical `select c.owner_id as recipient` union; missed by the first pass over the other two |
+| `private.notify_club_invited` | **[added] OPEN — §D2's fourth row** | `not exists (… and is_blocked(x, c.owner_id))` is TRUE. Closed only by `club_takes_invites_for` upstream. Needs a POSITIVE existence test; adding the condition to the negative one would read as a guard and do nothing |
+| `storage.objects` club avatar / cover reads | **[added] Closed** | `foldername(name)[2] = c.owner_id::text` inside an `EXISTS` → NULL. §D5 nulls the paths anyway |
 | Storage: postcard images | **Follows the postcard** | See §D11 |
+
+**Every one of the four `club_members` inserters was enumerated**, since membership is what un-hides
+a preserved postcard: `establish_club_owner_membership`, `join_club_from_invite`,
+`join_club_from_request`, `complete_onboarding`. Only the last was unguarded.
 
 **Two of those need writing about.**
 
@@ -300,6 +358,69 @@ the row is. A preserved postcard's author still matches its own `author_id = aut
 **their own bytes stay readable** — and they are alive, so `postcards/<their uid>/` is untouched by
 the erasure. A rider who cannot read the row cannot read the bytes. **No Storage policy changes**,
 and the club's own avatar and cover are deleted with their bytes by §D5.
+
+### D12 — [added during the build] The welcome club is EXCLUDED from the new arm
+
+**This is a security condition, and it was found by reading a test fixture rather than by §D10's
+catalogue audit — which is worth knowing about the audit.**
+
+`public.complete_onboarding` is `SECURITY DEFINER` and joins every completing rider to the club
+carrying `clubs.is_default`:
+
+```sql
+insert into public.club_members (club_id, user_id, role)
+select c.id, v_uid, 'member' from public.clubs c where c.is_default
+on conflict do nothing;
+```
+
+with no `owner_id` predicate — and its own comment says why that matters: *"The insert runs as the
+function owner, so `club_members`' INSERT policy does not apply and no policy needs widening for a
+rider to be placed in a club they did not ask for."*
+
+**So §D3's narrowing cannot reach it.** If the welcome club were allowed to go ownerless, every
+subsequent signup would still be force-joined to it, each new membership row would make
+`private.is_club_member` TRUE, and every preserved postcard in that club would become readable by
+every new rider in the app — **widening over time rather than being a one-off**. It also breaks §D6:
+a club that keeps gaining members can never satisfy the reap condition, so the tombstone becomes
+permanent *and* populated.
+
+**Decision: the new arm excludes `clubs.is_default`.** The welcome club keeps `032`'s delete.
+
+**Rejected: guard `complete_onboarding` alone and let the club go ownerless.** That keeps the club
+and makes every future rider join **nothing, silently** — `059`'s own documented worst failure. Its
+warning fires only when *no* club carries `is_default`, and an ownerless one still does.
+
+**Both locks are taken anyway.** The exclusion is the primary fix; `complete_onboarding` also gets
+`and c.owner_id is not null`, and `059`'s warning condition is widened to match so the join-nothing
+case is loud rather than silent. The reason for the second lock is this change's own new requirement
+in `database-enforced-integrity`: the exclusion is a *neighbouring guarantee about something else*,
+holding only while `is_default` marks exactly one club.
+
+**The stated cost, which is larger than it first looks and must not be filed as a footnote.**
+Third-party postcards in the welcome club are still destroyed by an erasure. Measured on DEV:
+**all 5 club-attached postcards in the database are in the welcome club**, so on today's data this
+leaves PD-98's defect open for 100% of club-attached postcards by row count. It is still the right
+trade — the defect is latent (0 third-party postcards on DEV *and* PROD) and shipping a leak to fix
+a latent bug is clearly worse — and `rls_test.sql` 081.16b already records that this arm destroys
+the welcome club and everything in it, so the change leaves that path exactly as it found it rather
+than half-fixing it. **Filed as its own Linear issue rather than left in this paragraph.**
+
+### D13 — [added during the build] Nulling `owner_id` is the MECHANISM, not bookkeeping
+
+`clubs_owner_id_fkey` is `references public.profiles(id) ON DELETE CASCADE`. **Detaching the club
+from that cascade is the entire reason it survives the erasure** — the `profiles` row is deleted
+moments later, and any club still pointing at it goes with it.
+
+No file in the change said so, and §D1's pseudocode reads "keep the club, ownerless", which a
+builder can reasonably implement as *skip the `delete from public.clubs`*. That version looks
+correct, passes every assertion written against `transfer_owned_clubs` in isolation, and then loses
+the club and every postcard in it to the cascade a few statements later. `rls_test.sql` 107.1
+performs the `profiles` cascade for exactly this reason instead of asserting on the function's
+return value.
+
+`public.leave_owned_club` already records the constraint from the other side: *"clubs.owner_id is
+NOT NULL with a CASCADE FK and 'do not transfer' is unavailable when the owner's account is being
+erased."* This change removes the first half of that sentence.
 
 ## Risks / Trade-offs
 

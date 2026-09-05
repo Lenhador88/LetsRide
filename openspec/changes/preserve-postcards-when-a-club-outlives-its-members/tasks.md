@@ -38,9 +38,18 @@ change with no new assertion is not finished.
   deletion away from destroying a live rider's postcards, and that is an owner-facing fact.
 - [ ] 0.3 **Re-read the live `private.transfer_owned_clubs` body from `pg_proc`**, not from `029` or
   `032`. The file on disk is not what runs.
-- [ ] 0.4 **Enumerate every site interpolating `owner_id`** from the catalogue, per the requirement
-  added to `database-enforced-integrity`. Expect 4 policies, 24 functions, 2 CHECKs; a different
-  number means a site arrived since `design.md` §D10 and the audit is incomplete.
+- [x] 0.4 **Enumerate every site interpolating `owner_id`** from the catalogue, per the requirement
+  added to `database-enforced-integrity`. **Expect 7 policies, 24 functions, 2 CHECKs.**
+  ```sql
+  -- ** DO NOT add `where schemaname = 'public'` ** — that is how two sites were missed.
+  select schemaname, tablename, policyname, cmd from pg_policies
+   where coalesce(qual,'') like '%owner_id%' or coalesce(with_check,'') like '%owner_id%';
+  ```
+  **This task originally said 4 and was corrected twice.** 4 counts `clubs` alone; 5 adds
+  `club_members` INSERT but is schema-scoped and so cannot see the two `storage.objects` policies
+  (`Club avatars are readable with the club`, `Club covers are readable with the club` — both
+  resolve closed, and §D5 nulls the paths anyway). A builder following the old number would have
+  read 7-vs-4 as "a site arrived since the design" and stalled on a figure that was simply wrong.
 
 ## 1. The migration — `107_a_club_may_outlive_its_last_member.sql`
 
@@ -64,10 +73,26 @@ Statement order is fixed and §7 explains why: the function that can create the 
   the post-union `recipient <> new.user_id` filter drops a NULL row; `notifications.user_id` is
   `NOT NULL`, so if that filter is ever reordered the trigger raises and takes a rider's join or ride
   creation down with it.
-- [ ] 2.5 **Do NOT touch** `clubs` UPDATE, DELETE or INSERT, `is_club_member_for`, `is_club_admin_for`,
-  `can_read_club`, `club_takes_join_requests_for`, `club_takes_invites_for`,
-  `club_invite_link_reachable_by` or `join_club_from_invite`. Each already fails closed; §3 asserts
-  that rather than rewriting it.
+- [x] 2.5 **[CORRECTED — this instruction was wrong and following it would have shipped a hole.]**
+  Do NOT touch `clubs` UPDATE, DELETE or INSERT, `is_club_member_for`, `is_club_admin_for`,
+  `club_takes_invites_for` or `join_club_from_invite`. Each genuinely fails closed; §3 asserts that
+  rather than rewriting it.
+
+  **Three names were removed from that list:**
+  - **`can_read_club` — MUST be narrowed**, identically and in the same migration. It is a
+    `security definer` function carrying its own `c.is_public` test, so §D3 does not reach it;
+    leaving it admitting everyone would have made the policy and its own textual twin disagree.
+    `rls_test.sql` 060 is what caught this, and its message asks for exactly that.
+  - **`club_takes_join_requests_for`** and **`club_invite_link_reachable_by`** — both refuse an
+    ownerless club only via a `<>` comparison that happens to go NULL, while their own
+    `not is_blocked(…, owner_id)` conjuncts fail OPEN. Neither is a live hole; both are made
+    explicit, because this change adds a requirement forbidding reliance on a neighbouring
+    guarantee about something else, and shipping the rule beside counter-examples makes it
+    advisory on the day it lands.
+
+  **Three names were added:** `notify_club_join_requested` (same NULL-recipient hazard as §2.4's
+  two), `notify_club_invited` (needs a POSITIVE existence test — adding the condition to its
+  negative one would read as a guard and do nothing), and `complete_onboarding` (§D12).
 - [ ] 2.6 **Assertions** for every policy touched above — §6.
 
 ## 3. `private.transfer_owned_clubs` — split the no-successor arm

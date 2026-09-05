@@ -104,11 +104,12 @@
 -- Every site is enumerated from the catalogue rather than from a list, per the
 -- requirement this change adds to `database-enforced-integrity`:
 --
---   select tablename, policyname, cmd from pg_policies
---    where schemaname = 'public'
---      and (coalesce(qual,'') like '%owner_id%'
---        or coalesce(with_check,'') like '%owner_id%');
---   -- 5 rows: 4 on `clubs`, 1 on `club_members` INSERT.
+--   -- ** DO NOT scope this to `public` — that is how two sites were missed. **
+--   select schemaname, tablename, policyname, cmd from pg_policies
+--    where coalesce(qual,'') like '%owner_id%'
+--       or coalesce(with_check,'') like '%owner_id%';
+--   -- 7 rows: 4 on `clubs`, 1 on `club_members` INSERT, and 2 on
+--   -- `storage.objects` (the club avatar and cover read policies).
 --   select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 --    where n.nspname in ('public','private') and p.prokind = 'f'
 --      and pg_get_functiondef(p.oid) like '%owner_id%';          -- 24
@@ -116,10 +117,18 @@
 --    where contype = 'c' and conrelid = 'public.clubs'::regclass
 --      and pg_get_constraintdef(oid) like '%owner_id%';           -- 2
 --
--- ** The policy count is 5 and the change's own task list said 4. ** That is not
--- a missed site: the 4 counts `clubs` alone and the fifth is `club_members`
--- INSERT, handled at §2b. Recorded because the next person to run that query
--- will get 5 and reach for this file to find out whether something slipped.
+-- ** The count is 7, and both of the numbers written down before the review were
+-- wrong in the same direction. ** The change's task list said 4, which counts
+-- `clubs` alone; a first pass here said 5, which adds `club_members` INSERT but
+-- was scoped to `schemaname = 'public'` and so could not see the two
+-- `storage.objects` policies at all. A schema-scoped catalogue query is not a
+-- catalogue query — it is a list with a filter on it, which is the thing this
+-- change's own new requirement says not to trust.
+--
+-- Both storage policies resolve CLOSED (`(storage.foldername(name))[2] =
+-- c.owner_id::text` is NULL against a NULL owner) and §4 nulls the paths anyway,
+-- so neither needed changing. They are named here because "we audited the
+-- policies" was true of 4 of 7 when it was first written.
 --
 -- ---------------------------------------------------------------------------
 -- Ordering: MIGRATION-FIRST, and the reason is that there is no unsafe side
@@ -1143,3 +1152,60 @@ create trigger reap_ownerless_club
   for each row
   when (old.club_id is not null)
   execute function private.reap_ownerless_club();
+
+-- ---------------------------------------------------------------------------
+-- §Verification — the HAND-EXERCISE GATE, run before this file applied
+-- ---------------------------------------------------------------------------
+-- `CLAUDE.md`: "A migration that hangs triggers off an already-shipped write
+-- path needs a hand-exercise gate before it applies ... Exercise every affected
+-- path by hand on DEV first, in a rolled-back transaction, as `authenticated`,
+-- counting the fan-outs' rows rather than assuming them."
+--
+-- §5's trigger is exactly that case. Run against DEV (`fpmrimzxadewsaiwpsel`)
+-- 2026-09-05, in ONE transaction that created the column change, the function
+-- and the trigger, exercised all five paths and then ROLLED BACK. Steps 5.1 and
+-- 5.2 used REAL rows — a postcard in the live welcome club and an app-wide
+-- postcard — deleted by their real author with `role authenticated` and a
+-- matching `request.jwt.claims`, not as the table owner.
+--
+--   5.1  postcard in an OWNED club ................ PASS  deleted, club untouched
+--   5.2  APP-WIDE postcard ........................ PASS  deleted (WHEN clause
+--                                                   means the function is never
+--                                                   even called)
+--   5.3  LAST postcard in an OWNERLESS club ....... PASS  club reaped
+--   5.4  ONE OF SEVERAL in an ownerless club ...... PASS  club stays
+--   5.5  CASCADE: the author erased while their
+--        postcards are the last in an ownerless
+--        club .................................... PASS  erasure COMPLETED and
+--                                                   the club was reaped inside it
+--
+-- 5.5 is the one worth keeping: the reap runs inside the `profiles` cascade,
+-- in the rider's own deletion transaction, and a raise there would abort the
+-- erasure itself. It did not.
+--
+-- The rollback was confirmed rather than assumed — DEV read back immediately
+-- afterwards at 15 clubs, 11 postcards, 24 profiles, `owner_id` still NOT NULL
+-- and 2 triggers on `postcards`.
+--
+-- ---------------------------------------------------------------------------
+-- §Verification — after applying, against the live catalogue
+-- ---------------------------------------------------------------------------
+-- Do not assume any of these; each has been wrong in this repo before.
+--
+--   -- the column is nullable, and NOTHING is ownerless yet
+--   select attnotnull from pg_attribute
+--    where attrelid = 'public.clubs'::regclass and attname = 'owner_id';   -- f
+--   select count(*) from public.clubs where owner_id is null;              -- 0
+--
+--   -- both narrowed copies moved, and they must agree
+--   select qual from pg_policies
+--    where schemaname='public' and tablename='clubs' and cmd='SELECT';
+--   select pg_get_functiondef('private.can_read_club(uuid,uuid)'::regprocedure);
+--
+--   -- three triggers on postcards now, and the third carries its WHEN clause
+--   select tgname, pg_get_triggerdef(oid) from pg_trigger
+--    where tgrelid = 'public.postcards'::regclass and not tgisinternal;
+--
+--   -- the advisor count must NOT move: 39 DEV / 37 PROD. reap_ownerless_club is
+--   -- the only new function and it is in `private`.
+--   get_advisors(security)

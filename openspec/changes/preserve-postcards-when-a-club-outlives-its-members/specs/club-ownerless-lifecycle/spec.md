@@ -87,9 +87,20 @@ reached in one tap and passing every automated gate in the repository.
 
 Every path that adds a `club_members` row for a club SHALL refuse while `owner_id` is NULL.
 
-The routes are the join policy, the invite accept, the invite-link claim and the join-request
-approval. Several of these already refuse for reasons that are about something else, and a reason
-that is about something else is one refactor from being removed.
+The routes are the join policy, the invite accept, the invite-link claim, the join-request
+approval — **and the onboarding auto-join**. Several of these already refuse for reasons that are
+about something else, and a reason that is about something else is one refactor from being removed.
+
+**The fifth route was missing from this list when it was first written, and it was the only one
+actually open.** `public.complete_onboarding` is `SECURITY DEFINER` and force-joins every completing
+rider to the club carrying `clubs.is_default`, with no `owner_id` predicate — and because it runs as
+the function owner, the `club_members` INSERT policy does not apply to it at all. So the first four
+routes can all be closed by policy while the fifth confers membership on every new rider in the app.
+
+The enumeration SHALL therefore be made from the catalogue — every function in `public` or `private`
+whose body inserts into `public.club_members` — and not from a reading of the screens. There are
+four such functions (`establish_club_owner_membership`, `join_club_from_invite`,
+`join_club_from_request`, `complete_onboarding`), all `SECURITY DEFINER`.
 
 #### Scenario: A public ownerless club cannot be joined
 - **WHEN** any rider attempts to insert a `club_members` row for an ownerless club
