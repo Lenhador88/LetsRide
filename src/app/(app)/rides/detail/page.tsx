@@ -9,7 +9,7 @@ import { RideAttendanceBar } from '@/components/rides/RideAttendanceBar'
 import { RideChatRow } from '@/components/rides/RideChatRow'
 import { RideCrewRail } from '@/components/rides/RideCrewRail'
 import { RideHeader } from '@/components/rides/RideHeader'
-import { RideJournal } from '@/components/rides/RideJournal'
+import { RideTimeline } from '@/components/rides/RideTimeline'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { ExpandableText } from '@/components/ui/ExpandableText'
 import { SectionHeader } from '@/components/ui/SectionHeader'
@@ -34,15 +34,54 @@ import {
 import type { RideDetail } from '@/types'
 
 /**
- * The ride's plan — **one screen now, not the head of a set of four** (PD-254).
+ * The ride — **a timeline with a header on it**, as of 2026-09-05 (PD-393); one
+ * screen rather than the head of a set of four since PD-254.
  *
- * `Ride - Ride plan (Details)` (`2375:8771`) is still the frame this is built
- * from, and it is no longer the whole specification: the drawn sub-page sheet is
- * deleted here, and Crew, Chat and Journal are sections on this page instead of
- * destinations behind a dropdown. That is a deviation from the Figma and it is
- * logged in docs/FIGMA-FIDELITY-TODO.md §Ride detail; the approved frames are
- * the seven-revision mock the product owner settled on 2026-08-17, carried in
- * Figma as `AI / Ride detail merged / 2026-08-17`.
+ * The product owner: *"Similar to the club list, we need to adopt a timeline.
+ * So at the top we will keep a sort of header with relevant information about
+ * the ride. But then, we will have the timeline with the postcards,
+ * announcements (someone joins the ride, etc.). So similar layout and
+ * characteristics to the club details."* Top to bottom the screen is now: what
+ * the ride is, who is coming, what you can do, and what has happened.
+ *
+ * ## What PD-393 changed, and the two decisions inside it
+ *
+ * - **`RideJournal` is deleted.** Its postcards are entries on the timeline
+ *   now, exactly as `ClubPostcardCarousel`'s were on the club's. A strip
+ *   repeating what the stream says twenty pixels below it is the length that
+ *   made the club screen confusing, and the same argument arrives here with
+ *   the same shape. Its `Add` tile survives as the `(+)` on the timeline's own
+ *   heading — the entrance PD-125 exists to protect, moved rather than
+ *   dropped. **`PostcardStamp` is left standing and is now rendered by
+ *   nothing**: it is the perforated tile the product owner asked for on
+ *   2026-08-27 and the presentation PD-257's own journal route is drawn with,
+ *   so deleting it here would spend a design decision on a change that did not
+ *   ask for it. Flagged rather than resolved.
+ * - **The crew rail and the labelled chat row stay, above the stream.** The
+ *   rail answers *who is coming* and the stream answers *what has happened*;
+ *   the club detail keeps its member rail above its timeline for the identical
+ *   reason. The chat row stays above because PD-125's whole finding was that a
+ *   rider could not find the chat, and putting it under a stream that grows
+ *   re-opens that the moment a ride collects twenty entries.
+ * - **There is no create BAR, and that is measured rather than skipped.** The
+ *   club's `ClubCreateBar` sits in the sticky bottom slot; on a ride that slot
+ *   is `RideAttendanceBar` on every upcoming ride the viewer does not
+ *   organize, so a bar there would either collide or appear only for the
+ *   riders least likely to need it. It is not needed either: all three actions
+ *   already have an entrance — the `(+)` on the timeline heading (add a photo),
+ *   `RideChatRow` and the header bubble (chat), and `RideOptionsMenu`'s
+ *   `Invite riders` row (invite). A second entrance for any of them would be
+ *   furniture.
+ *
+ * `Ride - Ride plan (Details)` (`2375:8771`) is still the frame the header half
+ * is built from, and it is not the whole specification: the drawn sub-page
+ * sheet is deleted here, and Crew and Chat are sections on this page instead of
+ * destinations behind a dropdown. `Ride - Journal (Postcards/Timeline)`
+ * (`2226:4865`) draws a postcards-only feed and is the closest thing to the
+ * stream below; the composition is ours. Both deviations are logged in
+ * docs/FIGMA-FIDELITY-TODO.md §Ride detail; the approved frames for the merge
+ * are the seven-revision mock the product owner settled on 2026-08-17, carried
+ * in Figma as `AI / Ride detail merged / 2026-08-17`.
  *
  * **What the merge deleted, and why each was a cost rather than a tidy-up:**
  *
@@ -123,7 +162,8 @@ function RideScreen() {
   const canRsvp = !!ride.data && ride.data.is_upcoming && !ride.data.is_organizer
 
   /**
-   * What gates the header's chat button, the labelled chat row and the Journal.
+   * What gates the header's chat button, the labelled chat row and the
+   * timeline's `(+)`.
    *
    * `undefined` until the ride lands, so all three appear a moment late rather
    * than being drawn and then withdrawn. **Read, not re-derived** — this screen,
@@ -302,25 +342,18 @@ function RidePlan({
 
       {blurb && <ExpandableText className="px-6">{blurb}</ExpandableText>}
 
-      {/* Not crew-gated (PD-282). `ride_journal_postcard_ids` gates on
-          `can_read_ride` and the postcard SELECT qual, and never on crew — so
-          anyone who can open this ride can already be shown its photos, and
-          hiding the section was the UI inventing a rule the policy does not
-          have. `canAdd` carries the half that IS a database rule: tagging wants
-          `private.is_ride_crew`, so only the crew is offered the tile. */}
-      {/* No `SectionHeader` here — `RideJournal` draws its own since PD-342,
-          because the `(+)` beside the title is gated on whether the section has
-          photos and only that component knows. */}
-      <section className="flex flex-col gap-2">
-        <RideJournal rideId={ride.id} canAdd={isCrew} />
-      </section>
-
       {/* The count this rail draws is the one that was removed from this screen
           once already, for counting `maybe` RSVPs under a "going" label and
           disagreeing with the roster one tap away. It is allowed back only
           because `RideCrewRail` reads `queryKeys.rides.crew(id)` — the crew
           page's own key, through the crew page's own function — and counts the
-          array that page renders under `Going`. See that component. */}
+          array that page renders under `Going`. See that component.
+
+          **It stays, and the timeline below does not replace it** (PD-393).
+          The rail answers *who is coming*, in the ride's own roster order, at a
+          glance; the stream answers *what has happened*, newest first. The club
+          detail keeps its member rail above its timeline for exactly this
+          reason. */}
       <section className="flex flex-col gap-2">
         <SectionHeader title={ride.is_upcoming ? 'Riding' : 'Rode'} className="py-0" />
         <RideCrewRail
@@ -331,16 +364,28 @@ function RidePlan({
         />
       </section>
 
-      {/* Last on the page, which reads wrong against the issue and is right
-          against the artifact it approved. PD-254's body lists these Crew →
-          Chat → Journal; the rev-7 mock the product owner settled draws
-          Journal → Riding → Ride chat → RSVP, on both its frames, and the mock
-          is what was approved. Checked against the artifact rather than
-          remembered. It is worth knowing this is the one element the whole
-          issue is about — a rider could not find the chat — so if it turns out
-          to sit below the fold on a short device, moving it above the Journal
-          is a change to this line and nothing else. */}
+      {/* PD-254's whole point, and it stays above the timeline rather than
+          below it: a rider could not find the chat, and burying the labelled
+          row under a stream that grows would re-open that defect the moment a
+          ride collects twenty entries. */}
       {isCrew && <RideChatRow rideId={ride.id} />}
+
+      {/* What has happened, last — the club detail's shape, PD-393. Not
+          crew-gated (PD-282): `ride_journal_postcard_ids` gates on
+          `can_read_ride` and the postcard SELECT qual and never on crew, and
+          `102`'s roster policy follows ride visibility, so anyone who can open
+          this ride can see both sources. `canAdd` carries the half that IS a
+          database rule: tagging wants `private.is_ride_crew`, so only the crew
+          is offered the `(+)`. */}
+      <RideTimeline
+        ride={{
+          id: ride.id,
+          created_at: ride.created_at,
+          organizer_id: ride.organizer_id,
+          organizer: ride.organizer,
+        }}
+        canAdd={isCrew}
+      />
     </div>
   )
 }

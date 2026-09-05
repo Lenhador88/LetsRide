@@ -21,8 +21,8 @@ import { cn } from '@/lib/utils'
  * next the title eg. Postcards (+)?"* — so a section that already has content
  * moves its create affordance up here, and the full-size tile or row stays for
  * the **empty** section, where it is what teaches the action exists at all
- * (PD-318, and `RideJournalEmpty`'s own note: "a section nobody has seen is a
- * feature nobody knows exists").
+ * (PD-318, and the deleted `RideJournalEmpty`'s own note: "a section nobody
+ * has seen is a feature nobody knows exists").
  *
  * **Two props rather than one, because a section routinely wants both.** Every
  * call site here draws `See all` the moment it has rows — which is the same

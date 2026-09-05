@@ -541,7 +541,7 @@ export async function getRide(id: string): Promise<RideDetail | null> {
       // draws the 358×160 panel and nothing else `051` added.
       .select(`
         id, title, description, route_description, meeting_point, departure_at,
-        timezone, club_id, organizer_id, map_detail_path,
+        created_at, timezone, club_id, organizer_id, map_detail_path,
         latitude, longitude,
         organizer:profiles!organizer_id(${PUBLIC_PROFILE_COLUMNS}),
         club:clubs(${CLUB_EMBED_COLUMNS})
@@ -591,6 +591,10 @@ export async function getRide(id: string): Promise<RideDetail | null> {
     route_description: row.route_description,
     meeting_point: row.meeting_point,
     departure_at: row.departure_at,
+    // When the ride was ANNOUNCED, which is not when it departs — PD-393's
+    // timeline floor. `RideListItem.created_at` carries the same distinction
+    // and the same warning.
+    created_at: row.created_at,
     timezone: row.timezone,
     club_id: row.club_id,
     organizer_id: row.organizer_id,

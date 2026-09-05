@@ -487,6 +487,14 @@ export const queryKeys = {
      * A ride's Journal (`041`, PD-256) — the postcards tagged to one ride,
      * read by `getRideJournal` through `ride_journal_postcard_ids`.
      *
+     * **It holds a `TimelineSource<Postcard>` since PD-393, not a bare
+     * `Postcard[]`**, because the ride timeline merges it against the join
+     * stream and needs the horizon beside the rows. Widening the shape under an
+     * existing key is normally the collision this file's header warns about;
+     * it is safe here because the strip that held the old shape
+     * (`RideJournal`) was deleted in the same change and this key has exactly
+     * one reader again.
+     *
      * **Under `postcards`, not nested in `rides.detail` beside `crew` and
      * `messages`.** Those are ride-owned resources reached by a ride's own
      * mutations; a Journal entry is a `postcards` row a ride id merely filters,
@@ -639,6 +647,24 @@ export const queryKeys = {
     crewOptions: (only: string | null): QueryKey => ['rides', 'crewOptions', only],
     detail: (rideId: string): QueryKey => ['rides', 'detail', rideId],
     crew: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'crew'],
+    /**
+     * The ride timeline's join source — `getRideJoins` (PD-393).
+     *
+     * **A separate leaf from `crew`, over the same table, and the two must not
+     * share one.** The crew read orders `joined_at` ASC and caps at
+     * `RIDE_CREW_LIMIT`; this one orders DESC, caps at `RIDE_TIMELINE_JOINS`
+     * and returns a `TimelineSource` rather than a `RideCrew` — opposite end,
+     * different bound, wider shape. Two shapes under one key is the collision
+     * this file's header warns about, and here it would serve whichever screen
+     * loaded first to the other.
+     *
+     * A child of the ride for `crew`'s reason: it is scoped to one ride and
+     * dies with it. Reached by every mutation in `lib/actions/rides.ts` for
+     * free, because they all invalidate `rides.all()` and `invalidate` matches
+     * by prefix — which is what keeps a rider who has just RSVP'd from having
+     * to reload to see themselves arrive.
+     */
+    joins: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'joins'],
     /**
      * PD-101. `getRideForEdit` returns a narrower shape than `getRide` — no
      * `attendance`, no `is_crew`, no `is_upcoming` — so it gets its own leaf

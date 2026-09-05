@@ -483,7 +483,7 @@ describe('mergeClubTimeline', () => {
  * `horizon` field and being folded into the `horizons` array above, which
  * would let a DECORATION on an entry — never a source of one — truncate the
  * stream it is meant only to decorate. `attachClubWaveState` (`lib/data/
- * club-waves.ts`) declares no `ClubTimelineSource` and contributes no
+ * club-waves.ts`) declares no `TimelineSource` and contributes no
  * `ClubTimelineEvent`, so `ClubTimelineSources` itself is the thing this
  * pins: it still has exactly the five source keys `sources()` has always
  * built, plus `club`, `unread` and `activity`, never a sixth `waves` key.

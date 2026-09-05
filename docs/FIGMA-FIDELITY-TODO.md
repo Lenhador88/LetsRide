@@ -849,16 +849,38 @@ measurement as current.
         `accent-strong` `#338059` still only reaches **4.10:1** — the same ratio already logged as
         a failure for the ride-host label, which is that token — so this needs a palette answer
         rather than a nudge.
-- [ ] **Journal is drawn, and as of 2026-08-17 only its EMPTY STATE is built.**
-      `Ride - Journal (Postcards/Timeline)` (`2226:4865`) is postcards attached to a ride.
-      `041` added `postcards.ride_id` and settled the audience question this entry used to say was
-      open — the tag is not a second audience — but **nothing writes the column**, so every
-      journal is empty and the section renders the approved mock's `Nothing yet · Prep shots
-      count` tile beside `Add`, crew only. That is a deliberate reversal of the old entry's
-      "omitted rather than offered as a dead row": a section nobody has seen is a feature nobody
-      knows exists, and empty is the state every ride starts in. **`Add` posts a postcard and does
-      not yet tag it to the ride** (PD-256), so a photo added from here does not appear in the
-      journal it was added from. The tiles, the sequence line and the journal route are PD-257's.
+- [ ] **The Journal SECTION is gone, and the whole screen is a timeline below its header —
+      2026-09-05, PD-393.** Product owner: *"Similar to the club list, we need to adopt a
+      timeline… at the top we will keep a sort of header with relevant information about the
+      ride. But then, we will have the timeline with the postcards, announcements (someone joins
+      the ride, etc.). So similar layout and characteristics to the club details."* This is the
+      second-largest deviation in this entry after the sub-page switcher, and it supersedes the
+      Journal bullet that stood here: the strip of stamps is **deleted**, its postcards are
+      entries on the stream, and the crew's arrivals and the ride's own founding are entries
+      beside them.
+      **`Ride - Journal (Postcards/Timeline)` (`2226:4865`) is the closest frame and is NOT the
+      specification**: it draws a postcards-only feed with no announcements, no crew arrivals and
+      no floor entry. There is no v2 frame for what is built. The composition is borrowed from
+      `Private club - Timeline` (`2043:10604`) — the 44px `Grey/10` announcement row, the 28px
+      avatar, the 8px dividers inside a run, the 16px gap between blocks and the interleaved
+      `PostcardCard`s — because the ask was explicitly for the club screen's shape. Consequences:
+  - [ ] **`PostcardStamp` — the perforated tile with a byline, asked for on 2026-08-27 — is now
+        rendered by nothing.** It survives because it is the presentation PD-257's own journal
+        route is drawn with; if that story is cancelled, the component and its `stamp-edge` mask
+        go with it. Flagged rather than resolved.
+  - [ ] **The empty state is gone with the strip, and nothing replaces it.** A ride's timeline is
+        never empty — the founding entry is its floor — so the `Nothing yet · Prep shots count`
+        tile has nothing left to say. What it carried that still matters is the `Add`, which is
+        the `(+)` on the timeline's heading now, crew only (`041` requires
+        `private.is_ride_crew` to tag).
+  - [ ] **There is no create BAR, unlike the club's `ClubCreateBar`.** The sticky bottom slot on
+        a ride is `RideAttendanceBar`, so a bar there would collide on every upcoming ride the
+        viewer does not organize. All three actions already have an entrance — the `(+)` (add a
+        photo), `RideChatRow` and the header bubble (chat), and `RideOptionsMenu` (invite).
+  - [ ] **The stream does not page, and the club's does.** Both sources are read whole at their
+        own bounds; a ride that overruns them is cut at the horizon and says so, handing off to
+        the crew list. See `src/lib/data/ride-timeline.ts` for why a bounded event does not
+        borrow a place's paging machinery.
 - [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
       `Ride - Chat - Text focus` (`2242:11086`) at `/rides/detail/chat`. **It did not need the
       Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of

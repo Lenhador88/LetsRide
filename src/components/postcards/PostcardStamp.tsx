@@ -128,9 +128,9 @@ export function PostcardStamp({
     </span>
   ) : (
     // A URL that failed to sign, not a postcard without a photo. `bg-track`
-    // rather than `bg-surface`, for the reason `RideJournalEmpty` records:
-    // the surface here is already cream, so white reads as a card floating
-    // above the strip instead of a slot in it.
+    // rather than `bg-surface`, for the reason the deleted `RideJournalEmpty`
+    // recorded and this keeps: the surface here is already cream, so white
+    // reads as a card floating above the strip instead of a slot in it.
     //
     // No postmark: a cancellation over an empty slot reads as a broken glyph
     // rather than as ink, and there is nothing here to frank.

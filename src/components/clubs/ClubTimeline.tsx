@@ -36,7 +36,7 @@ import {
   CLUB_TIMELINE_RIDES,
   type ClubJoin,
   type ClubReplyWindow,
-  type ClubTimelineSource,
+  type TimelineSource,
   type ClubTimelineSources,
   type ClubTimelineWindow,
 } from '@/lib/data/club-timeline'
@@ -71,7 +71,7 @@ function foldWindows<T>(
   windows: ClubTimelineWindow<T>[],
   at: (row: T) => string,
   id: (row: T) => string
-): ClubTimelineSource<T> {
+): TimelineSource<T> {
   // The FIRST window seeds the accumulator directly rather than being folded
   // through `absorbClubTimelineWindow` against a `{ rows: [], horizon: null }`
   // placeholder — `absorbClubReplyWindow`'s own fix and its own comment carry
@@ -79,7 +79,7 @@ function foldWindows<T>(
   // beginning" to the absorb rule, so folding a saturated first window into it
   // would let the empty seed win outright, discard the window's real horizon,
   // and poison every later fold too.
-  let source: ClubTimelineSource<T> | null = null
+  let source: TimelineSource<T> | null = null
   for (const window of windows) {
     source = source ? absorbClubTimelineWindow(source, window, at, id).source : { rows: window.rows, horizon: window.horizon }
   }
