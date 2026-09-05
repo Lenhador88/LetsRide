@@ -449,8 +449,14 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 106 files. DEV is at `106` and PROD at `100` — measured 2026-09-05.** The gap is
-`101`–`106`, all awaiting promotion. **`105`/`106` (PD-298) go MIGRATION-FIRST on the PROD
+**Applied state: 107 files. DEV is at `107` and PROD at `100` — measured 2026-09-05.** The gap is
+`101`–`107`, all awaiting promotion. **`107` (PD-98) also goes MIGRATION-FIRST**, for a different
+reason from `105`/`106`: it has no unsafe side at all. It changes no `src/` file, no client writes
+`clubs.owner_id` on an existing row, it adds no PostgREST relationship, and **the policy delta is
+provably a no-op against every row existing at apply time** — `owner_id` is `NOT NULL` until the
+file's own first statement runs, so the added `owner_id is not null` conjuncts are universally true
+for every pre-existing row, and the only rows they can affect are ones the file's last statement can
+create. **`105`/`106` (PD-298) go MIGRATION-FIRST on the PROD
 promotion**, and "additive, so the order does not matter" is the wrong reading: they add two
 `security definer` accessors that the promoted bundle CALLS, so a build serving ahead of them
 answers `PGRST202` on both Privacy-sheet lists — the shipped-client-reads case in the sequencing
@@ -504,7 +510,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3440** assertions — re-derive rather than trust it:
+Suite **3488** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 

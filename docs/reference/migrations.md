@@ -321,9 +321,9 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 109 rows on DEV and 100 on PROD against 106 files. The DEV surplus is
-not a gap; the PROD shortfall IS one, and it is `101` through `106`.** DEV is level
-with the repo at `106`. `103`/`104` were applied only once the build carrying them was **confirmed
+**`list_migrations` prints 110 rows on DEV and 100 on PROD against 107 files. The DEV surplus is
+not a gap; the PROD shortfall IS one, and it is `101` through `107`.** DEV is level
+with the repo at `107`. `103`/`104` were applied only once the build carrying them was **confirmed
 serving** — `READY` on the merge sha with `aliasError` null, never merely "after the merge":
 `CLAUDE.md` §Supabase Rules names that distinction with a measured incident behind it (a destructive
 file applied 102 seconds after a merge, out from under a Preview still calling what it dropped), and
@@ -332,6 +332,55 @@ on 2026-09-01, again for `101`/`102` on 2026-09-03, and again for `103`/`104` on
 **both recorded WITHOUT their numeric prefix** (`creator_membership`, `club_member_owner_arm`),
 which is the majority convention here: `098`, `100` and `101` are the same and only `102` carries
 one.
+
+**`107_a_club_may_outlive_its_last_member` (PD-98) — applied to DEV 2026-09-05, recorded as
+`a_club_may_outlive_its_last_member` (no numeric prefix, the majority convention above).**
+`clubs.owner_id` becomes nullable so a club whose last member erases their account can survive,
+ownerless, when third-party postcards are in it — `029` §2's belief that such a club holds postcards
+"entirely their own by construction" is false, and the cascade was destroying content belonging to
+riders who had already left.
+
+**MIGRATION-FIRST, and the reason is that the file has no unsafe side rather than that
+migration-first is a default.** No client writes `owner_id` on an existing row (`authenticated`
+holds INSERT and SELECT on it and no UPDATE), so there is no `PGRST204` shape; no FK is added, so no
+`PGRST201`/HTTP 300 shape; **and the policy delta is provably a no-op against every row existing at
+apply time**, because the column was `NOT NULL` until the file's first statement, making
+`owner_id is not null` universally true for every pre-existing row. The only rows the delta can
+affect are ones the file's own last statement can create. **`107` changes no `src/` file at all** —
+the narrowing keeps a NULL `owner_id` off the wire, so `owner_id: string` in `src/types/index.ts`
+stays honest — which is also why there is no confirmed-serving gate here.
+
+**Applied REDUCED and proved by object diff — §Applying a large file's case.** The file is 64 KB;
+the executing statements with their in-`$$` comments preserved are 31 KB. The reduction was proved
+BEFORE it was sent: it was applied to a second local database, the RLS suite ran green against it at
+the same 3484 assertions, and all five object hashes (functions, policies, triggers, columns,
+constraints) matched the database built from the full file exactly. After applying, the eleven
+functions the file writes hash **identically** on DEV and on the locally-validated build —
+`540e557d7668c5765257dce06334f091` — and the whole-schema policy hash matches too. **So
+`md5(statements[1])` does NOT equal the file's `md5sum` here, and that is the norm rather than
+drift.**
+
+**A HAND-EXERCISE GATE ran before it applied, because it hangs a trigger on `postcards` DELETE — an
+already-shipped write path.** `CLAUDE.md`'s rule, run against DEV in one transaction that created
+the column change, the function and the trigger, exercised five paths and rolled back; steps 1 and 2
+used REAL rows deleted by their real author with `role authenticated` and a matching
+`request.jwt.claims`. All five passed, including the one that matters — **the cascade case, where the
+reap runs inside the rider's own erasure transaction and a raise would abort the erasure itself**.
+The rollback was confirmed rather than assumed (15 clubs / 11 postcards / 24 profiles / `owner_id`
+still NOT NULL / 2 triggers, read back immediately after).
+
+**Adds NO advisor: DEV stays at 39, RUN rather than derived** — 36
+`authenticated_security_definer_function_executable` WARNs + 2 `rls_enabled_no_policy` INFOs + 1
+`auth_leaked_password_protection`. The one new function, `private.reap_ownerless_club`, is in
+`private`. (The advisor keys on `has_function_privilege('authenticated', …)` rather than on the
+schema, so `private` is a safe over-approximation and not the mechanism.) Suite **3488**, from 3440.
+
+**Seven existing assertions moved deliberately and each is annotated with why** — five plain-text
+pins of the `clubs` SELECT policy string (060, 081.6, 085.1, 089.7, 099.9), two md5 pins at 093.7
+(the policy and `private.can_read_club`, which must always move together or not at all), the trigger
+count at 041 (2 → 3, the first change ever to move it), and 081.16b, which flips false → true
+**exactly as its own message anticipated** — it exists "so closing it is deliberate". 081.16b's
+behavioural assertions are untouched: the welcome club is still deleted by this arm.
 
 **`105_a_block_and_a_hide_can_be_undone` (PD-298) — applied to DEV 2026-09-05, recorded as
 `a_block_and_a_hide_can_be_undone` (no numeric prefix, the majority convention above).** Two
@@ -451,11 +500,11 @@ and re-derive both rather than trusting the numbers in this heading — they hav
 before, in the direction of reading one row too few.
 
 ```bash
-ls supabase/migrations/*.sql | wc -l    # 106
+ls supabase/migrations/*.sql | wc -l    # 107
 ```
 ```
 mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # PROD — 100 rows, last `100_club_thread_fan_outs_test_membership`
-mcp__Supabase__list_migrations fpmrimzxadewsaiwpsel   # DEV  — 108 rows, last `a_block_and_a_hide_can_be_undone`
+mcp__Supabase__list_migrations fpmrimzxadewsaiwpsel   # DEV  — 110 rows, last `a_club_may_outlive_its_last_member`
 ```
 
 **`080`–`091` were promoted to PROD on 2026-08-30 around #348's build**, in the grouping
@@ -1126,7 +1175,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 106 — DEV at 106, PROD at 100 (101-106 await promotion)
+ls supabase/migrations/*.sql | wc -l     # 107 — DEV at 107, PROD at 100 (101-107 await promotion)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```

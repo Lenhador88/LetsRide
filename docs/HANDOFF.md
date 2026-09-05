@@ -190,6 +190,58 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## A club may outlive its last member — 2026-09-05
+
+**PD-98, `107_a_club_may_outlive_its_last_member.sql`, applied to DEV.** `transfer_owned_clubs`'
+no-successor arm deleted the club, and `postcards.club_id → clubs` is ON DELETE CASCADE, so a rider
+erasing their account destroyed postcards belonging to riders who had left that club earlier. The
+club now **survives, ownerless**, when third-party postcards are in it. Owner's decision, 2026-09-05
+17:26Z, on the issue itself — they rejected both the inheritance default and detaching the postcards.
+
+**Six things a later session should not have to re-derive:**
+
+- **`club_id` is NEVER nulled to save a postcard, and the reason is stronger than the owner's.**
+  They rejected detaching for loss of meaning. It is also a data-exposure bug: **`club_id is null` is
+  the `postcards` SELECT policy's app-wide arm**, so detaching publishes a private club's photos to
+  every signed-in rider. The direction is the whole safety argument — this change only ever moves an
+  audience NARROWER, from "the club's members" to "its author alone".
+- **`private.can_read_club` had to move in the same migration, and the change's own task list said
+  not to touch it.** It is a `security definer` function carrying its OWN `is_public` test, so
+  narrowing the policy does not reach it. `rls_test.sql` 060 pins the two textually and is the only
+  thing in the repo that caught it. They must always move together.
+- **The welcome club is EXCLUDED and still deletes — a security condition, not an oversight.**
+  `complete_onboarding` is `security definer` and force-joins every new rider to `clubs.is_default`
+  with no `owner_id` predicate ("the INSERT policy does not apply", says its own comment), so an
+  ownerless welcome club would hand its preserved postcards to the entire signup stream. **All 5
+  club-attached postcards on DEV are in that club**, so the remainder is most of the defect by row
+  count — [PD-398](https://linear.app/lets-ride/issue/PD-398), filed rather than left in a comment.
+- **Nulling `owner_id` is the MECHANISM.** `clubs_owner_id_fkey` is ON DELETE CASCADE; detaching from
+  it is what makes the club survive. Implementing the arm as "skip the delete" leaves the club
+  pointing at the departing rider, loses it to the cascade moments later, and passes every assertion
+  written against the function in isolation.
+- **Four more sites refused an ownerless club only via a neighbouring `<>` that happens to go NULL**,
+  while their own `not is_blocked(…, owner_id)` conjuncts fail OPEN. None was a live hole; all are
+  explicit now, because the change adds a requirement forbidding exactly that reliance.
+  **Three-valued logic lands in three directions here: RLS `using` fails CLOSED, a CHECK fails OPEN,
+  and a total wrapper like `not is_blocked()` fails OPEN.**
+- **The reaper does not fire while a RIDE remains.** `rides.club_id` is ON DELETE SET NULL, so
+  reaping over a surviving private ride strands the zombie `032` §2 exists to prevent. It is also
+  `security definer` **because the `clubs` DELETE policy admits nobody for an ownerless club** — a
+  `security invoker` version deletes zero rows in silence and passes any assertion that only checks
+  the postcard delete succeeded.
+
+**Open, and the owner's to answer:** a preserved postcard's club chip. `POSTCARD_SELECT` embeds
+`club:clubs(id, name)` under the reader's RLS, so once the club is ownerless the chip stops
+resolving — the club context survives in the DATA (`club_id` untouched, no repair needed if this is
+ever widened) but not on screen. **No rider loses a chip they see today**: a club with an owner still
+satisfies `is_public and owner_id is not null`, so this is a refinement of a brand-new state rather
+than a regression.
+
+```bash
+git grep -n "reap_ownerless_club\|owner_id is not null" -- supabase/
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3488, from 3440
+```
+
 ## A block and a hide can be undone, and neither was a screen problem — 2026-09-05
 
 **PD-298, `105_a_block_and_a_hide_can_be_undone.sql` + `106` (which narrows the hides accessor after review), applied to DEV.** Profile → ⋯ → **Privacy**
