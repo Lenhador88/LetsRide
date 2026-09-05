@@ -113,53 +113,113 @@ the check, the Storage SELECT policy is."*
    round trip whose only possible result is `null`, and ships a column whose sole meaning is a
    broken image. The list renders `Avatar`'s initials fallback from the username. This is
    omission-because-measured, not omission-by-preference.
-2. **`my_hidden_postcards()` returns `image_path` anyway, and the client does not sign it.**
-   Different call, because unlike the avatar case the path is the thing Q1 is about: if the owner
-   widens the Storage policy, the column is already there and only the client changes. Until
-   then the list draws a neutral placeholder. *(If Q1 is answered "no", drop the column in the
-   same change rather than leaving a field nothing reads.)*
+2. **`my_hidden_postcards()` returns no `image_path` either — `106`, and for a different reason.**
+   `105` returned it against a possible future widening of the Storage policy. D4 below then
+   removed every column but `postcard_id` and `hidden_at`, so the question is moot: the list
+   draws a neutral placeholder, and a widening would need a migration as well as a client change.
+   Nothing is lost by that — this consequence already measured that no path on this list can
+   sign.
 3. **The `postcards` Storage policy is the only place a widening could go**, and it is a
    modification of an existing SELECT policy — so choosing it moves this migration out of the
    purely-additive class. Recorded here so the ordering question is asked rather than inherited.
 
 ---
 
-## D4 — `restorable = false` is a side channel, and collapsing the reasons is the mitigation
+## D4 — `restorable` IS the side channel, and the list stops differentiating
 
-A hidden postcard stops being restorable for three reasons: the hider left the club it was
-posted to, the **author blocked the hider**, or the author deleted their account.
+**This section is a rewrite. The version `105` was built from — "collapsing the reasons is the
+mitigation" — was wrong, a pre-merge review found it before either accessor had a caller, and
+`106` replaced the function.** What follows is what was actually found and what shipped;
+`105`'s reasoning is in git history and is not restated here.
 
-The middle one is the problem. `supabase/tests/rls_test.sql` asserts, in as many words, *"the
-blocked rider is not told they were blocked"* — the invisibility of a block to its subject is a
-property the suite defends. A hidden-postcards list that flips a row to *"the author blocked
-you"* tells them, and it does so on a schedule the rider controls: hide one postcard from each
-person you want to monitor, then read this list as a block detector.
+### What `105` shipped
 
-**This channel does not exist today.** Without the feature, A hides B's postcard, B blocks A, and
-A observes nothing — the postcard was already gone from every screen. The feature creates the
-observation. That makes it a new leak rather than an existing one, which is the bar for taking
-it seriously.
+`my_hidden_postcards` returned `restorable` — `011`'s `postcards` SELECT qual with the hide
+conjunct removed — plus five preview columns, NULLed when `restorable` was false:
 
-**Rejected mitigations, and why:**
+```sql
+not private.is_blocked((select auth.uid()), p.author_id)
+and (p.club_id is null or private.is_club_member(p.club_id))
+```
 
-- *Show the postcard anyway when only the block is refusing it.* Discloses an author's photo to
-  someone they blocked. Far worse than the leak it fixes.
-- *Drop unrestorable rows from the list.* The row disappearing is itself the same signal, and it
-  strands a `postcard_hides` row the rider can no longer reach — D2's rule, one level down.
+### Finding 1 — for a non-club postcard the predicate reduces to the block
 
-**Adopted:** one neutral, indistinguishable state. Identical copy for all three reasons, the
-reason never returned by the accessor and therefore never available to the client to leak by
-accident. `restorable` is a boolean and not an enum **on purpose**; an enum is how the reason
-gets added later by someone who reads this as a missing feature.
+**`club_id IS NULL` makes the second conjunct vacuously true**, so `restorable` is exactly
+`not is_blocked(me, author)`. The same change ships `my_blocked_riders()`, which tells a rider
+their own **outbound** blocks. Subtract one from the other:
 
-The residual leak is that *something* changed, which is unavoidable while the row exists at all,
-and is not attributable to any particular cause. That is the whole of the mitigation and it is
-worth stating plainly rather than claiming the channel is closed.
+1. hide one non-club postcard by each rider you want to monitor;
+2. poll the list;
+3. a row that turns unrestorable while its author is absent from `my_blocked_riders()` has one
+   remaining cause — **that rider blocked you**.
 
-The deleted-postcard case needs no state, because `postcard_hides.postcard_id` references
-`postcards(id)` `ON DELETE CASCADE` (read from `pg_constraint`) — deleting the postcard removes
-the hide row, so it leaves the list rather than becoming unrestorable. Verified, because the
-brief asked for it to be.
+**And it is wider than the non-club case, which is the strongest version of the finding.** The
+club conjunct is `club_id is null or private.is_club_member(club_id)`, and a rider can always read
+their *own* membership — so for a club postcard in a club they are still in, the second conjunct
+is *known* true and `restorable` reduces to the block there too. The reduction fails only for a
+postcard in a club the rider has left, which they also know. **Every row on the list is therefore
+either a block oracle or knowably not, at the reader's choice**, which is why no amount of
+collapsing helps.
+
+Deterministic, repeatable, and driven on a schedule the rider controls. `rls_test.sql` defends
+*"the blocked rider is not told they were blocked"* in as many words, and decision #2 rests on
+it. The channel did not exist before the feature: A hides B's postcard, B blocks A, and A
+observed nothing, because the postcard was already gone from every screen. The feature created
+the observation.
+
+**NULLing the preview columns mitigated none of it.** The rider already knows who authored the
+postcard *they themselves chose to hide*, so `restorable` beside the always-returned
+`postcard_id` was the whole signal. `105` emptied the payload and left the channel.
+
+### Finding 2 — the collapse was two-way, not three-way
+
+The rejected version named three reasons and counted the author's account deletion as the third.
+It cannot produce an unrestorable row: `profiles → postcards → postcard_hides` all cascade
+`ON DELETE`, so that case removes the hide row from the table entirely and the entry leaves the
+list. `105.10` asserts exactly that. **Two reasons, one of them the block, is a far weaker set to
+hide a signal in than three** — and the change's own assertions proved the third away while its
+design doc went on counting it.
+
+### Finding 3 — no predicate fixes it
+
+For a non-club postcard the only reason to withhold is the block. So:
+
+- **withholding is the signal**, and
+- **not withholding** discloses an author's photo, caption and username to someone they blocked —
+  decision #2, far worse than the leak it fixes.
+
+There is no third predicate between those, because the input it would have to be blind to is the
+only input it has. Dropping unrestorable rows from the list is the same signal by omission, and
+it strands a `postcard_hides` row the rider can no longer reach.
+
+### Adopted — `106`, the list stops differentiating at all
+
+`my_hidden_postcards` returns **two columns, `postcard_id` and `hidden_at`**, and nothing else.
+No `restorable`, no caption, no author username, no place, no image path, no `created_at`.
+
+**The property, stated as the migration header states it: nothing in a returned row may vary with
+another rider's actions.** That is what the assertions assert — 105.7 and 105.8 compare the whole
+result set before and after a membership change and before and after a block, and 106.3 places a
+real block through the real INSERT policy and requires the list to come back byte-identical.
+
+The cost is a duller screen: a neutral row per hidden postcard with a *Remove from this list*
+action. No thumbnail is lost by this, because D3 already measured that none could ever sign.
+
+The residual signal is that a rider can see a hide row exists at all, which is unavoidable while
+the row exists and is attributable to nothing but their own action.
+
+### The one richer alternative, and why it is not built
+
+**A preview snapshotted into `postcard_hides` at hide time** — caption and author username copied
+into the row when the rider hides the postcard, never updated afterwards — carries no signal,
+because it is a constant of the rider's own action and cannot move when anybody blocks anybody.
+It is the only design found that keeps a useful preview without reopening the channel.
+
+It is not built, and would need its own decision: it stores a copy of one rider's content in a
+row keyed to another, it goes stale against an edited caption, it is a schema change plus a
+trigger plus a retention question, and the account-deletion reach argument has to be re-made for
+the copy (the cascades do cover it — the postcard's deletion takes the hide row). Raised rather
+than assumed; the owner has not asked for it.
 
 ---
 

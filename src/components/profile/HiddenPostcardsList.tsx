@@ -107,7 +107,10 @@ export function HiddenPostcardsList() {
     if (!last) return
     setLoadingMore(true)
     try {
-      const next = await getHiddenPostcards(last.hidden_at)
+      const next = await getHiddenPostcards({
+        hiddenAt: last.hidden_at,
+        postcardId: last.postcard_id,
+      })
       setOlder((current) => [...current, ...next])
       if (next.length < HIDDEN_POSTCARDS_PAGE_SIZE) setExhausted(true)
     } catch {

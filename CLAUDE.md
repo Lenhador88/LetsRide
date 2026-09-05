@@ -449,10 +449,11 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 105 files. DEV is at `105` and PROD at `100` — measured 2026-09-05.** The gap is
-`101`–`105`, all awaiting promotion. `105` (PD-298) is purely additive — two `security definer`
-accessors and one index, no policy, grant, CHECK or trigger touched — so it has no unsafe side and
-may be promoted before or after its build serves. `103`/`104` (PD-103) were applied only after the build carrying
+**Applied state: 106 files. DEV is at `106` and PROD at `100` — measured 2026-09-05.** The gap is
+`101`–`106`, all awaiting promotion. `105`/`106` (PD-298) are additive — two `security definer`
+accessors and one index, then a narrowing of one of them, with no policy, grant, CHECK or trigger
+touched — so neither has an unsafe side and both may be promoted before or after their build
+serves. `103`/`104` (PD-103) were applied only after the build carrying
 them was confirmed **serving** on DEV (`READY` on the merge sha, `aliasError` null) — that gate is
 the sequencing rule below and is not the same as "after the merge". **`list_migrations` against both
 refs is the only honest answer to this line**, which was written wrong three times in one day before
@@ -501,7 +502,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3431** assertions — re-derive rather than trust it:
+Suite **3440** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 

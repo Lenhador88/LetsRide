@@ -88,41 +88,42 @@ and every other conjunct intact**, and SHALL accept a keyset cursor.
   rider's feed and SHALL NOT appear in any other rider's list
 - **AND** `anon` SHALL hold no EXECUTE privilege on it
 
-#### Scenario: The preview shows exactly what Unhide would restore, and nothing more
-- **WHEN** a hidden postcard would become readable again if the hide row were deleted
-- **THEN** the row SHALL be marked restorable and SHALL carry its caption, author username,
-  place and creation time
-- **WHEN** the postcard would still be unreadable for any other reason
-- **THEN** the row SHALL be marked not restorable **and every preview column SHALL be NULL**
-- **AND** the nulling SHALL happen inside the accessor, not in the component, because the client
-  owns the render path and a rule reaching only a component is advisory
+#### Scenario: No row on the hidden list varies with another rider's actions
+- **WHEN** the accessor returns a hidden postcard
+- **THEN** it SHALL return exactly two columns — the postcard's id and when this rider hid it —
+  and no caption, author username, place, image path, creation time or restorability flag
+- **AND** both columns SHALL be facts about something this rider did, so nothing on the row can
+  move in response to anyone else
+- **AND** the client SHALL render two rows identically apart from their date
 
-#### Scenario: A hidden postcard in a club the rider has left discloses nothing
-- **WHEN** a rider hid a postcard posted to a club and has since left that club
-- **THEN** the accessor SHALL evaluate `club_id is null or private.is_club_member(club_id)` and
-  find it false
-- **AND** the row SHALL be marked not restorable with no caption and no image path
-- **AND** unhiding it SHALL restore nothing, because the club conjunct still refuses it
+#### Scenario: The hidden list SHALL NOT be usable as a block detector
+- **WHEN** a rider hides a postcard and its author later blocks them
+- **THEN** the rows the accessor returns SHALL be byte-identical to the rows it returned before
+  the block was placed
+- **AND** this SHALL hold whether or not the postcard belongs to a club, because a restorability
+  flag reduces to `not private.is_blocked(auth.uid(), author_id)` in **both** the no-club case
+  (where the club conjunct is vacuous) and the still-a-member case (where the rider knows their
+  own membership), leaving the block as the only unknown
+- **AND** it SHALL hold even though `my_blocked_riders()` discloses this rider's own outbound
+  blocks, since the attack is the subtraction of one from the other
+- **AND** this preserves the invariant that a block is invisible to its subject, which is the
+  property `supabase/tests/rls_test.sql` defends and decision #2 rests on
 
-#### Scenario: A hidden postcard whose author has since blocked the hider discloses nothing
-- **WHEN** the author of a hidden postcard blocks the rider who hid it
-- **THEN** the accessor SHALL evaluate `not private.is_blocked(auth.uid(), author_id)` and find
-  it false
-- **AND** the row SHALL be marked not restorable with no caption, no author username and no
-  image path
+#### Scenario: A hidden postcard the rider can no longer read is not marked as such
+- **WHEN** a rider hid a postcard posted to a club and has since left that club, or its author
+  has since blocked them
+- **THEN** the row SHALL remain on the list, unchanged and unmarked
+- **AND** the rider SHALL be able to delete it through the ordinary unhide affordance, because
+  `011`'s DELETE policy scopes that to `user_id = auth.uid()` with no visibility requirement
+- **AND** no copy SHALL claim the postcard is or is not back in their feed, because saying so
+  reintroduces the differentiation this capability removed
 
-#### Scenario: An unrestorable row SHALL NOT disclose why it is unrestorable
-- **WHEN** a row is marked not restorable, for any of the three possible reasons — the rider
-  left the club, the author blocked them, or the author deleted their account
-- **THEN** the accessor SHALL return one indistinguishable state carrying no reason
-- **AND** the client SHALL render identical copy in all three cases
-- **AND** the rider SHALL NOT be able to infer from this list that anyone has blocked them,
-  preserving the invariant that a block is invisible to its subject
-
-#### Scenario: A deleted postcard leaves the list rather than becoming unrestorable
+#### Scenario: A deleted postcard leaves the list
 - **WHEN** the author deletes a postcard some rider had hidden
 - **THEN** `postcard_hides_postcard_id_fkey`'s `ON DELETE CASCADE` SHALL remove the hide row
 - **AND** the entry SHALL disappear from the list entirely, with no tombstone and no error
+- **AND** an account deletion SHALL reach the same cascade, so it can never produce a row the
+  rider cannot restore
 
 #### Scenario: A rider's own postcard never appears in their hidden list
 - **WHEN** a rider holds a `postcard_hides` row against a postcard they authored
@@ -131,12 +132,12 @@ and every other conjunct intact**, and SHALL accept a keyset cursor.
   of the `postcards` SELECT policy is unconditional
 - **AND** the list SHALL NOT show a postcard the rider can still see on every other screen
 
-#### Scenario: A rider can clear a hide they can no longer restore
-- **WHEN** a rider acts on an unrestorable row
+#### Scenario: Unhiding works on every row, readable or not
+- **WHEN** a rider acts on any row of the hidden list
 - **THEN** the existing `unhidePostcard` action SHALL delete the row under `011`'s DELETE policy,
   which already scopes it to `user_id = auth.uid()`
-- **AND** the affordance SHALL be labelled as removing the entry from the list rather than as
-  unhiding, because nothing is restored
+- **AND** the affordance SHALL carry one label for every row, because a label that varies with
+  restorability is the differentiation removed above wearing different clothes
 - **AND** a rider SHALL NOT be able to delete a `postcard_hides` row belonging to another rider
 
 ### Requirement: Neither list SHALL become reachable by anyone other than its owner

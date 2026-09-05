@@ -52,6 +52,22 @@ export async function getBlockedRiders(): Promise<BlockedRider[]> {
 export const HIDDEN_POSTCARDS_PAGE_SIZE = 20
 
 /**
+ * The keyset cursor, and it is a **pair** rather than a timestamp.
+ *
+ * `106` orders by `(created_at desc, postcard_id desc)` and cursors on both,
+ * because a cursor on the timestamp alone silently drops a row whenever two
+ * hides share a `created_at` and straddle a page boundary. That is unreachable
+ * while each hide is its own transaction and reachable the moment anything
+ * writes two in one statement — a bulk "hide everything from this rider", say.
+ *
+ * **Passing `hiddenAt` without `postcardId` degrades to exactly that lossy
+ * behaviour rather than erroring**, which is why they travel as one object here
+ * instead of two optional arguments a caller can half-fill. `106.4` asserts it
+ * in both directions.
+ */
+export type HiddenPostcardsCursor = { hiddenAt: string; postcardId: string }
+
+/**
  * The postcards this rider has hidden, newest hide first, keyset-paged on
  * `hidden_at` — `011`'s `postcard_hides (user_id, created_at desc)` index serves
  * the cursor exactly.
@@ -71,12 +87,15 @@ export const HIDDEN_POSTCARDS_PAGE_SIZE = 20
  * definition still hidden, fails it. `105`'s client signed a batch of paths that
  * could never come back, on every page load. Do not add it back.
  */
-export async function getHiddenPostcards(before?: string): Promise<HiddenPostcard[]> {
+export async function getHiddenPostcards(
+  cursor?: HiddenPostcardsCursor
+): Promise<HiddenPostcard[]> {
   const supabase = await resolveSupabase()
 
   return unwrapList<HiddenPostcard>(
     await supabase.rpc('my_hidden_postcards', {
-      before_at: before ?? null,
+      before_at: cursor?.hiddenAt ?? null,
+      before_id: cursor?.postcardId ?? null,
       page_size: HIDDEN_POSTCARDS_PAGE_SIZE,
     }),
     'the postcards you have hidden'

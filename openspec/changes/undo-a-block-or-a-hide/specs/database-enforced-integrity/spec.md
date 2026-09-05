@@ -24,13 +24,15 @@ the table owner too.
 `public.ride_journal_postcard_ids(uuid)` is the standing precedent: it restates the whole
 `postcards` SELECT qual and carries a comment naming the branch that must stay unconditional.
 
-#### Scenario: The hidden-postcards accessor removes one conjunct and keeps the rest
-- **WHEN** the accessor evaluates whether a hidden postcard would be restorable
-- **THEN** it SHALL evaluate `not private.is_blocked(auth.uid(), author_id)` and
-  `club_id is null or private.is_club_member(club_id)` exactly as the `postcards` SELECT policy
-  states them
-- **AND** it SHALL omit only the `postcard_hides` conjunct
-- **AND** it SHALL NOT return a postcard the caller has no audience for on any other ground
+#### Scenario: The hidden-postcards accessor evaluates the audience predicate NOT AT ALL
+- **WHEN** the accessor returns a rider's hidden postcards
+- **THEN** it SHALL NOT evaluate `private.is_blocked` or `private.is_club_member`, and SHALL NOT
+  return any value derived from either
+- **AND** this is deliberately the opposite of `ride_journal_postcard_ids`' precedent above:
+  restating the qual is right when the answer is *which rows to return*, and wrong here, where
+  the answer would be a **per-row flag whose value another rider controls**
+- **AND** the only predicate it applies SHALL be the caller's own `user_id` scope and the
+  exclusion of the caller's own postcards, both facts about the caller
 
 #### Scenario: An accessor SHALL NOT restate a conjunct that would drop its own subject
 - **WHEN** the blocked-riders accessor reads a `profiles` row
@@ -60,15 +62,19 @@ component or a Zod schema is advisory, because the client owns the mutation and 
 This applies to *withholding* as much as to validating: a preview the rider must not see SHALL
 be withheld by the database, not merely left unrendered.
 
-#### Scenario: An unrestorable hidden postcard is emptied by the database
-- **WHEN** a hidden postcard is not restorable
-- **THEN** the accessor SHALL return NULL for its caption, author username, place and image path
-- **AND** the component SHALL NOT be the thing that decides not to draw them
-- **AND** a caller reaching the function directly through PostgREST SHALL receive the same
-  nulled row as the app does
+#### Scenario: The hidden list is emptied of detail by the database, not by the component
+- **WHEN** a rider reads their hidden postcards
+- **THEN** the accessor SHALL return only the postcard's id and when this rider hid it
+- **AND** a caller reaching the function directly through PostgREST SHALL receive the same two
+  columns the app does, so the property does not depend on the client
+- **AND** the component SHALL NOT be the thing that decides not to draw a preview
 
-#### Scenario: The reason a row is unrestorable never leaves the database
-- **WHEN** the accessor determines that a row is not restorable
-- **THEN** it SHALL return a boolean and SHALL NOT return which conjunct refused
-- **AND** the return type SHALL NOT be widened to an enumeration, so that the reason cannot be
-  added later without revisiting this requirement
+#### Scenario: The return type SHALL NOT regain a restorability flag
+- **WHEN** a later change proposes returning whether a hidden postcard could be restored, or the
+  reason it could not
+- **THEN** it SHALL first revisit this requirement, because such a flag reduces to
+  `not private.is_blocked(auth.uid(), author_id)` for every postcard whose club membership the
+  rider already knows — which is every postcard they hid
+- **AND** NULLing the columns beside such a flag SHALL NOT be accepted as a mitigation, since the
+  rider already knows who authored the postcard they chose to hide, so the flag is the whole
+  signal

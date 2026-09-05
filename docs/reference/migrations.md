@@ -321,9 +321,9 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 108 rows on DEV and 100 on PROD against 105 files. The DEV surplus is
-not a gap; the PROD shortfall IS one, and it is `101`, `102`, `103`, `104` and `105`.** DEV is level
-with the repo at `105`. `103`/`104` were applied only once the build carrying them was **confirmed
+**`list_migrations` prints 109 rows on DEV and 100 on PROD against 106 files. The DEV surplus is
+not a gap; the PROD shortfall IS one, and it is `101` through `106`.** DEV is level
+with the repo at `106`. `103`/`104` were applied only once the build carrying them was **confirmed
 serving** — `READY` on the merge sha with `aliasError` null, never merely "after the merge":
 `CLAUDE.md` §Supabase Rules names that distinction with a measured incident behind it (a destructive
 file applied 102 seconds after a merge, out from under a Preview still calling what it dropped), and
@@ -348,6 +348,39 @@ proposal's +2 was arithmetic): one
 `authenticated_security_definer_function_executable` per function, both named in the payload, no
 new `rls_enabled_no_policy` because the file creates no table. PROD stays at 37 until the
 promotion. The definer-function count moved 34 → 36.
+
+**`106_the_hidden_list_cannot_detect_a_block` (PD-298) — applied to DEV 2026-09-05, recorded as
+`the_hidden_list_cannot_detect_a_block` (no numeric prefix, the majority convention above).
+It replaces `105`'s `my_hidden_postcards` because that function shipped the leak it was written
+to prevent** — found by the pre-merge review, before either accessor had a caller. `105` returned
+`restorable`, which is `011`'s `postcards` SELECT qual minus the hide conjunct; **for a postcard
+with `club_id IS NULL` the club conjunct is vacuously true, so it reduces to
+`not is_blocked(me, author)`**, and the same change ships `my_blocked_riders()`, which names the
+rider's own outbound blocks. Subtract one from the other and an unrestorable row whose author is
+absent from your block list means *that rider blocked you* — deterministic, and on a schedule the
+rider controls. The function now returns `(postcard_id uuid, hidden_at timestamptz)` and nothing
+that can vary with another rider's actions; `design.md` D4 is rewritten around the finding, and
+it also records that `105`'s "three reasons collapse into one" was only ever **two** reasons,
+because a deleted author cascades the hide row away (`105.10` asserts it).
+
+**A DROP and a CREATE, not a `create or replace`** — replacing eight OUT parameters with two
+raises `42P13`. Two consequences the file states rather than inherits: the drop discards the
+grants, so the `revoke … from public, anon` + `grant … to authenticated` pair is re-issued **at
+the new three-argument signature** (`timestamptz, uuid, int` — `106` also fixes `105`'s
+single-column keyset cursor against a two-column sort), and it discards `security definer`,
+`stable` and the pinned `search_path`, all three restated and pinned in `106.1`.
+**Ordering-free in both directions and NOT the destructive class in practice**: `105` is DEV-only,
+`my_hidden_postcards` has never had a caller in any deployed bundle, and the screen that will call
+it is being written against `106`'s signature — `090`'s case, a removed object no bundle can
+observe. On the PROD promotion the pair applies in filename order and PROD never serves the
+eight-column version at all. Applied WHOLE — `md5(statements[1])` on DEV equals the file's raw
+`md5sum`, `7f8daa425ec696d54addcb5ccfbe1a2b`.
+
+**Adds NO advisor: DEV stays at 39, RUN rather than assumed.** One `security definer` function in
+`public` leaves and the same name comes back, so `105`+`106` together still account for exactly
+two `authenticated_security_definer_function_executable` WARNs and the definer-function count
+stays at 36. The suite moved 3431 → 3440, which is a net figure over **fifteen `105` labels
+removed and twenty-four added** — compare label sets, not counts.
 
 **`103_creator_membership` + `104_club_member_owner_arm` (PD-103) — applied to DEV 2026-09-04,
 after the merge was confirmed serving; they are the ordering case rather than an exception to it.** `103` hangs two `AFTER INSERT` seeding
@@ -418,7 +451,7 @@ and re-derive both rather than trusting the numbers in this heading — they hav
 before, in the direction of reading one row too few.
 
 ```bash
-ls supabase/migrations/*.sql | wc -l    # 105
+ls supabase/migrations/*.sql | wc -l    # 106
 ```
 ```
 mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # PROD — 100 rows, last `100_club_thread_fan_outs_test_membership`
@@ -1093,7 +1126,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 105 — DEV at 105, PROD at 100 (101-105 await promotion)
+ls supabase/migrations/*.sql | wc -l     # 106 — DEV at 106, PROD at 100 (101-106 await promotion)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
@@ -1213,7 +1246,8 @@ projects, and it reads exactly like drift. Compare the OBJECT, never the recorde
 ## Security advisors
 
 **Security advisors: thirty-nine on DEV and thirty-seven on PROD, and only one is outstanding.**
-The two-advisor difference is `105` awaiting promotion, which is the ordinary shape of a gap —
+The two-advisor difference is `105`+`106` awaiting promotion — `106` adds none of its own, being
+a drop and a create of the same `security definer` name — which is the ordinary shape of a gap —
 a one- or two-advisor difference between the projects is almost always a pending promotion, never
 a finding on its own. Re-derive
 rather than trust the number — `get_advisors(security)`, or, without the payload,
@@ -1229,7 +1263,7 @@ cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 36 on DEV, 34 on PROD | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), and the two moderation-reversal accessors (`105`, DEV only until it promotes). Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
+| 36 on DEV, 34 on PROD | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), and the two moderation-reversal accessors (`105`, DEV only until it promotes; `106` REPLACES one of them and is net zero here, because the drop and the create cancel). Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
 | 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design: `026` and `078` revoke everything on their table from the client roles, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
