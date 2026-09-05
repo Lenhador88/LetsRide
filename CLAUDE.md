@@ -229,7 +229,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (54 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/__tests__/` exercises four actions against a mocked resolver and reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Thirty** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways per §Working Principles; all but **four** render through `renderToStaticMarkup` under `environment: 'node'`, and jsdom is the answer only when something needs a layout or an event — `ClubTimeline.test.tsx`, for a fetch failure and an anchor-hunt latch that only exist inside a mounted `useEffect`; `PostcardMenu.test.tsx`, for a real click through `ContextMenu`'s portal and `useTransition`'s async flow; `EditRideForm.dom.test.tsx`, because that form seeds its controlled state FROM its row, so the refused-transition state is unreachable on first paint and a static render cannot tell a working guard from `disabled={false}`; and `IntroductionPrompt.dom.test.tsx`, because the sheet's dismissal lock has to hold against `ContextMenu`'s **scrim and Escape**, which a static render cannot dispatch — asserting the button's `disabled` attribute leaves exactly the path that matters uncovered. Count them with `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
+| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (54 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/__tests__/` exercises four actions against a mocked resolver and reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Thirty-two** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways per §Working Principles; all but **four** render through `renderToStaticMarkup` under `environment: 'node'`, and jsdom is the answer only when something needs a layout or an event — `ClubTimeline.test.tsx`, for a fetch failure and an anchor-hunt latch that only exist inside a mounted `useEffect`; `PostcardMenu.test.tsx`, for a real click through `ContextMenu`'s portal and `useTransition`'s async flow; and `EditRideForm.dom.test.tsx`, because that form seeds its controlled state FROM its row, so the refused-transition state is unreachable on first paint and a static render cannot tell a working guard from `disabled={false}`; and `IntroductionPrompt.dom.test.tsx`, because the sheet's dismissal lock has to hold against `ContextMenu`'s **scrim and Escape**, which a static render cannot dispatch — asserting the button's `disabled` attribute leaves exactly the path that matters uncovered. Count them with `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
 | Edge Functions | `deno check`, CI's `functions` job | Type-checks every `index.ts` under the runtime it runs in, when `supabase/functions/**` or the workflow changes. `tsconfig.json` excludes the directory, but two helper modules (`gates.ts`, `shape.ts`) are imported by unit tests and `tsc` follows them in — `npx tsc --noEmit --listFiles \| grep supabase/functions` lists them — so the entrypoints are the part only the Deno job reads |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything**: signs in, walks every screen including detail routes discovered from the lists, checks the guard's redirects and sign-out, and refuses a create and an edit. Every other gate stays green through a screen that throws on load, or one nobody can reach (PD-125). `WALK_FIXTURES=1` creates the rows the detail routes need; a shrunken `N/N` is a skip, not a pass. **Wired into CI as the `walk` job (2026-09-02)**, minting its own rider (no credential — PD-268), and **skipped until the repository variable `WALK_CI=1` is set**, because the Actions secrets name PROD and the guard step refuses to walk it. Not a required check yet (PD-370) |
 | End-to-end | Playwright | Deferred as a full suite. The walk asks one question per route — did this render — and asserts behaviour only in its named phases, each covering a defect no other gate can see. Adding a phase means adding a reason, not broadening a remit |
@@ -449,8 +449,13 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 104 files. DEV is at `104` and PROD at `100` — measured 2026-09-04.** The gap is
-`101`–`104`, all awaiting promotion. `103`/`104` (PD-103) were applied only after the build carrying
+**Applied state: 106 files. DEV is at `106` and PROD at `100` — measured 2026-09-05.** The gap is
+`101`–`106`, all awaiting promotion. **`105`/`106` (PD-298) go MIGRATION-FIRST on the PROD
+promotion**, and "additive, so the order does not matter" is the wrong reading: they add two
+`security definer` accessors that the promoted bundle CALLS, so a build serving ahead of them
+answers `PGRST202` on both Privacy-sheet lists — the shipped-client-reads case in the sequencing
+rule below. They touch no policy, grant, CHECK or trigger, so migration-first has no unsafe side
+of its own. `103`/`104` (PD-103) were applied only after the build carrying
 them was confirmed **serving** on DEV (`READY` on the merge sha, `aliasError` null) — that gate is
 the sequencing rule below and is not the same as "after the merge". **`list_migrations` against both
 refs is the only honest answer to this line**, which was written wrong three times in one day before
@@ -499,7 +504,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3382** assertions — re-derive rather than trust it:
+Suite **3440** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 
@@ -518,11 +523,13 @@ never run. `complete_onboarding` also joins the caller to the club carrying `clu
 (`058`), inside a `when others` block, because a raise there would roll the completion stamp back
 and decision #5 gives a rider with a NULL stamp no way out of the wizard.
 
-**Security advisors: thirty-seven on both projects, and only one is outstanding** —
-`auth_leaked_password_protection`, a dashboard click. The other thirty-six are things this repo
-chose: one `authenticated_security_definer_function_executable` WARN per `security definer` RPC in
-`public` (each narrow by design — takes a row id, never a rider id, one raise site), and two
-`rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding
+**Security advisors: thirty-nine on DEV and thirty-seven on PROD, and only one is outstanding** —
+`auth_leaked_password_protection`, a dashboard click. **The two-advisor difference IS the pending
+`105` promotion**, which is the ordinary shape this section's last line describes rather than drift.
+The rest are things this repo chose: one
+`authenticated_security_definer_function_executable` WARN per `security definer` RPC in
+`public` (each narrow by design — takes a row id or nothing at all, never a rider id, one raise
+site), and two `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding
 two such functions adds two**, and one whose functions live in `private` adds none. Re-derive with
 `get_advisors(security)`; `docs/reference/migrations.md` §Security advisors has the per-migration
 accounting and the count query. An unexpected advisor is one not in that table; a one-advisor

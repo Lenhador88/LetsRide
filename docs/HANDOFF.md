@@ -190,6 +190,70 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## A block and a hide can be undone, and neither was a screen problem — 2026-09-05
+
+**PD-298, `105_a_block_and_a_hide_can_be_undone.sql` + `106` (which narrows the hides accessor after review), applied to DEV.** Profile → ⋯ → **Privacy**
+now carries a blocked-riders list and a hidden-postcards list — the first callers `unblockRider`
+and `unhidePostcard` have ever had. Owner's choice of proposal 3, in the existing `PrivacySheet`
+rather than a new route.
+
+**The issue's own premise was false, and that is the durable part.** It says *"the schema is
+already on our side … this is a screen, not a migration."* Measured on DEV as `authenticated`:
+
+```sql
+-- as the blocker: own blocks rows 1, the blocked rider's profiles row 0
+select count(*) from public.blocks;                       -- 1
+select count(*) from public.profiles where id = <blocked>; -- 0
+```
+
+`009`'s `profiles` SELECT policy applies `private.is_blocked`, which is **symmetric**, so the
+blocker cannot read the profile of the rider they blocked. `011` §3 puts the hide conjunct
+*inside* the `postcards` SELECT policy, so a hidden postcard is unreadable to the rider who hid
+it — `011` says so at the index it creates. **So "the design draws no screen" was the symptom and
+not the cause**: neither list could be populated at all. Two `security definer` accessors are the
+fix, and each carries a visibility rule, which is why this went through `openspec`.
+
+**Five things a later session should not have to re-derive:**
+
+- **`my_blocked_riders()` deliberately does NOT restate `009`'s `username is not null`.** The
+  standing precedent (`ride_journal_postcard_ids`) copies its table's qual verbatim, and doing
+  that here drops a block against a rider who never finished onboarding — **a block missing from
+  the list can never be lifted**, which is PD-298's own defect one level down. Pinned at both
+  layers: `105.3` in the suite, and `BlockedRidersList.test.tsx` against a `.filter()` added later
+  to tidy the render.
+- **The hidden list carries NO per-row detail at all, and that is a security property rather than
+  an unfinished screen.** The first cut returned `restorable` plus a preview, collapsing three
+  reasons into one boolean. **The pre-merge review showed that is still a block detector, and it
+  is the finding worth carrying**: for a postcard with `club_id is null` the club arm is vacuous,
+  so `restorable` reduces to `not is_blocked(me, author)` — and `my_blocked_riders()`, shipped in
+  the same change, tells a rider their own *outbound* blocks. Subtract one from the other and a
+  quiet row says *"that rider blocked me"*, repeatably, on a schedule the rider picks. The
+  three-way collapse was also only two-way: account deletion cascades the hide row away entirely
+  (`105.10` asserts it), so it can never produce an unrestorable row.
+  **No predicate fixes this** — for a non-club postcard the only reason to withhold is a block, so
+  withholding *is* the signal and not withholding leaks the author's photo. `106` removed the
+  differentiation instead: two columns, `postcard_id` and `hidden_at`, both facts about something
+  the rider did. A component test asserts two rows render byte-identically apart from the date.
+  **Enriching this list re-opens the channel**, and every enrichment looks like an obvious
+  improvement.
+- **Neither list can show an image, and this is structural rather than unfinished.** Storage
+  signing is a second authorization pass run **as the rider**, and `010`'s policies resolve an
+  `EXISTS` against `profiles`/`postcards` under the caller's own RLS. A `security definer`
+  accessor bypasses table RLS and cannot bypass that. Showing the photo means widening a Storage
+  policy — handing an author's image to someone they may have blocked — which is **an open owner
+  decision, deliberately not taken** (proposal §Q1).
+- **`revoke … from public` is not enough on a `public` function.** Supabase's project default
+  grants EXECUTE to `anon` **explicitly**, and revoking from `PUBLIC` does not touch an explicit
+  grant. `105` revokes from `public, anon`; `009` got away with `from public` alone only because
+  `private` denies `anon` schema USAGE. `105.11` pins it as a privilege assertion, never a call —
+  the suite runs as the table owner, which is what let `029` ship broken.
+- **Advisors are 39 on DEV and 37 on PROD, and the difference IS the pending promotion**, not
+  drift. `105` adds exactly two, one per accessor — run rather than derived.
+
+```bash
+git grep -n "my_blocked_riders\|my_hidden_postcards" -- src/ supabase/
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3440, from 3382
+```
 ## The introduction sheet is the join now — 2026-09-05
 
 **PD-392, [PR #395](https://github.com/Lenhador88/LetsRide/pull/395).** `IntroductionPrompt` opened
