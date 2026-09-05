@@ -142,6 +142,21 @@ export const queryKeys = {
      */
     analyticsOptOut: (): QueryKey => ['profile', 'analyticsOptOut'],
     /**
+     * `getBlockedRiders` — PD-298's other undo list, from `105`'s
+     * `public.my_blocked_riders()`. No `revalidatePath` predecessor.
+     *
+     * Free either way, unlike `postcards.hidden()`: `blockRider` and
+     * `unblockRider` both invalidate `EVERYTHING` — the empty prefix, which
+     * reaches every key by construction — because a block changes what is
+     * visible app-wide (decision #2). So this key is swept whichever prefix it
+     * sits under.
+     *
+     * It sits under `profile` for the reason `analyticsOptOut` does: the
+     * `PrivacySheet` is where it renders. That also inherits `updateProfile`'s
+     * `profile.all()` sweep, which costs one re-read of a short list.
+     */
+    blockedRiders: (): QueryKey => ['profile', 'blockedRiders'],
+    /**
      * `view-rider-profile` — no `revalidatePath` predecessor, like
      * `notifications` and `places`. `blockRider`/`unblockRider`'s
      * `invalidate(EVERYTHING)` already reaches this through the empty
@@ -505,6 +520,26 @@ export const queryKeys = {
      * and the next author to hold it will add a call site too.
      */
     journal: (rideId: string): QueryKey => ['postcards', 'journal', rideId],
+    /**
+     * `getHiddenPostcards` — PD-298's undo list, read from `105`'s
+     * `public.my_hidden_postcards()`. No `revalidatePath` predecessor: nothing
+     * ever rendered this.
+     *
+     * **Under `postcards` deliberately, and it is the placement that matters
+     * rather than the name.** Its two writers are `hidePostcard` and
+     * `unhidePostcard`, both of which already call
+     * `invalidate(queryKeys.postcards.all())` — so, by exactly the argument
+     * `journal` above records, **this key needs no call site of its own and
+     * neither action changes by a single line.**
+     *
+     * Placing it under `profile` — where the sheet that renders it lives —
+     * would have been the intuitive choice and is the trap. `hidePostcard`
+     * *adds* a row to this list, so a key outside the `postcards` prefix goes
+     * stale the first time the feature is used, and the missing `invalidate`
+     * is the one nobody thinks to add: the screen a rider hides from is not
+     * the screen that lists it.
+     */
+    hidden: (): QueryKey => ['postcards', 'hidden'],
     /**
      * The club timeline's own postcard source — `getClubFeedWindow` (PD-375,
      * `design.md` §D3). A CHILD of `feed(filterSegment.club(clubId))`, on
