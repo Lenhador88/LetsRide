@@ -1899,31 +1899,27 @@ export type BlockedRider = {
 }
 
 /**
- * One row on the hidden-postcards list — `105`'s `public.my_hidden_postcards()`,
+ * One row on the hidden-postcards list — `106`'s `public.my_hidden_postcards()`,
  * PD-298.
  *
- * **`restorable` is a boolean and must never become an enum.** A hide stops
- * being restorable for three reasons — the rider left the club, the author
- * blocked them, or the author deleted their account — and naming the middle one
- * turns this list into a block detector, against a property
- * `supabase/tests/rls_test.sql` defends in as many words ("the blocked rider is
- * not told they were blocked"). The reason is collapsed in the *function*, so it
- * never reaches the client to be leaked by accident, and every preview column
- * below arrives NULL when `restorable` is false.
+ * **Two columns, and the shortness is the security property.** `105` returned a
+ * `restorable` flag and a preview beside it, and a pre-merge review showed that
+ * shape is a block detector: for a postcard with no club, `restorable` reduces
+ * to `not is_blocked(me, author)`, and the blocked-riders list beside it tells a
+ * rider their own outbound blocks — so subtracting one from the other says "that
+ * rider blocked me". Deterministic, and on a schedule the rider controls.
  *
- * **No thumbnail when it is not restorable, for the same reason as
- * `BlockedRider`'s avatar**: `image_path` is withheld by the accessor, so there
- * is nothing to sign.
+ * No predicate fixes that. For a non-club postcard the only reason to withhold
+ * is a block, so withholding *is* the signal and not withholding leaks the
+ * author's photo. The differentiation had to go instead.
+ *
+ * **So nothing in this row may ever vary with another rider's actions.** Both
+ * fields are facts about something this rider did: which postcard they hid, and
+ * when. Adding a caption, an author, a thumbnail or a "no longer available"
+ * flag re-opens the channel — `106`'s header and `design.md` D4 carry the whole
+ * argument.
  */
 export type HiddenPostcard = {
   postcard_id: string
   hidden_at: string
-  restorable: boolean
-  caption: string | null
-  author_username: string | null
-  taken_place_name: string | null
-  image_path: string | null
-  created_at: string | null
-  /** Signed from `image_path` by `getHiddenPostcards`; null whenever that is. */
-  image_url?: string | null
 }

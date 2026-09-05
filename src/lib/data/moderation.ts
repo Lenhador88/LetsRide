@@ -1,5 +1,4 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
-import { signImagePaths } from '@/lib/data/media'
 import { unwrapList } from '@/lib/data/unwrap'
 import type { BlockedRider, HiddenPostcard } from '@/types'
 
@@ -24,8 +23,10 @@ import type { BlockedRider, HiddenPostcard } from '@/types'
  *   hid it. An embed would return nulls.
  *
  * `105` supplies one `security definer` accessor per list, each scoped to
- * `auth.uid()` and each restating the conjunct it deliberately drops. See
- * `openspec/changes/undo-a-block-or-a-hide/design.md` D1–D3.
+ * `auth.uid()` and each restating the conjunct it deliberately drops; `106`
+ * narrows the hides one to two columns after a pre-merge review found its
+ * preview was a block detector. See
+ * `openspec/changes/undo-a-block-or-a-hide/design.md` D1–D4.
  */
 
 /**
@@ -52,43 +53,32 @@ export const HIDDEN_POSTCARDS_PAGE_SIZE = 20
 
 /**
  * The postcards this rider has hidden, newest hide first, keyset-paged on
- * `hidden_at` — `011`'s `postcard_hides (user_id, created_at desc)` index
- * serves the cursor exactly.
+ * `hidden_at` — `011`'s `postcard_hides (user_id, created_at desc)` index serves
+ * the cursor exactly.
  *
- * **A row whose `restorable` is false carries no preview at all**, and the
- * client must not try to reconstruct one. The three reasons a hide stops being
- * restorable are collapsed inside the function on purpose (design D4): one of
- * them is "the author has since blocked you", and surfacing it would turn this
- * screen into a block detector. Every preview column arrives NULL together, so
- * there is nothing here to tell the cases apart with.
+ * **Each row is a postcard id and a date, and that is the entire shape on
+ * purpose.** `105` also returned a `restorable` flag and a preview; a pre-merge
+ * review showed the pair is a **block detector**, because for a postcard with no
+ * club `restorable` reduces to `not is_blocked(me, author)` and
+ * `getBlockedRiders` above tells the rider their own outbound blocks. `106`
+ * removed the differentiation rather than the wording, since no predicate fixes
+ * it: for a non-club postcard the only reason to withhold is a block, so
+ * withholding is the signal and not withholding leaks the photo.
  *
- * Only a restorable row carries an `image_path`, so only a restorable row is
- * signed — and signing is authorized as the rider, through the ordinary Storage
- * path, exactly as the feed does. Nothing here widens a Storage policy; a
- * postcard the rider may no longer see stays unreadable, which is why the
- * unrestorable row shows a placeholder rather than a photo.
+ * **There is deliberately nothing to sign here, and there never was.** The
+ * Storage policy resolves an `EXISTS` against `postcards` as the caller, and the
+ * hide conjunct lives inside that policy — so every row on this list, by
+ * definition still hidden, fails it. `105`'s client signed a batch of paths that
+ * could never come back, on every page load. Do not add it back.
  */
 export async function getHiddenPostcards(before?: string): Promise<HiddenPostcard[]> {
   const supabase = await resolveSupabase()
 
-  const rows = unwrapList<HiddenPostcard>(
+  return unwrapList<HiddenPostcard>(
     await supabase.rpc('my_hidden_postcards', {
       before_at: before ?? null,
       page_size: HIDDEN_POSTCARDS_PAGE_SIZE,
     }),
     'the postcards you have hidden'
   )
-
-  const paths = rows
-    .map((row) => row.image_path)
-    .filter((path): path is string => !!path)
-
-  if (paths.length > 0) {
-    const urls = await signImagePaths(paths, supabase)
-    for (const row of rows) {
-      row.image_url = row.image_path ? (urls.get(row.image_path) ?? null) : null
-    }
-  }
-
-  return rows
 }

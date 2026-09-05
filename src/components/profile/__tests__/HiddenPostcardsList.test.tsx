@@ -6,27 +6,26 @@ import { BannerProvider } from '@/components/ui/Banner'
 import type { HiddenPostcard } from '@/types'
 
 /**
- * **This file pins the leak mitigation, and it is the reason the file exists.**
+ * **This file pins one property: no row on this list may vary with another
+ * rider's actions.**
  *
- * A hide stops being restorable for three reasons — the rider left the club,
- * the author blocked them, or the author deleted their account. `105` collapses
- * all three into one boolean and NULLs every preview column, because naming the
- * middle one turns the hidden list into a **block detector**: hide one postcard
- * per rider you want to watch, then read this screen. `supabase/tests/
- * rls_test.sql` defends the opposite property in as many words — *"the blocked
- * rider is not told they were blocked"* — and that channel does not exist at
- * all without this feature.
+ * The first cut showed a preview for a postcard the rider could still see and a
+ * neutral row for one they could not. A pre-merge review showed that is a
+ * **block detector** — the unrestorable state has one cause for a postcard with
+ * no club, because the club arm is vacuous there and account deletion cascades
+ * the hide row away entirely. Beside `BlockedRidersList`, which tells a rider
+ * their own outbound blocks, a row going quiet said "that rider blocked you".
  *
- * The database is the real mitigation. **These tests are the second line**, and
- * they are written deliberately against a row the accessor should never
- * produce: `restorable: false` carrying an author name and a caption anyway. If
- * a later migration regresses and starts returning the preview alongside a
- * false flag, the component must still refuse to render it. A test that only
- * fed it well-formed rows would pass against a component that blindly prints
- * whatever it is given, which is exactly the regression worth catching.
+ * `106` removed the differentiation rather than the copy, because no predicate
+ * fixes it. **The regression this file catches is somebody making the screen
+ * more helpful again** — and it is written to catch that even from a database
+ * that has regressed: the third test hands the component fields the accessor
+ * can no longer return, because the client is the second line of defence and a
+ * test that only fed it two-column rows would pass against a component that
+ * prints whatever it is given.
  *
- * `environment: 'node'` — `renderToStaticMarkup` is enough for "does this
- * string reach the markup", and nothing here needs a layout or an event.
+ * `environment: 'node'` — `renderToStaticMarkup` answers "does this string
+ * reach the markup", and nothing here needs a layout or an event.
  */
 
 vi.mock('next/navigation', () => ({
@@ -54,60 +53,35 @@ function render() {
   )
 }
 
-const RESTORABLE: HiddenPostcard = {
-  postcard_id: 'p1',
-  hidden_at: '2026-09-01T10:00:00Z',
-  restorable: true,
-  caption: 'Coast road at dawn',
-  author_username: 'ripper',
-  taken_place_name: 'Zandvoort',
-  image_path: 'postcards/a/1.jpg',
-  created_at: '2026-08-30T10:00:00Z',
-  image_url: 'https://example.test/signed.jpg',
-}
-
-/** What the accessor actually returns once a hide stops being restorable. */
-const UNRESTORABLE: HiddenPostcard = {
-  postcard_id: 'p2',
-  hidden_at: '2026-09-02T10:00:00Z',
-  restorable: false,
-  caption: null,
-  author_username: null,
-  taken_place_name: null,
-  image_path: null,
-  created_at: null,
-}
-
 describe('HiddenPostcardsList', () => {
-  it('renders the caption and author of a restorable row', () => {
-    rows = [RESTORABLE]
+  it('offers an unhide for each row', () => {
+    rows = [{ postcard_id: 'p1', hidden_at: '2026-09-01T10:00:00Z' }]
     const html = render()
 
-    expect(html).toContain('Coast road at dawn')
-    expect(html).toContain('ripper')
     expect(html).toContain('Unhide')
+    expect(html).toContain('Hidden 1 Sept 2026')
   })
 
-  it('says nothing specific about why a row is unrestorable', () => {
-    rows = [UNRESTORABLE]
-    const html = render()
+  it('renders two rows identically apart from their date', () => {
+    // The whole security property, stated as an assertion: whatever differs
+    // between two hidden postcards must not reach the markup.
+    rows = [{ postcard_id: 'a', hidden_at: '2026-09-01T10:00:00Z' }]
+    const first = render()
+    rows = [{ postcard_id: 'b', hidden_at: '2026-09-01T10:00:00Z' }]
+    const second = render()
 
-    expect(html).toContain('isn’t available to you any more')
-    // The three reasons must be indistinguishable. Any of these words would
-    // name one of them.
-    expect(html).not.toMatch(/block|left the club|deleted their account/i)
-    // Unhide restores nothing here, so the affordance clears the row instead.
-    expect(html).toContain('Remove')
-    expect(html).not.toContain('Unhide')
+    expect(first).toBe(second)
   })
 
-  it('refuses to render a preview the accessor should never have sent with restorable false', () => {
-    // A row that cannot occur today: the flag is false but the preview columns
-    // are populated. This is the regression shape — a migration that stops
-    // NULLing the columns — and the component is the second line of defence.
+  it('renders nothing extra even if the accessor regresses and sends a preview', () => {
+    // Shapes `106` cannot produce. If a later migration puts them back, the
+    // component must still refuse to draw them.
     rows = [
       {
-        ...UNRESTORABLE,
+        postcard_id: 'p2',
+        hidden_at: '2026-09-02T10:00:00Z',
+        // @ts-expect-error — deliberately not on HiddenPostcard any more
+        restorable: false,
         caption: 'Coast road at dawn',
         author_username: 'ripper',
         taken_place_name: 'Zandvoort',
@@ -120,7 +94,9 @@ describe('HiddenPostcardsList', () => {
     expect(html).not.toContain('Coast road at dawn')
     expect(html).not.toContain('Zandvoort')
     expect(html).not.toContain('leaked.jpg')
-    expect(html).toContain('isn’t available to you any more')
+    // And no "this one is gone" state, which is the shape that carried the leak.
+    expect(html).not.toMatch(/no longer|isn’t available|unavailable/i)
+    expect(html).toContain('Unhide')
   })
 
   it('distinguishes an empty list from a failed read', () => {

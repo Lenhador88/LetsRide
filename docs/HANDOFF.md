@@ -192,7 +192,7 @@ See `docs/reference/running-locally.md` §The walk.
 
 ## A block and a hide can be undone, and neither was a screen problem — 2026-09-05
 
-**PD-298, `105_a_block_and_a_hide_can_be_undone.sql`, applied to DEV.** Profile → ⋯ → **Privacy**
+**PD-298, `105_a_block_and_a_hide_can_be_undone.sql` + `106` (which narrows the hides accessor after review), applied to DEV.** Profile → ⋯ → **Privacy**
 now carries a blocked-riders list and a hidden-postcards list — the first callers `unblockRider`
 and `unhidePostcard` have ever had. Owner's choice of proposal 3, in the existing `PrivacySheet`
 rather than a new route.
@@ -221,12 +221,21 @@ fix, and each carries a visibility rule, which is why this went through `openspe
   the list can never be lifted**, which is PD-298's own defect one level down. Pinned at both
   layers: `105.3` in the suite, and `BlockedRidersList.test.tsx` against a `.filter()` added later
   to tidy the render.
-- **`restorable` is a boolean and must never become an enum.** A hide stops being restorable for
-  three reasons and one is *the author blocked you*; naming it turns the list into a **block
-  detector**, against a property `rls_test.sql` defends in as many words. The reasons are
-  collapsed **in the function**, so no reason reaches the client to be leaked by accident. The
-  component test asserts the second line of defence — a row with `restorable: false` carrying a
-  populated preview must still render nothing.
+- **The hidden list carries NO per-row detail at all, and that is a security property rather than
+  an unfinished screen.** The first cut returned `restorable` plus a preview, collapsing three
+  reasons into one boolean. **The pre-merge review showed that is still a block detector, and it
+  is the finding worth carrying**: for a postcard with `club_id is null` the club arm is vacuous,
+  so `restorable` reduces to `not is_blocked(me, author)` — and `my_blocked_riders()`, shipped in
+  the same change, tells a rider their own *outbound* blocks. Subtract one from the other and a
+  quiet row says *"that rider blocked me"*, repeatably, on a schedule the rider picks. The
+  three-way collapse was also only two-way: account deletion cascades the hide row away entirely
+  (`105.10` asserts it), so it can never produce an unrestorable row.
+  **No predicate fixes this** — for a non-club postcard the only reason to withhold is a block, so
+  withholding *is* the signal and not withholding leaks the author's photo. `106` removed the
+  differentiation instead: two columns, `postcard_id` and `hidden_at`, both facts about something
+  the rider did. A component test asserts two rows render byte-identically apart from the date.
+  **Enriching this list re-opens the channel**, and every enrichment looks like an obvious
+  improvement.
 - **Neither list can show an image, and this is structural rather than unfinished.** Storage
   signing is a second authorization pass run **as the rider**, and `010`'s policies resolve an
   `EXISTS` against `profiles`/`postcards` under the caller's own RLS. A `security definer`
