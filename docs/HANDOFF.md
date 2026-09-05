@@ -314,17 +314,19 @@ over rows already in hand. If a ride ever routinely overruns `RIDE_TIMELINE_JOIN
 
 **Two things this left standing, both the owner's call:**
 
-- **`PostcardStamp` is rendered by nothing.** It is the perforated tile asked for on 2026-08-27 and
-  the presentation PD-257's journal route is drawn with, so it was not deleted with the strip that
-  used it. Either PD-257 brings it back or it goes with that story. Check rather than assume it is
-  still orphaned — a later screen may have picked it up:
+- **`PostcardStamp` is DELETED — product owner, 2026-09-05, asked directly.** It was orphaned the
+  moment the ride Journal dissolved, and the choice was between PD-257 bringing it back and it
+  going with that story; the owner chose deletion. The component, its test, its `stamp-edge` mask
+  and its postmark are gone, and **PD-257 now owes a tile of its own** if that story is ever
+  built — `docs/FIGMA-FIDELITY-TODO.md` §The stamp as a franked postal stamp keeps the four
+  measurements a rebuild would need. Every postcard in the app is a `PostcardCard`:
 
   ```bash
-  git grep -l "postcards/PostcardStamp'" -- src/ | grep -vE '__tests__|PostcardStamp\.tsx'
+  git ls-files src/ | grep -c PostcardStamp    # 0
   ```
 
-  Grep the IMPORT, not the name: four files mention `PostcardStamp` in prose, and the second
-  filter drops the component itself, which matches its own doc comment.
+  The FILE, not the name: three files still mention the stamp in past tense, deliberately, and a
+  grep for the word counts those obituaries — CLAUDE.md §Technology Decisions' comment trap.
 
 - **`mergeClubTimeline` can read `complete` while a source still has rows behind it.** It derives
   completeness from *"the horizon filter dropped nothing"*; `mergeRideTimeline` uses the stronger

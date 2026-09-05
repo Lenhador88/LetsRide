@@ -358,11 +358,13 @@ function PostcardCardComponent({
             to one of the club's RIDES, not because it was posted to the club.
 
             **The marker lives here because the club timeline dissolved the
-            strip that used to carry it.** `ClubPostcardCarousel` drew
+            strip that used to carry it.** `ClubPostcardCarousel` drew the old
             `PostcardStamp` with `fromRide`, and it was the only renderer of
             this flag anywhere; deleting the strip without moving the marker
             would have left `086`, its RPC and its column live and invisible.
-            Same glyph, same sentence, one row down.
+            Same glyph, same sentence, one row down. **This is now the only
+            renderer of the flag that exists** — the stamp itself was deleted
+            with the ride Journal (PD-393), so `086` has exactly one surface.
 
             Only `getClubFeed` can answer the flag, so it is undefined — and
             this is silent — on every other surface, which is the intended
@@ -372,8 +374,7 @@ function PostcardCardComponent({
           <>
             <BikeIcon className="ml-1 h-3 w-3 shrink-0 text-muted" aria-hidden="true" />
             {/* The glyph is decorative, so the provenance has to be in words
-                for anyone not looking at it — `PostcardStamp` puts the same
-                clause in its label. */}
+                for anyone not looking at it. */}
             <span className="sr-only">&nbsp;— from a ride</span>
           </>
         )}

@@ -576,9 +576,14 @@ is a drawn value this repo no longer builds:
       `/rides/detail/journal` rather than the tile). The trade is deliberate and
       product-owner-approved: a tile does not
       show the caption, likes or comment count `PostcardCard` drew in place. **It does show the
-      byline as of 2026-08-27** (PD-316 and its follow-up) — both strips draw `PostcardStamp`,
+      byline as of 2026-08-27** (PD-316 and its follow-up) — both strips drew `PostcardStamp`,
       a perforated postage-stamp frame with the author's avatar and username beneath it, and a
-      tap opens the postcard as a popup rather than navigating. No frame draws any of this: the
+      tap opened the postcard as a popup rather than navigating. **Both strips and the tile are
+      gone**: the club's dissolved into its timeline on 2026-08-31, the ride's into its own on
+      2026-09-05 (PD-393), and the component and its `stamp-edge` mask were deleted with the
+      second on the product owner's call. Every postcard in the app is a `PostcardCard` now.
+      This paragraph is kept as the record of what was built and why, not as a description of
+      the screen. No frame draws any of this: the
       stamp is the product owner's word rather than a Figma component (`npm run figma -- ls |
       grep -i stamp` is empty), so there is nothing in `design/` to diff it against and the
       geometry — 128px tiles, 6px frame, 8px gap — is this app's own. The 112px it read before
@@ -1775,13 +1780,15 @@ state occur that the design was drawn assuming could not.
       threads and members are for its members."* and, for a refused rider, *"You asked to join.
       The club said no."* The second is the ONLY place in the product a decline is told — `085`
       can write no notification for it — so its tone is load-bearing rather than cosmetic.
-- [ ] **The ride marker on `PostcardStamp`** (`086`). There is **no stamp component in Figma at
-      all**, and `v2 / Component / Postcard`'s only provenance row is `User name · in · Club
-      name`. A `BikeIcon` at `h-3 w-3` in `text-muted`, `shrink-0`, at the end of the byline
-      row — measured icon at a measured type scale. Two placements were refused for structural
-      reasons rather than taste, and a redesign has to answer both: a corner badge is bitten by
-      `stamp-edge`'s mask and falls outside the `filter: drop-shadow` that follows the notch,
-      and a third row changes a tile height that sizes neighbours on TWO different strips.
+- [ ] **The ride marker** (`086`), now on `PostcardCard` alone. `v2 / Component / Postcard`'s
+      only provenance row is `User name · in · Club name`, so the marker is invented: a
+      `BikeIcon` at `h-3 w-3` in `text-muted`, `shrink-0`, at the end of the byline row —
+      measured icon at a measured type scale. **It moved off the stamp when the club timeline
+      dissolved that strip, and the stamp itself is deleted as of 2026-09-05 (PD-393)**, so the
+      two placements the stamp refused for structural reasons — a corner badge bitten by
+      `stamp-edge`'s mask, and a third row changing a tile height that sized neighbours on two
+      strips — are no longer constraints on a redesign. A designer answering this is free of
+      them; the open question is only whether a glyph is the right marker at all.
 
 **Contrast, carried forward rather than introduced.** `RequestToJoinButton` reuses
 `JoinClubButton`'s class string byte for byte, so no new pairing ships — but it raises the
@@ -1789,7 +1796,13 @@ instance count of `Accent Brand/100` on `White/100` at Poppins/14/Semibold, meas
 against a 4.5:1 bar (14px semibold is not WCAG large). Its cream sibling is already logged at
 3.00:1 under §Ride detail. The accent-on-light pairing wants one decision, not one per button.
 
-### The stamp as a franked postal stamp — built 2026-08-29 (PD-350)
+### The stamp as a franked postal stamp — built 2026-08-29 (PD-350), DELETED 2026-09-05
+
+**Everything in this section describes a component that no longer exists.** `PostcardStamp`, its
+postmark, its printed byline and the `stamp-edge` mask were deleted with PD-393: the ride Journal
+was the last surface rendering it, the ride timeline draws `PostcardCard`s instead, and the
+product owner chose deletion over keeping it for PD-257. Kept as the record of what was built and
+of the four measurements a rebuild would need, not as a description of anything on screen.
 
 **Product owner**: *"the stamps, can we make them look a bit more motorcyclyy and add the poster
 avatar and name into them?"* There is still **no stamp component in Figma at all** — the section
@@ -1846,7 +1859,7 @@ is invented.
       (`h-5 w-5`, `gap-2.5`, `text-sm font-semibold`, truncating) are `/rides/detail`'s measured rows,
       but the card's padding, gap and hairline are invented. The organizer row — `Avatar size="sm"`,
       "*name* is organizing", right-aligned "N riders" — is an invented composition, with `Rider` as
-      the unreadable-username fallback that `PostcardStamp` already uses.
+      the unreadable-username fallback.
 - [ ] **The copy on that screen is entirely invented and one line of it is load-bearing**: the dead-link
       state says *"This link has expired"* and explains that links stop working once the ride departs
       and that the organizer can turn one off — which is deliberately the SAME wording for a revoked,

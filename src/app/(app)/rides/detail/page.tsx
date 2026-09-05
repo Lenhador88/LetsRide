@@ -52,11 +52,11 @@ import type { RideDetail } from '@/types'
  *   made the club screen confusing, and the same argument arrives here with
  *   the same shape. Its `Add` tile survives as the `(+)` on the timeline's own
  *   heading — the entrance PD-125 exists to protect, moved rather than
- *   dropped. **`PostcardStamp` is left standing and is now rendered by
- *   nothing**: it is the perforated tile the product owner asked for on
- *   2026-08-27 and the presentation PD-257's own journal route is drawn with,
- *   so deleting it here would spend a design decision on a change that did not
- *   ask for it. Flagged rather than resolved.
+ *   dropped. **`PostcardStamp` went with it**, one commit later: the strip was
+ *   its last surface, and the product owner chose deleting it over keeping the
+ *   perforated tile for PD-257's unbuilt journal route. That story owes a tile
+ *   of its own now; `docs/FIGMA-FIDELITY-TODO.md` §The stamp as a franked
+ *   postal stamp keeps the measurements a rebuild would need.
  * - **The crew rail and the labelled chat row stay, above the stream.** The
  *   rail answers *who is coming* and the stream answers *what has happened*;
  *   the club detail keeps its member rail above its timeline for the identical

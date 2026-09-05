@@ -15,10 +15,13 @@ import { createContext, useContext } from 'react'
  * scope" is a trap rather than a design, and the same split is what `deck.ts`
  * already does for `PostcardDeck`.
  *
- * It buys something too: `PostcardStamp` needs only `usePostcardViewer`, and
- * importing it from here rather than from `PostcardViewer.tsx` keeps the
- * dialog — and the three `lib/data` reads it pulls in — out of the ride plan's
- * import graph until a rider actually opens one.
+ * It bought something too, and that half is now historical: `PostcardStamp`
+ * needed only `usePostcardViewer`, so importing it from here rather than from
+ * `PostcardViewer.tsx` kept the dialog — and the three `lib/data` reads it
+ * pulls in — out of the ride plan's import graph until a rider opened one.
+ * That component is deleted (PD-393, and the stamp with it), so the split now
+ * rests on the module-scope argument above alone, which was always the load-
+ * bearing one.
  */
 
 /**
