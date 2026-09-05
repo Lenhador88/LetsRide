@@ -65,9 +65,25 @@ const STAMP_WIDTH = 'w-32'
  * does not build that accessor. So the tile carries a boolean, not an identity,
  * and there is no navigation from a stamp to its ride.
  *
- * ## Two callers, and the second is why this is a component
+ * ## It has NO caller today — PD-393
  *
- * `RideJournal` draws it — and `PostcardCard` carries the same marker since
+ * `RideJournal` drew it, and PD-393 dissolved that strip into the ride's own
+ * timeline, whose photos are `PostcardCard`s like the club's. So nothing
+ * renders this component: it is kept, deliberately, because it is the
+ * perforated tile the product owner asked for on 2026-08-27 and the
+ * presentation PD-257's journal route is drawn with. If PD-257 is cancelled,
+ * this file and its `stamp-edge` mask go with it. Re-derive rather than trust
+ * that it is still orphaned, and grep for the IMPORT rather than the name —
+ * four files mention it in prose, this one included:
+ *
+ * ```
+ * git grep -l "postcards/PostcardStamp'" -- src/ \
+ *   | grep -vE '__tests__|PostcardStamp\.tsx'
+ * ```
+ *
+ * The second filter drops this file, which matches its own doc comment.
+ *
+ * The marker below outlived it: `PostcardCard` carries the same one since
  * the club timeline replaced the club's strip (2026-08-31) —
  * the club strip a merge later once the product owner saw what two gestures on
  * the same photos cost (*"lets do A. Same standard."*, 2026-08-27).
@@ -94,9 +110,11 @@ export function PostcardStamp({
    * Draw the ride glyph — this photo reached the strip through the club's RIDE
    * rather than because it was posted to the club (`086`, PD-328).
    *
-   * **Defaults to false, and `RideJournal` never passes it.** Every stamp there
-   * is from that ride by construction, so a marker would be on every tile and
-   * would say nothing. Only a CLUB surface has a mix to distinguish, and
+   * **Defaults to false, and the deleted `RideJournal` never passed it.**
+   * Every stamp there was from that ride by construction, so a marker would
+   * have been on every tile and would have said nothing — the ride timeline
+   * that replaced it makes the same call at its own `PostcardCard` call site,
+   * for the same reason. Only a CLUB surface has a mix to distinguish, and
    * since the club timeline that surface is `PostcardCard` rather than this.
    */
   fromRide?: boolean

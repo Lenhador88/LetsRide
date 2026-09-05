@@ -431,8 +431,9 @@ is a drawn value this repo no longer builds:
       components are now deleted** (the carousel with the club timeline, the row with the
       create bar on 2026-08-31), so ONE live instance remains, plus the unlogged Journal one;
       the same
-      pairing already ships unlogged on `RideJournalEmpty`'s `Add`, and this entry's own
-      unselected-RSVP-button line logs it at the same ratio. Recorded because the commit that
+      pairing shipped unlogged on `RideJournalEmpty`'s `Add` until PD-393 deleted that
+      component, and reappears on the ride timeline's own `Time Since` (§Ride detail), and
+      this entry's own unselected-RSVP-button line logs it at the same ratio. Recorded because the commit that
       added them re-counted the *accent* pairing carefully and said nothing about this one,
       which left this file asserting a complete contrast sweep it had not done.
 
@@ -459,7 +460,8 @@ is a drawn value this repo no longer builds:
 
       ```bash
       grep -n "text-muted\|text-xs" src/components/clubs/ClubTimelineEventRow.tsx \
-        src/components/clubs/ClubTimelineThreadRow.tsx src/components/rides/RideJournal.tsx
+        src/components/clubs/ClubTimelineThreadRow.tsx \
+        src/components/rides/RideTimelineEventRow.tsx
       ```
 
       `text-foreground` on `bg-track` is fine at **12.65:1** and is what both the row's title
@@ -881,6 +883,16 @@ measurement as current.
         own bounds; a ride that overruns them is cut at the horizon and says so, handing off to
         the crew list. See `src/lib/data/ride-timeline.ts` for why a bounded event does not
         borrow a place's paging machinery.
+  - [ ] **Both already-logged contrast failures now ship on a SECOND screen, and that is what
+        the designer answer has to price.** Measured on this diff rather than inherited:
+        `text-muted` `#666666` on `bg-track` `#E5DACF` at 12px — the announcement row's
+        `Time Since` — is **4.17:1**, and `text-accent` `#3D996B` on `--color-background`
+        `#F2ECE6` at 14px semibold — the cut foot's `riders` link — is **3.00:1**. Both against
+        a 4.5:1 bar, neither WCAG large text. Neither is new: both are the club timeline's own
+        pairings reused verbatim, logged above and at §Club detail and left as drawn pending
+        PD-176. `text-foreground` `#1A1A1A` on `bg-track` is fine at **12.65:1** and is what the
+        sentence itself uses, so the failures are confined to the supporting lines exactly as
+        they are on the club.
 - [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
       `Ride - Chat - Text focus` (`2242:11086`) at `/rides/detail/chat`. **It did not need the
       Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of

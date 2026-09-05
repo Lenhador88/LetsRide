@@ -211,8 +211,11 @@ over rows already in hand. If a ride ever routinely overruns `RIDE_TIMELINE_JOIN
   still orphaned — a later screen may have picked it up:
 
   ```bash
-  git grep -l "PostcardStamp" -- 'src/**/*.tsx' | grep -v __tests__ | grep -v components/postcards/PostcardStamp.tsx
+  git grep -l "postcards/PostcardStamp'" -- src/ | grep -vE '__tests__|PostcardStamp\.tsx'
   ```
+
+  Grep the IMPORT, not the name: four files mention `PostcardStamp` in prose, and the second
+  filter drops the component itself, which matches its own doc comment.
 
 - **`mergeClubTimeline` can read `complete` while a source still has rows behind it.** It derives
   completeness from *"the horizon filter dropped nothing"*; `mergeRideTimeline` uses the stronger

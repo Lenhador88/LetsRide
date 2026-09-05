@@ -22,12 +22,25 @@
  * ## "Strong" is three tests, and none of them is sufficient alone
  *
  * The axis is already claimed on several of these screens — `PostcardDeck` owns
- * left/right on its front card, and two scrollers sit on screens the gesture
- * reaches: `RideJournal` on the ride detail, and the club's own ride strip on
- * the club detail. (It was three until the club timeline dissolved the club's
- * postcard strip on 2026-08-31 — its postcards are cards in the stream now, and
- * a card does not scroll sideways.) So the gesture has to be one nobody performs
- * by accident on those.
+ * left/right on its front card, and a scroller sits on a screen the gesture
+ * reaches: the club's own ride strip on the club detail. (It was three: the
+ * club timeline dissolved the club's postcard strip on 2026-08-31, and PD-393
+ * dissolved the ride detail's `RideJournal` on 2026-09-05. Both are cards in a
+ * stream now, and a card does not scroll sideways.) So the gesture has to be
+ * one nobody performs by accident on those.
+ *
+ * **Count them rather than trust that sentence** — it has gone stale twice.
+ * `src/app/` as well as `src/components/`, and comments excluded, or the
+ * census misses the club's strip (it is inline on that page) and counts this
+ * file's own prose:
+ *
+ * ```
+ * grep -rn "overflow-x-auto" src/app src/components --include=*.tsx \
+ *   | grep -vE ':[0-9]+:[[:space:]]*(\*|//|/\*)'
+ * ```
+ *
+ * Three today: the club detail's ride strip, `FilterTile`, and the skeleton
+ * that stands in for it.
  *
  * **`ExploreRidesStrip` is NOT one of them, and PD-341's own body says it is.**
  * It is a single 56px link row with no `overflow-x` at all — it stopped being a
@@ -53,9 +66,9 @@
  *    threshold set for one feels broken for the other.
  *
  * **The edge test alone is not enough, which is the trap worth naming.** Those
- * scrollers are full-bleed — `RideJournal` and the club's ride strip carry
- * their padding *inside* the scrolling element, so the element itself starts at
- * x0 and an edge-origin drag lands inside one. `declinesSwipeBack` is what
+ * scrollers are full-bleed — the club's ride strip carries its padding
+ * *inside* the scrolling element, so the element itself starts at x0 and an
+ * edge-origin drag lands inside one. `declinesSwipeBack` is what
  * closes that, and it is a separate test rather than a tuning of this one.
  *
  * ## No `preventDefault`, anywhere
@@ -183,7 +196,7 @@ const TEXT_ENTRY_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
  *
  * Three reasons, and each covers a case the others cannot see:
  *
- * - **It scrolls horizontally.** `RideJournal`, the club detail's ride strip,
+ * - **It scrolls horizontally.** The club detail's ride strip,
  *   `FilterTile` — and anything added later, which is
  *   the point of testing the geometry rather than keeping a list of component
  *   names that goes stale silently. This list had gone stale before it was

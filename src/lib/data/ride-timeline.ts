@@ -2,7 +2,7 @@ import { MEMBER_PROFILE_EMBED } from '@/lib/data/columns'
 import { resolveAvatarUrls } from '@/lib/data/media'
 import { unwrapList } from '@/lib/data/unwrap'
 import { resolveSupabase } from '@/lib/supabase/resolve'
-import { boundedHorizon, type TimelineSource } from '@/lib/timeline/window'
+import type { TimelineSource } from '@/lib/timeline/window'
 import { rideIdSchema } from '@/lib/validation/rides'
 import type { Postcard, PublicProfile } from '@/types'
 
@@ -320,7 +320,18 @@ export async function getRideJoins(
       // promise, so the bound could drop one and repeat the other.
       .order('user_id', { ascending: false })
       .eq('ride_id', rideId)
-      .limit(limit),
+      // **`limit + 1`, and the extra row is never drawn** — it exists only to
+      // answer "is there more behind this" exactly rather than conservatively.
+      // `boundedHorizon`'s rule (a read that came back full may have more
+      // behind it) cannot tell a ride with exactly `limit` riders from one
+      // with more, so at exactly sixty it declares a horizon the read did not
+      // actually hit. That is safe on the club, where the display cap always
+      // cuts first; here it is visible, because `103` guarantees the
+      // organizer's row exists and is the OLDEST — so the phantom horizon
+      // lands on ~`rides.created_at`, withholds the founding entry and puts
+      // "Showing the most recent activity" under a stream that is complete.
+      // One extra row removes the ambiguity for one extra row's bandwidth.
+      .limit(limit + 1),
     "this ride's recent riders",
   ) as unknown as {
     user_id: string
@@ -329,13 +340,19 @@ export async function getRideJoins(
     profile: PublicProfile | null
   }[]
 
-  const members = rows.filter((row): row is RideJoin => !!row.profile?.username)
+  const more = rows.length > limit
+  const window = rows.slice(0, limit)
+
+  const members = window.filter((row): row is RideJoin => !!row.profile?.username)
   await resolveAvatarUrls(members.map((member) => member.profile), supabase)
 
-  // The horizon comes from `rows`, before the filter — see
-  // `TimelineSource.horizon`. The filter drops rows Postgres already counted
-  // against the limit, so one rider with a NULL username in the newest sixty
+  // The horizon comes from `window`, before the username filter — see
+  // `TimelineSource.horizon`. That filter drops rows Postgres already counted
+  // against the limit, so one rider mid-onboarding among the newest sixty
   // would otherwise make a saturated read look short and report no horizon at
   // all.
-  return { rows: members, horizon: boundedHorizon(rows, limit, (row) => row.joined_at) }
+  return {
+    rows: members,
+    horizon: more && window.length > 0 ? window[window.length - 1].joined_at : null,
+  }
 }

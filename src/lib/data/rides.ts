@@ -1251,7 +1251,8 @@ type CrewRideRow = RideOption & { departure_at: string }
  * `041`'s tag and `club_id` are orthogonal (design.md §D4).
  *
  * **`only` is what stops the cap re-creating the defect this story exists to
- * fix.** `RideJournal`'s `Add` deep-links to a specific ride, and `seedRideId`
+ * fix.** The ride timeline heading's `(+)` deep-links to a specific ride
+ * (`RideJournal`'s `Add` tile until PD-393 dissolved that strip), and `seedRideId`
  * falls back to no-ride for any id the list does not carry — so without this, a
  * rider crew of more than `CREW_RIDES_SCAN_LIMIT` rides taps `Add` inside ride
  * X, gets a composer reading "No ride", posts, and the photo never appears in

@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  getRideJoins,
   groupRideTimeline,
   mergeRideTimeline,
   RIDE_TIMELINE_JOINS,
@@ -30,6 +31,12 @@ import type { Postcard } from '@/types'
  * `complete` guard on the floor entry fails `withholds the founding while the
  * stream is cut`.
  */
+
+const from = vi.fn()
+
+vi.mock('@/lib/supabase/resolve', () => ({
+  resolveSupabase: async () => ({ from }),
+}))
 
 const ORGANIZER = 'organizer-1'
 
@@ -265,5 +272,93 @@ describe('the bounds this merge depends on', () => {
   it('reads at least a page of each source', () => {
     expect(FEED_PAGE_SIZE).toBeGreaterThanOrEqual(RIDE_TIMELINE_LIMIT)
     expect(RIDE_TIMELINE_JOINS).toBeGreaterThanOrEqual(RIDE_TIMELINE_LIMIT)
+  })
+})
+
+
+/**
+ * `getRideJoins`' horizon, which is the one thing in this read a rider can
+ * actually see go wrong.
+ *
+ * **It reads `limit + 1` and draws `limit`**, rather than using
+ * `boundedHorizon`. That helper's rule — a read that came back full may have
+ * more behind it — cannot separate a ride with exactly sixty riders from one
+ * with more, and here that ambiguity is visible rather than academic: `103`
+ * guarantees the organizer's crew row exists and is the oldest, so a phantom
+ * horizon lands on ~`rides.created_at`, `mergeRideTimeline` withholds the
+ * founding entry, and the foot claims the stream is cut when everything is on
+ * screen. Verified both ways: dropping the `+ 1` fails
+ * `reports no horizon on a ride sitting exactly on the bound`.
+ */
+const RIDE_ID = '11111111-1111-4111-8111-111111111111'
+
+/** Records what the builder was asked for and resolves like `postgrest-js`. */
+function crewBuilder(rows: unknown[]) {
+  const limitCalls: unknown[] = []
+  const builder: Record<string, unknown> = {}
+  builder.select = vi.fn(() => builder)
+  builder.order = vi.fn(() => builder)
+  builder.eq = vi.fn(() => builder)
+  builder.limit = vi.fn((n: unknown) => {
+    limitCalls.push(n)
+    return builder
+  })
+  builder.then = (resolve: (value: { data: unknown[]; error: null }) => void) =>
+    resolve({ data: rows, error: null })
+  return { builder, limitCalls }
+}
+
+const crewRow = (i: number) => ({
+  user_id: `rider-${i}`,
+  status: 'going',
+  joined_at: new Date(Date.UTC(2026, 8, 5, 12) - i * 60_000).toISOString(),
+  profile: { id: `rider-${i}`, username: `rider${i}`, avatar_path: null, bike_model: null },
+})
+
+describe('getRideJoins — the horizon', () => {
+  beforeEach(() => from.mockReset())
+
+  it('reports no horizon on a ride sitting exactly on the bound', async () => {
+    const { builder, limitCalls } = crewBuilder(
+      Array.from({ length: RIDE_TIMELINE_JOINS }, (_, i) => crewRow(i))
+    )
+    from.mockReturnValue(builder)
+
+    const source = await getRideJoins(RIDE_ID)
+
+    // The probe row is asked for and never drawn.
+    expect(limitCalls).toEqual([RIDE_TIMELINE_JOINS + 1])
+    expect(source.rows).toHaveLength(RIDE_TIMELINE_JOINS)
+    expect(source.horizon).toBeNull()
+  })
+
+  it('reports the oldest DRAWN row when the probe came back', async () => {
+    const rows = Array.from({ length: RIDE_TIMELINE_JOINS + 1 }, (_, i) => crewRow(i))
+    const { builder } = crewBuilder(rows)
+    from.mockReturnValue(builder)
+
+    const source = await getRideJoins(RIDE_ID)
+
+    expect(source.rows).toHaveLength(RIDE_TIMELINE_JOINS)
+    expect(source.horizon).toBe(rows[RIDE_TIMELINE_JOINS - 1].joined_at)
+  })
+
+  /** The horizon is taken before the username filter, so a rider the
+   *  `profiles` policy hides cannot make a saturated read look short. */
+  it('keeps the horizon when a hidden rider is dropped from a full window', async () => {
+    const rows = Array.from({ length: RIDE_TIMELINE_JOINS + 1 }, (_, i) => crewRow(i))
+    ;(rows[0].profile as { username: string | null }).username = null
+    const { builder } = crewBuilder(rows)
+    from.mockReturnValue(builder)
+
+    const source = await getRideJoins(RIDE_ID)
+
+    expect(source.rows).toHaveLength(RIDE_TIMELINE_JOINS - 1)
+    expect(source.horizon).toBe(rows[RIDE_TIMELINE_JOINS - 1].joined_at)
+  })
+
+  it('refuses a malformed ride id without calling the database at all', async () => {
+    expect(await getRideJoins('not-a-uuid')).toEqual({ rows: [], horizon: null })
+    expect(from).not.toHaveBeenCalled()
   })
 })
