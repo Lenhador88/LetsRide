@@ -97,7 +97,11 @@ describe('JoinClubButton — the sheet opens instead of the join, never after it
       HANDLER.indexOf('if (owesIntroduction('),
       HANDLER.indexOf('const result = await joinClub(clubId)')
     )
-    expect(gate).toContain('onIntroduce?.(clubId)')
+    // Called, not optionally-called: the prop is required, because an
+    // undefined opener here is a Join button that writes nothing and opens
+    // nothing — which is what `/clubs`' first-run screen shipped into review.
+    expect(gate).toContain('onIntroduce(clubId)')
+    expect(gate).not.toContain('onIntroduce?.(')
     expect(gate).toContain('return')
 
     // …and the gate is on the real rule, reached with the freshness answer.
@@ -139,8 +143,17 @@ describe('JoinClubButton — the sheet opens instead of the join, never after it
   })
 
   it('still renders Join club and preventDefault/stopPropagation on the tap', () => {
+    // `onIntroduce` is REQUIRED, and this render is why that matters: it used
+    // to omit the callback and assert only the label, which is exactly the
+    // shape that let `/clubs`' first-run screen mount this control with no
+    // opener — a Join button that wrote nothing and opened nothing.
     const html = renderToStaticMarkup(
-      <JoinClubButton clubId="club-1" clubName="Test Club" isDefaultClub={false} />
+      <JoinClubButton
+        clubId="club-1"
+        clubName="Test Club"
+        isDefaultClub={false}
+        onIntroduce={vi.fn()}
+      />
     )
     expect(html).toContain('Join club')
     expect(SOURCE).toContain('event.preventDefault()')

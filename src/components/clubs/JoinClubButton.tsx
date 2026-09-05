@@ -57,10 +57,18 @@ import { hasIntroducedClub, owesIntroduction } from '@/lib/data/club-introductio
  * **What the read cannot tell us is membership**, only whether an introduction
  * exists. A rider who is already a member and has *not* introduced themselves
  * is a stale row this guard still lets through, and they see the pre-join copy
- * over a membership they already hold. It is harmless — `Post`'s join no-ops
- * cleanly and the introduction lands — and closing it properly means a second
- * round trip for a state that costs one imprecise sentence. Labelled here
- * rather than left to be rediscovered.
+ * over a membership they already hold.
+ *
+ * **That is one imprecise sentence AND one hole in the dismissal iff**, and the
+ * second is the part worth writing down. If that rider taps `Join later`, the
+ * sheet reports `membershipExists: false` — because its latch only knows about
+ * a join *it* performed — so no session dismissal is recorded although a
+ * membership exists. **It fails in the safe direction**: they are re-prompted
+ * by the club detail's own state-driven sheet rather than silenced, which is
+ * the opposite of the failure PD-392 is about. Closing it properly costs a
+ * second round trip on every tap to fix a state that costs one extra prompt, so
+ * it is left open deliberately and recorded here rather than left for the next
+ * reader to find an iff hole and re-derive that it is benign.
  *
  * ## `isDefaultClub` is READ, never assumed
  *
@@ -92,9 +100,20 @@ export function JoinClubButton({
   clubName: string
   /** `clubs.is_default` for this row — see the header; never hardcoded. */
   isDefaultClub: boolean
-  /** Open the pre-join sheet for this club. Nothing has been written when it
-   *  fires — see the header. */
-  onIntroduce?: (clubId: string) => void
+  /**
+   * Open the pre-join sheet for this club. Nothing has been written when it
+   * fires — see the header.
+   *
+   * **Required, and it is the prop that carries the entire write.** It was
+   * optional through one review, and that made a real defect invisible to
+   * `tsc`: `/clubs`' first-run screen mounted this control with no opener, so
+   * every `Join club` on the screen a rider sees *before they have joined
+   * anything* did nothing at all — no membership, no sheet, and no error,
+   * because the handler returns before the write. `mode` and `isDefaultClub`
+   * were made required in the same change for the same reason; this one had
+   * the most to lose by not being.
+   */
+  onIntroduce: (clubId: string) => void
 }) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -119,7 +138,7 @@ export function JoinClubButton({
             // alone, so 'owner' is unreachable here.
             if (owesIntroduction({ viewerRole: 'member', isDefaultClub }, alreadyIntroduced)) {
               // Write nothing. `Post` joins; `Join later` does not.
-              onIntroduce?.(clubId)
+              onIntroduce(clubId)
               return
             }
 

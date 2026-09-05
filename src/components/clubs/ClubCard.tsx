@@ -61,21 +61,27 @@ import type { ClubListItem } from '@/types'
  * above the static content and takes the taps; the action lifts back over it
  * with `relative z-10`.
  */
-export function ClubCard({
-  club,
-  joined,
-  onIntroduce,
-}: {
-  club: ClubListItem
-  joined: boolean
-  /** Forwarded to `JoinClubButton` — *open the pre-join sheet for this club*,
-   *  not *a join happened*. Nothing is written when it fires (PD-392), and the
-   *  sheet lives above this row because `Post`'s join unmounts it mid-write.
-   *  See that component's header. Unused on a joined card, and never passed to
-   *  `RequestToJoinButton`: a private club is asked rather than joined, so no
-   *  path from it can reach the sheet. */
-  onIntroduce?: (clubId: string) => void
-}) {
+/**
+ * **A discriminated union rather than one optional prop, since PD-392.** A
+ * joined card draws an unread counter and no Join control, so an opener would
+ * be meaningless on it; an unjoined card draws one, and since PD-392 that
+ * control writes nothing on its own — without an opener it is a button that
+ * does nothing at all. Splitting on `joined` is what lets `tsc` say exactly
+ * that: required where it is load-bearing, absent where it is noise.
+ *
+ * `onIntroduce` means *open the pre-join sheet for this club*, not *a join
+ * happened*. Nothing is written when it fires, and the sheet lives above this
+ * row rather than inside it because `Post`'s join unmounts the row mid-write —
+ * see `JoinClubButton`'s header. It is never passed to `RequestToJoinButton`: a
+ * private club is asked rather than joined, so no path from it reaches the
+ * sheet.
+ */
+type ClubCardProps =
+  | { club: ClubListItem; joined: true }
+  | { club: ClubListItem; joined: false; onIntroduce: (clubId: string) => void }
+
+export function ClubCard(props: ClubCardProps) {
+  const { club, joined } = props
   const overflow = club.members_count - club.riders.length
   const TypeIcon = club.is_public ? Globe2Icon : Lock2Icon
   // task 7.4 — see `Avatar`'s own comment for the shape of this, including
@@ -161,14 +167,17 @@ export function ClubCard({
       </div>
 
       <div className="relative z-10 flex shrink-0 items-center">
-        {joined ? (
+        {/* `props.joined`, not the destructured `joined` — narrowing the union
+            is what makes the required `onIntroduce` reachable without a
+            non-null assertion. */}
+        {props.joined ? (
           <UnreadCounter count={club.unread ?? 0} />
         ) : club.is_public ? (
           <JoinClubButton
             clubId={club.id}
             clubName={club.name}
             isDefaultClub={club.is_default}
-            onIntroduce={onIntroduce}
+            onIntroduce={props.onIntroduce}
           />
         ) : (
           // `085`. A private club reached through the discovery accessor is

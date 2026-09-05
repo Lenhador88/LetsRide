@@ -39,9 +39,19 @@ export function ExploreClubsList({
   clubs: ClubListItem[]
   /** Where distances were measured from, or null when there is no position. */
   near: NearLabel
-  /** Forwarded to every `JoinClubButton` on this list — *open the pre-join
-   *  sheet*, not *a join happened* (PD-392). See that component's header. */
-  onIntroduce?: (clubId: string) => void
+  /**
+   * Forwarded to every `JoinClubButton` on this list — *open the pre-join
+   * sheet*, not *a join happened* (PD-392). See that component's header.
+   *
+   * **Required, and that is the fix for a defect this list actually shipped
+   * into review.** Every card here is unjoined, so every one draws a Join
+   * control, and since PD-392 that control writes nothing on its own: without
+   * an opener it is a button that does nothing at all — no membership, no
+   * sheet, no error. This list is mounted from two screens and one of them was
+   * wired without it. An optional prop made that invisible to `tsc`; a required
+   * one makes every mount point declare where its sheet lives.
+   */
+  onIntroduce: (clubId: string) => void
 }) {
   const nearby = near ? clubs.filter((club) => isNearby(club.distance_km)) : []
   const rest = near ? clubs.filter((club) => !isNearby(club.distance_km)) : clubs
@@ -72,7 +82,7 @@ function ClubList({
   onIntroduce,
 }: {
   clubs: ClubListItem[]
-  onIntroduce?: (clubId: string) => void
+  onIntroduce: (clubId: string) => void
 }) {
   return (
     <ul className="flex flex-col gap-2">

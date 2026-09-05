@@ -43,6 +43,8 @@ function read(relative: string): string {
 
 const DETAIL = read('../../../app/(app)/clubs/detail/page.tsx')
 const EXPLORE = read('../../../app/(app)/clubs/explore/page.tsx')
+const FIRST_RUN = read('../../../app/(app)/clubs/page.tsx')
+const QUEUE = read('../../../lib/clubs/use-introduction-queue.ts')
 
 describe('the club detail screen records a dismissal only when a membership exists', () => {
   it('guards its onDismiss on the fact the sheet reports', () => {
@@ -62,30 +64,55 @@ describe('the club detail screen records a dismissal only when a membership exis
   })
 })
 
-describe('the Explore screen records a dismissal only when a membership exists', () => {
+describe('the shared queue records a dismissal only when a membership exists', () => {
   it('takes the fact as a parameter rather than assuming it', () => {
-    expect(EXPLORE).toContain('const advanceIntroductions = (recordDismissal: boolean) =>')
-    expect(EXPLORE).toContain(
-      'if (recordDismissal && introducingClubId) dismissIntroductionPrompt(introducingClubId)'
-    )
+    // The rule moved into `useIntroductionQueue` when the pre-merge review
+    // found `/clubs`' first-run screen mounting the same list with no opener
+    // at all. One home, two screens — two hand-written copies is how one of
+    // them drifts, and how one of them ends up without this guard.
+    expect(QUEUE).toContain('const advance = (recordDismissal: boolean) =>')
+    expect(QUEUE).toContain('if (recordDismissal && current) dismissIntroductionPrompt(current)')
   })
 
+  it('appends rather than assigns, so no queued club is silently dropped', () => {
+    // PD-384's dropped-prompt defect. Kept because the hook is now the only
+    // copy of it.
+    expect(QUEUE).toContain('[...queue, clubId]')
+  })
+})
+
+describe.each([
+  ['Explore', EXPLORE] as const,
+  ['the first-run Clubs screen', FIRST_RUN] as const,
+])('%s mounts the sheet correctly', (_name, SOURCE) => {
   it('passes the answer through on dismiss, and true on a successful post', () => {
-    expect(EXPLORE).toContain('onDismiss={(membershipExists) => advanceIntroductions(membershipExists)}')
-    expect(EXPLORE).toContain('onPosted={() => advanceIntroductions(true)}')
+    expect(SOURCE).toContain(
+      'onDismiss={(membershipExists) => advanceIntroductions(membershipExists)}'
+    )
+    expect(SOURCE).toContain('onPosted={() => advanceIntroductions(true)}')
   })
 
   it('opens its sheet in pre-join mode — nothing is written before Post', () => {
-    // Since PD-392 this screen's Join control writes nothing, so every sheet it
-    // mounts starts before a membership exists. A `member` here would put
-    // "Welcome to the club!" over a rider who has not joined.
-    expect(EXPLORE).toContain('mode="pre-join"')
+    // The Join control writes nothing, so every sheet these screens mount
+    // starts before a membership exists. A `member` here would put "Welcome to
+    // the club!" over a rider who has not joined.
+    expect(SOURCE).toContain('mode="pre-join"')
   })
 
-  it('still keys the sheet per club, so a draft cannot follow the queue', () => {
+  it('keys the sheet per club, so a draft cannot follow the queue', () => {
     // PD-384's misdirected-introduction defect: the id flipping under a live
     // draft posts the rider's words about club A into club B. The key is what
     // makes a different club a different component instance.
-    expect(EXPLORE).toContain('key={introducingClubId}')
+    expect(SOURCE).toContain('key={introducingClubId}')
+  })
+
+  it('actually supplies an opener to the list', () => {
+    // The defect the pre-merge review caught, and the reason this is asserted
+    // on BOTH screens rather than on the one the change started from:
+    // `ExploreClubsList` is mounted twice, and the first-run screen had no
+    // `onIntroduce` at all — so every `Join club` there did nothing, with no
+    // membership, no sheet and no error. `tsc` now refuses it too; this says
+    // why, where a reader will look.
+    expect(SOURCE).toContain('onIntroduce=')
   })
 })

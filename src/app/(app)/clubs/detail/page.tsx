@@ -453,6 +453,21 @@ function ClubScreen() {
           closes the sheet on the same tick rather than waiting on that round
           trip. */}
       <IntroductionPrompt
+        // `key={id}` makes "a sheet instance is one club" TRUE rather than
+        // merely believed. `ClubScreen` reads its id from `useSearchParams()`,
+        // so `?id=A` → `?id=B` is a same-route navigation: it re-renders
+        // without remounting, and a keyless sheet would carry `joined`, the
+        // draft and the error across. No such link exists today — every route
+        // to another club leaves this one — but the per-instance latch is
+        // asserted in prose as a safety property, and the failure it would
+        // cause is club B opening in member mode and becoming unjoinable
+        // (`097` refuses `introduceToClub` for a non-member). One line, so the
+        // guarantee does not depend on no one ever adding that link.
+        //
+        // It does NOT remount on the transition the no-key argument was about:
+        // `showIntroductionPrompt` flipping true under an open pre-join sheet
+        // does not change `id`.
+        key={id}
         clubId={id}
         mode={preJoinClubId === id ? 'pre-join' : 'member'}
         open={showIntroductionPrompt || preJoinClubId === id}

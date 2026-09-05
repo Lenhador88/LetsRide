@@ -25,13 +25,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * to this function is the order, the short-circuit, and the three outcomes.
  */
 
+/** Every call, in order, across both writers — the sequence is the assertion. */
+const calls: string[] = []
+
 const joinClub = vi.fn()
+// `leaveClub` is mocked even though nothing under test may call it — that is
+// the point. It is what gives the "no compensating delete" assertion something
+// that CAN fail: a reachable spy on the real module's real export.
+const leaveClub = vi.fn()
 // The indirection is not decoration: `vi.mock`'s factory is hoisted above these
 // declarations, so a bare `() => ({ joinClub })` reads the binding before it is
 // initialised. Referencing it inside a function body defers that to call time —
 // the same shape `ride-audience.test.ts` uses for its resolver.
 vi.mock('@/lib/actions/clubs', () => ({
   joinClub: (...args: unknown[]) => joinClub(...args),
+  leaveClub: (...args: unknown[]) => {
+    calls.push('leave')
+    return leaveClub(...args)
+  },
 }))
 
 const rpc = vi.fn()
@@ -51,9 +62,6 @@ vi.mock('@/lib/query', async (importOriginal) => ({
 import { joinAndIntroduceToClub } from '@/lib/actions/club-introductions'
 
 const CLUB = '11111111-1111-4111-8111-111111111111'
-
-/** Every call, in order, across both writers — the sequence is the assertion. */
-const calls: string[] = []
 
 beforeEach(() => {
   calls.length = 0
@@ -137,7 +145,13 @@ describe('joinAndIntroduceToClub — the join lands and the introduction does no
     // club and remove the member underneath it — the wake PD-392 refuses in
     // "Defer the join; do not undo it". The rider is left in `097`'s
     // first-class "joined, owes an introduction" state instead.
+    //
+    // `leaveClub` is mocked into the same `calls` log precisely so this can
+    // fail: an earlier version asserted `not.toContain('leave')` against a log
+    // nothing could ever push 'leave' into, which passes against every
+    // implementation and reads as coverage that is not there.
     expect(calls).not.toContain('leave')
+    expect(leaveClub).not.toHaveBeenCalled()
     expect(calls.filter((call) => call === 'join')).toHaveLength(1)
   })
 })
