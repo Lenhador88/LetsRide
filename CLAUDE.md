@@ -449,8 +449,10 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 104 files. DEV is at `104` and PROD at `100` — measured 2026-09-04.** The gap is
-`101`–`104`, all awaiting promotion. `103`/`104` (PD-103) were applied only after the build carrying
+**Applied state: 105 files. DEV is at `105` and PROD at `100` — measured 2026-09-05.** The gap is
+`101`–`105`, all awaiting promotion. `105` (PD-298) is purely additive — two `security definer`
+accessors and one index, no policy, grant, CHECK or trigger touched — so it has no unsafe side and
+may be promoted before or after its build serves. `103`/`104` (PD-103) were applied only after the build carrying
 them was confirmed **serving** on DEV (`READY` on the merge sha, `aliasError` null) — that gate is
 the sequencing rule below and is not the same as "after the merge". **`list_migrations` against both
 refs is the only honest answer to this line**, which was written wrong three times in one day before
@@ -499,7 +501,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3382** assertions — re-derive rather than trust it:
+Suite **3431** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 
@@ -518,11 +520,13 @@ never run. `complete_onboarding` also joins the caller to the club carrying `clu
 (`058`), inside a `when others` block, because a raise there would roll the completion stamp back
 and decision #5 gives a rider with a NULL stamp no way out of the wizard.
 
-**Security advisors: thirty-seven on both projects, and only one is outstanding** —
-`auth_leaked_password_protection`, a dashboard click. The other thirty-six are things this repo
-chose: one `authenticated_security_definer_function_executable` WARN per `security definer` RPC in
-`public` (each narrow by design — takes a row id, never a rider id, one raise site), and two
-`rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding
+**Security advisors: thirty-nine on DEV and thirty-seven on PROD, and only one is outstanding** —
+`auth_leaked_password_protection`, a dashboard click. **The two-advisor difference IS the pending
+`105` promotion**, which is the ordinary shape this section's last line describes rather than drift.
+The rest are things this repo chose: one
+`authenticated_security_definer_function_executable` WARN per `security definer` RPC in
+`public` (each narrow by design — takes a row id or nothing at all, never a rider id, one raise
+site), and two `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding
 two such functions adds two**, and one whose functions live in `private` adds none. Re-derive with
 `get_advisors(security)`; `docs/reference/migrations.md` §Security advisors has the per-migration
 accounting and the count query. An unexpected advisor is one not in that table; a one-advisor

@@ -321,9 +321,9 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 107 rows on DEV and 100 on PROD against 104 files. The DEV surplus is
-not a gap; the PROD shortfall IS one, and it is `101`, `102`, `103` and `104`.** DEV is level with
-the repo at `104`. `103`/`104` were applied only once the build carrying them was **confirmed
+**`list_migrations` prints 108 rows on DEV and 100 on PROD against 105 files. The DEV surplus is
+not a gap; the PROD shortfall IS one, and it is `101`, `102`, `103`, `104` and `105`.** DEV is level
+with the repo at `105`. `103`/`104` were applied only once the build carrying them was **confirmed
 serving** — `READY` on the merge sha with `aliasError` null, never merely "after the merge":
 `CLAUDE.md` §Supabase Rules names that distinction with a measured incident behind it (a destructive
 file applied 102 seconds after a merge, out from under a Preview still calling what it dropped), and
@@ -332,6 +332,22 @@ on 2026-09-01, again for `101`/`102` on 2026-09-03, and again for `103`/`104` on
 **both recorded WITHOUT their numeric prefix** (`creator_membership`, `club_member_owner_arm`),
 which is the majority convention here: `098`, `100` and `101` are the same and only `102` carries
 one.
+
+**`105_a_block_and_a_hide_can_be_undone` (PD-298) — applied to DEV 2026-09-05, recorded as
+`a_block_and_a_hide_can_be_undone` (no numeric prefix, the majority convention above).** Two
+`security definer` accessors in `public` — `my_blocked_riders()` and
+`my_hidden_postcards(timestamptz, int)` — plus `blocks_blocker_id_created_at_idx`. **Purely
+additive and inert, so it has no ordering constraint in either direction**: no policy, CHECK,
+grant, column or trigger moves, an older bundle never calls either function, and a newer bundle
+against the old database gets a PostgREST 404 on two reads that gate nothing else. Applied WHOLE
+— `md5(statements[1])` on DEV equals the file's raw `md5sum`, `b0a42e23d24342fe6e959e5621a369fa`,
+so this one is not §Applying a large file's case and needs no object diff.
+
+**Adds exactly two advisors, DEV 37 → 39, and the count was RUN rather than derived** (the
+proposal's +2 was arithmetic): one
+`authenticated_security_definer_function_executable` per function, both named in the payload, no
+new `rls_enabled_no_policy` because the file creates no table. PROD stays at 37 until the
+promotion. The definer-function count moved 34 → 36.
 
 **`103_creator_membership` + `104_club_member_owner_arm` (PD-103) — applied to DEV 2026-09-04,
 after the merge was confirmed serving; they are the ordering case rather than an exception to it.** `103` hangs two `AFTER INSERT` seeding
@@ -402,11 +418,11 @@ and re-derive both rather than trusting the numbers in this heading — they hav
 before, in the direction of reading one row too few.
 
 ```bash
-ls supabase/migrations/*.sql | wc -l    # 104
+ls supabase/migrations/*.sql | wc -l    # 105
 ```
 ```
 mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # PROD — 100 rows, last `100_club_thread_fan_outs_test_membership`
-mcp__Supabase__list_migrations fpmrimzxadewsaiwpsel   # DEV  — 104 rows, last `retire_club_thread_waves`
+mcp__Supabase__list_migrations fpmrimzxadewsaiwpsel   # DEV  — 108 rows, last `a_block_and_a_hide_can_be_undone`
 ```
 
 **`080`–`091` were promoted to PROD on 2026-08-30 around #348's build**, in the grouping
@@ -1077,7 +1093,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 104 — DEV at 104, PROD at 100 (101-104 await promotion)
+ls supabase/migrations/*.sql | wc -l     # 105 — DEV at 105, PROD at 100 (101-105 await promotion)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
@@ -1196,7 +1212,10 @@ projects, and it reads exactly like drift. Compare the OBJECT, never the recorde
 
 ## Security advisors
 
-**Security advisors: thirty-seven on both projects, and only one is outstanding.** Re-derive
+**Security advisors: thirty-nine on DEV and thirty-seven on PROD, and only one is outstanding.**
+The two-advisor difference is `105` awaiting promotion, which is the ordinary shape of a gap —
+a one- or two-advisor difference between the projects is almost always a pending promotion, never
+a finding on its own. Re-derive
 rather than trust the number — `get_advisors(security)`, or, without the payload,
 
 ```sql
@@ -1210,7 +1229,7 @@ cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 34 | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`). Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
+| 36 on DEV, 34 on PROD | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), and the two moderation-reversal accessors (`105`, DEV only until it promotes). Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
 | 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design: `026` and `078` revoke everything on their table from the client roles, so a policy would be the thing that granted reach |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 

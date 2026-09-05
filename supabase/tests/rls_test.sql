@@ -32040,6 +32040,463 @@ reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint creator_membership_103;
 
+-- ===========================================================================
+-- 105. A BLOCK AND A HIDE CAN BE UNDONE — the two accessors (PD-298)
+-- ===========================================================================
+-- 105 adds no policy. It adds two `security definer` functions in `public`
+-- that STAND IN FOR one — each restates a SELECT qual with a single conjunct
+-- removed — so the rule "a migration that changes a policy must add an
+-- assertion" applies with more force rather than less: inside a definer
+-- function RLS does not apply, `current_user` is the owner, no trigger guard
+-- beginning `if current_user <> 'authenticated'` runs, and the restated qual is
+-- the ENTIRE remaining access control on that read.
+--
+-- ** THE D7 TRAP, AND WHY THE PRIVILEGE ASSERTIONS BELOW ARE NOT CALLS. ** This
+-- suite runs as the table owner, for whom neither RLS nor a missing grant
+-- exists — which is exactly why 029 shipped a worker no role could reach and
+-- nothing went red. So 105.11 asks `has_function_privilege` and NAMES the role;
+-- a successful call from here would have proved nothing about either function.
+--
+-- The behavioural assertions all set `test.uid`, which is the idiom this
+-- harness shims `auth.uid()` onto. Setting `request.jwt.claims` here reaches
+-- NOTHING — auth.uid() would return NULL and every positive assertion below
+-- would pass while proving nothing, with only the negatives failing.
+--
+-- ** VERIFIED BOTH WAYS, 2026-09-05. ** Four mutations of the applied functions,
+-- each caught, and the suite stops at the FIRST failure — so the label named is
+-- the one a verifier will actually see, not necessarily the one that reads most
+-- like the defect:
+--   * restate `username is not null` in my_blocked_riders (the D2 mistake) ...... 105.1
+--   * return the preview columns unconditionally (the D4 leak) ................. 105.7
+--   * drop the self-hide exclusion (Q5) ........................................ 105.5
+--   * grant execute on either accessor to anon ................................. 105.11
+-- ===========================================================================
+savepoint block_and_hide_105;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000105001', 'pd298hider@example.com'),
+  ('00000000-0000-0000-0000-000000105002', 'pd298clubauthor@example.com'),
+  ('00000000-0000-0000-0000-000000105003', 'pd298blockingauthor@example.com'),
+  ('00000000-0000-0000-0000-000000105004', 'pd298other@example.com'),
+  ('00000000-0000-0000-0000-000000105005', 'pd298unonboarded@example.com'),
+  ('00000000-0000-0000-0000-000000105006', 'pd298bystander@example.com');
+reset role;
+
+-- ** 105005 IS LEFT WITHOUT A USERNAME ON PURPOSE ** — it is the whole of
+-- 105.3. Every other fixture rider is fully onboarded.
+update profiles p
+   set username = v.uname, location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000000105001', 'pd298hider'),
+      ('00000000-0000-0000-0000-000000105002', 'pd298clubauthor'),
+      ('00000000-0000-0000-0000-000000105003', 'pd298blockingauthor'),
+      ('00000000-0000-0000-0000-000000105004', 'pd298other'),
+      ('00000000-0000-0000-0000-000000105006', 'pd298bystander')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+-- A PRIVATE club, so the club conjunct of the restated qual has something to
+-- refuse once a member leaves. 103's trigger writes the owner's own row.
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001050000c1', 'PD298 Hidden Postcards MC', false,
+   '00000000-0000-0000-0000-000000105002');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001050000c1', '00000000-0000-0000-0000-000000105001', 'member'),
+  ('00000000-0000-0000-0000-0001050000c1', '00000000-0000-0000-0000-000000105006', 'member');
+
+insert into postcards (id, author_id, club_id, image_path, caption, taken_place_name, taken_location_precision) values
+  ('00000000-0000-0000-0000-0001050000e1', '00000000-0000-0000-0000-000000105002',
+   '00000000-0000-0000-0000-0001050000c1',
+   'postcards/00000000-0000-0000-0000-000000105002/aaaaaaaa-0000-4000-8000-000000105001.jpg',
+   'the club photo', 'Zandvoort', 'place'),
+  ('00000000-0000-0000-0000-0001050000e2', '00000000-0000-0000-0000-000000105003', null,
+   'postcards/00000000-0000-0000-0000-000000105003/aaaaaaaa-0000-4000-8000-000000105002.jpg',
+   'the blocking author''s photo', 'Assen', 'place'),
+  ('00000000-0000-0000-0000-0001050000e3', '00000000-0000-0000-0000-000000105001', null,
+   'postcards/00000000-0000-0000-0000-000000105001/aaaaaaaa-0000-4000-8000-000000105003.jpg',
+   'my own photo', 'Amsterdam', 'place');
+
+-- The hider hides three: a club postcard they can still reach, one whose author
+-- will block them, and ONE OF THEIR OWN. A second rider hides the first of
+-- those, which is what makes "hiding is per-viewer" assertable.
+insert into postcard_hides (postcard_id, user_id) values
+  ('00000000-0000-0000-0000-0001050000e1', '00000000-0000-0000-0000-000000105001'),
+  ('00000000-0000-0000-0000-0001050000e2', '00000000-0000-0000-0000-000000105001'),
+  ('00000000-0000-0000-0000-0001050000e3', '00000000-0000-0000-0000-000000105001'),
+  ('00000000-0000-0000-0000-0001050000e1', '00000000-0000-0000-0000-000000105004');
+
+-- Two blocks BY the hider — one against a fully onboarded rider, one against
+-- the rider with no username — and one AGAINST them, by an author.
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000105001', '00000000-0000-0000-0000-000000105004'),
+  ('00000000-0000-0000-0000-000000105001', '00000000-0000-0000-0000-000000105005'),
+  ('00000000-0000-0000-0000-000000105003', '00000000-0000-0000-0000-000000105001');
+
+-- ---------------------------------------------------------------------------
+-- 105.1  A rider sees exactly the blocks they created — task 3.1
+-- ---------------------------------------------------------------------------
+-- The precondition first: the blocker genuinely CANNOT read the blocked
+-- rider's profiles row, because private.is_blocked is symmetric. That zero is
+-- the reason this function exists at all, and without it 105.1 reads as a
+-- feature nobody needed.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000105001', false);
+select assert_eq(
+  (select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000105004'),
+  0, '105.1: the blocker cannot read the blocked rider''s profiles row under RLS — 009''s qual carries `not private.is_blocked(auth.uid(), id)` and the helper is SYMMETRIC. This is the whole premise of 105; a list built without the accessor renders UUIDs');
+select assert_eq(
+  (select count(*)::int from my_blocked_riders()),
+  2, '105.1: ... and my_blocked_riders returns BOTH blocks this rider created, reaching straight past that policy');
+select assert_eq(
+  (select username from my_blocked_riders() where blocked_id = '00000000-0000-0000-0000-000000105004'),
+  'pd298other', '105.1: ... carrying the username, which is the identity the policy withheld and the only thing that makes the row recognisable');
+select assert_eq(
+  (select count(*)::int from my_blocked_riders() where blocked_id = '00000000-0000-0000-0000-000000105001'),
+  0, '105.1: the accessor never returns the CALLER — blocks_no_self_block makes that impossible to write, and the subject is auth.uid() rather than an argument, so no caller can ask about anybody else');
+
+-- ** THE BLOCKED PARTY IS TOLD NOTHING. ** They created no blocks row, so their
+-- list is empty — and specifically it does not name the rider who blocked them,
+-- which is the invariant this suite defends elsewhere in as many words.
+select set_config('test.uid', '00000000-0000-0000-0000-000000105004', false);
+select assert_eq(
+  (select count(*)::int from my_blocked_riders()),
+  0, '105.1: the BLOCKED party''s own list is empty — the accessor is scoped to blocker_id = auth.uid(), so a symmetric block stays one-directional as a FACT the subject can read');
+select assert_eq(
+  (select count(*)::int from my_blocked_riders()
+    where blocked_id = '00000000-0000-0000-0000-000000105001'),
+  0, '105.1: ... and it does not name the rider who blocked them. Widen the accessor to "every block involving me" and this is the assertion that goes red, which is the point of stating it separately from the count');
+
+-- ---------------------------------------------------------------------------
+-- 105.2  Zero blocks is zero rows and not an error — task 3.2
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000105006', false);
+select assert_eq(
+  (select count(*)::int from my_blocked_riders()),
+  0, '105.2: a rider who has blocked nobody gets zero rows and no error — the empty state the sheet must distinguish from a failed read');
+
+-- ---------------------------------------------------------------------------
+-- 105.3  ** A BLOCK AGAINST A NULL-USERNAME RIDER IS RETURNED — design.md D2 **
+-- ---------------------------------------------------------------------------
+-- The standing precedent (ride_journal_postcard_ids, club_stamp_postcard_ids)
+-- restates its table's whole SELECT qual VERBATIM, and doing that here would
+-- have carried `username is not null` across and DROPPED THIS ROW — a block
+-- nobody could then lift, which is the exact defect PD-298 exists to fix,
+-- reproduced inside its own fix.
+--
+-- Add that conjunct to my_blocked_riders and this assertion reads 1, not 2.
+select set_config('test.uid', '00000000-0000-0000-0000-000000105001', false);
+select assert_eq(
+  (select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000105005'),
+  0, '105.3: the un-onboarded blocked rider''s profiles row is unreadable for BOTH of the policy''s reasons — no username AND a block — so the accessor is the only route to it');
+select assert_eq(
+  (select count(*)::int from my_blocked_riders()
+    where blocked_id = '00000000-0000-0000-0000-000000105005' and username is null),
+  1, '105.3: ** the block against a rider with NO USERNAME is still returned, with username NULL. ** D2: the accessor deliberately does NOT restate the policy''s `username is not null` conjunct. Restate it and this row vanishes — one row out per blocks row in, always, because an invisible block cannot be lifted');
+select assert_eq(
+  (select count(*)::int from my_blocked_riders()),
+  2, '105.3: ... so the row count still equals the blocks the rider created. This is the count that a "tidied" accessor silently reduces');
+
+-- ---------------------------------------------------------------------------
+-- 105.4  Deleting the blocked rider's profile takes the row with it — task 3.4
+-- ---------------------------------------------------------------------------
+savepoint blocked_profile_deleted_105;
+reset role;
+select set_config('test.uid', '', false);
+delete from profiles where id = '00000000-0000-0000-0000-000000105005';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000105001', false);
+select assert_eq(
+  (select count(*)::int from my_blocked_riders()),
+  1, '105.4: deleting the blocked rider''s profile removes the block through blocks_blocked_id_fkey''s ON DELETE CASCADE, so the row leaves the list rather than becoming a UUID the join drops. The inner join in the accessor is safe BECAUSE of this cascade');
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint blocked_profile_deleted_105;
+
+-- ---------------------------------------------------------------------------
+-- 105.5  A rider sees exactly their own hides, and hiding stays per-viewer
+--        — task 3.5
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000105001', false);
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0001050000e1'),
+  0, '105.5: the hider genuinely cannot read the postcard they hid — 011 puts the hide conjunct INSIDE the postcards SELECT qual. The second half of 105''s premise, and the reason this half needs an accessor too');
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()),
+  2, '105.5: their list holds the two hides on OTHER riders'' postcards — three hide rows, less the self-hide 1.7 excludes');
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e1'),
+  1, '105.5: including the club postcard, which another rider has ALSO hidden — the two hide rows are independent and each rider sees only their own');
+
+select set_config('test.uid', '00000000-0000-0000-0000-000000105006', false);
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()),
+  0, '105.5: a fellow club member who hid nothing has an empty list — nobody else''s hide reaches it');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0001050000e1'),
+  1, '105.5: ** and the postcard is still in THEIR feed. ** Hiding is per-viewer, so one rider''s hide must not remove a row from anybody else''s reads — the assertion that fails if a hide is ever read as a moderation action');
+
+-- ---------------------------------------------------------------------------
+-- 105.6  A restorable row carries its preview — task 3.6
+-- ---------------------------------------------------------------------------
+select set_config('test.uid', '00000000-0000-0000-0000-000000105001', false);
+select assert_eq(
+  (select restorable from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e1'),
+  true, '105.6: the club postcard is RESTORABLE — the hider is still a member, nobody has blocked anybody, so deleting the hide row really would put it back');
+select assert_eq(
+  (select caption from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e1'),
+  'the club photo', '105.6: ... and it carries its caption, so the rider can tell which postcard they are unhiding');
+select assert_eq(
+  (select author_username from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e1'),
+  'pd298clubauthor', '105.6: ... and the author''s username');
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e1'
+      and taken_place_name = 'Zandvoort' and image_path is not null and created_at is not null),
+  1, '105.6: ... and the place, the image path and the postcard''s own created_at. image_path is returned for a restorable row so that a widened Storage policy would need no migration — the app does not sign it today (D3)');
+
+-- ---------------------------------------------------------------------------
+-- 105.7  A hide in a club the rider has LEFT: not restorable, every preview
+--        column NULL — task 3.7
+-- ---------------------------------------------------------------------------
+savepoint hider_leaves_club_105;
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0001050000c1'
+   and user_id = '00000000-0000-0000-0000-000000105001';
+select assert_eq(
+  (select restorable from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e1'),
+  false, '105.7: leaving the club makes the hide unrestorable — the accessor evaluates `club_id is null or private.is_club_member(club_id)` exactly as the postcards policy states it, and unhiding now would restore nothing');
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e1'
+      and caption is null and author_username is null and taken_place_name is null
+      and image_path is null and created_at is null),
+  1, '105.7: ** and EVERY preview column comes back NULL. ** The nulling is in the FUNCTION, not the component: the client owns the render path, so a caller hitting /rest/v1/rpc/my_hidden_postcards directly must get the same emptied row the app does');
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()),
+  2, '105.7: ... and the row STAYS IN THE LIST. Dropping it would strand a postcard_hides row the rider can no longer reach, and the disappearance would itself be the signal D4 exists to suppress');
+
+-- ** THE TWO UNRESTORABLE REASONS ARE INDISTINGUISHABLE — design.md D4. **
+-- With the club left, both rows are unrestorable for DIFFERENT reasons (this
+-- one because the rider left a club, the other because its author blocked
+-- them) and they must be the same shape. If a reason column, an enum, or a
+-- surviving preview field is ever added, exactly one of these rows stops
+-- matching and this reads 1.
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()
+    where restorable = false and caption is null and author_username is null
+      and taken_place_name is null and image_path is null and created_at is null),
+  2, '105.7: ** both unrestorable rows are BYTE-IDENTICAL apart from their own ids and hidden_at — one because the rider left a club, one because its author blocked them. ** That indistinguishability IS the mitigation: a rider who could tell the two apart could hide one postcard per person and read this list as a block detector');
+rollback to savepoint hider_leaves_club_105;
+
+-- ---------------------------------------------------------------------------
+-- 105.8  A hide whose author has since BLOCKED the hider — task 3.8
+-- ---------------------------------------------------------------------------
+-- The leak this is really about: `author_username` is the field that would name
+-- the blocker, so it is asserted NULL on its own line rather than folded into
+-- the count above.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000105001', false);
+select assert_eq(
+  (select restorable from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e2'),
+  false, '105.8: the author having blocked the hider makes the row unrestorable — the accessor restates `not private.is_blocked(auth.uid(), author_id)` and the helper is symmetric, so the block reaches this read from the other direction');
+select assert_eq(
+  (select author_username from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e2'),
+  null::text, '105.8: ** and the AUTHOR USERNAME is NULL — the specific field that would otherwise name the rider who blocked them. ** rls_test.sql already asserts the blocked rider is not told they were blocked; this list is the first surface that could have told them');
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e2'
+      and caption is null and taken_place_name is null and image_path is null
+      and created_at is null),
+  1, '105.8: ... and so are the caption, the place, the image path and created_at. A block must not leak through the preview of a postcard the rider once chose to hide');
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e2' and restorable is null),
+  0, '105.8: restorable is a BOOLEAN and never NULL, so "unknown" is not a third state a client could render differently. D4: it is not an enum ON PURPOSE — an enum is how the reason gets added back by someone reading this as a missing feature');
+
+-- ---------------------------------------------------------------------------
+-- 105.9  A self-hide is excluded — task 3.9 / 1.7 (Q5)
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e3'),
+  0, '105.9: the rider''s hide of their OWN postcard is excluded from the list — the author branch of the postcards policy is unconditional, so that hide row is inert and listing it would offer to unhide something that was never hidden');
+select assert_eq(
+  (select count(*)::int from postcards where id = '00000000-0000-0000-0000-0001050000e3'),
+  1, '105.9: ... and the proof it is inert: the author still reads their own postcard through ordinary RLS despite holding a hide row against it');
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from postcard_hides
+    where postcard_id = '00000000-0000-0000-0000-0001050000e3'
+      and user_id = '00000000-0000-0000-0000-000000105001'),
+  1, '105.9: ** the exclusion is a FILTER and not a deletion. ** Read as the table owner: the row is still there, because 7.2 leaves hidePostcard alone rather than changing a shipped write path for no rider benefit');
+
+-- ---------------------------------------------------------------------------
+-- 105.10  Deleting the postcard removes the hide — task 3.10
+-- ---------------------------------------------------------------------------
+savepoint hidden_postcard_deleted_105;
+delete from postcards where id = '00000000-0000-0000-0000-0001050000e1';
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000105001', false);
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()
+    where postcard_id = '00000000-0000-0000-0000-0001050000e1'),
+  0, '105.10: deleting the postcard removes the hide row through postcard_hides_postcard_id_fkey''s ON DELETE CASCADE, so the entry LEAVES the list rather than becoming a permanently unrestorable tombstone. This is why the deleted-author case needs no state of its own');
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()),
+  1, '105.10: ... and the rest of the list is untouched');
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from postcard_hides
+    where postcard_id = '00000000-0000-0000-0000-0001050000e1'),
+  0, '105.10: ... and BOTH riders'' hide rows on it are gone, counted as the table owner — the cascade is the mechanism, not the accessor filtering a row it can no longer read');
+rollback to savepoint hidden_postcard_deleted_105;
+
+-- ---------------------------------------------------------------------------
+-- 105.11  ** THE PRIVILEGE ASSERTIONS — NAMED, NEVER CALLED (design.md D7) **
+-- ---------------------------------------------------------------------------
+-- 029's defect: a function nothing could reach, in a suite that runs as the
+-- table owner, for whom no barrier exists. Every behavioural assertion above
+-- would pass with EXECUTE revoked from every client role. These four are the
+-- ones that would not.
+--
+-- The `revoke ... from public, anon` in 105 names anon SEPARATELY and must:
+-- Supabase's project default grants EXECUTE on functions in `public` to anon
+-- explicitly, and revoking from PUBLIC does not touch an explicit grant.
+reset role;
+select assert_eq(
+  has_function_privilege('authenticated', 'public.my_blocked_riders()', 'execute'),
+  true, '105.11: authenticated holds EXECUTE on my_blocked_riders — PostgREST routes only to `public` and the client has no other path, so this grant IS the feature');
+select assert_eq(
+  has_function_privilege('anon', 'public.my_blocked_riders()', 'execute'),
+  false, '105.11: ** and anon holds none ** — decision #1, no anonymous access anywhere. The harness reproduces Supabase''s default grant of EXECUTE to anon, so this passes only because 105 revokes it by name rather than relying on `from public`');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.my_hidden_postcards(timestamptz, int)', 'execute'),
+  true, '105.11: authenticated holds EXECUTE on my_hidden_postcards');
+select assert_eq(
+  has_function_privilege('anon', 'public.my_hidden_postcards(timestamptz, int)', 'execute'),
+  false, '105.11: ... and anon holds none on it either');
+
+-- ---------------------------------------------------------------------------
+-- 105.12  The two DELETE paths these lists make reachable — task 3.12
+-- ---------------------------------------------------------------------------
+-- unblockRider and unhidePostcard were written, tested and had ZERO callers
+-- until this change. Both directions are asserted, because a refusal-only
+-- assertion passes against a policy that permits nothing at all — the defect
+-- assert_allowed's own header records.
+savepoint undo_paths_105;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000105001', false);
+
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-000000105003'
+   and blocked_id = '00000000-0000-0000-0000-000000105001';
+delete from postcard_hides
+ where postcard_id = '00000000-0000-0000-0000-0001050000e1'
+   and user_id = '00000000-0000-0000-0000-000000105004';
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from blocks
+    where blocker_id = '00000000-0000-0000-0000-000000105003'
+      and blocked_id = '00000000-0000-0000-0000-000000105001'),
+  1, '105.12: a rider CANNOT delete a blocks row somebody else created — read back as the table owner, because RLS filters a DELETE to zero rows rather than raising and PostgREST reports the no-op as success. Without this the "unblock" affordance could lift a block placed AGAINST the rider');
+select assert_eq(
+  (select count(*)::int from postcard_hides
+    where postcard_id = '00000000-0000-0000-0000-0001050000e1'
+      and user_id = '00000000-0000-0000-0000-000000105004'),
+  1, '105.12: ... and cannot delete another rider''s postcard_hides row either, so unhiding stays per-viewer at the write end as well as the read end');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000105001', false);
+delete from blocks
+ where blocker_id = '00000000-0000-0000-0000-000000105001'
+   and blocked_id = '00000000-0000-0000-0000-000000105004';
+delete from postcard_hides
+ where postcard_id = '00000000-0000-0000-0000-0001050000e2'
+   and user_id = '00000000-0000-0000-0000-000000105001';
+select assert_eq(
+  (select count(*)::int from my_blocked_riders()),
+  1, '105.12: ** the OVER-TIGHTENING guard for the block half. ** The rider really did lift their own block, and the list they lifted it from now shows one fewer — the round trip PD-298 exists to make possible');
+select assert_eq(
+  (select count(*)::int from my_hidden_postcards()),
+  1, '105.12: ... and the same for the hide half. Both refusals above therefore mean something: the policies permit the caller''s own row and nothing else');
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select count(*)::int from profiles where id = '00000000-0000-0000-0000-000000105004'),
+  1, '105.12: unblocking deleted the BLOCK and not the rider — blocks DELETE is scoped to its own table and the cascade runs the other way');
+rollback to savepoint undo_paths_105;
+
+-- ---------------------------------------------------------------------------
+-- 105.13  ** THE THIRD PIN ON postcards SELECT. **
+-- ---------------------------------------------------------------------------
+-- my_hidden_postcards RESTATES this policy minus one conjunct, which makes
+-- three accessors now copying it. A change that moves the policy and not the
+-- copies leaves this list answering against a rule that no longer exists — and
+-- because the copy lives inside a `security definer` function, nothing else in
+-- this suite can see the divergence.
+select assert_eq(
+  (select md5(qual) from pg_policies
+    where schemaname = 'public' and tablename = 'postcards' and cmd = 'SELECT'),
+  'c8fb49b026866743283b3d7ecfbc5122',
+  '105.13: postcards SELECT is TEXTUALLY what THREE accessors now restate — ride_journal_postcard_ids, club_stamp_postcard_ids and my_hidden_postcards. If this fails, three bodies are stale; move all three in the same change rather than re-pinning this string');
+
+-- ---------------------------------------------------------------------------
+-- 105.14  The two functions are what 105 said they were
+-- ---------------------------------------------------------------------------
+-- Scoped to the two objects this migration added rather than to a count over a
+-- shared catalog: a count stops testing its own intent the moment a second
+-- surface lands beside it.
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname in ('my_blocked_riders', 'my_hidden_postcards')
+      and p.prosecdef and p.provolatile = 's'
+      and exists (select 1 from unnest(p.proconfig) c where c in ('search_path=', 'search_path=""'))),
+  2, '105.14: both accessors are security definer, STABLE and pinned to an empty search_path — the definer half is what bypasses the policy, and the search_path is what stops the bypass being aimed somewhere else');
+select assert_eq(
+  (select pg_get_function_result(p.oid) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'my_blocked_riders'),
+  'TABLE(blocked_id uuid, username text, blocked_at timestamp with time zone)',
+  '105.14: my_blocked_riders returns three columns and NO avatar_path (D3) — the Storage avatar policy resolves an EXISTS over profiles as the caller, which is false for a blocked pair, so the path could never sign and the column would only ever render a broken image');
+select assert_eq(
+  (select pg_get_function_result(p.oid) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'my_hidden_postcards'),
+  'TABLE(postcard_id uuid, hidden_at timestamp with time zone, restorable boolean, caption text, author_username text, taken_place_name text, image_path text, created_at timestamp with time zone)',
+  '105.14: ** my_hidden_postcards'' restorable is a BOOLEAN in the signature itself. ** D4: widen it to an enum or add a reason column and this fails, which is the only durable place to say "the reason must not leave the database"');
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public' and indexname = 'blocks_blocker_id_created_at_idx'),
+  1, '105.14: the blocked-riders list has an index that serves its sort — neither of 009''s two indexes carries created_at');
+
+-- ** THE CONJUNCT 105 DELIBERATELY DID NOT COPY IS STILL IN THE POLICY. **
+-- Pinned semantically rather than by hash: the point is not that the profiles
+-- qual has not changed, it is that `username is not null` is still THERE, in
+-- the policy, and therefore still the thing my_blocked_riders must not restate.
+select assert_eq(
+  (select qual like '%username IS NOT NULL%' from pg_policies
+    where schemaname = 'public' and tablename = 'profiles' and cmd = 'SELECT'),
+  true, '105.14: the profiles SELECT policy still carries `username is not null` — the conjunct my_blocked_riders omits ON PURPOSE. If this ever stops being true the omission stops being a decision and becomes a coincidence, and D2''s comment in 105 should be revisited rather than left standing');
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint block_and_hide_105;
+
 
 rollback;
 

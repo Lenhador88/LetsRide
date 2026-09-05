@@ -18,51 +18,51 @@ only when both lists exist (`docs/reference/linear.md` §Sequencing).
 
 ## 1. Migration `105_a_block_and_a_hide_can_be_undone.sql` — purely additive
 
-- [ ] 1.1 `public.my_blocked_riders()` — `returns table (blocked_id uuid, username text,
+- [x] 1.1 `public.my_blocked_riders()` — `returns table (blocked_id uuid, username text,
       blocked_at timestamptz)`, `language sql`, `stable`, `security definer`,
       `set search_path to ''`. Selects from `public.blocks b` joined to `public.profiles p` on
       `p.id = b.blocked_id`, where `b.blocker_id = (select auth.uid())`, ordered
       `b.created_at desc, b.blocked_id desc`.
-- [ ] 1.2 **No `username is not null` filter** (D2), and a comment saying why — that the conjunct
+- [x] 1.2 **No `username is not null` filter** (D2), and a comment saying why — that the conjunct
       is in the `profiles` policy this function exists to bypass, and restating it would drop a
       block nobody could then lift.
-- [ ] 1.3 **No `avatar_path` column** (D3), and a comment saying why — the Storage policy
+- [x] 1.3 **No `avatar_path` column** (D3), and a comment saying why — the Storage policy
       delegates to `profiles` RLS, so the path provably cannot sign for this caller.
-- [ ] 1.4 `revoke all on function … from public`, then `grant execute … to authenticated`.
+- [x] 1.4 `revoke all on function … from public`, then `grant execute … to authenticated`.
       Mirror `009`'s treatment of `private.is_blocked`.
-- [ ] 1.5 `public.my_hidden_postcards(before_at timestamptz default null, page_size int default
+- [x] 1.5 `public.my_hidden_postcards(before_at timestamptz default null, page_size int default
       20)` — `returns table (postcard_id uuid, hidden_at timestamptz, restorable boolean,
       caption text, author_username text, taken_place_name text, image_path text,
       created_at timestamptz)`, same modifiers.
-- [ ] 1.6 It restates the `postcards` SELECT qual **minus the hide conjunct** — copy the shape
+- [x] 1.6 It restates the `postcards` SELECT qual **minus the hide conjunct** — copy the shape
       from `public.ride_journal_postcard_ids(uuid)`, which restates the whole qual verbatim.
       `restorable` is that predicate; every other returned column is
       `case when restorable then … else null end`.
-- [ ] 1.7 **Exclude `p.author_id = (select auth.uid())`** (Q5) — a self-hide row is inert, since
+- [x] 1.7 **Exclude `p.author_id = (select auth.uid())`** (Q5) — a self-hide row is inert, since
       the author branch of the postcards policy is unconditional, and listing it would show a
       postcard the rider still sees everywhere.
-- [ ] 1.8 `restorable` is a **boolean, never an enum** (D4). Add the comment explaining that the
+- [x] 1.8 `restorable` is a **boolean, never an enum** (D4). Add the comment explaining that the
       three reasons are collapsed on purpose, so the next reader does not add the reason back as
       a missing feature.
-- [ ] 1.9 Keyset cursor: `(before_at is null or h.created_at < before_at)`, ordered
+- [x] 1.9 Keyset cursor: `(before_at is null or h.created_at < before_at)`, ordered
       `h.created_at desc, h.postcard_id desc`, `limit least(page_size, 50)`.
-- [ ] 1.10 `create index blocks_blocker_id_created_at_idx on public.blocks (blocker_id,
+- [x] 1.10 `create index blocks_blocker_id_created_at_idx on public.blocks (blocker_id,
       created_at desc)`.
-- [ ] 1.11 `comment on function` for both, naming the policy each bypasses and the conjunct each
+- [x] 1.11 `comment on function` for both, naming the policy each bypasses and the conjunct each
       removes.
-- [ ] 1.12 Apply to DEV with `apply_migration`. Order is free — the change is additive and
+- [x] 1.12 Apply to DEV with `apply_migration`. Order is free — the change is additive and
       neither side fails (`proposal.md` §Impact). **Unless Q1 comes back "widen Storage"**, which
       modifies an existing SELECT policy and needs its own ordering call before it applies.
-- [ ] 1.13 Verify against the live database afterwards: both functions present, `prosecdef` true,
+- [x] 1.13 Verify against the live database afterwards: both functions present, `prosecdef` true,
       `proconfig` carrying `search_path=`, and the grants as written.
 
 ## 2. Security advisors
 
-- [ ] 2.1 Re-run `get_advisors(security)` on DEV and confirm **exactly two new**
+- [x] 2.1 Re-run `get_advisors(security)` on DEV and confirm **exactly two new**
       `authenticated_security_definer_function_executable` WARNs, one per function: 37 → 39.
-- [ ] 2.2 Record the per-migration accounting in `docs/reference/migrations.md` §Security
+- [x] 2.2 Record the per-migration accounting in `docs/reference/migrations.md` §Security
       advisors. An advisor that is not in that table is an unexpected one.
-- [ ] 2.3 Confirm no new `rls_enabled_no_policy` INFO — this migration creates no table.
+- [x] 2.3 Confirm no new `rls_enabled_no_policy` INFO — this migration creates no table.
 
 ## 3. RLS assertions — `supabase/tests/rls_test.sql`
 
@@ -71,25 +71,25 @@ only when both lists exist (`docs/reference/linear.md` §Sequencing).
 re-derive with `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"` and compare **label
 sets**, not counts, since a count cannot tell a rename from a loss.
 
-- [ ] 3.1 A rider sees exactly the blocks they created; the blocked party sees none of them.
-- [ ] 3.2 A rider with zero blocks gets zero rows and no error.
-- [ ] 3.3 A block against a NULL-username rider is returned, not dropped (D2).
-- [ ] 3.4 Deleting the blocked rider's profile removes the row via cascade.
-- [ ] 3.5 A rider sees exactly their own hides; another rider's hide of the same postcard is
+- [x] 3.1 A rider sees exactly the blocks they created; the blocked party sees none of them.
+- [x] 3.2 A rider with zero blocks gets zero rows and no error.
+- [x] 3.3 A block against a NULL-username rider is returned, not dropped (D2).
+- [x] 3.4 Deleting the blocked rider's profile removes the row via cascade.
+- [x] 3.5 A rider sees exactly their own hides; another rider's hide of the same postcard is
       absent from theirs and the postcard stays in that rider's feed.
-- [ ] 3.6 A restorable row carries its caption and author username.
-- [ ] 3.7 A hide on a postcard in a club the rider has left: `restorable` false, **every preview
+- [x] 3.6 A restorable row carries its caption and author username.
+- [x] 3.7 A hide on a postcard in a club the rider has left: `restorable` false, **every preview
       column NULL**.
-- [ ] 3.8 A hide on a postcard whose author has since blocked the hider: `restorable` false,
+- [x] 3.8 A hide on a postcard whose author has since blocked the hider: `restorable` false,
       every preview column NULL — and assert the author username is NULL specifically, since
       that is the field that would name the blocker.
-- [ ] 3.9 A self-hide row is excluded (1.7).
-- [ ] 3.10 Deleting the postcard removes the hide row via cascade, so it leaves the list rather
+- [x] 3.9 A self-hide row is excluded (1.7).
+- [x] 3.10 Deleting the postcard removes the hide row via cascade, so it leaves the list rather
       than becoming unrestorable.
-- [ ] 3.11 `has_function_privilege('authenticated', …, 'execute')` true for both; the same false
+- [x] 3.11 `has_function_privilege('authenticated', …, 'execute')` true for both; the same false
       for `anon`. **Privilege assertions, not calls** — the suite runs as the table owner, which
       is what let `029` ship broken (D7).
-- [ ] 3.12 `unblockRider`'s and `unhidePostcard`'s policies still refuse another rider's row —
+- [x] 3.12 `unblockRider`'s and `unhidePostcard`'s policies still refuse another rider's row —
       re-assert, since these lists are the first thing that makes those DELETE paths reachable.
 
 ## 4. Client — reads and types
