@@ -130,6 +130,12 @@ export async function joinAndIntroduceToClub(
    * Fired the moment the membership write returns without an error, before the
    * introduction is attempted.
    *
+   * **Named for what it asserts.** A clean return means a `club_members` row
+   * *exists* — an RLS violation would have raised — but not that this statement
+   * *created* one, because `joinClub` upserts with `ignoreDuplicates`. Existence
+   * is what every caller needs and the stronger claim would contradict this
+   * function's own header.
+   *
    * **The caller cannot observe that moment any other way, and two rules depend
    * on it.** The sheet's second control must stop saying `Join later` as soon
    * as the join lands — it is a lie from that instant — and its dismissal lock
@@ -137,8 +143,16 @@ export async function joinAndIntroduceToClub(
    * exists `097`'s "always dismissible, pending or not" applies again. Without
    * this the caller sees one pending window spanning both writes, so both rules
    * silently become "until the introduction resolves" instead.
+   *
+   * **Required, not optional, and that is this change's own lesson applied to
+   * itself.** A second caller omitting it would get exactly the defect this
+   * parameter was added to fix — `Join later` on screen over a committed join
+   * and the lock held past the membership write — with **no type error**. That
+   * is the same argument `ClubMembershipButton`'s opener carries, one file over
+   * and one review earlier. A caller with nothing to do here passes a no-op and
+   * says so.
    */
-  onMembershipCreated?: () => void
+  onMembershipExists: () => void
 ): Promise<JoinAndIntroduceResult> {
   // Parsed BEFORE the join, so a body the database would refuse never costs a
   // membership the rider did not ask for on its own. `introduceToClub` parses
@@ -155,7 +169,7 @@ export async function joinAndIntroduceToClub(
   const joined = await joinClub(clubId)
   if (joined.error) return { outcome: 'join-failed', error: joined.error }
 
-  onMembershipCreated?.()
+  onMembershipExists()
 
   const introduced = await introduceToClub(clubId, parsed.data)
   if (introduced.error) return { outcome: 'introduction-failed', error: introduced.error }

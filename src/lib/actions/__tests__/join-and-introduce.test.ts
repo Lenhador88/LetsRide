@@ -63,6 +63,9 @@ import { joinAndIntroduceToClub } from '@/lib/actions/club-introductions'
 
 const CLUB = '11111111-1111-4111-8111-111111111111'
 
+/** The callback is REQUIRED, so a case with nothing to observe says so. */
+const noop = () => {}
+
 beforeEach(() => {
   calls.length = 0
   joinClub.mockReset()
@@ -79,7 +82,7 @@ beforeEach(() => {
 
 describe('joinAndIntroduceToClub — both writes succeed', () => {
   it('joins BEFORE it introduces, and reports one outcome', async () => {
-    const result = await joinAndIntroduceToClub(CLUB, 'Hi, I ride a Ténéré.')
+    const result = await joinAndIntroduceToClub(CLUB, 'Hi, I ride a Ténéré.', noop)
 
     expect(result).toEqual({ outcome: 'joined-and-introduced' })
     // Not "both were called" — the ORDER. `097` refuses the introduction of a
@@ -89,7 +92,7 @@ describe('joinAndIntroduceToClub — both writes succeed', () => {
 })
 
 describe('joinAndIntroduceToClub — it reports the membership landing mid-flight', () => {
-  it('fires onMembershipCreated AFTER the join and BEFORE the introduction', async () => {
+  it('fires onMembershipExists AFTER the join and BEFORE the introduction', async () => {
     // The sheet cannot observe the intermediate state any other way: from the
     // outside this is one awaited call, so without the callback there is one
     // pending window spanning both writes. Two rules ride on the boundary — the
@@ -124,7 +127,7 @@ describe('joinAndIntroduceToClub — the join fails', () => {
       return { error: 'That club could not be joined.' }
     })
 
-    const result = await joinAndIntroduceToClub(CLUB, 'Hi, I ride a Ténéré.')
+    const result = await joinAndIntroduceToClub(CLUB, 'Hi, I ride a Ténéré.', noop)
 
     expect(result).toEqual({ outcome: 'join-failed', error: 'That club could not be joined.' })
     // The short-circuit. Issuing the introduction here would answer a failed
@@ -137,7 +140,7 @@ describe('joinAndIntroduceToClub — the join fails', () => {
     // The membership must not be a side effect of a body the database would
     // have refused anyway. `introduceToClub` parses it too — that is the
     // enforcement; this is the ordering guard, and only this one runs first.
-    const result = await joinAndIntroduceToClub(CLUB, '   ')
+    const result = await joinAndIntroduceToClub(CLUB, '   ', noop)
 
     expect(result.outcome).toBe('join-failed')
     expect(calls).toEqual([])
@@ -152,7 +155,7 @@ describe('joinAndIntroduceToClub — the join lands and the introduction does no
       return { error: { message: 'nope' } }
     })
 
-    const result = await joinAndIntroduceToClub(CLUB, 'Hi, I ride a Ténéré.')
+    const result = await joinAndIntroduceToClub(CLUB, 'Hi, I ride a Ténéré.', noop)
 
     // NOT `join-failed`, and not a bare error. The membership exists: the sheet
     // has to relabel its second control and tell the rider they joined, and
@@ -168,7 +171,7 @@ describe('joinAndIntroduceToClub — the join lands and the introduction does no
       return { error: { message: 'nope' } }
     })
 
-    await joinAndIntroduceToClub(CLUB, 'Hi, I ride a Ténéré.')
+    await joinAndIntroduceToClub(CLUB, 'Hi, I ride a Ténéré.', noop)
 
     // A compensating delete would write a `club_joined` notification to the
     // club and remove the member underneath it — the wake PD-392 refuses in

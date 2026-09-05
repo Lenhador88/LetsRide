@@ -207,8 +207,8 @@ describe('IntroductionPrompt — the in-flight dismissal lock covers the scrim, 
     let settle: (value: { outcome: string; error?: string }) => void = () => {}
     let landTheJoin: () => void = () => {}
     joinAndIntroduceToClub.mockImplementation(
-      (_clubId: string, _body: string, onMembershipCreated?: () => void) => {
-        landTheJoin = () => onMembershipCreated?.()
+      (_clubId: string, _body: string, onMembershipExists: () => void) => {
+        landTheJoin = () => onMembershipExists()
         return new Promise((resolve) => {
           settle = resolve
         })

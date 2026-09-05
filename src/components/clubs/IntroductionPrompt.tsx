@@ -179,10 +179,17 @@ export function IntroductionPrompt({
         return
       }
 
-      // Belt and braces: both remaining outcomes mean the membership landed, so
-      // the latch is already true via the callback above. Setting it again is a
-      // no-op React bails out of, and it keeps this function correct if a future
-      // caller passes no callback.
+      // The latch is already true — the callback above set it the moment the
+      // join landed. This is idempotent (React bails out on an identical value)
+      // and keeps the END state right on the `introduction-failed` path.
+      //
+      // It is NOT a fallback for a caller that passes no callback, and reading
+      // it as one is how the fix above gets undone: without the callback the
+      // latch would flip only after BOTH writes resolve, which leaves the end
+      // state correct and the TIMING wrong — `Join later` on screen over a
+      // committed join, and the dismissal lock held past the membership write.
+      // The timing is the whole point, which is why the callback is required
+      // rather than optional.
       setJoined(true)
 
       if (result.outcome === 'introduction-failed') {
