@@ -4,6 +4,7 @@ import { RIDES_PAGE_SIZE } from '@/lib/data/rides'
 import { resolveAvatarUrls } from '@/lib/data/media'
 import { unwrapList } from '@/lib/data/unwrap'
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { boundedHorizon, type TimelineSource } from '@/lib/timeline/window'
 import { clubIdSchema } from '@/lib/validation/clubs'
 import type {
   ClubRosterMember,
@@ -268,49 +269,26 @@ export type ClubTimelineEvent =
    */
   | { kind: 'club-created'; at: string; key: string; founder: string | null }
 
-/** What each source contributed, and how far back it looked. */
-export type ClubTimelineSource<T> = {
-  rows: T[]
-  /**
-   * The instant below which THIS source's picture is incomplete, or `null` when
-   * it reaches back to the club's beginning.
-   *
-   * **It is the oldest row the READ returned, which is not always the oldest
-   * row in `rows`.** That distinction is the whole reason this is a field the
-   * source declares rather than something `mergeClubTimeline` derives: a read
-   * that post-processes its window — `getClubJoins` drops riders it cannot
-   * name, `getClubThreadReplies` collapses a conversation to one entry — knows
-   * how far back it actually looked, and the merge, holding only the survivors,
-   * does not. Deriving it from `rows` made a sixty-message window in one thread
-   * report a horizon at that thread's latest message, and cut the club's whole
-   * history to the last hour.
-   */
-  horizon: string | null
-}
-
 /**
- * The horizon for a read that returns exactly what it fetched, in the order it
- * sorts on: full means there is more behind, and the last row is how far back
- * we looked.
- *
- * Only for sources whose `rows` ARE the window. A read that filters or collapses
- * must compute its own from the rows it discarded — see `ClubTimelineSource`.
+ * Both moved to `@/lib/timeline/window` when the ride grew a timeline of its
+ * own (PD-393) — re-exported here because every existing caller imports them
+ * from this module, and a rename across eight files would bury the feature it
+ * came with. New code imports them from `lib/timeline`.
  */
-export function boundedHorizon<T>(rows: T[], bound: number, at: (row: T) => string): string | null {
-  return rows.length >= bound && rows.length > 0 ? at(rows[rows.length - 1]) : null
-}
+export { boundedHorizon }
+export type { TimelineSource }
 
 /**
- * One READ's contribution to a paged source — `ClubTimelineSource<T>` plus the
+ * One READ's contribution to a paged source — `TimelineSource<T>` plus the
  * interval it was asked to cover. `design.md` §D0 is the model this is built
  * on: paging lowers the horizon rather than advancing five cursors, so the
  * unit that accumulates is a WINDOW, and an accumulated source is built by
  * folding windows together with `absorbClubTimelineWindow`.
  *
- * **The window declares its own interval for the reason `ClubTimelineSource`
+ * **The window declares its own interval for the reason `TimelineSource`
  * declares its own horizon**: only the read knows what bound it actually used.
  */
-export type ClubTimelineWindow<T> = ClubTimelineSource<T> & {
+export type ClubTimelineWindow<T> = TimelineSource<T> & {
   /** The newest instant this window was asked for. `null` means *now* — the
    *  first window of a source, which reaches the top of the stream. A source
    *  whose ACCUMULATED horizon is `null` is finished; asking it again would
@@ -351,11 +329,11 @@ export type ClubTimelineWindow<T> = ClubTimelineSource<T> & {
  * covers).
  */
 export function absorbClubTimelineWindow<T>(
-  accumulated: ClubTimelineSource<T>,
+  accumulated: TimelineSource<T>,
   window: ClubTimelineWindow<T>,
   at: (row: T) => string,
   id: (row: T) => string
-): { source: ClubTimelineSource<T>; removed: boolean } {
+): { source: TimelineSource<T>; removed: boolean } {
   const insideWindow = (atValue: string): boolean => {
     const aboveFloor = window.horizon === null || atValue >= window.horizon
     const belowCeiling =
@@ -464,11 +442,11 @@ export type ClubTimeline = { events: ClubTimelineEvent[]; complete: boolean }
 export type ClubTimelineSources = {
   /** The club's own founding, for the floor entry. */
   club: { created_at: string; owner_id: string }
-  rides: ClubTimelineSource<RideListItem>
-  postcards: ClubTimelineSource<Postcard>
-  threads: ClubTimelineSource<ClubThreadListItem>
-  joins: ClubTimelineSource<ClubJoin>
-  replies: ClubTimelineSource<ClubThreadReply>
+  rides: TimelineSource<RideListItem>
+  postcards: TimelineSource<Postcard>
+  threads: TimelineSource<ClubThreadListItem>
+  joins: TimelineSource<ClubJoin>
+  replies: TimelineSource<ClubThreadReply>
   /** `thread id -> has unread`, from `getClubThreadUnread`. A missing id is
    *  read (`false`), which is what makes a failed unread call render the
    *  timeline unmarked rather than not render it. */
@@ -738,7 +716,7 @@ export async function getClubJoins(
   await resolveAvatarUrls(members.map((member) => member.profile), supabase)
 
   // The horizon comes from `rows`, before the filter — see
-  // `ClubTimelineSource.horizon`. The filter drops rows Postgres already
+  // `TimelineSource.horizon`. The filter drops rows Postgres already
   // counted against the limit, so one member with a NULL username in the newest
   // sixty would otherwise make a saturated read look short and report no
   // horizon at all.
@@ -826,7 +804,7 @@ export function groupClubTimeline(events: ClubTimelineEvent[]): ClubTimelineGrou
  * one read, two answers, which is why they travel together rather than as two
  * reads that could disagree about which messages they saw.
  */
-export type ClubReplySource = ClubTimelineSource<ClubThreadReply> & {
+export type ClubReplySource = TimelineSource<ClubThreadReply> & {
   activity: Record<string, ClubThreadActivity>
 }
 
@@ -1052,7 +1030,7 @@ export function absorbClubReplyWindow(windows: ClubReplyWindow[]): ClubReplySour
   // one page in and draw the club-created floor entry under content it never
   // saw. See `absorbClubReplyWindow`'s own test for the case this seed once
   // failed on a single first window.
-  let source: ClubTimelineSource<ClubThreadReply> | null = null
+  let source: TimelineSource<ClubThreadReply> | null = null
   const messages = new Map<string, number>()
   const participants = new Map<string, Map<string, PublicProfile>>()
   const anyPartial = new Map<string, boolean>()

@@ -321,6 +321,14 @@ export type RideDetail = {
   meeting_point: string
   departure_at: string
   /**
+   * When the ride was **announced**, never when it leaves — `RideListItem`'s
+   * own field, arriving here for PD-393's timeline: the ride's founding is the
+   * floor of its stream, and `departure_at` would place a ride planned today
+   * for next month a month into the future on a feed of things that have
+   * already happened.
+   */
+  created_at: string
+  /**
    * The IANA zone the meeting point is in (`080`, PD-193), or `null` when the
    * ride does not carry one — every ride created before that column, and any
    * place whose provider sent no zone.

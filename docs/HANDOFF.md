@@ -190,6 +190,41 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The ride detail is a timeline now — 2026-09-05
+
+**PD-393, [PR #393](https://github.com/Lenhador88/LetsRide/pull/393).** `/rides/detail` adopts the
+club's shape: the plan is a header, and below it a merged stream of the ride's postcards, its crew
+arrivals (`ride_members.joined_at`) and a floor entry naming who planned it (`rides.created_at`).
+No migration — every source already existed. `RideJournal` is deleted and `getRideJournal` returns
+a `TimelineSource<Postcard>` rather than a bare array.
+
+**It does NOT page, and the club's does.** `src/lib/data/ride-timeline.ts` carries the argument: a
+ride is a bounded event with two sources, so both are read whole and `steps` raises a display cap
+over rows already in hand. If a ride ever routinely overruns `RIDE_TIMELINE_JOINS` (60) or
+`FEED_PAGE_SIZE` (30), the club's window machinery is the answer and is already written.
+
+**Two things this left standing, both the owner's call:**
+
+- **`PostcardStamp` is rendered by nothing.** It is the perforated tile asked for on 2026-08-27 and
+  the presentation PD-257's journal route is drawn with, so it was not deleted with the strip that
+  used it. Either PD-257 brings it back or it goes with that story. Check rather than assume it is
+  still orphaned — a later screen may have picked it up:
+
+  ```bash
+  git grep -l "postcards/PostcardStamp'" -- src/ | grep -vE '__tests__|PostcardStamp\.tsx'
+  ```
+
+  Grep the IMPORT, not the name: four files mention `PostcardStamp` in prose, and the second
+  filter drops the component itself, which matches its own doc comment.
+
+- **`mergeClubTimeline` can read `complete` while a source still has rows behind it.** It derives
+  completeness from *"the horizon filter dropped nothing"*; `mergeRideTimeline` uses the stronger
+  and correct *"no source declared a horizon"*. Unreachable through four of the club's five sources
+  — a full read there returns more rows than `CLUB_TIMELINE_LIMIT`, so the display cap always cuts
+  first — and **reachable through `getClubThreadReplies`**, which collapses its window to one row
+  per thread. The symptom is `club-created` appended under a stream that is not finished. One line
+  in `mergeClubTimeline`; not changed inside a ride PR.
+
 ## Your own row survives the parent going out of view — 2026-09-03
 
 **PD-362, `102_own_row_reads_survive_the_parent.sql`, applied to DEV.** Seven SELECT policies wrote

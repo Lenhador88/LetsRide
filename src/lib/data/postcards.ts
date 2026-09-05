@@ -1,6 +1,7 @@
 import { resolveSupabase, type DataClient } from '@/lib/supabase/resolve'
 import { CLUB_FILTER_EMBED_COLUMNS, PUBLIC_PROFILE_COLUMNS } from '@/lib/data/columns'
 import type { ClubTimelineWindow } from '@/lib/data/club-timeline'
+import type { TimelineSource } from '@/lib/timeline/window'
 import { resolveAvatarUrls, resolveClubImageUrls, signImagePaths } from '@/lib/data/media'
 import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { clubIdSchema } from '@/lib/validation/clubs'
@@ -589,8 +590,8 @@ export async function getPostcard(id: string): Promise<Postcard | null> {
  * desc`. `.in(…)` does not preserve the order the accessor returned its ids
  * in, so this is the only thing that actually orders the result.
  *
- * `[]`, never `null` — a ride with nothing tagged to it and a ride whose
- * Journal the viewer cannot resolve look identical from here, matching
+ * An empty source, never `null` — a ride with nothing tagged to it and a ride
+ * whose Journal the viewer cannot resolve look identical from here, matching
  * `getClubFeed`'s convention: there is no "no such ride" case for this
  * function to report, because `getRide` already turned that into `null` for
  * the page to act on.
@@ -602,11 +603,23 @@ export async function getPostcard(id: string): Promise<Postcard | null> {
  * one a limit on the query alone would not fix: every render of the ride plan
  * selects every postcard ever tagged to that ride, and `.in('id', ids)`
  * serialises each id into the PostgREST query string — so a long-running ride
- * eventually meets a URL-length wall rather than degrading. The Journal's own
- * paging is PD-257's; this is a preview strip and this is its window.
+ * eventually meets a URL-length wall rather than degrading.
+ *
+ * ## The horizon, and why it is counted from the IDS rather than from the rows
+ *
+ * It returns a `TimelineSource` since PD-393, because the ride timeline merges
+ * it against the join stream and a bounded read that does not say how far back
+ * it looked produces a confidently wrong tail — `mergeRideTimeline` has the
+ * argument. This is the "a read that post-processes owes its own horizon" case
+ * `TimelineSource.horizon` names, and here the post-processing is the id slice:
+ * `boundedHorizon` over the ROWS would report a horizon on a ride with exactly
+ * `FEED_PAGE_SIZE` postcards and nothing behind them, cutting the join stream
+ * at that instant for no reason. The accessor answers every id the caller may
+ * see, so `ids.length` is the exact answer to "is there more behind this", and
+ * the horizon is the oldest row we actually drew.
  */
-export async function getRideJournal(rideId: string): Promise<Postcard[]> {
-  if (!rideIdSchema.safeParse(rideId).success) return []
+export async function getRideJournal(rideId: string): Promise<TimelineSource<Postcard>> {
+  if (!rideIdSchema.safeParse(rideId).success) return { rows: [], horizon: null }
 
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
@@ -615,7 +628,7 @@ export async function getRideJournal(rideId: string): Promise<Postcard[]> {
     await supabase.rpc('ride_journal_postcard_ids', { ride: rideId }),
     "this ride's journal",
   )
-  if (!ids || ids.length === 0) return []
+  if (!ids || ids.length === 0) return { rows: [], horizon: null }
 
   const rows = unwrapList(
     await supabase
@@ -631,5 +644,17 @@ export async function getRideJournal(rideId: string): Promise<Postcard[]> {
       .limit(FEED_PAGE_SIZE),
     "this ride's journal",
   )
-  return attachLikeState(supabase, rows as unknown as PostcardRow[], user?.id)
+  const postcards = await attachLikeState(supabase, rows as unknown as PostcardRow[], user?.id)
+
+  return {
+    rows: postcards,
+    // See the horizon paragraph above: the ids are the exact answer to "is
+    // there more behind this", and a row the second read dropped is one the
+    // accessor said we could see, so the oldest we DREW is how far back this
+    // source's picture reaches.
+    horizon:
+      ids.length > FEED_PAGE_SIZE && postcards.length > 0
+        ? postcards[postcards.length - 1].created_at
+        : null,
+  }
 }
