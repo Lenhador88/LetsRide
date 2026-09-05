@@ -510,7 +510,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3484** assertions — re-derive rather than trust it:
+Suite **3488** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 

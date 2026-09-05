@@ -239,7 +239,7 @@ than a regression.
 
 ```bash
 git grep -n "reap_ownerless_club\|owner_id is not null" -- supabase/
-PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3484, from 3440
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3488, from 3440
 ```
 
 ## A block and a hide can be undone, and neither was a screen problem — 2026-09-05

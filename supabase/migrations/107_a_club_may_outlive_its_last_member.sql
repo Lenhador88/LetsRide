@@ -1092,13 +1092,34 @@ revoke all on function private.club_invite_is_answerable_for(uuid, uuid) from pu
 --      `postcards` via `postcards_club_id_fkey`, firing this same trigger. It is
 --      harmless — the delete only runs when no postcard remains, so the cascade
 --      removes none — but it is written knowing that rather than by luck.
---   5. ** It does not reap while a RIDE remains **, and this is the condition the
---      change's own design got wrong. `rides.club_id` is ON DELETE SET NULL, so
---      reaping a club that still holds a private ride strands exactly the zombie
---      `032` §2 exists to prevent: a private ride with a NULL club, visible only
---      to its organizer while its `ride_members` rows survive. §4 keeps those
---      rides deliberately; reaping out from under them would undo that in one
---      statement. A ride is third-party content too.
+--   5. ** It does not reap while a RIDE or a THREAD remains **, and this is the
+--      condition the change's own design got wrong TWICE — once in each
+--      direction, and the two fail differently:
+--        * `rides.club_id` is ON DELETE **SET NULL**, so reaping a club that
+--          still holds a private ride strands exactly the zombie `032` §2 exists
+--          to prevent: a private ride with a NULL club, visible only to its
+--          organizer while its `ride_members` rows survive. §4 keeps those rides
+--          deliberately; reaping out from under them would undo that.
+--        * `club_threads.club_id` is ON DELETE **CASCADE**, exactly like
+--          `postcards.club_id` — so reaping over a surviving thread DESTROYS
+--          third-party content, which is the defect this whole file exists to
+--          close, arriving one table across. A rider who posted a thread and a
+--          postcard, left, and later deleted their own postcard would have lost
+--          the thread. Found by the pre-merge review.
+--      A ride and a thread are third-party content by the same argument as a
+--      postcard. ** The conjuncts are a whitelist of emptiness, not a claim that
+--      nothing else references the club: a new child table of `clubs` needs a
+--      fifth one here **, and its FK's delete action says which of those two
+--      harms applies to it.
+--
+-- ** ONE CASE IS LEFT OPEN DELIBERATELY, and it is a garbage row rather than a
+-- leak. ** The trigger fires on `postcards` DELETE alone, so a club emptied in
+-- another order — the last postcard goes while a ride remains, and the ride is
+-- deleted later — is never revisited and stays for ever: invisible, unjoinable,
+-- uneditable, undeletable and now unreapable. Closing it means matching triggers
+-- on `rides`, `club_threads` and `club_members`: three more shipped write paths
+-- and three more hand-exercise gates, for a row no role can observe. Filed
+-- rather than built here.
 --
 -- In `private`, so no `authenticated_security_definer_function_executable`
 -- advisor is added and the count stays 39 DEV / 37 PROD. (The advisor actually
@@ -1129,8 +1150,12 @@ begin
        and c.owner_id is null
        and not exists (select 1 from public.club_members m where m.club_id = c.id)
        and not exists (select 1 from public.postcards p where p.club_id = c.id)
-       -- Property 5.
-       and not exists (select 1 from public.rides r where r.club_id = c.id);
+       -- Property 5. Both of these are third-party content by the SAME argument
+       -- that preserves the postcards, and `club_threads.club_id` cascades just
+       -- as `postcards.club_id` does — so reaping over either destroys exactly
+       -- what this change exists to stop, one table across.
+       and not exists (select 1 from public.rides r where r.club_id = c.id)
+       and not exists (select 1 from public.club_threads t where t.club_id = c.id);
   exception
     when others then
       raise warning 'reap_ownerless_club: could not reap % (%): %',
@@ -1142,7 +1167,7 @@ end;
 $$;
 
 comment on function private.reap_ownerless_club() is
-  'Deletes an ownerless club (107) once nothing is left that it was preserved for: no members, no postcards, no rides. Without it such a club is unreachable by every role for ever, since it is invisible, unjoinable, uneditable and undeletable. security definer BECAUSE the clubs DELETE policy is `auth.uid() = owner_id`, which is NULL for an ownerless club and admits nobody — a security invoker version would delete zero rows silently. Never reaps while a ride remains: rides.club_id is ON DELETE SET NULL, and stranding a private ride is the zombie 032 §2 exists to prevent.';
+  'Deletes an ownerless club (107) once no members, no postcards, no rides and no threads remain. Without it such a club is unreachable by every role for ever, since it is invisible, unjoinable, uneditable and undeletable. security definer BECAUSE the clubs DELETE policy is `auth.uid() = owner_id`, which is NULL for an ownerless club and admits nobody — a security invoker version would delete zero rows silently. ** The four conjuncts are a whitelist of emptiness, not a claim that nothing else can reference the club **: each one names a table whose rows would be destroyed or stranded by the delete, and a NEW child table of `clubs` needs a fifth. club_threads.club_id CASCADES (so reaping over a thread destroys third-party content, exactly what 107 exists to stop) and rides.club_id is ON DELETE SET NULL (so reaping over a ride strands the zombie 032 §2 prevents) — two different failure modes, one condition each. ** It fires on postcard deletion ALONE, so a club emptied in some other order is never revisited and stays as a permanent orphan row **; that is a garbage row with no exposure rather than a leak, and it is a deliberate trade against adding triggers to three more shipped write paths.';
 
 revoke all on function private.reap_ownerless_club() from public, anon, authenticated;
 

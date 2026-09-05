@@ -373,7 +373,7 @@ still NOT NULL / 2 triggers, read back immediately after).
 `authenticated_security_definer_function_executable` WARNs + 2 `rls_enabled_no_policy` INFOs + 1
 `auth_leaked_password_protection`. The one new function, `private.reap_ownerless_club`, is in
 `private`. (The advisor keys on `has_function_privilege('authenticated', …)` rather than on the
-schema, so `private` is a safe over-approximation and not the mechanism.) Suite **3484**, from 3440.
+schema, so `private` is a safe over-approximation and not the mechanism.) Suite **3488**, from 3440.
 
 **Seven existing assertions moved deliberately and each is annotated with why** — five plain-text
 pins of the `clubs` SELECT policy string (060, 081.6, 085.1, 089.7, 099.9), two md5 pins at 093.7

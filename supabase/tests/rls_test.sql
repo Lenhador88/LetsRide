@@ -32812,9 +32812,19 @@ rollback to savepoint hidden_list_106;
 -- these reverts turns the named assertion red rather than passing quietly:
 --   * drop `and owner_id is not null` from clubs SELECT ............... 107.5
 --   * drop it from private.can_read_club .............................. 107.6
---   * drop it from the club_members INSERT policy ..................... 107.7
 --   * drop `not club.is_default` from the new arm ..................... 107.9
 --   * null owner_id and the paths in two statements instead of one ..... 107.3
+--   * drop the club_threads conjunct from the reaper ................. 107.12
+--     (reads 0 — the club is reaped and the thread CASCADES away with it)
+--   * drop §2b's conjunct, with 107.7b's savepoint in place .......... 107.7b
+--     ("expected an RLS denial, but the statement succeeded")
+--
+-- ** AND ONE THAT DID NOT, WHICH IS THE MORE USEFUL ENTRY. ** Dropping §2b's
+-- conjunct from the `club_members` INSERT policy leaves the WHOLE SUITE GREEN —
+-- run, not predicted. A policy's subquery is evaluated under the caller's own
+-- RLS, so §2a hides the row from §2b's `exists` and no ordinary assertion can
+-- separate them. 107.7b is written for exactly that, and reverts §2a inside a
+-- savepoint so the counterfactual can be measured instead of assumed.
 -- ===========================================================================
 savepoint club_outlives_107;
 
@@ -33002,6 +33012,46 @@ select assert_denied(
     values ('00000000-0000-0000-0000-0001070000c1',
             '00000000-0000-0000-0000-000000107003', 'member')$$,
   '107.7: ** an ownerless club cannot be JOINED **, which is the second half of closing 107.5''s exposure. Sight and join are both required to reach the postcards, so both are closed rather than either');
+
+-- ---------------------------------------------------------------------------
+-- 107.7b  ** §2b ON ITS OWN — the only predicate in 107 that no ordinary
+--         assertion can distinguish, and the measurement that proves it **
+-- ---------------------------------------------------------------------------
+-- ** The assertion above does NOT test §2b. ** Measured, not reasoned: reverting
+-- §2b's `c.owner_id is not null` conjunct and running the whole suite leaves it
+-- GREEN. The reason is structural — a subquery inside a policy expression is
+-- evaluated under the CALLER's own RLS, so §2a has already hidden the ownerless
+-- row from §2b's own `exists`, and the `exists` is false either way.
+--
+-- That is exactly what makes §2b defence in depth, and exactly why it would have
+-- shipped untested: it is written to survive a future re-widening of §2a, and
+-- while §2a stands nothing can tell it apart from a no-op.
+--
+-- So this asserts the counterfactual directly. Inside a savepoint, the `clubs`
+-- SELECT policy is restored to its PRE-107 text — the state a careless later
+-- change would recreate — and the join is attempted again. It must still be
+-- refused, and now only §2b can be refusing it.
+savepoint defence_in_depth_107;
+reset role;
+select set_config('test.uid', '', false);
+drop policy "Clubs are viewable by members and signed-in riders" on public.clubs;
+create policy "Clubs are viewable by members and signed-in riders"
+  on public.clubs for select to authenticated
+  using (is_public or owner_id = auth.uid() or private.is_club_member(id));
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000107003', false);
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  1, '107.7b: with 107 §2a reverted, the ownerless club is VISIBLE again — the precondition, asserted so the refusal below cannot pass because the row is simply unreachable');
+select assert_denied(
+  $$insert into club_members (club_id, user_id, role)
+    values ('00000000-0000-0000-0000-0001070000c1',
+            '00000000-0000-0000-0000-000000107003', 'member')$$,
+  '107.7b: ** and the join is STILL refused, by §2b alone. ** This is the assertion that goes red if somebody removes club_members INSERT''s `c.owner_id is not null` conjunct as redundant — which it is, exactly until the day the SELECT policy is widened, and on that day it is the only thing standing between a preserved postcard and every rider in the app');
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint defence_in_depth_107;
 -- Data-modifying CTEs: an UPDATE/DELETE cannot sit in a plain subquery. Zero
 -- rows affected is the RLS refusal — a policy that admits nobody filters the
 -- statement to nothing rather than raising, which is why these count rows
@@ -33092,10 +33142,12 @@ select assert_eq(
 -- ---------------------------------------------------------------------------
 -- 107.11  THE ADVISOR SURFACE DID NOT MOVE
 -- ---------------------------------------------------------------------------
--- Every function 107 touches already existed and stays where it was. A
--- security definer function in `public` adds one
+-- 107 creates exactly ONE function — `private.reap_ownerless_club` — and
+-- rewrites ten that already existed, all of them staying where they were. A
+-- `security definer` function in `public` adds one
 -- authenticated_security_definer_function_executable advisor; one in `private`
--- adds none. 107 creates no function at all.
+-- adds none, which is why the count stays at 39 DEV / 37 PROD **because** the
+-- new one landed in `private`, not because nothing was created.
 select assert_eq(
   (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.prosecdef
@@ -33171,6 +33223,27 @@ select assert_eq(
   '00000000-0000-0000-0000-0001070000c1',
   '107.12: ... and the ride keeps its club rather than being SET NULL into a zombie its crew cannot see');
 rollback to savepoint reaper_rides_107;
+
+-- ** AND IT MUST NOT REAP WHILE A THREAD REMAINS — a different failure from the
+-- ride one, and the more serious of the two. ** club_threads.club_id is ON
+-- DELETE CASCADE, exactly like postcards.club_id, so reaping over a surviving
+-- thread DESTROYS third-party content rather than stranding it: the defect this
+-- whole file exists to close, arriving one table across. The reachable sequence
+-- is a rider who posted a thread AND a postcard, left, and later deleted their
+-- own postcard. Found by the pre-merge review, not by the design.
+savepoint reaper_threads_107;
+insert into club_threads (id, club_id, author_id, title, created_at) values
+  ('00000000-0000-0000-0000-0001070000e2', '00000000-0000-0000-0000-0001070000c1',
+   '00000000-0000-0000-0000-000000107002', 'A thread that outlives the postcard',
+   now() - interval '3 days');
+delete from postcards where id = '00000000-0000-0000-0000-0001070000f1';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  1, '107.12: ** the club SURVIVES its last postcard while a THREAD is still attached. ** Drop the club_threads conjunct and this reads 0 — and the thread below is destroyed rather than merely orphaned, because that FK cascades');
+select assert_eq(
+  (select count(*)::int from club_threads where id = '00000000-0000-0000-0000-0001070000e2'),
+  1, '107.12: ... and the thread is still there. ** The reap conjuncts are a whitelist of emptiness rather than a claim that nothing else references the club ** — a new child table of `clubs` needs its own conjunct, and its FK''s delete action says whether omitting it destroys content or strands it');
+rollback to savepoint reaper_threads_107;
 
 -- A MULTI-ROW delete fires the trigger once per row, after the statement, and
 -- each invocation sees zero remaining postcards. The first reaps; the rest must

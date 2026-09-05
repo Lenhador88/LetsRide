@@ -7,13 +7,33 @@ Everything measured below was read from the live DEV catalogue (`fpmrimzxadewsai
 three-valued logic rather than a catalogue fact, it was executed and the result is quoted.
 
 The change adds one lifecycle state — a club with no owner — to a schema where `clubs.owner_id`
-appears in **4 policies, 24 functions and 2 CHECK constraints**. Re-derive rather than trust:
+appears in **7 policies, 24 functions and 2 CHECK constraints**. Re-derive rather than trust —
+**and all three, not just the functions**, which is how the first two versions of this line went
+wrong:
 
 ```sql
+-- ** DO NOT add `where schemaname = 'public'` ** — that misses the two
+-- storage.objects policies and is how this line first said 4, then 5.
+select schemaname, tablename, policyname, cmd from pg_policies
+ where coalesce(qual,'') like '%owner_id%' or coalesce(with_check,'') like '%owner_id%';  -- 7
+
 select n.nspname||'.'||p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
  where n.nspname in ('public','private') and p.prokind='f'
-   and pg_get_functiondef(p.oid) ilike '%owner_id%' order by 1;
+   and pg_get_functiondef(p.oid) ilike '%owner_id%' order by 1;                            -- 24
+
+select conname from pg_constraint
+ where contype='c' and conrelid='public.clubs'::regclass
+   and pg_get_constraintdef(oid) like '%owner_id%';                                        -- 2
 ```
+
+> **[corrected] This number was wrong twice, in the same direction, and the command beside it
+> could not catch either.** It said **4** (the `clubs` policies alone) and then **5** (adding
+> `club_members` INSERT but scoped to `schemaname = 'public'`, which cannot see
+> `storage.objects`). The re-derivation block originally re-derived only the *function* count, so
+> a reader running it reproduced one of the three numbers and had no way to check the other two.
+> §D10 has the per-site table. **The function count reads 24 before this change applies and 26
+> after** — `reap_ownerless_club` and the rewritten bodies — so re-derive it against the right
+> side of the apply.
 
 ## Goals / Non-Goals
 
