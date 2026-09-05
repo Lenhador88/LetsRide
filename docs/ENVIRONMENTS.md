@@ -427,17 +427,20 @@ early visitors you most want to land on the website.
 
 ### Email
 
-Auth mail currently leaves Supabase's shared SMTP, from a Supabase-owned sender. That is
-rate-limited and documented as unsuitable for production volume, and it is unrelated to owning a
-domain — buying `letsride.social` did not change what sends the mail, only what could.
+**[`docs/reference/email.md`](reference/email.md) is the detail** — what sends what, the DNS
+records, the templates, the rate limits, and the probes for each. What belongs here is the half
+that is a property of the split:
 
-Sending from `noreply@letsride.social` needs a real SMTP provider plus SPF, DKIM and DMARC
-records on the apex. **That is what makes the nameserver decision in step 2 matter**: if DNS
-moves to Vercel, the mail records move with it.
+**PROD sends as `noreply@letsride.social` through Resend; DEV still sends through Supabase's
+shared built-in mailer.** Measured 2026-09-05 by reading the headers of a mail from each. The
+asymmetry is PD-108's remaining work rather than a decision — PROD was moved and DEV was missed,
+and neither was recorded until three weeks later, which is this file's §Auth configuration lesson
+happening again to the one setting that has no read-back at all.
 
-Worth doing even while nothing sends mail: publish an SPF record with `-all` and a DMARC record
-with `p=reject`. A domain with no mail policy can be spoofed by anyone, and a young brand's
-first experience of that is usually a phishing run at its own signups.
+**The DNS half is the part the nameserver decision in step 2 governs**, and it stayed at name.com,
+so the mail records did too. Resend's are published and passing; the apex still has no SPF and
+DMARC is `p=none` with no reporting address. A domain with no mail policy can be spoofed by
+anyone, and a young brand's first experience of that is usually a phishing run at its own signups.
 
 ---
 
@@ -615,6 +618,7 @@ Check these on both projects whenever either changes:
 | Email confirmation | off | **on** before launch (decision #6) | **ON** — `mailer_autoconfirm: false`, re-measured 2026-08-07 |
 | Site URL | `https://app-dev.letsride.social` | `https://app.letsride.social` | ✅ **`https://app.letsride.social`** — moved and re-measured 2026-08-11 |
 | Redirect allowlist | `https://app-dev.letsride.social/**` + `http://localhost:3000/**` + `https://letsrideapp-*-pedro-projects1.vercel.app/**` | `https://app.letsride.social/**`, the `*.vercel.app` entries, and **no** localhost | ✅ all three honoured; `http://localhost:3000/**` **removed** — re-measured 2026-08-11 |
+| Custom SMTP | on | on | **PROD on** (Resend, `noreply@letsride.social`) · **DEV still on the built-in mailer** — both re-measured 2026-09-05, `docs/reference/email.md` |
 | Leaked-password protection | on | on | **off** — the one outstanding security advisor |
 | `UpdatePasswordRequireCurrentPassword` | on | on | **not measured** — no read-only probe found for it |
 

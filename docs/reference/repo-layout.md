@@ -88,7 +88,8 @@ docs/
 │   ├── native-shell.md     #   the Capacitor shell's position and the store-readiness table
 │   ├── running-locally.md  #   the per-command table, the relay, the walk and its fixtures
 │   ├── known-issues.md     #   understood issues — mechanism, sites to re-derive, why not folded in
-│   └── signup.md           #   how signup broke against confirmation-on, and the proof it is fixed
+│   ├── signup.md           #   how signup broke against confirmation-on, and the proof it is fixed
+│   └── email.md            #   what sends the auth mail, from where, and the probes that read it back
 └── specs/                  # Implementation specs (login-onboarding.md)
 design/                     # Committed Figma snapshot — READ THIS, don't call the API
 ├── README.md               # Why it exists, how to refresh it, how to query it
