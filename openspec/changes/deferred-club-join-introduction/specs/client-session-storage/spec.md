@@ -13,6 +13,14 @@ navigation.
 No second store, no second key and no dismissal kind SHALL be added for a declined join. A refusal
 to join is not a rider preference the app keeps; it is the absence of an action.
 
+**This requirement is the single home of that rule.** What it means for the prompt is
+`club-introductions`' *The prompt SHALL NOT be suppressed by anything the rider did while not a
+member*, which points here rather than restating this.
+
+The rule SHALL be applied at **every** call site that records a dismissal, not only at the one
+whose screen prompted the change. A dismissal is written by each screen that mounts the prompt, so
+one unfixed call site reproduces the whole defect on that screen.
+
 #### Scenario: Declining a join stores nothing
 - **WHEN** a rider declines a prompt at a moment when they hold no membership of the club
 - **THEN** nothing SHALL be written to session storage

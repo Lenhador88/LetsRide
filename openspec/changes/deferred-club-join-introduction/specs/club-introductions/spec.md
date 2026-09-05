@@ -136,8 +136,20 @@ successful write, and SHALL NOT be re-read from a cache: an invalidation issued 
 write resolves on its own schedule, so a cache-derived label can offer to defer a join that has
 already happened.
 
-Once a membership exists the sheet SHALL NOT return to offering deferral, for the remainder of its
-life.
+Once a membership exists the sheet SHALL NOT return to offering deferral, for the remainder of
+**that sheet instance's** life. The scope is one club and is load-bearing: an instance is opened
+for a single club, and a membership fact held wider than one instance would put a second club's
+sheet into member mode on the strength of the first club's join — which would then attempt an
+introduction for a club the rider has not joined, and be refused.
+
+The sheet SHALL also make that fact available to whatever dismisses it, because the component that
+records a dismissal is not the component that issued the write.
+
+#### Scenario: One club's join does not settle another's
+- **WHEN** a rider posts an introduction to one club and then opens the sheet for a different club
+  they have not joined
+- **THEN** the second sheet SHALL offer to defer the join
+- **AND** its `Post` SHALL write a membership for that club before attempting an introduction
 
 #### Scenario: A rider who defers is not a member
 - **WHEN** a rider declines the sheet before any membership exists
@@ -196,6 +208,36 @@ membership policy SHALL remain the only thing that decides.
 - **THEN** it SHALL be refused or permitted by exactly the policy that governs the Join control
 - **AND** the write SHALL name no rider but the caller
 
+### Requirement: The sheet SHALL open only after the rider is confirmed to still owe an introduction, and a successful join SHALL NOT be read as a created membership
+
+A Join control SHALL confirm, at the moment it is tapped and before anything is written, that the
+rider still owes an introduction for that club. A control's own position SHALL NOT be treated as
+that confirmation: the lists that draw it are cached, so a row may offer to join a club the rider
+already joined in another tab or was admitted to by another door.
+
+Where the confirmation says no introduction is owed, the control SHALL join outright and SHALL open
+no sheet, exactly as for a club exempt from introductions.
+
+**A membership write that does not error SHALL NOT be reported as a membership created.** The write
+is an upsert that ignores duplicates, so "no error" includes "this rider was already a member and
+nothing was written". No copy, state or claim SHALL assert that the rider has just joined on the
+strength of that alone.
+
+#### Scenario: A stale Join row does not promise a join
+- **WHEN** a rider taps a Join control on a list row for a club they have already joined and
+  introduced themselves to
+- **THEN** no pre-join sheet SHALL open
+- **AND** no screen SHALL state that they have just joined
+
+#### Scenario: The confirmation precedes the write
+- **WHEN** a Join control is tapped for a club where an introduction may be owed
+- **THEN** the confirmation SHALL be issued before any membership or introduction write
+- **AND** the sheet SHALL open only if an introduction is genuinely still owed
+
+#### Scenario: A no-op upsert is not a join
+- **WHEN** the membership write succeeds without creating a row
+- **THEN** the rider SHALL NOT be told that they joined
+
 ### Requirement: A club exempt from introductions SHALL still be joinable in one tap
 
 Where the prompt rule would owe no introduction, the Join control SHALL write the membership
@@ -216,38 +258,36 @@ product. Every join control SHALL know the club's default-club status from data.
 - **THEN** it SHALL take the club's default-club status from the club's own data
 - **AND** no control SHALL hardcode it on the grounds that the default club cannot appear there
 
-### Requirement: A dismissal SHALL be recorded if and only if a membership exists when the sheet is dismissed
+### Requirement: The prompt SHALL NOT be suppressed by anything the rider did while not a member
 
-The per-(rider, club) session dismissal exists to stop a **state-driven** prompt reappearing on
-every navigation. Declining a pre-join sheet SHALL record nothing, because that sheet is opened by
-an explicit tap and by nothing else, and cannot therefore reappear on its own.
+A rider SHALL be prompted for an introduction whenever the state rule holds and they have not
+declined **that** prompt in this session. Declining to join is not declining to introduce yourself,
+and SHALL NOT suppress the prompt: a rider who defers a join and is then admitted to the same club
+by another door in the same session SHALL be prompted.
 
-It follows, and is decided rather than left to be discovered, that a rider who defers a join and
-then becomes a member of that same club by another door in the same session **SHALL** be prompted
-for an introduction. Their earlier answer was about joining, which they have since done; it SHALL
-NOT be read as declining an introduction they were never asked for.
+**What is recorded, and when, is owned by `client-session-storage`** — *A session dismissal SHALL
+record only a declined introduction, never a declined join* — and SHALL NOT be restated here. This
+requirement owns only the consequence for the prompt.
 
-Declining the sheet while a membership exists SHALL record the dismissal exactly as it does today,
-including on the path where `Post`'s membership write succeeded and its introduction write failed.
-
-No second store, key or dismissal kind SHALL be introduced for this.
-
-#### Scenario: A deferred join records nothing
-- **WHEN** a rider defers the pre-join sheet
-- **THEN** no dismissal SHALL be recorded for that rider and club
-- **AND** the session store SHALL be unchanged from before the tap
+The rule SHALL be applied wherever a dismissal is recorded, and there is more than one such place:
+every screen that mounts the sheet writes its own dismissal. A screen that applies it and a screen
+that does not is the defect, not a partial fix.
 
 #### Scenario: A deferral does not silence a later membership
-- **WHEN** that rider is admitted to the same club later in the same session, by an approved
-  request, an invite or a claimed invite link
-- **THEN** the state-driven prompt SHALL be shown
+- **WHEN** a rider defers a join and is admitted to the same club later in the same session, by an
+  approved request, an invite or a claimed invite link
+- **THEN** the prompt SHALL be shown on that club's screen
 - **AND** it SHALL offer to decline the introduction only
 
-#### Scenario: A partial Post records a dismissal on decline
-- **WHEN** the membership write succeeded, the introduction write failed, and the rider then
-  declines
-- **THEN** the dismissal SHALL be recorded
-- **AND** the prompt SHALL NOT reappear for that club for the rest of the session
+#### Scenario: The rule holds on every screen that mounts the sheet
+- **WHEN** a rider defers a join from a club's own screen, rather than from a list
+- **THEN** the outcome SHALL be identical to deferring it from a list
+- **AND** no screen SHALL record a dismissal for a rider who is not a member
+
+#### Scenario: A declined introduction still suppresses the prompt
+- **WHEN** a rider who holds a membership declines the prompt, including after a `Post` whose
+  membership write succeeded and whose introduction write failed
+- **THEN** the prompt SHALL NOT reappear for that club for the rest of the session
 
 ### Requirement: One introduction sheet SHALL be open per screen, and the state rule SHALL NOT disturb an open one
 
@@ -260,19 +300,14 @@ or reset its draft.
 
 A composed introduction SHALL never be posted to a club other than the one it was composed for.
 
-The sheet SHALL be owned by a component that outlives the control that opened it. The membership
-write invalidates the lists that draw that control, so the control may unmount while the
-introduction write is still in flight; a sheet owned by the control would take the rider's text
-with it.
+**Where the sheet must be mounted is owned by `client-cache-invalidation`** — *A sheet SHALL
+outlive the invalidation that removes the control which opened it* — and SHALL NOT be restated
+here.
 
 #### Scenario: The state rule does not double the sheet
 - **WHEN** the membership write lands while the pre-join sheet is open
 - **THEN** exactly one sheet SHALL be open
 - **AND** the text the rider composed SHALL be unchanged
-
-#### Scenario: A draft outlives the row that opened it
-- **WHEN** the joined club's row leaves the list it was joined from
-- **THEN** the sheet SHALL stay open with its text intact until it resolves or is dismissed
 
 #### Scenario: A draft cannot be misdirected
 - **WHEN** more than one club is queued for a sheet on one screen
@@ -280,29 +315,37 @@ with it.
 
 ### Requirement: The sheet SHALL NOT be dismissible while a Post is in flight before the membership is written
 
-In pre-join mode, from the moment `Post` is pressed until both writes have resolved, the second
-control, the scrim and Escape SHALL NOT close the sheet. A dismissal accepted in that window would
-be labelled as deferring a join that may already have committed.
+In pre-join mode, from the moment `Post` is pressed until the **membership** write resolves, the
+second control, the scrim and Escape SHALL NOT close the sheet. A dismissal accepted in that window
+would be labelled as deferring a join that may already have committed.
 
-In member mode the existing rule is unchanged: the second control is always present and always
-closes the sheet, pending or not, because nothing there is at stake but the introduction.
+**The window ends with the membership write, not with the introduction's.** From the moment the
+membership exists the sheet is in member mode, where the standing rule applies unchanged: the
+second control is always present and always closes the sheet, pending or not, because nothing there
+is at stake but the introduction. A rule holding the sheet shut for the introduction's flight would
+contradict that.
 
 A sheet held open in this way SHALL show that it is working, and SHALL become dismissible again the
-moment either write fails.
+moment the membership write resolves either way.
 
-#### Scenario: Deferring is refused mid-flight
+#### Scenario: Deferring is refused while the membership write is in flight
 - **WHEN** a rider presses `Post` in the pre-join sheet and then taps the scrim, presses Escape, or
-  taps the second control before the writes resolve
+  taps the second control before the membership write resolves
 - **THEN** the sheet SHALL stay open
+
+#### Scenario: The sheet is dismissible again once the membership exists
+- **WHEN** the membership write has succeeded and the introduction write is still in flight
+- **THEN** the sheet SHALL be dismissible
+- **AND** dismissing it SHALL decline the introduction alone and SHALL NOT affect the membership
 
 #### Scenario: The member-mode sheet is always dismissible
 - **WHEN** a member presses `Post` and dismisses the sheet while it is pending
 - **THEN** the sheet SHALL close, exactly as it does today
 
-#### Scenario: A failure returns the sheet to dismissible
-- **WHEN** either write fails
+#### Scenario: A failed join returns the sheet to dismissible
+- **WHEN** the membership write fails
 - **THEN** the sheet SHALL be dismissible again
-- **AND** its second control SHALL carry the meaning the membership fact gives it
+- **AND** its second control SHALL still offer to defer the join
 
 ### Requirement: The sheet SHALL NOT claim a membership the rider does not have
 

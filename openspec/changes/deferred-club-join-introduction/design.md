@@ -75,11 +75,27 @@ never asserted.
 
 **The store module is therefore expected to need no change** — same `sessionStorage`, same
 per-(rider, club) key, same silent failure, same `signOut` sweep, same `useSyncExternalStore`
-read. The change is at the **call sites**, and one of them is easy to miss:
-`ExploreClubsPage`'s `advanceIntroductions` calls `dismissIntroductionPrompt` unconditionally
-before advancing the queue. Carried over as-is it would record a phantom dismissal for a club the
-rider did not join — which is exactly the wrong shape above, arrived at by inertia rather than by
-decision.
+read. **The change is entirely at the call sites, and there are TWO of them:**
+
+| Call site | Today | Under the iff |
+|---|---|---|
+| `src/app/(app)/clubs/detail/page.tsx` — `onDismiss` | `dismissIntroductionPrompt(id)`, unconditional | Records only when a membership exists |
+| `src/app/(app)/clubs/detail/page.tsx` — `onPosted` | `dismissIntroductionPrompt(id)`, unconditional | **Unchanged** — see below |
+| `src/app/(app)/clubs/explore/page.tsx` — `advanceIntroductions` | `dismissIntroductionPrompt(introducingClubId)`, unconditional, before advancing the queue | Records only when a membership exists |
+
+**The club-detail one is the easier to miss and the more damaging.** The pre-join sheet is opened
+from that screen by `ClubMembershipButton`, and `ContextMenu`'s scrim closes through the same
+`onDismiss` — so a scrim tap, an Escape or the `Join later` control all reach one unconditional
+write. A rider who declines the join on club X's own screen, and is later admitted to X by an
+approved request or an invite link in the same session, then navigates to X and is **never asked**.
+That is the exact behaviour three requirements of this change forbid, and it is reachable on the
+screen the story's own copy is about. A change that fixes Explore alone ships it.
+
+**`onPosted` keeps writing unconditionally, and that is the iff rather than an exception to it.** A
+successful `Post` means a membership exists — that is what `Post` did. The write is there because
+recording it on the same tick closes the sheet without waiting on the invalidated `hasIntroduced`
+read to come back and say the same thing, and dropping it as collateral while applying the iff
+would put a round trip back in front of the sheet closing.
 
 ## D3 — The mode is a prop that latches, never a cache read
 
@@ -99,6 +115,23 @@ need to be told.
 
 **The latch is one-way.** Nothing turns member mode back into pre-join mode, including a failed
 introduction, because the membership does not go away.
+
+**The latch lives IN the sheet, per instance, and hoisting it to the page is a defect.** A sheet
+instance is one club — Explore keys it `key={introducingClubId}`, and the club detail screen is a
+single club by construction — so per-instance already means per-(rider, club). A page-level latch
+would leak club A's answer into club B: after A's `Post` lands, B's sheet would open in member mode
+and call `introduceToClub` alone, which `097` refuses for a non-member. B becomes unjoinable, and
+the failure surfaces as an introduction error rather than as anything about joining. This is why
+the spec says *the life of that sheet instance* rather than *its life*: the scope is load-bearing,
+not incidental phrasing.
+
+**And the page has to be told, because the page is what writes the dismissal.** The membership fact
+lives in the sheet — it is the only thing that knows its own write returned — while
+`dismissIntroductionPrompt` is called by the screen. `onDismiss` therefore carries the answer out:
+it takes whether a membership exists at that instant. Without it the iff has no mechanism on the
+one branch that most needs it, the partial `Post`, where the sheet is in member mode and the page
+would otherwise still believe it opened a pre-join sheet. The alternative — the page re-reading the
+cache — is the shape refused at the top of this section, for the same race.
 
 **And the state-driven sheet must not collide with it.** On the club detail screen,
 `showIntroductionPrompt` becomes **true** the moment `Post`'s join lands — `viewer_role` is
@@ -122,12 +155,49 @@ membership, that exemption would make the club **unjoinable**. So the rule is: w
 introduction would be owed, the Join control writes the membership immediately and opens no sheet —
 today's behaviour, unchanged.
 
-**Only one fact is needed to decide that, and the second round trip goes.** Today `JoinClubButton`
-joins and *then* calls `hasIntroducedClub` before deciding to prompt. In pre-join mode
-`owesIntroduction`'s other three conjuncts are already known: a Join control renders for a
-non-member alone, so the rider is neither owner nor member, and `097`'s column-scoped
+**The decision needs `clubs.is_default` AND the existing `hasIntroducedClub` read, and the read
+moves rather than going.** An earlier revision of this section deleted it as redundant, reasoning
+that `owesIntroduction`'s other three conjuncts are known from position: a Join control renders for
+a non-member alone, so the rider is neither owner nor member, and `097`'s column-scoped
 `ON DELETE SET NULL` nulls a former member's marker, so a rejoiner has no introduction to find.
-What is left is `clubs.is_default`.
+**Two of those hold and the third does not.** Position tells you what the *list* believed when it
+was fetched, and both lists carrying a Join control are cached queries.
+
+The failure it drops is a **stale Join row**, and it is silent in both halves:
+
+```
+rider joins club X in another tab, or is admitted by an approved request / an invite link
+   → this tab's cached Explore row still draws `Join club`
+   → tap  → pre-join sheet: "Post an introduction and you'll join the club."   ← already a member
+   → Post → joinClub upserts with { ignoreDuplicates: true }  → NO ERROR, and NO ROW WRITTEN
+          → the composite reads that as "the join succeeded"
+          → introduceToClub is refused: 097's partial unique index already holds one
+          → the sheet shows "You've joined the club. Your introduction couldn't be posted."
+```
+
+Both halves of that sentence are false — nothing was joined, and the introduction was refused
+because one already exists. Today `hasIntroducedClub` prevents the sheet opening at all, and that
+guard is the thing to keep.
+
+**So it is issued on tap, before anything is written**, and a rider who turns out to already owe
+nothing is joined outright with no sheet. The path is still cheaper than today's: one read before
+the sheet, against today's `joinClub` **and** `hasIntroducedClub` after it.
+
+**Two things follow and are written into the spec rather than left here.** *"The join succeeded"*
+means *the upsert did not error*, never *a membership was created* — `ignoreDuplicates` makes those
+different statements — so no copy may assert a creation. And the **owner** conjunct is now asserted
+from position rather than read, which is safe only because an ownerless owner is unreachable:
+`103` seeds the creator's membership row and `095`'s `protect_club_owner_membership` refuses to
+delete it while the club stands. Measured on `letsride-dev` (`fpmrimzxadewsaiwpsel`), 2026-09-05:
+
+```sql
+select count(*) from clubs c where not exists (
+  select 1 from club_members m where m.club_id = c.id and m.user_id = c.owner_id);
+-- 0
+```
+
+The premise is stated with the thing that
+makes it true, because if either of those is ever relaxed this inference goes with it.
 
 **It is read, never assumed, at both controls.** `JoinClubButton` already takes it as a prop for
 exactly this reason and its header records the defect that came of asserting it.
@@ -147,9 +217,14 @@ Post an introduction and you'll join the club.
 [ Join later ]                              [ Post ]
 ```
 
-**No club name**, per A4: `ClubMembershipButton` holds only a `clubId`, and Explore's sheet is
-mounted on the page precisely so it can outlive the row — a name read for the heading would be a
-read the sheet does not otherwise need.
+**No club name — a choice, and it is worth saying that it is one.** The name is available at both
+controls: `ClubCard` already passes `clubName` into `JoinClubButton` for its `aria-label`, and the
+club detail screen holds `club.data.name`, so nothing prevents *"Introduce yourself to the Night
+Owls"*. An earlier revision of this section claimed the sheet could not get the name and that was
+simply false. It is left out because the sheet already sits over the club it is about on the detail
+screen, and on Explore it is opened by a tap on a named row seconds earlier — and because a name in
+the heading is a name to keep correct in a component mounted above the row that supplied it. The
+owner may overrule it; it is Q5, and it is one string.
 
 **The starter stays a `placeholder` in both modes.** `097` §Q3's collision is unchanged and its
 reasoning does not depend on the mode: a prefilled value is never empty, so `Post` would be live on

@@ -8,7 +8,7 @@ with one write. Each SHALL be drawn, and none SHALL be inferred from another.
 | State | What the rider sees |
 |---|---|
 | Open, nothing typed | The field with its suggested wording as a placeholder, `Post` inert, the deferral control live |
-| Working | Both writes in flight as one action; `Post` shows progress; the sheet cannot be dismissed until it resolves |
+| Working | `Post` shows progress. The sheet cannot be dismissed until the **membership** write resolves; once it has, the sheet is dismissible again while the introduction is still in flight |
 | Join failed | An error naming the join; the rider is not a member; the sheet stays open and `Post` may be pressed again |
 | Introduction failed after the join landed | A message saying the rider **has joined** and that the introduction did not post; the second control now declines the introduction alone |
 | Posted | The sheet closes; the club reads as joined and the introduction exists |
@@ -21,7 +21,7 @@ this change adds no screen on which "not allowed" and "nothing there" look the s
 #### Scenario: The working state is drawn
 - **WHEN** `Post` is pressed
 - **THEN** progress SHALL be shown on the control that was pressed
-- **AND** the sheet SHALL NOT close until both writes resolve or one fails
+- **AND** the sheet SHALL NOT close until the membership write resolves
 
 #### Scenario: A join failure is told as a join failure
 - **WHEN** the membership write fails

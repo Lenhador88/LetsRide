@@ -9,6 +9,12 @@ so**: it would mean `proposal.md` §The order is forced is wrong and the proposa
 **Territory.** `supabase/`, `src/components/profile/`, `src/components/postcards/`,
 `src/lib/data/moderation.ts`, `src/lib/data/columns.ts`, `src/lib/actions/blocks.ts` and
 `src/lib/actions/moderation.ts` are held by a parallel session. Nothing here needs them.
+`src/lib/validation/clubs.ts` and `docs/FIGMA-FIDELITY-TODO.md` are inside this change's claim as
+widened by the main thread; the claim comment is the main thread's to edit and no session working
+this change edits it.
+
+**The dismissal rule has TWO call sites.** §4.1 and §4.2 each own one, and fixing either alone
+ships the defect on the other screen. It is stated once in `design.md` §D2 and applied twice.
 
 ## 0. Pre-flight
 
@@ -46,18 +52,27 @@ so**: it would mean `proposal.md` §The order is forced is wrong and the proposa
 
 ## 2. The sheet
 
-- [ ] 2.1 Give `IntroductionPromptBody` a mode. Pre-join draws the deferral control and the new
-      copy; member mode draws exactly what it draws today, byte-for-byte.
+- [ ] 2.1 Give `IntroductionPromptBody` a **required** mode — no default. Pre-join draws the
+      deferral control and the new copy; member mode draws exactly what it draws today,
+      byte-for-byte. A default would let a caller forget it and draw *"Welcome to the club!"* over
+      a non-member, which is the defect this change exists to remove.
 - [ ] 2.2 The mode latches: pre-join becomes member the moment its own membership write succeeds,
       and never returns. It SHALL NOT be derived from a cache read — `design.md` §D3.
+- [ ] 2.2a The latch lives **in the sheet, per instance**, and is not hoisted to the page. Explore
+      keys the sheet per club and the detail screen is one club, so per-instance is
+      per-(rider, club); a page-level latch makes the *next* club unjoinable. `design.md` §D3.
+- [ ] 2.2b `onDismiss` gains an argument: whether a membership exists at that instant. The sheet is
+      the only thing that knows, and the page is what records the dismissal.
 - [ ] 2.3 Pre-join `Post` calls the composite from §1; member `Post` keeps calling
       `introduceToClub` unchanged.
 - [ ] 2.4 The three outcomes render as `client-render-shell`'s table says. The half-succeeded case
       gets the one new string, and the second control relabels with the latch.
-- [ ] 2.5 Dismissal is inert in pre-join mode while a `Post` is in flight — the control, the scrim
-      and Escape. Member mode keeps "always dismissible, pending or not". The scrim and Escape are
-      `ContextMenu`'s, so the wrapper's close handler needs to see the pending state; do not
-      duplicate the pending flag in two components.
+- [ ] 2.5 Dismissal is inert in pre-join mode from `Post` **until the membership write resolves**,
+      and no longer — the control, the scrim and Escape. Once the membership exists the sheet is in
+      member mode and keeps "always dismissible, pending or not"; holding it shut for the
+      introduction's flight would contradict that rule. The scrim and Escape are `ContextMenu`'s,
+      so the wrapper's close handler needs to see that state; do not duplicate the flag in two
+      components.
 - [ ] 2.6 Copy constants go in `src/lib/validation/clubs.ts` beside the existing starter, and
       nothing anywhere compares against any of them.
 - [ ] 2.7 Both pinned invariants survive in **both** modes: `Post` inert until non-whitespace text,
@@ -68,11 +83,17 @@ so**: it would mean `proposal.md` §The order is forced is wrong and the proposa
 - [ ] 3.1 `ClubMembershipButton` takes the club's default-club status and an opener callback. Where
       an introduction is owed it opens the sheet and writes nothing; on the default club it joins
       outright as today.
-- [ ] 3.2 `JoinClubButton` does the same. Its post-join `hasIntroducedClub` round trip goes — the
-      pre-join decision needs only the default-club status (`design.md` §D4) — and its header's
-      `onJoined` paragraph is rewritten to say what the callback now means: *open the sheet*, not
+- [ ] 3.2 `JoinClubButton` does the same. **Keep its `hasIntroducedClub` read and move it in front
+      of the sheet**, issued on tap before anything is written: it is the freshness guard against a
+      cached row that still says `Join club`, and without it a stale tap reports a join that
+      created nothing (`joinClub` upserts with `ignoreDuplicates`). `design.md` §D4. Its header's
+      `onJoined` paragraph is rewritten to say what the callback now means — *open the sheet*, not
       *a join happened*. Rename it if that reads better; do not leave the old name with a new
       meaning.
+- [ ] 3.2a `ClubMembershipButton` takes the same read on the same terms. Both controls sit above
+      cached data and neither may infer freshness from its own position.
+- [ ] 3.2b Nothing in this change may report a join from a non-erroring upsert alone. Where a
+      confirmation is needed that a row was created, read it; otherwise say nothing about it.
 - [ ] 3.3 Neither control hardcodes the default-club status. `JoinClubButton`'s header already
       records the defect that came of asserting it; keep that reasoning.
 
@@ -81,6 +102,14 @@ so**: it would mean `proposal.md` §The order is forced is wrong and the proposa
 - [ ] 4.1 `src/app/(app)/clubs/detail/page.tsx`: one sheet, two openers. The state rule is
       unchanged and keeps every conjunct; it may not open a second sheet, remount the open one, or
       reset its draft when the membership write lands. `design.md` §D3.
+- [ ] 4.1a **This screen's own `onDismiss` must stop recording a dismissal for a declined join.**
+      It calls `dismissIntroductionPrompt(id)` unconditionally today, and `ContextMenu`'s scrim and
+      Escape close through that same handler — so a `Join later`, a scrim tap or an Escape all
+      reach it. Apply the iff here using `onDismiss`'s new argument (§2.2b). **Leave `onPosted`'s
+      write alone**: a successful `Post` means a membership exists, so it already satisfies the
+      iff, and it is what closes the sheet without waiting on the invalidated read.
+      This is the reachable defect the reviewer caught — fixing §4.2 alone ships it on the screen
+      the story is about.
 - [ ] 4.2 `src/app/(app)/clubs/explore/page.tsx`: the sheet stays owned by the page. Its
       `advanceIntroductions` **must stop recording a dismissal for a deferred join** — today it
       calls `dismissIntroductionPrompt` unconditionally, and carrying that over records a
@@ -92,13 +121,20 @@ so**: it would mean `proposal.md` §The order is forced is wrong and the proposa
 
 ## 5. Tests
 
-- [ ] 5.1 `IntroductionPrompt.test.tsx`: the four existing assertions stay green unchanged (they
-      describe member mode). Add the pre-join mode through the same `IntroductionPromptBody` seam —
-      the deferral control's label, the heading that does not welcome, and `Post` inert on open.
-      `ContextMenu` renders nothing under `environment: 'node'`, so nothing here may need jsdom.
+- [ ] 5.1 `IntroductionPrompt.test.tsx`: the four existing **invariants** survive — they describe
+      member mode — but the file changes, because `mode` is required (§2.1) and each render must
+      now pass it explicitly. That is the intended cost of a required prop: a green diff here would
+      have meant a default nobody can forget to pass. Add the pre-join mode through the same
+      `IntroductionPromptBody` seam — the deferral control's label, the heading that does not
+      welcome, and `Post` inert on open. `ContextMenu` renders nothing under `environment: 'node'`,
+      so nothing here may need jsdom.
 - [ ] 5.2 `JoinClubButton.test.tsx`: tapping Join for a club owing an introduction writes no
       membership and asks its parent to open the sheet; tapping it for the default club joins
-      outright and opens nothing.
+      outright and opens nothing; and tapping it for a club the rider already introduced themselves
+      to — the stale-row case — joins nothing new and opens nothing.
+- [ ] 5.2a One test for the dismissal iff on **each** of the two screens, or one test per call site
+      if the screens themselves are hard to render. What it pins: a deferred join records no
+      dismissal, and a declined introduction does.
 - [ ] 5.3 Verify each new test both ways, per `CLAUDE.md`'s verify-both-ways rule — swap the shape
       it pins and confirm it goes red. A test that passes against both shapes pins nothing.
 - [ ] 5.4 `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`.

@@ -49,6 +49,13 @@ this decides about the edge the issue asked to have decided rather than discover
 taps `Join later` and then joins by another door in the same session **is** prompted, because
 nothing was recorded.
 
+**The iff is one rule with TWO call sites, and the club-detail one is the easier to miss.**
+`src/app/(app)/clubs/detail/page.tsx` writes the dismissal from `onDismiss` and `onPosted`, both
+unconditional, and `ExploreClubsPage.advanceIntroductions` does the same before advancing its
+queue. The detail screen is the surface the issue's own copy is about, so a change that fixes only
+Explore ships the defect where it is most likely to be met. §D2 names both, and says why
+`onPosted`'s unconditional write is *consistent* with the iff rather than an exception to it.
+
 **A3. The pre-join sheet is offered only where an introduction would be owed; everywhere else the
 Join control still joins outright.** The default club is the case that matters and it is a live
 one — `JoinClubButton`'s own header records that the welcome club **does** appear on Explore with a
@@ -57,9 +64,17 @@ introductions (`058`, `097`), so if the sheet became the only thing that writes 
 club would become unjoinable. The default-club fact is **read, never assumed**, at both join
 controls — `ClubMembershipButton` does not take it today and must.
 
-**A4. The pre-join copy names no club.** `ClubMembershipButton` holds only a `clubId`, Explore's
-sheet outlives the row it was opened from, and neither needs a name to say what the sheet is for.
-Wording is in §The copy.
+**A4. The pre-join sheet is opened only after the rider is confirmed to still owe an
+introduction.** The Join control asks that question **on tap, before the sheet opens** — one read,
+replacing the two round trips the current flow pays after the join. It is not a formality: both
+lists that draw a Join control are cached queries, so a row can say `Join club` for a club the
+rider already joined in another tab or was admitted to by another door. Opening the pre-join sheet
+there would promise a join that has already happened. §D4.
+
+**The pre-join copy names no club**, which is a **choice and not a constraint** — the name is
+available at both controls (`ClubCard` already passes `clubName` into `JoinClubButton` for its
+`aria-label`, and the detail screen holds `club.data.name`). Recorded as Q5 in §Decisions; the
+wording is in §The copy.
 
 ## Why
 
@@ -134,11 +149,16 @@ a browse surface, which is a worse defect than the one being fixed.
 - **`ClubMembershipButton` gains the default-club fact** it does not have today, read from the
   club the detail screen already holds. For the default club — and only there — both controls join
   outright with no sheet, exactly as today.
-- **The second round trip disappears from the Join path.** `JoinClubButton` today joins and then
-  calls `hasIntroducedClub` to decide whether an introduction is owed. In pre-join mode the answer
-  is known without a read: a Join control renders only for a non-member, and a former member's
-  marker was nulled by `097`'s `ON DELETE SET NULL`, so the only fact needed is
-  `clubs.is_default`.
+- **`hasIntroducedClub` stays, and moves in front of the sheet.** `JoinClubButton` today joins and
+  *then* calls it to decide whether to prompt. It moves to the tap, before anything is written, and
+  a rider who turns out to already hold an introduction is joined outright with no sheet. It is
+  the **freshness** conjunct and nothing else supplies it: both lists that draw a Join control are
+  cached, and `joinClub`'s upsert is `ignoreDuplicates`, so a stale row's tap would report a join
+  that created nothing. Net round trips on this path go from two to one. §D4.
+- **The sheet tells the page what it knows.** `onDismiss` gains an argument saying whether a
+  membership exists at that instant — the sheet issued the join, so it is the only thing that can
+  answer, and the alternative is the cache read §D3 refuses. That argument is what makes the
+  dismissal iff applicable at both call sites.
 - **The sheet stays owned by the screen, not by the row** — PD-384's hazard survives and moves.
   It no longer bites while the sheet is open (nothing has been written, so the row does not leave
   Explore), and it bites the instant `Post`'s join lands: `invalidateClubMembership` moves the row
@@ -148,12 +168,13 @@ a browse surface, which is a worse defect than the one being fixed.
   composite action owns the ordering rule and returns which of the two writes failed. Components
   never write; two sequential action calls in a click handler would put the ordering rule in a
   component and leave it untested.
-- **Dismissal is inert while a `Post` is in flight, in pre-join mode only** — the second control,
-  the scrim and Escape. `097` made `Not now` *"always present and always closes the sheet, pending
-  or not"*, which was safe when nothing was at stake; here a dismissal landing between the join and
-  the introduction would close a sheet labelled `Join later` over a join that has already
-  committed. Member mode keeps the old rule unchanged, which is also what keeps
-  `IntroductionPrompt.test.tsx`'s fourth assertion green.
+- **Dismissal is inert from `Post` until the MEMBERSHIP write resolves, in pre-join mode only** —
+  the second control, the scrim and Escape. That window is exactly the one in which a dismissal
+  labelled `Join later` could land over a join that has already committed. It ends when the
+  membership write returns, not when both writes do: from that moment the sheet is in member mode,
+  where `097`'s *"always present and always closes the sheet, pending or not"* applies unchanged
+  and the introduction alone is at stake. Getting that boundary wrong in the other direction would
+  make the two rules contradict each other over the introduction's flight.
 - **At most one introduction sheet per screen.** On the club detail the state rule turns **true**
   the moment `Post`'s join lands — `viewer_role` becomes `member` and `hasIntroduced` is still
   false — so the state-driven sheet must not open a second one, remount the open one, or reset its
@@ -185,8 +206,8 @@ not misleading.
 
 **Nothing.** No table, no column, no policy, no grant, no function, no trigger, no migration, and
 therefore no movement in the participation-gate count or the security-advisor count. The
-membership write is `joinClub`'s existing `club_members` upsert under `001`'s
-`auth.uid() = user_id` INSERT policy, and the introduction write is `097`'s existing RPC.
+membership write is `joinClub`'s existing `club_members` upsert under the INSERT policy quoted in
+§The negative cases, and the introduction write is `097`'s existing RPC.
 
 ## Capabilities
 
@@ -222,18 +243,35 @@ clubs and memberships.
    notification, no fan-out, no timeline join row, no roster count change, no `club_threads` row,
    no `club_messages` row, no analytics `club_joined` event. The club still offers Join and reads
    as a non-member on every screen.
-2. **`Join later` on a private club cannot create a join request**, and it cannot arise at all: a
-   private club draws `RequestToJoinButton` on its Explore row and `ClubPreviewScreen`'s
-   `Request to join club` on its own screen. Neither opens this sheet, and no path from this sheet
-   writes `club_join_requests`.
+2. **`Join later` on a private club cannot create a join request**, and it cannot arise at all.
+   **The proof is the policy, not the screen list.** Measured on `letsride-dev`
+   (`fpmrimzxadewsaiwpsel`), 2026-09-05:
+
+   ```sql
+   select policyname, with_check from pg_policies
+    where schemaname='public' and tablename='club_members' and cmd='INSERT';
+   -- Users can join public clubs, as a member:
+   --   auth.uid() = user_id
+   --   AND EXISTS (select 1 from clubs c where c.id = club_id and (c.is_public or c.owner_id = auth.uid()))
+   --   AND role = 'member'
+   ```
+
+   A direct join is admitted for a **public** club or one the caller **owns**, and for nothing
+   else — so the pre-join sheet, which exists to defer exactly that write, has no private-club case
+   to get wrong. The screen routing corroborates it (`ClubCard`'s `is_public` ternary picks
+   `RequestToJoinButton`; a private club's own screen is `ClubPreviewScreen`), and corroboration is
+   all it is: a screen list goes stale the next time a screen is added, and the policy does not.
+   No path from this sheet writes, changes or withdraws a `club_join_requests` row.
 3. **The three inherited paths keep `Not now` and threaten no membership somebody else's action
    created** — an approved join request (`085`), a claimed invite link (`093`), and `058`'s welcome
    club, which `095` refuses to let anyone leave. A dismissal on those paths joins nothing and
    leaves nothing.
 4. **`Join later` is not a rejection that sticks.** It records nothing, so the club is joinable
    again on the next tap, in the same session, with no cooldown and no stored trace.
-5. **No rider may join a club through the sheet that they could not join through the button.**
-   `club_members`' INSERT policy is unchanged and the sheet passes no rider id.
+5. **No rider may join a club through the sheet that they could not join through the button.** The
+   INSERT policy quoted above is unchanged, the sheet passes no rider id, and its third conjunct
+   (`role = 'member'`) means the deferred write cannot arrive as anything but an ordinary
+   membership.
 6. **A club's owner and its admins gain nothing.** No role is named anywhere in this change.
 7. **A blocked rider's reach is unchanged.** Blocking stays in RLS; this change adds no filter and
    no arm.
@@ -265,8 +303,9 @@ clubs and memberships.
 | **Q2** | Path enum or membership predicate for the label? | Agent | **Settled** (A1) | Membership predicate; identical labels, and it also covers the partial failure |
 | **Q3** | Does `Join later` emit an analytics event? | Product owner | **OPEN, non-blocking** | **No.** A new PostHog event is new tracking of a rider declining something, and `docs/reference/observability.md` puts each event behind a stated question. If the owner wants "how many riders bail at the sheet", it is a one-line follow-up |
 | **Q4** | Does a `Join later` suppress the members-only sheet later that session? | Agent | **Settled** (A2) | **No** — nothing is recorded, so a rider let in by another door is prompted normally |
-| **Q5** | Pre-join copy | Agent, owner may overrule | **Settled** (A4) | §The copy. Reversible in one file; no schema, no predicate compares against it |
+| **Q5** | Pre-join copy, and does it name the club? | Agent, owner may overrule | **Settled** (A4) | §The copy, **naming no club**. A choice, not a constraint — the name is available at both controls. Reversible in one file; no schema, no predicate compares against it |
 | **Q6** | Does the default club still join outright? | Agent | **Settled** (A3) | **Yes** — it is exempt from introductions and would otherwise become unjoinable |
+| **Q7** | Keep the `hasIntroducedClub` round trip? | Agent | **Settled** (A4) | **Yes**, moved in front of the sheet. It is the freshness conjunct against a cached Join row, and the path still pays fewer round trips than today |
 
 **Nothing here blocks a build.** Q3 is the only open question and it is additive, owner-owned, and
 answerable after this ships.
@@ -275,12 +314,14 @@ answerable after this ships.
 
 - **Affected specs** — deltas on `club-introductions`, `client-render-shell`,
   `client-cache-invalidation` and `client-session-storage`.
-- **Affected code** — `src/components/clubs/IntroductionPrompt.tsx` (the mode, the second control,
-  the in-flight dismissal rule, the two-failure copy),
-  `src/components/clubs/JoinClubButton.tsx`, `src/components/clubs/ClubMembershipButton.tsx` (gains
-  the default-club fact and an opener callback), `src/app/(app)/clubs/detail/page.tsx`,
-  `src/app/(app)/clubs/explore/page.tsx` (its queue stops recording a dismissal for a declined
-  join), `src/lib/actions/club-introductions.ts` (the composite that owns the ordering),
+- **Affected code** — `src/components/clubs/IntroductionPrompt.tsx` (the required mode, the second
+  control, the latch, the in-flight dismissal rule, the two-failure copy, and `onDismiss`'s new
+  argument), `src/components/clubs/JoinClubButton.tsx`,
+  `src/components/clubs/ClubMembershipButton.tsx` (gains the default-club fact and an opener
+  callback), `src/app/(app)/clubs/detail/page.tsx` (**its own `onDismiss` stops recording a
+  dismissal for a declined join** — the same defect as Explore's, on the screen the story is
+  about), `src/app/(app)/clubs/explore/page.tsx` (`advanceIntroductions`, likewise),
+  `src/lib/actions/club-introductions.ts` (the composite that owns the ordering),
   `src/lib/validation/clubs.ts` (copy constants only),
   `src/components/clubs/__tests__/IntroductionPrompt.test.tsx`,
   `src/components/clubs/__tests__/JoinClubButton.test.tsx`, `docs/FIGMA-FIDELITY-TODO.md` (the
