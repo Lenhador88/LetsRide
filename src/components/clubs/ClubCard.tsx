@@ -64,13 +64,17 @@ import type { ClubListItem } from '@/types'
 export function ClubCard({
   club,
   joined,
-  onJoined,
+  onIntroduce,
 }: {
   club: ClubListItem
   joined: boolean
-  /** Forwarded to `JoinClubButton` — see its own header for why the sheet
-   *  lives above this row rather than inside it. Unused on a joined card. */
-  onJoined?: (clubId: string) => void
+  /** Forwarded to `JoinClubButton` — *open the pre-join sheet for this club*,
+   *  not *a join happened*. Nothing is written when it fires (PD-392), and the
+   *  sheet lives above this row because `Post`'s join unmounts it mid-write.
+   *  See that component's header. Unused on a joined card, and never passed to
+   *  `RequestToJoinButton`: a private club is asked rather than joined, so no
+   *  path from it can reach the sheet. */
+  onIntroduce?: (clubId: string) => void
 }) {
   const overflow = club.members_count - club.riders.length
   const TypeIcon = club.is_public ? Globe2Icon : Lock2Icon
@@ -164,7 +168,7 @@ export function ClubCard({
             clubId={club.id}
             clubName={club.name}
             isDefaultClub={club.is_default}
-            onJoined={onJoined}
+            onIntroduce={onIntroduce}
           />
         ) : (
           // `085`. A private club reached through the discovery accessor is

@@ -1,4 +1,5 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { joinClub } from '@/lib/actions/clubs'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { clubIdSchema, clubIntroductionSchema } from '@/lib/validation/clubs'
@@ -58,4 +59,91 @@ export async function introduceToClub(clubId: string, body: string): Promise<Act
   invalidate(queryKeys.clubs.myIntroduction(clubId))
 
   return { error: null, sent: true }
+}
+
+/**
+ * What `joinAndIntroduceToClub` did — three outcomes, and the third is the
+ * reason this is not an `ActionState`.
+ *
+ * `introduction-failed` is a **success and a failure at once**: the membership
+ * is there and the words are not. Collapsing it into `{ error }` would make the
+ * sheet tell a rider nothing happened on the one path where something did, and
+ * it is also what decides the sheet's second control — `Join later` is a lie
+ * the moment the join lands.
+ */
+export type JoinAndIntroduceResult =
+  | { outcome: 'joined-and-introduced' }
+  | { outcome: 'join-failed'; error: string }
+  | { outcome: 'introduction-failed'; error: string }
+
+/**
+ * `Post`, in the sheet's pre-join mode — joins the club, then introduces the
+ * rider to it (PD-392).
+ *
+ * ## The order is forced, and it is not a preference
+ *
+ * `introduce_to_club` (`097`) refuses a caller who is not a member — one of the
+ * six conditions collapsed into `introduceToClub`'s single message above. So
+ * there is no arm in which the introduction goes first, and this function
+ * cannot be reordered without the RPC changing underneath it.
+ *
+ * ## Two separately failable writes, and NO compensating delete
+ *
+ * There is no transaction across them and none is available: PostgREST has no
+ * multi-statement request, which is why `createClub` already lives with two
+ * inserts and none either. **A failed introduction therefore leaves a member
+ * who owes one, and that state is left standing on purpose** — it is `097`'s
+ * own first-class *"a rider who joins and writes no introduction"*, reached by
+ * one more route, and the club detail's state-driven sheet asks again on the
+ * next visit.
+ *
+ * Undoing the join instead would write a `club_joined` notification to the club
+ * and remove the member underneath it, so every admin sees an arrival that is
+ * no longer there — the exact wake PD-392 refuses in *"Defer the join; do not
+ * undo it"*. It would also add a failure point of its own, and `095`'s
+ * `protect_club_owner_membership` refuses some deletes outright, so the
+ * compensation would not even be total. `design.md` §D1 carries the full
+ * argument.
+ *
+ * ## Not an RPC, deliberately
+ *
+ * A combined `join_and_introduce` function would be a **seventh**
+ * membership-writing door and would leave the other six exactly as they are —
+ * `proposal.md` §Non-Goals. This composes the two existing writers instead, so
+ * each keeps its own cache claims and its own enforcement, and this function
+ * owns nothing but the ordering.
+ *
+ * ## "The join succeeded" means the upsert did not error
+ *
+ * It does **not** mean a row was created: `joinClub` upserts with
+ * `ignoreDuplicates`, so a rider who is already a member gets a clean success
+ * and no write. That is why the caller must not open this path for a rider who
+ * already owes nothing — `JoinClubButton` and `ClubMembershipButton` both check
+ * before the sheet opens (`design.md` §D4) — and why the copy on the
+ * `introduction-failed` path speaks about the rider's **state** ("You've joined
+ * the club") rather than about this call having created it.
+ */
+export async function joinAndIntroduceToClub(
+  clubId: string,
+  body: string
+): Promise<JoinAndIntroduceResult> {
+  // Parsed BEFORE the join, so a body the database would refuse never costs a
+  // membership the rider did not ask for on its own. `introduceToClub` parses
+  // it again — that is the enforcement and this is the ordering guard; the two
+  // are not redundant, because only this one runs before the first write.
+  const parsed = clubIntroductionSchema.safeParse(body)
+  if (!parsed.success) {
+    return {
+      outcome: 'join-failed',
+      error: parsed.error.issues[0]?.message ?? 'Write something first.',
+    }
+  }
+
+  const joined = await joinClub(clubId)
+  if (joined.error) return { outcome: 'join-failed', error: joined.error }
+
+  const introduced = await introduceToClub(clubId, parsed.data)
+  if (introduced.error) return { outcome: 'introduction-failed', error: introduced.error }
+
+  return { outcome: 'joined-and-introduced' }
 }

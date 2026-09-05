@@ -34,32 +34,33 @@ import type { ClubListItem } from '@/types'
 export function ExploreClubsList({
   clubs,
   near,
-  onJoined,
+  onIntroduce,
 }: {
   clubs: ClubListItem[]
   /** Where distances were measured from, or null when there is no position. */
   near: NearLabel
-  /** Forwarded to every `JoinClubButton` on this list — see its own header. */
-  onJoined?: (clubId: string) => void
+  /** Forwarded to every `JoinClubButton` on this list — *open the pre-join
+   *  sheet*, not *a join happened* (PD-392). See that component's header. */
+  onIntroduce?: (clubId: string) => void
 }) {
   const nearby = near ? clubs.filter((club) => isNearby(club.distance_km)) : []
   const rest = near ? clubs.filter((club) => !isNearby(club.distance_km)) : clubs
 
   if (nearby.length === 0) {
-    return <ClubList clubs={rest} onJoined={onJoined} />
+    return <ClubList clubs={rest} onIntroduce={onIntroduce} />
   }
 
   return (
     <div className="flex flex-col gap-4">
       <section className="flex flex-col gap-2">
         <h3 className="px-2 text-sm font-semibold text-foreground">Near {near!.name}</h3>
-        <ClubList clubs={nearby} onJoined={onJoined} />
+        <ClubList clubs={nearby} onIntroduce={onIntroduce} />
       </section>
 
       {rest.length > 0 && (
         <section className="flex flex-col gap-2">
           <h3 className="px-2 text-sm font-semibold text-muted">More clubs</h3>
-          <ClubList clubs={rest} onJoined={onJoined} />
+          <ClubList clubs={rest} onIntroduce={onIntroduce} />
         </section>
       )}
     </div>
@@ -68,16 +69,16 @@ export function ExploreClubsList({
 
 function ClubList({
   clubs,
-  onJoined,
+  onIntroduce,
 }: {
   clubs: ClubListItem[]
-  onJoined?: (clubId: string) => void
+  onIntroduce?: (clubId: string) => void
 }) {
   return (
     <ul className="flex flex-col gap-2">
       {clubs.map((club) => (
         <li key={club.id}>
-          <ClubCard club={club} joined={false} onJoined={onJoined} />
+          <ClubCard club={club} joined={false} onIntroduce={onIntroduce} />
         </li>
       ))}
     </ul>

@@ -87,17 +87,34 @@ export default function ExploreClubsPage() {
   const enqueueIntroduction = (clubId: string) =>
     setIntroducingClubIds((queue) => (queue.includes(clubId) ? queue : [...queue, clubId]))
 
-  // Records the dismissal for the club that was actually on screen, then hands
-  // the sheet to the next join waiting behind it.
-  //
-  // The write stays OUTSIDE the updater and reads `introducingClubId` from this
-  // render, which is the same `queue[0]` the sheet was showing. Inside, it would
-  // be a side effect in a function React requires to be pure:
-  // `dismissIntroductionPrompt` ends in `notify()`, which synchronously calls
-  // every `useSyncExternalStore` listener, and StrictMode invokes updaters twice
-  // on purpose to surface exactly this.
-  const advanceIntroductions = () => {
-    if (introducingClubId) dismissIntroductionPrompt(introducingClubId)
+  /**
+   * Records the dismissal for the club that was actually on screen — **if and
+   * only if a membership exists** — then hands the sheet to the next club
+   * waiting behind it.
+   *
+   * **`recordDismissal` is the whole of PD-392 on this screen, and dropping it
+   * is the single easiest line in the change to get wrong.** This call was
+   * unconditional, which was correct when the sheet only ever opened *after* a
+   * join. It no longer does: a rider who taps `Join later` never joined, so
+   * recording a dismissal for that club would silence the members-only prompt
+   * if they are admitted by another door later in the same session — an
+   * introduction suppressed on a fact the rider never asserted. Their answer
+   * was *"I am not joining"*, not *"I am a member and I am not introducing
+   * myself"*, and only the second is what this store means.
+   *
+   * The sheet is what knows, because it is the thing whose write returned — see
+   * `IntroductionPrompt`'s header — so the answer arrives as `onDismiss`'s
+   * argument rather than being re-read from a cache this would have to race.
+   *
+   * The write stays OUTSIDE the updater and reads `introducingClubId` from this
+   * render, which is the same `queue[0]` the sheet was showing. Inside, it would
+   * be a side effect in a function React requires to be pure:
+   * `dismissIntroductionPrompt` ends in `notify()`, which synchronously calls
+   * every `useSyncExternalStore` listener, and StrictMode invokes updaters twice
+   * on purpose to surface exactly this.
+   */
+  const advanceIntroductions = (recordDismissal: boolean) => {
+    if (recordDismissal && introducingClubId) dismissIntroductionPrompt(introducingClubId)
     setIntroducingClubIds((queue) => queue.slice(1))
   }
   // The same three reads as `/clubs`, under the same keys — which is what makes
@@ -149,19 +166,30 @@ export default function ExploreClubsPage() {
               <ExploreClubsList
                 clubs={clubs.data}
                 near={nearLabel(position, city.data)}
-                onJoined={enqueueIntroduction}
+                onIntroduce={enqueueIntroduction}
               />
             )}
           </div>
         )}
       </div>
 
+      {/* Always `pre-join` here: since PD-392 this screen's Join control writes
+          nothing and opens the sheet instead, so every sheet Explore mounts
+          starts before a membership exists. The sheet latches itself to member
+          mode when its own join lands — that is not this screen's to track, and
+          a page-level latch would leak one club's answer into the next one in
+          the queue (`design.md` §D3).
+
+          `onPosted` records unconditionally and that IS the iff rather than an
+          exception to it: a successful Post means a membership exists. It is
+          also what closes the sheet without waiting on the invalidated read. */}
       <IntroductionPrompt
         key={introducingClubId}
         clubId={introducingClubId ?? ''}
+        mode="pre-join"
         open={!!introducingClubId}
-        onDismiss={advanceIntroductions}
-        onPosted={advanceIntroductions}
+        onDismiss={(membershipExists) => advanceIntroductions(membershipExists)}
+        onPosted={() => advanceIntroductions(true)}
       />
     </>
   )
