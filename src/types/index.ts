@@ -1873,3 +1873,53 @@ export type ClubChatMessage = ClubMessage & {
   startsDay: boolean
   pending?: boolean
 }
+
+/**
+ * One rider on the blocked list — `105`'s `public.my_blocked_riders()`, PD-298.
+ *
+ * **`username` is nullable, and that is load-bearing rather than defensive.**
+ * `009`'s `profiles` SELECT policy reads `auth.uid() = id or (username is not
+ * null and not private.is_blocked(auth.uid(), id))`, and the accessor exists to
+ * bypass exactly that policy. Restating its `username is not null` conjunct
+ * inside the function would drop a block against a rider who never finished
+ * onboarding — and a block missing from this list is one nobody can ever lift,
+ * which is PD-298's own defect reproduced inside its fix. So the row comes back
+ * with a null name and the screen renders a placeholder.
+ *
+ * **There is deliberately no `avatar_path`.** Signing is a second authorization
+ * pass run as the rider, and `010`'s avatar policy resolves an `EXISTS … from
+ * profiles` under the caller's own RLS — which is false for a blocked pair. The
+ * column could be returned and could never be signed, so it is not returned.
+ * `Avatar` falls back to initials.
+ */
+export type BlockedRider = {
+  blocked_id: string
+  username: string | null
+  blocked_at: string
+}
+
+/**
+ * One row on the hidden-postcards list — `106`'s `public.my_hidden_postcards()`,
+ * PD-298.
+ *
+ * **Two columns, and the shortness is the security property.** `105` returned a
+ * `restorable` flag and a preview beside it, and a pre-merge review showed that
+ * shape is a block detector: for a postcard with no club, `restorable` reduces
+ * to `not is_blocked(me, author)`, and the blocked-riders list beside it tells a
+ * rider their own outbound blocks — so subtracting one from the other says "that
+ * rider blocked me". Deterministic, and on a schedule the rider controls.
+ *
+ * No predicate fixes that. For a non-club postcard the only reason to withhold
+ * is a block, so withholding *is* the signal and not withholding leaks the
+ * author's photo. The differentiation had to go instead.
+ *
+ * **So nothing in this row may ever vary with another rider's actions.** Both
+ * fields are facts about something this rider did: which postcard they hid, and
+ * when. Adding a caption, an author, a thumbnail or a "no longer available"
+ * flag re-opens the channel — `106`'s header and `design.md` D4 carry the whole
+ * argument.
+ */
+export type HiddenPostcard = {
+  postcard_id: string
+  hidden_at: string
+}
