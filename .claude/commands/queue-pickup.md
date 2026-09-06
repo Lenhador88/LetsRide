@@ -192,9 +192,8 @@ on every firing at `queue-run.md` STEP 3.
 
 **Send the push before you stop**, exactly as §If you get stuck requires and for the same reason:
 `Done ; ) <issue id> parked, needs you — waiting on <issue id>`. This exit never reaches STEP 5
-bullet 5, so nothing else will say it. **The queue is no longer frozen behind it**, which is
-precisely why the push and the relation above both matter more than they used to: they are the
-whole of what stops this being silently passed over.
+bullet 5, so nothing else will say it. **Nothing is frozen behind this park**, so the push and the
+relation above are the whole of what stops the story being silently passed over.
 
 **If you got far enough into the build to have a STEP 4b triage list, file it before you
 stop** — same rule as §If you get stuck. This exit is named there as one of the three that leave

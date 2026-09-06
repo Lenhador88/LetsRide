@@ -60,9 +60,9 @@ Three rules that outlive any rename:
   **What replaced the freeze is louder than it was**, which is why it was worth removing: a parked
   story is named in **every** firing's push notification until it moves, where a frozen queue sent
   the owner the single word `idle` — the same thing a healthy empty queue sends. `queue-run.md`
-  STEP 6 also escalates its stall alarm in bands (`3h`, `24h`, `72h`, `7d`, then weekly) rather
-  than alarming once, and `queue-pickup.md` STEP 2c now **requires** the `blockedBy` relation on a
-  sequencing park, since the freeze used to be what held that ordering.
+  STEP 6 also escalates its stall alarm in bands (`3h`, `24h`, `72h`, `7d`, then `<N>d` in 7-day
+  steps) rather than alarming once, and `queue-pickup.md` STEP 2c now **requires** the `blockedBy`
+  relation on a sequencing park, since the freeze used to be what held that ordering.
 
   **Never widen either to "any `started` issue".** `Queued (AI)` and `Deployed to DEV` are typed
   `started` too, so that version is held by every queued and every shipped story: the queue

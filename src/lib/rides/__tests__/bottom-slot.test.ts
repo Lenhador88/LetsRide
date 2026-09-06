@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveRideDetailActions } from '@/lib/rides/bottom-slot'
+import { isRideCrew } from '@/lib/data/rides'
 import { routes } from '@/lib/routes'
 import type { RideAttendance } from '@/types'
 
@@ -46,9 +47,19 @@ import type { RideAttendance } from '@/types'
  * (`src/lib/data/rides.ts:618`), which is `isOrganizer || attendance !== null`
  * (`:692`) — so for a non-organizer, crew ⟺ answered. The bar is owed only
  * while the answer is `null`, which is exactly when that rider is not crew.
- * `unreachable states` below asserts that identity here rather than leaving it
- * as a claim in a docstring, because it is the whole reason the fallback was
- * deleted and nothing else in the repo would notice it coming back.
+ * `unreachable states` below asserts that identity **against the imported
+ * `isRideCrew`**, because it is the whole reason the fallback was deleted and
+ * nothing else in the repo would notice it coming back.
+ *
+ * **That assertion was a tautology when it was first written, and the fourth
+ * mutation is what proves it is not one now.** It declared a local copy of the
+ * rule and asserted the copy against itself; narrowing the real helper to
+ * `isOrganizer || attendance === 'going'` — the narrowing that function's own
+ * docstring anticipates — left **all 9 green**. Against the imported helper the
+ * same mutation gives **1 failed, 8 passed**. A grep for `isRideCrew` looked
+ * reassuring throughout, because the word was in the comment claiming the
+ * assertion existed: §the comment trap, applied to an assertion rather than to
+ * a retired pattern.
  */
 const RIDE = '11111111-1111-4111-8111-111111111111'
 
@@ -206,18 +217,31 @@ describe('resolveRideDetailActions', () => {
     // true, the state PD-401's `(+)` covered becomes reachable again and this
     // row is the thing that says so.
     //
-    // Asserted against the real helper rather than restated, so a change to it
-    // fails here rather than leaving a stale claim in a comment.
-    const nonOrganizerIsCrew = (attendance: RideAttendance) => attendance !== null
+    // **Against the imported `isRideCrew`, never a local copy of it.** An
+    // earlier revision of this file declared
+    // `const nonOrganizerIsCrew = (a) => a !== null` here and asserted that
+    // against itself, which is a tautology: narrowing the real helper to
+    // `isOrganizer || attendance === 'going'` — the exact narrowing its own
+    // docstring anticipates — left all nine cases green. The comment claimed
+    // the opposite, and a grep for `isRideCrew` found the word in that comment,
+    // which is §the comment trap making an absent assertion look present.
     for (const attendance of ATTENDANCES) {
-      expect(nonOrganizerIsCrew(attendance)).toBe(attendance !== null)
+      expect({ attendance, crew: isRideCrew(false, attendance) }).toEqual({
+        attendance,
+        crew: attendance !== null,
+      })
     }
+
+    // The organizer arm, for completeness: they are crew with no row at all,
+    // which is why `rsvpApplies` rather than this identity is what excludes
+    // them from the chip.
+    expect(isRideCrew(true, null)).toBe(true)
 
     // The consequence: with `rsvpApplies` true (so not the organizer), the bar
     // and a create entrance are never simultaneously owed by the DATABASE's
     // rule, whatever this function does with them.
     for (const attendance of ATTENDANCES) {
-      const canCreate = nonOrganizerIsCrew(attendance)
+      const canCreate = isRideCrew(false, attendance)
       const { bottomSlot } = resolveRideDetailActions({
         rideId: RIDE,
         rsvpApplies: true,

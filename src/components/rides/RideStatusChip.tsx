@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { ChevronDownIcon } from '@/components/icons/generated'
 import { cn } from '@/lib/utils'
 import type { RideAttendance } from '@/types'
@@ -59,6 +60,7 @@ export function RideStatusChip({
   attendance,
   open,
   onToggle,
+  focusToken = 0,
 }: {
   /**
    * The stored answer. Never `null` at the call site — the page draws nothing
@@ -70,13 +72,51 @@ export function RideStatusChip({
   /** Whether the RSVP bar is currently reopened by this chip. */
   open: boolean
   onToggle: () => void
+  /**
+   * Bumped by the page on every server-accepted answer; this chip takes focus
+   * whenever it changes. `0` — the default — never focuses.
+   *
+   * **Answering unmounts the RSVP bar, and that takes the focused button AND
+   * the live region with it.** Focus falls to `document.body`, and the region
+   * that would have announced the change is inside the subtree being
+   * destroyed — the mirror image of the hazard `RideAttendanceBar`'s own
+   * `role="status"` comment describes, where a region created alongside its
+   * content announces nothing. A keyboard rider is left at the top of the
+   * document and a screen-reader rider is told nothing at all, on the one
+   * transition after which this chip is the **only** route back to the answer.
+   *
+   * **A token rather than a boolean, because two different transitions need
+   * covering and only one of them is a mount.** Answering for the first time
+   * mounts this chip, so a mount effect would do. Answering *again* from a
+   * reopened bar does not: the chip is already drawn and stays drawn, and only
+   * the bar unmounts — so a mount-keyed flag would miss exactly the case where
+   * the rider has been through this once already. A changing token fires on
+   * both.
+   *
+   * **Default `0`, because most mounts are neither transition** — an ordinary
+   * page load draws the chip for an already-answered rider, and stealing focus
+   * there would yank them out of the header on arrival.
+   *
+   * **Moving focus here IS the announcement**, which is why no replacement live
+   * region is added: focusing a control reads its accessible name and state, and
+   * this one's name already says what the rider answered and that the control
+   * changes it. A second region saying the same thing would announce twice.
+   */
+  focusToken?: number
 }) {
+  const ref = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (focusToken) ref.current?.focus()
+  }, [focusToken])
+
   if (!attendance) return null
 
   const going = attendance === 'going'
 
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onToggle}
       aria-expanded={open}

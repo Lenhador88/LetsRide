@@ -78,11 +78,31 @@ import type { RideAttendance, RideDetail } from '@/types'
  *   `Riding` / `Rode`, which the date line 40px above it already establishes,
  *   and the rail says what it is by being avatars and a count — the same
  *   treatment the club member rail got when PD-355 moved it to the top.
- * - **`RideCreateBar` takes the sticky bottom slot, and `canRsvp` decides
- *   whether it can have it.** This is option **B** from PD-401's collision
- *   table, plus the fallback that makes it lossless — see `bottomSlot` below
- *   for the whole argument and for why D, the issue's own recommendation, is
- *   not taken here.
+ * - **The `(+)` became a create bar in the sticky bottom slot** — option **B**
+ *   from PD-401's collision table, with the timeline `(+)` kept as a fallback.
+ *   **PD-404 has since superseded all of that**; see below.
+ *
+ * ## What PD-404 changed — the bar floats, and answering collapses the RSVP
+ *
+ * Product owner, 2026-09-06, answering the frame question PD-401 refused to
+ * decide unattended, with a shape none of its four options offered: **the RSVP
+ * bar and the create affordance are never both present**, because answering
+ * replaces the bar. It collapses into a status chip on the first content line,
+ * a floating action takes the corner, and tapping the chip brings the bar back.
+ *
+ * - **`RideCreateBar` is deleted**, replaced by `RideCreateAction`. Same sheet,
+ *   same rows, same crew gate; only the trigger moved.
+ * - **The timeline `(+)` is deleted too, and it was unreachable rather than
+ *   unwanted** — `bottom-slot.ts` carries the proof and its test pins the
+ *   identity that proof rests on.
+ * - **PD-401's option D is no longer the open question it was.** D moved the
+ *   RSVP into the page body to free the slot; the slot is freed here by hiding
+ *   the bar once it has been answered, which is a *larger* departure from
+ *   `2375:8771` than D would have been — that frame draws the bar permanently
+ *   stacked. All three departures are logged in `docs/FIGMA-FIDELITY-TODO.md`
+ *   §Ride detail.
+ * - **The club detail is NOT converted.** `2043:10604` instances a variant 26
+ *   other frames use, so that half of PD-404 is still open.
  *
  * `Ride - Ride plan (Details)` (`2375:8771`) is still the frame the header half
  * is built from, and it is not the whole specification: the drawn sub-page
@@ -186,6 +206,21 @@ function RideScreen() {
   const [rsvpReopened, setRsvpReopened] = useState(false)
 
   /**
+   * Bumped on every server-accepted answer, and passed to `RideStatusChip` so it
+   * takes focus when the bar collapses out from under the rider.
+   *
+   * **Answering unmounts `RideAttendanceBar`, which destroys both the focused
+   * button and the `role="status"` region inside it.** Without this a keyboard
+   * rider is dropped to `document.body` and a screen-reader rider hears nothing,
+   * at the one moment the chip becomes their only route back to the answer.
+   *
+   * **A counter rather than a boolean**, because the two transitions that need
+   * it are not both mounts: the first answer mounts the chip, but answering
+   * again from a reopened bar leaves the chip mounted and unmounts only the bar.
+   */
+  const [answerFocusToken, setAnswerFocusToken] = useState(0)
+
+  /**
    * What gates the header's chat button, the labelled chat row and the
    * timeline's `(+)`.
    *
@@ -283,13 +318,26 @@ function RideScreen() {
       <div
         className={cn(
           'flex flex-col gap-4 pt-4 pb-4',
-          // Whichever bar has the slot, the page tops its own padding up by
-          // that bar's height. `pb-navbar-action-extra` is the class the club
-          // detail already uses for the identical create bar, and the two
-          // values differ (96 against the action's height), so this cannot be
-          // one shared class.
+          // Whichever control has the slot, the page tops its own padding up by
+          // that control's own clearance. Three different numbers are in play
+          // and each belongs to one control, so this cannot be one shared
+          // class: 96 for the RSVP bar, 80 for the floating action, and
+          // `--navbar-action`'s 64 for the club detail's full-width create bar,
+          // which this screen no longer has.
+          //
+          // **`.pb-navbar-action-extra` is the wrong one here and was live for
+          // three commits.** It is 64px — the number derived for the 40px
+          // button in the bar PD-404 deleted — so the last timeline row cleared
+          // the 56px floating control by 8px instead of 24. Not buried, which
+          // is why no gate saw it.
+          //
+          // **The floating action opts INTO clearance, which is not its
+          // default** — it floats over content, which is the point of the
+          // pattern. Here the thing underneath is a timeline, so without this
+          // the last entry sits permanently under the button, which is one of
+          // the negative cases PD-404's issue names by hand.
           bottomSlot === 'rsvp' && 'pb-rsvp-bar-extra',
-          bottomSlot === 'create' && 'pb-navbar-action-extra'
+          bottomSlot === 'create' && 'pb-floating-action-extra'
         )}
       >
         {ride.error ? (
@@ -301,6 +349,7 @@ function RideScreen() {
             statusChip={statusChip}
             rsvpOpen={bottomSlot === 'rsvp'}
             onToggleRsvp={() => setRsvpReopened((open) => !open)}
+            answerFocusToken={answerFocusToken}
             near={position}
           />
         ) : (
@@ -316,7 +365,13 @@ function RideScreen() {
           // Only ever meaningful when the chip is what opened it; a rider
           // answering for the first time has no flag set, and the collapse there
           // comes from `attendance` itself leaving `null`.
-          onAnswered={() => setRsvpReopened(false)}
+          onAnswered={() => {
+            setRsvpReopened(false)
+            // Hands focus to the chip that is about to replace this bar — see
+            // `answerFocusToken`. Bumped on the first answer too, where the chip
+            // is mounting rather than staying put.
+            setAnswerFocusToken((n) => n + 1)
+          }}
         />
       )}
       {bottomSlot === 'create' && ride.data && <RideCreateAction options={createOptions} />}
@@ -330,6 +385,7 @@ function RidePlan({
   statusChip,
   rsvpOpen,
   onToggleRsvp,
+  answerFocusToken,
   near,
 }: {
   ride: RideDetail
@@ -344,6 +400,8 @@ function RidePlan({
    *  because the bar is also drawn before any answer exists. */
   rsvpOpen: boolean
   onToggleRsvp: () => void
+  /** Passed straight to the chip — see the page's `answerFocusToken`. */
+  answerFocusToken: number
   near: RiderLocation | null
 }) {
   // PD-340. `null` at every step is "nothing to say", never zero: the rider has
@@ -418,7 +476,12 @@ function RidePlan({
             // row changing justification depending on what is in it.
             <span />
           )}
-          <RideStatusChip attendance={statusChip} open={rsvpOpen} onToggle={onToggleRsvp} />
+          <RideStatusChip
+            attendance={statusChip}
+            open={rsvpOpen}
+            onToggle={onToggleRsvp}
+            focusToken={answerFocusToken}
+          />
         </div>
       )}
 

@@ -197,10 +197,9 @@ status that no longer exists returns nothing, which reads exactly like an empty 
 
 **Scope every query to the PROJECT, never to the team.** A team-scoped `list_issues` is the
 natural query and it is wrong in a way that looks like a working gate: this team carries years of
-issues outside this project, several of them sitting in `Needs help` for ever. That used to hold
-the queue permanently against a healthy board; since the freeze went it costs less, but it is
-still wrong in the same direction — those rows would be named as parked in every firing's
-notification for ever, which is how a signal stops being read.
+issues outside this project, several of them sitting in `Needs help` for ever — and a team-scoped
+query would name every one of them as parked in every firing's notification, for ever, which is how
+a signal stops being read.
 
 **Query by state, never the whole project.** One unfiltered `list_issues` on this project returns
 100 issues and ~35k tokens of description; the three state-filtered calls together are a fraction
@@ -519,12 +518,28 @@ you did**, as a comment beginning `<!-- stall-alarm slot:<N> band:<B> -->` on th
 `<!-- stall-alarm slot:none band:<B> -->` where there is no label. A slot holds several issues, so
 look for the marker across all of them and write it on just one.
 
-**`<B>` is the age band the subject has reached — `3h`, `24h`, `72h`, then `7d` and weekly after
-that.** **Never alarm on an issue that already carries a marker for its current band**, and
-**fall through to the next oldest unalarmed subject** rather than stopping. Crossing into a new
-band is a new alarm on the same issue, and the marker is what keeps that from becoming the
-comment-an-hour shape: the bands bound a parked story to five comments in its first week, where
-alarming once left it silent for ever and alarming every firing would leave 24 a day.
+**`<B>` is the age band the subject has reached, and every band has an explicit token:** `3h`,
+`24h`, `72h`, `7d`, then **`14d`, `21d`, `28d` and so on in 7-day steps** — `<N>d` where `<N>` is
+the age in whole days rounded DOWN to a multiple of 7. **Never alarm on an issue that already
+carries a marker for its current band**, and **fall through to the next oldest unalarmed subject**
+rather than stopping. Crossing into a new band is a new alarm on the same issue.
+
+**Every band must have a token you can compute, and "weekly after that" was not one.** An earlier
+draft ended the list at `7d` and said weekly thereafter, which leaves a firing at day 14 with two
+readings and no way to choose: reuse `7d`, find the marker and **never alarm again** — the
+alarming-once-and-going-silent failure this change exists to fix, delayed by a week — or invent a
+token, at which point two firings invent different ones and alarm repeatedly. The rounding rule
+above is deterministic, so every firing computes the same token for the same age.
+
+The marker is what keeps this from becoming the comment-an-hour shape: **four comments in the first
+week** (`3h`, `24h`, `72h`, `7d`) and one a week after that, where alarming once left a story silent
+for ever and alarming every firing would leave 24 a day.
+
+**A marker written before this change has no `band:` segment**, so the first firing to check an
+already-alarmed story will not match its current band and will alarm once more. That is correct
+rather than a migration to write: one extra comment per story that was already parked, and the
+alternative is treating an unbanded marker as covering every band, which is the permanent silence
+again.
 
 **The bands are for the `Needs help` clock. A held slot keeps the single 3h alarm it always
 had** — that subject has a session behind it that either finishes or is cleared by the owner, and
