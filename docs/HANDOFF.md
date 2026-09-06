@@ -333,8 +333,8 @@ the dispute PD-390 was filed over:
 
 | Account | Screens | Checks |
 |---|---|---|
-| Minted (no `WALK_EMAIL`) — CI's path | **26** | **74** |
-| Named (`walk-fixture@letsride.dev`) | **26** | **77** |
+| Minted (no `WALK_EMAIL`) — CI's path | **26** | **75** |
+| Named (`walk-fixture@letsride.dev`) | **26** | **78** |
 
 **Neither number in the old argument was right**, which is why no amount of reading could settle it.
 The named account measures 3 higher for one reason: `checkEditRetention` runs against a ride the
@@ -401,7 +401,7 @@ seven cases.
 ```bash
 NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://fpmrimzxadewsaiwpsel.supabase.co node scripts/supabase-relay.mjs &
 NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
-npm run walk                                     # 26/26 screens, 74/74 checks
+npm run walk                                     # 26/26 screens, 75/75 checks
 npx vitest run src/lib/__tests__/share.test.ts   # 7/7
 ```
 
@@ -502,6 +502,13 @@ judgement, and `openspec/` is in the CI denylist so nothing would catch a mistak
 So it is left whole rather than half-done. Whoever picks it up: archive the two others **with**
 specs, in D11's order, then this one, then confirm `openspec/specs/ride-chat/` is **deleted** rather
 than left as an empty shell.
+
+**It has an owner and an order now (2026-09-06).** The archive is `PD-403`'s remaining half — that
+story delivered everything else and stays open for this — and `PD-403` is `blockedBy` **`PD-359`**
+(*"Archive the two invite OpenSpec changes so ride-invites becomes a standing spec"*), which is the
+story that owns the five deltas above. So the sequence is `PD-359`, then `PD-403`'s remainder. Do
+not archive `add-ride-chat-unread` alone to make one of them look finished; that is the ordering
+failure this whole section exists to prevent.
 
 **There is no `ride_message` notification kind, and the issue says there is.** `036` and `060` name
 `ride_messages` only in **comments**, as the precedent their own reasoning copies — the comment

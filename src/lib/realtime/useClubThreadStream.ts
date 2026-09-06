@@ -125,8 +125,8 @@ export function useClubThreadStream(
     // missed nothing. Refetching when the tab becomes visible closes that
     // without depending on which of the two happened — it is the same
     // "assume the gap, do not assume the stream filled it" rule the reconnect
-    // branch follows. Worth transferring to the ride chat; not done here,
-    // because that is shipped code this change has no reason to touch.
+    // branch follows. `useRideThreadStream` is this hook's copy and carries it
+    // already — the ride chat this line used to name was retired by `109`.
     const onForeground = () => {
       if (document.visibilityState === 'visible') onMessageRef.current()
     }

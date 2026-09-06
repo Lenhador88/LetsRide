@@ -50,7 +50,8 @@ writes as (
   select author_id as uid, created_at as at from postcards
   union all select author_id, created_at from postcard_comments
   union all select user_id,   created_at from postcard_likes
-  union all select author_id, created_at from ride_messages
+  union all select author_id, created_at from ride_threads
+  union all select author_id, created_at from ride_thread_messages
   union all select author_id, created_at from club_threads
   union all select author_id, created_at from club_messages
   union all select user_id,   joined_at  from ride_members
@@ -174,7 +175,8 @@ writes as (
   select author_id as uid, created_at as at from postcards
   union all select author_id, created_at from postcard_comments
   union all select user_id,   created_at from postcard_likes
-  union all select author_id, created_at from ride_messages
+  union all select author_id, created_at from ride_threads
+  union all select author_id, created_at from ride_thread_messages
   union all select author_id, created_at from club_threads
   union all select author_id, created_at from club_messages
   union all select user_id,   joined_at  from ride_members

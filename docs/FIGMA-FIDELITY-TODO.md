@@ -923,7 +923,20 @@ measurement as current.
         PD-176. `text-foreground` `#1A1A1A` on `bg-track` is fine at **12.65:1** and is what the
         sentence itself uses, so the failures are confined to the supporting lines exactly as
         they are on the club.
-- [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
+- [x] ~~**Chat is built — 2026-08-07**~~ — **RETIRED 2026-09-06** (`109`, PD-402). The single
+      chat stream is gone: `ride_messages` and `ride_reads` were dropped and `/rides/detail/chat`
+      no longer exists, replaced by a ride's *threads* on `081`/`082`'s club shape
+      (`/rides/detail/threads`, `/rides/detail/thread`). **The three frames this entry measures
+      are still in `design/` and are no longer built** — `Ride - Chat` (`2226:4999`),
+      `Ride - Chat - Text focus` (`2242:11086`) and `Ride - Chat - Options` (`2370:7346`).
+      **The deviations below are kept rather than deleted**, because each is a measurement
+      against a frame the snapshot still holds, and several were reused verbatim by the thread
+      screens that replaced them; read them as a record of what was measured, not as a
+      description of what ships. **Nothing in `design/` draws a thread in either domain** — the
+      club's thread screens were built without a v2 frame and the ride's copy them, so there is
+      no successor entry to write here and no frame to go looking for.
+      <br>
+      Below, as built in 2026-08: `Ride - Chat` (`2226:4999`) and
       `Ride - Chat - Text focus` (`2242:11086`) at `/rides/detail/chat`. **It did not need the
       Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of
       which existed. Every sub-item below is a deviation, and each is a decision rather than a

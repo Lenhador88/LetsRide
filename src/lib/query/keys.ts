@@ -54,7 +54,15 @@
  * the very plan that warns about it. Re-derive against the last commit that had
  * them, which is the only place they exist now:
  *
- *     git show c2688c5~1:src/lib/actions/clubs.ts | grep -c "revalidatePath("
+ *     git cat-file -e c2688c5~1 2>/dev/null \
+ *       && git show c2688c5~1:src/lib/actions/clubs.ts | grep -c "revalidatePath(" \
+ *       || echo 'unreachable in this clone'
+ *
+ * **The guard is not decoration.** Every session here gets a SHALLOW clone
+ * (`git rev-parse --is-shallow-repository` → `true`), where that `git show`
+ * fails to stderr and `grep -c` then counts an empty stream and prints **0** —
+ * a plausible wrong answer, silently, for the one command written to stop
+ * exactly that. Run it in a full clone or read the `0` as "unreachable".
  *
  * ## The reconciliation — task 5.9
  *

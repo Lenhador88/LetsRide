@@ -90,12 +90,15 @@ Neither number in the old argument was right, which is why the argument could no
 
 | Account | Screens | Checks | Command |
 |---|---|---|---|
-| **Minted** (no `WALK_EMAIL`) — CI's path | **26** | **74** | `npm run walk` |
-| **Named** (`walk-fixture@letsride.dev`) | **26** | **77** | `WALK_EMAIL=… WALK_PASSWORD=… npm run walk` |
+| **Minted** (no `WALK_EMAIL`) — CI's path | **26** | **75** | `npm run walk` |
+| **Named** (`walk-fixture@letsride.dev`) | **26** | **78** | `WALK_EMAIL=… WALK_PASSWORD=… npm run walk` |
 
-Both green, exit 0, on `development` at `b7f2cfc` plus PD-410's fix to `checkJoinClub`. **These are
-the walk's own printed totals**, not a reconstruction — the whole point of PD-390 is that adding
-deltas to a remembered base is what produced two incompatible numbers in the first place.
+Both green, exit 0, on `development` at `cdeefe5` plus PD-411's introduction cleanup in
+`checkJoinClub`. **These are the walk's own printed totals**, not a reconstruction — the whole point
+of PD-390 is that adding deltas to a remembered base is what produced two incompatible numbers in
+the first place. **Both were re-measured for PD-411 rather than incremented**: that change adds one
+check and it lands on both accounts, so the pair moved 74/77 → 75/78 — but the named figure was
+*run*, not derived from the minted one plus three.
 
 **The named account measures 3 higher, and the difference is one phase — the whole +3, with nothing
 coming back the other way.** `checkEditRetention` runs against a ride the rider owns: `walk-fixture`
@@ -112,8 +115,8 @@ total, but both print `  ok   …` character for character the way a passing che
 | `ok   <email> deleted` | `attemptDeleteAccount`'s teardown | the **minted** run only |
 | `ok   the cleanup delete survives a reload` | `checkCommentOnPostcard`'s cleanup | **both** runs |
 
-So counting `ok` lines in a transcript lands you **two** over on the minted run (76 against a printed
-74) and **one** over on the named run (78 against 77) — and the two errors nearly cancel, which is
+So counting `ok` lines in a transcript lands you **two** over on the minted run (77 against a printed
+75) and **one** over on the named run (79 against 78) — and the two errors nearly cancel, which is
 worse than either alone: the delta still looks like 2 and the totals still look plausible. It is 3.
 `walk.mjs` names the teardown as the precedent the second one follows, so a third is likely rather
 than hypothetical — **read the printed totals, never a count of your own.**
@@ -136,6 +139,7 @@ minutes.
 |---|---|---|
 | PD-358 — `/rides/join` and `/clubs/join` in `STATIC_PATHS`, plus `checkInviteLanding` | **+2** | **+20** — 10 per landing route (6 signed out, 4 signed in) across two routes |
 | #390 — the four social-write phases | 0 | **+9** on its one measured run, and a ceiling rather than a constant: each phase skips when Explore offers no eligible row |
+| PD-411 — `checkJoinClub` deletes the introduction it posts | 0 | **+1**, and a constant rather than a ceiling: it is reported on BOTH branches of the join, vacuously true on the direct-join path, precisely so the total does not shrink on a run that took the other route |
 
 **Re-derive the static half, and settle the base by running the walk rather than by adding to a
 number written down here:**
@@ -150,10 +154,27 @@ rather than a pass, so comparing a named run's total against a minted baseline m
 that is not there, and the reverse hides one that is. The walk names every route it skipped in
 parentheses; read those before the totals.
 
+**Repeated NAMED runs shrink the SCREEN count, and it is the app's own rate limit rather than a
+regression.** Measured 2026-09-06: six runs in about forty-five minutes put `walk-fixture` at **23**
+place lookups in the trailing hour against `069`'s per-rider ceiling of **20**, and the screens that
+resolve a location — `/rides`, `/rides/explore`, `/clubs`, `/clubs/explore`, `/rides/detail` —
+then log a console `429` and are counted unclean. **The give-away is that every one still returns
+200 and still renders**; only the sub-resource fetch fails. The CHECK total is unaffected (78/78
+throughout), because no check reads a map tile. Confirm rather than assume:
+
+```sql
+select count(*) filter (where attempted_at > now() - interval '1 hour')  as last_hour,
+       count(*) filter (where attempted_at > now() - interval '24 hours') as last_24h
+  from public.place_search_attempts;          -- ceilings: 20/hour, 60/day per rider
+```
+
+**A MINTED run is not affected** — the ceiling is per `auth.uid()` and that rider is new every time,
+which is also why CI's path never meets this. Wait the hour out, or walk minted.
+
 **The invite phases HAVE now been run — 2026-09-06, both accounts, all 20 assertions green.**
 `/rides/join` and `/clubs/join` each report their 10 (6
 signed out, 4 signed in), and both dead-token cases land as *"a dead link is a dead link, not a
-failed read"*. They are inside the 26/74 and 26/77 above, so nothing is owed here any more.
+failed read"*. They are inside the 26/75 and 26/78 above, so nothing is owed here any more.
 
 **Everything below this line is history and none of it is a live base.** `48/48` predates `077`
 dropping the `max_riders survives it` assertion, and the `47/47` it replaced was measured

@@ -203,8 +203,9 @@ export const clubIdSchema = z.uuid()
  * so these two agree with it exactly.
  *
  * 80 is `rides_title_length`'s bound from `018` (design.md §Questions Closed,
- * D5); 1000 matches `ride_messages`. Per CLAUDE.md these own the **message**,
- * never the guarantee.
+ * D5); 1000 matches `RIDE_THREAD_MESSAGE_MAX_LENGTH` in `validation/rides.ts`
+ * (`034`'s `ride_messages` until `109` retired it). Per CLAUDE.md these own the
+ * **message**, never the guarantee.
  */
 export const CLUB_THREAD_TITLE_MAX = 80
 export const CLUB_MESSAGE_MAX_LENGTH = 1000

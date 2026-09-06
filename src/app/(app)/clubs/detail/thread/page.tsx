@@ -47,8 +47,9 @@ import { useSwipeBack } from '@/lib/actions/navigate'
  * thread that never existed gets, deliberately: distinguishing them would
  * confirm a private club's conversation exists to someone who may not see it.
  *
- * So, unlike the ride chat, there is no "this is for the crew" state to draw:
- * the ride is visible to a rider who is not on it, while a thread simply is not.
+ * So, unlike a RIDE thread, there is no "this is for the crew" state to draw:
+ * the ride is visible to a rider who is not on it, while a club thread simply is
+ * not.
  *
  * ## The empty thread is a designed state, not a failure
  *
@@ -139,10 +140,10 @@ function ClubThreadScreen() {
   // reload all still produce.
   const backHref = clubId ? clubThreadReturnTo(clubId, rawAnchor) : '/clubs'
 
-  // PD-341, folded in: without it this screen and the ride chat — the app's two
-  // conversations, one gesture apart — would answer the same swipe differently,
-  // because the ride's chat inherits the gesture from `RideHeader` and this one
-  // draws a plain `Header`. The composer is a textarea, which
+  // PD-341, folded in: without it this screen and the ride's thread screen —
+  // the app's two conversations, one gesture apart — would answer the same swipe
+  // differently, because the ride's inherits the gesture from `RideHeader` and
+  // this one draws a plain `Header`. The composer is a textarea, which
   // `declinesSwipeBack` refuses on its own, so the reply half is unaffected.
   //
   // Above the `notFound()`, which throws during render: a hook past it runs on
@@ -190,8 +191,8 @@ function ClubThreadScreen() {
       />
 
       {/* Fixed to the viewport rather than scrolling under the shell's padding,
-          like the ride chat: a thread is a column that owns its own scrolling,
-          with the composer pinned under it. */}
+          like the ride's thread screen: a thread is a column that owns its own
+          scrolling, with the composer pinned under it. */}
       <div className="pt-header fixed inset-0 flex flex-col">
         <div className="flex min-h-0 flex-1 flex-col pt-4">
           <ThreadBody
@@ -227,10 +228,11 @@ function ThreadBody({
   const showBanner = useBanner()
 
   /**
-   * Retire optimistic rows the server has confirmed — the ride chat's own
-   * pruning, for its own reason: rendering already hides them by id, but the
-   * array would grow for the life of the screen and the hiding is only as
-   * durable as the page-size window it checks against.
+   * Retire optimistic rows the server has confirmed — `034`'s ride-chat pruning,
+   * inherited by the ride's threads and kept here for its own reason:
+   * rendering already hides them by id, but the array would grow for the life
+   * of the screen and the hiding is only as durable as the page-size window it
+   * checks against.
    */
   const serverIdsKey = messages.data?.map((message) => message.id).join(',')
   useEffect(() => {
