@@ -189,8 +189,15 @@ execute as the *invoking* role. `club_removals` grants nothing to `authenticated
 policy, so a signed-in rider pressing **Join** on a public club would raise `42501 permission
 denied for table club_removals`, and the `club_members` INSERT would roll back with it. All three
 triggers already on `public.club_members` — `enforce_participation_gate`, `notify_club_joined` and
-`protect_club_owner_membership` — are `security definer` for the same reason; copying the shape of
-the one beside it means copying its privilege mode, not only its absent `WHEN` clause.
+`protect_club_owner_membership` — are `security definer` with `set search_path = ''` for the same
+reason; copying the shape of the one beside it means copying its privilege mode, not only its
+absent `WHEN` clause.
+
+**The failure is decided by the writer's role and not by whether a removal row exists**, because
+Postgres checks table privileges at executor start rather than per row. So the client-direct join
+path fails on every attempt, while the two `security definer` invite paths inherit the owner's
+rights and succeed silently — which is why the assertion below reads the catalogue rather than
+trusting a join that worked.
 
 #### Scenario: Readmission clears the bar
 - **WHEN** a removed rider is readmitted by any route and later leaves voluntarily, then claims a

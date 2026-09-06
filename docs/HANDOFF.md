@@ -193,9 +193,9 @@ See `docs/reference/running-locally.md` §The walk.
 ## The queue is jammed on a dead slot, and both queued stories are proposals now — 2026-09-06
 
 **`slot-1` has held PD-98 since 2026-09-05T17:25Z**, its session having applied `107` to DEV and
-never pushed a branch (the section below). **Six** consecutive firings have found it there, and
-they enumerate: 23:42, 00:41, 01:46, 02:41, the one that wrote the previous version of this entry,
-and this one at 03:41. It is **already alarmed**
+never pushed a branch (the section below). **Five** consecutive firings have found it there, and
+every one is timed: 23:42, 00:41, 01:46, 02:41 (which wrote the previous version of this entry,
+committing at 03:37:14Z) and 03:41. It is **already alarmed**
 (`<!-- stall-alarm slot:1 -->`, 23:44Z), and `queue-run.md` STEP 6 forbids a firing from reaping it:
 an age-based reaper that returns a story a live session is still building is the one failure worse
 than a held slot.
@@ -234,7 +234,7 @@ and its reachability helper carries seven conjuncts of which none is about remov
 rider passes `not is_club_member_for` **because** they were removed, and a pre-minted link readmits
 them silently.
 
-**Four things a build must not re-derive:**
+**Five things a build must not re-derive:**
 
 - **The predicate has exactly one legal home**, and that is what makes the owner's narrow reading
   expressible at all. `093.22` forbids a caller predicate in the public bodies, `093.18` requires the
@@ -247,13 +247,15 @@ them silently.
   a raise there takes a rider's join down with it. It exists because without a clearing path the bar
   silently becomes the permanent ban the owner explicitly rejected — invisibly, since no role can
   read the row. It fires the hand-exercise gate, and `tasks.md` group 4 is that gate.
-- **That trigger function MUST be `security definer`, and the pre-merge review is what caught its
-  absence.** A trigger function defaults to `security invoker`, and `club_removals` grants nothing
-  to `authenticated` and carries no policy — so an invoker-rights delete raises `42501` and rolls
-  the rider's join back, on **every** join rather than only a barred pair. All three triggers
-  already on `club_members` are `security definer`. **A behavioural join test passes anyway**
-  whenever no removal row exists for the pair, which is almost every fixture, so `tasks.md` 3.13a
-  asserts `prosecdef` as a catalogue read rather than inferring it from a green join.
+- **That trigger function MUST be `security definer` with `set search_path = ''`.** A trigger
+  function defaults to `security invoker`, and `club_removals` grants nothing to `authenticated`
+  and carries no policy — so an invoker-rights delete raises `42501` and rolls the rider's join
+  back. All three triggers already on `club_members` are `security definer`. **Which joins break is
+  a question about the writer's role, not about whether a removal row exists** — Postgres checks
+  table privileges at executor start, so `joinClub`'s direct insert as `authenticated` fails every
+  time while the two `security definer` invite paths inherit the owner's rights and pass silently.
+  That asymmetry, plus the fact that the RLS suite runs as the table owner (the `029` trap), is why
+  `tasks.md` 3.13a asserts `prosecdef` as a catalogue read rather than from a green join.
 - **`removed_by` is deliberately absent, and that is a spec requirement rather than a saving.**
   `manage-club-riders` requires that *"nothing anywhere SHALL record who removed whom"*. That same
   spec's *"no tombstone row SHALL be created"* is now false, handled by an explicit REMOVED+ADDED
@@ -265,8 +267,11 @@ them silently.
 **One question is the owner's and is non-blocking:** a rider removed while holding a **pending
 in-app invite** can still accept it — the same defect one table over, on `club_invites` rather than
 `club_invite_links`. Left open because the owner's decision names the link path alone. `088` already
-clears the other pre-minted grant on removal, so the counterpart is one line in the same migration.
-It lives on PD-361, not as a second row.
+deletes a pending **`club_join_requests`** row on removal — belt and braces, because a survivor
+*"would let a second admin undo this removal"* — so the `club_invites` counterpart is one line in
+the same migration. **`088` touches no invite table at all**, which is the defect this proposal
+exists to fix; do not read that precedent as covering links. It lives on PD-361, not as a second
+row.
 
 ```bash
 npx openspec validate refuse-a-removed-rider-a-live-invite-link --strict

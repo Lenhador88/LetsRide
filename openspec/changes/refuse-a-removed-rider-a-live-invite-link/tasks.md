@@ -53,8 +53,12 @@ confirm the territory is free before starting group 1.
       That is load-bearing rather than conventional: a trigger function defaults to
       `security invoker`, task 1.3 revokes all on `club_removals` from `authenticated` and 1.2
       leaves it with no policy, so an invoker-rights delete raises `42501` and rolls back the
-      `club_members` INSERT — on every club join in the app, not only a barred pair. All three
-      triggers already on that table are `security definer`. **No `WHEN` clause on the trigger**,
+      `club_members` INSERT. **Row-independent** — Postgres checks table privileges at executor
+      start, so it raises whether or not a removal row exists for the pair — and **split by the
+      writer's role**: `joinClub`'s direct insert as `authenticated` fails on every press of Join,
+      while the two `security definer` invite paths inherit the owner's rights and pass silently.
+      All three triggers already on that table are `security definer` with
+      `set search_path = ''`. **No `WHEN` clause on the trigger**,
       so it fires for `security definer` writers too; state both choices in the file, per the
       standing integrity requirement that a trigger's guard is a recorded decision.
 - [ ] 2.2 `create trigger ... after insert on public.club_members for each row execute function
@@ -109,9 +113,14 @@ assertion is not finished.**
       extend that list by one name.** Until it does, the single-site rule is an argument rather than
       a guard; do not read the existing assertion as already enforcing it.
 - [ ] 3.13a `private.clear_club_removal_on_join` is asserted `prosecdef = true` **as a catalogue
-      read**, not inferred from a join succeeding: a join test passes under invoker rights whenever
-      no removal row exists for the pair, which is almost every fixture, so the outage in task 2.1
-      would ship green behind a behavioural test.
+      read**, never inferred from a join succeeding. Two independent reasons, and the second is the
+      one this repo has already paid for: the admission paths that matter — `accept_club_invite`
+      and `claim_club_invite_link` — are themselves `security definer`, so the trigger inherits the
+      owner's rights there and passes whatever its own mode is; and **the RLS suite runs as the
+      table owner, for whom neither barrier exists**, which is exactly how `029` shipped a function
+      no client role could reach with nothing red. Some `club_members` fixtures do run under
+      `set role authenticated` and would catch it — but a privilege mode proven by whichever
+      fixtures happen to reset their role is proven by accident.
 - [ ] 3.14 The participation-gate count is asserted **by delta and by table name**, not by absolute:
       `club_removals` is absent from the gated list and the count is unchanged.
 - [ ] 3.15 Deleting a club writes no removal rows.

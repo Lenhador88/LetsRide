@@ -109,10 +109,25 @@ clause**, exactly like `notify_club_joined` beside it.
 turns this design into an outage.** A trigger function defaults to `security invoker`, so its
 `delete` would run as the rider pressing Join — who holds no grant on `club_removals` and is
 covered by no policy, because D4 revokes everything from every client role. The result is `42501`
-on the delete and a rolled-back `club_members` INSERT, on **every** join in the app rather than
-only on a barred pair, since the trigger has no `WHEN` clause and fires for every row. Measured on
-DEV: all three triggers already on that table are `prosecdef = true`. Group 3 asserts it directly
-rather than inferring it from a join succeeding.
+on the delete and a rolled-back `club_members` INSERT.
+
+**Which joins break is a question about the WRITER's role, not about whether a removal row
+exists.** Postgres checks table privileges at executor start, before any row is scanned, so
+`delete … where false` raises just as loudly as one that would match — the trigger's `WHEN`-less
+shape is what makes it run on every row, and the privilege failure is then unconditional. So it
+splits by path:
+
+- **`joinClub` inserts into `club_members` directly as `authenticated`**, under `001`'s
+  `auth.uid() = user_id` policy. Invoker rights there mean `42501` on **every** press of Join,
+  barred pair or not — loud, and caught by any behavioural test of that path.
+- **The invite paths are already `security definer`** (`accept_club_invite` and
+  `claim_club_invite_link`, through `private.join_club_from_invite`), so the trigger inherits the
+  function owner's rights and the delete **succeeds silently** — green whatever the privilege mode
+  says.
+
+That asymmetry is the whole reason group 3 asserts `prosecdef` from the catalogue rather than
+inferring it from a join that worked. Measured on DEV: all three triggers already on that table are
+`prosecdef = true` with `proconfig = {search_path=""}`.
 
 **Alternatives rejected:**
 
