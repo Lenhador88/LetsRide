@@ -192,7 +192,7 @@ export const clubIdSchema = z.uuid()
  *
  * Zod's `.trim()` transforms before validating, so a naive `.trim().min(1).max()`
  * would check the ceiling against the *trimmed* string and disagree with the
- * database. The raw length is checked first, exactly as `rideMessageBodySchema`
+ * database. The raw length is checked first, exactly as `rideThreadMessageBodySchema`
  * does for the identical constraint shape.
  *
  * **The database's floor is `~ '\S'`, not `length(btrim(...)) >= 1`** — `btrim`

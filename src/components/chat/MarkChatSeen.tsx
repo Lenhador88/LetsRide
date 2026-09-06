@@ -20,7 +20,7 @@ import { useEffect, useRef } from 'react'
  * this file names neither table. Held in a ref and never in the effect's
  * dependencies: it is an inline arrow at one of its two call sites, so naming it
  * would re-fire the write on every render — the same shape and the same
- * reasoning as `useRideMessageStream`'s `onMessageRef`.
+ * reasoning as `useRideThreadStream`'s `onMessageRef`.
  *
  * ## Two triggers, and the second is what PD-119 made necessary
  *

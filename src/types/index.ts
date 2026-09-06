@@ -1837,7 +1837,7 @@ export type LocalityCentroid = {
 /**
  * A club's titled thread — `081`, PD-307.
  *
- * **No `updated_at` and no `edited` flag, for `RideMessage`'s reason and one
+ * **No `updated_at` and no `edited` flag, for `RideThread`'s reason and one
  * more.** `081` grants no UPDATE and declares no UPDATE policy on either
  * content table, so neither a title nor a body can change; a title is the
  * worse of the two to make mutable, because a title that changes after forty
@@ -1895,7 +1895,7 @@ export type ClubThreadDetail = ClubThread & {
 export type ClubThreadCursor = { createdAt: string; id: string }
 
 /** One message inside a club thread (`081`). `author` is narrower than
- * `PublicProfile` for `RideMessage`'s reason — a bubble draws no avatar. */
+ * `PublicProfile` for `RideThreadMessage`'s reason — a bubble draws no avatar. */
 export type ClubMessage = {
   id: string
   thread_id: string
@@ -1908,14 +1908,15 @@ export type ClubMessage = {
 /**
  * What `ChatThread` draws, for either stream.
  *
- * The three flags are `RideChatMessage`'s, described there at length: `mine` is
+ * The four flags are described on `RideThreadChatMessage` and here: `mine` is
  * resolved once in the read because the viewer's id is a read concern,
  * `startsGroup`/`startsDay` are properties of the *sequence*, and `pending` is
  * only ever set on a message this viewer just sent.
  *
- * **Structural rather than a shared base**, so `RideChatMessage` keeps its
- * `ride_id` and `ClubChatMessage` its `thread_id` while both satisfy the one
- * component. A bubble renders neither column, which is why neither is here.
+ * **Structural rather than a shared base**, so `RideThreadChatMessage` and
+ * `ClubChatMessage` each keep their own `thread_id` and their own domain while
+ * both satisfy the one component. A bubble renders neither table's parent
+ * column, which is why neither is here.
  */
 export type ChatBubbleMessage = {
   id: string
