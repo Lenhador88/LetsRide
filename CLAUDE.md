@@ -572,28 +572,37 @@ oversight** — `076` says so in as many words: *"The narrowness is deliberate a
 about the other tables."* So the two are not competing precedents, and revoking across the thread
 tables to "settle" them would make six tables inconsistent with the other twenty-four.
 
-**Do not read that as the list of tables the rule COVERS — apply the test instead, because the
-list has been wrong twice.** A table qualifies when it is RLS-enabled, carries **no policy**, and
-is reachable only through `security definer` RPCs; that trio is also what puts it in the
-`rls_enabled_no_policy` advisor group. **Two such tables are NOT revoked** —
-`password_reset_grants` (`026`) and `club_removals` (`111`), each because its migration named
-`anon, authenticated` and stopped, which is verbatim the shape `076` §3b calls the defect it
-existed to fix. `111` shipped that way *while this rule was being written*, which is the argument
-for a test over a list. **PD-413.** Re-derive on DEV rather than trusting any of it:
+**The criterion is a judgement about the ROWS, and there is no mechanical test for it. Do not
+invent one** — three drafts of this paragraph tried, and the last was actively dangerous: it
+proposed *RLS-enabled + no policy + definer-RPC-only*, which **excludes `postcard_reports` and
+`club_thread_reports`**, the two tables most obviously covered. Both carry two policies and an
+`authenticated` SELECT grant. A session applying that test would have concluded their revokes were
+mistakes and re-granted `service_role` — re-opening the reporter-identity exposure `076` exists to
+close, which is worse than the error it was written to fix.
+
+**`rls_enabled_no_policy` is a CANDIDATE SET worth checking, never the criterion.** Its three
+members are `push_devices`, `password_reset_grants` and `club_removals`, and checking them found
+**two that are not revoked and should be** — each because its migration named client roles and
+stopped, leaving Supabase's default in place: `026:189` (`anon, authenticated`) and `111:83`
+(`public, anon, authenticated` — and revoking from `PUBLIC` does not touch `service_role`'s own
+direct grant, which is *why* the default survived). Their readership argument is `076` §3b's, made
+per table: `password_reset_grants` says who is mid-password-reset, and `club_removals` holds the
+(club, rider) pairs an admin removed, over a table whose own comment says *"NOBODY READS IT"* and
+against a `manage-club-riders` requirement that *"nothing anywhere SHALL record who removed
+whom"*. **PD-413.** `111` shipped that way *while this paragraph was being written*, which is why
+the candidate set is worth re-running rather than trusting any list here:
 
 ```sql
-select c.relname, c.relrowsecurity as rls,
-       (select count(*) from pg_policies p
-         where p.schemaname='public' and p.tablename=c.relname) as policies,
-       has_table_privilege('service_role', c.oid, 'SELECT') as sr_select
-  from pg_class c join pg_namespace n on n.oid = c.relnamespace
- where n.nspname='public' and c.relkind='r'
- order by 4, 1;      -- 3 revoked, 30 not, 2026-09-06
+select count(*) filter (where sr) as kept, count(*) filter (where not sr) as revoked
+  from (select has_table_privilege('service_role', c.oid, 'SELECT') as sr
+          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         where n.nspname='public' and c.relkind='r') t;   -- 30 kept, 3 revoked, 2026-09-06
 ```
 
-**Elsewhere this file calls those three advisor tables ones "whose grants were revoked outright";
-read that as CLIENT-role grants** — all three revoked `anon` and `authenticated`, and only
-`push_devices` also named `service_role`.
+**Elsewhere this file calls `push_devices`, `password_reset_grants` and `club_removals` tables
+"whose grants were revoked outright"; read that as CLIENT-role grants** — all three revoked `anon`
+and `authenticated`, and only `push_devices` also named `service_role`. It is **not** the revoked
+trio above, which overlaps it only in `push_devices`.
 
 **All three revokes DO carry a local, grantee-scoped assertion — in two different forms, and that
 is the trap.** `postcard_reports` and `club_thread_reports` use a savepoint-staged
