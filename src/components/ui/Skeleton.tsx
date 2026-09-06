@@ -1,8 +1,7 @@
 import { cn } from '@/lib/utils'
 
 /**
- * One live region for a whole screen, mounted for the screen's life and
- * announcing by CHANGING rather than by being inserted — PD-220.
+ * One live region for a whole screen, mounted for the screen's life — PD-220.
  *
  * **The insertion is the announcement, so the fix is to be inserted once.** A
  * screen that draws a skeleton at several positions cannot get that from the
@@ -12,6 +11,20 @@ import { cn } from '@/lib/utils'
  * across the gate → loaded transition and the DOM node is never replaced. It is
  * inserted once, when the screen mounts, and after that only its text moves.
  *
+ * **It therefore announces by two mechanisms, and which one fires depends on
+ * whether the wait had already started when the screen mounted.** Both give one
+ * announcement per wait; the distinction only matters to someone tempted to
+ * "simplify" this into mounting empty and filling it from an effect, which
+ * would break the first:
+ *
+ * - **A cold load or a client-side navigation in** mounts the screen with no
+ *   data, so `label` is already set and the region enters the DOM **with its
+ *   text**. That insertion is the announcement — there is no earlier empty
+ *   state to change from — and it is the path PD-220 was filed about.
+ * - **A wait that begins later** — a filter tap, or a retry after the filters
+ *   read failed — changes the text of a region that is already mounted, from
+ *   empty to the label. That is the ordinary live-region update.
+ *
  * **The fixed index is the whole mechanism and it is easy to lose.** React
  * matches the children of a fragment by position, so this has to be the same
  * child number in the loading branch, the loaded branch and the error branch.
@@ -20,11 +33,12 @@ import { cn } from '@/lib/utils'
  * is the defect it exists to remove, reintroduced silently: the markup is
  * identical either way and nothing but a screen reader can see the difference.
  *
- * **Text content, not `aria-label`.** A live region announces the content that
- * changed; an empty region with a label has nothing to change and support for
- * announcing one is inconsistent. `null` renders the empty string, which is a
- * removal rather than an update, so finishing a load is silent — announcing
- * "" or "done" is noise the rider did not ask for.
+ * **Text content, not `aria-label`.** Both mechanisms above need content: an
+ * insertion announces what the region contains, and an update announces what
+ * changed. A region carrying only a label has nothing in either place, and
+ * support for announcing one is inconsistent. `null` renders the empty string,
+ * which empties the region rather than filling it, so finishing a load is
+ * silent — announcing "" or "done" is noise the rider did not ask for.
  *
  * `sr-only` is `position: absolute`, so this is out of flow on both screens and
  * reserves nothing. It must stay that way: these two layouts are the ones
@@ -97,7 +111,7 @@ export function Skeleton({ className }: { className?: string }) {
  *
  * **A polite live region announces when it is INSERTED, so a screen that draws
  * a skeleton at more than one tree position announces once per position.** That
- * is fine for the ~28 call sites that draw one: the region is inserted when the
+ * is fine for the 35 call sites that draw one: the region is inserted when the
  * wait starts and removed when it ends. It is wrong on the two list screens,
  * which draw one at **three** positions during a single cold load:
  *
@@ -123,7 +137,12 @@ export function Skeleton({ className }: { className?: string }) {
  * - **Hoisting `role="status"` onto `RidesLoading`/`PostcardsLoading`** — the
  *   shape PD-220's body proposes. Those components are themselves what is
  *   rendered at positions 1 and 2, so it relocates the region without changing
- *   the count, and costs the other ~28 call sites their announcement.
+ *   the count, and costs the other 35 announcing call sites theirs. Count them
+ *   rather than trust that: `git grep -n "<SkeletonList\|<SkeletonDeck\|
+ *   <SkeletonDetail\|<SkeletonForm" -- src`, minus this file, the tests,
+ *   comment lines and the sites already passing `announce={false}`. (The glob
+ *   is spelled `-- src` rather than a `.tsx` pattern on purpose — the obvious
+ *   one contains the two characters that end this comment.)
  * - **Silencing one position and announcing at another.** Any such split is a
  *   guess about which read lands first: silence the gate and a load where the
  *   list arrives before `filters` never announces at all, which is this issue's
@@ -142,7 +161,8 @@ export function Skeleton({ className }: { className?: string }) {
  * The prop is on `SkeletonDeck` and `SkeletonList` alone because those are the
  * two shapes those two screens draw. Every other route's boundary is
  * `fallback={null}`, so its skeleton has one position and its region is right
- * as it stands — an opt-out on the other shapes would be API nothing can reach.
+ * as it stands — an opt-out on `SkeletonDetail` or `SkeletonForm` would be API
+ * nothing can reach.
  */
 function SkeletonRegion({
   label,

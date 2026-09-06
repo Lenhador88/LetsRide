@@ -221,9 +221,8 @@ reconcile — 1 and 2 sit either side of a Suspense boundary, and 2 returns a co
 a fragment — so each is a fresh mount and each inserts its own live region.
 
 **The ordinary cold load hit positions 2 and 3**, because `filters` and the list are independent
-`useQuery` calls and `filters` usually lands first. A fix that only addressed 1 and 2 would have left
-the audible defect exactly as it was while every claim in the tree said it was fixed. **That is what
-the pre-merge review caught, and it is the whole reason this branch has a second round.**
+`useQuery` calls and `filters` usually lands first. A fix that addressed only 1 and 2 leaves the
+audible defect exactly as it was while every claim in the tree says it is fixed.
 
 **What shipped: every skeleton on those two screens is `announce={false}`, and each screen renders
 one `LoadingRegion` at a fixed child index in all three of its branches.** React matches fragment
@@ -237,8 +236,9 @@ Four things a later session should not re-derive:
   is why `Skeleton.test.tsx` asserts the position rather than the presence.
 - **Text content, not `aria-label`.** A live region announces the content that *changed*; an empty
   region carrying a label has nothing to change and support for announcing one is inconsistent. The
-  ~28 other call sites still use `SkeletonRegion`'s `aria-label` — untouched, out of scope, and worth
-  knowing is a weaker mechanism than this one.
+  35 other announcing call sites still use `SkeletonRegion`'s `aria-label` — untouched, out of scope,
+  and worth knowing is a weaker mechanism than this one. Count them with the grep in that file's
+  comment rather than trusting the number here.
 - **No split between positions can work, and this was tried first.** Silencing one and announcing at
   another is a bet on which read lands first: silence the gate and a load where the list arrives
   before `filters` announces nothing at all, which is the issue's own *"must not leave a screen with
@@ -246,13 +246,13 @@ Four things a later session should not re-derive:
 - **Only these two screens were ever affected, measured rather than assumed.** No other route draws a
   **skeleton shape** at a `<Suspense>` fallback: 20 of the other boundaries are `fallback={null}`, and
   the two that are not — `/auth/confirm` and `/auth/callback` — render their own `Confirming` /
-  `SigningIn`. Every other skeleton has one position, so its own region is correct and 28 call sites
-  are untouched — the issue's "touching every caller" was the cost of its own proposed shape.
+  `SigningIn`. Every other skeleton has one position, so its own region is correct and 35 announcing
+  call sites are untouched — the issue's "touching every caller" was the cost of its own shape.
 
 **The shape the issue proposes does not fix it either**, and that is worth stating because it reads
 as a specification: hoisting `role="status"` onto `RidesLoading`/`PostcardsLoading` relocates the
 region without changing the count, since those components are themselves what is rendered at
-positions 1 and 2 — and it strips the other ~28 call sites of their announcement on the way.
+positions 1 and 2 — and it strips the other 35 announcing call sites of theirs on the way.
 
 **One trade taken deliberately:** a silenced skeleton is `aria-hidden`, so between first paint of the
 prerendered HTML and hydration nothing in the accessibility tree says the screen is loading. The

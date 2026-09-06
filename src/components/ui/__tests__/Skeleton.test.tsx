@@ -133,13 +133,30 @@ function stripComments(source: string): string {
     .replace(/^\s*\/\/.*$/gm, '')
 }
 
+/**
+ * The screen function's own body, so the helper components in the same file
+ * (`RidesLoading`, `RideCards`, `EmptyList`) do not contribute returns. Their
+ * returns are not branches of the screen and must not be asserted against.
+ */
+function screenBody(source: string, name: string): string {
+  const start = source.indexOf(`function ${name}(`)
+  expect(start, `no function ${name} in the source`).toBeGreaterThan(-1)
+  const end = source.indexOf('\n}\n', start)
+  expect(end, `could not find the end of ${name}`).toBeGreaterThan(start)
+  return source.slice(start, end)
+}
+
 const SCREENS = [
-  { path: 'src/app/(app)/rides/page.tsx', skeleton: 'SkeletonList', branches: 3 },
-  { path: 'src/app/(app)/postcards/page.tsx', skeleton: 'SkeletonDeck', branches: 3 },
+  { path: 'src/app/(app)/rides/page.tsx', screen: 'RidesScreen', skeleton: 'SkeletonList' },
+  {
+    path: 'src/app/(app)/postcards/page.tsx',
+    screen: 'PostcardsScreen',
+    skeleton: 'SkeletonDeck',
+  },
 ] as const
 
 describe('each list screen silences every skeleton and carries one LoadingRegion', () => {
-  for (const { path, skeleton, branches } of SCREENS) {
+  for (const { path, screen, skeleton } of SCREENS) {
     it(`${path} leaves no skeleton announcing`, () => {
       const source = stripComments(readFileSync(path, 'utf8'))
 
@@ -150,27 +167,32 @@ describe('each list screen silences every skeleton and carries one LoadingRegion
       expect(drawn.length).toBeGreaterThan(0)
       for (const site of drawn) expect(site).toContain('announce={false}')
 
-      // No `role="status"` written into the screen itself either — the region
-      // is `LoadingRegion` and nothing else.
-      expect(source).not.toContain('role="status"')
+      // No live region written into the screen itself either — the region is
+      // `LoadingRegion` and nothing else. Matched loosely enough to catch
+      // `role={'status'}`, which a plain string search reads as absent.
+      expect(source).not.toMatch(/role=\s*\{?\s*['"]status/)
     })
 
-    it(`${path} renders LoadingRegion once per branch, first`, () => {
-      const source = stripComments(readFileSync(path, 'utf8'))
+    it(`${path} opens EVERY branch with LoadingRegion`, () => {
+      const body = screenBody(stripComments(readFileSync(path, 'utf8')), screen)
 
-      // One per returnable branch — the error branch, the gate and the loaded
-      // branch — because React matches fragment children by position: the same
-      // child index in every branch is what makes it one element that persists
-      // rather than three that each announce on mount.
-      const regions = source.match(/<LoadingRegion label=/g) ?? []
-      expect(regions).toHaveLength(branches)
+      // **Every `return` the screen can take, found rather than counted.** The
+      // count is deliberately derived here: an earlier version asserted a
+      // hardcoded three and skipped any branch that had no region, so adding a
+      // fourth early return — an offline state, a permission gate — passed
+      // while reintroducing the defect. That branch's child 0 is a different
+      // element type, so entering it unmounts `LoadingRegion` and leaving it
+      // mounts a fresh one, which is the insertion that announces.
+      //
+      // React matches fragment children by position, so the invariant is that
+      // every branch returns a fragment whose FIRST child is the region. A
+      // single-line `return <X />` cannot satisfy that and fails here, which is
+      // the intent rather than a limitation.
+      const returns = [...body.matchAll(/\breturn\s*([\s\S]{0,60})/g)]
+      expect(returns.length, 'expected the screen to have branches').toBeGreaterThanOrEqual(3)
 
-      // ...and it leads each of them. A `LoadingRegion` after a conditional
-      // sibling reconciles against a different element and remounts.
-      for (const branch of source.split('return (').slice(1)) {
-        if (!branch.includes('<LoadingRegion')) continue
-        const opener = branch.slice(branch.indexOf('<>') + 2).trimStart()
-        expect(opener.startsWith('<LoadingRegion')).toBe(true)
+      for (const [, tail] of returns) {
+        expect(tail.replace(/\s+/g, ' ').trimStart()).toMatch(/^\(\s*<>\s*<LoadingRegion\b/)
       }
     })
   }
