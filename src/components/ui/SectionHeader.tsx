@@ -45,6 +45,36 @@ import { cn } from '@/lib/utils'
  * lifts every existing `See all` off the baseline it was drawn on. The reorder
  * strengthens that: the icon now sits *inside* the baseline-aligned group.
  */
+/**
+ * The section's add affordance, in two forms.
+ *
+ * `label` is the accessible name in both — the icon carries no text, so it must
+ * say what is being added ("Plan a ride"), never bare "Add".
+ *
+ * **`href` was the only form until `108` (PD-402).** The ride timeline's `(+)`
+ * used to go straight to the postcard composer, because a ride created exactly
+ * one thing; a ride now creates two, so that entrance opens the same sheet the
+ * create bar does and needs a handler rather than a destination. The two forms
+ * are a union rather than two optional fields so a caller cannot pass both and
+ * leave which one wins to the reader.
+ *
+ * **A link stays a link.** Every other call site navigates, and turning those
+ * into buttons would cost middle-click, open-in-new-tab and the status bar for
+ * nothing — which is why this is a widening rather than a replacement.
+ */
+export type SectionHeaderCreate =
+  | { label: string; href: string }
+  | { label: string; onClick: () => void }
+
+function isHrefCreate(
+  create: SectionHeaderCreate
+): create is { label: string; href: string } {
+  return 'href' in create
+}
+
+const CREATE_CLASS =
+  '-my-1.5 flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-lg text-foreground transition-colors active:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
+
 export function SectionHeader({
   title,
   meta,
@@ -56,31 +86,47 @@ export function SectionHeader({
   meta?: string
   action?: { label: string; href: string }
   /**
-   * The section's add, drawn as a `(+)` beside the title. `label` is the
-   * accessible name — the icon carries no text, so it must say what is being
-   * added ("Plan a ride"), never bare "Add".
+   * The section's add, drawn as a `(+)` beside the title. See
+   * `SectionHeaderCreate` for the two forms and why the second exists.
    */
-  create?: { label: string; href: string }
+  create?: SectionHeaderCreate
   className?: string
 }) {
   return (
     <div className={cn('flex items-baseline gap-2 px-6 py-1.5', className)}>
       <h2 className="text-xl font-semibold text-foreground">{title}</h2>
       {meta && <span className="text-sm font-medium text-muted">{meta}</span>}
-      {create && (
+      {create &&
         // 40px, matching every other icon button in the app — `-my-1.5` keeps
         // it from growing the row, whose own content is 28px inside `py-1.5`,
         // so a section would otherwise sit 12px further from its neighbours.
         // No `ml-auto` in either state: it hugs the title, and `action` below
         // is what claims the remaining width.
-        <Link
-          href={create.href}
-          aria-label={create.label}
-          className="-my-1.5 flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-lg text-foreground transition-colors active:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <PlusCircleIcon className="h-6 w-6" aria-hidden="true" />
-        </Link>
-      )}
+        //
+        // **One class string, two elements**, so the `(+)` is pixel-identical
+        // whichever form the caller passed — the difference is what the tap
+        // does, never how it looks. A `<button>` also needs `type="button"`:
+        // this component is rendered inside a `<form>` on at least one screen,
+        // and the default `submit` would post it.
+        (isHrefCreate(create) ? (
+          <Link
+            href={create.href}
+            aria-label={create.label}
+            className={CREATE_CLASS}
+          >
+            <PlusCircleIcon className="h-6 w-6" aria-hidden="true" />
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={create.onClick}
+            aria-label={create.label}
+            aria-haspopup="dialog"
+            className={CREATE_CLASS}
+          >
+            <PlusCircleIcon className="h-6 w-6" aria-hidden="true" />
+          </button>
+        ))}
       {action && (
         <Link
           href={action.href}

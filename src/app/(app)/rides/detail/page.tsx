@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { CalendarIcon, LocationOutlineIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { RideAttendanceBar } from '@/components/rides/RideAttendanceBar'
-import { RideChatRow } from '@/components/rides/RideChatRow'
+import { RideThreadsRow } from '@/components/rides/RideThreadsRow'
 import { RideCreateBar } from '@/components/rides/RideCreateBar'
 import { RideCrewRail } from '@/components/rides/RideCrewRail'
 import { RideHeader } from '@/components/rides/RideHeader'
@@ -32,7 +32,7 @@ import {
   formatRideTime,
   googleMapsDirectionsUrl,
 } from '@/lib/utils'
-import type { RideDetail } from '@/types'
+import type { RideCreateOption, RideDetail } from '@/types'
 
 /**
  * The ride — **a timeline with a header on it**, as of 2026-09-05 (PD-393); one
@@ -231,7 +231,8 @@ function RideScreen() {
    * its own exhaustive test — because the two answers are complementary and
    * that property is what a later tidy-up would quietly break.
    */
-  const { bottomSlot, timelineAdd } = resolveRideDetailActions({
+  const { bottomSlot, timelineAdd, createOptions } = resolveRideDetailActions({
+    rideId: id,
     canRsvp,
     canCreate: isCrew === true,
   })
@@ -287,6 +288,7 @@ function RideScreen() {
             // the two cannot drift into both being true — two entrances to one
             // composer — or both false, which leaves the crew none.
             canAdd={timelineAdd}
+            createOptions={createOptions}
             near={position}
           />
         ) : (
@@ -297,7 +299,7 @@ function RideScreen() {
       {bottomSlot === 'rsvp' && ride.data && (
         <RideAttendanceBar rideId={ride.data.id} attendance={ride.data.attendance} />
       )}
-      {bottomSlot === 'create' && ride.data && <RideCreateBar rideId={ride.data.id} />}
+      {bottomSlot === 'create' && ride.data && <RideCreateBar options={createOptions} />}
     </>
   )
 }
@@ -306,6 +308,7 @@ function RidePlan({
   ride,
   isCrew,
   canAdd,
+  createOptions,
   near,
 }: {
   ride: RideDetail
@@ -317,6 +320,11 @@ function RidePlan({
    *  `isCrew` true and `canAdd` true, and the same rider on a past ride is
    *  `isCrew` true and `canAdd` FALSE, because the bar has it instead. */
   canAdd: boolean
+  /** What the create sheet holds — passed through to the timeline heading's
+   *  `(+)`, which opens the same sheet `RideCreateBar` does (`108`, PD-402).
+   *  Read off the same `resolveRideDetailActions` call as `canAdd`, so the two
+   *  entrances cannot offer different rows. */
+  createOptions: RideCreateOption[]
   near: RiderLocation | null
 }) {
   // PD-340. `null` at every step is "nothing to say", never zero: the rider has
@@ -464,8 +472,11 @@ function RidePlan({
       {/* PD-254's whole point, and it stays above the timeline rather than
           below it: a rider could not find the chat, and burying the labelled
           row under a stream that grows would re-open that defect the moment a
-          ride collects twenty entries. */}
-      {isCrew && <RideChatRow rideId={ride.id} />}
+          ride collects twenty entries. `108` (PD-402) points it at the ride's
+          threads instead — the row survives the conversation model it was
+          written for, because what PD-125 measured was that nobody finds the
+          bare header bubble, which is still true. */}
+      {isCrew && <RideThreadsRow rideId={ride.id} />}
 
       {/* What has happened, last — the club detail's shape, PD-393. Not
           crew-gated (PD-282): `ride_journal_postcard_ids` gates on
@@ -482,6 +493,7 @@ function RidePlan({
           organizer: ride.organizer,
         }}
         canAdd={canAdd}
+        createOptions={createOptions}
       />
     </div>
   )

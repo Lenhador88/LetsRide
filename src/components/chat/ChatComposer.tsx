@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 
 /**
  * The message id, chosen here so an optimistic bubble and the server row can be
- * recognised as the same message — see `sendRideMessage`.
+ * recognised as the same message — see `sendRideThreadMessage`.
  *
  * Isolated so its one failure mode has one home: `crypto.randomUUID` is
  * **undefined outside a secure context**, and `http://<lan-ip>:3000` is exactly
@@ -56,7 +56,7 @@ function newMessageId(): string {
  *
  * The id is generated **here** and handed to `onSend`, which is what lets the
  * message be drawn immediately and reconciled against the server row when it
- * arrives — see `sendRideMessage`. On failure the text comes back into the
+ * arrives — see `sendRideThreadMessage`. On failure the text comes back into the
  * field: a rider's own words are the one thing that must survive a refusal, the
  * same rule `CommentForm` follows.
  */
@@ -68,8 +68,9 @@ export function ChatComposer({
   /** Resolves to an error message, or `null` when the message landed. */
   onSend: (body: string, messageId: string) => Promise<string | null>
   /**
-   * The database's own ceiling for this stream — `RIDE_MESSAGE_MAX_LENGTH` or
-   * `CLUB_MESSAGE_MAX_LENGTH`, both 1000 today and both owned by a CHECK. Taken
+   * The database's own ceiling for this stream —
+   * `RIDE_THREAD_MESSAGE_MAX_LENGTH` or `CLUB_MESSAGE_MAX_LENGTH`, both 1000
+   * today and both owned by a CHECK. Taken
    * as a prop rather than defaulted, because a default is how a table's bound
    * gets silently applied to a different table.
    */

@@ -271,7 +271,7 @@ export async function getClubThreadMessages(
  * appear here**, for the reason `getClubThreads` gives at length.
  *
  * A failure resolves to "nothing is unread" rather than throwing, and that is a
- * product decision rather than defensive coding — `getRideChatUnread` rules the
+ * product decision rather than defensive coding — `getRideThreadUnread` rules the
  * same way. The marks decorate a list that works without them, so a failed
  * unread call must cost the decoration and nothing else: the list still renders,
  * unmarked. The reverse is what must never be drawn, and cannot be from here — a

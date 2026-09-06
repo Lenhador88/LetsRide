@@ -130,9 +130,9 @@ never be dissolved back into components, because:
    writes safe in the first place.
 
    **The participation gate is narrower than "every write"** — `enforce_participation_gate` sits on
-   **twenty-one tables on both projects** (`101`/PD-373 dropped `club_thread_waves`' gate, promoted
-   2026-09-06) and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
-   `feed_reads`, `club_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
+   twenty-three tables on DEV and twenty-one on PROD — `101`/PD-373's drop promoted 2026-09-06, then
+   `108` added two on DEV and `109` will take one back when it applies — and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
+   `feed_reads`, `club_thread_reads`, `ride_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
    `accept_terms()` can still set a username and upload an avatar. `docs/reference/schema.md`
    §The participation gate has the list, the `push_devices` exception and the count query.
 2. `useActionState` gives pending and error states without hand-rolled `useState` triples — and
@@ -229,7 +229,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (54 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/__tests__/` exercises four actions against a mocked resolver and reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Thirty-two** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways per §Working Principles; all but **five** render through `renderToStaticMarkup` under `environment: 'node'`, and jsdom is the answer only when something needs a **mounted effect, a layout, an event or a portal** — check the reason against that list rather than against the count, because each of the five below is there for a different one — `ClubTimeline.test.tsx`, for a fetch failure and an anchor-hunt latch that only exist inside a mounted `useEffect`; `PostcardMenu.test.tsx`, for a real click through `ContextMenu`'s portal and `useTransition`'s async flow; `EditRideForm.dom.test.tsx`, because that form seeds its controlled state FROM its row, so the refused-transition state is unreachable on first paint and a static render cannot tell a working guard from `disabled={false}`; `IntroductionPrompt.dom.test.tsx`, because the sheet's dismissal lock has to hold against `ContextMenu`'s **scrim and Escape**, which a static render cannot dispatch — asserting the button's `disabled` attribute leaves exactly the path that matters uncovered; and `PrivacySheet.dom.test.tsx`, because that sheet IS a `ContextMenu` and portals to `document.body`, so a static render of it returns nothing at all to assert against. Count them with `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
+| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (54 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/__tests__/` exercises four actions against a mocked resolver and reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Thirty-three** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways per §Working Principles; all but **five** render through `renderToStaticMarkup` under `environment: 'node'`, and jsdom is the answer only when something needs a **mounted effect, a layout, an event or a portal** — check the reason against that list rather than against the count, because each of the five below is there for a different one — `ClubTimeline.test.tsx`, for a fetch failure and an anchor-hunt latch that only exist inside a mounted `useEffect`; `PostcardMenu.test.tsx`, for a real click through `ContextMenu`'s portal and `useTransition`'s async flow; `EditRideForm.dom.test.tsx`, because that form seeds its controlled state FROM its row, so the refused-transition state is unreachable on first paint and a static render cannot tell a working guard from `disabled={false}`; `IntroductionPrompt.dom.test.tsx`, because the sheet's dismissal lock has to hold against `ContextMenu`'s **scrim and Escape**, which a static render cannot dispatch — asserting the button's `disabled` attribute leaves exactly the path that matters uncovered; and `PrivacySheet.dom.test.tsx`, because that sheet IS a `ContextMenu` and portals to `document.body`, so a static render of it returns nothing at all to assert against. Count them with `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
 | Edge Functions | `deno check`, CI's `functions` job | Type-checks every `index.ts` under the runtime it runs in, when `supabase/functions/**` or the workflow changes. `tsconfig.json` excludes the directory, but two helper modules (`gates.ts`, `shape.ts`) are imported by unit tests and `tsc` follows them in — `npx tsc --noEmit --listFiles \| grep supabase/functions` lists them — so the entrypoints are the part only the Deno job reads |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything**: signs in, walks every screen including detail routes discovered from the lists, checks the guard's redirects and sign-out, and refuses a create and an edit. Every other gate stays green through a screen that throws on load, or one nobody can reach (PD-125). `WALK_FIXTURES=1` creates the rows the detail routes need; a shrunken `N/N` is a skip, not a pass. **Wired into CI as the `walk` job (2026-09-02)**, minting its own rider (no credential — PD-268), and **skipped until the repository variable `WALK_CI=1` is set**, because the Actions secrets name PROD and the guard step refuses to walk it. Not a required check yet (PD-370) |
 | End-to-end | Playwright | Deferred as a full suite. The walk asks one question per route — did this render — and asserts behaviour only in its named phases, each covering a defect no other gate can see. Adding a phase means adding a reason, not broadening a remit |
@@ -449,19 +449,32 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 107 files, and BOTH projects are level at `107` — measured 2026-09-06, after the
-promotion.** No gap, so nothing is awaiting an apply in either direction. Count rather than trust
-it: `list_migrations` against both refs against `ls supabase/migrations/*.sql | wc -l`. DEV records
-three hand-applied rows with no file, so its row count reads high at 110; every file IS applied,
-which is the direction that matters.
+**Applied state: 110 files. DEV is at `110` and PROD at `107` — measured 2026-09-06.** `101`–`107`
+**promoted to PROD on 2026-09-06**, so the long-standing seven-file gap this line used to describe
+is closed. What is open now is three files and they are open for two different reasons: `108` and
+`110` (PD-402) are applied to DEV and awaiting promotion in the ordinary way, and **`109` is written and applied
+NOWHERE, deliberately** — it drops `ride_messages` and `ride_reads` and must not apply until the
+bundle that stopped reading them is confirmed **serving** on DEV (`READY` on the merge sha,
+`aliasError` null, which is not the same as merged). Its own header carries that gate. **`108` goes
+MIGRATION-FIRST and `109` goes LAST**, which is the sequencing rule with its two halves pulling in
+opposite directions — one file cannot be both sides of a deploy, which is why there are two.
+**The per-file ordering for `101`–`107` is in `docs/reference/migrations.md` §Applied state**, not
+here — that promotion is finished, so which of its files went before the deploy and which after is a
+log entry rather than a rule. What generalises from it is the paragraph below.
+Count rather than trust it: `list_migrations` against both refs,
+against `ls supabase/migrations/*.sql | wc -l`. DEV also records three hand-applied rows with no
+file, so its row count reads high; every file IS applied, which is the direction that matters.
+**`109` is the one file applied nowhere and it is not drift** — see the two-file paragraph above.
 
-**When a gap DOES open, its files rarely agree about which side of the deploy they want**, and
-`101`–`107` is the worked example: `105`/`106` had to be migration-first (the promoted bundle CALLS
-their two accessors), while `101` and `103` had to be deploy-first (each is an outage against the
-bundle that was serving). **Deploy-first wins that argument** — it is the side that protects against
-an outage and destroyed data, where migration-first costs a transient `PGRST202`.
-`docs/reference/migrations.md` §Applied state has the per-file rule and the order each was actually
-applied in.
+**A gap's files rarely agree about which side of the deploy they want**, and `101`–`107` is the
+worked example: `105`/`106` had to be migration-first (the promoted bundle CALLS their two
+accessors), while `101` and `103` had to be deploy-first (each is an outage against the bundle that
+was serving). **Deploy-first wins that argument** — it is the side that protects against an outage
+and destroyed data, where migration-first costs a transient `PGRST202`. **`108`/`109` is the case
+where one file could not settle it and had to become two**: the publication entry and the new
+tables want to be there before the bundle, and `ride_messages` has to outlive it, so the change is
+split rather than compromised. `docs/reference/migrations.md` §Applied state has the per-file rule
+and the order each was actually applied in.
 **Level is the exception, not the resting state** — DEV-ahead is where a migration lives between
 its merge and its promotion. Promote everything the gap contains, in filename order, per
 `docs/ENVIRONMENTS.md` §Migrations, and record each promotion's ordering in
@@ -496,7 +509,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3488** assertions — re-derive rather than trust it:
+Suite **3570** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 
@@ -515,8 +528,17 @@ never run. `complete_onboarding` also joins the caller to the club carrying `clu
 (`058`), inside a `when others` block, because a raise there would roll the completion stamp back
 and decision #5 gives a rider with a NULL stamp no way out of the wizard.
 
-**Security advisors: thirty-nine on BOTH projects, and only one is outstanding** —
-`auth_leaked_password_protection`, a dashboard click, on each. The rest are things this repo chose: one
+**Security advisors: forty-one on DEV and thirty-nine on PROD, and only one is outstanding** —
+`auth_leaked_password_protection`, a dashboard click. **The two-advisor difference IS `108`, which
+is applied to DEV and not yet promoted** — the ordinary shape this section's last line describes
+rather than drift. Both projects read **39** before it, measured 2026-09-06 after the `101`–`107`
+promotion, so the older two-advisor gap this line used to attribute to `105` is closed and this is
+a new one with the same shape. `108` adds exactly two, one per `security definer` RPC it publishes
+in `public` — `delete_own_ride_thread_message` and `moderate_ride_thread`; its third function,
+`ride_thread_unread`, is `security invoker` and adds none, which is measured against
+`public.club_thread_unread` (`prosecdef = false`) rather than assumed. **`109` removes none**:
+`public.ride_has_unread` is `prosecdef = false` and `public.stamp_ride_read` holds no
+`authenticated` EXECUTE. The rest are things this repo chose: one
 `authenticated_security_definer_function_executable` WARN per `security definer` RPC in
 `public` (each narrow by design — takes a row id or nothing at all, never a rider id, one raise
 site), and two `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding

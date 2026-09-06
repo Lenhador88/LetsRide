@@ -15,8 +15,7 @@ import {
  * not the audience rule itself: which conjuncts admit a tag is `041`'s INSERT
  * policy and is asserted in `supabase/tests/rls_test.sql`, not here.
  *
- * The stub `postcards` builder always resolves empty rows, the same trick
- * `ride-messages.test.ts` avoids needing for `getRideChatUnread` — an empty
+ * The stub `postcards` builder always resolves empty rows — an empty
  * result means `attachLikeState`'s `postcard_likes` lookup, `signImagePaths`
  * and `resolveAvatarUrls` all short-circuit on their own `length === 0`
  * guards, so this file does not have to stub Storage or a second table just

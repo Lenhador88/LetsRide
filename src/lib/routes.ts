@@ -127,7 +127,13 @@ export const detailPaths = {
   postcard: '/postcards/detail',
   ride: '/rides/detail',
   rideCrew: '/rides/detail/crew',
-  rideChat: '/rides/detail/chat',
+  /** A ride's threads — `108`, PD-402, replacing `/rides/detail/chat`. The
+   * segment says which entity the `id` names, exactly as the club's three do:
+   * `threads` takes a RIDE id, `thread` takes a THREAD id. `next.config.ts`
+   * redirects the retired chat path onto `rideThreads`. */
+  rideThreads: '/rides/detail/threads',
+  rideThread: '/rides/detail/thread',
+  newRideThread: '/rides/detail/threads/new',
   rideEdit: '/rides/detail/edit',
   /** The organizer's rider picker and invite list — `083`, PD-329. */
   rideInvite: '/rides/detail/invite',
@@ -157,7 +163,10 @@ export const routes = {
   postcard: (id: string) => detail(detailPaths.postcard, id),
   ride: (id: string) => detail(detailPaths.ride, id),
   rideCrew: (id: string) => detail(detailPaths.rideCrew, id),
-  rideChat: (id: string) => detail(detailPaths.rideChat, id),
+  rideThreads: (rideId: string) => detail(detailPaths.rideThreads, rideId),
+  /** Takes the THREAD's id, not the ride's — see `detailPaths`. */
+  rideThread: (threadId: string) => detail(detailPaths.rideThread, threadId),
+  newRideThread: (rideId: string) => detail(detailPaths.newRideThread, rideId),
   rideEdit: (id: string) => detail(detailPaths.rideEdit, id),
   rideInvite: (id: string) => detail(detailPaths.rideInvite, id),
   club: (id: string) => detail(detailPaths.club, id),

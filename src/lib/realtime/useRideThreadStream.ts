@@ -4,12 +4,14 @@ import { useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 /**
- * The app's **second** Realtime subscription (`081`, PD-307) — one club
- * thread's messages. `034`'s ride chat was the first and this was a transfer
- * of it rather than a new design; every rule below came from that file, with
- * the differences named. **That hook is gone** — `108` (PD-402) retired the
- * ride chat, and `useRideThreadStream` is now this file's counterpart rather
- * than its ancestor: the two are the same shape with the table swapped.
+ * One ride thread's messages, live — `108`, PD-402.
+ *
+ * **`useClubThreadStream` with the table swapped**, and that is the whole of the
+ * difference. It replaces `useRideMessageStream` (`034`), which subscribed to a
+ * ride's single chat; the ride now has threads, so the channel is scoped to the
+ * **thread** rather than to the ride. Every rule below is the club hook's, and
+ * they are stated here rather than cross-referenced because a silent stream is
+ * diagnosed by reading the file that owns it.
  *
  * ## It signals, it does not deliver
  *
@@ -17,12 +19,12 @@ import { createClient } from '@/lib/supabase/client'
  * deliberately does **not** hand the payload row to the cache even though the
  * payload contains one: `postgres_changes` delivers the table row and nothing
  * else, so it carries `author_id` and no `author` — the joined profile
- * `getClubThreadMessages` selects and every other rider's bubble renders a
- * name from. Appending it would draw a message from nobody, then swap in the
- * name on the next unrelated refetch.
+ * `getRideThreadMessages` selects and every other rider's bubble renders a name
+ * from. Appending it would draw a message from nobody, then swap in the name on
+ * the next unrelated refetch.
  *
  * The cost is one round trip per message on an open thread. That is the right
- * trade at this scale — a club's thread, not a public channel — and the fix when
+ * trade at this scale — a ride's crew, not a public channel — and the fix when
  * it stops being is a `select` on the row rather than a different subscription
  * shape.
  *
@@ -30,26 +32,27 @@ import { createClient } from '@/lib/supabase/client'
  *
  * A channel on a table outside the `supabase_realtime` publication **connects,
  * reports `SUBSCRIBED`, and silently never fires** — indistinguishable from a
- * thread nobody is writing in. `081` adds `club_messages` to the publication in
- * the migration and deliberately leaves `club_threads` out, saying so in the
- * file: a new *thread* appearing live is not required, and the list revalidates
- * by key. If messages ever stop arriving live, check `pg_publication_tables`
- * before suspecting anything here.
+ * thread nobody is writing in. `108` adds `ride_thread_messages` to the
+ * publication in the migration and deliberately leaves `ride_threads` out,
+ * saying so in the file: a new *thread* appearing live is not required, and the
+ * list revalidates by key. If messages ever stop arriving live, check
+ * `pg_publication_tables` before suspecting anything here.
  *
- * Realtime evaluates `081`'s SELECT policy per subscriber, so club membership
- * and the block arm govern delivery with no second copy of them — which is a
- * reason to keep the rule in one place, not a reason to trust it untested. It is
- * the one assertion the RLS suite cannot make (plain Postgres has no Realtime),
- * so it is confirmed by observation against DEV.
+ * Realtime evaluates `108`'s SELECT policy per subscriber, so the crew
+ * conjunction and the block arm govern delivery with no second copy of them —
+ * which is a reason to keep the rule in one place, not a reason to trust it
+ * untested. It is the one assertion the RLS suite cannot make (plain Postgres
+ * has no Realtime), so it is confirmed by observation against DEV.
  *
  * ## The channel name carries the KIND as well as the id
  *
- * `ride:${rideId}:messages` was unambiguous while the app had one stream; with
- * two it is not a namespace. `club-thread:${threadId}:messages` names
- * both, and two components mounting this hook for the same thread share one
- * socket topic instead of stacking two and delivering everything twice.
+ * `ride:${rideId}:messages` was `034`'s and is retired with it. `ride-thread:
+ * ${threadId}:messages` names both the kind and the id, so it cannot collide
+ * with `club-thread:` — and two components mounting this hook for the same
+ * thread share one socket topic instead of stacking two and delivering
+ * everything twice.
  */
-export function useClubThreadStream(
+export function useRideThreadStream(
   threadId: string | undefined,
   onMessage: () => void
 ): void {
@@ -89,16 +92,15 @@ export function useClubThreadStream(
       if (cancelled) return
 
       channel = supabase
-        .channel(`club-thread:${threadId}:messages`)
+        .channel(`ride-thread:${threadId}:messages`)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
-            table: 'club_messages',
-            // Server-side, so a rider in a club with forty threads does not
-            // receive the other thirty-nine's traffic and filter it out on the
-            // phone.
+            table: 'ride_thread_messages',
+            // Server-side, so a rider on a ride with ten threads does not
+            // receive the other nine's traffic and filter it out on the phone.
             filter: `thread_id=eq.${threadId}`,
           },
           () => onMessageRef.current()
@@ -117,16 +119,13 @@ export function useClubThreadStream(
         })
     })()
 
-    // **Foregrounding refetches too, which `034`'s hook does not do**, and the
-    // difference is deliberate rather than a copy-paste divergence. A phone that
-    // sleeps with a thread open suspends the socket; the re-join that follows
-    // fires the `joinedBefore` branch above *only if* the channel actually
-    // dropped, and a socket that was merely paused can come back believing it
-    // missed nothing. Refetching when the tab becomes visible closes that
-    // without depending on which of the two happened — it is the same
+    // A phone that sleeps with a thread open suspends the socket; the re-join
+    // that follows fires the `joinedBefore` branch above *only if* the channel
+    // actually dropped, and a socket that was merely paused can come back
+    // believing it missed nothing. Refetching when the tab becomes visible
+    // closes that without depending on which of the two happened — the same
     // "assume the gap, do not assume the stream filled it" rule the reconnect
-    // branch follows. Worth transferring to the ride chat; not done here,
-    // because that is shipped code this change has no reason to touch.
+    // branch follows.
     const onForeground = () => {
       if (document.visibilityState === 'visible') onMessageRef.current()
     }

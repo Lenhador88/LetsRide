@@ -329,9 +329,22 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 110 rows on DEV and 107 on PROD against 107 files. Both projects are
-LEVEL at `107`** — the DEV surplus is files applied there in increments, listed at the end of this
-section, not a gap.
+**`list_migrations` prints 113 rows on DEV and 107 on PROD against 110 files, measured
+2026-09-06. The DEV surplus is not a gap, and the PROD shortfall is the ordinary one.** `101`
+through `107` **promoted to PROD on 2026-09-06** between 08:26:24Z and 08:40:28Z, closing the gap
+this heading described for a week; `108` and `110` (PD-402) opened a new one the same day.
+
+**What is open now is three files open for TWO different reasons — do not read it as a three-file
+gap.** `108_ride_threads` and `110_a_ride_watermark_is_not_an_oracle` are applied to DEV and
+awaiting promotion in the ordinary way. **`109_retire_ride_chat` is applied NOWHERE and that is
+deliberate**: it drops `ride_messages` and `ride_reads`, so it must not apply until the bundle that
+stopped reading them is confirmed **serving** on DEV. A file in the repo and in no database is
+normally drift; this one is the sequencing rule mid-flight, and its own header carries the gate.
+
+**DEV's recorded order will end up `108, 110, 109`** once `109`'s gate opens, because the recorded
+version is an apply-time timestamp. That is the shape this file already records for PROD, the suite
+replays in filename order where the two commute, and `npm run db:drift` compares names rather than
+versions — so it is not drift. `110`'s own header says the same.
 
 **`101`–`107` were promoted to PROD on 2026-09-06, all seven in one pass, DEPLOY-FIRST and in
 filename order** — `f3c55b4` (PR #405) `READY` on the Production target with `aliasError` null
@@ -397,6 +410,49 @@ on 2026-09-01, again for `101`/`102` on 2026-09-03, and again for `103`/`104` on
 **both recorded WITHOUT their numeric prefix** (`creator_membership`, `club_member_owner_arm`),
 which is the majority convention here: `098`, `100` and `101` are the same and only `102` carries
 one.
+
+**`108_ride_threads` (PD-402) — applied to DEV 2026-09-06, recorded as `ride_threads`
+(`20260906091223`, no numeric prefix, the majority convention above). MIGRATION-FIRST, and the
+half of a two-file change whose order is forced.** It creates `ride_threads`,
+`ride_thread_messages` and `ride_thread_reads`, their policies, per-column INSERT grants, two
+`enforce_participation_gate` triggers, the read-watermark trigger, `ride_thread_unread`,
+`delete_own_ride_thread_message`, `moderate_ride_thread`, and the `supabase_realtime` entry for
+`ride_thread_messages`. **It touches no existing policy, grant, CHECK, trigger or column and
+creates no object a shipped bundle can observe**, so migration-first has no unsafe side of its own
+— and it must be first, because the publication entry and the tables have to exist before the new
+bundle subscribes and reads.
+
+**At 76 KB it exceeded what `apply_migration` takes as a string**, so it took this file's own
+§Applying a large file route: applied reduced (all 53 executing statements, `$$`-body comments
+preserved) and **proved by object diff** against a local database carrying the full file. All ten
+fingerprints matched — `pg_get_functiondef`, `prosecdef`/`proconfig`, policies, columns, indexes,
+constraints, table grants, column grants, triggers, comments. **So the recorded statement does not
+equal `md5sum` of the file, which is the NORM here and reads exactly like drift** — compare the
+OBJECT, never the recorded text.
+
+Advisors **39 → 41 on DEV**, measured rather than derived: one per `security definer` RPC published
+in `public`, and `ride_thread_unread` is `security invoker` and adds none — which was checked
+against `public.club_thread_unread` (`prosecdef = false`) rather than assumed. Gate triggers
+21 → 23. Suite 3488 → 3656 with this file alone, **14 assertion labels removed and 182 added, every
+one of the 14 pairing with a rename** (13 gate-trigger canaries restated, plus `6.1`, whose label
+embeds the `profiles` FK count) — zero lost, compared as label sets rather than counts.
+
+**`109_retire_ride_chat` (PD-402) — WRITTEN, COMMITTED, AND APPLIED NOWHERE.** It drops
+`ride_messages`, `ride_reads`, `public.stamp_ride_read()` and `public.ride_has_unread(uuid)`.
+**The gate is not "the PR merged" and not "CI is green"**: it is the Vercel deployment for the merge
+sha, in that branch's environment, reading `READY` with `aliasError` null. This repo applied a
+destructive file 102 seconds after a merge once, out from under a Preview still calling the function
+it dropped, and this file exists as a separate file so that cannot happen again — one file cannot be
+both before and after a deploy.
+
+Data destroyed, counted rather than estimated on 2026-09-06: DEV **7** `ride_messages` across 6
+rides and **14** `ride_reads`; PROD **0 / 0**. **Nothing is archived and nothing needs to be** — an
+archive table would carry `ride_messages`' INTERSECTION audience or carry none, and the second
+publishes every message on every ride to whoever could read it. `notifications` is untouched: there
+is no `ride_message` kind, `036`/`060` name the table only in comments, and the file says so at
+length so the next reader does not re-derive it. Expect advisors **unchanged** when it applies —
+`ride_has_unread` is `prosecdef = false` and `stamp_ride_read` holds no `authenticated` EXECUTE —
+and gate triggers 23 → 22.
 
 **`107_a_club_may_outlive_its_last_member` (PD-98) — applied to DEV 2026-09-05, recorded as
 `a_club_may_outlive_its_last_member` (no numeric prefix, the majority convention above).**
@@ -563,11 +619,20 @@ and re-derive both rather than trusting the numbers in this heading — they hav
 before, in the direction of reading one row too few.
 
 ```bash
-ls supabase/migrations/*.sql | wc -l    # 107
+ls supabase/migrations/*.sql | wc -l    # 109
 ```
+**The file count is one AHEAD of DEV on purpose**, which no other reading of this line has ever
+been: `109` is written and applied nowhere until the new bundle is confirmed serving. Everywhere
+else in this file, a file with no row is drift.
+
+*(The `docs:check` anchor for this count is the copy further down, in the promotion log's code
+block — it is the one carrying the `— DEV at N, PROD at N` relationship the registry pins on, and
+adding that suffix here makes the pattern match twice and fail to locate rather than to compare.
+Learnt the hard way, 2026-09-06.)*
+
 ```
-mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # PROD — 100 rows, last `100_club_thread_fan_outs_test_membership`
-mcp__Supabase__list_migrations fpmrimzxadewsaiwpsel   # DEV  — 110 rows, last `a_club_may_outlive_its_last_member`
+mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # PROD — 107 rows, last `a_club_may_outlive_its_last_member`
+mcp__Supabase__list_migrations fpmrimzxadewsaiwpsel   # DEV  — 111 rows, last `ride_threads`
 ```
 
 **`080`–`091` were promoted to PROD on 2026-08-30 around #348's build**, in the grouping
@@ -1238,7 +1303,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 107 — DEV at 107, PROD at 107 (level)
+ls supabase/migrations/*.sql | wc -l     # 110 — DEV at 110, PROD at 107 (108+110 await promotion; 109 is applied nowhere)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```

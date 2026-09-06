@@ -323,8 +323,20 @@ export const claims = [
     // is no direction to infer, so "BOTH projects are level at" is what this
     // pattern pins and the day they diverge again the sentence has to name them
     // and this pattern has to move with it. Two edits, one commit.
+    // 2026-09-06, later: `108` and `110` (PD-402) applied to DEV alone and this
+    // went red for the ELEVENTH time, on the LEVEL sentence again — the second
+    // flip in one day, which the 2026-09-01 entry already said is the mechanism
+    // rather than a defect. Pinned back to DEV AHEAD with both `at \`NNN\``
+    // captures. Note what this change does NOT pin: `109` is committed and
+    // applied to neither project, so the file count is one HIGHER than DEV's
+    // level and that is deliberate rather than drift. Pinning "three files
+    // open" or the gap's shape in words is the churn the 2026-09-01 note
+    // refuses; the two captures still make the direction unmissable, and the
+    // deliberately-unapplied file is explained in the prose beside them where a
+    // reader will actually meet it. Two edits, one commit. Still never a
+    // relaxed regex.
     pattern:
-      /\*\*Applied state: (\d+) files, and BOTH projects are level at `\d+` — measured/,
+      /\*\*Applied state: (\d+) files\. DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
