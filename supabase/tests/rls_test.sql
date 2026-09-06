@@ -34276,19 +34276,29 @@ select assert_eq(
   0, '111.7: ... and there is NO policy — the two together are the posture, and the grants above are what actually refuse a client. A policy added later would still reach nobody, which is the trap this pair is written to make visible');
 
 -- ---------------------------------------------------------------------------
--- 111.8  Nobody reads a removal — not the owner, an admin, a member, or the
---        rider it is about
+-- 111.8  Nobody reads a removal — and all four refusals are the SAME refusal
 -- ---------------------------------------------------------------------------
+-- ** THESE FOUR ASSERT ONE FACT, NOT FOUR, AND THE LABELS SAY SO. ** The refusal
+-- is the absent table grant, which Postgres evaluates at executor start before
+-- any policy or `auth.uid()` is consulted — so the four `test.uid` values below
+-- change nothing about the outcome and this is NOT per-role coverage. 111.7's
+-- `has_table_privilege` sweep is the precise statement of the same posture,
+-- across all seven verbs and both roles.
+--
+-- They are kept because they are the BEHAVIOURAL half: they would catch a future
+-- change that granted SELECT and added a policy, which the privilege sweep alone
+-- would report as a mere grant. Four riders rather than one, because the four
+-- named roles are the ones a reader would otherwise assume had been checked.
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000001110001', false);
 select assert_denied($$select count(*) from club_removals$$,
-  '111.8: the club''s OWNER cannot read the removals table');
+  '111.8: the club''s OWNER cannot read the removals table — refused by the ABSENT GRANT, not by a policy, which is why the next three are the same refusal rather than three more');
 select set_config('test.uid', '00000000-0000-0000-0000-000001110002', false);
 select assert_denied($$select count(*) from club_removals$$,
-  '111.8: nor can the ADMIN who performed the removal — there is no screen, so there is no reader');
+  '111.8: nor can the ADMIN who performed the removal — same refusal, and there is no screen, so there is no reader');
 select set_config('test.uid', '00000000-0000-0000-0000-000001110007', false);
 select assert_denied($$select count(*) from club_removals$$,
-  '111.8: nor an ordinary MEMBER');
+  '111.8: nor an ordinary MEMBER — same refusal');
 select set_config('test.uid', '00000000-0000-0000-0000-000001110003', false);
 select assert_denied($$select count(*) from club_removals$$,
   '111.8: ** nor the REMOVED RIDER themselves ** — which is what keeps 088''s decision that a removal is silent, and is why the claim path''s refusal has to be indistinguishable from every other dead state');
