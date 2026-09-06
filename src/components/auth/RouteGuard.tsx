@@ -69,6 +69,12 @@ import { GuardError } from '@/components/auth/GuardError'
  * completely, and RLS answers nothing to a rider who turns out not to belong
  * there, which is the same guarantee the guard leans on everywhere else.
  *
+ * **Since PD-251 the covered subtree is also `inert` and `aria-hidden`**, so it
+ * is unreachable rather than merely unseen. That closes the *interaction* half
+ * — a keyboard or screen-reader rider could previously act on the shell through
+ * the cover — and it closes nothing else: `inert` blocks focus and hit-testing,
+ * not effects, so the paragraph below stands exactly as written.
+ *
  * **That guarantee covers reads, and a mounting screen can also write.**
  * `MarkFeedSeen` and `MarkClubSeen` upsert `feed_reads` from an effect, so a
  * screen mounted under the overlay and then navigated away from could in
@@ -112,9 +118,12 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   const destination = state === undefined ? undefined : resolveDestination(pathname, state)
 
   // Which of the three covers to draw, and whether `children` stay mounted under
-  // it. A pure function in `guard-cache.ts`, so the mapping has a test — this
-  // repo has no component test framework, and PD-122's branch is one that
-  // reaches a rider as a dead screen if it is wrong.
+  // it. A pure function in `guard-cache.ts`, so the mapping has a test —
+  // PD-122's branch is one that reaches a rider as a dead screen if it is wrong.
+  // **The value and the honouring are pinned in two different files**, and
+  // neither alone is the property: `guard-cache.test.ts` asserts what this
+  // returns, `__tests__/RouteGuard.test.tsx` asserts what this component then
+  // does with it. A fourth `kind` owes a case in both.
   const view = resolveGuardView(snapshot, destination)
 
   const retry = useCallback(() => retryGuardRead(pathname), [pathname])
@@ -133,7 +142,78 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     router.replace(destination)
   }, [destination, router])
 
-  if (view.kind === 'children') return <>{children}</>
+  // What makes `overlay: true` mean "nothing REACHABLE underneath" (PD-251).
+  // The opaque cover hides the shell from sight and from a pointer; it does
+  // nothing about the tab order or the accessibility tree, so before this a
+  // rider on a keyboard could Tab into a `Navbar` link they could not see, and
+  // Enter would navigate an app the guard had not finished vetting them for.
+  //
+  // **Both attributes, because they answer different questions AND because
+  // neither covers every browser this ships to.** `inert` removes the subtree
+  // from focus and from hit-testing; `aria-hidden` removes it from the
+  // accessibility tree. `aria-hidden` is the older and wider of the two by
+  // roughly a decade — `inert` landed in Chrome 102, Safari 15.5 and Firefox
+  // 112, all 2022-23.
+  //
+  // **`inert`'s gap is inside this repo's own shipping floor, and it is a
+  // RESIDUAL GAP rather than a case `aria-hidden` covers.** The iOS project
+  // sets `IPHONEOS_DEPLOYMENT_TARGET = 15.0` — as do `CapApp-SPM`'s
+  // `Package.swift` and Capacitor 8 itself — while `inert` needs Safari 15.5,
+  // and on iOS the WKWebView engine is the system WebKit, versioned with the
+  // OS and not separately updatable:
+  //
+  //     grep -n IPHONEOS_DEPLOYMENT_TARGET ios/App/App.xcodeproj/project.pbxproj
+  //
+  // So on iOS 15.0-15.4 this renders `aria-hidden="true"` over a subtree that
+  // is still focusable — which is the state the test docstring calls **worse
+  // than neither**, and an `aria-hidden-focus` violation: a VoiceOver rider can
+  // still reach the covered `Navbar` link and it now announces as nothing.
+  // **Do not read this paragraph as saying old iOS is protected.** What closes
+  // it is raising the deployment target to 15.5; PD-422 carries that, and the
+  // support-floor decision is the owner's.
+  //
+  // Both attributes still earn their place, for different versions rather than
+  // as belt and braces: drop `inert` and the subtree is focusable on every
+  // CURRENT engine, which is nearly every rider; drop `aria-hidden` and old iOS
+  // loses even the swipe-navigation half it does get. Set them together.
+  //
+  // **Not "stop rendering children" — that is the wrong half of the trade.**
+  // Unmounting the shell for the length of the wait is what PD-111 removed: it
+  // tears down `(app)/layout.tsx` and every `useQuery` on the page, so a tab
+  // tap reads as a reload. The overlay branch exists precisely to keep the
+  // shell mounted, which is why the fix is an attribute rather than a branch.
+  //
+  // **`display: contents` so the wrapper has no layout of its own.** It sits on
+  // every screen in the app, permanently, in the allowed case too — a box here
+  // would be a new block between `<body>` and the route, and the reason to be
+  // sure rather than to check `AppBackground` once is that every future screen
+  // inherits it.
+  //
+  // **One element, one position, every branch**, so flipping `overlay` changes
+  // an attribute and nothing else. Rendering `children` bare in one branch and
+  // wrapped in another would reconcile as a different element and remount the
+  // shell — reintroducing PD-111 through the door this comment just closed.
+  // `<>{shell}</>` keeps the fragment for the reason it was already there:
+  // fragment-to-fragment reconciles by index, so the shell stays put.
+  //
+  // **`|| undefined` is load-bearing on `aria-hidden` and a no-op on `inert`.**
+  // Measured on React 19.2.4: `inert={false}` is omitted, because React treats
+  // it as a genuine boolean attribute — but `aria-hidden={false}` renders
+  // `aria-hidden="false"`, which is not the same as absent and would announce
+  // the shell as explicitly *not* hidden on every allowed screen. So the one to
+  // keep is the one that looks redundant. It is written on both for symmetry,
+  // and `__tests__/RouteGuard.test.tsx` pins the absent case for each.
+  const shell = (
+    <div
+      className="contents"
+      inert={view.overlay || undefined}
+      aria-hidden={view.overlay || undefined}
+    >
+      {children}
+    </div>
+  )
+
+  if (view.kind === 'children') return <>{shell}</>
 
   const cover =
     view.kind === 'retry' ? <GuardError onRetry={retry} /> : <GuardSplash overlay={view.overlay} />
@@ -142,7 +222,7 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   // `resolveGuardView`'s tests assert the value; only this honours it.
   return view.overlay ? (
     <>
-      {children}
+      {shell}
       {cover}
     </>
   ) : (
