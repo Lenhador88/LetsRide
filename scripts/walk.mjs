@@ -2687,15 +2687,42 @@ async function checkEditProfileRetention() {
  * knowing before trusting a FAIL (or a surprising ok) that follows one.
  */
 async function waitForTableWrite(table, action) {
-  const isWrite = (r) =>
-    r.url().includes(`/rest/v1/${table}`) && /^(POST|DELETE|PATCH|PUT)$/.test(r.request().method())
-  const [response] = await Promise.all([
-    page.waitForResponse(isWrite, { timeout: 20_000 }).catch(() => null),
-    action(),
-  ])
-  if (!response) {
+  const seen = watchForTableWrite(table)
+  await action()
+  const observed = await seen
+  if (!observed) {
     console.log(`  ! no ${table} write observed within 20s — the next check may be reading stale state`)
   }
+  return observed
+}
+
+/**
+ * The watcher half of `waitForTableWrite`, armed separately from the action
+ * that is supposed to trigger it.
+ *
+ * **Split out for `checkJoinClub`, which cannot use the combined form** — since
+ * PD-392 the tap it makes writes on one of two paths and not the other, and
+ * which one happened is only knowable *after* the tap, from whether the
+ * introduction sheet opened. So the watcher has to be armed before the click
+ * and read several steps later, with a second click in between on one branch.
+ *
+ * **Arming is what the ordering buys, and it is not cosmetic.** `waitForResponse`
+ * attaches its listener synchronously when called, so a write that lands while
+ * the caller is busy doing something else — waiting out the sheet's 10s
+ * timeout, for instance — is still caught. Calling it after the fact would miss
+ * a write that had already completed and report a healthy join as a timeout.
+ *
+ * Returns `true` if a write to `table` was observed, `false` on timeout; never
+ * throws, and never logs — the caller decides whether a miss is a warning or a
+ * failed assertion.
+ */
+function watchForTableWrite(table, timeout = 20_000) {
+  const isWrite = (r) =>
+    r.url().includes(`/rest/v1/${table}`) && /^(POST|DELETE|PATCH|PUT)$/.test(r.request().method())
+  return page
+    .waitForResponse(isWrite, { timeout })
+    .then(() => true)
+    .catch(() => false)
 }
 
 /**
@@ -3077,6 +3104,19 @@ async function checkRsvpToRide(rideId) {
 }
 
 /**
+ * The words this phase posts to join a club (PD-410).
+ *
+ * **It says what it is, on purpose.** This lands in a real club's Threads list
+ * where real riders can read it, so it identifies itself as automated rather
+ * than impersonating a rider's introduction — the same courtesy the fixture
+ * rows elsewhere in this file extend. Non-blank and well under
+ * `club_threads_introduction_length`'s 1000 characters, which is what `Post`
+ * and the CHECK each require.
+ */
+const WALK_INTRODUCTION =
+  'Hello from the automated smoke walk — this introduction was posted by a test run, not by a rider.'
+
+/**
  * A PUBLIC club this rider is not already a member of — `/clubs/explore` is
  * exactly that list by construction (`getExploreClubs`). Reads only
  * `JoinClubButton` rows (`aria-label` starting `Join `), never
@@ -3129,11 +3169,41 @@ async function discoverJoinableClub() {
  * member (only the owner's `leaveOwnedClub` refuses it), so joining and
  * leaving it back is not a special case this phase needs to detect.
  *
- * **`IntroductionPrompt` is dismissed, never filled in** (`097`, PD-365,
- * PD-384) — a real introduction is content a rider composes, not something a
- * render check should be posting into a stranger's club on every run.
- * `Not now` is the sheet's own escape and costs nothing: it dismisses for
- * this session only (`lib/clubs/introduction-dismissal.ts`).
+ * **`IntroductionPrompt` is FILLED IN and posted, never dismissed** — reversed
+ * by PD-410, and the reversal is forced rather than preferred. Until PD-392
+ * this phase's tap wrote the membership and the sheet was decoration
+ * afterwards, so `Not now` cost nothing. Since PD-392 the sheet **is** the
+ * join on this path: `Post` joins and then introduces, and `Join later`
+ * deliberately writes nothing and joins nothing. Dismissing therefore asserts
+ * that a button opens a sheet and nothing more — it deletes the only automated
+ * coverage of a rider joining a club at all, which is the write this phase
+ * exists for.
+ *
+ * **What posting leaves behind, and why it is acceptable on one path and not
+ * the other** — the same accounting as the `club_joined` notification above,
+ * because it has the same shape. `introduce_to_club` (`097`) creates a
+ * `club_threads` row carrying the introduction, and **leaving the club does not
+ * take it back**. On CI's minted path that is not standing residue:
+ * `club_threads.author_id references public.profiles(id) on delete cascade`
+ * (`081`), and `attemptDeleteAccount` removes the minted rider's profile at the
+ * end of every run, taking the thread with it. **In `WALK_EMAIL` mode it IS
+ * standing residue**, because that account is deliberately never deleted — one
+ * introduction thread in a real club, per run.
+ *
+ * **`097`'s one-introduction-per-membership rule does NOT bound that residue,
+ * and assuming it does is the easy mistake here.** The refusal keys on
+ * `club_threads.introduces_user_id = the caller`, and the composite foreign key
+ * is `on delete set null (introduces_user_id)` — so *leaving the club NULLs the
+ * marker* while keeping the thread and its text (`097`'s own column comment
+ * says so). This phase leaves at the end of every run, which clears the marker,
+ * so the next run is not refused and posts a fresh thread. **One introduction
+ * thread per `WALK_EMAIL` run, accumulating**, rather than one ever.
+ *
+ * The sheet path is likewise not guaranteed run to run: `JoinClubButton` reads
+ * `hasIntroducedClub` before deciding, and that read is the same NULLed marker,
+ * so a rider who left is offered the sheet again rather than joining outright.
+ * Both branches below are live regardless, which is why the write watcher is
+ * armed before the tap rather than after it.
  */
 async function checkJoinClub() {
   let bad = 0
@@ -3178,16 +3248,79 @@ async function checkJoinClub() {
     // "Near <city>" section, which is a metered vendor call — see
     // `069_place_search_metering.sql` — so a redundant reload here is not
     // free).
-    await waitForTableWrite('club_members', clickJoinButton)
+    // ARMED BEFORE THE TAP, and that ordering is the fix — see
+    // `watchForTableWrite`. Since PD-392 the tap writes on one of two paths and
+    // not the other, and which one happened is only knowable afterwards from
+    // whether the sheet opened; on the sheet path the write is a second click
+    // away. A watcher armed after the fact misses the direct join outright.
+    const membershipWrite = watchForTableWrite('club_members')
+    await clickJoinButton()
 
-    // The introduction sheet, if this rider owes one for this club — dismissed
-    // rather than filled in, see this function's own header.
+    // The pre-join introduction sheet — opened for a club this rider owes an
+    // introduction to, which is the ordinary case here. It is NOT opened for
+    // the default club, or for a stale row where an introduction already
+    // exists; on those `JoinClubButton` calls `joinClub` on the tap itself.
+    // Both are real states of the app, so this branches rather than assuming.
+    const sheet = '[role="dialog"][aria-label="Introduce yourself to the club"]'
+    const introducing = await page
+      .waitForSelector(sheet, { timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false)
+
+    if (introducing) {
+      // Filled in and POSTED, never dismissed — see this function's header.
+      // `Post` is inert until the field holds non-whitespace text (`097`'s
+      // invariant, deliberately preserved through PD-392), so the fill is what
+      // makes the control clickable rather than decoration.
+      await page.fill(`${sheet} textarea`, WALK_INTRODUCTION)
+      await page.$$eval(`${sheet} button`, (buttons) =>
+        buttons.find((b) => b.textContent?.trim() === 'Post')?.click()
+      )
+
+      // WAIT FOR THE SHEET TO CLOSE ITSELF, and do not navigate before it does.
+      // `Post` is TWO writes with no transaction across them (`097`, PD-392):
+      // the membership lands first and the introduction second, and the sheet
+      // closes on the second through `onPosted`. Navigating on the membership
+      // alone cancels the introduction in flight — it shares the tab — which
+      // leaves the rider in `097`'s "joined, owes an introduction" state. The
+      // club detail then opens the MEMBER-mode sheet on arrival, and that sheet
+      // is `aria-modal` over a scrim, so the `Club options` click below fails
+      // its actionability check and times out at 20s. Measured exactly that way
+      // on the first run of this fix.
+      await page.waitForSelector(sheet, { state: 'detached', timeout: 20_000 }).catch(() => {})
+    }
+
+    // The real finding when it fails, reported as a FAILURE rather than the `!`
+    // warning it used to be (PD-410). Every assertion below reads state this
+    // write was supposed to produce, so a miss here makes the next one fail for
+    // a second, more confusing reason — `no Leave club row found`, which names
+    // the symptom and not the cause. Returning here keeps the FAIL line honest;
+    // `bad` is already counted, so the run is red either way.
+    if (!(await membershipWrite)) {
+      report(
+        false,
+        `joining ${introducing ? 'through the introduction sheet' : 'directly'} writes a club_members row`,
+        'no club_members write observed within 20s'
+      )
+      return { bad, ran }
+    }
+    report(true, `joining ${introducing ? 'through the introduction sheet' : 'directly'} writes a club_members row`)
+
+    await page.goto(`${BASE}/clubs/detail?id=${clubId}`, { waitUntil: 'networkidle' })
+
+    // The MEMBER-mode sheet, which `097` opens from STATE on any navigation to
+    // a club this rider owes an introduction to. Reached whenever the
+    // introduction did not land — the direct-join branch above never posts one,
+    // and `Post`'s second write is separately failable. It scrims the screen,
+    // so `Club options` is unclickable until it is dismissed. `Not now` is the
+    // right control here and always was: this rider IS a member by now, so
+    // dismissing asserts nothing about joining — which is exactly what made it
+    // the wrong control on the PRE-JOIN sheet above.
     await page
-      .waitForSelector('[role="dialog"][aria-label="Introduce yourself to the club"]', { timeout: 8_000 })
+      .waitForSelector('[role="dialog"][aria-label="Introduce yourself to the club"]', { timeout: 3_000 })
       .then(() => page.click('text=Not now'))
       .catch(() => {})
 
-    await page.goto(`${BASE}/clubs/detail?id=${clubId}`, { waitUntil: 'networkidle' })
     await page.click('button[aria-label="Club options"]', { timeout: 20_000 })
     await page
       .waitForSelector('[role="dialog"][aria-label="Club options"]', { timeout: 10_000 })
