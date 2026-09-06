@@ -327,6 +327,12 @@ Follow `CLAUDE.md` exactly. In particular:
   Run `PGPASSWORD=postgres npm test` if anything under `supabase/**` changed. **Time each one as
   you run it** — `s=$(date +%s); <gate>; echo "$(( $(date +%s) - s ))s"` — because §The cost record
   needs the durations and a gate is not re-run to measure it.
+- **Before you pick a migration number, compare the chain in BOTH directions** —
+  `list_migrations` on DEV and PROD against `ls supabase/migrations/*.sql`. A file nobody applied
+  is the familiar half; **a row applied with no file is the half that has actually happened**, and
+  it is the one that makes your number wrong: the next author takes a number the database has
+  already spent. `npm run db:drift` says it in one line and you cannot run it — it needs two
+  connection strings no session holds — so the two `list_migrations` calls are the check you have.
 - A migration that changes a policy must add an assertion.
 - Update `docs/HANDOFF.md` as part of landing the work, not as a separate task.
 - **If it turns out mid-build that this story needs something another unfinished issue is meant to

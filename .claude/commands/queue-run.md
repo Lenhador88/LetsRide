@@ -420,8 +420,24 @@ Ask how long the oldest of these has been true:
 
 - **An issue in `Development (AI)` carrying a slot label this firing did not just claim** — on an
   idle firing that is either label; after a claim it is the other one. Its session should have
-  finished. Age the branch tip if there is one, because a live build keeps resetting it and a dead
-  one does not:
+  finished.
+
+  **Ask for an OPEN PR first, before you age anything.** A build that finished and did not merge
+  looks identical to a build still running when all you have is a branch tip, and on 2026-09-05
+  that cost six firings: PD-98's session opened a complete PR at 20:35Z and ended, and every
+  firing after it reported the branch as never pushed.
+
+  ```
+  mcp__github__search_pull_requests  query="repo:Lenhador88/LetsRide is:pr is:open PD-<n> in:body"
+  ```
+
+  **A hit ends the ageing and changes what you say.** The slot is held by work that is *done*, so
+  the final message and the alarm say `PR #<n> open, unmerged — merge it` with the link, not
+  `unknown`. That is an instruction the owner can act on in one step; `unknown` is a mystery they
+  have to re-derive. Say the same for a PR that is open and red or conflicted, naming which.
+
+  **No hit — then age the branch tip if there is one**, because a live build keeps resetting it
+  and a dead one does not:
 
   ```bash
   git ls-remote --heads origin | grep -i "pd-<n>"          # gitBranchName is a guess; this is not
@@ -431,6 +447,9 @@ Ask how long the oldest of these has been true:
   **This repo's branches are `claude/<slug>` and usually carry no issue id**, so that grep
   legitimately finds nothing on a healthy build. Fall back to the issue's
   `stateHistory[].startedAt` — and read a no-branch result as *unknown*, not as *dead*.
+  **Write `unknown` and stop there.** Every hardening of that word into *never pushed a branch*
+  on 2026-09-06 was false, and one of them became a High-priority issue offering to revert a
+  migration whose file was sitting in the PR nobody had searched for.
 - **A `Needs help` issue** — `get_issue` → `stateHistory[].startedAt`. It is a stop by design and
   it still ages: an issue nobody has come back to for hours is worth telling the owner about.
 
