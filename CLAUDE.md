@@ -130,8 +130,8 @@ never be dissolved back into components, because:
    writes safe in the first place.
 
    **The participation gate is narrower than "every write"** — `enforce_participation_gate` sits on
-   twenty-three tables on DEV and twenty-one on PROD — `101`/PD-373's drop promoted 2026-09-06, then
-   `108` added two on DEV and `109` will take one back when it applies — and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
+   twenty-two tables on DEV and twenty-one on PROD — `101`/PD-373's drop promoted 2026-09-06, then
+   `108` added two on DEV and `109` took one back — and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
    `feed_reads`, `club_thread_reads`, `ride_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
    `accept_terms()` can still set a username and upload an avatar. `docs/reference/schema.md`
    §The participation gate has the list, the `push_devices` exception and the count query.
@@ -451,20 +451,20 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
 
 **Applied state: 110 files. DEV is at `110` and PROD at `107` — measured 2026-09-06.** `101`–`107`
 **promoted to PROD on 2026-09-06**, so the long-standing seven-file gap this line used to describe
-is closed. What is open now is three files and they are open for two different reasons: `108` and
-`110` (PD-402) are applied to DEV and awaiting promotion in the ordinary way, and **`109` is written and applied
-NOWHERE, deliberately** — it drops `ride_messages` and `ride_reads` and must not apply until the
-bundle that stopped reading them is confirmed **serving** on DEV (`READY` on the merge sha,
-`aliasError` null, which is not the same as merged). Its own header carries that gate. **`108` goes
-MIGRATION-FIRST and `109` goes LAST**, which is the sequencing rule with its two halves pulling in
-opposite directions — one file cannot be both sides of a deploy, which is why there are two.
+is closed. What is open is the ordinary three-file promotion gap, `108`–`110` (PD-402), all applied to DEV.
+**`109` was held back until the merged bundle was confirmed *serving*** — `READY` on merge sha
+`923541c` with `aliasError` null, which is not the same as merged — and applied at 10:09Z once it
+was. **`108` went MIGRATION-FIRST and `109` LAST**, the sequencing rule with its two halves pulling
+in opposite directions: one file cannot be both sides of a deploy, which is why there are two.
+**The same split is owed on the PROD promotion** and must not be collapsed.
 **The per-file ordering for `101`–`107` is in `docs/reference/migrations.md` §Applied state**, not
 here — that promotion is finished, so which of its files went before the deploy and which after is a
 log entry rather than a rule. What generalises from it is the paragraph below.
 Count rather than trust it: `list_migrations` against both refs,
 against `ls supabase/migrations/*.sql | wc -l`. DEV also records three hand-applied rows with no
 file, so its row count reads high; every file IS applied, which is the direction that matters.
-**`109` is the one file applied nowhere and it is not drift** — see the two-file paragraph above.
+**`109` was the one file deliberately applied nowhere for the length of a deploy** — it is applied
+now; the paragraph above has the gate it waited on.
 
 **A gap's files rarely agree about which side of the deploy they want**, and `101`–`107` is the
 worked example: `105`/`106` had to be migration-first (the promoted bundle CALLS their two
