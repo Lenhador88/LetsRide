@@ -301,11 +301,13 @@ export type GuardView = {
   /**
    * Whether `children` stay mounted underneath the cover.
    *
-   * **What the tests assert is this value, not the tree.** Nothing here can see
-   * whether `RouteGuard` honoured it — the repo has no component test framework
-   * — so an edit that keeps `overlay: false` while leaving `children` in the
-   * tree behind a CSS-only cover reinstates the tab-order defect with every
-   * test green. The one line that carries it is `RouteGuard`'s ternary.
+   * **What the tests in THIS file assert is the value, not the tree**, and the
+   * gap that leaves is now covered one file over rather than left open: an edit
+   * keeping `overlay: false` while leaving `children` in the tree behind a
+   * CSS-only cover reinstates the tab-order defect with every test here green.
+   * The line that carries it is `RouteGuard`'s ternary, and since PD-251
+   * `components/auth/__tests__/RouteGuard.test.tsx` is what watches it — so the
+   * two halves are pinned in two places and neither file alone is the property.
    */
   overlay: boolean
 }
@@ -322,14 +324,24 @@ export function resolveGuardView(
   // not need them — routes normally rather than stopping the rider.
   //
   // **The retry never overlays, warm or cold, and that is not a stylistic
-  // choice.** The splash may overlay because it holds nothing focusable and is
-  // up for a frame or two; the retry holds the one control the rider is meant
-  // to press and is up until they press it. Left mounted underneath, the shell
-  // keeps its place in the tab order and the accessibility tree behind an
-  // opaque cover — Tab twice and focus is on a `Navbar` link the rider cannot
-  // see, Enter navigates an app that has just said it could not start. Not
-  // rendering them is what makes that unreachable, rather than an `inert` the
-  // next screen added under here has to remember to inherit.
+  // choice.** The splash may overlay because it is up for a frame or two; the
+  // retry holds the one control the rider is meant to press and is up until
+  // they press it. Left mounted underneath, the shell keeps its place in the
+  // tab order and the accessibility tree behind an opaque cover — Tab twice and
+  // focus is on a `Navbar` link the rider cannot see, Enter navigates an app
+  // that has just said it could not start. Not rendering them is what makes
+  // that unreachable here.
+  //
+  // **That hazard was never the retry's alone, and PD-251 is the other half.**
+  // The splash's exemption used to be argued as "it holds nothing focusable",
+  // which is true of the splash and irrelevant: the focusable thing is the
+  // shell *underneath* it, and on the overlay branch below that shell is
+  // mounted. `RouteGuard` now renders it `inert` and `aria-hidden`, so the two
+  // branches are protected by different mechanisms for a reason — an overlay
+  // lasting a round trip can afford an attribute and must not remount the
+  // shell (PD-111), while a screen up until the rider acts is better served by
+  // not rendering the subtree at all, which no future child can forget to
+  // inherit.
   if (state.failed) return { kind: 'retry', overlay: false }
   return { kind: 'splash', overlay: hasGuardBooted(state) }
 }
