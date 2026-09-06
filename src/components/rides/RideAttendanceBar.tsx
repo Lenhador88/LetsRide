@@ -59,8 +59,14 @@ export function RideAttendanceBar({
    * and reads its own prop would draw, and announce, the answer the rider just
    * replaced.
    *
-   * Optional, because a rider answering for the first time reaches this bar
-   * with no `reopened` flag to clear.
+   * **Optional in the type, and the ride detail is not one of the callers that
+   * can omit it.** It used to be genuinely optional there: a first answer
+   * collapsed the bar because `attendance` itself moved off `null` when the
+   * refetch landed. That is no longer the mechanism — the collapse, the chip's
+   * first paint and the focus announcement all read the value this callback
+   * supplies, so a ride detail that stopped passing it would show the previous
+   * answer for a round trip and announce it. Omit it only where nothing is
+   * composed around the answer.
    */
   onAnswered?: (answer: RideAttendance) => void
 }) {

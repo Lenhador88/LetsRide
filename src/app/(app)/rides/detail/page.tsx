@@ -17,7 +17,7 @@ import { ExpandableText } from '@/components/ui/ExpandableText'
 import { SkeletonDetail } from '@/components/ui/Skeleton'
 import { MapAttribution } from '@/components/rides/MapAttribution'
 import { RideMap } from '@/components/rides/RideMap'
-import { getRide } from '@/lib/data/rides'
+import { getRide, isRideCrew } from '@/lib/data/rides'
 import { distanceKm } from '@/lib/location/distance'
 import type { RiderLocation } from '@/lib/location/rider-location'
 import { useRiderPosition } from '@/lib/location/use-rider-position'
@@ -248,9 +248,12 @@ function RideScreen() {
   // rule refuses — and it would buy nothing, because once the read agrees the
   // two values are equal and this expression returns the same answer either way.
   // What it costs is that a change made on ANOTHER device stays masked for the
-  // life of this screen. `RideAttendanceBar` holds its own `choice` on exactly
-  // the same terms, so this is the existing behaviour one level up rather than a
-  // new compromise, and every fresh mount reads the truth.
+  // life of this screen. **That is a longer window than `RideAttendanceBar`'s
+  // own `choice`, and the two are not the same bargain**: `choice` dies with the
+  // bar, which unmounts on every accepted answer, so its masking lasts one
+  // open-and-answer cycle where this lasts the whole page mount. The cost is
+  // still small — it takes an external write to `ride_members` to become visible
+  // at all — and every fresh mount reads the truth.
   const answer = pendingAnswer !== undefined ? pendingAnswer : (ride.data?.attendance ?? null)
 
   /**
@@ -258,12 +261,31 @@ function RideScreen() {
    * affordance.
    *
    * `undefined` until the ride lands, so all three appear a moment late rather
-   * than being drawn and then withdrawn. **Read, not re-derived** — this screen,
-   * the crew page and the chat page each spelled out `private.is_ride_crew`'s
-   * two arms by hand until 2026-08-07, and three copies of one database rule is
-   * three places to miss when it narrows. `getRide` owns it now.
+   * than being drawn and then withdrawn.
+   *
+   * **Through `getRide`'s own `isRideCrew`, never a hand-written copy of the
+   * rule.** This screen, the crew page and the chat page each spelled out
+   * `private.is_ride_crew`'s two arms by hand until 2026-08-07, and three copies
+   * of one database rule is three places to miss when it narrows. `getRide`
+   * still owns the rule; what is passed to it here is the answer this screen
+   * has, which is not always the one the last read returned.
+   *
+   * **It must be derived from `answer` rather than read off `ride.data.is_crew`,
+   * and the two disagree for exactly one round trip.** `is_crew` and
+   * `attendance` come from the same `ride_members` row, so a rider's first `Yes!`
+   * makes them crew at the same instant it stores their answer. Read the stale
+   * `is_crew` beside the optimistic `answer` and the pair is momentarily
+   * incoherent: `resolveRideDetailActions` sees an answered rider who may not
+   * create, returns `bottomSlot: null`, and the sticky slot goes **empty** for a
+   * round trip — the RSVP bar gone, the floating action not yet there, and the
+   * page's padding stepping through three values so the timeline jumps twice.
+   *
+   * That pair is also what `bottom-slot.ts`'s whole `timelineAdd` proof rests
+   * on — *for a non-organizer, crew ⟺ answered* — and the proof holds only for
+   * values taken from one row. **So the two arguments move together or not at
+   * all.**
    */
-  const isCrew = ride.data?.is_crew
+  const isCrew = ride.data ? isRideCrew(ride.data.is_organizer, answer) : undefined
 
   /**
    * Who may create, and which of the two affordances they get — PD-401.
@@ -387,7 +409,12 @@ function RideScreen() {
       {bottomSlot === 'rsvp' && ride.data && (
         <RideAttendanceBar
           rideId={ride.data.id}
-          attendance={ride.data.attendance}
+          // **`answer`, not `ride.data.attendance`** — the bar seeds `choice`
+          // from this prop ONCE, at mount, and it remounts on every reopen. Fed
+          // the stored value it would paint `Yes!` selected under a chip
+          // reading `Maybe` for any rider who reopens inside the round trip,
+          // and `choice` is state, so nothing re-seeds it when the read lands.
+          attendance={answer}
           // Collapses the bar back into the chip once a new answer has landed.
           // Only ever meaningful when the chip is what opened it; a rider
           // answering for the first time has no flag set, and the collapse there

@@ -16,7 +16,7 @@ const { RideAttendanceBar } = await import('@/components/rides/RideAttendanceBar
  * PD-404's collapse, and the one row of its state machine that no other gate
  * can see.
  *
- * ## Why this file is jsdom when 28 of the repo's 33 component tests are not
+ * ## Why this file is jsdom when most of the repo's component tests are not
  *
  * The property is a **sequence across an async transition**: tap → await the
  * action → branch on the result. `renderToStaticMarkup` runs no events and no
@@ -24,6 +24,12 @@ const { RideAttendanceBar } = await import('@/components/rides/RideAttendanceBar
  * "fires always" — both produce byte-identical markup. This is the *event* case
  * in the repo's own list of the four reasons to reach for jsdom, and it is the
  * same reason `PostcardMenu.test.tsx` gives.
+ *
+ * **The counts are deliberately not written here.** `CLAUDE.md` §Technology
+ * Decisions carries them beside the two commands that derive them, and that copy
+ * is gated by `docs:check`'s `component-tests-count-claude` where a second copy
+ * in this file would not be — which is how the version that used to sit here
+ * ("28 of 33") went stale on this very branch while the gated one was corrected.
  *
  * ## What breaks if it fires on failure
  *
@@ -39,9 +45,11 @@ const { RideAttendanceBar } = await import('@/components/rides/RideAttendanceBar
  * markup is the same, `tsc` sees a `void` callback, and the walk does not fail
  * a write.
  *
- * **Verified both ways.** Moving `onAnswered?.()` above the error branch, so it
- * fires unconditionally, gives **1 failed, 2 passed** — the failure case alone,
- * which is exactly the row that distinguishes the two implementations.
+ * **Verified both ways.** Moving the callback above the error branch, so it
+ * fires unconditionally, gives **1 failed, 3 passed** — the refusal case alone,
+ * which is exactly the row that distinguishes the two implementations. (It read
+ * `1 failed, 2 passed` while this file had three cases; the `No` case below
+ * made it four.)
  */
 describe('RideAttendanceBar — the collapse contract', () => {
   let container: HTMLDivElement
@@ -135,10 +143,16 @@ describe('RideAttendanceBar — the collapse contract', () => {
     expect(container.textContent).toContain('You are offline.')
   })
 
-  it('works with no callback at all, which is the first-answer path', async () => {
-    // A rider answering for the first time has no reopened flag to clear, so
-    // the page passes nothing. The optional call must not throw — that would
-    // take down the ordinary RSVP on every ride.
+  it('works with no callback at all, for a caller that does not need one', async () => {
+    // The prop is optional, so the call must not throw when it is absent —
+    // that would take down the ordinary RSVP on every ride.
+    //
+    // **The ride detail is not this caller.** It passes `onAnswered` on every
+    // path, including a rider's first answer: since PD-404 that callback is what
+    // supplies the answer the collapse and the focus announcement read, so
+    // omitting it there would reinstate both defects it was added to fix. This
+    // case guards a caller that legitimately does not need the callback, not the
+    // one that does.
     setRideAttendance.mockResolvedValue({})
 
     await act(async () => {
