@@ -257,10 +257,11 @@ describe('no query names a dropped column', () => {
  * discovering it on a screen.
  *
  * **Scoped to `lib/data/postcards.ts`, unlike the `avatar_url` sweep above.**
- * `ride_id` is a legitimate column on `ride_messages`, `ride_members` and
+ * `ride_id` is a legitimate column on `ride_threads`, `ride_members` and
  * `notifications`, so banning the name across every query module would fail
- * today on `rides.ts` and `ride-messages.ts` for selects that have nothing to
- * do with this defect.
+ * today on `rides.ts` and `ride-threads.ts` for selects that have nothing to
+ * do with this defect. (It read `ride_messages` and `ride-messages.ts` until
+ * `109` dropped the table and PD-402 deleted the module.)
  *
  * **Checks for a bare `*` too, not only the literal name.** `ride_id` never
  * appears as a substring of a wildcard select, so a name-only check would let

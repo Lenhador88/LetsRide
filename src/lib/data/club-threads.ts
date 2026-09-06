@@ -13,7 +13,8 @@ import type {
 /**
  * How many threads one page of the Threads list reads.
  *
- * Bounded and keyset-paged rather than truncated, unlike the ride chat's window:
+ * Bounded and keyset-paged rather than truncated, unlike `034`'s retired ride-chat
+ * window:
  * a thread list grows for the life of a club and its oldest rows are still worth
  * reaching, so `(created_at, id)` carries a cursor. 20 fills a 390px screen with
  * room to scroll.
@@ -21,9 +22,11 @@ import type {
 export const CLUB_THREADS_PAGE_SIZE = 20
 
 /**
- * How much of one thread the screen reads — `RIDE_MESSAGES_PAGE_SIZE`'s number
- * and its whole argument, including that this is the **newest** N rather than
- * the oldest. See the two-`order` dance below.
+ * How much of one thread the screen reads — `RIDE_THREAD_MESSAGES_PAGE_SIZE`'s
+ * number and its whole argument, including that this is the **newest** N rather
+ * than the oldest. (It was `034`'s `RIDE_MESSAGES_PAGE_SIZE` until `109`; the
+ * number and the argument carried over to the ride's threads unchanged.) See
+ * the two-`order` dance below.
  */
 export const CLUB_MESSAGES_PAGE_SIZE = 200
 
@@ -114,7 +117,7 @@ const THREAD_SELECT = `
  * every signed-in rider to its *detail screen* and none of them to its threads.
  * So a non-member of a public club gets `[]` here, indistinguishable from a club
  * nobody has posted in — the screens tell those apart with the club's own
- * `viewer_role`, which `getClub` already carries, exactly as the ride chat uses
+ * `viewer_role`, which `getClub` already carries, exactly as a ride's threads use
  * `is_crew`. That is a UX affordance and never the enforcement.
  *
  * `created_at DESC, id DESC` matches `081`'s index and is a total order; a

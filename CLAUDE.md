@@ -420,7 +420,7 @@ in migrations for any new table.
 **Schema:** **the per-table contract is [`docs/reference/schema.md`](docs/reference/schema.md).**
 Read it before touching any table: it carries the per-column grants, the cascade behaviour and
 the audience predicate for each, and several are counter-intuitive (a club outlives its owner;
-`postcards.ride_id` is a tag rather than a second audience; `ride_messages`' audience is an
+`postcards.ride_id` is a tag rather than a second audience; `ride_threads`' audience is an
 intersection and neither half alone is it; a club's audience is the membership helper ALONE).
 
 **`places` — the self-hosted Overture index the typeahead used to search — is RETIRED (`070`,

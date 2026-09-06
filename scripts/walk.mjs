@@ -2726,6 +2726,37 @@ function watchForTableWrite(table, timeout = 20_000) {
 }
 
 /**
+ * The id an RPC returned, read off its response — armed before the click, like
+ * `watchForTableWrite`, and for the same reason.
+ *
+ * **Why the walk needs the id rather than finding the row in the UI.** The only
+ * caller is `checkJoinClub`'s introduction cleanup (PD-411), and the thread it
+ * has to delete is titled `Introduction` — a CONSTANT that names nobody
+ * (`097`, deliberately: `club_threads` has no UPDATE grant, so a title is
+ * immutable and publishing a living rider's username into one was refused).
+ * So every rider's introduction to a club carries the same title, and picking
+ * "the first `Introduction` on the list" would delete somebody else's post in
+ * a club this rider does not own. `introduce_to_club` `returns uuid`, so the
+ * response names exactly the row this run created and nothing else.
+ *
+ * Returns the id as a string, or `null` on timeout, a non-2xx, or a body that
+ * is not the scalar the function declares. Never throws — the caller decides
+ * whether a miss is a warning or a failed assertion.
+ */
+function watchForRpcId(fn, timeout = 20_000) {
+  const isCall = (r) =>
+    r.url().includes(`/rest/v1/rpc/${fn}`) && r.request().method() === 'POST'
+  return page
+    .waitForResponse(isCall, { timeout })
+    .then(async (r) => {
+      if (!r.ok()) return null
+      const body = await r.json()
+      return typeof body === 'string' ? body : null
+    })
+    .catch(() => null)
+}
+
+/**
  * Opens the front card of the `/postcards` deck as a popup, exactly the way
  * a rider does — tapping its comment control, product owner 2026-08-27:
  * *"This should also be the behavior when we click on a postcard in the
@@ -3325,6 +3356,10 @@ async function checkJoinClub() {
     // miss a failure rather than a `!` warning, that reddens the whole run and
     // goes into CI the moment `WALK_CI=1` is set. A gate that goes red on
     // latency is the defect PD-410 exists to remove, arriving from the far side.
+    // Set only on the sheet branch, which is the only one that posts an
+    // introduction — the direct-join branch leaves nothing to clean up.
+    let introductionThread = null
+
     const membershipWrite = watchForTableWrite('club_members', 45_000)
     await clickJoinButton()
 
@@ -3345,6 +3380,15 @@ async function checkJoinClub() {
       // invariant, deliberately preserved through PD-392), so the fill is what
       // makes the control clickable rather than decoration.
       await page.fill(`${sheet} textarea`, WALK_INTRODUCTION)
+
+      // ARMED BEFORE THE CLICK, like `membershipWrite` above. This is the only
+      // moment the introduction's thread id is knowable — PD-411; see
+      // `watchForRpcId` for why the UI cannot identify the row afterwards.
+      // Its budget is the sheet's own, not the 45s the membership watcher
+      // needs: `Post`'s two writes are sequential and this is the second, so
+      // by the time it is in flight the slow half has already happened.
+      introductionThread = watchForRpcId('introduce_to_club', 20_000)
+
       await page.$$eval(`${sheet} button`, (buttons) =>
         buttons.find((b) => b.textContent?.trim() === 'Post')?.click()
       )
@@ -3407,6 +3451,69 @@ async function checkJoinClub() {
       .waitForSelector('[role="dialog"][aria-label="Introduce yourself to the club"]', { timeout: 3_000 })
       .then(() => page.click('text=Not now'))
       .catch(() => {})
+
+    // ** BEFORE THE LEAVE, NEVER AFTER, and that ordering is the whole point
+    // of this step (PD-411). ** `club_threads` SELECT is membership-gated
+    // (`081`), so the moment this rider leaves the club they can neither see
+    // nor delete the thread they wrote — a cleanup bolted on after the leave
+    // below would silently delete nothing and report success.
+    //
+    // **Why it is asserted rather than a silent tidy-up.** It is both: the
+    // residue this removes is the reason it exists, and the delete it drives
+    // is a real rider action — an author erasing their own thread — that no
+    // other gate exercises. PD-381 was a defect on exactly this path, and a
+    // best-effort version of this step would have stayed green through it.
+    //
+    // **ONE check, reported on BOTH branches, and the label never names which
+    // ran** — the same rule as the membership label above, for the same
+    // reason. A check that only appears on the sheet branch makes a perfectly
+    // good direct-join run print a SHRUNKEN total, and `CLAUDE.md` §Testing
+    // says to read that as a skip rather than a pass. On the direct-join
+    // branch nothing was posted, so "left nothing behind" is true without a
+    // delete — vacuous, and honest: the phase's residue is what is asserted,
+    // not the route it took to have none.
+    const introThreadId = introductionThread ? await introductionThread : null
+    let introCleanedUp = !introducing
+    let introFailure = 'introduce_to_club did not return a uuid within 20s'
+
+    if (introThreadId) {
+      await page.goto(`${BASE}/clubs/detail/thread?id=${introThreadId}`, {
+        waitUntil: 'networkidle',
+      })
+
+      // Both the menu row and the confirmation button read `Delete thread`, in
+      // two different `ContextMenu`s — so every selector here is scoped to its
+      // own dialog by `aria-label`. An unscoped `text=Delete thread` matches
+      // whichever is mounted and silently picks the wrong one as the sheets
+      // swap.
+      const optionsSheet = '[role="dialog"][aria-label="Thread options"]'
+      const confirmSheet = '[role="dialog"][aria-label="Delete this thread"]'
+
+      await page.click('button[aria-label="Thread options"]', { timeout: 20_000 })
+      await page.waitForSelector(optionsSheet, { timeout: 10_000 }).catch(() => {})
+      await page.$$eval(`${optionsSheet} button`, (buttons) =>
+        buttons.find((b) => b.textContent?.trim() === 'Delete thread')?.click()
+      )
+
+      await page.waitForSelector(confirmSheet, { timeout: 10_000 }).catch(() => {})
+      introCleanedUp = await waitForTableWrite('club_threads', () =>
+        page.$$eval(`${confirmSheet} button`, (buttons) =>
+          buttons.find((b) => b.textContent?.trim() === 'Delete thread')?.click()
+        )
+      )
+      introFailure = 'no club_threads delete observed within 20s'
+
+      // `deleteClubThread` redirects to the thread LIST on success, so the
+      // club detail — where `Club options` lives — has to be re-opened before
+      // the leave step below.
+      await page.goto(`${BASE}/clubs/detail?id=${clubId}`, { waitUntil: 'networkidle' })
+    }
+
+    report(
+      introCleanedUp,
+      'the phase leaves no introduction thread behind',
+      `${introFailure} (${introducing ? 'sheet' : 'direct'} path)`
+    )
 
     await page.click('button[aria-label="Club options"]', { timeout: 20_000 })
     await page

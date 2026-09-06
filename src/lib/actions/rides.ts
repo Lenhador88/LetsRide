@@ -705,7 +705,8 @@ export async function updateRide(
 
 /**
  * Cancels a ride — PD-101, `ride-lifecycle`. Needs no `security definer`
- * function, unlike a club delete: `ride_members`, `ride_messages` and
+ * function, unlike a club delete: `ride_members`, `ride_threads` (`108`, and
+ * its messages and watermarks cascade from it in turn) and
  * `notifications.ride_id` all cascade, and `postcards.ride_id` is `SET NULL`
  * on a column that is a tag rather than an audience, so nulling it changes a
  * tagged postcard's visibility by exactly nothing (`design.md` §D2).

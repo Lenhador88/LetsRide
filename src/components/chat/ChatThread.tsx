@@ -8,7 +8,9 @@ import type { ChatBubbleMessage } from '@/types'
 
 /**
  * The bubble list from `Ride - Chat` (`2226:4999`) — **both** of the app's
- * message streams since `081` (PD-307): a ride's chat and a club thread.
+ * message streams since `108` (PD-402): a ride thread and a club thread. It
+ * was measured against the ride CHAT's frame, which `109` retired; the frame
+ * stays in `design/` and nothing draws a thread in either domain.
  * Moved here from `components/rides/RideChatThread.tsx` unchanged in every
  * measured detail below; copying it instead is how a repo gets two chat
  * renderers that drift.
@@ -69,11 +71,15 @@ export function ChatThread({
   className?: string
   /**
    * Erase one of the viewer's own messages, or `undefined` for a stream that
-   * offers no erasure — which is the ride chat, whose screen draws no such
-   * control and whose rendering is therefore byte-for-byte what it was.
+   * offers no erasure. **Nothing passes `undefined` any more** — the ride chat
+   * was the only such caller and `109` retired it; both live callers pass it,
+   * so the no-control layout below is currently unreached. Kept rather than
+   * removed because it is what makes the row `contents` and every measured
+   * number in this file independent of the control existing.
    *
    * A club thread passes it because `081` makes deletion the *stated*
-   * remedy for a message a rider regrets, through `delete_own_club_message`.
+   * remedy for a message a rider regrets, through `delete_own_club_message`;
+   * a ride thread passes it through `108`'s `delete_own_ride_thread_message`.
    * **The composition is ours**: `Ride - Chat - Options` (`2226:5205`) draws a
    * context menu over a chat, but its rows are `Pin chat` and `Mute chat` —
    * a conversation menu, neither row of which this app has — so the sheet
@@ -124,9 +130,10 @@ export function ChatThread({
           )}
 
           {/* `contents` when there is no control, so a stream that offers no
-              erasure — the ride chat — lays out through a box that does not
-              exist and every measured number below is unchanged by this row
-              existing at all. With a control it becomes the flex row that puts
+              erasure lays out through a box that does not exist and every
+              measured number below is unchanged by this row existing at all.
+              No caller takes that branch today — see `onDeleteMessage`.
+               With a control it becomes the flex row that puts
               the kebab BESIDE the balloon: the frame's balloon is a text block
               with a time, and a control dropped inside it would move all of
               them. Own, settled messages only — there is nothing to erase
