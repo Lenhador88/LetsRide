@@ -57,7 +57,13 @@ are two different riders and both can reach the ride detail screen.
 
 #### Scenario: A club owner or admin who is not on the crew reads nothing on their own club's ride
 - **WHEN** the owner of a club, or a `club_members` row of role `admin` in it, opens a ride
-  belonging to that club on which they hold **no** `ride_members` row
+  belonging to that club on which they hold **no** `ride_members` row **and which they did not
+  organize** — the organizer qualifier is load-bearing, because `private.is_ride_crew` is a
+  disjunction whose first arm is `rides.organizer_id = auth.uid()`, so a club owner who organized
+  the ride is crew with no membership row and reads everything. The natural fixture creates the
+  ride *as* the club owner; build this one with a different organizer, or the assertion fails and
+  the tempting repair is deleting the organizer arm, which breaks the first scenario in this
+  capability.
 - **THEN** the ride SHALL be readable — club membership is what makes a private club's ride
   visible — and zero rows SHALL be returned from `ride_threads` and `ride_thread_messages`
 - **AND** an insert into either SHALL be refused
@@ -68,7 +74,8 @@ are two different riders and both can reach the ride detail screen.
   authority over **club** threads, so a build porting `094` is being invited to give them a ride
   thread too. The answer is no — moderation here is `rides.organizer_id` and nothing else.
 - **AND** the club owner/admin therefore has authority over a ride thread they cannot read only in
-  the sense that they have **none**; `design.md` D2 records the rejection of the alternative
+  the sense that they have **none**; `design.md` D4 records the rejection of the alternative, and
+  `proposal.md` Q2 is the same decision put to the owner
 
 #### Scenario: A rider holding a PENDING ride invite reads the ride and none of its threads
 - **WHEN** a rider whose `ride_invites` row is `pending` opens the ride
@@ -173,9 +180,11 @@ private.is_blocked(auth.uid(), author_id))` — and SHALL NOT be hoisted to the 
 explicit: *"Inside the block conjunct the own-row branch is a no-op — `blocks_no_self_block` (`009`
 §1) already makes `is_blocked(x, x)` false, so it rescues nothing while reading as though it does."*
 So `author_id = auth.uid()` never changes a result here, and **no assertion can distinguish its
-presence from its absence.** It is required only because `034`, `081` and `082` all carry it and a
-policy that reads differently from its three neighbours invites a "fix" — not because it does work.
-Do not write an assertion claiming it does.
+presence from its absence.** It is required only because the three policies it is modelled on all
+carry it — `034`'s `ride_messages`, and **both** of `081`'s (`club_threads` and `club_messages`) —
+and a policy that reads differently from its neighbours invites a "fix". Not because it does work.
+Do not write an assertion claiming it does. **`082` is not one of the three**: it is a rename and
+only a rename, creating no policy at all, so a build checking it for the convention finds nothing.
 
 **What IS load-bearing is the ceiling, and that is assertable.** `102` found this shape on seven
 policies, **hoisted three and deliberately left four alone** — a sweep would have got them wrong,

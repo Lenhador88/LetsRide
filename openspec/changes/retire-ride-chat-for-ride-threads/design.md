@@ -259,6 +259,9 @@ club_join_waves, club_members, club_thread_reads, postcard_hides, postcard_likes
 ride_members, ride_reads
 ```
 
+**Seven, and `columns.ts`'s own prose says eight** — that file went stale when `101` retired
+`club_thread_waves`, not the other way round. Re-run the query rather than reading the count.
+
 **The table migration A does add as a junction is `ride_thread_reads`** — PK `(user_id, thread_id)`,
 exactly the union of its keys to `profiles` and `ride_threads`, mirroring `club_thread_reads`, which
 that query confirms is one. It is harmless: `ride_threads` is created by the same migration, so no
@@ -270,12 +273,14 @@ the reason the discipline exists — every `profiles` embed in `src/lib/data/` n
 `MEMBER_PROFILE_EMBED`) and `src/lib/data/__tests__/embed-hints.test.ts` refuses an unhinted one —
 but this change does not test it.
 
-**Contained, not absent.** `tasks.md` T2 re-measures it against the tree at build time rather than
-trusting this paragraph, because the hint test protects `src/lib/data/` and a new embed written
-inside migration A's verification block or a future `lib/actions/` read would not be covered by it.
-If an unhinted `rides`↔`profiles` embed is ever found, migration A stops being purely additive and
-becomes **deploy-first as well**, which would deadlock against the publication rule — the resolution
-is a preparatory hint-only deploy before migration A, and it is cheap. Better to check.
+**Re-measure anyway, and know what a surprise would mean.** `tasks.md` 1.1 re-runs `columns.ts`'s
+junction query against the tree at build time rather than trusting this paragraph. But the thing it
+is checking for has changed: **not** whether an unhinted embed exists — no new `rides`↔`profiles`
+path is added, so an unhinted one would already be broken today — but whether `ride_threads` came
+out of the build with the primary key this design specifies. If the query returns `ride_threads`,
+the PK was written as `(ride_id, author_id)` or similar instead of `id`, and *that* is the thing to
+stop on. **There is no deadlock and no preparatory hint-only deploy**; an earlier draft of this
+section said there was, on the strength of miscounting `ride_threads` as a junction.
 
 ## Open questions
 

@@ -137,8 +137,11 @@ comment saying why the `EXISTS` against `rides` is there.
       both require it, and a policy change with no new assertion is not finished. Minimum set:
       organizer with no crew row; `going`; `maybe`; visible-ride non-crew (read **and** write, and
       the conjunct asserted in isolation); **pending invitee**; **accepted invitee to a private
-      club's ride**; **club owner and club admin with no `ride_members` row on their own club's
-      ride**; ex-club-member with a surviving `ride_members` row; blocked pair **in both
+      club's ride**; **club owner and club admin with no `ride_members` row on a ride of their own
+      club that they did NOT organize** (the qualifier is required — the organizer arm of
+      `is_ride_crew` makes an organizing club owner crew without a membership row, and the natural
+      fixture makes them the organizer); ex-club-member with a surviving `ride_members` row;
+      blocked pair **in both
       directions** (which pins the block's symmetry — **not** the own-row disjunct, which is a
       provable no-op inside the block conjunct and which no assertion can detect); **ex-crew member
       reads nothing including their own rows, which is the assertion that pins the own-row arm's
@@ -293,7 +296,9 @@ firing did not touch them. Check the territory is clear before writing.
       is the deployment, never the client population** — an already-loaded tab keeps its pre-merge
       JS until it is reloaded, so a tab sitting on `/rides/detail/chat` when migration B applies
       gets `PGRST205` whatever the gate says. **No soak is specified here, and the reason is the
-      row count rather than the rule**: PROD holds 0 ride messages and has no riders, so the
+      row count rather than the rule**: PROD holds 0 `ride_messages` and 0 `ride_reads` (it does
+      hold 5 `profiles` rows, presumed fixtures — the claim is zero *messages*, not zero accounts),
+      so the
       population is empty. Do not copy this into a destructive change with live users — `103` is
       the worked example that did owe a transitional soak, and `CLAUDE.md` §Supabase Rules carries
       why.
