@@ -107,8 +107,10 @@
 --
 --   * `private.is_ride_crew` — bought by the `ride_members` row that
 --     `join_ride_from_invite` writes on acceptance.
---   * the `EXISTS` against `rides` — bought by `private.has_live_ride_invite_for`,
---     which counts `status in ('pending','accepted')`. ** NOT by the
+--   * the `EXISTS` against `rides` — bought by `private.has_live_ride_invite(id)`,
+--     the arm the policy actually names, which delegates to
+--     `private.has_live_ride_invite_for(auth.uid(), target_ride)` where the
+--     `status in ('pending','accepted')` test lives. ** NOT by the
 --     `ride_members` row. ** Read the live `rides` SELECT policy: its arms are
 --     the organizer, and (not blocked) AND (public-and-club-visible OR
 --     `is_club_member` OR a live invite). There is no `ride_members` arm at all,
