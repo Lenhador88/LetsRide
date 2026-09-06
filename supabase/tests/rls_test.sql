@@ -33743,6 +33743,13 @@ select assert_eq(
 set role authenticated;
 
 -- ---------------------------------------------------------------------------
+-- ** There is no 108.29, and the gap is a deletion rather than a lost label. **
+-- It asserted that 034's ride chat was still intact — correct only for the gap
+-- between 108 and 109, and deleted with the rest of the ride_messages
+-- assertions when 109 landed. Recorded because a numeric gap is exactly what a
+-- label-set comparison is meant to make somebody ask about, and the answer
+-- should not have to be re-derived from git each time.
+--
 -- 108.30 private.is_ride_crew stays off the exposed API surface
 -- ---------------------------------------------------------------------------
 -- ** These four moved here from the 034 section, which 109 deleted with

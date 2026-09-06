@@ -200,22 +200,40 @@ export async function deleteOwnRideThreadMessage(
 }
 
 /**
- * The ride's organizer removing a thread — `moderate_ride_thread`, `security
- * definer`, re-checking `rides.organizer_id = auth.uid()` in its own body.
+ * Removing a thread — `moderate_ride_thread`, `security definer`, re-checking
+ * its authority in its own body.
  *
- * **An RPC rather than a DELETE policy arm, for `moderateClubThread`'s reason.**
+ * ## TWO authority arms, and the second one is easy to delete by accident
+ *
+ * `rides.organizer_id = auth.uid()` **OR** `ride_threads.author_id =
+ * auth.uid()`. A thread's author removes their own; the ride's organizer
+ * removes anyone's. Both go through this one RPC because `108` grants **no
+ * DELETE on `ride_threads` at all**, to any role — so there is no policy path
+ * for either of them.
+ *
+ * **Do not narrow this to the organizer alone.** `tasks.md` 2.16 named only that
+ * arm while 2.8 forbade a DELETE policy, and between them a thread's author
+ * could not remove their own thread — contradicting
+ * `specs/ride-threads/spec.md`'s own scenario at line 263. Line 257 settles the
+ * reading: *"a crew member who is neither the organizer nor the thread's author
+ * SHALL be refused"*, which names the author as someone who is not. The
+ * migration header, `RideThreadOptions` and `canRemoveRideThread` all carry both
+ * arms; this docstring is the nearest one to the call site, so it is the one a
+ * later author reads first.
+ *
+ * **It is still NOT `private.is_ride_crew`** — gating on crew would let any
+ * rider on the ride delete any other's thread, which is not moderation — and
+ * still not the club's owner or admin, because the resource is the ride and a
+ * ride has no admin role.
+ *
+ * ## An RPC rather than a DELETE policy arm, for `moderateClubThread`'s reason
+ *
  * RLS filters a DELETE by what the caller may READ, so an organizer who has
  * blocked a thread's author cannot see that thread and a policy-arm delete keyed
  * on its id matches zero rows — silently, PostgREST reporting success. A thread
  * is a persistent titled object every *other* crew member keeps reading, so the
  * block is not the remedy here and the moderation right must not depend on the
  * organizer being able to see the row.
- *
- * **The authority is `rides.organizer_id`, never `private.is_ride_crew`** — a
- * ride has no admin role, so the organizer is the only candidate, and gating on
- * crew would let any rider on the ride delete any other's thread. It restores a
- * right `034` already granted: the organizer's DELETE policy over every message
- * on their ride.
  *
  * One refusal for "no such thread" and "not your ride" alike, so the message
  * must not speculate about which it was.

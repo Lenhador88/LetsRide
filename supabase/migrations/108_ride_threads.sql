@@ -101,8 +101,26 @@
 -- ride
 -- ---------------------------------------------------------------------------
 -- A rider who is not in a private club, but who accepted an invite to one of its
--- rides, holds a `ride_members` row (written by `join_ride_from_invite`) and can
--- see the ride (through `083`'s invite arm, and then through the membership row).
+-- rides, satisfies both halves of this file's conjunction — and it is worth
+-- being exact about WHICH row buys each half, because the two are unrelated and
+-- one of them is easy to tidy away:
+--
+--   * `private.is_ride_crew` — bought by the `ride_members` row that
+--     `join_ride_from_invite` writes on acceptance.
+--   * the `EXISTS` against `rides` — bought by `private.has_live_ride_invite_for`,
+--     which counts `status in ('pending','accepted')`. ** NOT by the
+--     `ride_members` row. ** Read the live `rides` SELECT policy: its arms are
+--     the organizer, and (not blocked) AND (public-and-club-visible OR
+--     `is_club_member` OR a live invite). There is no `ride_members` arm at all,
+--     so for this rider the ride is readable ONLY while their invite row
+--     survives in `accepted`.
+--
+-- ** So clearing or archiving accepted invites would silently take this rider's
+-- ride visibility, and every thread on it with it. ** That is a real hazard
+-- rather than a hypothetical: `083`'s own comment says `status` "is NEVER a copy
+-- of `ride_members`: nothing keeps the two in step and nothing should", which
+-- makes tidying spent invite rows a natural-looking future change.
+--
 -- So they read and post in that ride's threads IN FULL, and reach no part of the
 -- club: a thread row carries a `ride_id` and no club identifier, name or
 -- description, and the club's own `club_threads` stay unreadable to them.

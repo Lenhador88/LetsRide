@@ -458,29 +458,9 @@ bundle that stopped reading them is confirmed **serving** on DEV (`READY` on the
 `aliasError` null, which is not the same as merged). Its own header carries that gate. **`108` goes
 MIGRATION-FIRST and `109` goes LAST**, which is the sequencing rule with its two halves pulling in
 opposite directions — one file cannot be both sides of a deploy, which is why there are two.
-Historical, for the promotion just completed: **`107` (PD-98) also went MIGRATION-FIRST**, for a different
-reason from `105`/`106`: it has no unsafe side at all. It changes no `src/` file, no client writes
-`clubs.owner_id` on an existing row, it adds no PostgREST relationship, and **the policy delta is
-provably a no-op against every row existing at apply time** — `owner_id` is `NOT NULL` until the
-file's own first statement runs, so the added `owner_id is not null` conjuncts are universally true
-for every pre-existing row, and the only rows they can affect are ones the file's last statement can
-create. **`105`/`106` (PD-298) went MIGRATION-FIRST on the PROD
-promotion**, and "additive, so the order does not matter" is the wrong reading: they add two
-`security definer` accessors that the promoted bundle CALLS, so a build serving ahead of them
-answers `PGRST202` on both Privacy-sheet lists — the shipped-client-reads case in the sequencing
-rule below. They touch no policy, grant, CHECK or trigger, so migration-first has no unsafe side
-of its own. `103`/`104` (PD-103) were applied only after the build carrying
-them was confirmed **serving** on DEV (`READY` on the merge sha, `aliasError` null) — that gate is
-the sequencing rule below and is not the same as "after the merge". **`list_migrations` against both
-refs is the only honest answer to this line**, which was written wrong three times in one day before
-the apply, every time in the direction of claiming one that had not happened. `103`/`104` (PD-103) carry an **ordering rule and it breaks
-in one direction only**: deploy the code first, then apply `103`, then `104`. Applying `103`
-against a bundle that still writes the creator's membership row is an instant outage of club and
-ride creation. The reverse gap is *mostly* self-healing — `103`'s backfill repairs the orphans a
-newly-deployed bundle can leave — but **not for an already-loaded browser tab**, which keeps the
-pre-merge JS and goes on issuing the plain insert until it is reloaded. That population is what
-the change's own group 1 (a transitional idempotent upsert, left to soak) exists for, and it is
-why the PROD promotion used it rather than collapsing the steps as the DEV apply did.
+**The per-file ordering for `101`–`107` is in `docs/reference/migrations.md` §Applied state**, not
+here — that promotion is finished, so which of its files went before the deploy and which after is a
+log entry rather than a rule. What generalises from it is the paragraph below.
 Count rather than trust it: `list_migrations` against both refs,
 against `ls supabase/migrations/*.sql | wc -l`. DEV also records three hand-applied rows with no
 file, so its row count reads high; every file IS applied, which is the direction that matters.

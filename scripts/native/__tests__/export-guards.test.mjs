@@ -154,7 +154,10 @@ describe('the legacy redirect guard', () => {
   })
 
   it('carries a case for every legacy shape, so none can be dropped unnoticed', () => {
-    expect(REDIRECTED).toHaveLength(10)
+    // 11 as of `108` (PD-402): the ten original detail shapes, plus
+    // `/rides/detail/chat` — the retired chat's `?id=` form, which is the one a
+    // rider's bookmark or notification actually holds.
+    expect(REDIRECTED).toHaveLength(11)
   })
 
   it('sends the retired ride chat to the thread list rather than to a route that is gone', () => {
@@ -196,7 +199,11 @@ describe('the legacy redirect guard', () => {
       e.internal ? e : { ...e, statusCode: 308 }
     )
     expect(checkRedirects(permanent).every((p) => p.includes('status 308'))).toBe(true)
-    expect(checkRedirects(permanent)).toHaveLength(10)
+    // Derived from `REDIRECTED` rather than a second literal: the claim is
+    // "EVERY redirected shape is flagged", and a hardcoded count makes adding a
+    // shape fail here for a reason that has nothing to do with what this case
+    // tests. The count itself is pinned once, above.
+    expect(checkRedirects(permanent)).toHaveLength(REDIRECTED.length)
   })
 
   it('leaves every current route alone', () => {

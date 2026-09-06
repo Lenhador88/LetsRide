@@ -229,21 +229,18 @@ seconds after a merge once, out from under a Preview still calling the function 
   conjunct would have broken the INTERSECTION invariant. A definer function is not subject to the
   SELECT policy at all, so the replacement cannot inherit it. **That entry's open item is closed by
   the table going.**
-- **`110` exists because `108` shipped an existence oracle, and the reason it was nearly filed
-  instead is the part worth carrying.** `108` gave `ride_thread_reads`' INSERT and UPDATE
-  `WITH CHECK` a bare `user_id = auth.uid()`, so writing a watermark for an invisible-but-real
-  thread succeeded while a nonexistent one raised — a signed-in rider could test whether a uuid
-  named a real thread. It was first filed as a follow-up on the reading that `tasks.md` 2.9
-  *instructed* that shape, so changing it re-opened a proposal decision. **That reading was wrong,
-  and one query settled it**: 2.9 names `club_thread_reads` as the model, and `club_thread_reads`
-  carries the audience conjunct on both write arms — as does `feed_reads`. `ride_thread_reads` was
-  the only watermark table in the schema without one. So `110` implements 2.9's intent rather than
-  reversing its decision, and it is not ordering-sensitive against `109`.
+- **`ride_thread_reads`' write policies must carry the audience conjunct, and `110` is what put it
+  there.** `108` shipped them as a bare `user_id = auth.uid()`, which reinstates the existence
+  oracle `015` §2 and `081` §2 closed: a watermark write against an invisible-but-real thread
+  succeeded where a nonexistent one raised, so a signed-in rider could test whether a uuid named a
+  real thread. **The measurement that settles any future argument about this**: `club_thread_reads`
+  AND `feed_reads` both carry the conjunct on INSERT and UPDATE, so `ride_thread_reads` was the only
+  watermark table in the schema without one. A new watermark table follows those three, not the
+  shape `108` shipped.
 
-  **Post-fix, a nonexistent `thread_id` does NOT stay `23503`** — RLS evaluates `WITH CHECK` before
+  **Post-fix, a nonexistent `thread_id` does NOT raise `23503`** — RLS evaluates `WITH CHECK` before
   the FK's AFTER trigger, so both cases return `42501`, which is exactly what makes them
-  indistinguishable. An assertion written against `23503` would have pinned the bug rather than the
-  repair; the suite compares the two errors against each other rather than against a literal.
+  indistinguishable. An assertion written against `23503` would pin the bug rather than the repair.
 - **`moderate_ride_thread` has TWO authority arms and the tasks file named one.** `tasks.md` 2.16
   gave it `rides.organizer_id` alone while 2.8 forbade a DELETE policy, which between them left a
   thread's author unable to remove their own thread — contradicting the spec's own scenario at
@@ -287,6 +284,8 @@ thread surface.
 ```bash
 git grep -n "ride_thread_messages\|moderate_ride_thread" -- src/ supabase/
 npx vitest run src/lib/rides src/lib/data/__tests__/ride-timeline.test.ts scripts/native
+```
+
 ## `101`–`107` were promoted, and both projects were briefly level — 2026-09-06
 
 **`main` carries `f3c55b4` (35 commits, PR #405) and PROD is at migration `107`.** Both projects
