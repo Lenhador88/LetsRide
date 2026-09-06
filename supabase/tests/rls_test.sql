@@ -4387,12 +4387,12 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass),
-  33, '029/061/069/078/081/083/084/085/091/092/093/094/101/108/109: thirty-three FKs reference public.profiles. ** 108 added THREE — ride_threads.author_id, ride_thread_messages.author_id and ride_thread_reads.user_id — and 109 removed TWO, ride_messages.author_id and ride_reads.user_id, so the ride conversation''s erasure surface moved from two tables to three and the net is -2. ** The watermark''s key is the one that would have been a privacy defect rather than a correctness one: a row there says a NAMED rider read a NAMED topic, and without the key it would outlive their account for ever');
+  34, '029/061/069/078/081/083/084/085/091/092/093/094/101/108/109/111: thirty-four FKs reference public.profiles. ** 108 added THREE — ride_threads.author_id, ride_thread_messages.author_id and ride_thread_reads.user_id — and 109 removed TWO, ride_messages.author_id and ride_reads.user_id, so the ride conversation''s erasure surface moved from two tables to three and the net is -2. ** 111 added ONE, club_removals.user_id, and it is a SINGLE key rather than 083''s pair because the row deliberately records no actor — there is no second identified rider for a second key to erase. The watermark''s key is the one that would have been a privacy defect rather than a correctness one: a row there says a NAMED rider read a NAMED topic, and without the key it would outlive their account for ever');
 select assert_eq(
   (select count(*)::int from pg_constraint
     where contype = 'f' and confrelid = 'public.profiles'::regclass
       and confdeltype = 'c'),
-  33, '029/061/069/078/081/083/084/085/091/092/093/094/101/108/109: ... and every one of them is ON DELETE CASCADE');
+  34, '029/061/069/078/081/083/084/085/091/092/093/094/101/108/109/111: ... and every one of them is ON DELETE CASCADE');
 
 -- 016's path CHECKs are NOT relaxed. The proposal asks for a relaxation on the
 -- grounds that pinning the path to owner_id makes any transfer raise 23514;
@@ -24627,8 +24627,8 @@ select assert_eq(
       and proname in ('club_invite_link_preview', 'claim_club_invite_link')
       and (prosrc ilike '%is_blocked%' or prosrc ilike '%terms_accepted_at%'
         or prosrc ilike '%onboarding_completed_at%' or prosrc ilike '%revoked_at%'
-        or prosrc ilike '%expires_at%')),
-  0, '093.22: neither public RPC restates a block, a stamp or a liveness test — all five live in private.club_invite_link_reachable_by and private.live_club_invite_link, which is their only entry point');
+        or prosrc ilike '%expires_at%' or prosrc ilike '%club_removals%')),
+  0, '093.22: neither public RPC restates a block, a stamp, a liveness test or a REMOVAL — all six live in private.club_invite_link_reachable_by and private.live_club_invite_link, which is their only entry point. ** The list is CLOSED and had to be extended by hand: 111 added the removal conjunct, and until `club_removals` was added here this assertion did not catch it, so the single-site rule was an argument rather than a guard');
 select assert_eq(
   (select count(*)::int from pg_proc
     where pronamespace = 'public'::regnamespace
@@ -24851,8 +24851,9 @@ select assert_eq(
   (select array(select tgname::text from pg_trigger
                  where tgrelid = 'public.club_members'::regclass and not tgisinternal
                  order by 1)),
-  array['enforce_participation_gate', 'notify_club_joined', 'protect_club_owner_membership'],
-  '093.27: ** and club_members gains NO compensating gate trigger ** — 078.9''s lesson: one here could never fire, current_user inside private.join_club_from_invite being the owner, and it would raise the gate count while gating nothing. The gate is restated in that function''s BODY instead, through may_participate_for. The third name is 095''s BEFORE DELETE owner guard, which is a different event and a different question');
+  array['clear_club_removal_on_join', 'enforce_participation_gate',
+        'notify_club_joined', 'protect_club_owner_membership'],
+  '093.27: ** and club_members gains NO compensating gate trigger ** — 078.9''s lesson: one here could never fire, current_user inside private.join_club_from_invite being the owner, and it would raise the gate count while gating nothing. The gate is restated in that function''s BODY instead, through may_participate_for. The third name is 095''s BEFORE DELETE owner guard, which is a different event and a different question; the fourth is 111''s clearing trigger, which is an AFTER INSERT and is deliberately NOT a gate — it reads no participation stamp and refuses nothing');
 select assert_eq(
   (select array(select tgname::text from pg_trigger
                  where tgrelid = 'public.club_invites'::regclass and not tgisinternal
@@ -29644,8 +29645,9 @@ select assert_eq(
   (select array(select tgname::text from pg_trigger
                  where tgrelid = 'public.club_members'::regclass and not tgisinternal
                  order by 1)),
-  array['enforce_participation_gate', 'notify_club_joined', 'protect_club_owner_membership'],
-  '099.9: ... and club_members carries exactly those three triggers — 099 hangs nothing new on the table, so a fourth is a failed apply rather than a finding');
+  array['clear_club_removal_on_join', 'enforce_participation_gate',
+        'notify_club_joined', 'protect_club_owner_membership'],
+  '099.9: ... and club_members carries exactly those four triggers — 099 hangs nothing new on the table, so anything beyond 111''s clearing trigger is a failed apply rather than a finding');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
@@ -32212,8 +32214,9 @@ rollback to savepoint reaper_threads_107;
 -- which reads as though the existing set were enumerated and covered. ** It was
 -- not. ** Nine FKs point at `public.clubs`; four have a conjunct
 -- (`club_members`, `postcards`, `club_threads`, `rides`) and five do not:
--- `club_invites`, `club_invite_links`, `club_join_requests`, `notifications` and
--- `feed_reads` — all CASCADE, all destroyed by the reap.
+-- `club_invites`, `club_invite_links`, `club_join_requests`, `notifications`,
+-- `feed_reads` and — since `111` — `club_removals`: all CASCADE, all destroyed
+-- by the reap.
 --
 -- ** That is a judgement, and it is recorded here rather than re-derived. **
 -- `club_invites`, `club_invite_links` and `club_join_requests` are already
@@ -32222,6 +32225,14 @@ rollback to savepoint reaper_threads_107;
 -- real claim — a rider notified about the club keeps that row after leaving, and
 -- the reap removes it from their list — and it is allowed to go because the
 -- notification's own subject has just ceased to exist.
+--
+-- ** `club_removals` (111) needs NO conjunct, and the reason is the strongest of
+-- the six. ** It bars one route into one club; when that club is gone there is
+-- no route left to bar, and the links it barred died with the club in the same
+-- cascade. Keeping the club alive to preserve a bar would be preserving a bar
+-- against nothing. A reap conjunct here would also be actively wrong: it would
+-- keep an ownerless, memberless, contentless club alive for ever on the strength
+-- of a row nobody can read.
 --
 -- ** Pinned as a NAME LIST rather than a count, deliberately. ** A cardinality
 -- pin cannot see a SWAP — drop `feed_reads.club_id` and add `club_events.club_id`
@@ -32232,8 +32243,8 @@ select assert_eq(
   (select string_agg(distinct conrelid::regclass::text, ',' order by conrelid::regclass::text)
      from pg_constraint
     where contype = 'f' and confrelid = 'public.clubs'::regclass),
-  'club_invite_links,club_invites,club_join_requests,club_members,club_threads,feed_reads,notifications,postcards,rides',
-  '107.12b: ** these NINE tables reference public.clubs. ** Four are named in the reaper''s conjuncts (club_members, postcards, club_threads, rides) and five are deliberately allowed to cascade with the club. A name arriving or leaving means somebody changed the child set without deciding whether the reap should wait for it — and that table''s FK delete action says which failure applies: CASCADE destroys its rows, SET NULL strands them');
+  'club_invite_links,club_invites,club_join_requests,club_members,club_removals,club_threads,feed_reads,notifications,postcards,rides',
+  '107.12b: ** these TEN tables reference public.clubs. ** Four are named in the reaper''s conjuncts (club_members, postcards, club_threads, rides) and six are deliberately allowed to cascade with the club — 111''s club_removals being the sixth, because a bar on a club that no longer exists bars nothing. A name arriving or leaving means somebody changed the child set without deciding whether the reap should wait for it — and that table''s FK delete action says which failure applies: CASCADE destroys its rows, SET NULL strands them');
 select assert_eq(
   (select string_agg(distinct conrelid::regclass::text, ',' order by conrelid::regclass::text)
      from pg_constraint
@@ -33777,6 +33788,558 @@ select assert_eq(has_function_privilege('authenticated', 'private.is_ride_crew(u
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint ride_threads_108;
+
+
+\echo ''
+\echo '# 111 — a removal bars a live invite link, and readmission clears it (PD-361)'
+
+-- The cast, and what each rider is FOR:
+--
+--   1110001 rmowner    owns c1 (private) and c2 (public)
+--   1110002 rmadmin    ADMIN of c1 — the remover and the minter
+--   1110003 rmremoved  member of c1 and c2. THE STAR: removed from c1 at 111.1
+--                      and never readmitted, so every later assertion reads a
+--                      barred rider
+--   1110004 rmleaver   member of c1 who LEAVES VOLUNTARILY — the control that
+--                      makes "the bar is written by the ACT" mean something. An
+--                      absent membership row is the same in both cases, so
+--                      without this rider the whole design is unfalsifiable
+--   1110005 rmfresh    eligible, never a member — proves a refused link still
+--                      admits somebody, so the refusal is about the RIDER and
+--                      not about the link having stopped working
+--   1110006 rmother    owns c3, a different private club
+--   1110007 rmmember   ordinary member of c1, for the read refusals at 111.8
+--
+-- Clubs: c1 private (the subject), c2 PUBLIC (the Join-button readmission
+--        route), c3 private and foreign (the different-club case).
+-- Links: a1 live into c1, minted BEFORE the removal — the reported defect;
+--        a2 live into c1, minted AFTER it; a3 live into c3; a4 EXPIRED into c1,
+--        which is what 111.12 compares the removed rider's refusal against.
+savepoint club_removals_111;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000001110001', 'rmowner@example.com'),
+  ('00000000-0000-0000-0000-000001110002', 'rmadmin@example.com'),
+  ('00000000-0000-0000-0000-000001110003', 'rmremoved@example.com'),
+  ('00000000-0000-0000-0000-000001110004', 'rmleaver@example.com'),
+  ('00000000-0000-0000-0000-000001110005', 'rmfresh@example.com'),
+  ('00000000-0000-0000-0000-000001110006', 'rmother@example.com'),
+  ('00000000-0000-0000-0000-000001110007', 'rmmember@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000001110001', 'rmowner'),
+      ('00000000-0000-0000-0000-000001110002', 'rmadmin'),
+      ('00000000-0000-0000-0000-000001110003', 'rmremoved'),
+      ('00000000-0000-0000-0000-000001110004', 'rmleaver'),
+      ('00000000-0000-0000-0000-000001110005', 'rmfresh'),
+      ('00000000-0000-0000-0000-000001110006', 'rmother'),
+      ('00000000-0000-0000-0000-000001110007', 'rmmember')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000011100c1', 'Removal Test MC',   false, '00000000-0000-0000-0000-000001110001'),
+  ('00000000-0000-0000-0000-0000011100c2', 'Removal Public MC', true,  '00000000-0000-0000-0000-000001110001'),
+  ('00000000-0000-0000-0000-0000011100c3', 'Removal Other MC',  false, '00000000-0000-0000-0000-000001110006');
+
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000011100c1', '00000000-0000-0000-0000-000001110002', 'admin'),
+  ('00000000-0000-0000-0000-0000011100c1', '00000000-0000-0000-0000-000001110003', 'member'),
+  ('00000000-0000-0000-0000-0000011100c1', '00000000-0000-0000-0000-000001110004', 'member'),
+  ('00000000-0000-0000-0000-0000011100c1', '00000000-0000-0000-0000-000001110007', 'member'),
+  ('00000000-0000-0000-0000-0000011100c2', '00000000-0000-0000-0000-000001110003', 'member');
+
+-- ** THE LINKS ARE MINTED THROUGH THEIR POLICY, AS THEIR MINTER. ** Placing them
+-- as the table owner would skip may_mint_club_link and leave every assertion
+-- below reading rows no client could have created.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110002', false);
+insert into club_invite_links (id, club_id, created_by) values
+  ('00000000-0000-0000-0000-0000011100a1', '00000000-0000-0000-0000-0000011100c1',
+   '00000000-0000-0000-0000-000001110002'),
+  ('00000000-0000-0000-0000-0000011100a4', '00000000-0000-0000-0000-0000011100c1',
+   '00000000-0000-0000-0000-000001110002');
+select set_config('test.uid', '00000000-0000-0000-0000-000001110006', false);
+insert into club_invite_links (id, club_id, created_by) values
+  ('00000000-0000-0000-0000-0000011100a3', '00000000-0000-0000-0000-0000011100c3',
+   '00000000-0000-0000-0000-000001110006');
+reset role;
+
+update club_invite_links set expires_at = now() - interval '1 hour'
+ where id = '00000000-0000-0000-0000-0000011100a4';
+
+select set_config('test.rmtok1', (select token from club_invite_links where id = '00000000-0000-0000-0000-0000011100a1'), false);
+select set_config('test.rmtok3', (select token from club_invite_links where id = '00000000-0000-0000-0000-0000011100a3'), false);
+select set_config('test.rmtok4', (select token from club_invite_links where id = '00000000-0000-0000-0000-0000011100a4'), false);
+select set_config('test.rmguess', '11111111111111111111111111111111', false);
+
+-- The fixture is a live door before anything is removed. Without this the
+-- refusals below could all be a link that never worked.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110005', false);
+select assert_eq(
+  (select count(*)::int from club_invite_link_preview(current_setting('test.rmtok1'))),
+  1, '111.0: BEFORE any removal the live link previews for an eligible rider — the control that stops every refusal below being a broken fixture');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 111.1  ** THE REPORTED DEFECT: a removed rider walks back in through the same
+--        link ** — and does not any more
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110002', false);
+select remove_club_member('00000000-0000-0000-0000-0000011100c1'::uuid,
+                          '00000000-0000-0000-0000-000001110003'::uuid);
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000011100c1'
+      and user_id = '00000000-0000-0000-0000-000001110003'),
+  0, '111.1: the removal deletes the membership row, exactly as 088 always did');
+select assert_eq(
+  (select count(*)::int from club_removals
+    where club_id = '00000000-0000-0000-0000-0000011100c1'
+      and user_id = '00000000-0000-0000-0000-000001110003'),
+  1, '111.1: ... and now ALSO writes exactly one club_removals row, inside remove_club_member and after its authority block');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110003', false);
+select assert_eq(
+  (select count(*)::int from club_invite_link_preview(current_setting('test.rmtok1'))),
+  0, '111.1: ** the link minted BEFORE the removal now previews zero rows for the removed rider ** — the defect PD-361 reports, closed in private.club_invite_link_reachable_by and in no other body');
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.rmtok1'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.rmguess'))$$),
+  '111.1: ... and the claim is refused INDISTINGUISHABLY from a guess, so the refusal discloses nothing — it reaches 093''s existing single raise site and adds no second one');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000011100c1'
+      and user_id = '00000000-0000-0000-0000-000001110003'),
+  0, '111.1: ... and the refused claim left no membership row behind');
+
+-- ---------------------------------------------------------------------------
+-- 111.2  A NEWER link is refused too — the bar is on the RIDER, not the token
+-- ---------------------------------------------------------------------------
+-- Without this an admin could undo the removal by minting a fresh link, which
+-- would make the bar a property of the token and therefore worthless: the
+-- remedy for a removal would be one tap by the person who performed it.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110002', false);
+insert into club_invite_links (id, club_id, created_by) values
+  ('00000000-0000-0000-0000-0000011100a2', '00000000-0000-0000-0000-0000011100c1',
+   '00000000-0000-0000-0000-000001110002');
+reset role;
+select set_config('test.rmtok2', (select token from club_invite_links where id = '00000000-0000-0000-0000-0000011100a2'), false);
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110003', false);
+select assert_eq(
+  (select count(*)::int from club_invite_link_preview(current_setting('test.rmtok2'))),
+  0, '111.2: a link minted AFTER the removal is refused the same rider — the bar keys on (club, rider) and never on the token');
+select set_config('test.uid', '00000000-0000-0000-0000-000001110005', false);
+select assert_eq(
+  (select count(*)::int from club_invite_link_preview(current_setting('test.rmtok2'))),
+  1, '111.2: ** ... and that very link admits a different eligible rider ** — so the refusal above is about the rider and not a link that stopped working');
+reset role;
+
+savepoint fresh_claims_111;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110005', false);
+select assert_eq(
+  claim_club_invite_link(current_setting('test.rmtok2')),
+  '00000000-0000-0000-0000-0000011100c1'::uuid,
+  '111.2: ... and the eligible rider''s CLAIM succeeds, which a preview alone does not prove');
+reset role;
+rollback to savepoint fresh_claims_111;
+
+-- ---------------------------------------------------------------------------
+-- 111.3  A link into a DIFFERENT club still admits them
+-- ---------------------------------------------------------------------------
+-- The conjunct is `r.club_id = k.club_id and r.user_id = uid`, written as
+-- `not exists` rather than a join precisely so a row for one club cannot reach
+-- another. A removal from one club is not a statement about the rider.
+savepoint other_club_111;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110003', false);
+select assert_eq(
+  (select count(*)::int from club_invite_link_preview(current_setting('test.rmtok3'))),
+  1, '111.3: a link into a DIFFERENT club previews for the removed rider ...');
+select assert_eq(
+  claim_club_invite_link(current_setting('test.rmtok3')),
+  '00000000-0000-0000-0000-0000011100c3'::uuid,
+  '111.3: ... and admits them, because a removal from one club says nothing about any other');
+reset role;
+rollback to savepoint other_club_111;
+
+-- ---------------------------------------------------------------------------
+-- 111.4  ** A VOLUNTARY LEAVER IS NOT BARRED ** — the distinction the whole
+--        design rests on
+-- ---------------------------------------------------------------------------
+-- Removal and departure both end as an absent club_members row, so the record
+-- has to be made at the moment of the act. This is the assertion that would fail
+-- if the row were written by a DELETE trigger instead of inside the RPC — the
+-- alternative design.md D2 rejects, which would also fire on cascades.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110004', false);
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000011100c1'
+   and user_id = '00000000-0000-0000-0000-000001110004';
+reset role;
+select assert_eq(
+  (select count(*)::int from club_removals
+    where club_id = '00000000-0000-0000-0000-0000011100c1'
+      and user_id = '00000000-0000-0000-0000-000001110004'),
+  0, '111.4: ** a rider who LEFT of their own accord has NO removal row ** — 001''s own DELETE policy writes nothing, and nothing on club_members DELETE does either');
+
+savepoint leaver_claims_111;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110004', false);
+select assert_eq(
+  (select count(*)::int from club_invite_link_preview(current_setting('test.rmtok1'))),
+  1, '111.4: ... so the same live link still previews for them ...');
+select assert_eq(
+  claim_club_invite_link(current_setting('test.rmtok1')),
+  '00000000-0000-0000-0000-0000011100c1'::uuid,
+  '111.4: ... and readmits them in one tap, which is what makes the refusal at 111.1 a statement about the REMOVAL rather than about having left');
+reset role;
+rollback to savepoint leaver_claims_111;
+
+-- ---------------------------------------------------------------------------
+-- 111.5  ** READMISSION CLEARS THE RECORD — by each route SEPARATELY **
+-- ---------------------------------------------------------------------------
+-- Asserted per route rather than once, because the clearing trigger's whole
+-- claim is that it observes the MEMBERSHIP ROW and never the route. One route
+-- passing would be consistent with a trigger that only fires for that one.
+--
+-- ** 111.6 rides along inside each of these ** — that the door was open at all.
+-- A removed rider being ABLE to ask, and an admin being ABLE to invite them, is
+-- the narrow reading the owner chose; a build that quietly closed those doors
+-- too would pass every assertion about the link and still be the wrong change.
+
+-- (a) An APPROVED JOIN REQUEST.
+savepoint readmit_request_111;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110003', false);
+insert into club_join_requests (club_id, user_id) values
+  ('00000000-0000-0000-0000-0000011100c1', '00000000-0000-0000-0000-000001110003');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_join_requests
+    where club_id = '00000000-0000-0000-0000-0000011100c1'
+      and user_id = '00000000-0000-0000-0000-000001110003'),
+  1, '111.6: ** a BARRED rider can still ASK to join ** — the removal bars one route and 085''s is not it');
+select set_config('test.rmreq',
+  (select id::text from club_join_requests
+    where club_id = '00000000-0000-0000-0000-0000011100c1'
+      and user_id = '00000000-0000-0000-0000-000001110003'), false);
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110002', false);
+select approve_club_join_request(current_setting('test.rmreq')::uuid);
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000011100c1'
+      and user_id = '00000000-0000-0000-0000-000001110003'),
+  1, '111.6: ... and the approval ADMITS them — asserted as a membership row, not as the absence of an error');
+select assert_eq(
+  (select count(*)::int from club_removals
+    where club_id = '00000000-0000-0000-0000-0000011100c1'
+      and user_id = '00000000-0000-0000-0000-000001110003'),
+  0, '111.5(a): ** and readmission by an approved request CLEARS the bar ** — private.clear_club_removal_on_join, which observes the membership row rather than the route that wrote it');
+-- Then leaving voluntarily and claiming a link succeeds: the bar is gone for
+-- good, not merely suspended while the membership stands.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110003', false);
+delete from club_members
+ where club_id = '00000000-0000-0000-0000-0000011100c1'
+   and user_id = '00000000-0000-0000-0000-000001110003';
+select assert_eq(
+  (select count(*)::int from club_invite_link_preview(current_setting('test.rmtok1'))),
+  1, '111.5(a): ... so after leaving again of their own accord the link works — a cleared bar does not come back');
+reset role;
+rollback to savepoint readmit_request_111;
+
+-- (b) An ACCEPTED IN-APP INVITE.
+savepoint readmit_invite_111;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110002', false);
+insert into club_invites (id, club_id, invitee_id, inviter_id) values
+  ('00000000-0000-0000-0000-0000011100f1', '00000000-0000-0000-0000-0000011100c1',
+   '00000000-0000-0000-0000-000001110003', '00000000-0000-0000-0000-000001110002');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_invites where id = '00000000-0000-0000-0000-0000011100f1'),
+  1, '111.6: ** an admin can still INVITE a barred rider ** — the in-app door is deliberately open, and this is the one an admin reaches for when they want the rider back');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110003', false);
+select accept_club_invite('00000000-0000-0000-0000-0000011100f1'::uuid);
+reset role;
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000011100c1'
+      and user_id = '00000000-0000-0000-0000-000001110003'),
+  1, '111.6: ... and the accept ADMITS them');
+select assert_eq(
+  (select count(*)::int from club_removals
+    where club_id = '00000000-0000-0000-0000-0000011100c1'
+      and user_id = '00000000-0000-0000-0000-000001110003'),
+  0, '111.5(b): ** and readmission by an accepted invite CLEARS the bar ** — a second route, through private.join_club_from_invite, which the link path shares and which is exactly why the predicate could not live there');
+rollback to savepoint readmit_invite_111;
+
+-- (c) A PUBLIC club's JOIN BUTTON — and the one assertion that would catch an
+--     invoker-rights clearing trigger.
+--
+-- ** THIS IS THE ONLY ADMISSION PATH IN THE APP THAT WRITES club_members AS
+-- `authenticated`. ** The other four are security definer and inherit the
+-- owner's rights, so the trigger's delete succeeds there whatever its privilege
+-- mode says. Here it does not: club_removals grants nothing to authenticated and
+-- carries no policy, so a `security invoker` trigger raises 42501 and rolls this
+-- join back. Four green paths would have hidden that; this one cannot.
+savepoint readmit_public_111;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110001', false);
+select remove_club_member('00000000-0000-0000-0000-0000011100c2'::uuid,
+                          '00000000-0000-0000-0000-000001110003'::uuid);
+reset role;
+select assert_eq(
+  (select count(*)::int from club_removals
+    where club_id = '00000000-0000-0000-0000-0000011100c2'
+      and user_id = '00000000-0000-0000-0000-000001110003'),
+  1, '111.5(c): a removal from a PUBLIC club writes its row too — remove_club_member carries no is_public predicate ...');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110003', false);
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000011100c2', '00000000-0000-0000-0000-000001110003', 'member');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_removals
+    where club_id = '00000000-0000-0000-0000-0000011100c2'
+      and user_id = '00000000-0000-0000-0000-000001110003'),
+  0, '111.5(c): ** ... and pressing Join clears it, through a client INSERT running as `authenticated` ** — the path a `security invoker` clearing trigger would refuse with 42501, taking the rider''s join down with it');
+select assert_eq(
+  (select count(*)::int from club_members
+    where club_id = '00000000-0000-0000-0000-0000011100c2'
+      and user_id = '00000000-0000-0000-0000-000001110003'),
+  1, '111.5(c): ... and the join itself survived, which is the half a privilege failure would have destroyed');
+rollback to savepoint readmit_public_111;
+
+-- ---------------------------------------------------------------------------
+-- 111.7  The grants — nobody holds anything, scoped to the GRANTEES
+-- ---------------------------------------------------------------------------
+-- Scoped to `anon` and `authenticated` rather than counted table-wide: postgres
+-- and service_role hold everything by Supabase default, so a table-wide count
+-- reads 2 against a perfectly correct database.
+select assert_eq(
+  (select count(*)::int
+     from (values ('select'), ('insert'), ('update'), ('delete'),
+                  ('references'), ('trigger'), ('truncate')) as p(priv),
+          (values ('anon'), ('authenticated')) as r(rolename)
+    where has_table_privilege(r.rolename, 'public.club_removals', p.priv)),
+  0, '111.7: neither anon nor authenticated holds ANY privilege on club_removals — all seven verbs, both roles, asserted as privileges rather than as a failed call, because a call proves only that today''s policy set refuses it');
+select assert_eq(
+  (select relrowsecurity from pg_class where oid = 'public.club_removals'::regclass),
+  true, '111.7: RLS is ON ...');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'club_removals'),
+  0, '111.7: ... and there is NO policy — the two together are the posture, and the grants above are what actually refuse a client. A policy added later would still reach nobody, which is the trap this pair is written to make visible');
+
+-- ---------------------------------------------------------------------------
+-- 111.8  Nobody reads a removal — not the owner, an admin, a member, or the
+--        rider it is about
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110001', false);
+select assert_denied($$select count(*) from club_removals$$,
+  '111.8: the club''s OWNER cannot read the removals table');
+select set_config('test.uid', '00000000-0000-0000-0000-000001110002', false);
+select assert_denied($$select count(*) from club_removals$$,
+  '111.8: nor can the ADMIN who performed the removal — there is no screen, so there is no reader');
+select set_config('test.uid', '00000000-0000-0000-0000-000001110007', false);
+select assert_denied($$select count(*) from club_removals$$,
+  '111.8: nor an ordinary MEMBER');
+select set_config('test.uid', '00000000-0000-0000-0000-000001110003', false);
+select assert_denied($$select count(*) from club_removals$$,
+  '111.8: ** nor the REMOVED RIDER themselves ** — which is what keeps 088''s decision that a removal is silent, and is why the claim path''s refusal has to be indistinguishable from every other dead state');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 111.9  The permission table is unchanged, and a refusal writes NOTHING
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110002', false);
+select assert_denied(
+  $$select remove_club_member('00000000-0000-0000-0000-0000011100c1'::uuid, '00000000-0000-0000-0000-000001110001'::uuid)$$,
+  '111.9: the OWNER is still not removable');
+select assert_denied(
+  $$select remove_club_member('00000000-0000-0000-0000-0000011100c1'::uuid, '00000000-0000-0000-0000-000001110002'::uuid)$$,
+  '111.9: and nobody removes themselves — leaving is 001''s own DELETE policy');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_removals
+    where user_id in ('00000000-0000-0000-0000-000001110001',
+                      '00000000-0000-0000-0000-000001110002')),
+  0, '111.9: ** and neither refusal wrote a removal row ** — the upsert sits AFTER the authority block and its single raise site, so a refused attempt cannot bar the rider it failed to remove');
+
+-- ---------------------------------------------------------------------------
+-- 111.10  An UNAUTHORISED attempt writes nothing either
+-- ---------------------------------------------------------------------------
+-- The dangerous shape: a stranger cannot remove a rider, but if the row were
+-- written before the authority check they could bar one — a write primitive
+-- behind a function that refuses.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110005', false);
+select assert_denied(
+  $$select remove_club_member('00000000-0000-0000-0000-0000011100c1'::uuid, '00000000-0000-0000-0000-000001110007'::uuid)$$,
+  '111.10: a rider who is in no club at all cannot remove a member of one');
+reset role;
+select assert_eq(
+  (select count(*)::int from club_removals
+    where club_id = '00000000-0000-0000-0000-0000011100c1'
+      and user_id = '00000000-0000-0000-0000-000001110007'),
+  0, '111.10: ** and the refused attempt barred nobody ** — otherwise any signed-in rider could lock any other out of any club''s links, silently and unreadably');
+
+-- ---------------------------------------------------------------------------
+-- 111.11  Both cascades — the row has no life of its own
+-- ---------------------------------------------------------------------------
+savepoint cascade_club_111;
+delete from clubs where id = '00000000-0000-0000-0000-0000011100c1';
+select assert_eq(
+  (select count(*)::int from club_removals
+    where club_id = '00000000-0000-0000-0000-0000011100c1'),
+  0, '111.11: deleting the CLUB erases its bars — on delete cascade, and correct because the links they barred died in the same statement');
+rollback to savepoint cascade_club_111;
+
+savepoint cascade_profile_111;
+delete from profiles where id = '00000000-0000-0000-0000-000001110003';
+select assert_eq(
+  (select count(*)::int from club_removals
+    where user_id = '00000000-0000-0000-0000-000001110003'),
+  0, '111.11: and deleting the RIDER erases theirs — so account deletion needs no new step in the delete-account Edge Function, which is the whole reason both keys cascade');
+rollback to savepoint cascade_profile_111;
+
+-- ---------------------------------------------------------------------------
+-- 111.12  ** THE TWELFTH DEAD STATE ** — 093.17's eleven, plus this one
+-- ---------------------------------------------------------------------------
+-- 093.17 enumerates eleven states that must be indistinguishable from a guess.
+-- A removed rider is the twelfth, and it is asserted here rather than there
+-- because the fixture for it — an actual removal — lives in this section.
+-- COMPARED ON THE MESSAGE and not only the SQLSTATE: two ways to fail can both
+-- be insufficient_privilege and still tell a prober which is which.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001110003', false);
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.rmtok1'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.rmtok4'))$$),
+  '111.12: (12) a REMOVED rider''s claim on a LIVE token is byte-identical to the same rider''s claim on an EXPIRED one — so the link cannot be used to discover that a removal happened');
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.rmtok1'))$$),
+  error_of($$select claim_club_invite_link(current_setting('test.rmguess'))$$),
+  '111.12: ... and to a well-formed GUESS');
+select assert_eq(
+  error_of($$select claim_club_invite_link(current_setting('test.rmtok1'))$$) like '42501 %',
+  true, '111.12: ... and the shared answer really is a REFUSAL, not three silent successes compared against each other');
+select assert_eq(
+  (select count(*)::int from club_invite_link_preview(current_setting('test.rmtok4'))),
+  (select count(*)::int from club_invite_link_preview(current_setting('test.rmtok1'))),
+  '111.12: and the PREVIEW agrees with the claim in this state too — 093.18''s property, which is what stops the removal conjunct drifting into one body and not the other');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 111.13  ** THE PREDICATE HAS EXACTLY ONE HOME, READ OFF prosrc **
+-- ---------------------------------------------------------------------------
+-- The list is what makes the single-site rule enforceable rather than an
+-- argument. A fourth name here is a second definition of who is barred — and
+-- the one to watch for is private.join_club_from_invite, which is shared with
+-- the in-app accept path and would close a door the owner deliberately left
+-- open. 093.22's own closed list of forbidden substrings is extended by
+-- `club_removals` in the same change, so the two public RPC bodies are covered
+-- there rather than here.
+select assert_eq(
+  (select array(select n.nspname || '.' || p.proname from pg_proc p
+                  join pg_namespace n on n.oid = p.pronamespace
+                 where n.nspname in ('public', 'private')
+                   and p.prosrc like '%club_removals%'
+                 order by 1)),
+  array['private.clear_club_removal_on_join',
+        'private.club_invite_link_reachable_by',
+        'public.remove_club_member'],
+  '111.13: EXACTLY THREE functions mention club_removals — one WRITES it (remove_club_member, after its authority block), one CLEARS it (the trigger), one READS it (the reachability helper). No policy, no accessor and no fan-out is on this list');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where coalesce(qual, '') || coalesce(with_check, '') ilike '%club_removals%'),
+  0, '111.13: ... and NO policy anywhere references it — the bar is a predicate inside one definer function, never an audience rule, which is what keeps it from reaching the join-request and in-app-invite paths');
+
+-- ---------------------------------------------------------------------------
+-- 111.13a  The clearing trigger's privilege mode, read from the CATALOGUE
+-- ---------------------------------------------------------------------------
+-- ** NEVER INFERRED FROM A JOIN THAT WORKED. ** Two reasons, and the second is
+-- one this repo has already paid for: the admission paths that matter are
+-- themselves security definer, so the trigger inherits the owner's rights there
+-- and passes whatever its own mode is; and the suite runs as the TABLE OWNER,
+-- for whom neither barrier exists — which is exactly how `029` shipped a
+-- function the role that needed it could not reach, with nothing red. 111.5(c)
+-- is the behavioural half and it runs under `set role authenticated`; this is
+-- the half that holds when somebody rewrites that fixture.
+select assert_eq(
+  (select prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'clear_club_removal_on_join'),
+  true, '111.13a: private.clear_club_removal_on_join is SECURITY DEFINER — a trigger function defaults to invoker, and an invoker-rights delete against a table authenticated holds nothing on raises 42501 and rolls the rider''s join back');
+select assert_eq(
+  (select proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'clear_club_removal_on_join'),
+  array['search_path=""'],
+  '111.13a: ... with an empty search_path, like every other definer function in this schema');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.club_members'::regclass
+      and tgname = 'clear_club_removal_on_join' and tgqual is null),
+  1, '111.13a: ** and the trigger carries NO `when` clause ** — a `when (current_user = ''authenticated'')` copied from 023''s gate would be false inside all four security definer admission paths, so a readmission by invite, by request, by onboarding or by club creation would leave the bar standing');
+select assert_eq(
+  has_function_privilege('authenticated', 'private.clear_club_removal_on_join()', 'execute'),
+  false, '111.13a: and no client role can call it directly — a trigger function is reached by the trigger and by nothing else');
+
+-- ---------------------------------------------------------------------------
+-- 111.14  The participation gate is UNCHANGED — by delta and by name
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgname = 'enforce_participation_gate' and not tgisinternal),
+  22, '111.14: TWENTY-TWO participation-gate triggers, unchanged — 111 adds a table with no authenticated writer, so a gate on it would raise this number while gating nothing (078.9''s lesson)');
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where t.tgname = 'enforce_participation_gate' and c.relname = 'club_removals'),
+  0, '111.14: ... and club_removals is absent from the gated set BY NAME — asserted separately, because a count cannot tell a gate added here from one removed elsewhere');
+
+-- ---------------------------------------------------------------------------
+-- 111.15  Deleting a club writes NO removal rows
+-- ---------------------------------------------------------------------------
+-- The DELETE-trigger design would have recorded a removal for every member of
+-- every deleted club — riders nobody removed, barred from a club that no longer
+-- exists. Writing the row inside the RPC is what makes this vacuous, and this
+-- assertion is what says so.
+savepoint delete_club_111;
+select set_config('test.rmbefore', (select count(*)::text from club_removals), false);
+delete from clubs where id = '00000000-0000-0000-0000-0000011100c3';
+select assert_eq(
+  (select count(*)::int from club_removals),
+  current_setting('test.rmbefore')::int,
+  '111.15: deleting a club with members writes no removal rows at all — removal is an ACT by an admin, and a cascade is not one');
+rollback to savepoint delete_club_111;
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint club_removals_111;
 
 
 rollback;
