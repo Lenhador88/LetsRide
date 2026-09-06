@@ -20,27 +20,33 @@ import { cn } from '@/lib/utils'
  * credit while the app has none is a breach. So this merges first and the
  * function is redeployed after it is serving — never the reverse.
  *
- * ## The three strings, and which of them is conditional
+ * ## The two strings, and the third that is gone
  *
- * Quoted exactly as Geoapify writes them, because two of them are licence text
- * rather than prose and paraphrasing them is what makes a credit stop counting:
+ * Quoted exactly as Geoapify writes them, because both are licence text rather
+ * than prose and paraphrasing them is what makes a credit stop counting:
  *
  * 1. **`© OpenStreetMap contributors`** — ODbL 1.0. Required on every plan, by
  *    every vendor that renders OSM data. Nothing removes this, ever.
  * 2. **`© OpenMapTiles`** — required for every style **except** `osm-carto`.
  *    `MAP_STYLE` is `osm-bright`, so it applies here. A future style change to
  *    `osm-carto` is the one thing that would retire this line.
- * 3. **`Powered by Geoapify`** — the Free plan's own service-level condition,
- *    and **the only one a subscription removes**: *"Geoapify paid packages
- *    include the 'White label' option."*
  *
- * **The account was upgraded on 2026-08-27 and this line is still here on
- * purpose.** White Label is described as an *option* included with paid
- * packages, and an option that ships with a plan can still be switched off on
- * the account — nothing this repo can read says which. Keeping the line costs
- * three words and risks nothing; dropping it before White Label is confirmed
- * active is the one part of this component that would be a breach. When it is
- * confirmed, delete `GEOAPIFY_CREDIT` from `CREDITS` and nothing else changes.
+ * **`Powered by Geoapify` was the third and is deleted — PD-415, 2026-09-06.**
+ * It is the Free plan's own service-level condition and **the only one a
+ * subscription ever removed**: *"Geoapify paid packages include the 'White
+ * label' option."* Two things had to be true before it could go, and both are:
+ * the account is paid (2026-08-27, PD-234), and White Label is **active** on it
+ * rather than merely included in the plan. The second is what this component
+ * used to say nothing in the repo could read, and it has been answered twice
+ * over — the owner confirmed there is no White Label switch to throw on a paid
+ * account, and PD-234 verified a real render with `attribution=none` honoured,
+ * which an unentitled account would have ignored while burning the credit in.
+ *
+ * **It comes back only if the account drops to the Free plan**, and nothing
+ * else — not a style change, not a new surface, not a tile going missing.
+ * `src/__tests__/ride-geocode-gates.test.ts` pins its absence for that reason:
+ * re-adding it is a decision, and a decision should not be reachable by a
+ * refactor.
  *
  * ## Why the links are not links
  *
@@ -107,19 +113,16 @@ const OSM_CREDIT = '© OpenStreetMap contributors'
 const OPENMAPTILES_CREDIT = '© OpenMapTiles'
 
 /**
- * Free-plan condition. Delete this the day White Label is confirmed **active**
- * on the account — not the day the subscription starts. See the header.
- */
-const GEOAPIFY_CREDIT = 'Powered by Geoapify'
-
-/**
  * Exported so `src/__tests__/ride-geocode-gates.test.ts` can assert that the
  * credit this app renders is the credit the tile stopped carrying. That test
  * pins the pair together: it used to assert the *absence* of every suppression
  * parameter, which was the right invariant while nothing rendered a credit of
  * our own and became the wrong one the moment this file existed.
+ *
+ * **Both members are licence obligations, so this list may only ever shrink for
+ * a reason written above** — the plan does not touch either of them.
  */
-export const MAP_CREDITS = [OSM_CREDIT, OPENMAPTILES_CREDIT, GEOAPIFY_CREDIT] as const
+export const MAP_CREDITS = [OSM_CREDIT, OPENMAPTILES_CREDIT] as const
 
 export function MapAttribution({ className }: { className?: string }) {
   return (

@@ -202,11 +202,16 @@ describe('the outbound static map requests', () => {
     expect(MAP_CREDITS).toContain('© OpenStreetMap contributors')
     expect(MAP_CREDITS).toContain('© OpenMapTiles')
 
-    // `Powered by Geoapify` is the ONE line a confirmed White Label removes, so
-    // this is asserted as presence-or-absence rather than pinned: dropping it is
-    // a legitimate edit the day the account is confirmed, and dropping either of
-    // the two above never is.
-    expect(MAP_CREDITS.length).toBeGreaterThanOrEqual(2)
+    // `Powered by Geoapify` was the ONE line a confirmed White Label removes,
+    // and it is gone — PD-415, the account confirmed paid AND entitled. This
+    // used to read `length >= 2`, deliberately permissive because dropping that
+    // line was a legitimate future edit and dropping either of the two above
+    // never is. It is not permissive any more: the deletion is a decision, and
+    // an exact list is what stops a refactor reinstating one silently. Only a
+    // drop back to the Free plan puts it back, and that is an edit with a reason
+    // rather than a merge artefact.
+    expect(MAP_CREDITS).not.toContain('Powered by Geoapify')
+    expect(MAP_CREDITS).toHaveLength(2)
 
     // The three parameters that never existed on this vendor. Kept because their
     // absence is still the invariant — `attribution` is the only real switch, and
