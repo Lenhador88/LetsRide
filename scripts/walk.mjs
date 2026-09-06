@@ -24,16 +24,27 @@
  * The named phases are the exception — refused sign-in before the real sign-in,
  * refused signup right after it (it needs the session it establishes — see
  * `runRefusedSignup`), and refused ride create, refused club create, refused
- * ride or club edit, refused profile edit, client-side navigation, the route
- * guard and sign-out after that. They are named individually rather than
- * covered by a general claim: each exists because a specific defect is
- * invisible to every other gate in this repo, and each asserts exactly that
- * one behaviour. Adding a phase means adding a reason, not broadening a remit
- * — PD-203 added three (club create, profile edit, signup) because
- * `retaining` (PD-199) was wired on nine forms and only two were rendered by
- * anything; the other two of the nine (`/auth/forgot-password`,
- * `CreatePostcardForm`) are recorded as deliberately unexercised where
- * `checkRefusedSignup` is defined below, rather than covered here.
+ * ride or club edit, refused profile edit, the two invite landing routes,
+ * client-side navigation, the route guard and sign-out after that. They are
+ * named individually rather than covered by a general claim: each exists
+ * because a specific defect is invisible to every other gate in this repo, and
+ * each asserts exactly that one behaviour. Adding a phase means adding a
+ * reason, not broadening a remit — PD-203 added three (club create, profile
+ * edit, signup) because `retaining` (PD-199) was wired on nine forms and only
+ * two were rendered by anything; the other two of the nine
+ * (`/auth/forgot-password`, `CreatePostcardForm`) are recorded as deliberately
+ * unexercised where `checkRefusedSignup` is defined below, rather than covered
+ * here. PD-358 added `checkInviteLanding`, for `/rides/join` and `/clubs/join`
+ * — the app's only public routes that are not auth screens or static copy, and
+ * the first thing in this file that asserts on a page loaded with **no session
+ * at all**. It runs once per route off `INVITE_LANDINGS`, because the property
+ * it asserts belongs to the pattern rather than to either screen.
+ *
+ * **Four more were added on 2026-09-03** — like a postcard (and unlike it
+ * back), comment on a postcard, RSVP to a ride, and join a club (and leave
+ * it again). See the block comment above `waitForTableWrite`, right by the
+ * code, for why and for exactly what each one does and does not clean up —
+ * not repeated here, so there is one place to keep it true rather than two.
  *
  * ## Running it, and the one thing that will otherwise waste an hour
  *
@@ -54,6 +65,14 @@
  * the browser is holding** rather than from `RELAY_UPSTREAM` — see
  * `authenticatedProjectRef()` for why the env-var version of that check was
  * worth nothing.
+ *
+ * **The four social-write phases (like, comment, RSVP, join a club) write on
+ * every full walk, `WALK_FIXTURES` or not, and are gated the same way** —
+ * `refWritable(await authenticatedProjectRef(), …)`, checked once
+ * immediately before them. Against `letsride` that would mean liking and
+ * commenting on a real rider's postcard, RSVPing to a real ride and joining
+ * a real club; see the block comment above `waitForTableWrite` for the full
+ * account.
  *
  * **Minting an account is gated separately, and earlier, because it is a
  * write with no session to check yet.** `fixturesPermitted()` cannot be what
@@ -115,7 +134,7 @@ const BASE = process.env.WALK_BASE ?? 'http://localhost:3000'
 if (Boolean(process.env.WALK_EMAIL) !== Boolean(process.env.WALK_PASSWORD)) {
   console.error(
     'Set both WALK_EMAIL and WALK_PASSWORD for a known account, or neither to mint a\n' +
-      'fresh one — see docs/HANDOFF.md §The walk.'
+      'fresh one — see docs/reference/running-locally.md §The walk.'
   )
   process.exit(2)
 }
@@ -134,7 +153,7 @@ const MINT_SUFFIX = `${Date.now().toString(36)}${Math.random().toString(36).slic
 
 // `@letsride.dev` — `supabase/seeds/development.sql` refuses to run while any
 // account outside that domain exists, so a walk account on any other domain
-// quietly blocks the seed (docs/HANDOFF.md §The walk).
+// quietly blocks the seed (docs/reference/running-locally.md §The walk).
 let EMAIL = process.env.WALK_EMAIL ?? `walk-${MINT_SUFFIX}@letsride.dev`
 // Well past `NEW_PASSWORD_MIN_LENGTH` (8) and never read back — nothing
 // stores this once the run using it ends, which is the whole point of
@@ -162,6 +181,29 @@ const STATIC_PATHS = [
   '/clubs/explore',
   '/clubs/new',
   '/profile',
+  // Added 2026-09-01, with a reason rather than to broaden the sweep: this
+  // screen renders an EXHAUSTIVE SWITCH over `notifications.type` in two places
+  // (`copy.ts` and `NotificationsListItem`'s `describe`), and it was the only
+  // route in the app the walk could not see. `098` took that switch from
+  // fourteen arms to sixteen; a missing arm degrades to
+  // `did something on LetsRide.` — deliberately, per PD-335 — which is exactly
+  // the kind of silent wrongness no other gate here catches, `tsc` being happy
+  // with a `default` branch and the component tests rendering a fixture rather
+  // than a real row. It renders for a rider with no notifications too, so it
+  // costs nothing on an empty account.
+  '/notifications',
+  // PD-358, and both are walked bare — no token — on purpose. These are the
+  // app's only public routes that are not auth screens or static copy, and
+  // until now the only gate that renders anything opened neither. Bare, a
+  // signed-in rider gets `DeadLink`, which is a real screen with a real body,
+  // so the loop's four flags mean what they mean here. **A token in either
+  // entry would break the loop rather than strengthen it**:
+  // `adoptInviteTokenFromLocation` strips it with `history.replaceState`, so
+  // `finalPath` comes back without the query and the loop reports a redirect
+  // that did not happen. The two states that need a token get their own phase
+  // — `checkInviteLanding`, which walks both routes.
+  '/rides/join',
+  '/clubs/join',
 ]
 
 /**
@@ -389,7 +431,7 @@ const SIGNUP_PROBE_PASSWORD = 'walk-signup-probe-PD-203'
  * environment, not of this phase.** `signUp` takes the `alreadyRegistered`
  * branch only when `supabase.auth.signUp` itself errors on the duplicate —
  * which is what happens with `mailer_autoconfirm: true` (DEV, decision #6,
- * and where this walk always runs, per docs/HANDOFF.md §The walk). With
+ * and where this walk always runs, per docs/reference/running-locally.md §The walk). With
  * confirmation ON (PROD) GoTrue's own duplicate-signup mitigation returns
  * **success** with an empty `identities` array instead, so `signUp` never
  * reaches this branch at all there — see the comment above the
@@ -483,7 +525,7 @@ async function checkRefusedSignup(targetPage) {
  * - **`CreatePostcardForm`.** Its submit stays `disabled` until an upload
  *   finishes, so exercising a refusal here would mean a real Storage write on
  *   every walk — and Storage from this container's Chromium hangs with no
- *   `onload`/`onerror` (docs/HANDOFF.md §The walk).
+ *   `onload`/`onerror` (docs/reference/running-locally.md §The walk).
  */
 
 /**
@@ -1209,10 +1251,11 @@ async function signedInRiderId() {
 
 /**
  * The one place the project-ref allowlist is checked — every write this walk
- * can make (`fixturesPermitted` below, and `runRefusedSignup` above) calls
- * this rather than testing `ref` itself, so a rule change (tightening it to
- * refuse a confirmation-ON project outright, say) happens once and binds
- * every write rather than whichever ones a session remembered to touch.
+ * can make (`fixturesPermitted` below, `runRefusedSignup` above, and the
+ * four social-write phases' own gate further down) calls this rather than
+ * testing `ref` itself, so a rule change (tightening it to refuse a
+ * confirmation-ON project outright, say) happens once and binds every write
+ * rather than whichever ones a session remembered to touch.
  *
  * `context` names what the caller was about to do, for the skip message
  * only — the allowlist logic itself never varies by caller.
@@ -1250,9 +1293,39 @@ function fixturesPermitted(ref) {
  * actions redirect to `routes.ride(id)`/`routes.club(id)` on success, and a
  * row reached that way is owned by construction: no probe needed, unlike
  * every other id this file has to establish ownership of.
+ *
+ * **The club is created BEFORE the ride, and the ride is attached to it
+ * (PD-311) — as insurance, NOT as the fix.** This function never ticks the
+ * public box, so its fixture ride is private
+ * (PD-320's composer default), and `checkEditRetention`'s flip is therefore
+ * private → **public** — a widening `EditRideForm` has always permitted. The
+ * direction that trips the guard, clubless *public* → private, is only
+ * reachable on a ride the account **already owned**, which `wanted` means this
+ * function never creates. What actually closes PD-311 is the submittable-
+ * candidate gate in `checkEditRetention`.
+ *
+ * The insurance is still worth having: the composer's `is_public` default has
+ * flipped once already, and a clubbed fixture ride is one whose flip cannot
+ * cross the guard in either direction.
+ *
+ * `existing.club` is the other half: `wanted` only asks for what is missing,
+ * so a rider who already owns a club gets no new one and the ride must be
+ * attached to the club they have. Passing it in is what keeps the fixture
+ * ride clubbed on a second run.
  */
-async function provision(wanted) {
+async function provision(wanted, existing = {}) {
   const created = { ride: null, club: null }
+
+  if (wanted.club) {
+    await page.goto(`${BASE}/clubs/new`, { waitUntil: 'networkidle' })
+    await page.fill('input[name="name"]', 'Walk fixture club')
+    await Promise.all([
+      page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
+      page.click('button[type="submit"]'),
+    ])
+    await page.waitForTimeout(1200)
+    created.club = new URL(page.url()).searchParams.get('id')
+  }
 
   if (wanted.ride) {
     // A year out, not ten days, and the reason changed shape rather than going
@@ -1271,23 +1344,33 @@ async function provision(wanted) {
     await page.fill('input[name="title"]', 'Walk fixture ride')
     await page.fill('input[name="meeting_point"]', 'Dam Square, Amsterdam')
     await page.fill('input[name="departure_at"]', departure)
+
+    // Attach it to a club — see the header. `CreateRideForm` draws the picker
+    // only when the rider is not already inside a club context, and it lists
+    // `getMyClubs`, so a club created seconds ago is there on this fresh load.
+    // Selected by VALUE rather than by index: `option:nth-child(2)` would pick
+    // whatever the list happens to order first, and "No club" is child 1 only
+    // until someone reorders it.
+    const clubForRide = created.club ?? existing.club ?? null
+    if (clubForRide) {
+      // Bounded, because the picker is genuinely absent when the composer is
+      // seeded with a club (`CreateRideForm` draws a hidden input instead) and
+      // the default 30 s wait would be paid for a fixture, not a finding.
+      const attached = await page
+        .selectOption('select[name="club_id"]', clubForRide, { timeout: 5_000 })
+        .then((values) => values.length > 0)
+        .catch(() => false)
+      if (!attached) {
+        console.log(`  ! the fixture ride could not be attached to a club — ${clubForRide}`)
+      }
+    }
+
     await Promise.all([
       page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
       page.click('button[type="submit"]'),
     ])
     await page.waitForTimeout(1200)
     created.ride = new URL(page.url()).searchParams.get('id')
-  }
-
-  if (wanted.club) {
-    await page.goto(`${BASE}/clubs/new`, { waitUntil: 'networkidle' })
-    await page.fill('input[name="name"]', 'Walk fixture club')
-    await Promise.all([
-      page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
-      page.click('button[type="submit"]'),
-    ])
-    await page.waitForTimeout(1200)
-    created.club = new URL(page.url()).searchParams.get('id')
   }
 
   return created
@@ -1317,7 +1400,9 @@ if (isFullWalk) {
     const permit = fixturesPermitted(await authenticatedProjectRef())
     if (permit.ok) {
       const wanted = { ride: !owned.ride, club: !owned.club }
-      const created = await provision(wanted)
+      // `owned.club` is passed so a rider who already has a club still gets a
+      // CLUBBED fixture ride — PD-311, see `provision`'s header.
+      const created = await provision(wanted, { club: owned.club })
 
       /**
        * **Report what landed, never what was attempted.** The first version
@@ -1647,6 +1732,285 @@ async function checkSignOut() {
 }
 
 /**
+ * A token that parses and matches nothing — 32 hex, `rideInviteTokenSchema`.
+ *
+ * **It must parse**, or `token` resolves to `null` and both halves below take
+ * the "somebody typed a URL" branch instead of the branch a real expired link
+ * takes. A string that gets as far as the RPC and comes back with zero rows is
+ * the state this phase is about; a string the client refuses is not.
+ *
+ * **It must also match nothing**, which is why it is a literal rather than a
+ * minted one. Minting a live token needs an organizer, a ride and a write, and
+ * spending one writes a `ride_members` row — the walk's write phases are
+ * deliberately narrow and allowlisted (PD-358), and a dead token exercises
+ * every state this phase asserts on while writing nothing at all.
+ */
+const DEAD_INVITE_TOKEN = 'deadbeef'.repeat(4)
+
+/**
+ * The two invite landing routes, hardcoded like every other path in this file.
+ *
+ * **There are two of them and PD-358's body says "the app's ONE public screen"
+ * — that was true when it was filed and stopped being true four days later.**
+ * `093` (PD-360) shipped `/clubs/join` as `/rides/join`'s twin: same seven
+ * states in the same order, the same generic copy signed out, the same 32-hex
+ * token shape, the same dead-link message, one RPC each. So the phase below
+ * takes a `kind` rather than being written twice — a second copy is how the
+ * two drift, and the property being asserted is a property of the *pattern*.
+ *
+ * `dataMarker` is text that appears only once a preview has actually loaded —
+ * **the leaked DATA**, keyed on the crew/member count that `RidePreviewCard`
+ * and `ClubPreviewScreen` each draw unconditionally; the first alternative in
+ * each is the kind's own most-obviously-private line. **`claim` is asserted
+ * absent SEPARATELY on the signed-out half, because neither implies the
+ * other**: a marker keyed on the Join button passes a preview drawn without
+ * its action slot, and one keyed on the data passes a screen drawing only the
+ * button. Both are leaks. (One gap is open and is left open knowingly: a null
+ * `members_count` renders `null riders`, which `\b\d+ riders?\b` does not
+ * match. The ride kind is still covered — `is organizing` is unconditional —
+ * but `Private club` is gated on `!isPublic`, so a PUBLIC club with a null
+ * count matches neither alternative. Closing it wants a marker on the club's
+ * name, which the preview takes from data this phase does not have.)
+ *
+ * **The waits below watch for a TERMINAL state — `DEAD_LINK_COPY` plus the
+ * per-kind sources — and waiting for the skeleton to GO instead is a no-op**:
+ * `RouteGuard`
+ * replaces `children` on boot, so on a cold `goto` the guard splash is alone in
+ * the DOM and the landing screen has not mounted at all — a predicate of the
+ * form "the skeleton is absent" is true on its first evaluation and the wait
+ * returns before anything under test has settled.
+ */
+const INVITE_LANDINGS = [
+  {
+    kind: 'ride',
+    path: '/rides/join',
+    rpc: '/rpc/ride_invite_link_preview',
+    dataMarker: /is organizing|\b\d+ riders?\b/i,
+    claim: /Join this ride/i,
+    // `SignedOutInvite`'s SECOND line, not its heading. The heading
+    // "You have been invited" is a prefix of the live preview's "You have been
+    // invited to a ride", so anchoring there would pass on a leaked preview.
+    signedOut: /Sign in or create an account/i,
+  },
+  {
+    kind: 'club',
+    path: '/clubs/join',
+    rpc: '/rpc/club_invite_link_preview',
+    dataMarker: /Private club|\b\d+ riders?\b/i,
+    claim: /Join club/i,
+    signedOut: /Sign in or create an account/i,
+  },
+]
+
+/**
+ * The one terminal string that is genuinely shared — both `DeadLink`s carry it
+ * verbatim. **The signed-out copy is deliberately NOT a module const**: it is a
+ * per-kind field, so a kind that diverges would leave a module-level wait
+ * watching a string that never appears, timing out the full 20s and then
+ * failing an assertion on text that was correct. The wait threads
+ * `signedOut.source` through instead, like `dataMarker` and `claim`.
+ */
+const DEAD_LINK_COPY = 'This link has expired'
+
+/**
+ * The invite landing routes — the only screens a stranger can open — PD-358.
+ *
+ * The route loop above visits each bare, which answers "does it render". This
+ * answers the two questions the loop cannot, and the first of them is a shape
+ * the walk had never done at all: **a visit with no session.**
+ *
+ * ## Signed out, holding a token: the screen must not become an oracle
+ *
+ * `RideInviteJoin`'s and `ClubInviteJoin`'s shared contract is that a visitor
+ * with no session sees generic copy naming neither the ride nor its organizer
+ * (neither the club nor its size), and that it **calls neither RPC** — each
+ * preview needs `auth.uid()` for its block and participation checks, so there
+ * is nothing to render before a session exists and nothing to leak. Decision #1
+ * is untouched and no `anon` grant exists to make either screen richer.
+ *
+ * **The load-bearing assertion is the RPC one, and the reason is worth stating
+ * because the obvious reading of this phase is wrong.** A dead token cannot
+ * produce ride data whatever the screen does, so "no ride title on screen"
+ * passes here on a build that leaks every ride — it is asserted anyway (it
+ * would catch `SignedOutInvite` being replaced by a preview) but it proves
+ * nothing on its own. What a dead token *can* show is the discriminator: if the
+ * component ever reordered its guards so `DeadLink` were reached before the
+ * `signedIn === false` branch, or issued the read anonymously, a stranger could
+ * tell a live token from a dead one by opening it. That is an existence oracle
+ * over every ride and every club in the app, RLS would refuse none of it — each
+ * RPC is granted to `authenticated`, so an anonymous call is a refusal rather
+ * than a leak, and a refusal answers the question just as well as a row does —
+ * and no assertion in `supabase/tests/` can see it. Two assertions close it: the
+ * dead token is NOT reported as dead, and no request to the preview RPC leaves
+ * the page.
+ *
+ * ## Signed in, holding the same dead token: the read has to actually work
+ *
+ * `getRideInviteLinkPreview` and `getClubInviteLinkPreview` call
+ * `ride_invite_link_preview` and `club_invite_link_preview` by name. Nothing in
+ * `tsc`, ESLint, Vitest or `next build` parses those strings, and a wrong one
+ * draws `ErrorState` with a retry that can never succeed — which is the app's
+ * commonest silent failure and reads, to a rider, exactly like a broken invite.
+ * **`ErrorState` and `DeadLink` are the two states this half exists to tell
+ * apart**: "we could not ask" and "the answer is no" are different sentences,
+ * and only one of them is the rider's to do nothing about.
+ *
+ * ## What this phase deliberately does not do
+ *
+ * It never claims. `claimRideInviteLink` and `claimClubInviteLink` are reached
+ * by a tap and by nothing else, and a claim is a write — so the Join control is
+ * asserted *absent* on a dead link and is never pressed on a live one.
+ */
+async function checkInviteLanding({ kind, path, rpc, dataMarker, claim, signedOut }) {
+  console.log(`\nthe ${kind} invite landing route (${path}):`)
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  const target = `${BASE}${path}?token=${DEAD_INVITE_TOKEN}`
+
+  // A throwaway context, the same device `checkGuard`'s signed-out half uses
+  // and for the same reason: it cannot see the session established above. That
+  // is also why this half can sit here, among the phases that need a session,
+  // rather than being wedged in before the sign-in — the issue offered both and
+  // this is the one that does not move anything already working.
+  const anonContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const anonPage = await anonContext.newPage()
+  let anonPreviewCalls = 0
+  anonPage.on('request', (r) => {
+    if (r.url().includes(rpc)) anonPreviewCalls += 1
+  })
+
+  await anonPage.goto(target, { waitUntil: 'networkidle' }).catch(() => {})
+  // **A terminal state, never the skeleton's absence** — see the note on
+  // INVITE_LANDINGS for why the obvious predicate returns before the screen has
+  // mounted at all. Every state this half can legitimately end in is listed,
+  // plus the two it must NOT reach, so a wrong build is read rather than
+  // waited out.
+  await anonPage
+    .waitForFunction(
+      (sources) => sources.some((x) => new RegExp(x, 'i').test(document.body.innerText)),
+      [signedOut.source, DEAD_LINK_COPY, dataMarker.source],
+      { timeout: 20_000 }
+    )
+    .catch(() => {})
+  // **A short settle the terminal-state wait cannot provide, and it is
+  // load-bearing for the RPC assertion below.** The wait resolves on the first
+  // frame after `SignedOutInvite` paints, so reading `anonPreviewCalls`
+  // straight after it gives a stray request no window to appear in — and the
+  // regression that assertion exists to catch (the null query key being
+  // removed, `RideInviteJoin`'s `signedIn && token ? … : null`) would dispatch
+  // in the same tick `signedIn` settles to false, racing that very paint. The
+  // old fixed `waitForTimeout(1500)` was providing this by accident; it is
+  // kept deliberately and small, rather than as a guess at a round trip.
+  await anonPage.waitForTimeout(400)
+
+  const anonPath = new URL(anonPage.url()).pathname
+  const anonText = await anonPage.evaluate(() => document.body.innerText).catch(() => '')
+
+  report(
+    anonPath === path,
+    'signed out: the visitor is not bounced to /auth/login',
+    `landed on ${anonPath}`
+  )
+  report(
+    signedOut.test(anonText),
+    'signed out: the generic invite renders',
+    `body was ${JSON.stringify(anonText.slice(0, 120))}`
+  )
+  report(
+    !new RegExp(DEAD_LINK_COPY, 'i').test(anonText),
+    'signed out: a dead token is NOT reported as dead',
+    'the screen is an oracle — a stranger can tell a live token from a dead one'
+  )
+  report(
+    anonPreviewCalls === 0,
+    'signed out: the preview RPC is never called',
+    `${anonPreviewCalls} request(s) to ${rpc}`
+  )
+  // Trivially true for a dead token — see the header. Kept because it is the
+  // assertion that fails if `SignedOutInvite` ever starts drawing a preview,
+  // and it reads the DATA rather than the claim control, so a preview drawn
+  // without its action slot fails it too.
+  report(
+    !dataMarker.test(anonText),
+    `signed out: no ${kind} data on screen`,
+    `${kind} data is on screen with no session`
+  )
+  // **The control, separately from the data**, because neither implies the
+  // other: a marker on the Join button passes a preview drawn WITHOUT its
+  // action slot, and one on the data passes a screen drawing ONLY the button.
+  // Both are leaks.
+  report(
+    !claim.test(anonText),
+    'signed out: no Join control on screen',
+    'a stranger is being offered a claim'
+  )
+
+  await anonContext.close()
+
+  // Phase 2, on the walk's own page, which is holding the session.
+  let previewCalls = 0
+  const countPreview = (r) => {
+    if (r.url().includes(rpc)) previewCalls += 1
+  }
+  page.on('request', countPreview)
+
+  await page.goto(target, { waitUntil: 'networkidle' }).catch(() => {})
+  // **A terminal state, never the skeleton's absence** — see the note on
+  // INVITE_LANDINGS. The states this half can end in are the dead-link
+  // message, an `ErrorState` retry, and the claim control.
+  await page
+    .waitForFunction(
+      (sources) =>
+        sources.some((x) => new RegExp(x, 'i').test(document.body.innerText)) ||
+        [...document.querySelectorAll('[role="alert"]')].some((el) =>
+          /try again/i.test(el.textContent ?? '')
+        ),
+      [DEAD_LINK_COPY, claim.source],
+      { timeout: 20_000 }
+    )
+    .catch(() => {})
+  page.off('request', countPreview)
+
+  const text = await page.evaluate(() => document.body.innerText).catch(() => '')
+  const failedRead = await page
+    .evaluate(() =>
+      [...document.querySelectorAll('[role="alert"]')].some((el) =>
+        /try again/i.test(el.textContent ?? '')
+      )
+    )
+    .catch(() => false)
+
+  report(
+    previewCalls > 0,
+    'signed in: the preview RPC is issued',
+    `no request to ${rpc} — the read never left the page`
+  )
+  report(
+    !failedRead,
+    'signed in: a dead link is a dead link, not a failed read',
+    'ErrorState with a retry is on screen — the RPC name or its arguments are wrong'
+  )
+  report(
+    new RegExp(DEAD_LINK_COPY, 'i').test(text),
+    'signed in: the dead-link message renders',
+    `body was ${JSON.stringify(text.slice(0, 120))}`
+  )
+  report(
+    !claim.test(text),
+    'signed in: no Join control on a dead link',
+    'a dead token is offering a claim'
+  )
+
+  return { bad, ran }
+}
+
+/**
  * A refused create must give the rider back what they filled in — the same
  * defect as the refused sign-in above, on the screen with the most to lose.
  *
@@ -1926,9 +2290,10 @@ async function checkEditRetention(candidates, unavailable) {
   // assertion below then passed against a form nothing had submitted. The
   // action's own error is the `role="status"` one.
 
-  // **The first candidate whose form actually renders — confirmed via
-  // `probeOwnsEditable`, the same probe `discoverOwned` already ran on each
-  // of these before this function was ever called.** `/rides/detail/edit`
+  // **The first candidate whose form both renders and can be submitted after
+  // the flip — ownership confirmed via `probeOwnsEditable`, the same probe
+  // `discoverOwned` already ran on each of these before this function was
+  // ever called.** `/rides/detail/edit`
   // and `/clubs/detail/edit` both answer 200 for a rider who does not own the
   // row — they draw a "not yours" message rather than 404ing (PD-101) — so a
   // re-check here rather than trusting the earlier answer outright is
@@ -1936,15 +2301,66 @@ async function checkEditRetention(candidates, unavailable) {
   // that function's own header for why an uncaught reject or a fixed sleep
   // both misread this), and it is what leaves `page` sitting on the chosen
   // form afterwards, ready for the reads and the submit below.
+  //
+  // **Owning the row is not enough — the flip below has to leave Save
+  // clickable, and on the ride form it does not always (PD-311).**
+  // `EditRideForm` disables Save on the transition `narrowsToNobody` names, so
+  // unticking "public" on a ride that belongs to no club disables the very
+  // button this phase clicks next, and `page.click` then waits out its full
+  // timeout and throws — with none of this phase's assertions having run.
+  // Which ride trips it flipped with PD-320 (the composer's `is_public`
+  // default went off), so before that it was the private ride and now it is
+  // the public one; either way it depends on what the account happens to own,
+  // which is why it read as flakiness rather than as a defect.
+  //
+  // **PD-338 narrowed that guard and deliberately did not close this**: a ride
+  // that ARRIVED clubless and private now saves, but un-publishing a clubless
+  // *public* one is still the refused transition, so the trap is narrower
+  // rather than gone.
+  //
+  // **Read the button rather than re-deriving the rule.** A second copy of the
+  // predicate here would go stale silently — it has already been rewritten
+  // once. `isEnabled` asks the app what it will accept, so this survives the
+  // guard being narrowed again, widened or dropped.
+  //
+  // The club form has no such guard, so it is the natural fallback — the loop
+  // already had the club as a second candidate and simply never reached it,
+  // because it broke on the first candidate that *rendered*.
   let chosen = null
+  let clubBefore = null
+  let publicWanted = null
+  const unusable = []
   for (const candidate of candidates) {
-    if (await probeOwnsEditable(candidate.kind, candidate.id)) {
-      chosen = candidate
-      break
+    if (!(await probeOwnsEditable(candidate.kind, candidate.id))) continue
+
+    const club = await page.inputValue(field('club_id')).catch(() => null)
+    const publicBefore = await page.isChecked(field('is_public'))
+
+    // Flip the checkbox, so what is asserted is the rider's change rather than
+    // whatever the row already was.
+    await page.click('form label:has(input[name="is_public"])')
+
+    if (!(await page.isEnabled('form button[type="submit"]').catch(() => false))) {
+      await page.click('form label:has(input[name="is_public"])').catch(() => {})
+      unusable.push(
+        `${candidate.label}: Save is disabled once "public" is ${publicBefore ? 'unticked' : 'ticked'}`
+      )
+      continue
     }
+
+    chosen = candidate
+    clubBefore = club
+    publicWanted = !publicBefore
+    break
   }
   if (!chosen) {
-    if (unavailable?.failed) {
+    if (unusable.length > 0) {
+      // **Not a skip.** The rider owns an editable row and the phase still
+      // could not run, which is the PD-311 failure named rather than timed
+      // out. CLAUDE.md: a shrunken N/N is a skip, not a pass — so this moves
+      // `ran` and `bad` instead of dropping out of the total.
+      report(false, 'an editable row this phase can submit was available', unusable.join('; '))
+    } else if (unavailable?.failed) {
       // Fixtures were permitted and asked for, and still nothing came out of
       // it — a `! FIXTURE FAILED` line already printed at the caller, and
       // CLAUDE.md is explicit that a shrunken N/N is a skip, not a pass. So
@@ -1961,14 +2377,7 @@ async function checkEditRetention(candidates, unavailable) {
     return { bad, ran }
   }
   console.log(`  (on ${chosen.label})`)
-
-  const clubBefore = await page.inputValue(field('club_id')).catch(() => null)
-  const publicBefore = await page.isChecked(field('is_public'))
-
-  // Flip the checkbox, so what is asserted is the rider's change rather than
-  // whatever the ride already was.
-  await page.click('form label:has(input[name="is_public"])')
-  const publicWanted = !publicBefore
+  for (const skipped of unusable) console.log(`  (skipped ${skipped})`)
 
   // **The refusal is whitespace, and the reason is worth keeping.** Neither
   // edit form carries `noValidate`, so anything the browser's own constraint
@@ -2137,8 +2546,635 @@ async function checkEditProfileRetention() {
   return { bad, ran }
 }
 
+/**
+ * ## The four WRITE phases — like, comment, RSVP, join a club
+ *
+ * Added 2026-09-03, on the product owner's direct request rather than a
+ * Linear story. Every phase above this point either renders a screen or
+ * exercises a REFUSAL; none of them taps a control that is meant to succeed
+ * and then checks the result stuck. The RLS suite proves who MAY like a
+ * postcard with no app present, and `lib/actions/__tests__/` exercises the
+ * action against a mocked resolver — neither would notice a like button, a
+ * comment composer, an RSVP bar or a Join club control that stopped being
+ * wired to its action at all.
+ *
+ * Four rules hold across all four, and are not repeated at each one:
+ *
+ * - **Gated by the same project-ref allowlist as every write in this file,
+ *   checked once immediately before the block below** —
+ *   `refWritable(await authenticatedProjectRef(), 'exercise social writes')`
+ *   — rather than a copy inside each phase, for the reason `refWritable`'s
+ *   own header gives: one rule change binds every write rather than
+ *   whichever ones a session remembered to touch. **This was the real gap a
+ *   pre-merge review found**: with `WALK_EMAIL`/`WALK_PASSWORD` set, `MINTED`
+ *   is false, so neither `preflightMintRef()` nor the mint-time
+ *   `refWritable` call ever runs — and until this gate, nothing downstream
+ *   checked the ref either, so a `WALK_EMAIL` pointed at PROD by mistake
+ *   would have liked a real rider's postcard, commented on it, RSVPed to a
+ *   real ride and joined a real club.
+ * - **Assert the EFFECT, not the click.** Every assertion below follows a
+ *   full `page.goto` back to the same URL — a fresh read from the server,
+ *   never the optimistic DOM state the click itself produced — because the
+ *   whole value of a phase like this is "a rider taps X and it STAYS X".
+ * - **Each phase undoes its OWN row — that is not the same claim as "leaves
+ *   no trace", and the difference is real.** Like/unlike, RSVP set-then-
+ *   clear and join-then-leave all delete the one row the phase itself
+ *   inserted (`postcard_likes`, `ride_members`, `club_members`), and the
+ *   comment phase deletes the comment it posted. But RSVPing and joining
+ *   each also fire an INSERT-only notification trigger addressed to
+ *   someone else — `notify_ride_joined` (the ride's organizer) and
+ *   `notify_club_joined` (the club's owner and every admin),
+ *   `036_notifications.sql` §7.4/§7.6 — and **neither has a matching
+ *   `after delete` retraction**, deliberately: that migration's own comment
+ *   is that a retraction hanging off a DELETE the ACTOR controls would let
+ *   a rider delete a row in a table only the recipient may read, which is
+ *   the hazard `postcard_liked`'s own retraction (the one exception) was
+ *   scoped to avoid repeating. `leaveClub`'s header records the same
+ *   asymmetry for the `feed_reads` watermark `checkJoinClub` also leaves
+ *   behind. **This is not standing residue on CI's minted path**:
+ *   `notifications.actor_id references profiles(id) on delete cascade`
+ *   (checked on DEV), and this file's own `attemptDeleteAccount` removes
+ *   the minted rider's profile at the end of every run, taking every
+ *   notification it caused as an actor with it. **It IS standing residue in
+ *   `WALK_EMAIL` mode**, because that account is deliberately never deleted
+ *   (see this file's header) — a real notification lands on a real
+ *   recipient's list, and a stray `feed_reads` row, on every such run.
+ * - **A missing fixture is a loud skip, never a silent pass** — printed and
+ *   excluded from `ran`/`bad` the same way `discoverDetailPaths` already
+ *   handles "no rides to open" above. None of the four can be fixtured by
+ *   this walk on demand: a postcard needs Storage, which hangs in this
+ *   container (see the header); a ride or club this rider does not already
+ *   own or belong to needs a SECOND identity, which this walk does not
+ *   hold.
+ */
+
+/**
+ * Waits for the write a phase just triggered to actually reach Postgres
+ * (through the relay) before doing anything else that could race it — most
+ * importantly, a `page.goto` issued while the fetch is still in flight,
+ * which can cancel it outright since it shares the tab the write is running
+ * in. The same `Promise.all([wait, action])` shape every other
+ * write-then-navigate in this file already uses for `waitForURL`.
+ *
+ * **Matched on the REST path AND the method — a pre-merge review caught the
+ * path-only version matching a READ on the identical path.** `table` alone
+ * is not unique to a write: `getExploreClubs` GETs `/rest/v1/club_members`
+ * to build the Explore list, and `attachLikeState` GETs
+ * `/rest/v1/postcard_likes` to draw every card's pressed state — both run on
+ * screens these phases visit moments before or after the write itself. A GET
+ * still in flight past this call satisfies a path-only wait, and the
+ * `page.goto` that follows then cancels the POST/DELETE that was meant to be
+ * waited for — which read as "no Leave club row found" on a build that was
+ * never broken. `POST`/`DELETE`/`PATCH`/`PUT` covers every write PostgREST
+ * issues; `GET`/`HEAD` never appear in this set.
+ *
+ * **A swallowed timeout is now distinguishable from a genuine miss.** Every
+ * assertion downstream of a call that timed out here is reading against
+ * whatever was already on screen, not against a confirmed write — worth
+ * knowing before trusting a FAIL (or a surprising ok) that follows one.
+ */
+async function waitForTableWrite(table, action) {
+  const isWrite = (r) =>
+    r.url().includes(`/rest/v1/${table}`) && /^(POST|DELETE|PATCH|PUT)$/.test(r.request().method())
+  const [response] = await Promise.all([
+    page.waitForResponse(isWrite, { timeout: 20_000 }).catch(() => null),
+    action(),
+  ])
+  if (!response) {
+    console.log(`  ! no ${table} write observed within 20s — the next check may be reading stale state`)
+  }
+}
+
+/**
+ * Opens the front card of the `/postcards` deck as a popup, exactly the way
+ * a rider does — tapping its comment control, product owner 2026-08-27:
+ * *"This should also be the behavior when we click on a postcard in the
+ * homepage."*
+ *
+ * **This is the discovery mechanism for both postcard phases, and it is
+ * deliberately NOT `discoverDetailPaths`'s postcard scan.** That scan looks
+ * for an `<a href="/postcards/detail...">`, and nothing under `(app)` renders
+ * one any more: `CommentsLink` only falls back to a real anchor where
+ * `usePostcardViewer()` returns `null`, and the provider is mounted for the
+ * whole `(app)` layout — measured directly against this DEV account
+ * (`aria-label="Add a comment"` renders a `<button>`, never an `<a>`). **This
+ * is not only the feed's comment control** — `PostcardStamp` (`RideJournal`,
+ * `RideInviteJoin`) shares the identical `usePostcardViewer()`-or-anchor
+ * shape, so there is no path to `/postcards/detail` a signed-in rider can
+ * reach anywhere in the app, not merely on `/postcards`. Fixing that
+ * discovery gap generally is out of scope here; reusing the broken scan for
+ * these two phases would just make both skip loudly on every real run
+ * instead of exercising anything, which is the one part in scope to route
+ * around.
+ *
+ * **Scoped to `.touch-none`**, the class `PostcardDeck` puts only on the
+ * front card (`style.pointerEvents: isFront ? 'auto' : 'none'` in the same
+ * conditional) — the two cards behind it carry the identical
+ * `[data-postcard-action]` markup with `pointer-events: none`, so an
+ * unscoped click would either hit the wrong card or fail Playwright's
+ * actionability check outright. The **second** `data-postcard-action`
+ * element in source order is always the comment control (`PostcardCard`
+ * renders Like, then Comments, then Share) — indexed rather than matched by
+ * label, because the label's own text varies with the count (`Add a
+ * comment` vs. `N comments`).
+ *
+ * Returns `false`, never throws, when there is nothing to open — a
+ * legitimate "no postcard this rider can see" rather than a defect, and
+ * postcards are the one row this walk cannot fixture on demand (the
+ * composer needs an image; Storage from this container's Chromium hangs —
+ * see this file's header).
+ */
+async function openFrontPostcardPopup() {
+  await page.goto(`${BASE}/postcards`, { waitUntil: 'networkidle' }).catch(() => {})
+  const clicked = await page
+    .waitForSelector('.touch-none [data-postcard-action]', { timeout: 20_000 })
+    .then(() =>
+      page.evaluate(() => {
+        const control = document.querySelectorAll('.touch-none [data-postcard-action]')[1]
+        if (!control) return false
+        control.click()
+        return true
+      })
+    )
+    .catch(() => false)
+  if (!clicked) return false
+
+  return page
+    .waitForSelector('[role="dialog"][aria-label="Postcard"]', { timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false)
+}
+
+/** Every selector below is scoped to the popup, not the page — the deck's
+ *  three background cards carry the identical markup underneath it. */
+const POSTCARD_DIALOG = '[role="dialog"][aria-label="Postcard"]'
+
+/**
+ * Likes a real postcard, then unlikes it back — WRITE phase 1/4.
+ *
+ * **Reads the row's own starting state rather than assuming unliked.** A
+ * freshly minted account always starts unliked, but a `WALK_EMAIL` rerun
+ * might not (a previous run could have been interrupted between the two
+ * toggles below) — assuming would make every assertion here describe the
+ * wrong direction. Whichever it reads, it flips it, confirms the flip
+ * survives a full reload, flips it back, and confirms that too — so both
+ * `likePostcard` and `unlikePostcard` (`lib/actions/postcards.ts`) run on
+ * every walk and the row is left exactly as it was found, which is what
+ * keeps this safe to rerun on a shared, un-cleaned-up DEV.
+ *
+ * **The "reload" is a full `page.goto('/postcards')` plus reopening the
+ * popup**, not `page.reload()` on a detail URL — see `openFrontPostcardPopup`
+ * for why there is no such URL to reload. The deck orders by `created_at
+ * desc`, which neither a like nor a comment moves, so the same postcard is
+ * the front card again every time this reopens it.
+ */
+async function checkLikePostcard() {
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\nlike a postcard (and unlike it back):')
+
+  const likeSelector = `${POSTCARD_DIALOG} [data-postcard-action][aria-label^="Like,"]`
+  const pressed = () => page.$eval(likeSelector, (el) => el.getAttribute('aria-pressed') === 'true')
+
+  // The whole body is one try, not one `.catch()` at the call site — a
+  // throw partway through used to discard every `report()` that had already
+  // printed `ok` above it, so stdout and the final `N/N` could disagree.
+  // Catching here keeps whatever this phase had already counted and adds
+  // exactly one more failure for the throw itself, same as before.
+  try {
+    if (!(await openFrontPostcardPopup())) {
+      console.log('  (no postcard this rider can see — not exercised)')
+      return { bad, ran }
+    }
+    await page.waitForSelector(likeSelector, { timeout: 20_000 })
+    const startedLiked = await pressed()
+
+    await waitForTableWrite('postcard_likes', () => page.click(likeSelector))
+    await openFrontPostcardPopup()
+    await page.waitForSelector(likeSelector, { timeout: 20_000 })
+    const flipped = await pressed()
+    report(
+      flipped === !startedLiked,
+      `${startedLiked ? 'unliking' : 'liking'} it survives a reload`,
+      `expected aria-pressed="${!startedLiked}", read "${flipped}"`
+    )
+
+    await waitForTableWrite('postcard_likes', () => page.click(likeSelector))
+    await openFrontPostcardPopup()
+    await page.waitForSelector(likeSelector, { timeout: 20_000 })
+    const restored = await pressed()
+    report(
+      restored === startedLiked,
+      `${startedLiked ? 'liking' : 'unliking'} it back leaves the row as found`,
+      `expected aria-pressed="${startedLiked}", read "${restored}"`
+    )
+  } catch (e) {
+    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+    ran += 1
+    bad += 1
+  }
+
+  return { bad, ran }
+}
+
+/**
+ * Posts a comment on a real postcard, confirms it survives a reload, then
+ * removes it — WRITE phase 2/4.
+ *
+ * **Deletes what it posted, unlike the like phase's toggle-back** — a
+ * comment has no undo short of `deleteComment`, and this is the walk's own
+ * probe text rather than anything a rider wrote, so leaving it in a shared
+ * postcard's thread on every run would silt it up. The two-tap
+ * Delete/Confirm delete sequence is `CommentItem`'s own (see its header on
+ * why deleting is deliberately not one tap).
+ *
+ * Reuses `openFrontPostcardPopup` — commenting needs only that the postcard
+ * is VISIBLE, never that this rider authored it: 011's INSERT policy
+ * delegates "can I comment on this" to the postcard's own SELECT policy.
+ */
+async function checkCommentOnPostcard() {
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\ncomment on a postcard:')
+
+  // The whole body is one try — see `checkLikePostcard`'s identical comment
+  // for why a throw partway through must not discard `report()` calls that
+  // already ran.
+  try {
+    if (!(await openFrontPostcardPopup())) {
+      console.log('  (no postcard this rider can see — not exercised)')
+      return { bad, ran }
+    }
+
+    // Scoped to an `<article>` containing the marker, so a stray click cannot
+    // land on some OTHER comment's Delete button — `CommentItem` renders one
+    // per row, and other visible comments carry theirs whenever this rider
+    // also authored them or authored the postcard.
+    const clickWithinCommentArticle = (marker, buttonText) =>
+      page.$$eval(
+        `${POSTCARD_DIALOG} article`,
+        (articles, [text, label]) => {
+          const article = articles.find((a) => a.textContent?.includes(text))
+          const btn = article && [...article.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
+          if (btn) btn.click()
+          return Boolean(btn)
+        },
+        [marker, buttonText]
+      )
+    const hasCommentArticle = (marker) =>
+      page.$$eval(
+        `${POSTCARD_DIALOG} article`,
+        (articles, text) => articles.some((a) => a.textContent?.includes(text)),
+        marker
+      )
+
+    const marker = `Walk comment probe ${Date.now()}`
+    const body = `${POSTCARD_DIALOG} form [name="body"]`
+
+    await page.waitForSelector(body, { timeout: 20_000 })
+    await page.fill(body, marker)
+    await waitForTableWrite('postcard_comments', () => page.click(`${POSTCARD_DIALOG} form button[type="submit"]`))
+    await page.waitForTimeout(500)
+
+    // `PostcardViewerBody` gates the composer behind `postcard.data` AND
+    // `comments.data` both landing (`SkeletonDetail` until then), so a check
+    // that reopens and reads `article`s immediately can catch the dialog
+    // between "reopened" and "loaded" and misread a genuinely-posted comment
+    // as missing — measured, not theoretical: this is what the phase's first
+    // live run against DEV did. Waiting on the composer field is what waiting
+    // on the like button already does for `checkLikePostcard`.
+    await openFrontPostcardPopup()
+    await page.waitForSelector(body, { timeout: 20_000 })
+    report(
+      await hasCommentArticle(marker),
+      'the comment survives a reload',
+      'the posted text was not found in the thread afterwards'
+    )
+
+    // Best-effort cleanup — worth trying, never worth failing the run over.
+    // **Not `report(...)`** — this used to feed `bad` directly, which
+    // contradicted the very sentence above it: a slow relay or a renamed
+    // label on the Delete/Confirm delete buttons turned a stray probe
+    // comment into a red deploy gate. `attemptDeleteAccount`'s teardown
+    // (`ok`/`WARN`, never counted) is the precedent this now follows —
+    // the assertion above already proved the comment feature itself works.
+    await clickWithinCommentArticle(marker, 'Delete').catch(() => {})
+    await page.waitForTimeout(300)
+    await waitForTableWrite('postcard_comments', () =>
+      clickWithinCommentArticle(marker, 'Confirm delete').catch(() => {})
+    )
+    await page.waitForTimeout(500)
+
+    await openFrontPostcardPopup()
+    await page.waitForSelector(body, { timeout: 20_000 })
+    const leftBehind = await hasCommentArticle(marker)
+    if (leftBehind) {
+      console.log(
+        '  WARN the probe comment was not cleaned up — it may still be visible on DEV.\n' +
+          "       Non-fatal — see this phase's own comment on why cleanup must not fail the run."
+      )
+    } else {
+      console.log('  ok   the cleanup delete survives a reload')
+    }
+  } catch (e) {
+    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+    ran += 1
+    bad += 1
+  }
+
+  return { bad, ran }
+}
+
+/**
+ * A ride this rider neither organizes nor has already answered —
+ * `/rides/explore` excludes both by construction (`getExploreRides` filters
+ * out the organizer's own rides and anything with an existing
+ * `ride_members` row), so the first ride it lists is guaranteed eligible for
+ * `RideAttendanceBar` (`canRsvp = is_upcoming && !is_organizer`) with no
+ * second probe needed — unlike `discoverOwned` elsewhere in this file, which
+ * has to check ownership by hand because its two lists make no such
+ * promise.
+ */
+async function discoverRsvpCandidate() {
+  await page.goto(`${BASE}/rides/explore`, { waitUntil: 'networkidle' }).catch(() => {})
+  await page.waitForTimeout(800)
+  return page.evaluate(() =>
+    [...document.querySelectorAll('a[href]')]
+      .map((a) => new URL(a.href, location.origin))
+      .filter((u) => u.pathname === '/rides/detail')
+      .map((u) => u.searchParams.get('id'))
+      .find((id) => id && /^[0-9a-f-]{36}$/.test(id)) ?? null
+  )
+}
+
+/** `RideAttendanceBar`'s own selector, read from rather than re-derived. */
+const RSVP_BAR = '[role="radiogroup"][aria-label="Are you going?"]'
+
+async function rsvpCheckedLabel() {
+  return page.$eval(RSVP_BAR, (group) => {
+    const checked = [...group.querySelectorAll('[role="radio"]')].find(
+      (b) => b.getAttribute('aria-checked') === 'true'
+    )
+    return checked ? checked.textContent.trim() : null
+  })
+}
+
+async function clickRsvpOption(label) {
+  await page.$eval(
+    RSVP_BAR,
+    (group, text) => {
+      const button = [...group.querySelectorAll('[role="radio"]')].find((b) => b.textContent.trim() === text)
+      button?.click()
+    },
+    label
+  )
+}
+
+/**
+ * Sets, changes and clears this rider's RSVP on a real ride — WRITE phase
+ * 3/4.
+ *
+ * **Ends on cleared (`null`), not on the state it started in.** `null`
+ * deletes the `ride_members` row (`setRideAttendance`'s own header), which
+ * is exactly what makes `getExploreRides` list this same ride again next
+ * run — so a `WALK_EMAIL` rerun needs no fixture and no cleanup pass of its
+ * own, unlike the like phase there is no "state it was found in" to restore
+ * beyond that: an un-RSVP'd ride's honest starting state already IS
+ * cleared, by construction of `discoverRsvpCandidate` above.
+ *
+ * **That clears the row this rider owns, not the notification setting
+ * "Yes!" already caused** — `notify_ride_joined` addresses the ride's
+ * organizer and has no retraction. See the block comment above
+ * `waitForTableWrite` for why that is not standing residue on CI's minted
+ * path.
+ */
+async function checkRsvpToRide(rideId) {
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\nRSVP to a ride (set, change, clear):')
+
+  if (!rideId) {
+    console.log('  (no ride on Explore this rider can RSVP to — not exercised)')
+    return { bad, ran }
+  }
+
+  // The whole body is one try — see `checkLikePostcard`'s identical comment
+  // for why a throw partway through must not discard `report()` calls that
+  // already ran.
+  try {
+    await page.goto(`${BASE}/rides/detail?id=${rideId}`, { waitUntil: 'networkidle' })
+    const rendered = await page
+      .waitForSelector(RSVP_BAR, { timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!rendered) {
+      report(
+        false,
+        'the RSVP bar rendered for a ride Explore says is open to it',
+        'no [role="radiogroup"] found — canRsvp may be false for a ride Explore should have excluded'
+      )
+      return { bad, ran }
+    }
+
+    const startedAt = await rsvpCheckedLabel()
+    report(startedAt === null, 'starts unanswered, as Explore promised', `already answered ${JSON.stringify(startedAt)}`)
+
+    await waitForTableWrite('ride_members', () => clickRsvpOption('Yes!'))
+    await page.goto(`${BASE}/rides/detail?id=${rideId}`, { waitUntil: 'networkidle' })
+    await page.waitForSelector(RSVP_BAR, { timeout: 20_000 })
+    const afterYes = await rsvpCheckedLabel()
+    report(afterYes === 'Yes!', '"Yes!" survives a reload', `read ${JSON.stringify(afterYes)}`)
+
+    await waitForTableWrite('ride_members', () => clickRsvpOption('Maybe...'))
+    await page.goto(`${BASE}/rides/detail?id=${rideId}`, { waitUntil: 'networkidle' })
+    await page.waitForSelector(RSVP_BAR, { timeout: 20_000 })
+    const afterMaybe = await rsvpCheckedLabel()
+    report(afterMaybe === 'Maybe...', 'changing to "Maybe..." survives a reload', `read ${JSON.stringify(afterMaybe)}`)
+
+    await waitForTableWrite('ride_members', () => clickRsvpOption('No'))
+    await page.goto(`${BASE}/rides/detail?id=${rideId}`, { waitUntil: 'networkidle' })
+    await page.waitForSelector(RSVP_BAR, { timeout: 20_000 })
+    const afterNo = await rsvpCheckedLabel()
+    report(afterNo === null, 'clearing it survives a reload', `read ${JSON.stringify(afterNo)}`)
+  } catch (e) {
+    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+    ran += 1
+    bad += 1
+  }
+
+  return { bad, ran }
+}
+
+/**
+ * A PUBLIC club this rider is not already a member of — `/clubs/explore` is
+ * exactly that list by construction (`getExploreClubs`). Reads only
+ * `JoinClubButton` rows (`aria-label` starting `Join `), never
+ * `RequestToJoinButton`'s (`085`, PD-325's fourth Explore variant, `aria-label`
+ * starting `Request to join `) — a private club's approval workflow is a
+ * different, ungated write this phase does not attempt.
+ */
+async function discoverJoinableClub() {
+  await page.goto(`${BASE}/clubs/explore`, { waitUntil: 'networkidle' }).catch(() => {})
+  await page.waitForTimeout(800)
+  return page.evaluate(() => {
+    const button = document.querySelector('button[aria-label^="Join "]')
+    if (!button) return null
+    const card = button.closest('li')
+    const link = card?.querySelector('a[href*="/clubs/detail"]')
+    if (!link) return null
+    const id = new URL(link.href, location.origin).searchParams.get('id')
+    if (!id) return null
+    return { clubId: id, clubName: button.getAttribute('aria-label').slice('Join '.length) }
+  })
+}
+
+/**
+ * Joins a real public club, confirms the membership survives a reload, then
+ * leaves it again — WRITE phase 4/4.
+ *
+ * **Leaves the `club_members` row back, unlike the RSVP phase's deliberate
+ * one-way clear** — a club membership has no "not yet decided" resting
+ * state the way an RSVP does. The honest starting state
+ * `discoverJoinableClub` found the club in WAS not-a-member, so restoring it
+ * is the same toggle-back the like phase already models. `leaveClub` is a
+ * plain DELETE scoped to `auth.uid() = user_id` (`lib/actions/clubs.ts`), so
+ * this never needs the owner-only `leaveOwnedClub` branch — this rider only
+ * ever joins as an ordinary member.
+ *
+ * **That is the membership row only, not the whole footprint** — the
+ * `club_joined` notification this join fans out to the owner and every
+ * admin, and the `feed_reads` watermark, are NOT part of what leaving takes
+ * back. See the block comment above `waitForTableWrite` for the full
+ * accounting and why that is fine on CI's minted path and not on a
+ * `WALK_EMAIL` one.
+ *
+ * **The welcome club is not excluded by name, only by membership** —
+ * `getExploreClubs`' public half filters on `is_public` alone with no
+ * `is_default` exclusion (`docs/HANDOFF.md`, 2026-09-03), so a rider who is
+ * not currently a member of it can see it here too, same as any other public
+ * club. This walk's own minted account joins it at signup, so the ordinary
+ * run never picks it; a `WALK_EMAIL` account that previously left it could.
+ * Either way `leaveClub` carries no default-club guard for an ordinary
+ * member (only the owner's `leaveOwnedClub` refuses it), so joining and
+ * leaving it back is not a special case this phase needs to detect.
+ *
+ * **`IntroductionPrompt` is dismissed, never filled in** (`097`, PD-365,
+ * PD-384) — a real introduction is content a rider composes, not something a
+ * render check should be posting into a stranger's club on every run.
+ * `Not now` is the sheet's own escape and costs nothing: it dismisses for
+ * this session only (`lib/clubs/introduction-dismissal.ts`).
+ */
+async function checkJoinClub() {
+  let bad = 0
+  let ran = 0
+  const report = (ok, label, detail) => {
+    ran += 1
+    if (!ok) bad += 1
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `  (${detail})`}`)
+  }
+
+  console.log('\njoin a club (and leave it again):')
+
+  // The whole body is one try — see `checkLikePostcard`'s identical comment
+  // for why a throw partway through must not discard `report()` calls that
+  // already ran.
+  try {
+    const candidate = await discoverJoinableClub()
+    if (!candidate) {
+      console.log(
+        '  (no public club to join on Explore — not exercised; this rider cannot fixture one under its own session)'
+      )
+      return { bad, ran }
+    }
+    const { clubId, clubName } = candidate
+
+    const clickJoinButton = () =>
+      page.$$eval(
+        'button[aria-label^="Join "]',
+        (buttons, name) => buttons.find((b) => b.getAttribute('aria-label') === `Join ${name}`)?.click(),
+        clubName
+      )
+    const hasJoinButton = () =>
+      page.$$eval(
+        'button[aria-label^="Join "]',
+        (buttons, name) => buttons.some((b) => b.getAttribute('aria-label') === `Join ${name}`),
+        clubName
+      )
+
+    // Already on `/clubs/explore` — `discoverJoinableClub` just landed there —
+    // so this clicks in place rather than reloading a second time for no
+    // reason (`/clubs/explore` also resolves the rider's location for its
+    // "Near <city>" section, which is a metered vendor call — see
+    // `069_place_search_metering.sql` — so a redundant reload here is not
+    // free).
+    await waitForTableWrite('club_members', clickJoinButton)
+
+    // The introduction sheet, if this rider owes one for this club — dismissed
+    // rather than filled in, see this function's own header.
+    await page
+      .waitForSelector('[role="dialog"][aria-label="Introduce yourself to the club"]', { timeout: 8_000 })
+      .then(() => page.click('text=Not now'))
+      .catch(() => {})
+
+    await page.goto(`${BASE}/clubs/detail?id=${clubId}`, { waitUntil: 'networkidle' })
+    await page.click('button[aria-label="Club options"]', { timeout: 20_000 })
+    await page
+      .waitForSelector('[role="dialog"][aria-label="Club options"]', { timeout: 10_000 })
+      .catch(() => {})
+    const leaveRow = '[role="dialog"][aria-label="Club options"] button'
+    const canLeave = await page.$$eval(leaveRow, (buttons) =>
+      buttons.some((b) => b.textContent?.trim() === 'Leave club')
+    )
+    report(canLeave, 'the membership survives a reload (Leave club is offered)', 'no Leave club row found')
+
+    if (canLeave) {
+      await waitForTableWrite('club_members', () =>
+        page.$$eval(leaveRow, (buttons) => buttons.find((b) => b.textContent?.trim() === 'Leave club')?.click())
+      )
+      await page.waitForTimeout(500)
+    }
+
+    await page.goto(`${BASE}/clubs/explore`, { waitUntil: 'networkidle' })
+    const backOnExplore = await hasJoinButton()
+    report(backOnExplore, 'leaving it again survives a reload (back on Explore)', 'the club did not reappear on Explore')
+  } catch (e) {
+    console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+    ran += 1
+    bad += 1
+  }
+
+  return { bad, ran }
+}
+
 let guardFailures = 0
 let retentionRan = 0
+/**
+ * Counted from what ran rather than from a constant, like every other phase
+ * here: `checkInviteLanding` throws to a `.catch()` that reports one failed
+ * assertion, and a phase that died must not silently shrink the denominator
+ * into a pass.
+ */
+let inviteLandingRan = 0
+let socialActionFailures = 0
+let socialActionsRan = 0
 if (isFullWalk) {
   // A phase that throws must fail, not abort — an uncaught Playwright timeout
   // here takes the guard and sign-out phases down with it and reports nothing
@@ -2183,6 +3219,81 @@ if (isFullWalk) {
   })
   guardFailures += profileRetention.bad
   retentionRan += profileRetention.ran
+
+  // **Before `checkSignOut`**, because each phase's signed-IN half needs the
+  // session — the signed-OUT half brings its own context, so it does not care
+  // where it sits. Caught PER LANDING, not around the loop: a throw on the ride
+  // route must not take the club route's assertions down with it, which is the
+  // same reasoning as the `.catch()` on every phase above.
+  //
+  // **Before the four social-write phases below, and it must stay there.**
+  // Those write, and the invite phases deliberately do not — a dead token
+  // exercises every state they assert on and writes nothing — so running the
+  // read-only ones first means a walk that dies mid-write has still reported
+  // this phase's verdict.
+  for (const landing of INVITE_LANDINGS) {
+    const inviteLanding = await checkInviteLanding(landing).catch((e) => {
+      console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+      return { bad: 1, ran: 1 }
+    })
+    guardFailures += inviteLanding.bad
+    inviteLandingRan += inviteLanding.ran
+  }
+
+  // The four WRITE phases — see their own block comment above
+  // `waitForTableWrite` for what these are, why they exist, and the
+  // notification/feed_reads residue this gate does not change. Run here,
+  // after every refusal/retention phase and before the guard cases below,
+  // for the same reason `checkEditProfileRetention` runs last among those:
+  // each needs the real, signed-in session undisturbed, which `checkGuard`
+  // and `checkSignOut` are about to move on from.
+  //
+  // **Gated exactly like every other write in this file** —
+  // `refWritable(await authenticatedProjectRef(), …)`, checked ONCE here
+  // rather than once per phase, so a rule change binds all four at once.
+  // This was a real, reachable gap before this check existed: with
+  // `WALK_EMAIL`/`WALK_PASSWORD` set, `MINTED` is false, so neither
+  // `preflightMintRef()` nor the mint-time `refWritable` call below ever
+  // runs — a `WALK_EMAIL` pair pointed at PROD by mistake reached this point
+  // with no ref check anywhere upstream of it.
+  const socialWritesPermit = refWritable(await authenticatedProjectRef(), 'exercise social writes')
+  if (!socialWritesPermit.ok) {
+    console.log(`\n(the four social-write phases skipped — ${socialWritesPermit.why})`)
+  } else {
+    // Each phase function catches its OWN thrown errors internally now (see
+    // their own bodies) so a mid-phase throw keeps whatever `report()` calls
+    // already ran rather than discarding them — this `.catch()` is a
+    // last-resort net for something going wrong outside that, such as the
+    // function reference itself being broken, not the expected path.
+    const like = await checkLikePostcard().catch((e) => {
+      console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+      return { bad: 1, ran: 1 }
+    })
+    socialActionFailures += like.bad
+    socialActionsRan += like.ran
+
+    const comment = await checkCommentOnPostcard().catch((e) => {
+      console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+      return { bad: 1, ran: 1 }
+    })
+    socialActionFailures += comment.bad
+    socialActionsRan += comment.ran
+
+    const rsvpCandidate = await discoverRsvpCandidate().catch(() => null)
+    const rsvp = await checkRsvpToRide(rsvpCandidate).catch((e) => {
+      console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+      return { bad: 1, ran: 1 }
+    })
+    socialActionFailures += rsvp.bad
+    socialActionsRan += rsvp.ran
+
+    const joinClubResult = await checkJoinClub().catch((e) => {
+      console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
+      return { bad: 1, ran: 1 }
+    })
+    socialActionFailures += joinClubResult.bad
+    socialActionsRan += joinClubResult.ran
+  }
 
   // Before the guard cases, which end on /auth/reset-password, and well before
   // `checkSignOut` takes the session away.
@@ -2257,10 +3368,30 @@ if (isFullWalk) {
     // project-ref gate. See checkFormRetention, checkEditRetention and
     // runRefusedSignup.
     retentionRan +
-    refusedSignupRan
-  const bad = guardFailures + refusedSignInFailures + refusedSignupFailures
-  console.log(`${total - bad}/${total} guard, navigation and sign-out checks correct`)
+    refusedSignupRan +
+    inviteLandingRan +
+    // Same reasoning again: `checkLikePostcard`/`checkCommentOnPostcard` skip
+    // without a visible postcard, and `checkRsvpToRide`/`checkJoinClub` skip
+    // without an eligible ride/club on Explore — none of the four can be
+    // fixtured by this walk on demand. See the WRITE phases' own block
+    // comment above `waitForTableWrite`.
+    socialActionsRan
+  const bad = guardFailures + refusedSignInFailures + refusedSignupFailures + socialActionFailures
+  // Renamed from "guard, navigation and sign-out checks correct" — a
+  // pre-merge review caught that the total now folds in the ten social-write
+  // assertions (like, comment, RSVP, join club) too, and a failure among
+  // those read as a guard defect under the old label. The invite-landing
+  // assertions ride in the same total and are read-only, which the label's
+  // "guard" half still covers.
+  console.log(`${total - bad}/${total} guard, navigation, sign-out and social-write checks correct`)
 }
 process.exit(
-  failures || guardFailures || refusedSignInFailures || refusedSignupFailures || fixtureFailures ? 1 : 0
+  failures ||
+  guardFailures ||
+  refusedSignInFailures ||
+  refusedSignupFailures ||
+  fixtureFailures ||
+  socialActionFailures
+    ? 1
+    : 0
 )

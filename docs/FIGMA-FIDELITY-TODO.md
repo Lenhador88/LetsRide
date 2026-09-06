@@ -431,8 +431,9 @@ is a drawn value this repo no longer builds:
       components are now deleted** (the carousel with the club timeline, the row with the
       create bar on 2026-08-31), so ONE live instance remains, plus the unlogged Journal one;
       the same
-      pairing already ships unlogged on `RideJournalEmpty`'s `Add`, and this entry's own
-      unselected-RSVP-button line logs it at the same ratio. Recorded because the commit that
+      pairing shipped unlogged on `RideJournalEmpty`'s `Add` until PD-393 deleted that
+      component, and reappears on the ride timeline's own `Time Since` (§Ride detail), and
+      this entry's own unselected-RSVP-button line logs it at the same ratio. Recorded because the commit that
       added them re-counted the *accent* pairing carefully and said nothing about this one,
       which left this file asserting a complete contrast sweep it had not done.
 
@@ -459,7 +460,8 @@ is a drawn value this repo no longer builds:
 
       ```bash
       grep -n "text-muted\|text-xs" src/components/clubs/ClubTimelineEventRow.tsx \
-        src/components/clubs/ClubTimelineThreadRow.tsx src/components/rides/RideJournal.tsx
+        src/components/clubs/ClubTimelineThreadRow.tsx \
+        src/components/rides/RideTimelineEventRow.tsx
       ```
 
       `text-foreground` on `bg-track` is fine at **12.65:1** and is what both the row's title
@@ -533,6 +535,30 @@ is a drawn value this repo no longer builds:
       deviating from every other section heading in the app inside one screen is the worse of
       the two inconsistencies.
 
+- [ ] **The stream pages on scroll since PD-375, and none of the affordances that make that
+      visible are drawn anywhere — the frame is a static twenty-entry list.** `npm run figma --
+      ls Timeline` still returns the one frame measured above; nothing was added or re-pulled for
+      paging. Three things are the app's own rather than the design's:
+
+      - **The scroll sentinel itself** — an invisible 1px strip near the foot of the stream, the
+        repo's first `IntersectionObserver` (`ScrollSentinel`, `client-render-shell`). It draws
+        nothing and has no frame to draw from; PD-375 asked for scroll-triggered loading and
+        never a control, which is the only reason there is no button here either.
+      - **The tail's three-row loading skeleton**, drawn only while a page fetch is actually in
+        flight (`SkeletonList rows={3}`) — the same invented shape `Skeleton.tsx`'s own header
+        already logs for every other loading treatment in the app, none of which the committed
+        snapshot draws a frame for.
+      - **The offline and failure copy** — *"You're offline — more will load once you're back."*
+        and *"Could not load more."* plus a `Try again` link — both `ErrorState`'s own voice
+        carried to a new spot rather than read off a mock; there is no offline or failed-page
+        frame for this screen to deviate from.
+
+      **What stays measured**: everything the paging touches keeps its existing geometry — a
+      fetched window renders through the same `PostcardCard`, `ClubTimelineRideCard` and
+      `ClubTimelineThreadRow` the first twenty already used, and the `club-created` floor entry
+      and the *"Older activity lives in…"* foot are unchanged, just reachable at several hundred
+      entries instead of twenty.
+
 - [ ] **The section order and the Postcards section itself deviate further from the approved
       mock, 2026-08-18 (`club-details-dropdown-removal`, PD-262).** The product owner settled a
       new top-to-bottom order in conversation rather than in a redrawn frame: Upcoming rides,
@@ -550,9 +576,14 @@ is a drawn value this repo no longer builds:
       `/rides/detail/journal` rather than the tile). The trade is deliberate and
       product-owner-approved: a tile does not
       show the caption, likes or comment count `PostcardCard` drew in place. **It does show the
-      byline as of 2026-08-27** (PD-316 and its follow-up) — both strips draw `PostcardStamp`,
+      byline as of 2026-08-27** (PD-316 and its follow-up) — both strips drew `PostcardStamp`,
       a perforated postage-stamp frame with the author's avatar and username beneath it, and a
-      tap opens the postcard as a popup rather than navigating. No frame draws any of this: the
+      tap opened the postcard as a popup rather than navigating. **Both strips and the tile are
+      gone**: the club's dissolved into its timeline on 2026-08-31, the ride's into its own on
+      2026-09-05 (PD-393), and the component and its `stamp-edge` mask were deleted with the
+      second on the product owner's call. Every postcard in the app is a `PostcardCard` now.
+      This paragraph is kept as the record of what was built and why, not as a description of
+      the screen. No frame draws any of this: the
       stamp is the product owner's word rather than a Figma component (`npm run figma -- ls |
       grep -i stamp` is empty), so there is nothing in `design/` to diff it against and the
       geometry — 128px tiles, 6px frame, 8px gap — is this app's own. The 112px it read before
@@ -575,6 +606,20 @@ detail are **inferred**, not measured, and are the app's own — the same standi
 It borrows `ContextMenu`'s scrim and geometry so it is at least consistent with the sheets that
 were measured. **Nothing here has been rendered against DEV**; `npm run walk` has not run over
 it, which is the gate that would catch a sheet that throws on open.
+
+**It has a SECOND mode since PD-392 (2026-09-05), and that one is ours too.** The sheet now opens
+before a rider joins, offering `Join later` where a member sees `Not now`, and `Post` is what
+writes the membership. Its heading, its body line and both control labels are
+`CLUB_INTRODUCTION_COPY` in `src/lib/validation/clubs.ts` — no frame, no measurement, same
+standing as the first mode. Re-run the command above rather than trusting this: the search terms
+that found nothing for the member sheet find nothing for this one either, and a frame appearing
+later is exactly what would make both entries stale.
+
+Member mode's wording is **unchanged**, so what is inferred here is only the new half:
+
+```bash
+git grep -n "CLUB_INTRODUCTION_COPY\|CLUB_INTRODUCTION_PARTIAL_FAILURE" -- src/lib/validation/clubs.ts
+```
 
 **The join row swapped a control and did not merely gain one.** PD-356's ⋯ overflow with
 `Say welcome` is deleted; a comment glyph and count sit in its place, and the wave control is
@@ -825,16 +870,59 @@ measurement as current.
         `accent-strong` `#338059` still only reaches **4.10:1** — the same ratio already logged as
         a failure for the ride-host label, which is that token — so this needs a palette answer
         rather than a nudge.
-- [ ] **Journal is drawn, and as of 2026-08-17 only its EMPTY STATE is built.**
-      `Ride - Journal (Postcards/Timeline)` (`2226:4865`) is postcards attached to a ride.
-      `041` added `postcards.ride_id` and settled the audience question this entry used to say was
-      open — the tag is not a second audience — but **nothing writes the column**, so every
-      journal is empty and the section renders the approved mock's `Nothing yet · Prep shots
-      count` tile beside `Add`, crew only. That is a deliberate reversal of the old entry's
-      "omitted rather than offered as a dead row": a section nobody has seen is a feature nobody
-      knows exists, and empty is the state every ride starts in. **`Add` posts a postcard and does
-      not yet tag it to the ride** (PD-256), so a photo added from here does not appear in the
-      journal it was added from. The tiles, the sequence line and the journal route are PD-257's.
+- [ ] **The Journal SECTION is gone, and the whole screen is a timeline below its header —
+      2026-09-05, PD-393.** Product owner: *"Similar to the club list, we need to adopt a
+      timeline… at the top we will keep a sort of header with relevant information about the
+      ride. But then, we will have the timeline with the postcards, announcements (someone joins
+      the ride, etc.). So similar layout and characteristics to the club details."* This is the
+      second-largest deviation in this entry after the sub-page switcher, and it supersedes the
+      Journal bullet that stood here: the strip of stamps is **deleted**, its postcards are
+      entries on the stream, and the crew's arrivals and the ride's own founding are entries
+      beside them.
+      **`Ride - Journal (Postcards/Timeline)` (`2226:4865`) is the closest frame and is NOT the
+      specification**: it draws a postcards-only feed with no announcements, no crew arrivals and
+      no floor entry. There is no v2 frame for what is built. The composition is borrowed from
+      `Private club - Timeline` (`2043:10604`) — the 44px `Grey/10` announcement row, the 28px
+      avatar, the 8px dividers inside a run, the 16px gap between blocks and the interleaved
+      `PostcardCard`s — because the ask was explicitly for the club screen's shape. Consequences:
+  - [ ] **`PostcardStamp` — the perforated tile with a byline, asked for on 2026-08-27 — is now
+        rendered by nothing.** It survives because it is the presentation PD-257's own journal
+        route is drawn with; if that story is cancelled, the component and its `stamp-edge` mask
+        go with it. Flagged rather than resolved.
+  - [ ] **The empty state is gone with the strip, and nothing replaces it.** A ride's timeline is
+        never empty — the founding entry is its floor — so the `Nothing yet · Prep shots count`
+        tile has nothing left to say. What it carried that still matters is the `Add`, which is
+        crew only (`041` requires `private.is_ride_crew` to tag) and lands in one of two places
+        since PD-401 — `RideCreateBar` in the sticky slot, or the `(+)` on the timeline's
+        heading when the RSVP bar has that slot. See the create-bar bullet below.
+  - [ ] **There IS a create bar now, and it holds the slot only when the RSVP bar does not**
+        (PD-401, 2026-09-05 — this bullet said the opposite until then). `RideCreateBar` is
+        `ClubCreateBar`'s slot, geometry and border rule with **one** action rather than a
+        three-row sheet, because a ride creates exactly one thing today
+        (`routes.newPostcardInRide`); PD-402 is what makes a second exist, and the sheet shape
+        becomes right on the day it lands. `RideAttendanceBar` still wins the slot outright on
+        an upcoming ride the viewer does not organize, and there the `(+)` on the timeline
+        heading survives as the fallback — so the two entrances are complementary and a crew
+        member always has exactly one. `resolveRideDetailActions` is that decision, with an
+        exhaustive test.
+        **The frame deviation to price is what is NOT done here:** PD-401's own recommendation
+        was to move the RSVP out of the sticky slot into the page body, which contradicts
+        `2375:8771` drawing it stacked ON the navigation bar. Left for the owner, alongside
+        PD-404's floating-action question, which is the same frame decision one step further.
+  - [ ] **The stream does not page, and the club's does.** Both sources are read whole at their
+        own bounds; a ride that overruns them is cut at the horizon and says so, handing off to
+        the crew list. See `src/lib/data/ride-timeline.ts` for why a bounded event does not
+        borrow a place's paging machinery.
+  - [ ] **Both already-logged contrast failures now ship on a SECOND screen, and that is what
+        the designer answer has to price.** Measured on this diff rather than inherited:
+        `text-muted` `#666666` on `bg-track` `#E5DACF` at 12px — the announcement row's
+        `Time Since` — is **4.17:1**, and `text-accent` `#3D996B` on `--color-background`
+        `#F2ECE6` at 14px semibold — the cut foot's `riders` link — is **3.00:1**. Both against
+        a 4.5:1 bar, neither WCAG large text. Neither is new: both are the club timeline's own
+        pairings reused verbatim, logged above and at §Club detail and left as drawn pending
+        PD-176. `text-foreground` `#1A1A1A` on `bg-track` is fine at **12.65:1** and is what the
+        sentence itself uses, so the failures are confined to the supporting lines exactly as
+        they are on the club.
 - [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
       `Ride - Chat - Text focus` (`2242:11086`) at `/rides/detail/chat`. **It did not need the
       Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of
@@ -1542,8 +1630,10 @@ absent from the mock or a product decision this pass had to make without one:
       retention window is "as long as the subject exists", i.e. unbounded, so the list needed a
       real second page — `getNotificationsPage`'s keyset cursor — and the screen needed some
       control to reach it. A plain secondary `Button` labelled "Load more" is invented rather
-      than an infinite-scroll trigger, matching this app's other bounded-list screens, none of
-      which auto-load either.
+      than an infinite-scroll trigger — a deliberate choice, not the only shape this app builds:
+      the club timeline auto-loads on scroll since PD-375 (`ScrollSentinel`), and
+      `/clubs/detail/threads` keeps this same button. Re-derive rather than trust which screens
+      currently auto-load: `git grep -n ScrollSentinel -- 'src/app/**/*.tsx' 'src/components/**/*.tsx'`.
 - [ ] **Opening the screen marks everything read, and nothing in the design draws that
       either.** `Inbox - Notifications` has no per-row dismiss and no "mark all read" control
       anywhere on it, so `MarkNotificationsRead` fires on mount, the same shape
@@ -1701,13 +1791,15 @@ state occur that the design was drawn assuming could not.
       threads and members are for its members."* and, for a refused rider, *"You asked to join.
       The club said no."* The second is the ONLY place in the product a decline is told — `085`
       can write no notification for it — so its tone is load-bearing rather than cosmetic.
-- [ ] **The ride marker on `PostcardStamp`** (`086`). There is **no stamp component in Figma at
-      all**, and `v2 / Component / Postcard`'s only provenance row is `User name · in · Club
-      name`. A `BikeIcon` at `h-3 w-3` in `text-muted`, `shrink-0`, at the end of the byline
-      row — measured icon at a measured type scale. Two placements were refused for structural
-      reasons rather than taste, and a redesign has to answer both: a corner badge is bitten by
-      `stamp-edge`'s mask and falls outside the `filter: drop-shadow` that follows the notch,
-      and a third row changes a tile height that sizes neighbours on TWO different strips.
+- [ ] **The ride marker** (`086`), now on `PostcardCard` alone. `v2 / Component / Postcard`'s
+      only provenance row is `User name · in · Club name`, so the marker is invented: a
+      `BikeIcon` at `h-3 w-3` in `text-muted`, `shrink-0`, at the end of the byline row —
+      measured icon at a measured type scale. **It moved off the stamp when the club timeline
+      dissolved that strip, and the stamp itself is deleted as of 2026-09-05 (PD-393)**, so the
+      two placements the stamp refused for structural reasons — a corner badge bitten by
+      `stamp-edge`'s mask, and a third row changing a tile height that sized neighbours on two
+      strips — are no longer constraints on a redesign. A designer answering this is free of
+      them; the open question is only whether a glyph is the right marker at all.
 
 **Contrast, carried forward rather than introduced.** `RequestToJoinButton` reuses
 `JoinClubButton`'s class string byte for byte, so no new pairing ships — but it raises the
@@ -1715,7 +1807,13 @@ instance count of `Accent Brand/100` on `White/100` at Poppins/14/Semibold, meas
 against a 4.5:1 bar (14px semibold is not WCAG large). Its cream sibling is already logged at
 3.00:1 under §Ride detail. The accent-on-light pairing wants one decision, not one per button.
 
-### The stamp as a franked postal stamp — built 2026-08-29 (PD-350)
+### The stamp as a franked postal stamp — built 2026-08-29 (PD-350), DELETED 2026-09-05
+
+**Everything in this section describes a component that no longer exists.** `PostcardStamp`, its
+postmark, its printed byline and the `stamp-edge` mask were deleted with PD-393: the ride Journal
+was the last surface rendering it, the ride timeline draws `PostcardCard`s instead, and the
+product owner chose deletion over keeping it for PD-257. Kept as the record of what was built and
+of the four measurements a rebuild would need, not as a description of anything on screen.
 
 **Product owner**: *"the stamps, can we make them look a bit more motorcyclyy and add the poster
 avatar and name into them?"* There is still **no stamp component in Figma at all** — the section
@@ -1772,7 +1870,7 @@ is invented.
       (`h-5 w-5`, `gap-2.5`, `text-sm font-semibold`, truncating) are `/rides/detail`'s measured rows,
       but the card's padding, gap and hairline are invented. The organizer row — `Avatar size="sm"`,
       "*name* is organizing", right-aligned "N riders" — is an invented composition, with `Rider` as
-      the unreadable-username fallback that `PostcardStamp` already uses.
+      the unreadable-username fallback.
 - [ ] **The copy on that screen is entirely invented and one line of it is load-bearing**: the dead-link
       state says *"This link has expired"* and explains that links stop working once the ride departs
       and that the organizer can turn one off — which is deliberately the SAME wording for a revoked,

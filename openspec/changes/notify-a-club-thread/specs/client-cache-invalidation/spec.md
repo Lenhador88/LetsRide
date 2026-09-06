@@ -2,9 +2,16 @@
 
 ### Requirement: A mutation whose only effect on another rider is a notification SHALL invalidate nothing extra, and SHALL say so
 
-`postClubMessage` and the thread-wave action SHALL NOT gain
-`invalidate(keys.notifications.list())` or `invalidate(keys.notifications.unread())`. No new cache
-key SHALL be added for either new notification type.
+`sendClubMessage` SHALL NOT gain `invalidate(keys.notifications.list())` or
+`invalidate(keys.notifications.unread())`. No new cache key SHALL be added for either new
+notification type.
+
+**This requirement named a second action — the thread wave — and PD-372 deleted it.** `waveThread`
+and `unwaveThread` no longer exist, so a SHALL binding them would enter the canonical spec at
+archive time as a live rule about nothing; the scenario below carries the surviving half on the
+join wave. **The action's name is corrected here too**: it is `sendClubMessage`, never
+`postClubMessage` — that spelling appears nowhere in `src/` and is wrong in this change's
+`proposal.md`, `design.md` and `tasks.md` as well, which are left alone as history.
 
 **The actor is excluded from the recipient set by construction**, so the rider whose client would run
 the invalidation is exactly the rider the notification is not for. Invalidating their own
@@ -27,9 +34,15 @@ which is worse than the staleness it appears to fix.
 
 #### Scenario: Waving a thread invalidates the wave state, not the notifications
 
-- **WHEN** a rider waves or un-waves a club thread
-- **THEN** the existing `threadWaves` key SHALL be invalidated as it already is
-- **AND** neither notifications key SHALL be
+**SUPERSEDED by PD-372 — a rider can no longer wave a club thread, so this scenario's `WHEN`
+cannot occur.** `waveThread`, `unwaveThread` and `queryKeys.clubs.threadWaves` are all deleted; the
+club timeline's only waveable row is the announcement row. The rule the scenario expressed survives
+on the wave that remains, and is asserted there:
+
+- **WHEN** a rider waves or un-waves another rider's JOIN
+- **THEN** the existing `joinWaves` key SHALL be invalidated as it already is
+- **AND** neither notifications key SHALL be — `private.notify_club_waved` addresses the rider whose
+  join was waved, never the waver whose client runs the invalidation
 
 #### Scenario: The recipient's badge is stale for one navigation and no longer
 

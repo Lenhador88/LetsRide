@@ -302,15 +302,23 @@ export const claims = [
     // with it. Two edits, one commit — still never a relaxed regex.
     // 2026-09-01, later: `097`-`099` (PD-365/PD-367/PD-368) applied to DEV alone
     // and this went red on cue for the SEVENTH time, on the very sentence the
-    // note above predicted would have to change. Pinned back to DEV AHEAD,
-    // naming BOTH refs. The pattern deliberately still ends mid-sentence rather
-    // than pinning the gap's SIZE in words — "three-file gap" would make every
-    // single new migration a registry edit, which is churn rather than a
-    // tripwire, while the two `at \`NNN\`` captures already make the direction
-    // unmissable. Relaxing it to /Applied state: (\d+) files/ is still the
-    // wrong repair.
+    // note above predicted would have to change. Pinned to DEV AHEAD, naming
+    // BOTH refs. The pattern deliberately did not pin the gap's SIZE in words —
+    // "three-file gap" would make every single new migration a registry edit,
+    // which is churn rather than a tripwire, while the two `at \`NNN\`` captures
+    // already made the direction unmissable.
+    // 2026-09-01, later still: the promotion put `097`-`100` on PROD and this
+    // went red for the EIGHTH time, within hours of the seventh. Pinned back to
+    // LEVEL. Two flips in one day is not the tripwire misbehaving — it is what
+    // "budget for it" above meant, and the round trip took two edits in two
+    // commits, never a relaxed regex.
+    // 2026-09-03: `101` (PD-373, retiring club_thread_waves) applied to DEV
+    // alone and this went red for the NINTH time, on the LEVEL sentence again.
+    // Pinned back to DEV AHEAD with both `at \`NNN\`` captures, which is what
+    // makes the direction unmissable without pinning the gap's size in words.
+    // Two edits, one commit. Still never a relaxed regex.
     pattern:
-      /\*\*Applied state: (\d+) files\. DEV is at `\d+`, PROD is at `\d+`, and the/,
+      /\*\*Applied state: (\d+) files\. DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
@@ -318,12 +326,16 @@ export const claims = [
   },
   {
     id: 'migrations-count-handoff',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/migrations.md',
     // Pinned to the RELATIONSHIP as well as the count, exactly like its
     // CLAUDE.md sibling above — and for a second reason here: HANDOFF.md
     // carries this one-liner TWICE (the Migrations section's row-vs-file
     // reconciliation also runs it), so a pattern matching the bare command
     // is ambiguous and fails to locate rather than to compare. 2026-09-01.
+    // 2026-09-03: `101` (PD-373) went to DEV alone, so the LEVEL phrasing had to
+    // go and this went red with its CLAUDE.md sibling. Pinned to DEV AHEAD with
+    // both `at NNN` numbers, same rule — prose and pattern in one commit, never
+    // a relaxed regex, and the relationship stays pinned in both directions.
     pattern: /ls supabase\/migrations\/\*\.sql \| wc -l\s+# (\d+) — DEV at \d+, PROD at \d+/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
@@ -449,7 +461,7 @@ export const claims = [
   },
   {
     id: 'server-rendered-pages-handoff',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/render-model.md',
     pattern: /git grep -L "\^'use client'" -- 'src\/app\/\*\*\/page\.tsx' {3}# (\w+) server pages — prints nothing/,
     extractStated: extractWord(),
     kind: 'shell',
@@ -469,7 +481,7 @@ export const claims = [
   },
   {
     id: 'nav-items-scoped-handoff',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/native-shell.md',
     pattern: /`Navbar\.tsx` draws (\w+) tabs and the `UNBUILT` machinery is deleted/,
     extractStated: extractWord(),
     kind: 'shell',
@@ -524,7 +536,7 @@ export const claims = [
   },
   {
     id: 'rls-count-handoff-inline',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/ci.md',
     pattern: /PGPASSWORD=postgres npm test\s+# (\d+) assertions, 0 failures/,
     extractStated: (m) => Number(m[1]),
     kind: 'rls',
@@ -532,7 +544,7 @@ export const claims = [
   },
   {
     id: 'rls-count-handoff-table',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/running-locally.md',
     pattern: /`PGPASSWORD=postgres npm test 2>&1 \\\| grep -c "NOTICE: {2}ok"` — \*\*(\d+)\*\*, measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'rls',
@@ -542,7 +554,7 @@ export const claims = [
   // ---- Unit test count + file count (two locations each) -----------------
   {
     id: 'unit-tests-count-inline',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/ci.md',
     pattern: /npm run test:unit\s+# (\d+)\/\d+ across (\d+) files/,
     extractStated: (m) => Number(m[1]),
     kind: 'vitest',
@@ -551,7 +563,7 @@ export const claims = [
   },
   {
     id: 'unit-tests-files-inline',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/ci.md',
     pattern: /npm run test:unit\s+# (\d+)\/\d+ across (\d+) files/,
     extractStated: (m) => Number(m[2]),
     kind: 'vitest',
@@ -560,7 +572,7 @@ export const claims = [
   },
   {
     id: 'unit-tests-count-table',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/running-locally.md',
     pattern: /`npm run test:unit` — \*\*(\d+) across (\d+) files on a clean tree\*\*/,
     extractStated: (m) => Number(m[1]),
     kind: 'vitest',
@@ -569,7 +581,7 @@ export const claims = [
   },
   {
     id: 'unit-tests-files-table',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/running-locally.md',
     pattern: /`npm run test:unit` — \*\*(\d+) across (\d+) files on a clean tree\*\*/,
     extractStated: (m) => Number(m[2]),
     kind: 'vitest',
@@ -587,7 +599,7 @@ export const claims = [
     // `output: 'export'` refuses to emit a document for", and only the pair
     // measures it.
     id: 'dynamic-routes-count',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/render-model.md',
     pattern: /grep -cE '\^\[┌├└│ \]\*\[ƒ●\] \/'\s+# routes the export cannot emit — (\d+)/,
     extractStated: (m) => Number(m[1]),
     kind: 'build',
@@ -596,7 +608,7 @@ export const claims = [
   },
   {
     id: 'static-routes-count',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/render-model.md',
     pattern: /`next build` reports\s+\*\*(\d+) static\*\* and \*\*\d+ dynamic\*\*/,
     extractStated: (m) => Number(m[1]),
     kind: 'build',
@@ -612,7 +624,7 @@ export const claims = [
     // (21/21 against a real 23/23) that `static-routes-count` cannot see,
     // because its anchor stops at the headline sentence above.
     id: 'generating-static-pages-total',
-    file: 'docs/HANDOFF.md',
+    file: 'docs/reference/render-model.md',
     pattern: /`Generating static pages \((\d+)\/\d+\)` line as the static route count/,
     extractStated: (m) => Number(m[1]),
     kind: 'build',

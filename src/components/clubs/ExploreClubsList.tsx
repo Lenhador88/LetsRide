@@ -34,41 +34,59 @@ import type { ClubListItem } from '@/types'
 export function ExploreClubsList({
   clubs,
   near,
+  onIntroduce,
 }: {
   clubs: ClubListItem[]
   /** Where distances were measured from, or null when there is no position. */
   near: NearLabel
+  /**
+   * Forwarded to every `JoinClubButton` on this list — *open the pre-join
+   * sheet*, not *a join happened* (PD-392). See that component's header.
+   *
+   * **Required.** Every card here is unjoined, so every one draws a Join
+   * control, and since PD-392 that control writes nothing on its own — without
+   * an opener it does nothing at all. **This list is mounted from two
+   * screens**, so the requirement is what makes each of them declare where its
+   * sheet lives.
+   */
+  onIntroduce: (clubId: string) => void
 }) {
   const nearby = near ? clubs.filter((club) => isNearby(club.distance_km)) : []
   const rest = near ? clubs.filter((club) => !isNearby(club.distance_km)) : clubs
 
   if (nearby.length === 0) {
-    return <ClubList clubs={rest} />
+    return <ClubList clubs={rest} onIntroduce={onIntroduce} />
   }
 
   return (
     <div className="flex flex-col gap-4">
       <section className="flex flex-col gap-2">
         <h3 className="px-2 text-sm font-semibold text-foreground">Near {near!.name}</h3>
-        <ClubList clubs={nearby} />
+        <ClubList clubs={nearby} onIntroduce={onIntroduce} />
       </section>
 
       {rest.length > 0 && (
         <section className="flex flex-col gap-2">
           <h3 className="px-2 text-sm font-semibold text-muted">More clubs</h3>
-          <ClubList clubs={rest} />
+          <ClubList clubs={rest} onIntroduce={onIntroduce} />
         </section>
       )}
     </div>
   )
 }
 
-function ClubList({ clubs }: { clubs: ClubListItem[] }) {
+function ClubList({
+  clubs,
+  onIntroduce,
+}: {
+  clubs: ClubListItem[]
+  onIntroduce: (clubId: string) => void
+}) {
   return (
     <ul className="flex flex-col gap-2">
       {clubs.map((club) => (
         <li key={club.id}>
-          <ClubCard club={club} joined={false} />
+          <ClubCard club={club} joined={false} onIntroduce={onIntroduce} />
         </li>
       ))}
     </ul>

@@ -1,9 +1,7 @@
 import Link from 'next/link'
 import { ChatBubbleIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
-import { ClubWaveButton } from '@/components/clubs/ClubWaveButton'
 import { NotificationDot } from '@/components/ui/NotificationDot'
-import type { ClubWaveState } from '@/lib/data/club-waves'
 import { THREAD_PARTICIPANT_LIMIT, type ClubThreadActivity } from '@/lib/data/club-timeline'
 import { clubThreadFromTimeline } from '@/lib/routes'
 import { formatRelativeTime } from '@/lib/utils'
@@ -44,18 +42,23 @@ import { formatRelativeTime } from '@/lib/utils'
  * read — it is zero replies, and the row draws `lead` alone rather than an
  * empty avatar row and a count of nothing.
  *
- * ## `wave` — `092`, PD-356
+ * ## No wave — PD-372
  *
- * Only the thread's own CREATION entry carries one, never a `reply` entry for
- * the same thread — `092`'s spec: two wave targets for one thread would count
- * one thing twice, and the reply row already points at the same conversation.
- * `ClubTimeline` is what decides which of the two this instance is; this
- * component only knows whether `wave` was handed to it.
+ * The club timeline's only waveable row is the **announcement** row (a rider's
+ * join, `ClubTimelineEventRow`). Product owner, 2026-09-02: *"yes, only
+ * annoucements are waveable please."* `092` gave a thread's creation entry a
+ * wave of its own; that control, `waveThread`/`unwaveThread` and
+ * `queryKeys.clubs.threadWaves` are all retired, so this row takes no `wave`
+ * prop from either of `ClubTimeline`'s two thread branches. Its own test
+ * asserts the ABSENCE in both directions, because an absence is invisible to a
+ * test that only checks what rendered.
  *
- * The control cannot live inside the row's own `<Link>` — a button nested in
- * an anchor is invalid HTML and would fire the tap and the navigation both —
- * so it is now a trailing SIBLING of the link rather than a child of it, and
- * the rounded `bg-track` tile moved from the link to the row that wraps both.
+ * **The wrapper `<div>` survives the button it was added for.** It exists
+ * because a button may not nest inside an anchor, and with the button gone it
+ * could collapse into the `<Link>` — it is kept because it carries
+ * `id={anchorKey}`, PD-366's scroll target, whose loss no gate but the walk
+ * would see. Only the `pr-2` that reserved room for the control is dropped, so
+ * the row's padding is symmetric again.
  *
  * ## `anchorKey` — the return anchor, PD-366
  *
@@ -74,7 +77,6 @@ export function ClubTimelineThreadRow({
   at,
   unread,
   activity,
-  wave,
 }: {
   threadId: string
   /**
@@ -95,16 +97,6 @@ export function ClubTimelineThreadRow({
   at: string
   unread: boolean
   activity: ClubThreadActivity | null
-  /** Present only for the thread's CREATION entry — `undefined` for a
-   *  `reply` row, which draws no control at all rather than a disabled one
-   *  (there is nothing here to be "loading": this entry simply does not
-   *  carry a wave). `state` inside follows `ClubWaveButton`'s own Loading
-   *  rule. */
-  wave?: {
-    state: ClubWaveState | undefined
-    onWave: () => Promise<{ error: string | null }>
-    onUnwave: () => Promise<{ error: string | null }>
-  }
 }) {
   const shown = activity?.participants.slice(0, THREAD_PARTICIPANT_LIMIT) ?? []
   const overflow = (activity?.participants.length ?? 0) - shown.length
@@ -112,7 +104,7 @@ export function ClubTimelineThreadRow({
   return (
     <div
       id={anchorKey}
-      className="flex min-h-[72px] items-center gap-2 rounded-lg bg-track pr-2 transition-colors"
+      className="flex min-h-[72px] items-center gap-2 rounded-lg bg-track transition-colors"
     >
       <Link
         href={clubThreadFromTimeline(threadId, anchorKey)}
@@ -198,8 +190,6 @@ export function ClubTimelineThreadRow({
 
         {unread && <NotificationDot className="shrink-0" />}
       </Link>
-
-      {wave && <ClubWaveButton state={wave.state} onWave={wave.onWave} onUnwave={wave.onUnwave} />}
     </div>
   )
 }

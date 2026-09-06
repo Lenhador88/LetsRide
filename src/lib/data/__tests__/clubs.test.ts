@@ -15,6 +15,7 @@ function row(overrides: Partial<ClubListRow> = {}): ClubListRow {
     id: 'club-1',
     name: 'Biker Mice from Mars',
     is_public: true,
+    is_default: false,
     avatar_path: null,
     cover_image_path: null,
     location_name: null,
@@ -90,6 +91,19 @@ describe('toClubListItem', () => {
   it('carries privacy through, since the row draws Lock or Globe from it', () => {
     expect(toClubListItem(row({ is_public: false })).is_public).toBe(false)
     expect(toClubListItem(row({ is_public: true })).is_public).toBe(true)
+  })
+
+  /**
+   * `is_default` decides whether Explore's `Join club` asks for an
+   * introduction, and this mapping is the only thing carrying it to the
+   * button. It is worth its own assertion because the failure is SILENT and
+   * fails OPEN: hardcoding `is_default: false` back into `toClubListItem`
+   * restores the original defect — the welcome club prompting a rider who
+   * never chose it — while passing `tsc` and every other test in the suite.
+   */
+  it('carries is_default through, since Explore gates the introduction prompt on it', () => {
+    expect(toClubListItem(row({ is_default: true })).is_default).toBe(true)
+    expect(toClubListItem(row({ is_default: false })).is_default).toBe(false)
   })
 
   /**

@@ -142,6 +142,21 @@ export const queryKeys = {
      */
     analyticsOptOut: (): QueryKey => ['profile', 'analyticsOptOut'],
     /**
+     * `getBlockedRiders` — PD-298's other undo list, from `105`'s
+     * `public.my_blocked_riders()`. No `revalidatePath` predecessor.
+     *
+     * Free either way, unlike `postcards.hidden()`: `blockRider` and
+     * `unblockRider` both invalidate `EVERYTHING` — the empty prefix, which
+     * reaches every key by construction — because a block changes what is
+     * visible app-wide (decision #2). So this key is swept whichever prefix it
+     * sits under.
+     *
+     * It sits under `profile` for the reason `analyticsOptOut` does: the
+     * `PrivacySheet` is where it renders. That also inherits `updateProfile`'s
+     * `profile.all()` sweep, which costs one re-read of a short list.
+     */
+    blockedRiders: (): QueryKey => ['profile', 'blockedRiders'],
+    /**
      * `view-rider-profile` — no `revalidatePath` predecessor, like
      * `notifications` and `places`. `blockRider`/`unblockRider`'s
      * `invalidate(EVERYTHING)` already reaches this through the empty
@@ -333,31 +348,43 @@ export const queryKeys = {
       'replies',
     ],
     /**
-     * Which of a club's THREADS the viewer has waved, and the per-viewer
-     * count — `attachClubWaveState({ kind: 'thread', ... })` (`092`,
-     * PD-356).
+     * Which of a club's JOINS the viewer has waved, and the per-viewer
+     * count — `attachClubWaveState` (`092`, PD-356).
      *
-     * **Its own leaf, not nested under `threads`** — unlike `threadsUnread`
+     * **Its own leaf, not nested under `joins`** — unlike `threadsUnread`
      * and `threadReplies` above, which move WITH the thread list because a
      * new page of threads changes what an unread map or a reply window even
-     * means. A wave toggle changes neither the list nor the unread marks, so
-     * `waveThread`/`unwaveThread` invalidate this key ALONE
+     * means. A wave toggle moves neither the roster nor the join list, so
+     * `waveJoin`/`unwaveJoin` name this key and nothing else
      * (`client-cache-invalidation`'s "SHALL NOT invalidate
-     * `clubs.detail(clubId).threads`, whose rows have not changed, and SHALL
-     * NOT invalidate the unread map"). A sibling of `threads`, a child of
-     * `detail` like every other club sub-resource, so `clubs.all()` and
-     * `clubs.detail(clubId)` still reach it.
-     */
-    threadWaves: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'threadWaves'],
-    /**
-     * Which of a club's JOINS the viewer has waved, and the per-viewer
-     * count — `attachClubWaveState({ kind: 'join', ... })` (`092`, PD-356).
+     * `clubs.detail(clubId).joins`, whose rows have not changed"). A sibling
+     * of `joins`, a child of `detail` like every other club sub-resource, so
+     * `clubs.all()` and `clubs.detail(clubId)` still reach it.
      *
-     * A sibling of `joins` for the identical reason `threadWaves` is a
-     * sibling of `threads`: a wave moves neither the roster nor the join
-     * list, so `waveJoin`/`unwaveJoin` name this key and nothing else.
+     * **`threadWaves` stood beside this and is gone (PD-372)** — the club
+     * timeline's only waveable row is the announcement row, so a thread wave
+     * has no control and this is the only wave key a club has.
+     *
+     * **`depth` is PD-375's paging segment.** On a paged timeline the subject
+     * id set grows with every fetched join window, and this cache refetches
+     * on a changed KEY rather than a changed argument — so the key has to
+     * carry the depth for the fetcher it activates to ever see ids beyond the
+     * first window's. `undefined` (the depth-less form, unchanged) still
+     * means "the first window's ids", so nothing at depth zero moves.
+     *
+     * **`waveJoin`/`unwaveJoin` need no edit for this.** They invalidate the
+     * depth-less form, and `invalidate` matches on a key PREFIX
+     * (`keyStartsWith`, `queryClient.ts`), so a call naming
+     * `['clubs','detail',id,'joinWaves']` reaches every depth-suffixed entry
+     * structurally.
      */
-    joinWaves: (clubId: string): QueryKey => ['clubs', 'detail', clubId, 'joinWaves'],
+    joinWaves: (clubId: string, depth?: number): QueryKey => [
+      'clubs',
+      'detail',
+      clubId,
+      'joinWaves',
+      ...(depth === undefined ? [] : [String(depth)]),
+    ],
     /**
      * A batch of a club's JOINS' introductions — the door and the count each
      * one's join row draws (`097`, PD-365, `attachClubIntroductions`).
@@ -368,12 +395,17 @@ export const queryKeys = {
      * one key would refetch one decoration every time the other moved for no
      * reason. `introduceToClub` names this key; `waveJoin`/`unwaveJoin` do
      * not reach it and must not.
+     *
+     * **`depth` is `joinWaves`' own segment, for the identical reason.**
+     * `introduceToClub` keeps invalidating the depth-less form and reaches
+     * every depth by prefix, matching `joinWaves`.
      */
-    joinIntroductions: (clubId: string): QueryKey => [
+    joinIntroductions: (clubId: string, depth?: number): QueryKey => [
       'clubs',
       'detail',
       clubId,
       'joinIntroductions',
+      ...(depth === undefined ? [] : [String(depth)]),
     ],
     /**
      * Whether the SIGNED-IN rider has already introduced themselves in this
@@ -470,6 +502,14 @@ export const queryKeys = {
      * A ride's Journal (`041`, PD-256) — the postcards tagged to one ride,
      * read by `getRideJournal` through `ride_journal_postcard_ids`.
      *
+     * **It holds a `TimelineSource<Postcard>` since PD-393, not a bare
+     * `Postcard[]`**, because the ride timeline merges it against the join
+     * stream and needs the horizon beside the rows. Widening the shape under an
+     * existing key is normally the collision this file's header warns about;
+     * it is safe here because the strip that held the old shape
+     * (`RideJournal`) was deleted in the same change and this key has exactly
+     * one reader again.
+     *
      * **Under `postcards`, not nested in `rides.detail` beside `crew` and
      * `messages`.** Those are ride-owned resources reached by a ride's own
      * mutations; a Journal entry is a `postcards` row a ride id merely filters,
@@ -488,6 +528,50 @@ export const queryKeys = {
      * and the next author to hold it will add a call site too.
      */
     journal: (rideId: string): QueryKey => ['postcards', 'journal', rideId],
+    /**
+     * `getHiddenPostcards` — PD-298's undo list, read from `106`'s
+     * `public.my_hidden_postcards()` (`105` shipped an eight-column version
+     * that `106` dropped, because its `restorable` flag was a block detector).
+     * No `revalidatePath` predecessor: nothing ever rendered this.
+     *
+     * **Under `postcards` deliberately, and it is the placement that matters
+     * rather than the name.** Its two writers are `hidePostcard` and
+     * `unhidePostcard`, both of which already call
+     * `invalidate(queryKeys.postcards.all())` — so, by exactly the argument
+     * `journal` above records, **this key needs no call site of its own and
+     * neither action changes by a single line.**
+     *
+     * Placing it under `profile` — where the sheet that renders it lives —
+     * would have been the intuitive choice and is the trap. `hidePostcard`
+     * *adds* a row to this list, so a key outside the `postcards` prefix goes
+     * stale the first time the feature is used, and the missing `invalidate`
+     * is the one nobody thinks to add: the screen a rider hides from is not
+     * the screen that lists it.
+     */
+    hidden: (): QueryKey => ['postcards', 'hidden'],
+    /**
+     * The club timeline's own postcard source — `getClubFeedWindow` (PD-375,
+     * `design.md` §D3). A CHILD of `feed(filterSegment.club(clubId))`, on
+     * `clubs.edit`/`clubs.preview`'s precedent: the window carries `until` and
+     * `untilInclusive` alongside its rows, a wider shape than the plain
+     * `Postcard[]` the feed and `ClubPostcardCarousel` share, and two shapes
+     * sharing one entry is exactly the collision this file's header warns
+     * about.
+     *
+     * **Reached by everything that already reaches the feed key**, because
+     * `invalidate` matches by prefix: `postcards.all()` and `joinClub`/
+     * `leaveClub`'s existing `postcards.feed(filterSegment.club(clubId))` call
+     * both reach this without an edit. The cost this key was introduced to
+     * pay: the club detail no longer warms the Postcards list's own
+     * `feed(filterSegment.club(id))` entry, so that navigation costs one read
+     * it did not cost before — the trade `design.md` §D3 states plainly.
+     */
+    clubWindow: (clubId: string): QueryKey => [
+      'postcards',
+      'feed',
+      filterSegment.club(clubId),
+      'window',
+    ],
   },
 
   /**
@@ -599,6 +683,24 @@ export const queryKeys = {
     crewOptions: (only: string | null): QueryKey => ['rides', 'crewOptions', only],
     detail: (rideId: string): QueryKey => ['rides', 'detail', rideId],
     crew: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'crew'],
+    /**
+     * The ride timeline's join source — `getRideJoins` (PD-393).
+     *
+     * **A separate leaf from `crew`, over the same table, and the two must not
+     * share one.** The crew read orders `joined_at` ASC and caps at
+     * `RIDE_CREW_LIMIT`; this one orders DESC, caps at `RIDE_TIMELINE_JOINS`
+     * and returns a `TimelineSource` rather than a `RideCrew` — opposite end,
+     * different bound, wider shape. Two shapes under one key is the collision
+     * this file's header warns about, and here it would serve whichever screen
+     * loaded first to the other.
+     *
+     * A child of the ride for `crew`'s reason: it is scoped to one ride and
+     * dies with it. Reached by every mutation in `lib/actions/rides.ts` for
+     * free, because they all invalidate `rides.all()` and `invalidate` matches
+     * by prefix — which is what keeps a rider who has just RSVP'd from having
+     * to reload to see themselves arrive.
+     */
+    joins: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'joins'],
     /**
      * PD-101. `getRideForEdit` returns a narrower shape than `getRide` — no
      * `attendance`, no `is_crew`, no `is_upcoming` — so it gets its own leaf
@@ -878,7 +980,8 @@ export const queryKeys = {
    * | `hidePostcard`, `unhidePostcard` | Every notification carrying a `postcard_id` is addressed to that postcard's author, and `009` made the author branch of the `postcards` SELECT policy unconditional — so hiding your own postcard is inert, and `011` deliberately keeps the hide predicate inside the *other* branch |
    * | `updateProfile`, `setProfileImage` | The `actor` embed is always somebody else, for the self-suppression reason above. Your own username and avatar never render in your own list |
    * | `blockRider`, `unblockRider` | Genuinely in the blast radius — a block stops the actor's `profiles` row resolving — and already covered by `invalidate(EVERYTHING)` |
-   * | `sendClubMessage`, `waveThread`, `unwaveThread` | `098`, PD-367. Same reason as the first row: `club_thread_replied` and `club_thread_waved` both self-suppress by addressing `club_threads.author_id` alone, never the poster or waver whose client runs the write. The recipient's badge is stale until their own next navigation — stated rather than fixed, `client-cache-invalidation`'s standing rule |
+   * | `sendClubMessage` | `098`, PD-367. Same reason as the first row: `club_thread_replied` self-suppresses by addressing `club_threads.author_id` alone, never the poster whose client runs the write. The recipient's badge is stale until their own next navigation — stated rather than fixed, `client-cache-invalidation`'s standing rule. `waveThread`/`unwaveThread` were on this row until PD-372 retired them; `club_thread_waved` still fans out from `098`, but nothing in the app writes the table any more |
+   * | `waveJoin`, `unwaveJoin` | `092`. `private.notify_club_waved` addresses the rider whose join was waved, never the waver — the same self-suppression, on the wave that survives |
    *
    * `updateClub` names `all()` rather than `list()`, which the rule alone would
    * not give it: the privacy toggle is not only an embed change. Flipping a

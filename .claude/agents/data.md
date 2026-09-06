@@ -32,7 +32,12 @@ prove the most, since they are what a migration actually needs.
 ## Before you change anything
 
 1. `list_tables` to see current state — never assume the schema matches your memory.
-2. `list_migrations` to check what's already applied.
+2. `list_migrations` to check what's already applied — **and compare it against
+   `ls supabase/migrations/*.sql` in BOTH directions before you pick a number.** A file nobody
+   applied is the familiar half. The other half — a row applied with no file behind it — is what
+   makes your number wrong, because the database has already spent it; it cannot be fixed by
+   applying anything, and the RLS suite runs the repo's chain so it stays green throughout. It
+   happened on 2026-09-06 and cost six queue firings.
 3. Read `supabase/migrations/001_initial_schema.sql` for the established patterns.
 
 ## Migration rules

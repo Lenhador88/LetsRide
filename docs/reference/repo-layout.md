@@ -26,9 +26,9 @@ src/
 │   ├── layout/             # Navbar (bottom tabs + sticky action), Header (per screen)
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout) — plus username-verdict.ts, pure + tested, the postcards/deck.ts shape rather than a fifth component
 │   ├── chat/              # ChatComposer, ChatThread, MarkChatSeen — shared by the ride chat and club threads since 081
-│   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, RideAttendanceBar, RideCard, RideChatButton, RideChatRow, RideChip, RideCrewRail, RideFilterBar, RideHeader, RideJournal, RideMap, RideOptionsMenu, ExploreRidesList, ExploreRidesStrip, recentStarts
+│   ├── rides/              # CreateRideForm, DeleteRideControl, EditRideForm, RideAttendanceBar, RideCard, RideChatButton, RideChatRow, RideChip, RideCreateBar, RideCrewRail, RideFilterBar, RideHeader, RideMap, RideOptionsMenu, RideTimeline, RideTimelineEventRow, ExploreRidesList, ExploreRidesStrip, recentStarts
 │   ├── clubs/              # ClubCard, ClubCreateBar, ClubDeclinedRequestsSection, ClubDetailHeader, ClubJoinRequestsSection, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPreviewScreen, ClubThreadRow, ClubThreadsRow, ClubTimeline, ClubTimelineEventRow, ClubTimelineRideCard, ClubTimelineThreadRow, CreateClubForm, CreateThreadForm, DeleteClubControl, EditClubForm, ExploreClubsList, ExploreClubsStrip, JoinClubButton, ManageRidersRoster, MarkClubSeen, RequestToJoinButton
-│   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, PostcardStamp, PostcardViewer, ShareButton, SwipeCoach, coachMark, deck, locationCopy, viewerContext
+│   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, PostcardViewer, ShareButton, SwipeCoach, coachMark, deck, locationCopy, viewerContext
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem, NotificationsPanel
 │   ├── observability/      # Observability — mounts error reporting (module scope) and analytics (an effect). Draws nothing (PD-315, PD-353)
 │   └── profile/            # CountryFlags, DeleteAccountSheet, EditProfileForm, FeedbackSheet, PrivacySheet, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu
@@ -51,13 +51,13 @@ src/
 │   ├── back-navigation.ts  # where a back control goes on a screen with several entry points — /notifications carries its origin in ?from= (PD-209)
 │   ├── realtime/           # useRideMessageStream, useClubThreadStream — the app's two Supabase Realtime subscriptions (081)
 │   ├── location/           # rider-location.ts (where the rider is — device, then profile city; never prompts), distance.ts (haversine + NEARBY_RADIUS_KM, PD-259), near-label.ts (what to CALL that place — never the profile city beside a device fix)
-│   ├── rides/              # seed-ride-id.ts. `nearby.ts` went with the near-you filter on 2026-08-27 — `/rides/explore` sections on `isNearby(distance_km)` from `lib/location/distance`, which is where that predicate now lives for both tabs
+│   ├── rides/              # seed-ride-id.ts, audience.ts (narrowsToNobody — the edit guard is about the TRANSITION, PD-338), create-ride-header-title.ts, bottom-slot.ts (which control owns the ride detail's sticky slot, and therefore which entrance to the composer the rider gets — PD-401). `nearby.ts` went with the near-you filter on 2026-08-27 — `/rides/explore` sections on `isNearby(distance_km)` from `lib/location/distance`, which is where that predicate now lives for both tabs
 │   ├── clubs/              # seed-club-id.ts — the default club every rider joins on completing onboarding (058)
 │   ├── countries.ts        # ISO 3166-1 list; names via Intl.DisplayNames, flags via regional indicators
 │   └── utils.ts            # cn(), APP_TIME_ZONE, wallClockToUtc(), googleMapsDirectionsUrl(), formatPostcardDate(), formatRideDate/DateLong/Time(), formatChatMessageDay(), rideZoneDayKey(), formatRelativeTime(), formatNotificationStamp(), notificationSection(), getInitials()
 └── types/
     └── index.ts            # All shared domain types (Profile, Club, Ride, etc.)
-capacitor.config.ts         # The native shell's config. See docs/HANDOFF.md §The shell
+capacitor.config.ts         # The native shell's config. See docs/reference/native-shell.md §The shell
 ios/                        # The generated Xcode project, committed 2026-08-25. SPM, not CocoaPods.
                             #   App/App/public and the generated config are gitignored by the template.
                             #   android/ is NOT generated — nobody has asked for it yet (PD-95)
@@ -84,7 +84,11 @@ docs/
 │   ├── repo-layout.md      #   this file
 │   ├── product-scope.md    #   what is built per domain, against the Figma
 │   ├── analytics.md        #   the product questions, and which are already SQL
-│   └── observability.md    #   what we see when it breaks, and the 24h expiry on it
+│   ├── observability.md    #   what we see when it breaks, and the 24h expiry on it
+│   ├── native-shell.md     #   the Capacitor shell's position and the store-readiness table
+│   ├── running-locally.md  #   the per-command table, the relay, the walk and its fixtures
+│   ├── known-issues.md     #   understood issues — mechanism, sites to re-derive, why not folded in
+│   └── signup.md           #   how signup broke against confirmation-on, and the proof it is fixed
 └── specs/                  # Implementation specs (login-onboarding.md)
 design/                     # Committed Figma snapshot — READ THIS, don't call the API
 ├── README.md               # Why it exists, how to refresh it, how to query it
@@ -106,7 +110,7 @@ openspec/                   # config.yaml, plus:
 └── changes/                # Active proposals; archive/ holds shipped ones
 .claude/
 ├── agents/                 # The specialist squad (see The Agent Squad)
-├── commands/               # Slash commands (opsx/*)
+├── commands/               # Slash commands (opsx/*), and the queue's two procedures (queue-run, queue-pickup)
 ├── skills/                 # Project skills
 ├── hooks/                  # two Stop hooks — handoff-landed-check.sh, session-wrapup-check.sh
 └── settings.json           # Hooks, permissions, and the autoMode classifier rules

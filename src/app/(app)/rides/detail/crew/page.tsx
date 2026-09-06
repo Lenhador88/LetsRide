@@ -49,9 +49,15 @@ function RideCrewScreen() {
   // Issued *alongside* the crew rather than before it, where the server version
   // awaited one and then the other. That means the roster is read even for a
   // ride that turns out to be invisible, which costs one wasted query on a 404
-  // and saves a round trip on every real load. It cannot leak: 009 delegates
-  // the `ride_members` SELECT policy to the rides one, so the wasted case comes
-  // back empty rather than as somebody else's crew.
+  // and saves a round trip on every real load. It cannot leak: `ride_members`'
+  // SELECT policy returns somebody else's crew row only through its EXISTS
+  // against `rides`, so the wasted case cannot come back as another rider's
+  // crew. **Since 102 (PD-362) it is not quite "empty"** — the caller's own
+  // crew row is now a whole-policy disjunct, so a rider holding a row on a ride
+  // they cannot see (blocked by the organizer) gets that one row back. Which is
+  // theirs, and which they need in order to leave the ride at all. `notFound()`
+  // below fires on `ride.data === null` regardless, so the roster is never
+  // rendered in that case.
   const ride = useQuery(queryKeys.rides.detail(id), () => getRide(id))
   const roster = useQuery(queryKeys.rides.crew(id), () => getRideCrew(id))
 

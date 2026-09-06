@@ -1,0 +1,5 @@
+schema: spec-driven
+# PD-377 is a decision proposal, not a build: it ends in `Needs decision` with
+# no option chosen and nothing to specify a delta against yet. See
+# proposal.md's own header.
+skip_specs: true

@@ -77,7 +77,7 @@ one drawn from primitives, so there is nothing to attribute and nothing to recor
 paragraph below as its clearance.
 
 The OFL worked example is kept because it generalises to any OFL font, which is the next traced
-glyph anyone is tempted by; `docs/HANDOFF.md` §The wave icon carries it in full, and it applied to
+glyph anyone is tempted by; `docs/reference/design-system.md` §The wave icon carries it in full, and it applied to
 the *first* wave. The short version: the licence defines "Font Software" as a set of **files**, and
 every obligation in it hangs off that noun, so shipping an extracted outline redistributes nothing
 the licence governs. Shipping the `.ttf` would.
@@ -118,7 +118,7 @@ PD-287 four days later — so do not helpfully add one back on your own initiati
 disagreement is one hold per issue: raise the legibility cost once, and if it is reaffirmed, build
 the full request as asked.
 What PD-266 actually got wrong was not the decision, it was the diff: the code changed and the two
-documents asserting the opposite — this paragraph and `docs/HANDOFF.md` §The wave icon — were left
+documents asserting the opposite — this paragraph and `docs/reference/design-system.md` §The wave icon — were left
 out of it, so both read "no filled twin" for the whole four days one shipped. **If you change the
 wave's fill state, those two are in the same diff.**
 

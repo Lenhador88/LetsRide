@@ -379,7 +379,7 @@ Ask, specifically:
   `TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/<name>/`, and a
   file newer than the deploy means the deployed build is **stale**. Run the two commands rather
   than trusting any file's account of the answer — `delete-account`'s standing is
-  `docs/HANDOFF.md` §Store readiness row 2, and that row covers no other function.
+  `docs/reference/native-shell.md` §Store readiness row 2, and that row covers no other function.
 
   `status`, `verify_jwt` and `ezbr_sha256` are the second question — do the **two projects** run
   the same thing. Two projects can be equal and both stale, so equality is never currency.
@@ -387,8 +387,11 @@ Ask, specifically:
   by *content*. This is the one check that needs **both** refs rather than §First's
   one-ref-by-PR-type rule, because the comparison is the point. Probing the endpoint (a `401`
   from `POST /functions/v1/<name>`) shows only that *something* is deployed behind a JWT check.
-  **No session can deploy one**, so a diff here leaves both projects behind until the owner
-  redeploys — a PR body implying the change is live is a finding.
+  **No session can deploy one; a merge does** — `deploy-functions.yml` deploys on a push to
+  `development` or `main` that touches a function, after waiting for Vercel, once the
+  `SUPABASE_ACCESS_TOKEN` secret exists (PD-369). Until then a diff here leaves both projects
+  behind, and even after, a PR body implying the change is live before that job ran green is a
+  finding.
 - **CI touched?** Check the description in `CLAUDE.md` against `.github/workflows/ci.yml`.
 - **Files or directories added, moved or removed?** Check the repo-layout tree in
   `CLAUDE.md`. It is a hand-maintained copy of `ls` and drifts within days.
@@ -499,11 +502,11 @@ names a component, a query or a cache key, so none can fire on a diff that touch
 story it picked, and **the argument that this is safe is you.** Nothing else looks at whether
 the diff matches the issue: CI checks that it compiles, not that it was asked for.
 
-**A diff carrying SEVERAL issues may be a dispatched group, and that is not scope creep.** The
-dispatcher hands colliding stories — shared paths, two migrations, one shared primitive — to a
+**A diff carrying SEVERAL issues may be a grouped pickup, and that is not scope creep.** A
+firing takes colliding stories — shared paths, two migrations, one shared primitive — into a
 single session on purpose, because building them apart is what produces duplicate migration
 numbers and divergent implementations of one component
-(`.claude/commands/queue-dispatch.md` STEP 4). So a multi-story branch is legitimate **when the
+(`.claude/commands/queue-run.md` STEP 4). So a multi-story branch is legitimate **when the
 caller names the issues and the collision that grouped them**, and STEP 4c requires it to. Judge
 each story against its own issue and its own commit range, exactly as you would a solo pickup.
 

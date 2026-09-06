@@ -71,6 +71,7 @@ export function ThreadOptions({
   viewerRole,
   isOwner,
   canModerate,
+  onDeleted,
 }: {
   threadId: string
   clubId: string
@@ -86,6 +87,20 @@ export function ThreadOptions({
    * halves of it.
    */
   canModerate: boolean
+  /**
+   * Called once the delete/moderate RPC has actually succeeded, before the
+   * navigation away — PD-381. `deleteClubThread`/`moderateClubThread`
+   * invalidate this thread's own query key as part of the same call
+   * (`invalidateThread`), and that invalidation can refetch and resolve to
+   * `null` for a screen that is, at that instant, still mounted — the
+   * `router.replace` two lines below is what is *supposed* to win that race
+   * by running synchronously the moment this async callback resumes, but it
+   * is a race rather than a guarantee, and this screen's `notFound()` on
+   * `null` turns a lost one into a full error page over a delete that
+   * actually succeeded. The caller uses this to mark the thread as already
+   * gone so its own `notFound()` stops depending on which side wins.
+   */
+  onDeleted?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -119,6 +134,9 @@ export function ThreadOptions({
         setDeleteError(result.error)
         return
       }
+      // Before the invalidation can be observed on this screen — see
+      // `onDeleted`'s own header.
+      onDeleted?.()
       setConfirmingDelete(false)
       showBanner('Thread deleted')
       // `replace`, not `push`: the thread this was invoked from no longer

@@ -9,6 +9,11 @@ import { Textarea } from '@/components/ui/Textarea'
 import { DeleteRideControl } from '@/components/rides/DeleteRideControl'
 import { updateRide } from '@/lib/actions/rides'
 import { RECENT_STARTS } from '@/components/rides/recentStarts'
+import {
+  narrowsToNobody,
+  RIDE_AUDIENCE_HINT,
+  RIDE_AUDIENCE_REFUSAL,
+} from '@/lib/rides/audience'
 import { useActionRedirect } from '@/lib/actions/navigate'
 import { emptyActionState, type ActionState } from '@/lib/actions/state'
 import { useRestoreChecked, useRestoreSelection } from '@/lib/actions/retain'
@@ -178,11 +183,13 @@ export function EditRideForm({
       : null
   const clubOptions = currentClubOption ? [currentClubOption, ...knownClubs] : knownClubs
 
-  // The zombie shape ride-lifecycle names: neither public nor in a club is a
-  // ride only the organizer could ever see again, with ride_members rows
-  // still attached. Checked live so Save is refused before a round trip,
-  // matching updateRide's own guard for whatever reaches the action anyway.
-  const wouldStrand = !clubId && !isPublic
+  // **The transition, not the shape** — `narrowsToNobody`'s header has the rule
+  // and why it moved (PD-338). A ride that ARRIVED clubless and private saves
+  // like any other; what is refused is an edit that takes a ride which has a
+  // standing audience and leaves it with none. Checked live so the refusal
+  // lands before a round trip, and `updateRide` computes the same predicate
+  // against a fresh read for whatever reaches the action anyway.
+  const wouldNarrow = narrowsToNobody(ride, { club_id: clubId || null, is_public: isPublic })
 
   return (
     <div className="flex flex-col gap-6">
@@ -282,31 +289,20 @@ export function EditRideForm({
             checked={isPublic}
             onChange={(event) => setIsPublic(event.target.checked)}
           />
-          {/* **Word for word `CreateRideForm`'s, and it has to stay that way.**
-              The two forms describe the same checkbox on the same column, so a
-              rider who creates a ride and then edits it reads both. "Riders you
-              invite" is `083`'s fourth `rides` SELECT arm (PD-329), which is
-              what makes the sentence true of a ride with no club.
-
-              **Nothing enforces the match.** The two drifted once already and a
-              read caught it, not a gate. PD-338 rewrites the sentences below
-              and is where an assertion over the pair belongs.
-
-              The `wouldStrand` alert below still argues from the premise `083`
-              retired. It is deliberately NOT edited here: it is the guard's own
-              message, the guard is a written `ride-lifecycle` requirement, and
-              PD-338 owns both. A hint that describes the feature and a refusal
-              that describes the rule are different sentences. */}
-          <p className="pl-8 text-xs font-medium text-muted">
-            Anyone signed in can see and join a public ride. A private ride is visible to its club,
-            and to riders you invite.
-          </p>
+          {/* Shared with `CreateRideForm` rather than copied: a rider who
+              creates a ride and then edits it reads both screens, and the two
+              sentences drifted once already. `RIDE_AUDIENCE_HINT`'s header has
+              why a constant beats an assertion over two literals. */}
+          <p className="pl-8 text-xs font-medium text-muted">{RIDE_AUDIENCE_HINT}</p>
         </div>
 
-        {wouldStrand && (
+        {/* `role="alert"` here and `role="status"` on the action's error below,
+            and the split is load-bearing: `npm run walk`'s refused-edit phase
+            reads `role="status"` only, precisely so this live warning cannot be
+            mistaken for a refusal the action actually returned. */}
+        {wouldNarrow && (
           <p role="alert" className="text-sm text-danger">
-            A ride needs to be public or belong to a club, or nobody but you could see it. Make it
-            public, or pick a club.
+            {RIDE_AUDIENCE_REFUSAL}
           </p>
         )}
 
@@ -316,7 +312,7 @@ export function EditRideForm({
           </p>
         )}
 
-        <Button type="submit" size="lg" loading={pending} disabled={wouldStrand}>
+        <Button type="submit" size="lg" loading={pending} disabled={wouldNarrow}>
           Save changes
         </Button>
       </form>

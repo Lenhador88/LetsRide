@@ -2,8 +2,10 @@
 
 import { Header } from '@/components/layout/Header'
 import { ExploreClubsList } from '@/components/clubs/ExploreClubsList'
+import { IntroductionPrompt } from '@/components/clubs/IntroductionPrompt'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
+import { useIntroductionQueue } from '@/lib/clubs/use-introduction-queue'
 import { getExploreClubs } from '@/lib/data/clubs'
 import { getMyLocationText } from '@/lib/data/profile'
 import { nearLabel } from '@/lib/location/near-label'
@@ -41,8 +43,33 @@ import { queryKeys } from '@/lib/query/keys'
  * under the same heading** — so the number the rider taps is the number they
  * land on. `ExploreClubsList` owns that split; a version where the strip
  * counted three and this screen listed twelve was caught in review.
+ *
+ * **This screen owns the introduction sheet for a join that starts here**
+ * (`PD-384`) — `JoinClubButton` cannot hold it itself, because the same
+ * invalidate that makes a joined row leave this list unmounts the row, and
+ * since PD-392 that happens while the rider's typed introduction is still in
+ * flight. It renders `IntroductionPrompt` once, off `useIntroductionQueue`,
+ * rather than the club detail page's own `showIntroductionPrompt` (`097`,
+ * PD-365) — a rider who lands on the club afterwards still gets it there too,
+ * since that rule reads `hasIntroducedClub` fresh rather than trusting this
+ * screen remembered.
+ *
+ * **The queue, its `key`, and the dismissal iff are all
+ * `useIntroductionQueue`'s** — shared with `/clubs`' first-run screen, which
+ * mounts the same list. Read that module for PD-384's two named defects and
+ * why appending beats assigning; it is not restated here, because two copies
+ * of it is how the two screens drift.
  */
 export default function ExploreClubsPage() {
+  // The queue, its de-duplication, and the dismissal iff all live in
+  // `useIntroductionQueue` — shared with `/clubs`' first-run screen, which
+  // mounts the same list.
+  const {
+    current: introducingClubId,
+    enqueue: enqueueIntroduction,
+    advance: advanceIntroductions,
+  } = useIntroductionQueue()
+
   // The same three reads as `/clubs`, under the same keys — which is what makes
   // arriving here from the strip a cache hit rather than a second fetch, and
   // what keeps the strip's near count equal to the `Near <name>` section below
@@ -89,11 +116,34 @@ export default function ExploreClubsPage() {
                 There are no public clubs, yet!
               </p>
             ) : (
-              <ExploreClubsList clubs={clubs.data} near={nearLabel(position, city.data)} />
+              <ExploreClubsList
+                clubs={clubs.data}
+                near={nearLabel(position, city.data)}
+                onIntroduce={enqueueIntroduction}
+              />
             )}
           </div>
         )}
       </div>
+
+      {/* Always `pre-join` here: since PD-392 this screen's Join control writes
+          nothing and opens the sheet instead, so every sheet Explore mounts
+          starts before a membership exists. The sheet latches itself to member
+          mode when its own join lands — that is not this screen's to track, and
+          a page-level latch would leak one club's answer into the next one in
+          the queue (`design.md` §D3).
+
+          `onPosted` records unconditionally and that IS the iff rather than an
+          exception to it: a successful Post means a membership exists. It is
+          also what closes the sheet without waiting on the invalidated read. */}
+      <IntroductionPrompt
+        key={introducingClubId}
+        clubId={introducingClubId ?? ''}
+        mode="pre-join"
+        open={!!introducingClubId}
+        onDismiss={(membershipExists) => advanceIntroductions(membershipExists)}
+        onPosted={() => advanceIntroductions(true)}
+      />
     </>
   )
 }

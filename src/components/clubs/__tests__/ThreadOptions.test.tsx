@@ -227,3 +227,39 @@ describe('ThreadOptions — a tap on Delete thread opens a confirm and deletes n
     expect(reportFn).not.toContain('setConfirmingDelete(true)')
   })
 })
+
+/**
+ * PD-381. `deleteClubThread`/`moderateClubThread` invalidate this thread's
+ * own query key before they return, which can refetch and resolve to `null`
+ * while the confirm sheet's `router.replace` is still in flight — the two
+ * are a race, not an ordering guarantee. `onDeleted` is how the caller
+ * (`thread/page.tsx`) stops depending on which side wins; these assert it is
+ * actually wired into the one path that can make that race matter, in the
+ * order that makes it useful.
+ */
+describe('ThreadOptions — onDeleted fires before the navigation, only on success', () => {
+  it('calls onDeleted after the error check and before router.replace', () => {
+    const confirmFn = SOURCE.slice(
+      SOURCE.indexOf('function onConfirmDelete'),
+      SOURCE.indexOf('function onReport')
+    )
+    const errorCheck = confirmFn.indexOf('if (result.error)')
+    const onDeletedCall = confirmFn.indexOf('onDeleted?.()')
+    const replaceCall = confirmFn.indexOf('router.replace(')
+    expect(errorCheck).toBeGreaterThan(-1)
+    expect(onDeletedCall).toBeGreaterThan(errorCheck)
+    expect(replaceCall).toBeGreaterThan(onDeletedCall)
+  })
+
+  it('does not call onDeleted from inside the error branch', () => {
+    const confirmFn = SOURCE.slice(
+      SOURCE.indexOf('function onConfirmDelete'),
+      SOURCE.indexOf('function onReport')
+    )
+    const errorBranch = confirmFn.slice(
+      confirmFn.indexOf('if (result.error) {'),
+      confirmFn.indexOf('}', confirmFn.indexOf('if (result.error) {'))
+    )
+    expect(errorBranch).not.toContain('onDeleted')
+  })
+})

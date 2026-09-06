@@ -64,7 +64,7 @@ export const CLUB_MEMBERSHIP_LIMIT = 100
  * where it stops being theoretical.
  */
 const CLUB_LIST_SELECT = `
-  id, name, is_public, avatar_path, cover_image_path,
+  id, name, is_public, is_default, avatar_path, cover_image_path,
   location_name, location_place_id, latitude, longitude,
   members_count:club_members(count),
   riders:club_members(user_id, ${MEMBER_PROFILE_EMBED})
@@ -74,6 +74,7 @@ export type ClubListRow = {
   id: string
   name: string
   is_public: boolean
+  is_default: boolean
   avatar_path: string | null
   cover_image_path: string | null
   location_name: string | null
@@ -97,6 +98,7 @@ export function toClubListItem(row: ClubListRow, unread?: number): ClubListItem 
     id: row.id,
     name: row.name,
     is_public: row.is_public,
+    is_default: row.is_default,
     avatar_path: row.avatar_path,
     cover_image_path: row.cover_image_path,
     location_name: row.location_name,
@@ -204,11 +206,18 @@ function byName(a: ClubListItem, b: ClubListItem) {
 /**
  * `Clubs - Your clubs` — every club this rider has joined, with its unread badge.
  *
- * Membership is the signal rather than `owner_id`, because `/clubs/new` writes
- * both rows and the design's own empty state is "You have no clubs, yet!". A
- * club owned without a membership row would appear on neither sub-page; that is
- * a create-flow integrity question, not something this read should paper over
- * by unioning two definitions of "yours".
+ * Membership is the signal rather than `owner_id`, and the design's own empty
+ * state is "You have no clubs, yet!". A club owned without a membership row
+ * would appear on neither sub-page — **that question is now answered, and the
+ * answer is that the state cannot occur**: `103`'s
+ * `establish_club_owner_membership` trigger writes the owner's row in the same
+ * statement as the club, so `owner_id` and membership agree by construction.
+ * `openspec/changes/enforce-creator-membership/` holds the reasoning.
+ *
+ * This read is deliberately unchanged by that. Unioning two definitions of
+ * "yours" would be a second copy of an invariant the database now holds — free
+ * to drift, and papering over exactly the disagreement that can no longer
+ * happen.
  */
 export async function getYourClubs(): Promise<ClubListItem[]> {
   const supabase = await resolveSupabase()
@@ -426,6 +435,19 @@ async function myRequestStatuses(
  *
  * `is_public` is `false` by construction — the accessor returns nothing else —
  * so the card's `Private club` type line is right without asking.
+ *
+ * `is_default` is `false` for the same kind of reason, and it is worth naming
+ * the line rather than reasoning from the welcome club's current settings:
+ * `085`'s accessor carries `and c.is_default = false` — in the helper its
+ * WHERE clause calls, `private.club_takes_join_requests_for`
+ * (`085_club_join_requests.sql:209`), not inline in
+ * `discoverable_private_clubs` itself, so grepping that function's own body
+ * for the string finds nothing and the citation reads as wrong for a minute.
+ * Either way the default club cannot be in this result set, whatever its
+ * `is_public` happens to be. Nothing on this path
+ * consumes it today either — a private club's control is `RequestToJoinButton`,
+ * which never prompts — so this is the honest value rather than a load-bearing
+ * one.
  */
 function toDiscoverableListItem(
   row: DiscoverableClubRow,
@@ -435,6 +457,7 @@ function toDiscoverableListItem(
     id: row.id,
     name: row.name,
     is_public: false,
+    is_default: false,
     avatar_path: row.avatar_path,
     cover_image_path: null,
     avatar_url: null,

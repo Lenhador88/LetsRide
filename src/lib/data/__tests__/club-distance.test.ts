@@ -15,6 +15,7 @@ const club = (name: string, distance_km?: number): ClubListItem => ({
   id: name,
   name,
   is_public: true,
+  is_default: false,
   avatar_path: null,
   cover_image_path: null,
   avatar_url: null,

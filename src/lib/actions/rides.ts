@@ -4,6 +4,7 @@ import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { MEDIA_BUCKET } from '@/lib/media/constants'
 import { routes } from '@/lib/routes'
+import { narrowsToNobody, RIDE_AUDIENCE_REFUSAL } from '@/lib/rides/audience'
 import { readRideLocation, resolveDepartureZone, rideSchema } from '@/lib/validation/rides'
 import { wallClockToUtc } from '@/lib/utils'
 import type { ActionState } from '@/lib/actions/state'
@@ -155,7 +156,7 @@ async function removeRideMapTiles(
  * The fix is the same `security definer` function this comment has named since
  * it was written, doing both inserts in one statement. Nothing asserts "a club
  * has an owner-membership row" as a CHECK or trigger, and that is the actual
- * gap. Logged in docs/HANDOFF.md §Known issues.
+ * gap. Logged in docs/reference/known-issues.md §Known issues.
  *
  * `club_id` is offered here for the first time. The column has existed since
  * `001` and no screen has ever set it, which meant a club's Rides sub-page
@@ -226,30 +227,43 @@ export async function createRide(
   // an audience problem. The string is the one `enforce_ride_club_audience`
   // raises in 022; a named CHECK would read "violates check constraint ..."
   // instead, which is how the two stay distinguishable.
+  //
+  // **Only "untick", never "pick a public club" (PD-383).** A club-scoped entry
+  // hides the picker entirely (`CreateRideForm`'s `seededClub`), so a rider who
+  // reached this action from `/rides/new?club=<id>` has no control on screen
+  // that could act on the second half of that sentence — an instruction the
+  // screen makes impossible is worse than a shorter, always-actionable one.
   if (error?.code === '23514' && error.message.includes('private club cannot be public')) {
-    return { error: 'A ride in a private club cannot be public. Untick “Make this ride public”, or pick a public club.' }
+    return { error: 'A ride in a private club cannot be public. Untick “Make this ride public”.' }
   }
   if (error || !ride) return { error: 'That ride could not be created.' }
 
-  const { error: crewError } = await supabase
-    .from('ride_members')
-    .insert({ ride_id: ride.id, user_id: user.id, status: 'going' })
+  // ** ONE statement, and the organizer's crew row is the database's to write. **
+  // `103`'s `establish_ride_organizer_membership` AFTER INSERT trigger writes
+  // `(new.id, new.organizer_id, 'going')` with `joined_at` from the ride's own
+  // `created_at`, so the second round trip and its compensating delete are gone.
+  // The reasoning is `createClub`'s and is written out there; the short version
+  // is that a two-round-trip create has a window the browser can lose the tab
+  // in, and the fix is to leave that state unrepresentable rather than narrow.
+  //
+  // ** The old comment here claimed this left "a club with an owner and no
+  // membership row" — a copy-paste from `createClub` that survived review. ** It
+  // left a ride whose `organizer_id` held no `ride_members` row, which is the
+  // worse half: `toRideListItem` draws the organizer "on the ride by
+  // construction" while `getRideCrew` reads `ride_members`, so the card and
+  // `/rides/detail/crew` disagreed about the same ride, and `RideAttendanceBar`
+  // is hidden from the organizer (`!is_organizer`) so they had no way back on.
+  //
+  // ** `getRideCrew` is deliberately NOT changed to synthesise the organizer. **
+  // After the trigger the rows agree with that reading by construction, and a
+  // second copy of the rule in the read path would be free to drift.
 
-  if (crewError) {
-    // Same as createClub: an unchecked rollback lets the failure message
-    // contradict the state it leaves behind.
-    const { error: rollbackError } = await supabase.from('rides').delete().eq('id', ride.id)
-    if (rollbackError) {
-      return {
-        error: 'That ride was only partly created. Check your rides before trying again.',
-      }
-    }
-    return { error: 'That ride could not be created.' }
-  }
-
-  // PD-104 §5.1. After the crew row and not before it: a rollback above deletes
-  // the ride, and a render already in flight against a deleted ride would spend
-  // a ledger row on a ride that no longer exists.
+  // PD-104 §5.1. This used to read "after the crew row and not before it",
+  // because a rollback above deleted the ride and a render already in flight
+  // against a deleted ride would spend a ledger row on a ride that no longer
+  // exists. **`103` removed that rollback**, so the ordering no longer defends
+  // anything — the ride is committed by the time this line runs. Kept here
+  // rather than moved, because nothing argues for moving it either.
   //
   // **Unconditional, and it must stay that way — PD-267.** An `if (!location)`
   // guard stood here while the deployed build geocoded unconditionally: against
@@ -345,6 +359,29 @@ export async function setRideAttendance(
             { onConflict: 'ride_id,user_id' }
           )
 
+  // `103`'s `protect_ride_organizer_membership` refuses the organizer's own crew
+  // row. ** Match on the MESSAGE, not on `23514` alone ** — `018`'s text bounds
+  // raise the same SQLSTATE, so a code-only branch would tell a rider who
+  // overran a field that they organize the ride.
+  //
+  // Reachable only by a direct call: `RideAttendanceBar` is hidden from the
+  // organizer (`!is_organizer`), so no screen offers this today.
+  //
+  // ** The copy deliberately does NOT offer "set yourself to Maybe instead",
+  //    even though `103`'s own raise text suggests it and the guard permits
+  //    it. ** The database invariant is PRESENCE rather than status, so the
+  //    UPDATE really is allowed — but `withOrganizer` in `lib/data/rides.ts`
+  //    filters the organizer out of `crew.maybe` and prepends them to `going`,
+  //    so every screen renders them Going whatever the row says. Promising a
+  //    remedy the app then ignores is worse than not offering one. Closing the
+  //    gap properly means teaching `withOrganizer` to respect the stored
+  //    status, which is a read-path change this story does not carry — before
+  //    `103` the organizer had no row at all, so discarding it was correct by
+  //    construction and only becomes wrong now.
+  if (error?.message?.includes('cannot leave its crew')) {
+    return { error: 'You organize this ride, so you are always on its crew.' }
+  }
+
   // A refusal is usually RLS deciding the ride is not visible, which from the
   // rider's side looks like the ride being gone rather than a permission
   // problem — so the message says that rather than accusing them.
@@ -412,17 +449,6 @@ export async function updateRide(
     return { error: parsed.error.issues[0]?.message ?? 'Check the form and try again.' }
   }
 
-  // The zombie shape `029` names: neither public nor in a club is a ride only
-  // its organizer could ever see again, with `ride_members` rows still
-  // attached to it. `EditRideForm` disables Save on this combination already;
-  // this is the guard for whatever reaches the action anyway.
-  if (!parsed.data.club_id && !parsed.data.is_public) {
-    return {
-      error:
-        'A ride needs to be public or belong to a club, or nobody but you could ever see it again. Make it public, or pick a club.',
-    }
-  }
-
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to edit a ride.' }
@@ -434,11 +460,36 @@ export async function updateRide(
   // cached row: the cache can hold a path a later render has already superseded,
   // and deleting the wrong object is worse than deleting none. `updateClub` reads
   // its previous image paths the same way and for the same reason.
+  // `is_public, club_id` join this read for PD-338: the audience rule is about
+  // the TRANSITION, so it cannot be answered from the submitted payload alone.
   const { data: previous } = await supabase
     .from('rides')
-    .select('meeting_point, start_place_id, map_card_path, map_detail_path, timezone')
+    .select(
+      'meeting_point, start_place_id, map_card_path, map_detail_path, timezone, is_public, club_id'
+    )
     .eq('id', rideId)
     .maybeSingle()
+
+  // The rule `narrowsToNobody`'s header states, enforced again here for
+  // whatever reaches the action without going through `EditRideForm`.
+  //
+  // **The stored pair comes from this read and never from a form field** — a
+  // client that can post the payload can post a claim about the prior shape
+  // with it, which would make this copy decorative.
+  //
+  // **A null `previous` neither refuses nor permits.** The ride is gone, or the
+  // caller cannot see it; inventing a refusal would report an audience problem
+  // for a ride that does not exist, so this falls through and lets the update
+  // match zero rows, which the not-found path already reports.
+  if (
+    previous &&
+    narrowsToNobody(previous, {
+      club_id: parsed.data.club_id,
+      is_public: parsed.data.is_public,
+    })
+  ) {
+    return { error: RIDE_AUDIENCE_REFUSAL }
+  }
 
   // `IS DISTINCT FROM` is the whole comparison the trigger makes, so this is the
   // same test — a whitespace-only or case-only edit clears the tile, because
@@ -597,8 +648,17 @@ export async function updateRide(
   // save that may not have touched `club_id` at all.
   if (error?.code === '42501') {
     return {
+      // **Names the STATE, not the act**, because two shipped routes reach it
+      // and nothing records which one happened: `leaveClub`, and being ejected
+      // by an admin through `removeClubMember` → `public.remove_club_member`
+      // (`club_members` carries no admin DELETE policy, so a reader checking
+      // policies alone misses the second). Telling an ejected organizer they
+      // left is a refusal asserting something they know to be false — the same
+      // defect class PD-338 removed from the audience message twelve lines of
+      // spec away. `ride-lifecycle`'s ex-member requirement mandates this
+      // wording.
       error:
-        'You’ve left this ride’s club, so changes can’t be saved while it stays linked. Delete the ride, or make it public and remove it from the club.',
+        'You’re no longer a member of this ride’s club, so changes can’t be saved while it stays linked. Delete the ride, or make it public and remove it from the club.',
     }
   }
 

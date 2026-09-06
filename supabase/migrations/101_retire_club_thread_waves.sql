@@ -1,0 +1,360 @@
+-- 101 — the thread wave is retired at the database (PD-373)
+-- ===========================================================================
+--
+-- Successor to PD-372 (`openspec/changes/an-introduction-appears-only-as-its-
+-- announcement/`), which made the club timeline's ANNOUNCEMENT row its only
+-- waveable row and retired the whole client-side path for waving a THREAD.
+-- That change deliberately stopped at the client and said so — its §The table
+-- with no writer names this file as what it owes:
+--
+--     "NOT in this change: the `club_thread_waves` table, its policies, its
+--      grants and `098`'s triggers. After this merges, `club_thread_waves` has
+--      no writer and no reader in the app."
+--
+-- So today the database carries a live table, three live policies, a live
+-- participation gate and two live fan-out triggers that NOTHING can reach. This
+-- file removes them.
+--
+-- ** THE JOIN WAVE IS NOT IN SCOPE AND MUST NOT BE TOUCHED. ** `092` shipped
+-- TWO wave tables and only one of them is retired. `public.club_join_waves` —
+-- waving a rider's arrival in a club — is the surviving gesture, is what the
+-- product owner kept, and keeps every policy, grant, index, gate trigger and
+-- both of its own fan-outs (`private.notify_club_waved`,
+-- `private.retract_club_waved`). A reader who arrives here through a grep for
+-- "wave" is one table away from deleting the feature.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT THIS FILE DROPS, AND WHAT IT DELIBERATELY LEAVES STANDING
+-- ---------------------------------------------------------------------------
+-- DROPPED:
+--   * `public.club_thread_waves` — and with it, by ordinary table ownership,
+--     its three policies (SELECT/INSERT/DELETE), its column and table grants,
+--     its two indexes, its two outbound foreign keys and `023`'s
+--     `enforce_participation_gate` trigger.
+--   * `098`'s wave pair: the triggers `notify_club_thread_waved` and
+--     `retract_club_thread_waved`, and the functions
+--     `private.notify_club_thread_waved()` and
+--     `private.retract_club_thread_waved()` behind them (bodies last written
+--     by `100`).
+--
+-- LEFT STANDING, each for its own reason:
+--   * `public.club_join_waves` and everything about it. See above.
+--   * `098`'s OTHER fan-out — `private.notify_club_thread_replied()` and its
+--     trigger on `public.club_messages`. A REPLY still notifies the rider who
+--     started the thread; only the wave goes.
+--   * `notifications.thread_id`, its index, its cascade and `098`'s thread
+--     conjunct on the SELECT and UPDATE policies. All four serve
+--     `club_thread_replied` and are untouched by this file.
+--   * ** The `club_thread_waved` arm of `notifications_type_check` and of
+--     `notifications_subject_shape`, and every `club_thread_waved` row already
+--     written. ** This is the one decision this file had to make and it is
+--     recorded in full below.
+--
+-- ---------------------------------------------------------------------------
+-- THE DECISION: THE ENUM ARM STAYS AND THE EXISTING ROWS STAY. NOTHING IS
+-- DELETED FROM `notifications`
+-- ---------------------------------------------------------------------------
+-- `098`'s own ROLLBACK section (its steps 3 and 4) narrows the two CHECK
+-- constraints back to their fourteen-type form and, because the narrowed
+-- constraint is VALIDATED against existing rows, has to DELETE every live row
+-- of the removed types first. That order is correct for a rollback of `098`.
+-- ** It is the wrong shape for this file, and copying it would destroy real
+-- notification history for no functional gain. **
+--
+-- Three things decide it:
+--
+--   1. `NotificationType`, `notificationCopy` and `NotificationsListItem`'s
+--      `describe` all keep their `club_thread_waved` arm — PD-373 says so
+--      explicitly. So every row already written still renders correctly, with
+--      its actor, its thread title and a link that opens, for ever. A rider
+--      holding one loses nothing.
+--   2. ** Nothing forces the enum to shrink because its WRITER is gone. ** A
+--      CHECK constraint states which rows are legal, not which rows anything
+--      still creates. With `private.notify_club_thread_waved()` dropped there
+--      is no writer left in the database and no grant that would let a client
+--      be one — `notifications` has no INSERT policy and no INSERT grant for
+--      any client role (`098.33`) — so the arm admits a type nothing can
+--      produce. That is inert, not a hole.
+--   3. Narrowing it costs a `delete from public.notifications where type =
+--      'club_thread_waved'` against real rows (one on DEV today) and a
+--      drop/add of two constraints on a live table, in exchange for nothing a
+--      rider or an operator can observe. The proposal lists keeping them as
+--      defensible; it is also the lowest-risk of the three options, and the
+--      only one whose failure mode is "a dead arm nobody notices" rather than
+--      "history a rider had is gone".
+--
+-- The cost is stated rather than hidden: `notifications_type_check` now carries
+-- an arm no code path can reach, and a later session reading the constraint may
+-- take it as evidence that thread waves are live. `docs/reference/schema.md`
+-- and this header are where that is written down; the ROLLBACK section below
+-- says what removing it would take, should anyone ever want to.
+--
+-- ---------------------------------------------------------------------------
+-- APPLY ORDER — DESTRUCTIVE, AND ITS UNSAFE SIDE IS ALREADY CLOSED
+-- ---------------------------------------------------------------------------
+-- Additive first, deploy, destructive last. This is the destructive half, and
+-- it is `090`'s case: ** no bundle, old or new, can observe the removed
+-- objects. ** PD-372 is merged and CONFIRMED SERVING on DEV, and it took
+-- `waveThread`, `unwaveThread`, `getThreadWaveState`, `attachClubWaveState`'s
+-- thread branch and `queryKeys.clubs.threadWaves` with it. Nothing in `src/`
+-- names the table:
+--
+--   git grep -n "club_thread_waves\|waveThread\|unwaveThread\|threadWaves" -- src/
+--
+-- returns only comments describing the retirement. So there is no bundle for
+-- which this file is a `PGRST205`, and no client switch that a vanished row
+-- type takes down — `092`/`098`'s "apply only after the bundle is confirmed
+-- serving" rule concerns a NEW type reaching an OLD switch and has no analogue
+-- here, since no row is written or removed at all.
+--
+-- ** ON PROD THIS IS A NO-OP BEYOND THE DDL. ** `club_thread_waves` is empty
+-- there and no `club_thread_waved` notification exists.
+--
+-- No live write path acquires new code: the two triggers this file removes are
+-- the only ones it touches and both sit on the table being dropped, so `036`'s
+-- hand-exercise gate has nothing to exercise. The paths that CASCADE into
+-- `club_thread_waves` today — a thread delete, `public.moderate_club_thread`,
+-- `private.remove_reported_thread`, a club delete, an account delete — each
+-- lose one child table and keep every other; `098.23`/`098.23a`'s four routes
+-- all still complete, one cascade shallower.
+--
+-- ---------------------------------------------------------------------------
+-- §0  PRE-FLIGHT — measured on DEV `fpmrimzxadewsaiwpsel`, 2026-09-03, before
+--     this file was written. Two of these are live counts that move with
+--     ordinary use; re-derive against PROD before applying there.
+-- ---------------------------------------------------------------------------
+--   club_thread_waves rows .......... DEV 3, PROD 0   (stranded: their authors
+--                                     lost the only control that deleted them
+--                                     when PD-372 removed the UI)
+--   club_join_waves rows ............ DEV 3           (NOT IN SCOPE)
+--   club_thread_waves policies ...... 3  (SELECT, INSERT, DELETE)
+--   club_thread_waves triggers ...... enforce_participation_gate,
+--                                     notify_club_thread_waved,
+--                                     retract_club_thread_waved
+--   club_thread_waves indexes ....... club_thread_waves_pkey,
+--                                     club_thread_waves_user_idx
+--   outbound FKs .................... thread_id -> club_threads,
+--                                     user_id   -> profiles
+--   INBOUND FKs ..................... NONE — nothing references this table, so
+--                                     `drop table` needs no CASCADE and is
+--                                     deliberately issued without one (see §3)
+--   enforce_participation_gate ...... 22 triggers, both projects
+--   notifications 'club_thread_waved' DEV 1, PROD 0   (KEPT — see the decision)
+--   FKs into public.profiles ........ 33  (32 after this file)
+--
+-- The query, run as one row so the numbers cannot be read from two different
+-- moments:
+--
+--   select
+--     (select count(*) from public.club_thread_waves)                       as thread_waves,
+--     (select count(*) from public.club_join_waves)                         as join_waves,
+--     (select count(*) from pg_policies
+--       where tablename = 'club_thread_waves')                              as policies,
+--     (select string_agg(t.tgname, ', ') from pg_trigger t
+--       where t.tgrelid = 'public.club_thread_waves'::regclass
+--         and not t.tgisinternal)                                           as triggers,
+--     (select count(*) from pg_constraint
+--       where confrelid = 'public.club_thread_waves'::regclass)             as inbound_fks,
+--     (select count(*) from pg_trigger t
+--       where t.tgfoid = 'public.enforce_participation_gate()'::regprocedure
+--         and not t.tgisinternal)                                           as gate_triggers,
+--     (select count(*) from public.notifications
+--       where type = 'club_thread_waved')                                   as ctw_notifications;
+--
+-- ** ONE FUNCTION BODY STILL NAMES THE TABLE AFTER THIS APPLIES, AND IT IS
+-- DELIBERATELY NOT REWRITTEN. ** `private.remove_reported_thread(uuid)`'s body
+-- lists its cascade children and includes `club_thread_waves`. It is an
+-- IN-BODY COMMENT and nothing else — no statement in that function reads or
+-- writes the table (verified: the only match in `prosrc` across `public` and
+-- `private` is inside that comment block), so the drop cannot break it at
+-- runtime. Correcting it needs `create or replace`, which moves `prosrc` — the
+-- value every DEV/PROD reconciliation in this repo is keyed on. `098` §11
+-- declined the identical trade on the identical function for the identical
+-- reason and filed the in-body edit separately; this file makes the same call
+-- rather than reversing it in passing. Its EXTERNAL comment, which `098` did
+-- rewrite, stays TRUE: deleting a thread still destroys every notification
+-- naming it, `club_thread_waved` rows included, through
+-- `notifications.thread_id`'s own cascade.
+--
+-- ---------------------------------------------------------------------------
+-- ROLLBACK — IN THIS ORDER
+-- ---------------------------------------------------------------------------
+--   1. Re-create `public.club_thread_waves` from `092` §1.1, §2 (both indexes),
+--      §3.1 (the three policies, with the own-row branch HOISTED to a disjunct
+--      of the whole SELECT policy — un-hoisting it strands every row), §4 (the
+--      grants: `revoke all`, then table-level `select, delete`, then
+--      `insert (thread_id, user_id)` and created_at on NEITHER list) and its
+--      `enable row level security`.
+--   2. `create trigger enforce_participation_gate before insert ... when
+--      (current_user = 'authenticated')` per `023`.
+--   3. Re-create `private.notify_club_thread_waved()` and
+--      `private.retract_club_thread_waved()` from `100` §1-§2 — NOT from `098`,
+--      whose bodies carry the defect `100` fixes — re-issue `098` §9's revokes,
+--      re-create the two triggers from `098` §10 (NO `when` clause on either),
+--      and re-issue `100` §4's comment on the notify.
+--   4. Restore the `twenty-two` comment on `public.enforce_participation_gate()`
+--      — `094`'s text, quoted verbatim in §4 below.
+--   5. Restore `private.notify_club_waved()`'s comment to `098` §11's text,
+--      quoted verbatim in §5 below.
+--   Nothing is owed on `notifications`: this file writes no row and drops no
+--   constraint there. Should the `club_thread_waved` arm ever be narrowed out
+--   in a LATER file, that file owes `098`'s ordering — delete the live rows
+--   BEFORE re-adding the CHECK, because it is validated against them.
+--
+-- ---------------------------------------------------------------------------
+-- §1  The two triggers, before their functions
+-- ---------------------------------------------------------------------------
+-- `098`'s ROLLBACK order, followed rather than re-derived: triggers first, then
+-- the functions. `drop function` would refuse while a trigger depends on it,
+-- and the only way past that is `cascade` — which drops whatever else happens
+-- to depend, silently. Naming the triggers is what keeps the blast radius
+-- readable.
+--
+-- `if exists` on both, because this file must be re-runnable against a project
+-- where §3's `drop table` has already taken them: dropping a table drops the
+-- triggers ON it, so a partial apply leaves exactly that state.
+drop trigger if exists notify_club_thread_waved  on public.club_thread_waves;
+drop trigger if exists retract_club_thread_waved on public.club_thread_waves;
+
+
+-- ---------------------------------------------------------------------------
+-- §2  The two functions
+-- ---------------------------------------------------------------------------
+-- Both live in `private`, are `security definer`, and were last written by
+-- `100`. Neither is reachable by any client role or by `service_role` (`098`
+-- §9's revokes, preserved through `100`'s `create or replace`), and `private`
+-- is not routed by PostgREST — so dropping them removes no PostgREST surface
+-- and no security advisor. `private.notify_club_thread_replied()` is NOT
+-- dropped: the reply fan-out survives this change intact.
+drop function if exists private.notify_club_thread_waved();
+drop function if exists private.retract_club_thread_waved();
+
+
+-- ---------------------------------------------------------------------------
+-- §3  The table
+-- ---------------------------------------------------------------------------
+-- ** NO `cascade`, DELIBERATELY. ** Nothing references `club_thread_waves` —
+-- §0 measured zero inbound foreign keys — so a plain `drop table` succeeds and
+-- takes with it only what the table OWNS: its three policies, its table and
+-- column grants, its primary key, `club_thread_waves_user_idx`, its two
+-- outbound foreign keys and `023`'s participation-gate trigger. If a dependency
+-- has appeared since §0 was measured, this statement RAISES rather than
+-- destroying it quietly, which is the entire reason the keyword is absent.
+drop table public.club_thread_waves;
+
+
+-- ---------------------------------------------------------------------------
+-- §4  The participation gate's comment goes stale the moment §3 applies
+-- ---------------------------------------------------------------------------
+-- `094` last restamped it and its text says "twenty-two BEFORE INSERT triggers"
+-- with `club_thread_waves` named as the eighteenth. Both halves are now false.
+--
+-- ** THE ORDINALS AFTER THE SEVENTEENTH ALL SHIFT DOWN BY ONE, AND THAT IS NOT
+-- A RENAMING. ** The numbers are positions in this one list, not identities: the
+-- eighteenth slot is now `club_join_waves`, which `092` added alongside the
+-- dropped table and which is untouched here. No trigger moved and no table
+-- gained or lost a gate other than the one that ceased to exist. Restated in
+-- full rather than patched, because a comment listing twenty-one tables with a
+-- gap in its numbering is worse than either version.
+--
+-- `094`'s prior text, verbatim, for the rollback:
+--   'Decision #5 and T&C consent, enforced where they are actually broken
+--    rather than by a redirect (023). One function, twenty-two BEFORE INSERT
+--    triggers — the ninth is ride_messages (034), the tenth
+--    ride_map_render_attempts (051), the eleventh place_search_attempts (069),
+--    the twelfth club_threads and the thirteenth club_messages (081, the
+--    twelfth renamed from club_discussions by 082), the fourteenth ride_invites
+--    (083), the fifteenth feedback (084), the sixteenth club_join_requests
+--    (085), the seventeenth ride_invite_links (091), the eighteenth
+--    club_thread_waves and the nineteenth club_join_waves (092), the twentieth
+--    club_invites and the twenty-first club_invite_links (093), the
+--    twenty-second club_thread_reports (094); the five uncovered INSERT-policy
+--    tables are named in 023''s header with their reasons.'
+comment on function public.enforce_participation_gate() is
+  'Decision #5 and T&C consent, enforced where they are actually broken rather than by a redirect (023). One function, twenty-one BEFORE INSERT triggers — the ninth is ride_messages (034), the tenth ride_map_render_attempts (051), the eleventh place_search_attempts (069), the twelfth club_threads and the thirteenth club_messages (081, the twelfth renamed from club_discussions by 082), the fourteenth ride_invites (083), the fifteenth feedback (084), the sixteenth club_join_requests (085), the seventeenth ride_invite_links (091), the eighteenth club_join_waves (092), the nineteenth club_invites and the twentieth club_invite_links (093), the twenty-first club_thread_reports (094); the five uncovered INSERT-policy tables are named in 023''s header with their reasons. 101 (PD-373) dropped club_thread_waves, which 092 made the EIGHTEENTH and which was the other half of 092''s pair — so club_join_waves moves up into that ordinal and every entry after it shifts down by one. The ordinals are positions in this list and nothing more: no trigger moved, and club_join_waves keeps its gate.';
+
+
+-- ---------------------------------------------------------------------------
+-- §5  `private.notify_club_waved()`'s comment says a thread wave notifies, and
+--     it is about to stop being true
+-- ---------------------------------------------------------------------------
+-- This is `098` §11 run in reverse, on the same object, for the same reason:
+-- the comment on the SURVIVING join-wave fan-out is where a reader looks first
+-- when asking what waves do in this schema, and it currently ends by describing
+-- `private.notify_club_thread_waved` in the present tense. The rest is re-issued
+-- VERBATIM with that one sentence replaced. External comment, so `prosrc` does
+-- not move and no cross-project hash changes.
+--
+-- `098` §11's prior text ended: "A THREAD wave DOES now notify, as of 098
+-- (PD-367): private.notify_club_thread_waved addresses club_threads.author_id,
+-- and its retraction must JOIN club_threads for that recipient because
+-- club_thread_waves does not carry it — which is why this function's shape
+-- cannot be copied there."
+comment on function private.notify_club_waved() is
+  'Fan-out: waving a rider''s join notifies THAT RIDER and nobody else (092) — not the club owner, not its admins, not its other members. Recipient and actor both come from NEW, never from auth.uid(), which is NULL wherever there is no JWT. security definer because no client role holds INSERT on notifications and the row is addressed to somebody else. The is_blocked conjunct is REDUNDANT TODAY — club_join_waves INSERT''s EXISTS already inherits club_members'' block arm — and is written anyway because that implication is a property of the club_members policy rather than of this table. THIS IS NOW THE ONLY WAVE IN THE SCHEMA: 101 (PD-373) dropped public.club_thread_waves and 098''s notify_club_thread_waved / retract_club_thread_waved with it, the club timeline''s announcement row being the only waveable row PD-372 left. A thread wave therefore notifies nobody because a thread wave no longer exists — which is a different fact from 092''s original "deliberately silent" and must not be read as that decision returning. The club_thread_waved rows already written are KEPT, along with their arm in notifications_type_check and notifications_subject_shape: the client still renders them, and nothing forces an enum to shrink because its writer is gone.';
+
+
+-- ---------------------------------------------------------------------------
+-- §6  VERIFICATION — run against the hosted project after apply
+-- ---------------------------------------------------------------------------
+-- 1. The table is gone and its sibling is not:
+--
+--      select to_regclass('public.club_thread_waves') as should_be_null,
+--             to_regclass('public.club_join_waves')   as should_be_a_table,
+--             (select count(*) from public.club_join_waves) as join_waves_still_there;
+--
+-- 2. Neither function survives, and the REPLY fan-out does:
+--
+--      select p.proname
+--        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--       where n.nspname = 'private'
+--         and p.proname in ('notify_club_thread_replied',
+--                           'notify_club_thread_waved',
+--                           'retract_club_thread_waved');
+--      -- exactly one row: notify_club_thread_replied
+--
+-- 3. `club_messages` still carries its two triggers, and `club_join_waves` its
+--    three:
+--
+--      select t.tgrelid::regclass::text as tbl, t.tgname
+--        from pg_trigger t
+--       where t.tgrelid in ('public.club_messages'::regclass,
+--                           'public.club_join_waves'::regclass)
+--         and not t.tgisinternal
+--       order by 1, 2;
+--      -- club_join_waves: enforce_participation_gate, notify_club_waved,
+--      --                  retract_club_waved
+--      -- club_messages:   enforce_participation_gate, notify_club_thread_replied
+--
+-- 4. Twenty-one gate triggers, and the comment says twenty-one:
+--
+--      select (select count(*) from pg_trigger t
+--               where t.tgfoid = 'public.enforce_participation_gate()'::regprocedure
+--                 and not t.tgisinternal) as gate_triggers,
+--             obj_description('public.enforce_participation_gate()'::regprocedure,
+--                             'pg_proc') like '%twenty-one BEFORE INSERT%' as comment_restamped;
+--
+-- 5. ** Nothing was deleted from `notifications`, and the arm is still there. **
+--    This is the decision above, verified rather than assumed:
+--
+--      select (select count(*) from public.notifications
+--               where type = 'club_thread_waved')                   as rows_kept,
+--             (select pg_get_constraintdef(oid) like '%club_thread_waved%'
+--                from pg_constraint
+--               where conrelid = 'public.notifications'::regclass
+--                 and conname = 'notifications_type_check')         as type_arm_kept,
+--             (select pg_get_constraintdef(oid) like '%club_thread_waved%'
+--                from pg_constraint
+--               where conrelid = 'public.notifications'::regclass
+--                 and conname = 'notifications_subject_shape')      as shape_arm_kept;
+--      -- DEV: 1, true, true
+--
+-- 6. Thirty-two foreign keys into profiles, one fewer than before:
+--
+--      select count(*) from pg_constraint
+--       where contype = 'f' and confrelid = 'public.profiles'::regclass;
+--
+-- 7. `get_advisors(security)` — this file publishes NO function in `public` and
+--    drops none from it, so the advisor count MUST NOT MOVE. A migration that
+--    only drops objects adds zero advisors; one more, or one fewer, means
+--    something other than this file's scope was touched.

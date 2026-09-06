@@ -113,7 +113,7 @@ describe('declinesSwipeBack', () => {
     expect(declinesSwipeBack(null)).toBe(false)
   })
 
-  // `ExploreRidesStrip`'s tiles, `RideJournal`, the club's ride strip — all
+  // `ExploreRidesStrip`'s tiles, the club's ride strip — all
   // full-bleed, so an edge-origin gesture genuinely lands inside one. This is
   // the test the edge zone cannot do on its own.
   it('declines inside a horizontal scroller, however deep', () => {

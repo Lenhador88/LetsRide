@@ -232,3 +232,110 @@ visible to us.
 The Sentry org and project, and the DSN in Vercel (Production and
 Preview/Development are separate scopes) and in the native build's environment.
 Until that lands the code ships and stays silent.
+
+## Position, 2026-09-01 — shipped, and silent until three owner actions land
+
+PD-315 (Sentry) and PD-353 (PostHog) built together because they share the privacy page, the
+layout mount and the env plumbing. The durable half is elsewhere and is not repeated here:
+`CLAUDE.md` §Technology Decisions has the dependency justification,
+[`docs/reference/observability.md`](reference/observability.md) has the table of what a report
+carries, and `docs/ENVIRONMENTS.md` §The observability keys has the scoping and why the two SDKs
+scope in opposite directions. What follows is only what is still undone.
+
+**The state to internalise: both SDKs are a clean no-op with no key, so "it is not reporting
+anything" is indistinguishable from "it is broken" without checking the variable first.** That is
+the normal state of DEV, every preview and this container.
+
+| What | State | Who |
+|---|---|---|
+| Sentry DSN | **Missing.** Code ships and stays silent — nothing throws, nothing prints | **Owner**, `ENVIRONMENTS.md` §Owner setup 7b |
+| `NEXT_PUBLIC_POSTHOG_KEY` on Vercel Production | Key exists (PD-353's Ready block carries it); putting it on the target does not | **Owner**, 7c |
+| PostHog's four dashboard toggles | Unverified from here — the code cannot see them, and a mismatch is silent in the expensive direction | **Owner**, 7c |
+| Replay retention | **At whatever the free tier defaults to.** The highest-consequence unset setting here: unmasked video of riders' screens, kept for however long that is. Nothing in the repo can see it | **Owner**, 7c-i |
+| Telling the pilot riders | Not done. PD-353 calls it "a stronger answer than masking" and it costs a sentence; `/legal/privacy` is the written half and does not substitute for it | **Owner**, 7c-ii |
+| Sentry's alert rule | Not set. A crash spike on a fresh release has to be known in minutes, and a project created with defaults will not do that. Distinct from the alert→ticket automation, which PD-315 excludes | **Owner**, 7c-iii |
+| The transport, either SDK | **Never exercised.** No DSN and no PostHog key anywhere the walk can reach, and both hosts are outside this container's network policy | Hand-verified on PROD after the promotion. PD-353 makes it a named step before `Done (in production)` |
+| `096` | On DEV. **Additive, so it applies to PROD BEFORE the build serves** — build-first gives `sendFeedback` a `PGRST204` on a column that does not exist and takes feedback submission down entirely. No client ordering constraint | The promotion — **`096` FIRST, before the build serves; `092`–`095` after it is confirmed serving.** Two groups on opposite sides of the build, see the note below |
+
+**`092` and `096` want OPPOSITE sides of the build, so the promotion is two groups rather than
+one filename-ordered run.** `092`'s `club_join_waves` gives PostgREST a second
+`club_members`↔`profiles` relationship, so an OLDER bundle's unhinted embed answers `PGRST201` /
+HTTP 300 the moment it applies — Your clubs, Explore clubs, the club roster and the club timeline,
+all four dead for every rider until the build lands. That is what happened on DEV (PD-363). `096`
+pulls the other way: a NEWER bundle against a pre-`096` database sends `posthog_session_id` and
+gets `PGRST204`, taking feedback submission down.
+
+So: **`096` before the build serves, then `092`–`095` after it is `READY` on the merge sha with
+`aliasError` null.** Out of filename order on purpose, and safe because `096` names nothing
+`092`–`095` create — its only mention of them is a comment — and they name nothing of its.
+`CLAUDE.md` §Supabase Rules carries the same split, in its applied-state paragraph; keep the two in step.
+
+**PROD is at `091` and is fine today**, and the bundle carrying `MEMBER_PROFILE_EMBED` is correct
+against a pre- and post-`092` database alike, so deploy-first has no unsafe side. Re-derive rather
+than trusting this line — one `curl`, no session needed:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  "https://<ref>.supabase.co/rest/v1/club_members?select=user_id,profile:profiles(id)" \
+  -H "apikey: <publishable>"    # 300 = ambiguous, 401 = parsed fine (anon holds no grant)
+```
+
+**Two things a reviewer should know are assumptions rather than measurements:**
+
+- **The place-search field is BLOCKED from session replay, and the product owner asked for
+  *unmasked*.** This is one narrowing, taken deliberately and stated rather than slipped in:
+  `place_search_attempts` (`069`) holds no column that could store a search term because a meeting
+  point is frequently a home address, and an unmasked replay of that field reinstates in a
+  third-party store exactly what the schema was written to refuse — at higher fidelity, with a
+  different retention, and with nothing anywhere comparing a replay setting against a schema
+  decision. **It is one class on one wrapper** (`NO_CAPTURE_CLASS` in
+  `src/components/ui/PlaceSearchField.tsx`) and reversing it is deleting that class. If the owner
+  wants the term recorded, say so and it goes — and note the trade honestly: the meeting-point
+  field is where riders stall hardest in the composer, so this removes exactly the footage the
+  pilot is most likely to want.
+
+  **Read PD-353 carefully before citing it here.** Its "keep the place search masked" sits in the
+  paragraph describing what the FUTURE revisit will probably decide, not the pilot. The settled
+  pilot posture is "ON and UNMASKED" with no carve-out, so this is a real narrowing of an explicit
+  instruction rather than an application of one.
+
+  **`ph-mask` does not work for this and the first version used it**, which is worth knowing
+  because it is the obvious implementation and it fails silently. rrweb takes an input's VALUE
+  from `maskInputOptions` alone, keyed on tag name and input type, and never consults
+  `maskTextClass` or `maskTextSelector`; an `<input>` also has no descendant text nodes for a
+  text-mask to reach. And the suggestion panel is a SIBLING of the input, so a class on the field
+  leaves the geocoder's returned addresses on screen. It has to be a BLOCK class on the wrapper
+  that contains both.
+- **Passwords are masked whatever `maskAllInputs` says.** Measured against the installed rrweb
+  recorder, not recalled, and asserted in `src/lib/analytics/__tests__/client.test.ts` — because
+  the entire unmasked posture rests on it and an SDK bump that changed it would be silent.
+
+**The gap neither story closes, and it is the one worth reading:** `delete-account` does not reach
+PostHog. A rider who erases their account leaves their events and their **unmasked recordings**
+behind, so `029`'s "the row goes" contract is silently false for the one processor holding video of
+them. `identify()` uses `auth.uid()` so the handle exists; wiring the erasure needs a PostHog
+private API key in the function's secret store, which is a new secret and arguably its own story.
+Until then `/legal/privacy` and `/legal/account-deletion` both say plainly that deletion does not
+reach it, and name the email route that does. `ENVIRONMENTS.md` §Owner setup 7d.
+
+## The dependencies
+
+**Three of the twelve are observability (PD-315, PD-353)**, and each is a doorway module in
+`src/lib/` that nothing else imports the package through — the same one-doorway shape as
+`lib/data/` and `lib/actions/`, enforced by a test in each case, because the privacy posture is a
+property of the doorway:
+
+- **`@sentry/capacitor` + `@sentry/react`** — a throw in a rider's browser reached no log
+  anywhere. They are a **pair**: `@sentry/capacitor` peers an exact `@sentry/react`, and its
+  `init` falls through to the browser SDK on the web, so the pair covers both build shapes and
+  `@sentry/nextjs` would be a second `Sentry.init` to keep in agreement for ever. It is also a
+  **native plugin**, so `CLAUDE.md` §Technology Decisions' rule on native plugins applies — each
+  needs a one-sentence justification.
+- **`posthog-js`** — the one product question SQL cannot reach is *which* onboarding step turns a
+  rider away, because a rider who tries three usernames and closes the tab has written nothing.
+  Eight of the ten questions in `docs/reference/analytics.md` are still a `select` and must stay one.
+
+All three are pinned **exact**: a minor bump that changes replay masking or session storage is a
+privacy or sign-in regression with nothing red anywhere.
+`src/lib/analytics/__tests__/client.test.ts` asserts against the installed recorder that password
+inputs are still masked unconditionally.

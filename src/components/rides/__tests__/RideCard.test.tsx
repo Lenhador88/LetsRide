@@ -107,3 +107,31 @@ describe('RideCard — the day', () => {
     ).toMatch(/Today|Tomorrow/)
   })
 })
+
+/**
+ * PD-378 — the optional return anchor. The card is drawn on five surfaces and
+ * only one of them (the club timeline) has a row to come back to, so the
+ * anchor is opt-in and its absence is the ordinary case. Both directions are
+ * asserted: a prop that silently defaulted to on would put a parameter on
+ * every ride link in the app, and one that silently ignored the prop would
+ * leave PD-378 shipped but inert — the exact shape `CLAUDE.md` requires a test
+ * to pin both ways.
+ */
+describe('RideCard — the return anchor', () => {
+  it('links to the plain ride detail when no anchor is given', () => {
+    const html = renderToStaticMarkup(<RideCard ride={ride()} />)
+
+    expect(html).toContain('href="/rides/detail?id=11111111-1111-4111-8111-111111111111"')
+    expect(html).not.toContain('row=')
+  })
+
+  it('carries the anchor into the link when one is given', () => {
+    const anchor = 'ride:11111111-1111-4111-8111-111111111111'
+    const html = renderToStaticMarkup(<RideCard ride={ride()} returnAnchor={anchor} />)
+
+    expect(html).toContain(`row=${encodeURIComponent(anchor)}`)
+    // Still the same ride, and still one link: the anchor is added to the
+    // destination rather than replacing it.
+    expect(html).toContain('href="/rides/detail?id=11111111-1111-4111-8111-111111111111&amp;row=')
+  })
+})

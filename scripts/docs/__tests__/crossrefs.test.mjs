@@ -333,6 +333,21 @@ describe('the cross-references in the real repo', () => {
     // ambiguous read of the column reads as a clean database rather than a
     // leak.
     //
+    // **32 -> 35 on 2026-09-03 (`scope-the-strand-guard-to-the-transition`,
+    // PD-338).** Three more, all the same `Working` collision and all citing
+    // the heading they mean. Two are `CLAUDE.md` §Working Principles for
+    // *verify it both ways* — on the audience predicate and on the form's
+    // wiring, which is the shape the rule exists for here: `EditRideForm` seeds
+    // its state from the ride, so the refused transition is unreachable on
+    // first paint and a build that hardcoded `disabled={false}` passes every
+    // static assertion there is. One is §Working Principles for *replace a
+    // wrong claim rather than narrate it*, on the comment block that currently
+    // says PD-338 owns those sentences. The fourth citation in that change —
+    // §Working With the Product Owner, for *ambiguity → assume and proceed* —
+    // is the Narrow reading being declared as an assumption rather than an
+    // owner answer, which is the one thing a reader of that proposal must not
+    // miss.
+    //
     // **This suite reads `git ls-files`, so a proposal that is written but not
     // yet COMMITTED is invisible to it.** Running it before `git add` on a
     // change that adds markdown is a green that means nothing — which is how
@@ -343,7 +358,7 @@ describe('the cross-references in the real repo', () => {
     // have caught it was never repeated after the last doc edit. The habit the
     // warning actually asks for is to re-run the suite AFTER staging, not
     // merely to stage before running it once.
-    expect(result.ambiguous.length).toBeLessThanOrEqual(32)
+    expect(result.ambiguous.length).toBeLessThanOrEqual(35)
   })
 
   // Two standing specs cite the `design.md` of a change that has since been

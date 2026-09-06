@@ -121,7 +121,7 @@ Finished 2026-08-06. The app is a client-rendered bundle; there are no server pa
   signs in against a real project and loads every screen including detail routes discovered
   from the lists, then checks the guard's redirects and that sign-out leaves nothing behind. It
   needs `scripts/supabase-relay.mjs` running first — read that file's header, and see
-  `docs/HANDOFF.md` §The walk. Chromium in this container cannot reach Supabase directly. **The
+  `docs/reference/running-locally.md` §The walk. Chromium in this container cannot reach Supabase directly. **The
   guard-and-sign-out figure is the pass/fail one; the screens figure is data-dependent** — read
   §Verify it live below before trusting either.
 - **The E2E target becomes a webview** once the native shell exists. A Playwright suite written
