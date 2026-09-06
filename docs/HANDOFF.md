@@ -190,6 +190,38 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## Production is level with DEV for the first time since 2026-09-01 — 2026-09-06
+
+**`main` carries `f3c55b4` (35 commits, PR #405) and PROD is at migration `107`.** Both projects
+now hold 107 files and 39 security advisors, and `development` was fast-forwarded to `main` so the
+two branches do not diverge. Riders have block/hide undo, the paging club timeline, the ride
+timeline, the introduction-as-join, the trimmed privacy sheet, and a club that survives its last
+member instead of taking other riders' postcards down with it.
+
+**The promotion's real decision was an ORDERING CONFLICT, and it will recur** — `105`/`106` wanted
+migration-first (the promoted bundle calls their accessors) while `101`/`103` wanted deploy-first
+(each is an outage against the bundle that was serving). **Deploy-first wins**: it is the side
+protecting against an outage and destroyed data, where migration-first costs a transient
+`PGRST202`. It also keeps PROD's apply order equal to filename order.
+[`docs/reference/migrations.md`](reference/migrations.md) §Applied state has the per-file rule.
+
+**`103`'s already-loaded-tab hazard was measured empty rather than waived.** That file's own log
+says a PROD promotion should ship the transitional group-1 upsert and let it soak, because an SPA
+tab holding the pre-merge bundle keeps issuing the plain insert for days. PROD had **0 sign-ins in
+seven days** and a most-recent sign-in of 2026-08-14, so no such tab existed. **On a PROD with live
+riders that argument evaporates and the soak is the answer** — do not read this promotion as a
+precedent for skipping it.
+
+**PROD's objects were proved against DEV rather than against the recorded text**, which is the only
+check that catches a transcription error in an apply that succeeded: eight of nine object classes
+byte-identical, 121 of 123 functions, and the two exceptions comment-only in the direction where
+PROD matches the file and DEV does not.
+
+```bash
+# both projects, both directions — the check that would have caught 107's phantom
+mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # 107, level with DEV and with ls
+```
+
 ## The queue jam was an unmerged PR, and the stall check cannot see one — 2026-09-06
 
 **`slot-1` held PD-98 from 2026-09-05T19:43:43Z until this merge, and its build never died.** It
@@ -950,7 +982,7 @@ trips left a club with an owner and no membership row. Two `AFTER INSERT` trigge
   by any client.** Nine sites in the suite relied on that state arising by accident; each now
   manufactures it as the table owner. Any prose describing it as reachable is false.
 - **All three functions live in `private`, not the proposal's `public`** (following `095`), so the
-  advisor count does not move — both projects stay at thirty-seven. On the ride guard
+  advisor count does not move on either project. On the ride guard
   `security definer` is **correctness**: its parent probe cannot tell an invisible ride from a
   deleted one under invoker rights, and would fail open.
 
