@@ -192,7 +192,7 @@ See `docs/reference/running-locally.md` §The walk.
 
 ## The queue jam was an unmerged PR, and the stall check cannot see one — 2026-09-06
 
-**`slot-1` held PD-98 from 2026-09-05T17:25Z until this merge, and its build never died.** It
+**`slot-1` held PD-98 from 2026-09-05T19:43:43Z until this merge, and its build never died.** It
 opened [PR #396](https://github.com/Lenhador88/LetsRide/pull/396) at 20:35Z with `107` in it,
 gates green, and ended there without merging. Six firings and two handoff entries then reported
 the branch as never pushed, and PD-406 was filed on that.
@@ -205,7 +205,8 @@ so the grep finds nothing on a healthy build *and* on this one. The file says to
 
 **An open PR is the signal that separates the two, and no step reads it.** Ageing a branch cannot
 tell "still building" from "finished and stranded"; a PR that closes the issue answers both.
-`queue-run.md` STEP 6 now asks for one before it alarms — PD-406 carries the drift half.
+**This merge does not fix that** — it touches no `.claude/` file. PD-406 carries both halves:
+the PR probe STEP 6 needs, and the `db:drift` blindness underneath it.
 
 ```bash
 # what a stall check should ask, before it ages anything
@@ -314,9 +315,9 @@ npx vitest run scripts/docs/__tests__/crossrefs.test.mjs   # 26/26, at the ceili
 
 **DEV's applied `a_club_may_outlive_its_last_member` (`20260905203011`) is
 `supabase/migrations/107_a_club_may_outlive_its_last_member.sql`**, merged with this change. It was
-sitting in an unmerged PR that the section above explains nobody looked for, so PD-406's A/B/C
-decision — reconstruct the file or revert it on DEV — is moot. **Its last section is not**, and is
-what that issue now carries.
+sitting in an unmerged PR that the section above explains nobody looked for. **PD-406's A/B/C
+decision is withdrawn on the issue** — its option B, *revert it on DEV*, would now drop a migration
+the repo has a file for. Its last section survives and is what that issue carries.
 
 **Nothing here compares the applied chain against `ls supabase/migrations/`.** `npm run db:drift`
 compares DEV against PROD by *name*, so a migration applied to a project with no file behind it is
@@ -343,7 +344,7 @@ not by a judgement about the story**: it needs `supabase/tests/rls_test.sql` and
   name the table only in **comments**, as the precedent their own reasoning copies — the comment
   trap, where the issue's own suggested grep counts obituaries. So there is no enum arm to retire and
   `101`'s precedent question has no subject.
-- **`107` is taken on DEV by a file the repo lacks** — the section above.
+- **`107` is taken on DEV and in the repo** — the section above. The next migration is `108`.
 - **Nothing in `design/` draws a ride thread, and nothing draws a club thread either.** The club's
   thread screens were built without a v2 frame. The build copies the shipped implementation; do not
   go looking for a frame.
