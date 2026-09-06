@@ -190,34 +190,27 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
-## The queue is jammed on a dead slot, and both queued stories are proposals now — 2026-09-06
+## The queue jam was an unmerged PR, and the stall check cannot see one — 2026-09-06
 
-**`slot-1` has held PD-98 since 2026-09-05T17:25Z**, its session having applied `107` to DEV and
-never pushed a branch (the section below). **The five firings since the stall alarm** have all
-found it there, and every one is timed: 23:42, 00:41, 01:46, 02:41 (which wrote the previous
-version of this entry, committing at 03:37:14Z) and 03:41. Earlier firings ran while the slot was
-held too — the alarm is the datum, not the start. It is **already alarmed**
-(`<!-- stall-alarm slot:1 -->`, 23:44Z), and `queue-run.md` STEP 6 forbids a firing from reaping it:
-an age-based reaper that returns a story a live session is still building is the one failure worse
-than a held slot.
+**`slot-1` held PD-98 from 2026-09-05T19:43:43Z until this merge, and its build never died.** It
+opened [PR #396](https://github.com/Lenhador88/LetsRide/pull/396) at 20:35Z with `107` in it,
+gates green, and ended there without merging. Six firings and two handoff entries then reported
+the branch as never pushed, and PD-406 was filed on that.
 
-**Only the owner clears it** — move PD-98 back to `Queued (AI)` and strip `slot-1`.
+**`queue-run.md` STEP 6 missed it exactly as written.** It ages the branch with
+`git ls-remote --heads origin | grep -i "pd-<n>"`, and this repo's branches are `claude/<slug>`,
+so the grep finds nothing on a healthy build *and* on this one. The file says to read that as
+**unknown, not dead** — the 23:44Z alarm did; every prose entry after it hardened `unknown` into
+`never pushed`, which is the one claim the file forbids.
 
-**What it is costing is now precise: both queued stories have had their proposal written and
-neither can have its code.** Each needs `supabase/tests/rls_test.sql`, the next migration number and
-`docs/reference/schema.md` — exactly what that territory claims — so each hits two of STEP 4's three
-caps. The proposals were the halves that collided with nothing:
-
-- **PD-402** (High) — ride threads. Proposal merged (#400); the build waits.
-- **PD-361** — the removed rider who walks back in through a live invite link. Proposal merged
-  (#403, the section below); the build waits.
-
-**So the jam no longer costs a proposal — it costs only migrations, and it costs both of them.**
-That is the shape to expect from the next few firings too: there is nothing else on the board they
-can do, and a firing that finds both stories already proposed will end `idle`.
+**An open PR is the signal that separates the two, and no step reads it.** Ageing a branch cannot
+tell "still building" from "finished and stranded"; a PR that closes the issue answers both.
+**This merge does not fix that** — it touches no `.claude/` file. PD-406 carries both halves:
+the PR probe STEP 6 needs, and the drift check nobody runs.
 
 ```bash
-git ls-remote --heads origin | grep -iE "pd-98|outliv|preserve-postcard"   # nothing, still
+# what a stall check should ask, before it ages anything
+mcp__github__search_pull_requests  query="repo:Lenhador88/LetsRide is:pr is:open PD-98 in:body"
 ```
 
 ## The removal bar is proposed, not built — 2026-09-06
@@ -318,22 +311,25 @@ npx openspec validate replace-the-create-bar-with-a-floating-action --strict
 npx vitest run scripts/docs/__tests__/crossrefs.test.mjs   # 26/26, at the ceiling
 ```
 
-## A migration is applied to DEV with no file in the repo — 2026-09-06
+## `107` has its file, and nothing in the repo could tell — 2026-09-06
 
-**`107` is taken on the database and free in the repo.** DEV's last applied row is
-`a_club_may_outlive_its_last_member` (`20260905203011`) — PD-98's build, applied at 20:30Z by a
-session that then stalled and never pushed its branch. Filed as **PD-406**; the decision (reconstruct
-the file, or revert it on DEV) is the owner's.
+**DEV's applied `a_club_may_outlive_its_last_member` (`20260905203011`) is
+`supabase/migrations/107_a_club_may_outlive_its_last_member.sql`**, merged with this change. It was
+sitting in an unmerged PR that the section above explains nobody looked for. **PD-406's A/B/C
+decision is withdrawn on the issue** — its option B, *revert it on DEV*, would now drop a migration
+the repo has a file for. Its last section survives and is what that issue carries.
 
-**Every previous drift row here was the opposite and safer direction** — PD-152, PD-168, PD-144 were
-all *a file that had not been applied*, where the file is reviewable and the fix is to run it. This
-one cannot be fixed by applying anything, and **nothing in the repo measures it**: `db:drift`
-compares DEV against PROD by name, and neither is compared against `ls supabase/migrations/`. It was
-found by a proposal agent counting rows for an unrelated story.
+**The check that catches this exists, and nobody ran it.** `scripts/db/check-migration-drift.mjs`
+builds the union of the files and both applied sets and reports `applied to a database but has no
+file` — exactly this case, by name, in one line. But it needs `DEV_DATABASE_URL` and
+`PROD_DATABASE_URL`, **which no session holds**, and it is not in `ci.yml`
+([`docs/reference/migrations.md`](reference/migrations.md) §What reads as drift, and why none of it
+is says the same of `074`). So the drift ran unseen for six firings past a gate that was written
+for it. What a session CAN reach is `list_migrations`, and nothing tells it to compare that against
+`ls supabase/migrations/` before it picks a number.
 
 ```bash
-git ls-files supabase/migrations/*.sql | tail -1        # 106_the_hidden_list_cannot_detect_a_block.sql
-git ls-files supabase/migrations/ | grep -i outliv      # nothing — but DEV has applied it
+git ls-files supabase/migrations/*.sql | tail -1   # 107_a_club_may_outlive_its_last_member.sql
 ```
 
 ## Ride threads are proposed, not built — 2026-09-06
@@ -352,7 +348,7 @@ not by a judgement about the story**: it needs `supabase/tests/rls_test.sql` and
   name the table only in **comments**, as the precedent their own reasoning copies — the comment
   trap, where the issue's own suggested grep counts obituaries. So there is no enum arm to retire and
   `101`'s precedent question has no subject.
-- **`107` is taken on DEV by a file the repo lacks** — the section above.
+- **`107` is taken on DEV and in the repo** — the section above. The next migration is `108`.
 - **Nothing in `design/` draws a ride thread, and nothing draws a club thread either.** The club's
   thread screens were built without a v2 frame. The build copies the shipped implementation; do not
   go looking for a frame.
@@ -442,6 +438,58 @@ is the only place a rider is told their screen is recorded before consenting.
 ```bash
 git grep -n "resolveRideDetailActions\|horizon === null && shown" -- src/
 npx vitest run src/lib/rides src/lib/data/__tests__/club-timeline.test.ts src/components/profile
+```
+
+## A club may outlive its last member — 2026-09-05
+
+**PD-98, `107_a_club_may_outlive_its_last_member.sql`, applied to DEV.** `transfer_owned_clubs`'
+no-successor arm deleted the club, and `postcards.club_id → clubs` is ON DELETE CASCADE, so a rider
+erasing their account destroyed postcards belonging to riders who had left that club earlier. The
+club now **survives, ownerless**, when third-party postcards are in it. Owner's decision, 2026-09-05
+17:26Z, on the issue itself — they rejected both the inheritance default and detaching the postcards.
+
+**Six things a later session should not have to re-derive:**
+
+- **`club_id` is NEVER nulled to save a postcard, and the reason is stronger than the owner's.**
+  They rejected detaching for loss of meaning. It is also a data-exposure bug: **`club_id is null` is
+  the `postcards` SELECT policy's app-wide arm**, so detaching publishes a private club's photos to
+  every signed-in rider. The direction is the whole safety argument — this change only ever moves an
+  audience NARROWER, from "the club's members" to "its author alone".
+- **`private.can_read_club` had to move in the same migration, and the change's own task list said
+  not to touch it.** It is a `security definer` function carrying its OWN `is_public` test, so
+  narrowing the policy does not reach it. `rls_test.sql` 060 pins the two textually and is the only
+  thing in the repo that caught it. They must always move together.
+- **The welcome club is EXCLUDED and still deletes — a security condition, not an oversight.**
+  `complete_onboarding` is `security definer` and force-joins every new rider to `clubs.is_default`
+  with no `owner_id` predicate ("the INSERT policy does not apply", says its own comment), so an
+  ownerless welcome club would hand its preserved postcards to the entire signup stream. **All 5
+  club-attached postcards on DEV are in that club**, so the remainder is most of the defect by row
+  count — [PD-398](https://linear.app/lets-ride/issue/PD-398), filed rather than left in a comment.
+- **Nulling `owner_id` is the MECHANISM.** `clubs_owner_id_fkey` is ON DELETE CASCADE; detaching from
+  it is what makes the club survive. Implementing the arm as "skip the delete" leaves the club
+  pointing at the departing rider, loses it to the cascade moments later, and passes every assertion
+  written against the function in isolation.
+- **Four more sites refused an ownerless club only via a neighbouring `<>` that happens to go NULL**,
+  while their own `not is_blocked(…, owner_id)` conjuncts fail OPEN. None was a live hole; all are
+  explicit now, because the change adds a requirement forbidding exactly that reliance.
+  **Three-valued logic lands in three directions here: RLS `using` fails CLOSED, a CHECK fails OPEN,
+  and a total wrapper like `not is_blocked()` fails OPEN.**
+- **The reaper does not fire while a RIDE remains.** `rides.club_id` is ON DELETE SET NULL, so
+  reaping over a surviving private ride strands the zombie `032` §2 exists to prevent. It is also
+  `security definer` **because the `clubs` DELETE policy admits nobody for an ownerless club** — a
+  `security invoker` version deletes zero rows in silence and passes any assertion that only checks
+  the postcard delete succeeded.
+
+**Open, and the owner's to answer:** a preserved postcard's club chip. `POSTCARD_SELECT` embeds
+`club:clubs(id, name)` under the reader's RLS, so once the club is ownerless the chip stops
+resolving — the club context survives in the DATA (`club_id` untouched, no repair needed if this is
+ever widened) but not on screen. **No rider loses a chip they see today**: a club with an owner still
+satisfies `is_public and owner_id is not null`, so this is a refinement of a brand-new state rather
+than a regression.
+
+```bash
+git grep -n "reap_ownerless_club\|owner_id is not null" -- supabase/
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3488, from 3440
 ```
 
 ## A block and a hide can be undone, and neither was a screen problem — 2026-09-05
