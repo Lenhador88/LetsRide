@@ -51,18 +51,21 @@ it here.
 ## The participation gate
 
    **The participation gate is narrower than "every write".** `enforce_participation_gate` is on
-   **twenty-two tables on DEV and twenty-two on PROD**, and the two projects agreeing here is a
-   coincidence of two pending promotions rather than a sign they are level — count it rather than
-   read it.
+   **twenty-three tables on DEV and twenty-one on PROD** — measured on both projects 2026-09-06,
+   not derived. Count it rather than read it; the query is at the foot of this section.
 
-   Two files moved it and they move it in opposite directions, which is why the arithmetic is
-   written out rather than left as a delta. `101` (PD-373) dropped `club_thread_waves` and the
-   table took its gate with it, applied to DEV only; PROD keeps both until `101` is promoted, which
-   it must not be until `main` is confirmed serving PD-372 (`docs/HANDOFF.md`'s §Applied state entry
-   for `101` has why). Then `108` (PD-402) **added two** — `ride_threads` and
-   `ride_thread_messages` — and `109` **removes one**, `ride_messages`, going with the retired ride
-   chat. So DEV reads 21 → 23 → 22 across `101`, `108` and `109`, and PROD reads 22 throughout until
-   all three promote.
+   The two-project difference is a pending promotion, as it usually is, but the arithmetic is
+   written out because two files move this number in **opposite** directions and a delta alone
+   cannot be checked. `101` (PD-373) dropped `club_thread_waves` and the table took its gate with
+   it — **promoted to PROD on 2026-09-06**, so both projects are past it and the DEV-only note this
+   paragraph used to carry is spent. Then `108` (PD-402) **adds two**, `ride_threads` and
+   `ride_thread_messages`, and `109` **removes one**, `ride_messages`, going with the retired ride
+   chat. So DEV reads 21 → 23 → 22 across those three, and PROD sits at 21 until `108` and `109`
+   promote, when it reaches 22 as well.
+
+   **Do not read "DEV 23, PROD 21" as two migrations behind.** It is one applied file (`108`) and
+   one written-but-deliberately-unapplied file (`109`), which is the ordering this change exists to
+   hold — see `docs/HANDOFF.md` §Ride chat is retired and a ride has threads.
 
    **`ride_thread_reads` deliberately has no gate**, matching `feed_reads` and `club_thread_reads`:
    the gate does not sit on read-watermark tables. And `108`'s two triggers sit on **new** write

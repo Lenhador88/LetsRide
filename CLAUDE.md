@@ -130,9 +130,9 @@ never be dissolved back into components, because:
    writes safe in the first place.
 
    **The participation gate is narrower than "every write"** — `enforce_participation_gate` sits on
-   twenty-one tables on DEV and twenty-two on PROD (`101`/PD-373 dropped `club_thread_waves`' gate
-   on DEV only, awaiting promotion) and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
-   `feed_reads`, `club_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
+   twenty-three tables on DEV and twenty-one on PROD (`108` added two on DEV; `109` will take one
+   back when it applies) and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
+   `feed_reads`, `club_thread_reads`, `ride_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
    `accept_terms()` can still set a username and upload an avatar. `docs/reference/schema.md`
    §The participation gate has the list, the `push_devices` exception and the count query.
 2. `useActionState` gives pending and error states without hand-rolled `useState` triples — and
@@ -449,14 +449,22 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 107 files. DEV is at `107` and PROD at `100` — measured 2026-09-05.** The gap is
-`101`–`107`, all awaiting promotion. **`107` (PD-98) also goes MIGRATION-FIRST**, for a different
+**Applied state: 109 files. DEV is at `108` and PROD at `107` — measured 2026-09-06.** `101`–`107`
+**promoted to PROD on 2026-09-06**, so the long-standing seven-file gap this line used to describe
+is closed. What is open now is two files and they are open for different reasons: `108` (PD-402) is
+applied to DEV and awaiting promotion in the ordinary way, and **`109` is written and applied
+NOWHERE, deliberately** — it drops `ride_messages` and `ride_reads` and must not apply until the
+bundle that stopped reading them is confirmed **serving** on DEV (`READY` on the merge sha,
+`aliasError` null, which is not the same as merged). Its own header carries that gate. **`108` goes
+MIGRATION-FIRST and `109` goes LAST**, which is the sequencing rule with its two halves pulling in
+opposite directions — one file cannot be both sides of a deploy, which is why there are two.
+Historical, for the promotion just completed: **`107` (PD-98) also went MIGRATION-FIRST**, for a different
 reason from `105`/`106`: it has no unsafe side at all. It changes no `src/` file, no client writes
 `clubs.owner_id` on an existing row, it adds no PostgREST relationship, and **the policy delta is
 provably a no-op against every row existing at apply time** — `owner_id` is `NOT NULL` until the
 file's own first statement runs, so the added `owner_id is not null` conjuncts are universally true
 for every pre-existing row, and the only rows they can affect are ones the file's last statement can
-create. **`105`/`106` (PD-298) go MIGRATION-FIRST on the PROD
+create. **`105`/`106` (PD-298) went MIGRATION-FIRST on the PROD
 promotion**, and "additive, so the order does not matter" is the wrong reading: they add two
 `security definer` accessors that the promoted bundle CALLS, so a build serving ahead of them
 answers `PGRST202` on both Privacy-sheet lists — the shipped-client-reads case in the sequencing
@@ -472,10 +480,11 @@ ride creation. The reverse gap is *mostly* self-healing — `103`'s backfill rep
 newly-deployed bundle can leave — but **not for an already-loaded browser tab**, which keeps the
 pre-merge JS and goes on issuing the plain insert until it is reloaded. That population is what
 the change's own group 1 (a transitional idempotent upsert, left to soak) exists for, and it is
-why a PROD promotion should use it rather than collapsing the steps as the DEV apply did.
+why the PROD promotion used it rather than collapsing the steps as the DEV apply did.
 Count rather than trust it: `list_migrations` against both refs,
 against `ls supabase/migrations/*.sql | wc -l`. DEV also records three hand-applied rows with no
 file, so its row count reads high; every file IS applied, which is the direction that matters.
+**`109` is the one file applied nowhere and it is not drift** — see the two-file paragraph above.
 **Level is the exception, not the resting state** — DEV-ahead is where a migration lives between
 its merge and its promotion. Promote everything the gap contains, in filename order, per
 `docs/ENVIRONMENTS.md` §Migrations, and record each promotion's ordering in
@@ -529,10 +538,17 @@ never run. `complete_onboarding` also joins the caller to the club carrying `clu
 (`058`), inside a `when others` block, because a raise there would roll the completion stamp back
 and decision #5 gives a rider with a NULL stamp no way out of the wizard.
 
-**Security advisors: thirty-nine on DEV and thirty-seven on PROD, and only one is outstanding** —
-`auth_leaked_password_protection`, a dashboard click. **The two-advisor difference IS the pending
-`105` promotion**, which is the ordinary shape this section's last line describes rather than drift.
-The rest are things this repo chose: one
+**Security advisors: forty-one on DEV and thirty-nine on PROD, and only one is outstanding** —
+`auth_leaked_password_protection`, a dashboard click. **The two-advisor difference IS `108`, which
+is applied to DEV and not yet promoted** — the ordinary shape this section's last line describes
+rather than drift. Both projects read **39** before it, measured 2026-09-06 after the `101`–`107`
+promotion, so the older two-advisor gap this line used to attribute to `105` is closed and this is
+a new one with the same shape. `108` adds exactly two, one per `security definer` RPC it publishes
+in `public` — `delete_own_ride_thread_message` and `moderate_ride_thread`; its third function,
+`ride_thread_unread`, is `security invoker` and adds none, which is measured against
+`public.club_thread_unread` (`prosecdef = false`) rather than assumed. **`109` removes none**:
+`public.ride_has_unread` is `prosecdef = false` and `public.stamp_ride_read` holds no
+`authenticated` EXECUTE. The rest are things this repo chose: one
 `authenticated_security_definer_function_executable` WARN per `security definer` RPC in
 `public` (each narrow by design — takes a row id or nothing at all, never a rider id, one raise
 site), and two `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding
