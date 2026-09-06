@@ -243,10 +243,16 @@ const problems = []
  * The one console error that is the harness's fault rather than the app's.
  *
  * `scripts/supabase-relay.mjs` forwards HTTP and drops the `upgrade` header, so
- * the ride chat's Realtime subscription cannot connect through it and Chromium
- * logs a failed WebSocket on every load of `/rides/detail/chat`. Left unfiltered
- * that makes the walk permanently red on a screen that renders perfectly — and
- * a gate that is always red is a gate nobody reads.
+ * a thread's Realtime subscription cannot connect through it and Chromium logs a
+ * failed WebSocket on every load of `/rides/detail/thread` and
+ * `/clubs/detail/thread`. Left unfiltered that makes the walk permanently red on
+ * screens that render perfectly — and a gate that is always red is a gate nobody
+ * reads.
+ *
+ * **It named `/rides/detail/chat` until `108` (PD-402) retired it.** The filter
+ * itself never matched on the path — it matches the relay's origin and the
+ * Realtime path — so the retirement moved which screens provoke it and nothing
+ * else.
  *
  * **Deliberately narrow: the relay's own origin and the Realtime path.** A
  * WebSocket failure anywhere else, or to any other host, is still a failure. It
@@ -970,6 +976,17 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
     : null
   if (club && !thread) say('  (no threads in that club — /clubs/detail/thread unwalked)')
 
+  // The ride's thread route needs a THREAD id and is discovered exactly the
+  // same way — `108`, PD-402. **The ride's thread list is crew-only**, so this
+  // yields nothing on a ride the walking account is not on, which is a skip
+  // rather than a failure and says so: a silent skip here reads as a pass.
+  const rideThread = ride
+    ? await firstDetailId(`/rides/detail/threads?id=${ride}`, '/rides/detail/thread')
+    : null
+  if (ride && !rideThread) {
+    say('  (no threads on that ride — /rides/detail/thread unwalked)')
+  }
+
   const postcard = await firstDetailId('/postcards', '/postcards/detail')
   if (!postcard) say('  (no postcard thread link — /postcards/detail unwalked)')
 
@@ -1008,7 +1025,11 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
       ? [
           '/rides/detail',
           '/rides/detail/crew',
-          '/rides/detail/chat',
+          // `108`, PD-402 — both take a RIDE id, the way the club's two do.
+          // `/rides/detail/thread` takes a THREAD id and is appended below,
+          // discovered from this list.
+          '/rides/detail/threads',
+          '/rides/detail/threads/new',
           '/rides/detail/edit',
           // `083`, PD-329. Unlike `edit`, this one 404s for a rider who is not
           // the organizer — so it is walked on the same assumption `edit`
@@ -1037,6 +1058,7 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
         ].map((p) => detail(p, club))
       : []),
     ...(thread ? [detail('/clubs/detail/thread', thread)] : []),
+    ...(rideThread ? [detail('/rides/detail/thread', rideThread)] : []),
     ...(postcard ? [detail('/postcards/detail', postcard)] : []),
     ...(profile ? [detail('/profile/detail', profile)] : []),
   ]
@@ -1371,6 +1393,37 @@ async function provision(wanted, existing = {}) {
     ])
     await page.waitForTimeout(1200)
     created.ride = new URL(page.url()).searchParams.get('id')
+
+    // A thread on the fixture ride — `108`, PD-402. Without one
+    // `/rides/detail/thread` is unwalked on every run, because that route takes
+    // a THREAD id and the only place to discover one is the ride's own Threads
+    // list. `103` makes the creator crew of their own ride in the ride's own
+    // transaction, so this account is crew by construction and `108`'s INSERT
+    // policy admits it.
+    //
+    // **Non-fatal, and it says so rather than failing the run.** The route is
+    // then skipped and the discovery step above prints why — the same treatment
+    // the club's thread already gets when a club has none. A fixture that could
+    // not be created must not turn a render check red; what must not happen is
+    // a silent skip, which reads as a pass.
+    if (created.ride) {
+      await page.goto(`${BASE}/rides/detail/threads/new?id=${created.ride}`, {
+        waitUntil: 'networkidle',
+      })
+      const seeded = await page
+        .fill('input[name="title"]', 'Walk fixture thread', { timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false)
+      if (seeded) {
+        await Promise.all([
+          page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
+          page.click('button[type="submit"]'),
+        ])
+        await page.waitForTimeout(1200)
+      } else {
+        console.log('  ! the fixture ride thread could not be created — /rides/detail/thread will be skipped')
+      }
+    }
   }
 
   return created
@@ -3348,7 +3401,7 @@ await browser.close()
 
 console.log(`\n${paths.length - failures}/${paths.length} screens rendered clean`)
 if (realtimeSuppressed) {
-  // Named rather than swallowed: this run proved the chat renders and sends,
+  // Named rather than swallowed: this run proved a thread renders and sends,
   // and proved nothing about live delivery. See isRelayWebSocketFailure.
   console.log(
     `  (Realtime NOT exercised — ${realtimeSuppressed} relay WebSocket failure(s) suppressed; ` +

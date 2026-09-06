@@ -1,7 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
-import { routes } from '@/lib/routes'
+import { RideCreateSheet } from '@/components/rides/RideCreateSheet'
+import type { RideCreateOption } from '@/types'
 
 /**
  * The ride's create bar — a sticky primary above the navigation bar, in the
@@ -11,17 +13,20 @@ import { routes } from '@/lib/routes'
  * button instead of a plus on timeline."* A `(+)` on a section heading is not
  * an affordance anyone finds, and the club detail settled this shape already.
  *
- * ## One primary, no sheet — and that is a deliberate non-generalisation
+ * ## It opens a sheet as of `108` (PD-402), and that was predicted rather than
+ * discovered
  *
- * The club's bar opens a `ContextMenu` because a club creates three things.
- * **A ride creates exactly one**: a postcard tagged to it
- * (`routes.newPostcardInRide`). A sheet holding a single row is a tap that
- * asks a question with one answer, so this navigates straight to the composer.
+ * PD-401 shipped this as a single primary straight to the postcard composer,
+ * because a ride created exactly one thing, and this docstring said so: *"a
+ * sheet holding a single row is a tap that asks a question with one answer"*,
+ * and *"PD-402 is the story that makes a second action exist, and the sheet
+ * shape becomes right on the day it lands rather than before it."* It landed. A
+ * ride now creates a postcard tagged to it and a thread on it, so the sheet is
+ * right and the furniture is no longer around an empty slot.
  *
- * PD-402 — retiring ride chat and giving a ride threads — is the story that
- * makes a second action exist, and the sheet shape becomes right on the day it
- * lands rather than before it. Building the sheet now would be furniture
- * around an empty second slot.
+ * **The rows come from `resolveRideDetailActions` rather than from here**, so
+ * this bar and the timeline heading's `(+)` cannot offer different things — see
+ * `RideCreateSheet`.
  *
  * ## The geometry is `ClubCreateBar`'s, borrowed on purpose
  *
@@ -41,21 +46,29 @@ import { routes } from '@/lib/routes'
  * ## It is an affordance, never the enforcement
  *
  * The caller gates this on crew membership because `041` requires
- * `private.is_ride_crew` to tag a postcard to a ride. A rider who defeats the
- * control is refused by the policy; a control the database always refuses is
- * worse than no control at all.
+ * `private.is_ride_crew` to tag a postcard to a ride and `108` requires the same
+ * helper to open a thread on one. A rider who defeats the control is refused by
+ * the policy; a control the database always refuses is worse than no control at
+ * all.
  */
-export function RideCreateBar({ rideId }: { rideId: string }) {
+export function RideCreateBar({ options }: { options: RideCreateOption[] }) {
+  const [open, setOpen] = useState(false)
+
   return (
-    <div className="bottom-navbar fixed right-0 left-0 z-40 bg-background px-4 pt-4 pb-2">
-      <div className="mx-auto max-w-lg">
-        {/* The label names the act rather than the category. The club's says
-            `Create` because it opens a menu of three; with one destination,
-            `Create` would make the rider tap to find out what it creates. */}
-        <Button href={routes.newPostcardInRide(rideId)} size="md" className="text-base">
-          Add a photo
-        </Button>
+    <>
+      <div className="bottom-navbar fixed right-0 left-0 z-40 bg-background px-4 pt-4 pb-2">
+        <div className="mx-auto max-w-lg">
+          {/* `Create` rather than naming one act, matching `ClubCreateBar`: it
+              opens a menu of two now, so a label naming either one would be
+              wrong half the time. PD-401 shipped `Add a photo` precisely
+              because there was only one destination to name. */}
+          <Button size="md" className="text-base" onClick={() => setOpen(true)}>
+            Create
+          </Button>
+        </div>
       </div>
-    </div>
+
+      <RideCreateSheet options={options} open={open} onClose={() => setOpen(false)} />
+    </>
   )
 }

@@ -22,10 +22,10 @@
  * correctness — so where a `revalidatePath` claim was ambiguous, this file
  * widens rather than narrows, and says so at the site.
  *
- * **One key is not reached by its own domain's *detail* prefix, and it is the
- * only one: `clubs.threadMessages(threadId)`** (`081`, PD-307). Stated
- * positively, because the reach is real and a flat "no prefix reaches it" is
- * false:
+ * **Two keys are not reached by their own domain's *detail* prefix, and they
+ * are the only two: `clubs.threadMessages(threadId)`** (`081`, PD-307) **and
+ * `rides.threadMessages(threadId)`** (`108`, PD-402). Stated positively,
+ * because the reach is real and a flat "no prefix reaches it" is false:
  *
  * | Prefix | Reaches `clubs.threadMessages(d)`? |
  * |---|---|
@@ -33,10 +33,14 @@
  * | `['clubs']` (`clubs.all()`) | **yes** — `keyStartsWith` matches structurally |
  * | `['clubs','detail',clubId]` and everything under it | **no** — the key is `['clubs','threads',d,'messages']` |
  *
+ * The ride's table is the same one with `rides` for `clubs` throughout: the two
+ * were built to the same shape deliberately, so that a reader who has learnt
+ * one has learnt the other.
+ *
  * So a write that moves one thread's messages names that key itself, and a
  * write that removes a thread names the list key **and** the messages key. See
- * the key's own docstring for why it hangs off the thread id rather than
- * the club's.
+ * each key's own docstring for why it hangs off the thread id rather than the
+ * parent's.
  *
  * ## The count
  *
@@ -708,54 +712,86 @@ export const queryKeys = {
      */
     edit: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'edit'],
     /**
-     * The ride's chat thread (`034`). A child of the ride for the same reason
-     * `crew` is: it is scoped to one ride and dies with it.
+     * A ride's threads (`108`, PD-402) — the list `getRideThreads` fills. A
+     * child of the ride for the same reason `crew` is: it is scoped to one ride
+     * and dies with it.
      *
-     * **`sendRideMessage` deliberately invalidates only this key**, and that is
-     * the first narrow claim in this file that is narrow on purpose rather than
-     * inherited from a `revalidatePath`. A message changes nothing else — not
-     * the rides list, not the card, not the crew — so `rides.all()` would
-     * refetch four screens on every keystroke-ended send. The unread badge
-     * (Linear PD-120) will be the first thing that widens it, and it should
-     * widen it here rather than at the call site.
-     *
-     * **PD-120 landed and the prediction was half right.** `unread` below is
-     * nested under this key, so the widening did happen here and
-     * `sendRideMessage`'s call site is untouched — but read the next docstring
-     * before relying on what that buys: the reach is real and inert.
+     * **This replaces `rides.messages`, which was `034`'s single chat stream**,
+     * and the replacement is not a rename: the old key named one conversation
+     * per ride, and this names a *list* of them, with one further key per
+     * thread below.
      */
-    messages: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'messages'],
+    threads: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'threads'],
     /**
-     * Whether this ride's chat holds a message the rider has not read (`061`) —
-     * the boolean behind the header dot. **A child of `messages`, deliberately**,
-     * and the asymmetry the nesting buys runs in exactly one direction:
+     * Which of those threads hold a message this rider has not read
+     * (`ride_thread_unread`). **A child of `threads`, deliberately**, and the
+     * asymmetry the nesting buys runs in exactly one direction:
      *
-     * - `invalidate(rides.messages(id))` reaches `unread`. Correct — a new
-     *   message can move the badge.
-     * - `invalidate(rides.unread(id))` does **not** reach `messages`. Also
-     *   correct, and it is the half worth having: `markRideChatSeen` fires on
-     *   every arriving message while the chat is open, and refetching the thread
-     *   the rider is reading would turn one delivered message into two round
-     *   trips and a re-render. `markClubSeen` achieves the same narrowness by
-     *   commenting carefully at its call site; this gets it from the key.
+     * - `invalidate(rides.threads(id))` reaches `threadsUnread`. Correct — a
+     *   new thread can move a mark.
+     * - `invalidate(rides.threadsUnread(id))` does **not** reach `threads`.
+     *   Also correct, and it is the half worth having: `markRideThreadSeen`
+     *   fires on every arriving message while a thread is open, and refetching
+     *   the ride's whole thread list each time would turn one delivered message
+     *   into two round trips.
      *
-     * **The forward reach is inert today, and saying so is the point** — the
-     * `notifications` block below records a nesting argument that was wrong, and
-     * an unexamined "the badge tracks arrivals" would be the same mistake. The
-     * only caller of `rides.messages(id)`'s invalidation is `sendRideMessage`,
-     * which runs in the *author's* browser about the *author's* message — and
-     * `061` excludes your own messages from your own dot, so no cached answer
-     * can change. Another rider's message arrives over Realtime and the chat
-     * screen calls `refetch()` directly rather than `invalidate`, and the dot is
-     * not mounted there anyway.
-     *
-     * So the dot is answered when it mounts and is stale-bounded thereafter: it
-     * changes on navigation, not on delivery. That is the right behaviour for a
-     * badge on a control the rider has to navigate to in order to see, and it is
-     * a boundary rather than a gap — but it is not what the nesting delivers, so
-     * do not cite the nesting for it.
+     * `clubs.threadsUnread` carries the identical argument one domain over.
      */
-    unread: (rideId: string): QueryKey => ['rides', 'detail', rideId, 'messages', 'unread'],
+    threadsUnread: (rideId: string): QueryKey => [
+      'rides',
+      'detail',
+      rideId,
+      'threads',
+      'unread',
+    ],
+    /**
+     * The newest message in each of the ride's recently-active threads — the
+     * ride timeline's reply source (`getRideThreadReplies`).
+     *
+     * **A child of `threads` like `threadsUnread`, and invalidated the same way
+     * — by name.** The asymmetry `threadsUnread` documents does NOT reach it
+     * from a thread's own messages: `threadMessages` is
+     * `['rides','threads',threadId,'messages']`, which does not prefix this, so
+     * a rider posts in a thread, taps back, and the timeline would not show the
+     * reply they just wrote unless the write names this key itself. It does —
+     * see `sendRideThreadMessage`.
+     */
+    threadReplies: (rideId: string): QueryKey => [
+      'rides',
+      'detail',
+      rideId,
+      'threads',
+      'replies',
+    ],
+    /**
+     * One ride thread itself — its title, its author and the ride it sits in
+     * (`getRideThread`).
+     *
+     * **Keyed by the THREAD id, not the ride's**, and therefore outside
+     * `['rides','detail',rideId]` — the header table has the reach. The thread
+     * screen is reached by thread id and holds only that until the read
+     * returns, so a key built from the ride would be unavailable at the moment
+     * it is needed.
+     *
+     * **The parent of `threadMessages` below**, which is why a write that
+     * removes a thread names THIS key rather than the messages one: naming the
+     * messages alone leaves the thread's cached title standing, and a rider
+     * re-entering the URL inside `staleTime` draws the deleted thread's header
+     * for one paint before `notFound()` takes over.
+     */
+    thread: (threadId: string): QueryKey => ['rides', 'threads', threadId],
+    /**
+     * One ride thread's messages (`108`).
+     *
+     * Keyed by the thread id for `thread`'s reason, and a child of it so that
+     * invalidating the thread reaches the messages and not the reverse.
+     */
+    threadMessages: (threadId: string): QueryKey => [
+      'rides',
+      'threads',
+      threadId,
+      'messages',
+    ],
     /**
      * The organizer's invite list for one ride (`083`, PD-329).
      *

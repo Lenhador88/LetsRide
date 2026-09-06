@@ -1,15 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getRideJoins,
+  getRideThreadCreations,
+  getRideThreadReplies,
   groupRideTimeline,
   mergeRideTimeline,
   RIDE_TIMELINE_JOINS,
+  RIDE_TIMELINE_REPLIES,
+  RIDE_TIMELINE_THREADS,
   RIDE_TIMELINE_LIMIT,
   type RideJoin,
   type RideTimelineSources,
 } from '@/lib/data/ride-timeline'
 import { FEED_PAGE_SIZE } from '@/lib/data/postcards'
-import type { Postcard } from '@/types'
+import type { Postcard, RideThreadListItem, RideThreadReply } from '@/types'
 
 /**
  * `mergeRideTimeline` — the ride timeline's ordering, its horizon, and the one
@@ -57,7 +61,33 @@ const sources = (over: Partial<RideTimelineSources> = {}): RideTimelineSources =
   },
   postcards: { rows: [], horizon: null },
   joins: { rows: [], horizon: null },
+  // `108`, PD-402. Empty by default so every existing case keeps asserting what
+  // it asserted before the conversation sources existed — a fixture that
+  // silently contributed rows would move the display cap and the horizon under
+  // tests written about two sources.
+  threads: { rows: [], horizon: null },
+  replies: { rows: [], horizon: null },
   ...over,
+})
+
+/** A thread creation row, as `getRideThreadCreations` returns one. */
+const thread = (id: string, at: string, title = `thread ${id}`): RideThreadListItem =>
+  ({
+    id,
+    ride_id: 'ride-1',
+    author_id: 'r1',
+    title,
+    created_at: at,
+    author: { id: 'r1', username: 'r1' },
+  }) as RideThreadListItem
+
+/** The newest reply in one thread, as `getRideThreadReplies` returns one. */
+const reply = (threadId: string, at: string): RideThreadReply => ({
+  id: `m-${threadId}-${at}`,
+  created_at: at,
+  thread_id: threadId,
+  thread_title: `thread ${threadId}`,
+  author: 'r2',
 })
 
 describe('mergeRideTimeline — order', () => {
@@ -359,6 +389,180 @@ describe('getRideJoins — the horizon', () => {
 
   it('refuses a malformed ride id without calling the database at all', async () => {
     expect(await getRideJoins('not-a-uuid')).toEqual({ rows: [], horizon: null })
+    expect(from).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * `108` (PD-402) gave a ride a conversation, and the module header's no-paging
+ * argument now rests on how those two sources are bounded. These pin the parts
+ * of that a refactor reverses in silence.
+ */
+describe('mergeRideTimeline — threads and replies', () => {
+  it('interleaves a thread, a reply, a photo and an arrival by time alone', () => {
+    const timeline = mergeRideTimeline(
+      sources({
+        postcards: { rows: [postcard('p1', '2026-03-01T00:00:00.000Z')], horizon: null },
+        joins: { rows: [join('r1', '2026-03-02T00:00:00.000Z')], horizon: null },
+        threads: { rows: [thread('t1', '2026-03-03T00:00:00.000Z')], horizon: null },
+        replies: { rows: [reply('t1', '2026-03-04T00:00:00.000Z')], horizon: null },
+      })
+    )
+
+    // Newest first, and the founding last because the stream is complete.
+    expect(timeline.events.map((event) => event.kind)).toEqual([
+      'reply',
+      'thread',
+      'join',
+      'postcard',
+      'ride-planned',
+    ])
+  })
+
+  it('keys a reply on its THREAD, so a second reply in the same thread cannot collide', () => {
+    // The collapse guarantees one reply row per thread, and this is what makes
+    // that guarantee visible: two rows for one thread would be a duplicate
+    // React key rather than two entries. Keying on the message id would hide
+    // the bug by making both rows legal.
+    const timeline = mergeRideTimeline(
+      sources({ replies: { rows: [reply('t1', '2026-03-04T00:00:00.000Z')], horizon: null } })
+    )
+
+    expect(timeline.events[0].key).toBe('reply:t1')
+  })
+
+  it('withholds the founding entry when only the reply source declared a horizon', () => {
+    // The stronger `complete` derivation, which `mergeClubTimeline` did not
+    // have until PD-400. A collapsing source is exactly how the weaker test
+    // gets it wrong: two rows out of a two-hundred-message window, with a live
+    // horizon and nothing else cut.
+    const timeline = mergeRideTimeline(
+      sources({
+        replies: {
+          rows: [reply('t1', '2026-03-04T00:00:00.000Z')],
+          horizon: '2026-03-04T00:00:00.000Z',
+        },
+      })
+    )
+
+    expect(timeline.complete).toBe(false)
+    expect(timeline.events.map((event) => event.kind)).not.toContain('ride-planned')
+  })
+})
+
+describe('groupRideTimeline — a thread gets its own group', () => {
+  it('breaks a run of announcements rather than joining it', () => {
+    // A thread row is a destination with a title; compressed into the 44px
+    // announcement strip it reads like a fact that happened once. The break is
+    // the property — a regression here is invisible to `tsc` and to the merge's
+    // own tests, because the events are all still present and still ordered.
+    const groups = groupRideTimeline(
+      mergeRideTimeline(
+        sources({
+          joins: {
+            rows: [
+              join('r1', '2026-03-05T00:00:00.000Z'),
+              join('r2', '2026-03-03T00:00:00.000Z'),
+            ],
+            horizon: null,
+          },
+          threads: { rows: [thread('t1', '2026-03-04T00:00:00.000Z')], horizon: null },
+        })
+      ).events
+    )
+
+    expect(groups.map((group) => group.kind)).toEqual(['events', 'thread', 'events'])
+  })
+})
+
+function threadBuilder(rows: unknown[]) {
+  const builder: Record<string, unknown> = {}
+  builder.select = vi.fn(() => builder)
+  builder.order = vi.fn(() => builder)
+  builder.eq = vi.fn(() => builder)
+  builder.limit = vi.fn(() => builder)
+  builder.then = (resolve: (value: { data: unknown[]; error: null }) => void) =>
+    resolve({ data: rows, error: null })
+  return builder
+}
+
+const messageRow = (threadId: string, at: string) => ({
+  id: `m-${threadId}-${at}`,
+  created_at: at,
+  thread_id: threadId,
+  author: { id: 'r2', username: 'r2' },
+  thread: { ride_id: RIDE_ID, title: `thread ${threadId}` },
+})
+
+describe('getRideThreadReplies — the collapse and the horizon', () => {
+  beforeEach(() => from.mockReset())
+
+  it('returns one row per thread, keeping the newest in each', async () => {
+    // The bound that makes the ride timeline safe without paging: a message
+    // bound whose OUTPUT is a thread bound.
+    from.mockReturnValue(
+      threadBuilder([
+        messageRow('t1', '2026-03-05T00:00:00.000Z'),
+        messageRow('t1', '2026-03-04T00:00:00.000Z'),
+        messageRow('t2', '2026-03-03T00:00:00.000Z'),
+        messageRow('t1', '2026-03-02T00:00:00.000Z'),
+      ])
+    )
+
+    const source = await getRideThreadReplies(RIDE_ID)
+
+    expect(source.rows.map((row) => row.thread_id)).toEqual(['t1', 't2'])
+    expect(source.rows[0].created_at).toBe('2026-03-05T00:00:00.000Z')
+  })
+
+  it('takes the horizon from the WINDOW, never from the survivors', async () => {
+    // The trap `TimelineSource.horizon` names by hand: with a full window
+    // collapsing to one row, a horizon derived from `rows` would report that
+    // thread's latest message and cut the ride's whole history to the last
+    // hour. Every message here is in ONE thread, so the two answers differ by
+    // the entire window.
+    const window = Array.from({ length: RIDE_TIMELINE_REPLIES }, (_, i) =>
+      messageRow('t1', new Date(Date.UTC(2026, 8, 5, 12) - i * 60_000).toISOString())
+    )
+    from.mockReturnValue(threadBuilder(window))
+
+    const source = await getRideThreadReplies(RIDE_ID)
+
+    expect(source.rows).toHaveLength(1)
+    expect(source.horizon).toBe(window[RIDE_TIMELINE_REPLIES - 1].created_at)
+    expect(source.horizon).not.toBe(source.rows[0].created_at)
+  })
+
+  it('reports no horizon when the window did not fill', async () => {
+    from.mockReturnValue(threadBuilder([messageRow('t1', '2026-03-05T00:00:00.000Z')]))
+
+    expect((await getRideThreadReplies(RIDE_ID)).horizon).toBeNull()
+  })
+
+  it('refuses a malformed ride id without calling the database at all', async () => {
+    expect(await getRideThreadReplies('not-a-uuid')).toEqual({ rows: [], horizon: null })
+    expect(from).not.toHaveBeenCalled()
+  })
+})
+
+describe('getRideThreadCreations', () => {
+  beforeEach(() => from.mockReset())
+
+  it('reports the oldest row as the horizon when the read filled', async () => {
+    // These rows ARE the window — nothing is filtered or collapsed after the
+    // read — so `boundedHorizon`'s precondition holds here, unlike above.
+    const rows = Array.from({ length: RIDE_TIMELINE_THREADS }, (_, i) =>
+      thread(`t${i}`, new Date(Date.UTC(2026, 8, 5, 12) - i * 60_000).toISOString())
+    )
+    from.mockReturnValue(threadBuilder(rows))
+
+    const source = await getRideThreadCreations(RIDE_ID)
+
+    expect(source.horizon).toBe(rows[RIDE_TIMELINE_THREADS - 1].created_at)
+  })
+
+  it('refuses a malformed ride id without calling the database at all', async () => {
+    expect(await getRideThreadCreations('not-a-uuid')).toEqual({ rows: [], horizon: null })
     expect(from).not.toHaveBeenCalled()
   })
 })

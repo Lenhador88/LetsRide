@@ -790,67 +790,128 @@ export type RideCrew = {
 }
 
 /**
- * One message in a ride's chat — `Ride - Chat` (`2226:4999`), table `034`.
+ * A ride's titled thread — `108`, PD-402, replacing `034`'s single unbounded
+ * chat stream.
  *
- * `author` is nullable for the same reason every other embed's is: the
- * `profiles` SELECT policy hides rows with a NULL username, so a message from a
- * rider who is still mid-onboarding resolves to `null` rather than to a name.
- * That state is unreachable through the app — `023`'s gate refuses the insert —
- * but the type must admit it, because RLS is what makes the join nullable and
- * the gate is a different rule that could be relaxed independently.
+ * **`ClubThread`'s shape one domain over, and deliberately a second definition
+ * rather than a shared base.** The parent column differs — `ride_id` against
+ * `club_id` — and that column is the whole of what each table's audience
+ * predicate keys on, so a shared base would have to omit exactly the field that
+ * matters. `ChatBubbleMessage` below is the one place a structural type earns
+ * its keep here, because `ChatThread` draws either stream.
  *
- * There is deliberately no `updated_at` and no `edited` flag: `034` grants no
- * UPDATE and declares no UPDATE policy, so a message's body cannot change. See
- * that migration's §4 for why "edited" is a design question rather than a
- * column.
+ * **No `updated_at` and no `edited` flag**, for `ClubThread`'s two reasons:
+ * `108` grants no UPDATE and declares no UPDATE policy on either content table,
+ * so neither a title nor a body can change — and a title is the worse of the two
+ * to make mutable, because a title that changes after the crew has replied
+ * retitles their replies too.
  */
-export type RideMessage = {
+export type RideThread = {
   id: string
   ride_id: string
   author_id: string
-  body: string
+  title: string
   created_at: string
-  /**
-   * Narrower than `PublicProfile` on purpose — the name and nothing else.
-   *
-   * A chat bubble draws no avatar, so selecting `avatar_path` would mean a
-   * `createSignedUrls` round trip per distinct author for a URL nothing renders,
-   * on a screen that refetches on every incoming message. Widen this the day a
-   * bubble grows an avatar, and add the signing pass with it.
-   */
+}
+
+/**
+ * One row of a ride's Threads list — the thread plus its byline.
+ *
+ * `author` is nullable for the reason every other embed's is: the `profiles`
+ * SELECT policy hides a row with a NULL username, so a thread opened by a rider
+ * still mid-onboarding resolves to `null` rather than to a name. It is narrower
+ * than `PublicProfile` on purpose — the name and nothing else, because the row
+ * draws no avatar and signing one would be a round trip per distinct author.
+ *
+ * The unread mark is **not** on this type: it comes from `ride_thread_unread`,
+ * a separate read under its own key, so a failed unread call leaves the list
+ * rendering unmarked rather than not rendering at all.
+ */
+export type RideThreadListItem = RideThread & {
   author: Pick<PublicProfile, 'id' | 'username'> | null
 }
 
 /**
- * A ride's chat as the screen renders it, which is not the same list twice.
+ * One thread as its own detail screen renders it.
  *
- * `mine` is resolved once here rather than compared per bubble, because the
- * viewer's id is a *read* concern — it comes from `auth.getUser()` — and having
- * every bubble ask for it would either thread the id through the tree or make
- * each row do its own async lookup. The design's two bubble styles key on
- * exactly this flag.
+ * The screen needs `ride_id` from this rather than from the URL: the route names
+ * the *thread*, and `Back`, the watermark's cache key and the moderation
+ * affordance are all built from the ride.
  *
- * `startsGroup` is the design's `Section`: consecutive messages from one rider
- * are drawn as a run with the author's name on the first only. Computed in the
- * data layer for the same reason — it is a property of the *sequence*, so a
- * component computing it per row would need its neighbours anyway.
+ * **No `introduction` arm, unlike `ClubThreadDetail`.** That column is `097`'s
+ * club introduction and has no ride counterpart — a ride has no join ceremony —
+ * so the detail type is the list type and nothing more. Kept as its own name
+ * rather than used inline, so the day a ride thread grows a per-thread column
+ * there is a place to put it.
  */
-export type RideChatMessage = RideMessage & {
+export type RideThreadDetail = RideThreadListItem
+
+/** The keyset cursor the ride Threads list pages on — `(created_at, id)`, for
+ *  `ClubThreadCursor`'s reason: `created_at` is not a total order, so a cursor
+ *  over it alone skips or repeats rows exactly where two threads share one
+ *  `now()`. */
+export type RideThreadCursor = { createdAt: string; id: string }
+
+/** One message inside a ride thread (`108`). `author` is narrower than
+ *  `PublicProfile` because a bubble draws no avatar — selecting `avatar_path`
+ *  would mean a `createSignedUrls` round trip per distinct author for a URL
+ *  nothing renders, on a screen that refetches on every incoming message. */
+export type RideThreadMessage = {
+  id: string
+  thread_id: string
+  author_id: string
+  body: string
+  created_at: string
+  author: Pick<PublicProfile, 'id' | 'username'> | null
+}
+
+/**
+ * A ride thread's messages as the thread screen renders them.
+ *
+ * The four flags are `ChatBubbleMessage`'s and are described there: `mine` is
+ * resolved once in the read because the viewer's id is a read concern,
+ * `startsGroup`/`startsDay` are properties of the *sequence*, and `pending` is
+ * only ever set on a message this viewer just sent — withdrawn rather than left
+ * dimmed when the send fails, because a message must never be left looking sent
+ * when it was not.
+ */
+export type RideThreadChatMessage = RideThreadMessage & {
   mine: boolean
   startsGroup: boolean
-  /** First message of a new calendar day in `APP_TIME_ZONE` — draws a separator. */
   startsDay: boolean
-  /**
-   * Drawn but not yet acknowledged by the database.
-   *
-   * Only ever set on a message this viewer just sent, and only until the real
-   * row arrives carrying the same `id` — which is why `034` leaves `id`
-   * client-suppliable. A send that *fails* does not set this and does not
-   * linger: the optimistic row is withdrawn and the text goes back in the
-   * composer, because `.claude/agents/realtime.md` is explicit that a message
-   * must never be left looking sent when it was not.
-   */
   pending?: boolean
+}
+
+/**
+ * The newest message in one of a ride's recently-active threads, as the ride
+ * timeline draws it — `ClubThreadReply`'s shape, collapsed the same way.
+ *
+ * `thread_title` is carried on the row rather than looked up, because the row
+ * IS the sentence: *"ana replied in Meeting point"*. A timeline entry that had
+ * to resolve its own title would be one read per row.
+ */
+export type RideThreadReply = {
+  id: string
+  created_at: string
+  thread_id: string
+  thread_title: string
+  author: string | null
+}
+
+/**
+ * One entry in the ride detail's create sheet — PD-402.
+ *
+ * PD-401 built `bottomSlot: 'create'` as a single link because a ride created
+ * exactly one thing; a ride now creates two, so the slot opens a sheet instead.
+ * A **list** rather than a pair of booleans, so the sheet renders what it is
+ * given and the decision stays inside `resolveRideDetailActions` — the one place
+ * with an exhaustive test over it.
+ */
+export type RideCreateOption = {
+  /** Stable across renders and used as the React key. */
+  kind: 'postcard' | 'thread'
+  label: string
+  href: string
 }
 
 /**

@@ -2,9 +2,15 @@ import { MEMBER_PROFILE_EMBED } from '@/lib/data/columns'
 import { resolveAvatarUrls } from '@/lib/data/media'
 import { unwrapList } from '@/lib/data/unwrap'
 import { resolveSupabase } from '@/lib/supabase/resolve'
+import { boundedHorizon } from '@/lib/timeline/window'
 import type { TimelineSource } from '@/lib/timeline/window'
 import { rideIdSchema } from '@/lib/validation/rides'
-import type { Postcard, PublicProfile } from '@/types'
+import type {
+  Postcard,
+  PublicProfile,
+  RideThreadListItem,
+  RideThreadReply,
+} from '@/types'
 
 /**
  * The ride's timeline — the club's screen shape, one domain over (PD-393).
@@ -30,11 +36,23 @@ import type { Postcard, PublicProfile } from '@/types'
  * the anchor hunt — exists because a club accumulates for ever and its five
  * sources advance at five different rates. **A ride is a bounded event**: it
  * happens once, its crew is capped in practice by who turns up, and its
- * journal is the photos of one day. Both of its sources are read whole at
- * bounds set here, and a ride that overruns them is cut at the horizon and
- * handed off to the crew list and the photos — the same honest foot, without
- * a thousand lines of paging to keep correct. Lifting that machinery for one
- * more consumer that does not need it is generalising ahead of the need.
+ * journal is the photos of one day. Every source is read whole at a bound set
+ * here, and a ride that overruns them is cut at the horizon and handed off to
+ * the crew list and the photos — the same honest foot, without a thousand lines
+ * of paging to keep correct. Lifting that machinery for one more consumer that
+ * does not need it is generalising ahead of the need.
+ *
+ * **`108` (PD-402) added a conversation, and the no-paging argument survives
+ * only because of how the two thread sources are bounded.** A conversation is
+ * the first source on a ride with no natural ceiling — the `ride-chat` spec said
+ * so in as many words — so an unbounded reply source would break the argument
+ * above rather than stretch it. What keeps it true is that **both thread
+ * sources are bounded by thread COUNT, not by message count**: thread creations
+ * are one row per thread by construction, and `getRideThreadReplies` collapses
+ * its message window to one row per thread before it returns. A ride with four
+ * threads and four thousand messages contributes eight rows here. That is a
+ * requirement rather than an implementation detail, and it is asserted rather
+ * than assumed — see `getRideThreadReplies`.
  *
  * If a ride ever does overrun these bounds routinely, the club's model is the
  * answer and it is already written; this is the point to come back to.
@@ -85,6 +103,19 @@ export type RideTimelineEvent =
   | { kind: 'postcard'; at: string; key: string; postcard: Postcard }
   | { kind: 'join'; at: string; key: string; member: RideJoin }
   /**
+   * A thread being started — `108`, PD-402. The club's `thread` arm one domain
+   * over, minus its `activity` and `unread` fields: those carry the club's
+   * per-thread reply count and participant faces, which need
+   * `collapseToNewestPerThread`'s bookkeeping, and the ride's reply source is
+   * deliberately the simpler collapse. Adding them later is additive.
+   */
+  | { kind: 'thread'; at: string; key: string; thread: RideThreadListItem }
+  /**
+   * The newest reply in a thread — one row per thread, never one per message.
+   * That collapse is what keeps the no-paging argument below true.
+   */
+  | { kind: 'reply'; at: string; key: string; reply: RideThreadReply }
+  /**
    * The ride itself — `rides.created_at`, the oldest thing that can be on this
    * stream and therefore its floor.
    *
@@ -105,12 +136,18 @@ export type RideTimelineSources = {
   ride: { created_at: string; organizer_id: string; organizer: string | null }
   postcards: TimelineSource<Postcard>
   joins: TimelineSource<RideJoin>
+  /** `108`, PD-402. Both are **empty for a non-crew viewer** rather than
+   *  absent: `108`'s policies return zero rows to them, so the stream simply
+   *  has no thread entries — there is no separate "you cannot see these" state
+   *  and no conditional source. */
+  threads: TimelineSource<RideThreadListItem>
+  replies: TimelineSource<RideThreadReply>
 }
 
 export type RideTimeline = { events: RideTimelineEvent[]; complete: boolean }
 
 /**
- * The merge. Two RLS-filtered lists in, one chronological list out.
+ * The merge. Four RLS-filtered lists in, one chronological list out.
  *
  * ## The organizer's own crew row is dropped, and it is not a cosmetic choice
  *
@@ -158,11 +195,34 @@ export function mergeRideTimeline(
           member,
         })
       ),
+    ...sources.threads.rows.map(
+      (thread): RideTimelineEvent => ({
+        kind: 'thread',
+        at: thread.created_at,
+        key: `thread:${thread.id}`,
+        thread,
+      })
+    ),
+    // Keyed on the THREAD rather than on the message, matching the club: the
+    // row says "somebody replied in X" and there is at most one per thread
+    // after the collapse, so a message-keyed entry would produce a duplicate
+    // React key the moment the collapse ever returned two.
+    ...sources.replies.rows.map(
+      (reply): RideTimelineEvent => ({
+        kind: 'reply',
+        at: reply.created_at,
+        key: `reply:${reply.thread_id}`,
+        reply,
+      })
+    ),
   ]
 
-  const horizons = [sources.postcards.horizon, sources.joins.horizon].filter(
-    (at): at is string => at !== null
-  )
+  const horizons = [
+    sources.postcards.horizon,
+    sources.joins.horizon,
+    sources.threads.horizon,
+    sources.replies.horizon,
+  ].filter((at): at is string => at !== null)
 
   // Lexicographic on ISO-8601 rather than parsed: both are UTC strings from
   // Postgres, and `Math.max` over dates would turn an unparseable stamp into
@@ -180,16 +240,22 @@ export function mergeRideTimeline(
    * founding sit legitimately under the oldest entry — see `ride-planned`.
    *
    * **The first half is deliberately stronger than "the horizon filter dropped
-   * nothing", which is what `mergeClubTimeline` asks.** A declared horizon
-   * means that source's picture stops there, whether or not any OTHER source
-   * happened to have a row below it — so a stream whose only full source is
-   * also its only source passes the weaker test while genuinely having rows
-   * behind it, and then appends the floor entry, which reads as the end of the
-   * story. On the club that is unreachable through four of its five sources
-   * (a full read there returns at least `CLUB_TIMELINE_LIMIT` rows, so the
-   * display cap always cuts first) and reachable through the fifth, which
-   * collapses its window — noted rather than fixed here, because it is a live
-   * screen and not this change's.
+   * nothing".** A declared horizon means that source's picture stops there,
+   * whether or not any OTHER source happened to have a row below it — so a
+   * stream whose only full source is also its only source passes the weaker
+   * test while genuinely having rows behind it, and then appends the floor
+   * entry, which reads as the end of the story.
+   *
+   * **`mergeClubTimeline` asked the weaker question until PD-400, and now asks
+   * this one** — the two expressions are byte-identical, which is the state to
+   * keep them in. The club's bug was reachable through exactly one of its five
+   * sources, `getClubThreadReplies`, because that source collapses its window
+   * to one row per thread and so can return two rows out of a two-hundred-
+   * message window with a live horizon. **`getRideThreadReplies` below is the
+   * same shape**, so this ride timeline would have been reachable-wrong too had
+   * it inherited the weaker test — which is the reason `108` adds a collapsing
+   * source here without touching this line, rather than the reason to
+   * "align" it with anything.
    */
   const complete = horizon === null && shown.length === ordered.length
 
@@ -246,6 +312,21 @@ function byNewestThenKey(a: RideTimelineEvent, b: RideTimelineEvent): number {
  */
 export type RideTimelineGroup =
   | { kind: 'postcard'; key: string; event: Extract<RideTimelineEvent, { kind: 'postcard' }> }
+  /**
+   * A thread's own row — its creation or its newest reply — `108`, PD-402.
+   *
+   * **Its own group rather than a row inside an `events` run**, matching the
+   * club: a thread row is a destination with a title and a byline, and
+   * compressing it into the 44px announcement strip would make the one entry a
+   * rider is meant to tap read like "someone joined". It also breaks a run of
+   * announcements the way a postcard does, which is what the club's timeline
+   * draws.
+   */
+  | {
+      kind: 'thread'
+      key: string
+      event: Extract<RideTimelineEvent, { kind: 'thread' | 'reply' }>
+    }
   | { kind: 'events'; key: string; events: RideTimelineEvent[] }
 
 export function groupRideTimeline(events: RideTimelineEvent[]): RideTimelineGroup[] {
@@ -254,6 +335,11 @@ export function groupRideTimeline(events: RideTimelineEvent[]): RideTimelineGrou
   for (const event of events) {
     if (event.kind === 'postcard') {
       groups.push({ kind: 'postcard', key: event.key, event })
+      continue
+    }
+
+    if (event.kind === 'thread' || event.kind === 'reply') {
+      groups.push({ kind: 'thread', key: event.key, event })
       continue
     }
 
@@ -354,5 +440,153 @@ export async function getRideJoins(
   return {
     rows: members,
     horizon: more && window.length > 0 ? window[window.length - 1].joined_at : null,
+  }
+}
+
+/**
+ * How far back the thread-creation read looks — `108`, PD-402.
+ *
+ * Sized like `RIDE_TIMELINE_JOINS` and for the same reason: well past what any
+ * real ride has, while staying one round trip. A ride with more than sixty
+ * threads reports a horizon and the foot says the stream is cut, which is the
+ * honest answer rather than a silent truncation.
+ */
+export const RIDE_TIMELINE_THREADS = 60
+
+/**
+ * How many MESSAGES the reply read looks at before collapsing.
+ *
+ * **This is a message bound whose OUTPUT is a thread bound**, which is the
+ * distinction the module header rests on: the read scans up to two hundred
+ * messages and returns at most one row per thread among them. So the timeline
+ * receives thread-many rows however busy the conversation is, and the
+ * no-paging argument holds.
+ *
+ * The club's `CLUB_TIMELINE_REPLIES` is the same two hundred, chosen there for
+ * the same shape.
+ */
+export const RIDE_TIMELINE_REPLIES = 200
+
+const TIMELINE_THREAD_SELECT = `
+  id, ride_id, author_id, title, created_at,
+  author:profiles!author_id(id, username)
+`
+
+/**
+ * The threads started on this ride, newest first — one timeline row each.
+ *
+ * **No audience predicate here.** `108`'s SELECT policy on `ride_threads` owns
+ * it: the `EXISTS` against `rides` evaluated as the caller, `private.is_ride_crew`,
+ * and the symmetric block arm on `author_id`. A rider who can see the ride but
+ * is not on its crew gets zero rows and the timeline simply has no thread
+ * entries — there is no "hidden" state to draw and no conditional read.
+ *
+ * `created_at DESC, id DESC` matches `108`'s index and is a total order.
+ */
+export async function getRideThreadCreations(
+  rideId: string,
+  limit = RIDE_TIMELINE_THREADS
+): Promise<TimelineSource<RideThreadListItem>> {
+  // The guard every ride-scoped read carries — see `getRideJoins`.
+  if (!rideIdSchema.safeParse(rideId).success) return { rows: [], horizon: null }
+
+  const supabase = await resolveSupabase()
+
+  const rows = unwrapList(
+    await supabase
+      .from('ride_threads')
+      .select(TIMELINE_THREAD_SELECT)
+      .eq('ride_id', rideId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(limit),
+    "this ride's threads",
+  ) as unknown as RideThreadListItem[]
+
+  // `boundedHorizon`'s precondition holds here and NOT in `getRideThreadReplies`
+  // below: these rows ARE the window — nothing is filtered or collapsed after
+  // the read — so a full page means there is more behind it and the last row is
+  // how far back we looked.
+  return { rows, horizon: boundedHorizon(rows, limit, (row) => row.created_at) }
+}
+
+/**
+ * The newest message in each of this ride's recently-active threads.
+ *
+ * ## The collapse is the load-bearing part
+ *
+ * The read scans the newest `RIDE_TIMELINE_REPLIES` messages across every
+ * thread on the ride and returns **one row per thread** — the newest in each.
+ * Without that, a ride with one busy thread would fill the whole timeline with
+ * its own replies and push every postcard and join below the display cap.
+ * `getClubThreadReplies` collapses for the same reason and is the model.
+ *
+ * ## The horizon comes from the WINDOW, never from the survivors
+ *
+ * `TimelineSource.horizon` says this explicitly and it is the trap this
+ * function is most likely to be "simplified" into: deriving the horizon from
+ * the returned rows would make a two-hundred-message window in one thread
+ * report a horizon at that thread's latest message, and cut the ride's whole
+ * history to the last hour. So `boundedHorizon` is called on `rows` — the raw
+ * message window — before the collapse, exactly as the club does.
+ *
+ * ## What is deliberately not carried
+ *
+ * No per-thread message count and no participant faces, which is where
+ * `getClubThreadReplies` spends most of its complexity (`collapseToNewestPerThread`,
+ * `absorbClubReplyWindow`, the `partial` flag). The ride's row says who replied
+ * and in which thread; adding a count would mean either a bound-dependent number
+ * the row has to qualify as approximate, or a second read. Additive later.
+ */
+export async function getRideThreadReplies(
+  rideId: string,
+  limit = RIDE_TIMELINE_REPLIES
+): Promise<TimelineSource<RideThreadReply>> {
+  if (!rideIdSchema.safeParse(rideId).success) return { rows: [], horizon: null }
+
+  const supabase = await resolveSupabase()
+
+  const rows = unwrapList(
+    await supabase
+      .from('ride_thread_messages')
+      // `!inner` on the thread so the `ride_id` filter can reach it. That is a
+      // JOIN MODIFIER and not an embed hint — `108`'s `ride_thread_reads` makes
+      // `profiles`↔`ride_threads` a junction pair, so the `author` embed still
+      // names its foreign key, which is what `embed-hints.test.ts` enforces.
+      .select(
+        `id, created_at, thread_id, author:profiles!author_id(id, username), thread:ride_threads!inner(ride_id, title)`
+      )
+      .eq('thread.ride_id', rideId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(limit),
+    "this ride's replies",
+  ) as unknown as {
+    id: string
+    created_at: string
+    thread_id: string
+    author: { id: string; username: string | null } | null
+    thread: { ride_id: string; title: string } | null
+  }[]
+
+  const newestPerThread = new Map<string, RideThreadReply>()
+  for (const row of rows) {
+    // The window is newest-first, so a thread's FIRST appearance in it is its
+    // latest message — `Map.set` guarded on `has` keeps that one and discards
+    // the older ones without a second sort.
+    if (!row.thread || newestPerThread.has(row.thread_id)) continue
+    newestPerThread.set(row.thread_id, {
+      id: row.id,
+      created_at: row.created_at,
+      thread_id: row.thread_id,
+      thread_title: row.thread.title,
+      author: row.author?.username ?? null,
+    })
+  }
+
+  return {
+    rows: [...newestPerThread.values()],
+    // From the WINDOW, never from the survivors — see this function's header.
+    horizon: boundedHorizon(rows, limit, (row) => row.created_at),
   }
 }

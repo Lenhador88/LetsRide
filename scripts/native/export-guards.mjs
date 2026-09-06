@@ -121,7 +121,10 @@ export const REDIRECTED = [
   [`/postcards/${SAMPLE_ID}`, `/postcards/detail?id=${SAMPLE_ID}`],
   [`/rides/${SAMPLE_ID}`, `/rides/detail?id=${SAMPLE_ID}`],
   [`/rides/${SAMPLE_ID}/crew`, `/rides/detail/crew?id=${SAMPLE_ID}`],
-  [`/rides/${SAMPLE_ID}/chat`, `/rides/detail/chat?id=${SAMPLE_ID}`],
+  // `108`, PD-402: the chat is gone, so this legacy shape lands on the ride's
+  // thread list. Its destination is no longer `${base}/detail${tail}`, which is
+  // why `next.config.ts` lifts it out of `LEGACY_DETAIL_REDIRECTS`.
+  [`/rides/${SAMPLE_ID}/chat`, `/rides/detail/threads?id=${SAMPLE_ID}`],
   [`/rides/${SAMPLE_ID}/edit`, `/rides/detail/edit?id=${SAMPLE_ID}`],
   [`/clubs/${SAMPLE_ID}`, `/clubs/detail?id=${SAMPLE_ID}`],
   [`/clubs/${SAMPLE_ID}/rides`, `/clubs/detail/rides?id=${SAMPLE_ID}`],
@@ -143,8 +146,9 @@ export const UNTOUCHED = [
   '/rides/new',
   '/rides/detail',
   '/rides/detail/crew',
-  '/rides/detail/chat',
   '/rides/detail/edit',
+  '/rides/detail/threads',
+  '/rides/detail/thread',
   '/clubs',
   '/clubs/new',
   '/clubs/explore',

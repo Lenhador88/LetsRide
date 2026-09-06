@@ -3,7 +3,9 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
+import { RideCreateSheet } from '@/components/rides/RideCreateSheet'
 import { RideTimelineEventRow } from '@/components/rides/RideTimelineEventRow'
+import { RideTimelineThreadRow } from '@/components/rides/RideTimelineThreadRow'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { ScrollSentinel } from '@/components/ui/ScrollSentinel'
 import { SectionHeader } from '@/components/ui/SectionHeader'
@@ -11,6 +13,8 @@ import { SkeletonList } from '@/components/ui/Skeleton'
 import { getRideJournal } from '@/lib/data/postcards'
 import {
   getRideJoins,
+  getRideThreadCreations,
+  getRideThreadReplies,
   groupRideTimeline,
   mergeRideTimeline,
   RIDE_TIMELINE_LIMIT,
@@ -19,7 +23,7 @@ import {
 import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
-import type { RideDetail } from '@/types'
+import type { RideCreateOption, RideDetail } from '@/types'
 
 /**
  * The ride's timeline — what has happened on it, newest first (PD-393).
@@ -70,6 +74,7 @@ import type { RideDetail } from '@/types'
 export function RideTimeline({
   ride,
   canAdd,
+  createOptions,
 }: {
   /** The ride itself, for the floor entry — `getRide` has already answered by
    *  the time this renders, so the founding is a prop rather than a third read
@@ -89,21 +94,50 @@ export function RideTimeline({
    *  RSVP bar, and a second copy of the rule here is the drift that would put
    *  two entrances to one composer on the same screen. */
   canAdd: boolean
+  /**
+   * What the `(+)` sheet holds — `resolveRideDetailActions`' own list, passed
+   * straight through.
+   *
+   * **A prop rather than built here**, for the reason `canAdd` is one: this
+   * component cannot see the RSVP bar, and the create bar offers the same rows
+   * from the other entrance. Two lists built independently is the drift that
+   * would let the bar and the `(+)` create different things.
+   *
+   * Ignored entirely when `canAdd` is false, because no trigger is drawn.
+   */
+  createOptions: RideCreateOption[]
 }) {
   const rideId = ride.id
 
   const postcards = useQuery(queryKeys.postcards.journal(rideId), () => getRideJournal(rideId))
   const joins = useQuery(queryKeys.rides.joins(rideId), () => getRideJoins(rideId))
+  // `108`, PD-402. Issued unconditionally rather than gated on crew: a non-crew
+  // viewer gets zero rows from `108`'s policies, which is the same answer a
+  // gate would produce, and gating here would put a second copy of the audience
+  // rule in the client. Both keys hang under `rides.detail`, so the create and
+  // reply writes reach them by the claims those actions already make.
+  const threads = useQuery(queryKeys.rides.threads(rideId), () =>
+    getRideThreadCreations(rideId)
+  )
+  const replies = useQuery(queryKeys.rides.threadReplies(rideId), () =>
+    getRideThreadReplies(rideId)
+  )
 
   // The display cap, in `RIDE_TIMELINE_LIMIT`-sized steps. No `windowsFetched`
   // beside it and no ceiling: every step draws rows already fetched, so the
   // only bound that matters is how many exist.
   const [steps, setSteps] = useState(1)
 
-  // Gated on the data, never on `isLoading` — see `combineQueries`. Both reads
-  // resolve to a `TimelineSource`, so `undefined` is the only "not yet".
+  // The create sheet the heading's `(+)` opens — `108`, PD-402. Held here
+  // rather than on the page because the trigger is this component's; the ROWS
+  // are the page's, so they arrive as a prop and the two entrances cannot
+  // disagree about what a ride creates.
+  const [createOpen, setCreateOpen] = useState(false)
+
+  // Gated on the data, never on `isLoading` — see `combineQueries`. Every read
+  // resolves to a `TimelineSource`, so `undefined` is the only "not yet".
   const sources: RideTimelineSources | null =
-    postcards.data && joins.data
+    postcards.data && joins.data && threads.data && replies.data
       ? {
           ride: {
             created_at: ride.created_at,
@@ -116,10 +150,12 @@ export function RideTimeline({
           },
           postcards: postcards.data,
           joins: joins.data,
+          threads: threads.data,
+          replies: replies.data,
         }
       : null
 
-  const gate = combineQueries(postcards, joins)
+  const gate = combineQueries(postcards, joins, threads, replies)
 
   const displayLimit = RIDE_TIMELINE_LIMIT * steps
   const timeline = sources
@@ -143,17 +179,39 @@ export function RideTimeline({
         ? 'draw-more'
         : 'cut'
 
+  // The sheet travels WITH the heading rather than being mounted once at the
+  // bottom of the component, because `heading` is rendered from three different
+  // return branches (error, loading, loaded) and the `(+)` is drawn in all
+  // three. Mounted in only one, the trigger would open nothing on the other two
+  // — a state no gate but a rider's tap can see.
   const heading = (
-    <SectionHeader
-      title="Timeline"
-      className="px-4 py-0"
-      // `Add photo` rather than bare `Add`: the icon carries no text, so the
-      // accessible name has to say what is being added — `SectionHeader`'s own
-      // rule. Deep-links the composer to this ride, which is what
-      // `RideJournal`'s tile did and the only reason `routes.newPostcardInRide`
-      // exists.
-      create={canAdd ? { label: 'Add a photo to this ride', href: routes.newPostcardInRide(rideId) } : undefined}
-    />
+    <>
+      <SectionHeader
+        title="Timeline"
+        className="px-4 py-0"
+        // `Create on this ride` rather than bare `Add`: the icon carries no
+        // text, so the accessible name has to say what is being added —
+        // `SectionHeader`'s own rule. It names the sheet rather than one act,
+        // because as of `108` (PD-402) it opens the same two-row sheet the
+        // create bar does; PD-401's `Add a photo to this ride` was right while
+        // a ride created exactly one thing.
+        //
+        // **The `onClick` form of `SectionHeaderCreate`**, which exists for
+        // this caller — every other `(+)` in the app still navigates.
+        create={
+          canAdd
+            ? { label: 'Create on this ride', onClick: () => setCreateOpen(true) }
+            : undefined
+        }
+      />
+      {canAdd && (
+        <RideCreateSheet
+          options={createOptions}
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+        />
+      )}
+    </>
   )
 
   if (gate.error)
@@ -202,8 +260,43 @@ export function RideTimeline({
                   onRemoved={() => {
                     void postcards.refetch()
                     void joins.refetch()
+                    // A block hides that rider's threads and replies too —
+                    // `108` carries the symmetric block arm on both author
+                    // columns — so the conversation sources move under the same
+                    // gesture and have to be re-read with the other two.
+                    void threads.refetch()
+                    void replies.refetch()
                   }}
                 />
+              </div>
+            )
+          }
+
+          if (group.kind === 'thread') {
+            // A thread's own row rather than a line in the announcement run —
+            // `RideTimelineThreadRow` has why. Two event kinds land here and
+            // each composes its own lead sentence: the creation names who
+            // started it, the reply names who last spoke in it.
+            const { event } = group
+            return (
+              <div key={group.key}>
+                {event.kind === 'thread' ? (
+                  <RideTimelineThreadRow
+                    threadId={event.thread.id}
+                    anchorKey={event.key}
+                    title={event.thread.title}
+                    lead={`${event.thread.author?.username ?? 'A rider'} started this`}
+                    at={event.at}
+                  />
+                ) : (
+                  <RideTimelineThreadRow
+                    threadId={event.reply.thread_id}
+                    anchorKey={event.key}
+                    title={event.reply.thread_title}
+                    lead={`${event.reply.author ?? 'A rider'} replied`}
+                    at={event.at}
+                  />
+                )}
               </div>
             )
           }
