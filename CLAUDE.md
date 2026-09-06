@@ -130,8 +130,8 @@ never be dissolved back into components, because:
    writes safe in the first place.
 
    **The participation gate is narrower than "every write"** — `enforce_participation_gate` sits on
-   twenty-three tables on DEV and twenty-one on PROD (`108` added two on DEV; `109` will take one
-   back when it applies) and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
+   twenty-three tables on DEV and twenty-one on PROD — `101`/PD-373's drop promoted 2026-09-06, then
+   `108` added two on DEV and `109` will take one back when it applies — and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
    `feed_reads`, `club_thread_reads`, `ride_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
    `accept_terms()` can still set a username and upload an avatar. `docs/reference/schema.md`
    §The participation gate has the list, the `push_devices` exception and the count query.
@@ -449,10 +449,10 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 109 files. DEV is at `108` and PROD at `107` — measured 2026-09-06.** `101`–`107`
+**Applied state: 110 files. DEV is at `110` and PROD at `107` — measured 2026-09-06.** `101`–`107`
 **promoted to PROD on 2026-09-06**, so the long-standing seven-file gap this line used to describe
-is closed. What is open now is two files and they are open for different reasons: `108` (PD-402) is
-applied to DEV and awaiting promotion in the ordinary way, and **`109` is written and applied
+is closed. What is open now is three files and they are open for two different reasons: `108` and
+`110` (PD-402) are applied to DEV and awaiting promotion in the ordinary way, and **`109` is written and applied
 NOWHERE, deliberately** — it drops `ride_messages` and `ride_reads` and must not apply until the
 bundle that stopped reading them is confirmed **serving** on DEV (`READY` on the merge sha,
 `aliasError` null, which is not the same as merged). Its own header carries that gate. **`108` goes
@@ -485,6 +485,16 @@ Count rather than trust it: `list_migrations` against both refs,
 against `ls supabase/migrations/*.sql | wc -l`. DEV also records three hand-applied rows with no
 file, so its row count reads high; every file IS applied, which is the direction that matters.
 **`109` is the one file applied nowhere and it is not drift** — see the two-file paragraph above.
+
+**A gap's files rarely agree about which side of the deploy they want**, and `101`–`107` is the
+worked example: `105`/`106` had to be migration-first (the promoted bundle CALLS their two
+accessors), while `101` and `103` had to be deploy-first (each is an outage against the bundle that
+was serving). **Deploy-first wins that argument** — it is the side that protects against an outage
+and destroyed data, where migration-first costs a transient `PGRST202`. **`108`/`109` is the case
+where one file could not settle it and had to become two**: the publication entry and the new
+tables want to be there before the bundle, and `ride_messages` has to outlive it, so the change is
+split rather than compromised. `docs/reference/migrations.md` §Applied state has the per-file rule
+and the order each was actually applied in.
 **Level is the exception, not the resting state** — DEV-ahead is where a migration lives between
 its merge and its promotion. Promote everything the gap contains, in filename order, per
 `docs/ENVIRONMENTS.md` §Migrations, and record each promotion's ordering in
@@ -519,7 +529,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3488** assertions — re-derive rather than trust it:
+Suite **3570** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 

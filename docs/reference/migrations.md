@@ -202,6 +202,14 @@ predict, so it is worth a line. None of it is drift.
   exactly as `050` cannot, and a future reconciliation should take `069` from the file rather than
   from DEV's ledger.
 
+  **`private.protect_ride_organizer_membership` is the same class and was found on 2026-09-06**,
+  during the `101`–`107` promotion's object diff. PROD's body is **1326 characters against DEV's
+  416** — DEV's `103` apply stripped 13 lines of in-body comment. The executing code is
+  byte-identical once comments are removed (`b34ee2c9…` on both), and the load-bearing
+  `cannot leave its crew` raise text is present and identical on each, so this is comment-only like
+  `069`. **It means DEV cannot reproduce its own `103` object either**, and a reconciliation should
+  take `103` from the file rather than from DEV's ledger.
+
   **`049` needs no entry of its own beyond DEV's reduced form**, already noted in
   `docs/HANDOFF.md` §Migrations: same reduction, same class, and its body was verified by the same
   digest.
@@ -321,19 +329,79 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 111 rows on DEV and 107 on PROD against 109 files, measured
-2026-09-06. The DEV surplus is not a gap, and neither is the PROD shortfall any more.** `101`
+**`list_migrations` prints 113 rows on DEV and 107 on PROD against 110 files, measured
+2026-09-06. The DEV surplus is not a gap, and the PROD shortfall is the ordinary one.** `101`
 through `107` **promoted to PROD on 2026-09-06** between 08:26:24Z and 08:40:28Z, closing the gap
-this heading described for a week.
+this heading described for a week; `108` and `110` (PD-402) opened a new one the same day.
 
-**What is open now is two files, and they are open for two different reasons — do not read them as
-one two-file gap.** `108_ride_threads` (PD-402) is applied to DEV and awaiting promotion in the
-ordinary way. **`109_retire_ride_chat` is applied NOWHERE and that is deliberate**: it drops
-`ride_messages` and `ride_reads`, so it must not apply until the bundle that stopped reading them is
-confirmed **serving** on DEV. A file in the repo and in no database is normally drift; this one is
-the sequencing rule mid-flight, and its own header carries the gate.
+**What is open now is three files open for TWO different reasons — do not read it as a three-file
+gap.** `108_ride_threads` and `110_a_ride_watermark_is_not_an_oracle` are applied to DEV and
+awaiting promotion in the ordinary way. **`109_retire_ride_chat` is applied NOWHERE and that is
+deliberate**: it drops `ride_messages` and `ride_reads`, so it must not apply until the bundle that
+stopped reading them is confirmed **serving** on DEV. A file in the repo and in no database is
+normally drift; this one is the sequencing rule mid-flight, and its own header carries the gate.
 
-`103`/`104` were applied only once the build carrying them was **confirmed
+**DEV's recorded order will end up `108, 110, 109`** once `109`'s gate opens, because the recorded
+version is an apply-time timestamp. That is the shape this file already records for PROD, the suite
+replays in filename order where the two commute, and `npm run db:drift` compares names rather than
+versions — so it is not drift. `110`'s own header says the same.
+
+**`101`–`107` were promoted to PROD on 2026-09-06, all seven in one pass, DEPLOY-FIRST and in
+filename order** — `f3c55b4` (PR #405) `READY` on the Production target with `aliasError` null
+first, then `101` → `107`. **The seven did not agree about which side of the deploy they wanted, and
+the conflict is the durable part**: `105`/`106` were migration-first (the promoted bundle CALLS
+their two accessors, so serving ahead of them answers `PGRST202` on both Privacy-sheet lists), while
+`101` and `103` were deploy-first (`101` drops a table the serving bundle still wrote; `103` under a
+bundle that still inserts the membership row is `23505` plus that bundle's own compensating delete
+of the club it just made). **Deploy-first won on what each side costs** — an outage and destroyed
+data against a transient failed read — and it also kept PROD's apply order equal to filename order,
+which is what `021`/`025` was split to protect.
+
+**`103`'s already-loaded-tab hazard was measured empty rather than assumed**, which is why the
+transitional group-1 upsert this file recommends for a PROD promotion was not needed: PROD held 5
+profiles, 1 club, 2 rides, **0 sign-ins in the previous 7 days** and a most-recent sign-in of
+2026-08-14 — three weeks earlier — so no tab was holding the pre-merge bundle. **That was the whole
+of the argument; on a PROD with live riders the group-1 soak is still the answer.** Pre-flight also
+read 0 orphan clubs, 0 orphan rides, 0 `admin` rows, `club_thread_waves` empty and 22 gate triggers
+(21 after `101`). Row counts were unchanged throughout, and advisors moved 37 → **39**, the +2 being
+`105`'s two `public` accessors exactly as predicted.
+
+**Every one of the seven was proved against DEV by OBJECT DIFF rather than by its recorded text**,
+which is this section's standing rule and the only thing that catches a transcription error in an
+apply that succeeded. Eight of nine object classes came back byte-identical across the two projects
+— the entire policy set, all triggers, columns, constraints, indexes, grants and RLS flags — and
+121 of 123 functions. `105` and `106` passed WHOLE (`md5(statements[1])` equals the file's raw
+`md5sum`); the other five were reduced, each recorded statement equal to its source byte-for-byte.
+
+**The `540e557d7668c5765257dce06334f091` figure below is NOT reproducible** — this file records it
+with no formula, and nine plausible digest formulations miss it. Do not treat it as a checkable
+value; compare PROD's objects against DEV's directly, which is strictly stronger.
+
+> **Why none of the nine matched, and the formula that does.** The figure is not malformed — it is
+> **stale**. It was measured before `107`'s final-diff review rewrote `private.reap_ownerless_club`
+> (the `club_threads` conjunct and its `comment on function`), so no digest over the *current*
+> objects can reproduce it and none ever will. The formula it was taken with is below, and it now
+> yields **`9bd55b4bb4eb904c4c1744ac596a4be6`, equal on DEV and PROD** — run independently on both
+> refs after the promotion, which is a positive check that the promotion carried the corrected body
+> rather than the reviewed-then-superseded one.
+>
+> ```sql
+> select md5(string_agg(pg_get_functiondef(p.oid), '|' order by p.proname))
+>   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+>  where p.prokind = 'f' and (
+>    (n.nspname = 'private' and p.proname in ('transfer_owned_clubs','can_read_club',
+>      'club_invite_is_answerable_for','notify_club_joined','notify_ride_created_in_club',
+>      'club_takes_join_requests_for','club_invite_link_reachable_by','notify_club_invited',
+>      'notify_club_join_requested','reap_ownerless_club'))
+>    or (n.nspname = 'public' and p.proname = 'complete_onboarding'));
+> ```
+>
+> **The durable lesson is the one above, not this hash: a recorded digest goes stale the moment any
+> object in it is revised, and then reads exactly like drift on a correct apply.** Comparing the two
+> projects against *each other* never does — which is why the sentence above is right and this block
+> is a footnote to it rather than a replacement.
+
+`103`/`104` were applied to DEV only once the build carrying them was **confirmed
 serving** — `READY` on the merge sha with `aliasError` null, never merely "after the merge":
 `CLAUDE.md` §Supabase Rules names that distinction with a measured incident behind it (a destructive
 file applied 102 seconds after a merge, out from under a Preview still calling what it dropped), and
@@ -448,8 +516,8 @@ so this one is not §Applying a large file's case and needs no object diff.
 **Adds exactly two advisors, DEV 37 → 39, and the count was RUN rather than derived** (the
 proposal's +2 was arithmetic): one
 `authenticated_security_definer_function_executable` per function, both named in the payload, no
-new `rls_enabled_no_policy` because the file creates no table. PROD stays at 37 until the
-promotion. The definer-function count moved 34 → 36.
+new `rls_enabled_no_policy` because the file creates no table. **PROD moved 37 → 39 the same way on
+the 2026-09-06 promotion**, its definer count 34 → 36, counted from the payload rather than derived.
 
 **`106_the_hidden_list_cannot_detect_a_block` (PD-298) — applied to DEV 2026-09-05, recorded as
 `the_hidden_list_cannot_detect_a_block` (no numeric prefix, the majority convention above).
@@ -513,7 +581,7 @@ on `60e700f` — which is why the commit that ADDED these files claimed `102` an
 most serious finding: the client half ships in the same PR and no longer writes the membership row,
 so a skipped apply would have made the orphan permanent while the record said it was fixed. Adds **no** advisor: all three
 functions live in `private`, so `authenticated_security_definer_function_executable` does not fire
-and both projects stay at thirty-seven. Pre-flight on DEV, RLS bypassed: 17 clubs / 27 rides /
+and neither project's total moves. Pre-flight on DEV, RLS bypassed: 17 clubs / 27 rides /
 24 profiles, **0 orphans of either kind**, 0 `admin` rows, 1 private club — so the backfill had
 nothing to repair on DEV and is a guard for the PROD apply rather than the main event.
 
@@ -535,15 +603,13 @@ nothing, so an older bundle cannot observe it and a newer one needs no new colum
 REDUCED** — the file is 17 KB and mostly commentary — **and proved by object diff rather than by the
 recorded text**: `md5(string_agg(...))` over the four policies' `qual` + `with_check` is
 `27bd51a7c54cb57201287772463eb709` on both DEV and a local database built from the file itself. Adds
-no advisor (no new `security definer` function): both projects stay at thirty-seven.
+no advisor (no new `security definer` function): neither project's total moves.
 
-**PROD is at `100`, so `101` is awaiting promotion**
-(`101_retire_club_thread_waves`, PD-373 — destructive, and **NOT `090`'s case**: `090`'s "no unsafe
-side" held because the client that could observe the dropped objects was already gone from the
-bundle *being promoted*; here PD-372's `club_thread_waves` retirement is confirmed serving only on
-DEV, PROD's `main` bundle still reads and writes the table, and `101` must wait until the
-`development` → `main` promotion carrying PD-372 is confirmed serving before it applies to PROD —
-`docs/HANDOFF.md`'s §Applied state entry for `101` has the measured detail). DEV's **surplus rows** are files applied there in increments: `063` in
+**`101` was promoted on 2026-09-06 and it was NOT `090`'s case** — `090`'s "no unsafe side" held
+because the client that could observe the dropped objects was already gone from the bundle *being
+promoted*, whereas PROD's `main` bundle still read and wrote `club_thread_waves` right up to the
+merge. So it went after the promotion carrying PD-372 was confirmed serving, which is the
+deploy-first half of the conflict this section's head describes. DEV's **surplus rows** are files applied there in increments: `063` in
 three — `ride_capacity_is_enforced`, `…_exemptions`, `ride_capacity_moves_to_private`, where PROD
 holds the one consolidated file — and `080` in two, `rides_carry_their_meeting_points_zone` plus
 `rides_zone_is_not_cleared_with_the_location_group`. **DEV keeps all three `063` rows even though
@@ -1237,7 +1303,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 109 — DEV at 108, PROD at 107 (108 awaits promotion; 109 is applied nowhere)
+ls supabase/migrations/*.sql | wc -l     # 110 — DEV at 110, PROD at 107 (108+110 await promotion; 109 is applied nowhere)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
@@ -1356,11 +1422,11 @@ projects, and it reads exactly like drift. Compare the OBJECT, never the recorde
 
 ## Security advisors
 
-**Security advisors: thirty-nine on DEV and thirty-seven on PROD, and only one is outstanding.**
-The two-advisor difference is `105`+`106` awaiting promotion — `106` adds none of its own, being
-a drop and a create of the same `security definer` name — which is the ordinary shape of a gap —
-a one- or two-advisor difference between the projects is almost always a pending promotion, never
-a finding on its own. Re-derive
+**Security advisors: thirty-nine on BOTH projects since the 2026-09-06 promotion, and only one is
+outstanding on each.** The two-advisor difference that stood before it was `105`+`106` awaiting
+promotion — `106` adds none of its own, being a drop and a create of the same `security definer`
+name — which is the ordinary shape of a gap: a one- or two-advisor difference between the projects
+is almost always a pending promotion, never a finding on its own. Re-derive
 rather than trust the number — `get_advisors(security)`, or, without the payload,
 
 ```sql

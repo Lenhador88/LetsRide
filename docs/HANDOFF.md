@@ -190,9 +190,11 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
-## Ride chat is retired and a ride has threads — 2026-09-06
+## Threads replace the ride chat — 2026-09-06
 
-**PD-402, `108_ride_threads.sql` (additive) + `109_retire_ride_chat.sql` (destructive).** `034`'s
+**PD-402 — three migrations: `108_ride_threads.sql` (additive, applied to DEV),
+`109_retire_ride_chat.sql` (destructive, applied NOWHERE until the bundle is confirmed serving) and
+`110_a_ride_watermark_is_not_an_oracle.sql` (applied to DEV).** `034`'s
 single unbounded chat stream is replaced by the club's model one domain over — `ride_threads` /
 `ride_thread_messages` / `ride_thread_reads` on `081`/`082`'s shape, with the audience swapped from
 club membership to `private.is_ride_crew` ∩ ride visibility. Owner's data call, 2026-09-05: *"we are
@@ -227,6 +229,21 @@ seconds after a merge once, out from under a Preview still calling the function 
   conjunct would have broken the INTERSECTION invariant. A definer function is not subject to the
   SELECT policy at all, so the replacement cannot inherit it. **That entry's open item is closed by
   the table going.**
+- **`110` exists because `108` shipped an existence oracle, and the reason it was nearly filed
+  instead is the part worth carrying.** `108` gave `ride_thread_reads`' INSERT and UPDATE
+  `WITH CHECK` a bare `user_id = auth.uid()`, so writing a watermark for an invisible-but-real
+  thread succeeded while a nonexistent one raised — a signed-in rider could test whether a uuid
+  named a real thread. It was first filed as a follow-up on the reading that `tasks.md` 2.9
+  *instructed* that shape, so changing it re-opened a proposal decision. **That reading was wrong,
+  and one query settled it**: 2.9 names `club_thread_reads` as the model, and `club_thread_reads`
+  carries the audience conjunct on both write arms — as does `feed_reads`. `ride_thread_reads` was
+  the only watermark table in the schema without one. So `110` implements 2.9's intent rather than
+  reversing its decision, and it is not ordering-sensitive against `109`.
+
+  **Post-fix, a nonexistent `thread_id` does NOT stay `23503`** — RLS evaluates `WITH CHECK` before
+  the FK's AFTER trigger, so both cases return `42501`, which is exactly what makes them
+  indistinguishable. An assertion written against `23503` would have pinned the bug rather than the
+  repair; the suite compares the two errors against each other rather than against a literal.
 - **`moderate_ride_thread` has TWO authority arms and the tasks file named one.** `tasks.md` 2.16
   gave it `rides.organizer_id` alone while 2.8 forbade a DELETE policy, which between them left a
   thread's author unable to remove their own thread — contradicting the spec's own scenario at
@@ -270,6 +287,37 @@ thread surface.
 ```bash
 git grep -n "ride_thread_messages\|moderate_ride_thread" -- src/ supabase/
 npx vitest run src/lib/rides src/lib/data/__tests__/ride-timeline.test.ts scripts/native
+## `101`–`107` were promoted, and both projects were briefly level — 2026-09-06
+
+**`main` carries `f3c55b4` (35 commits, PR #405) and PROD is at migration `107`.** Both projects
+now hold 107 files and 39 security advisors, and `development` was fast-forwarded to `main` so the
+two branches do not diverge. Riders have block/hide undo, the paging club timeline, the ride
+timeline, the introduction-as-join, the trimmed privacy sheet, and a club that survives its last
+member instead of taking other riders' postcards down with it.
+
+**The promotion's real decision was an ORDERING CONFLICT and it will recur** — the seven files did
+not agree about which side of the deploy they wanted. `CLAUDE.md` §Supabase Rules carries the rule
+that settled it and [`docs/reference/migrations.md`](reference/migrations.md) §Applied state the
+per-file detail; do not copy either back here.
+
+**`103`'s already-loaded-tab hazard was measured empty rather than waived.** That file's own log
+says a PROD promotion should ship the transitional group-1 upsert and let it soak, because an SPA
+tab holding the pre-merge bundle keeps issuing the plain insert for days. PROD had **0 sign-ins in
+seven days** and a most-recent sign-in of 2026-08-14, so no such tab existed. **On a PROD with live
+riders that argument evaporates and the soak is the answer** — do not read this promotion as a
+precedent for skipping it.
+
+**PROD's objects were proved against DEV rather than against the recorded text**, which is the only
+check that catches a transcription error in an apply that succeeded. Both exceptions it found were
+comment-only, and in the direction where PROD matches the repo file and DEV does not —
+`migrations.md` §What reads as drift carries them.
+
+**The check is three answers, not one** — the applied chain on each project against the files, in
+both directions. `list_migrations` on `zwprydcyryvudhurbnye` and on `fpmrimzxadewsaiwpsel` (both 107
+names, DEV carrying three extra rows with no file) against:
+
+```bash
+ls supabase/migrations/*.sql | wc -l   # 107
 ```
 
 ## The queue jam was an unmerged PR, and the stall check cannot see one — 2026-09-06
@@ -434,43 +482,6 @@ different fact, and not an obstacle to adding these two.
 
 ```bash
 git ls-files supabase/migrations/*.sql | tail -1   # 107_a_club_may_outlive_its_last_member.sql
-```
-
-## Ride threads are proposed, not built — 2026-09-06
-
-**PD-402, [PR #400](https://github.com/Lenhador88/LetsRide/pull/400) — the `openspec` proposal only,
-and the story stays open.** `openspec/changes/retire-ride-chat-for-ride-threads/` retires
-`ride_messages` (`034`) and `ride_reads` (`061`) for `ride_threads` / `ride_thread_messages` /
-`ride_thread_reads` on `081`/`082`/`094`'s model. **The build was deferred by the concurrency cap,
-not by a judgement about the story**: it needs `supabase/tests/rls_test.sql` and
-`docs/reference/schema.md`, which `slot-1` had declared.
-
-**Three of the issue's premises were false, and two of them remove work:**
-
-- **There is no `ride_message` notification kind.** `notifications_type_check` has 16 arms and that
-  is not one; the only trigger on `ride_messages` is `enforce_participation_gate`. `036` and `060`
-  name the table only in **comments**, as the precedent their own reasoning copies — the comment
-  trap, where the issue's own suggested grep counts obituaries. So there is no enum arm to retire and
-  `101`'s precedent question has no subject.
-- **`107` is taken on DEV and in the repo** — the section above. The next migration is `108`.
-- **Nothing in `design/` draws a ride thread, and nothing draws a club thread either.** The club's
-  thread screens were built without a v2 frame. The build copies the shipped implementation; do not
-  go looking for a frame.
-
-**Two things the proposal settles that a build must not re-decide.** The additive and destructive
-halves are **two migration files** — the publication entry must precede the deploy and
-`ride_messages` must outlive the old bundle, so one file cannot be both sides of it; that also forces
-the new table to be named `ride_thread_messages`, since `ride_messages` still exists when A applies.
-And deletion is `082`'s `security definer` RPC rather than a DELETE policy, which **closes** the
-residual silent `DELETE 0` on `ride_messages` that `102` deliberately left open rather than porting
-it into two new tables.
-
-**Q1 is blocking and is the owner's:** a rider who accepted an invite to a private club's ride, and
-is not in that club, opens the ride and taps Threads — what do they see? The spec is written to *the
-ride's threads in full, and no part of the club*.
-
-```bash
-npx openspec validate retire-ride-chat-for-ride-threads --strict
 ```
 
 ## Three from one queue firing — a timeline lie, the ride's bottom slot, the privacy copy — 2026-09-06
@@ -653,8 +664,8 @@ fix, and each carries a visibility rule, which is why this went through `openspe
   grant. `105` revokes from `public, anon`; `009` got away with `from public` alone only because
   `private` denies `anon` schema USAGE. `105.11` pins it as a privilege assertion, never a call —
   the suite runs as the table owner, which is what let `029` ship broken.
-- **Advisors are 39 on DEV and 37 on PROD, and the difference IS the pending promotion**, not
-  drift. `105` adds exactly two, one per accessor — run rather than derived.
+- **`105` adds exactly TWO advisors, one per accessor** — run rather than derived. It stood as a
+  two-advisor difference between the projects until the 2026-09-06 promotion; both are at 39 now.
 
 ```bash
 git grep -n "my_blocked_riders\|my_hidden_postcards" -- src/ supabase/
@@ -1032,7 +1043,7 @@ trips left a club with an owner and no membership row. Two `AFTER INSERT` trigge
   by any client.** Nine sites in the suite relied on that state arising by accident; each now
   manufactures it as the table owner. Any prose describing it as reachable is false.
 - **All three functions live in `private`, not the proposal's `public`** (following `095`), so the
-  advisor count does not move — both projects stay at thirty-seven. On the ride guard
+  advisor count does not move on either project. On the ride guard
   `security definer` is **correctness**: its parent probe cannot tell an invisible ride from a
   deleted one under invoker rights, and would fail open.
 

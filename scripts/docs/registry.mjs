@@ -317,6 +317,24 @@ export const claims = [
     // Pinned back to DEV AHEAD with both `at \`NNN\`` captures, which is what
     // makes the direction unmissable without pinning the gap's size in words.
     // Two edits, one commit. Still never a relaxed regex.
+    // 2026-09-06: the promotion (PR #405) put `101`-`107` on PROD and this went
+    // red for the TENTH time. Pinned back to LEVEL, and note the same thing the
+    // 2026-09-01 entry noted — at LEVEL the prose names no refs, because there
+    // is no direction to infer, so "BOTH projects are level at" is what this
+    // pattern pins and the day they diverge again the sentence has to name them
+    // and this pattern has to move with it. Two edits, one commit.
+    // 2026-09-06, later: `108` and `110` (PD-402) applied to DEV alone and this
+    // went red for the ELEVENTH time, on the LEVEL sentence again — the second
+    // flip in one day, which the 2026-09-01 entry already said is the mechanism
+    // rather than a defect. Pinned back to DEV AHEAD with both `at \`NNN\``
+    // captures. Note what this change does NOT pin: `109` is committed and
+    // applied to neither project, so the file count is one HIGHER than DEV's
+    // level and that is deliberate rather than drift. Pinning "three files
+    // open" or the gap's shape in words is the churn the 2026-09-01 note
+    // refuses; the two captures still make the direction unmissable, and the
+    // deliberately-unapplied file is explained in the prose beside them where a
+    // reader will actually meet it. Two edits, one commit. Still never a
+    // relaxed regex.
     pattern:
       /\*\*Applied state: (\d+) files\. DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
@@ -336,6 +354,10 @@ export const claims = [
     // go and this went red with its CLAUDE.md sibling. Pinned to DEV AHEAD with
     // both `at NNN` numbers, same rule — prose and pattern in one commit, never
     // a relaxed regex, and the relationship stays pinned in both directions.
+    // 2026-09-06: the promotion put `101`-`107` on PROD, so both numbers are the
+    // same again. The pattern is unchanged — it pins both `at NNN` captures in
+    // either state, which is why this sibling did not need moving with the
+    // CLAUDE.md one this time. Only the comment records the flip.
     pattern: /ls supabase\/migrations\/\*\.sql \| wc -l\s+# (\d+) — DEV at \d+, PROD at \d+/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
