@@ -97,12 +97,17 @@ Both green, exit 0, on `development` at `b7f2cfc` plus PD-410's fix to `checkJoi
 the walk's own printed totals**, not a reconstruction — the whole point of PD-390 is that adding
 deltas to a remembered base is what produced two incompatible numbers in the first place.
 
-**The named account measures 3 higher, and the difference is one phase.** `checkEditRetention` runs
-against a ride the rider owns: `walk-fixture` owns one, so it asserts the refusal, the club
-`<select>` restore and the flipped `public` box — the three `retain.ts` singles out as hardest. A
-freshly minted rider owns nothing and `WALK_FIXTURES` was unset, so it prints *"no ride or club this
-rider owns"* and skips. The minted run instead ends with the teardown assertion that deletes its own
-account, which the named run has no reason to make.
+**The named account measures 3 higher, and the difference is one phase — the whole +3, with nothing
+coming back the other way.** `checkEditRetention` runs against a ride the rider owns: `walk-fixture`
+owns one, so it asserts the refusal, the club `<select>` restore and the flipped `public` box — the
+three `retain.ts` singles out as hardest. A freshly minted rider owns nothing and `WALK_FIXTURES`
+was unset, so it prints *"no ride or club this rider owns"* and skips.
+
+**The minted run's teardown line is printed and NOT counted, which is a trap worth naming here.** It
+calls no `report()` and is not summed into the total, but it prints `  ok   <email> deleted` —
+character for character the format a passing check uses. Anyone reconciling these totals by counting
+`ok` lines in a transcript will therefore land one over the printed figure on the minted run and
+conclude the delta is 2. It is 3.
 
 **Both runs walk the same 26 screens**, and both skip `/rides/detail/thread` and `/postcards/detail`
 for want of data rather than for want of an account — so the old claim that minting *"cannot walk
@@ -136,8 +141,8 @@ rather than a pass, so comparing a named run's total against a minted baseline m
 that is not there, and the reverse hides one that is. The walk names every route it skipped in
 parentheses; read those before the totals.
 
-**The invite phases HAVE now been run — 2026-09-06, both accounts, all 20 assertions green.** This
-paragraph used to say they never had. `/rides/join` and `/clubs/join` each report their 10 (6
+**The invite phases HAVE now been run — 2026-09-06, both accounts, all 20 assertions green.**
+`/rides/join` and `/clubs/join` each report their 10 (6
 signed out, 4 signed in), and both dead-token cases land as *"a dead link is a dead link, not a
 failed read"*. They are inside the 26/74 and 26/77 above, so nothing is owed here any more.
 

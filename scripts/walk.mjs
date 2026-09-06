@@ -3140,6 +3140,48 @@ async function discoverJoinableClub() {
 }
 
 /**
+ * Best-effort cleanup: leave `clubId` if this rider turns out to be in it.
+ *
+ * **Only ever called on the failure path**, where the phase is about to give up
+ * without reaching its own leave step. The happy path leaves inline and asserts
+ * on it, because there the leave is part of what is being tested rather than
+ * tidying up after a test that did not finish.
+ *
+ * **Silent and total by design.** It reports nothing and throws nothing: it runs
+ * after a failure has already been counted, so a second FAIL line here would
+ * name the cleanup rather than the defect, and a throw would be caught by the
+ * phase's outer `try` and printed as *"the phase threw"*, hiding the real
+ * finding behind the tidy-up.
+ */
+async function leaveClubIfJoined(clubId) {
+  try {
+    await page.goto(`${BASE}/clubs/detail?id=${clubId}`, { waitUntil: 'networkidle' })
+
+    // The member-mode sheet scrims the screen — see the call site in
+    // `checkJoinClub` for why it is open here at all.
+    await page
+      .waitForSelector('[role="dialog"][aria-label="Introduce yourself to the club"]', { timeout: 3_000 })
+      .then(() => page.click('text=Not now'))
+      .catch(() => {})
+
+    await page.click('button[aria-label="Club options"]', { timeout: 10_000 })
+    const row = '[role="dialog"][aria-label="Club options"] button'
+    await page.waitForSelector(row, { timeout: 10_000 })
+    const canLeave = await page.$$eval(row, (buttons) =>
+      buttons.some((b) => b.textContent?.trim() === 'Leave club')
+    )
+    if (!canLeave) return
+
+    await waitForTableWrite('club_members', () =>
+      page.$$eval(row, (buttons) => buttons.find((b) => b.textContent?.trim() === 'Leave club')?.click())
+    )
+    console.log('  (left the club again after the failure above, so the next run still has it to join)')
+  } catch {
+    console.log('  ! could not confirm the club was left — a membership may be standing')
+  }
+}
+
+/**
  * Joins a real public club, confirms the membership survives a reload, then
  * leaves it again — WRITE phase 4/4.
  *
@@ -3253,7 +3295,18 @@ async function checkJoinClub() {
     // not the other, and which one happened is only knowable afterwards from
     // whether the sheet opened; on the sheet path the write is a second click
     // away. A watcher armed after the fact misses the direct join outright.
-    const membershipWrite = watchForTableWrite('club_members')
+    //
+    // **Its own budget, NOT the default 20s, because that budget is shared with
+    // everything between the tap and the write.** On the sheet branch the
+    // `waitForSelector` below can spend 10s of it before `Post` is even
+    // clicked — and that wait is a real round trip, since `JoinClubButton`
+    // reads `hasIntroducedClub` against `eu-west-1` before the sheet renders.
+    // At the default the write would get whatever is left, so a slow but
+    // perfectly successful join reports a hard FAIL — and since PD-410 made the
+    // miss a failure rather than a `!` warning, that reddens the whole run and
+    // goes into CI the moment `WALK_CI=1` is set. A gate that goes red on
+    // latency is the defect PD-410 exists to remove, arriving from the far side.
+    const membershipWrite = watchForTableWrite('club_members', 45_000)
     await clickJoinButton()
 
     // The pre-join introduction sheet — opened for a club this rider owes an
@@ -3294,17 +3347,32 @@ async function checkJoinClub() {
     // warning it used to be (PD-410). Every assertion below reads state this
     // write was supposed to produce, so a miss here makes the next one fail for
     // a second, more confusing reason — `no Leave club row found`, which names
-    // the symptom and not the cause. Returning here keeps the FAIL line honest;
-    // `bad` is already counted, so the run is red either way.
-    if (!(await membershipWrite)) {
-      report(
-        false,
-        `joining ${introducing ? 'through the introduction sheet' : 'directly'} writes a club_members row`,
-        'no club_members write observed within 20s'
-      )
+    // the symptom and not the cause.
+    //
+    // **The label does not name which branch ran**, though the detail does.
+    // `CLAUDE.md` §Supabase Rules asks for label SETS to be compared between
+    // runs, and a label that alternates on state the walk does not control
+    // reports a rename that never happened.
+    const joined = await membershipWrite
+    report(
+      joined,
+      'joining writes a club_members row',
+      `no club_members write observed within 45s (${introducing ? 'sheet' : 'direct'} path)`
+    )
+
+    if (!joined) {
+      // **Leave anyway before returning, because the state being bailed out of
+      // is exactly the state that needs cleaning up.** A missed write is not
+      // proof of a missed JOIN — the watcher can time out on a join that
+      // succeeded — and on the `WALK_EMAIL` path nothing else ever collects it:
+      // that account is deliberately never deleted, so the membership stands.
+      // It compounds rather than repeating: `discoverJoinableClub` picks a club
+      // this rider is NOT already in, so the next run picks a different one and
+      // the pool shrinks by one club per false failure. The minted path is
+      // covered by `attemptDeleteAccount`'s cascade and needs none of this.
+      await leaveClubIfJoined(clubId)
       return { bad, ran }
     }
-    report(true, `joining ${introducing ? 'through the introduction sheet' : 'directly'} writes a club_members row`)
 
     await page.goto(`${BASE}/clubs/detail?id=${clubId}`, { waitUntil: 'networkidle' })
 

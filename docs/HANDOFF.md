@@ -232,6 +232,18 @@ later session should not re-derive:
   *leaving the club NULLs the marker* and the next run is not refused. **One introduction thread per
   `WALK_EMAIL` run, accumulating**; on the minted path `author_id`'s cascade takes it with the
   account. The phase posts a body that says it is automated rather than impersonating a rider.
+  Cleaning it up is **PD-411**, and the ordering there is the trap: `club_threads` SELECT is
+  membership-gated, so a delete has to run *before* the leave or the author can no longer see the
+  thread they wrote.
+- **The membership watcher carries its own 45s budget and must keep one.** It is armed before the
+  tap, so at the default 20s the sheet wait in front of it can spend half the budget before `Post`
+  is clicked — and a slow-but-successful join then reports a hard FAIL, which since this change
+  reddens the run rather than printing a `!`. A gate that goes red on latency is the defect PD-410
+  exists to remove, arriving from the far side.
+- **The failure path leaves the club anyway, and that is not tidiness.** A missed write is not proof
+  of a missed join, and on the `WALK_EMAIL` path nothing else ever collects the membership — that
+  account is never deleted. It compounds rather than repeating: `discoverJoinableClub` picks a club
+  the rider is *not* in, so each false failure would permanently shrink the pool by one club.
 
 **PD-344 — the reported symptom and the actual defect are two different things, and only the second
 was real.** Measured in this container's Chromium against the dev server:
@@ -919,13 +931,10 @@ bare route list, and the phase opens each with a 32-hex token that parses and ma
 - **The route-list entries carry no token deliberately.** `adoptInviteTokenFromLocation` strips the
   query with `history.replaceState`, so a token there makes `finalPath` come back without it and
   the loop reports a redirect that did not happen.
-- **The phase adds `+20` checks (10 per landing route × 2) and `+2` screens — and those DELTAS are
-  the only figures to quote.** #390 landed four social-write phases the same day and its commit
-  uses `47` as the *named* base where this file records `44`; nothing in a container can settle
-  that, so the absolute total is in dispute and adding to either number propagates the wrong one.
-  `docs/reference/running-locally.md` §The walk carries the disagreement and the re-derivation
-  command; **do not copy a bare total out of it into here.** Nobody has run the phase: Chromium here cannot reach Supabase without the relay and CI's `walk` job is
-  skipped until `WALK_CI=1`.
+- **The phase adds `+20` checks (10 per landing route × 2) and `+2` screens.** The base those
+  deltas were once added to is no longer in dispute: both were measured on 2026-09-06 (PD-390) and
+  live in `docs/reference/running-locally.md` §The walk — **quote that, and do not add a delta to
+  a remembered number.** **The phase HAS now been run**, both accounts, all 20 assertions green.
 
 **PD-387 — `.claude/commands/queue-pickup.md` §The cost record.** One labelled block in one Linear
 comment, one line in the PR body. Three things a later session should not re-derive:
@@ -1385,21 +1394,14 @@ anchor, no migration), `PD-367` (club-thread notifications, `098` plus `100`) an
 fan-out widened, `099`). Both projects are at `100`; `main` and `development` are both at the
 promotion merge with identical trees.
 
-**IT HAS NOW BEEN RENDERED — the walk ran against DEV on 2026-09-01 and is green.** 23/23 screens
-and 47/47 guard, navigation and sign-out checks, run twice: once as the club's OWNER and once as an
-ordinary MEMBER, which are different code paths on the club detail because the introduction prompt
-exempts an owner. **The two figures are from different accounts and no single run produces both**:
-23/23 screens is the named account, whose check total is 44; 47/47 checks is the minted rider,
-which walks 22. `docs/reference/running-locally.md` carries the split.
+**IT HAS NOW BEEN RENDERED — the walk ran against DEV on 2026-09-01 and is green**, run twice: once
+as the club's OWNER and once as an ordinary MEMBER, which are different code paths on the club
+detail because the introduction prompt exempts an owner.
 
-**23 needs a `WALK_EMAIL`; a MINTED rider walks 22, and that is a pass rather than a shrink.**
-Re-measured 2026-09-02, both ways in one sitting. `/clubs/detail/thread` is discovered by scraping
-a link off the Threads list, and the walk's own fixtures create a ride and a club but **no thread**
-— so a freshly-minted rider's club has nothing to open and the walk says so in words
-(`(no threads in that club — /clubs/detail/thread unwalked)`). The guard-check total moves with it
-for the same reason: 47 as a minted rider, **44** as a named one, because minting adds three
-checks of its own. So compare a walk against the account it ran as, and read the parenthesised
-lines — the walk names every route it skipped.
+**That run's totals are superseded and are deliberately not repeated here** — see §The walk is green
+again, and both its baselines are measured (2026-09-06), which measured both accounts and is the
+only baseline to quote. Five routes have been added since. Compare a walk against the account it ran
+as, and read the parenthesised lines — the walk names every route it skipped.
 
 **Two durable DEV fixtures were created for it, and they are the reason the next walk needs no
 setup:**
