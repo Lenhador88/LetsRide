@@ -1,0 +1,207 @@
+-- 109 — the ride chat is retired at the database (PD-402)
+-- ===========================================================================
+--
+-- The destructive half of `openspec/changes/retire-ride-chat-for-ride-threads/`.
+-- `108` created `ride_threads`, `ride_thread_messages` and `ride_thread_reads`
+-- and added the second to `supabase_realtime`; the client that reads them is
+-- merged and serving. This file removes what they replaced.
+--
+-- ---------------------------------------------------------------------------
+-- ** DO NOT APPLY THIS FILE UNTIL THE NEW BUNDLE IS CONFIRMED SERVING **
+-- ---------------------------------------------------------------------------
+-- The gate is `tasks.md` 5.3 and it is NOT "the PR merged" and NOT "CI is
+-- green". It is the Vercel deployment for the **merge sha**, in that branch's
+-- environment, reading `READY` with `aliasError` null.
+--
+-- This is `CLAUDE.md` §Supabase Rules' deploy-first case, and the direction it
+-- fails in is the whole reason the change is two files: dropping a table a
+-- shipped bundle still reads answers `PGRST205` on every read, for the length
+-- of the gap. **This repo has already made that exact mistake once** — a
+-- destructive file applied 102 seconds after a merge, out from under a Preview
+-- still calling the function it dropped.
+--
+-- **What the serving gate bounds is the DEPLOYMENT, never the client
+-- population.** An already-loaded browser tab keeps its pre-merge JS until it
+-- is reloaded, so a tab sitting on `/rides/detail/chat` when this applies gets
+-- `PGRST205` whatever the gate says. **No transitional soak is specified, and
+-- the reason is the row count rather than the rule** — see the disposition
+-- below. Do not copy that omission into a destructive change with live users;
+-- `103` is the worked example that did owe one.
+--
+-- ---------------------------------------------------------------------------
+-- THE DATA DISPOSITION — COUNTED, AND NOTHING IS ARCHIVED
+-- ---------------------------------------------------------------------------
+-- Product owner, 2026-09-05: *"Ride chat stops existing, now we also have
+-- threads. We are not live yet, so all ride chats can be dropped."* The call is
+-- theirs and is recorded as made.
+--
+-- Counted on 2026-09-06 rather than estimated:
+--
+--   | table           | DEV | PROD |
+--   |-----------------|-----|------|
+--   | `ride_messages` |   7 |    0 |
+--   | `ride_reads`    |  14 |    0 |
+--
+-- PROD holds zero ride messages, so the decision costs seven fixture rows on
+-- DEV written by test riders. **Nothing is archived and nothing needs to be.**
+-- An archive table would be a second copy of an audience rule — it would carry
+-- `ride_messages`' INTERSECTION predicate or it would carry none, and the
+-- second is a leak of every message on every ride to whoever could read the
+-- archive. The `drop table` cascade is the whole disposition.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT THIS FILE DROPS, AND WHAT IT DELIBERATELY LEAVES STANDING
+-- ---------------------------------------------------------------------------
+-- DROPPED:
+--   * `public.ride_reads` (`061`) — and with it, by ordinary table ownership,
+--     its policies, its grants, its index and its `stamp_ride_read` trigger.
+--   * `public.stamp_ride_read()` and `public.ride_has_unread(uuid)` (`061`).
+--   * `public.ride_messages` (`034`) — and with it its three policies, its
+--     column and table grants, its indexes, its outbound foreign keys, `023`'s
+--     `enforce_participation_gate` trigger, **and its `supabase_realtime`
+--     membership**. `drop table` removes a table from a publication on its own;
+--     a preceding `alter publication ... drop table` is redundant, which is
+--     said here rather than added silently.
+--
+-- LEFT STANDING, each for its own reason:
+--   * ** `private.is_ride_crew` — untouched, same function, same signature,
+--     same grant. ** `041` (postcard ride tags), `051` (map tiles) and `108`'s
+--     own policies all call it. A reader arriving here through a grep for
+--     "ride crew" is one drop away from taking three features with them.
+--   * Every policy on every other table. This file drops and does nothing else:
+--     not `rides`, not `ride_members`, not `ride_invites`.
+--   * ** `public.notifications` — NOT TOUCHED AT ALL. ** No CHECK edit, no row
+--     delete, no trigger. See the section below, because the issue that
+--     produced this change says the opposite.
+--   * `108`'s three tables and everything about them.
+--
+-- ---------------------------------------------------------------------------
+-- THERE IS NO `ride_message` NOTIFICATION KIND, AND THE ISSUE SAYS THERE IS
+-- ---------------------------------------------------------------------------
+-- PD-402's body reads: *"`036` writes a notification on a ride message and
+-- `060` narrowed its recipients … Both need the kind retired, not merely
+-- orphaned"*, and asks whether it gets `101`'s enum treatment.
+--
+-- Measured on DEV and PROD, 2026-09-06:
+--
+--   * `notifications_type_check` has **16** arms and `ride_message` is not one.
+--   * The only trigger on `ride_messages` is `enforce_participation_gate`.
+--     There is no fan-out.
+--   * `notifications` rows of type `ride_message`: 0 / 0 — the type is not
+--     legal, so it could not be written.
+--   * `grep -rn "notify_ride_message\|'ride_message'" supabase/ src/` — 0 hits.
+--
+-- `036` and `060` name `ride_messages` only in **comments**, as the precedent
+-- their own reasoning copies. That is `CLAUDE.md` §Technology Decisions' comment
+-- trap exactly: a grep for the retired thing counts its own obituaries. The two
+-- fan-outs `060` actually rewrites are `notify_ride_joined` and
+-- `notify_ride_created_in_club`, and **neither is touched by this change**.
+--
+-- ** If you find yourself writing `alter table public.notifications` in this
+-- file, re-read this section. ** There is no arm to keep or drop, no
+-- `notifications_subject_shape` edit, and no `101` precedent call to make.
+--
+-- ---------------------------------------------------------------------------
+-- ONE GAP CLOSES BY DELETION, AND IT IS WORTH RECORDING WHERE IT WENT
+-- ---------------------------------------------------------------------------
+-- `docs/HANDOFF.md` §Your own row survives the parent going out of view records
+-- `ride_messages` as carrying a **residual silent `DELETE 0`** that `102`
+-- deliberately left open: a rider who leaves the crew of a ride they can still
+-- see cannot withdraw their own message, because RLS filters a DELETE by what
+-- the caller may READ and the `is_ride_crew` conjunct hides the row. `102` could
+-- not hoist past that conjunct without breaking the documented invariant that
+-- this table's audience is an INTERSECTION.
+--
+-- It is closed here by the table going, and `108` does not inherit it: deletion
+-- there is `public.delete_own_ride_thread_message`, a `security definer`
+-- function, which is not subject to the SELECT policy at all.
+
+-- ---------------------------------------------------------------------------
+-- 1. `ride_reads` and its two functions (`061`)
+-- ---------------------------------------------------------------------------
+-- The table first, so the trigger goes with it and `stamp_ride_read()` has no
+-- dependent when it is dropped. `ride_has_unread` reads both `ride_reads` and
+-- `ride_messages`, so it could not survive either drop and is removed
+-- explicitly rather than left to a cascade nothing states.
+
+drop table if exists public.ride_reads;
+
+drop function if exists public.stamp_ride_read();
+drop function if exists public.ride_has_unread(uuid);
+
+-- ---------------------------------------------------------------------------
+-- 2. `ride_messages` (`034`)
+-- ---------------------------------------------------------------------------
+-- Last, because `ride_has_unread` above referenced it. No `alter publication
+-- supabase_realtime drop table` precedes this: `drop table` removes the
+-- membership itself.
+
+drop table if exists public.ride_messages;
+
+-- ===========================================================================
+-- §Verification — run against the project after applying
+-- ===========================================================================
+--
+-- 1. Both tables are gone and `108`'s three are not:
+--
+--      select to_regclass('public.ride_messages')       as should_be_null,
+--             to_regclass('public.ride_reads')          as should_be_null_too,
+--             to_regclass('public.ride_threads')        as should_be_a_table,
+--             to_regclass('public.ride_thread_messages') as should_be_a_table_too,
+--             to_regclass('public.ride_thread_reads')   as and_this_one;
+--
+-- 2. Both functions are gone, and `private.is_ride_crew` is NOT:
+--
+--      select p.proname,
+--             n.nspname
+--        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--       where p.proname in ('stamp_ride_read', 'ride_has_unread', 'is_ride_crew');
+--      -- exactly one row: private.is_ride_crew
+--
+-- 3. The publication holds the club's messages and the ride's THREAD messages,
+--    and not `ride_messages`:
+--
+--      select tablename from pg_publication_tables
+--       where pubname = 'supabase_realtime' order by 1;
+--      -- club_messages, ride_thread_messages
+--
+-- 4. `notifications` is untouched — the row count and both CHECKs are exactly
+--    what they were before this file. This is the decision above, verified
+--    rather than assumed:
+--
+--      select (select count(*) from public.notifications)              as rows_unchanged,
+--             (select count(*) from public.notifications
+--               where type = 'ride_message')                           as must_be_zero,
+--             (select pg_get_constraintdef(oid)
+--                from pg_constraint
+--               where conrelid = 'public.notifications'::regclass
+--                 and conname = 'notifications_type_check')            as type_check_unchanged;
+--
+-- 5. The gate trigger count drops by exactly one — `ride_messages`' — and
+--    `108`'s two new ones are still there:
+--
+--      select count(*) from pg_trigger t
+--       where t.tgfoid = 'public.enforce_participation_gate()'::regprocedure
+--         and not t.tgisinternal;
+--
+-- 6. `get_advisors(security)` — ** this file MUST NOT move the count. ** It
+--    publishes no function in `public` and drops none that carries an advisor:
+--    `public.ride_has_unread` is `prosecdef = false`, and
+--    `public.stamp_ride_read` holds no `authenticated` EXECUTE. Measured, not
+--    assumed. One fewer means something outside this file's scope was touched.
+--
+-- ===========================================================================
+-- §Rollback
+-- ===========================================================================
+--
+-- ** There is no rollback for the DATA and there cannot be. ** `drop table`
+-- destroys every row, and nothing is archived (see the disposition above). The
+-- structure can be rebuilt by re-running `034` and `061` in that order; the
+-- seven DEV messages and fourteen watermarks cannot be, and PROD had none to
+-- lose.
+--
+-- If this file has to be undone before the structure is rebuilt, the app is the
+-- thing to move rather than the database: the bundle that reads these tables is
+-- the one this change deleted, so a rollback means redeploying the previous
+-- build FIRST and re-applying `034` and `061` after it — the same ordering rule
+-- as this file, run backwards.
