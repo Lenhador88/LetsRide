@@ -449,11 +449,13 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 111 files. DEV is at `111` and PROD at `107` — measured 2026-09-06.** `101`–`107`
+**Applied state: 112 files. DEV is at `112` and PROD at `107` — measured 2026-09-06.** `101`–`107`
 **promoted to PROD on 2026-09-06**, so the long-standing seven-file gap this line used to describe
-is closed. What is open is the ordinary four-file promotion gap, `108`–`110` (PD-402) and `111`
-(PD-361), all applied to DEV. **`111` is additive with nothing to sequence against** — it touches no
-file under `src/`, so the PROD promotion needs no separate ordering decision for it.
+is closed. What is open is the ordinary five-file promotion gap, `108`–`110` (PD-402), `111`
+(PD-361) and `112` (PD-399/PD-408), all applied to DEV. **`111` and `112` are additive with nothing
+to sequence against** — neither touches a file under `src/`, so the PROD promotion needs no separate
+ordering decision for either. **`112` hangs triggers on three already-shipped write paths**, so it
+owes the hand-exercise gate rather than an ordering decision; that gate is in its own §Verification.
 **`109` was held back until the merged bundle was confirmed *serving*** — `READY` on merge sha
 `923541c` with `aliasError` null, which is not the same as merged — and applied at 10:09Z once it
 was. **`108` went MIGRATION-FIRST and `109` LAST**, the sequencing rule with its two halves pulling
@@ -511,7 +513,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3630** assertions — re-derive rather than trust it:
+Suite **3642** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 
@@ -557,6 +559,32 @@ difference between the projects is almost always a pending promotion.
 **Scope a grant assertion to its grantee**, or use `has_table_privilege`: a table-wide
 DELETE-grant count reads 2 against a correct database, because `postgres` and `service_role` hold
 everything by Supabase default.
+
+**A new table KEEPS Supabase's default `service_role` grants. Revoking is the exception, and
+`076` §3 is the rule** — surfaced here by PD-409 because it was stated only in that migration's
+body, where the next table's author does not look. Revoke from `service_role` when the table is a
+**restricted-readership sink**: its rows are something the one credential that bypasses RLS must
+not be able to enumerate. **Three tables qualify and they are the whole list** —
+`postcard_reports` (`076`), `club_thread_reports` (`094`) and `push_devices` (`078`): two
+moderation queues whose rows are reporter identities, and a device-token store. Ordinary content
+tables do not, and **`081`/`108` leaving the six club and ride thread tables alone was correct
+rather than an oversight** — `076` says so in as many words: *"The narrowness is deliberate and is
+not a claim about the other tables."* So the two are not competing precedents, and revoking
+across the thread tables to "settle" them would make six tables inconsistent with the other
+twenty-four. Measure rather than trust the split — 3 revoked, 30 not, on DEV 2026-09-06:
+
+```sql
+select has_table_privilege('service_role', c.oid, 'SELECT') as sr_select, count(*),
+       string_agg(c.relname, ', ' order by c.relname)
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+ where n.nspname = 'public' and c.relkind = 'r' group by 1;
+```
+
+**The local suite cannot measure this and does not claim to.** `service_role` is a bare role in
+`harness.sql`, so `has_table_privilege` reads false for *every* table there — an assertion would
+pass for the wrong reason. The three sink assertions defeat that per table by granting the hosted
+default and then revoking it inside a savepoint (`rls_test.sql` :1630, :25674); that trick does
+not generalise to the set, so the hosted query above is the measurement.
 
 **The project is on the free tier, which auto-pauses after ~7 days idle.** A paused project
 serves nothing, so the deployed app goes down with no alert. This needs to be on Pro before
