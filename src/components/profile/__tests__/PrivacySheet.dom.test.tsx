@@ -24,20 +24,24 @@ import { PrivacySheet } from '@/components/profile/PrivacySheet'
  * after deciding, and `PrivacySheet`'s own docstring is explicit that being
  * above the toggle is the requirement rather than being present somewhere.
  *
- * Verified both ways per CLAUDE.md §Working Principles, with two mutations run
- * against `PrivacySheet.tsx`:
+ * Verified both ways per CLAUDE.md §Working Principles. Three mutations were
+ * run against `PrivacySheet.tsx` on a 5-test file, and each isolates a
+ * different assertion — **re-measure rather than adjust these if the file
+ * changes**, which is how they went stale once already:
  *
- * - **deleting the replay clause** from the intro → 2 failed, 2 passed (both
- *   the presence and the order assertion, since a missing string has no
- *   position);
- * - **moving that clause below the `Checkbox`**, into the paragraph under it →
- *   **1 failed, 3 passed** — only *puts the recording disclosure above the
- *   toggle, not under it*.
+ * - **delete the replay clause** from the intro, leaving the other two
+ *   categories → **2 failed, 3 passed** (presence and order, since a missing
+ *   string has no position);
+ * - **move that clause below the `Checkbox`** → **1 failed, 4 passed** — only
+ *   *puts the recording disclosure above the toggle, not under it*;
+ * - **drop the `moments` category** → **1 failed, 4 passed** — only *names all
+ *   three collection categories*.
  *
- * The second is the one that matters: it leaves the presence assertion green,
- * which is what proves the order assertion is pinned to the ORDER rather than
- * riding on the presence one. A file with only the first test would have
- * shipped that mutation.
+ * The second is the one that matters most: it leaves the presence assertion
+ * green, which is what proves the order assertion is pinned to the ORDER rather
+ * than riding on the presence one. A file with only the first test would have
+ * shipped that mutation. That the second and third fail *disjoint* assertions
+ * is why the third does not re-assert the replay clause the first one owns.
  *
  * jsdom, not `renderToStaticMarkup`: `ContextMenu` portals its sheet to
  * `document.body`, so a static render of this component returns nothing at all
@@ -126,11 +130,19 @@ describe('PrivacySheet', () => {
     // category. This surface is what the App Store *Data Collection* and Play
     // *Data safety* forms get transcribed from (PD-232), so understating it
     // here is the expensive direction.
+    // Matched on the words that carry each CATEGORY, never on the example
+    // inside it — this file's own rule, stated in the first test. `moments like`
+    // is non-exhaustive by construction, so rewording which moment is named
+    // ("joining a club", "posting a postcard" — both real `events.ts` arms) is
+    // free, and dropping the category is not.
+    //
+    // The replay category is deliberately NOT asserted here: the first test
+    // owns it, and repeating it would make this test fire on that test's
+    // mutation too, which is what stops the two from being independent.
     const markup = html()
 
     expect(markup).toContain('screens you open')
-    expect(markup).toContain('creating a ride')
-    expect(markup).toContain('replay of your own screen')
+    expect(markup).toContain('moments like')
   })
 
   it('keeps both claims about the rider’s data that the opt-out must not overstate', () => {

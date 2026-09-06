@@ -213,11 +213,17 @@ always used.
 - **The stricter test under-reports at the exact-boundary read, and that is NOT a new bug** —
   found in the pre-merge review and recorded so nobody re-files it. A source returning *exactly*
   its limit sets a horizon at its oldest row even when nothing is behind it, so `complete` is
-  `false` where the old expression could read `true`. It **self-heals**:
+  `false` where the old expression could read `true`. It **self-heals, with one condition**:
   `resolveClubTimelineAdvance` returns `fetch-window`, the next window comes back empty,
   `absorbClubTimelineWindow` nulls the accumulated horizon, and `complete` flips true on the
   following merge. The cost is one extra read on a boundary-exact club, and it is byte-identical
   to what `mergeRideTimeline` has always done — which is what the issue asked for.
+  **The condition is the mount's window ceiling**, and it is the variant a later session would
+  otherwise re-file as a fresh bug: at `CLUB_TIMELINE_MAX_WINDOWS` (10) that call returns
+  `capped` rather than `fetch-window`, so the horizon is never nulled and the tail reads
+  *cannot get more* instead of showing the true end. It needs a boundary-exact club **and** a
+  rider who has already taken ten fetch steps, and it still fails in the safe direction —
+  understating the end rather than asserting a false one.
 
 **PD-401 — the ride detail's create bar, and the collision it had to settle.** `RideCreateBar` is
 `ClubCreateBar`'s slot and geometry with **one** action (a postcard tagged to the ride), because
