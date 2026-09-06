@@ -1108,7 +1108,19 @@ session's **A** naming something different is the accepted cost.
 
 **Every lettered option opens with a title, then a short PRACTICAL explanation, then the
 ratings.** Standing instruction, product owner 2026-09-06: *"between the title and the options, can
-you give me a short practical explanation."* Two or three sentences, in plain terms, saying what
+you give me a short practical explanation."*
+
+**Break the line after the title** — the title on its own line, the explanation in its own
+paragraph below it, separated by a blank line. Standing instruction, product owner 2026-09-06:
+*"can we break the line after the title?"* It is the same rule as the one for scores above and it
+exists for the same reason: the title is what a reader **skims** to find the option they care
+about, and the explanation is what they read only once one has caught their eye. Run together on
+one line, the bold title stops being a heading and becomes the first clause of a paragraph, so a
+reply offering three options no longer has three things to scan.
+
+The worked example below has always been written this way; the rule was only ever shown, never
+stated, which is why it drifted. Nothing gates it — a chat reply is not a file — so it holds
+because it is here. Two or three sentences, in plain terms, saying what
 actually happens if they say yes — what changes, who does it, what it costs them, and what they
 would notice afterwards. **The ratings answer *how much* and *how urgent*; this answers *what is
 it, concretely*,** and it is the half an owner deciding on a phone needs before the numbers mean
