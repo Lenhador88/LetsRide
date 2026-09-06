@@ -190,6 +190,67 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The queue jammed on a dead slot for five firings — 2026-09-06
+
+**`slot-1` has held PD-98 since 2026-09-05T17:25Z**, its session having applied `107` to DEV and
+never pushed a branch (the section below). Five consecutive firings — 23:42, 00:41, 01:46, 02:41
+and the one that wrote this — found it there. It is **already alarmed** (`<!-- stall-alarm slot:1 -->`,
+23:44Z), and `queue-run.md` STEP 6 forbids a firing from reaping it: an age-based reaper that
+returns a story a live session is still building is the one failure worse than a held slot.
+
+**Only the owner clears it** — move PD-98 back to `Queued (AI)` and strip `slot-1`.
+
+**What it is costing is not abstract.** The two highest-value queued stories both need
+`supabase/tests/rls_test.sql` and the next migration number, which is exactly what that territory
+claims, so both hit two of STEP 4's three caps and neither can be taken:
+
+- **PD-402** (High) — ride threads. Proposal merged (#400); the build waits.
+- **PD-361** — the removed rider who walks back in through a live invite link. Owner decision
+  already recorded (the narrow reading); nothing else blocks it.
+
+```bash
+git ls-remote --heads origin | grep -iE "pd-98|outliv|preserve-postcard"   # nothing, still
+```
+
+## The floating action is proposed, not built — 2026-09-06
+
+**PD-404, [PR #401](https://github.com/Lenhador88/LetsRide/pull/401) — the proposal only, and the
+story moved to `Needs decision` rather than `Deployed to DEV`.**
+`openspec/changes/replace-the-create-bar-with-a-floating-action/`. **No code, deliberately**: the
+issue says *"the build must not pick one silently"* about its frame decision, and both ways forward
+are closed to an unattended session — option 1 needs a Figma write (explicit owner ask), option 2
+contradicts an approved v2 frame against decision #4.
+
+**Three findings a build must not re-derive:**
+
+- **The frame problem is TWO decisions.** `2375:8771` draws the ride detail's nav bar at **390×88
+  with no create control**, so `RideCreateBar` is already an additive departure and converting it
+  contradicts nothing. `2043:10604` instances the same component at **390×152** with
+  `Button Container 358×56` inside it, so converting the club changes a variant **26 other** frames
+  instance. That asymmetry is what makes a split available: ride detail now, club detail later.
+- **The story's value and its worst defect are one decision.** With the tokens' own
+  `16 pad + control + 8` rule, a 56px control reserves **80px** and a 48px one **72px** against
+  `--navbar-action`'s **64px**. **Nothing breaks even** — matching 64px needs a 40px control, below
+  the 44×44 floor. The honest value is *horizontal* space; do not repeat the issue body's sentence.
+- **There is no elevation token at all**, so a floating action would be the app's first persistent
+  one — `grep -in "shadow\|elevation" design/TOKENS.md` is 0.
+
+**Two blocking questions are the owner's**, both phrased as the rider's state in the proposal's
+§Open questions. Filed **PD-407** (`/rides/explore` reserves 64px for a sticky action
+`STICKY_ACTIONS` does not hold).
+
+**The crossrefs gate now sits exactly at its ambiguous ceiling of 35**, so the next ambiguous
+section pointer added anywhere in the repo trips it. Note in particular that **`§Working
+Principles` can never be cited that way** — it is ambiguous against `§Working With the Product
+Owner` on its leading word, and the checker counts a one-word leading match. Writing the
+`<file> §<Section>` idiom out as an *example* trips the gate too: the checker cannot tell an
+illustration from a citation, which is how this very entry went red once.
+
+```bash
+npx openspec validate replace-the-create-bar-with-a-floating-action --strict
+npx vitest run scripts/docs/__tests__/crossrefs.test.mjs   # 26/26, at the ceiling
+```
+
 ## A migration is applied to DEV with no file in the repo — 2026-09-06
 
 **`107` is taken on the database and free in the repo.** DEV's last applied row is
