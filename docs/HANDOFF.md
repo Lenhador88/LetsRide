@@ -190,6 +190,63 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## Three from one queue firing — a timeline lie, the ride's bottom slot, the privacy copy — 2026-09-06
+
+**PD-400 + PD-401 + PD-405, one branch, taken into `slot-2`.** Grouped because all three are
+small `src/`-only changes with no migration, so they fit one `reviewer` pass; they collide with
+nothing, which is why the group is three rather than two.
+
+**PD-400 — `mergeClubTimeline` could append the club's founding under a stream that had rows
+behind it.** `complete` was derived from *"the horizon filter dropped nothing"*
+(`inside.length === events.length`), which is a different question from the one the flag answers.
+It is now `horizon === null && shown.length === ordered.length`, the test `mergeRideTimeline` has
+always used.
+
+- **Reachable through exactly one of the five sources, which is why it stayed invisible.** A full
+  read of the other four returns at least `CLUB_TIMELINE_LIMIT` rows, so the display cap cuts
+  before the horizon can lie. **`getClubThreadReplies` is the exception**: it collapses its window
+  to one row per thread, so two busy threads return two rows out of a two-hundred-message window
+  with a live horizon.
+- **`resolveClubTimelineAdvance` needed no change** — it reads the flag rather than re-deriving
+  it, so it became correct by the fix upstream. Do not "simplify" the two merges into one; they
+  diverge on more than this.
+
+**PD-401 — the ride detail's create bar, and the collision it had to settle.** `RideCreateBar` is
+`ClubCreateBar`'s slot and geometry with **one** action (a postcard tagged to the ride), because
+that is all a ride creates until PD-402 lands. `RideCrewRail` moved above `RideMap` and lost its
+`SectionHeader`; it carries its own `mx-4`, so no geometry moved with it.
+
+- **Option B of the issue's four, plus the fallback that makes it lossless.** `RideAttendanceBar`
+  keeps the sticky slot outright; where it has it, the timeline heading's `(+)` survives. So a
+  crew member always has **exactly one** entrance to the composer, never two and never none.
+- **`resolveRideDetailActions` (`src/lib/rides/bottom-slot.ts`) is that decision, as a pure
+  function, because the property is what a tidy-up breaks.** Simplifying `bottomSlot !== 'create'`
+  back to `canRsvp` looks correct and re-opens it. Its test is exhaustive over the four-input
+  space.
+- **Option D — moving the RSVP into the page body — is deliberately NOT taken, and is still
+  open.** It is the issue's own recommendation and it contradicts `2375:8771`, which draws that
+  bar stacked on the navigation bar. That is the same frame decision PD-404 is parked on, and it
+  is the owner's. **D is B minus one predicate**, so nothing here forecloses it.
+
+**PD-405 — the privacy sheet says less.** The checkbox is `Share usage data` and its sub-label is
+gone. **The replay disclosure did not go; it MOVED into the intro above the toggle**, because it
+is the only place a rider is told their screen is recorded before consenting.
+
+- **A sheet reading only `Share usage data` over a switch that enables session replay is the
+  shape to avoid**, and this file is one careless trim away from it at any time.
+  `PrivacySheet.dom.test.tsx` pins the fact **and its position** — presence alone is not the
+  property, and the mutation that moves the clause below the checkbox fails only the order
+  assertion (1 failed, 3 passed), which is what proves the two are independent.
+- **Three surfaces must keep agreeing and only one is enforceable from here**: this sheet,
+  `/legal/privacy`, and the App Store / Play data forms still parked on PD-232. Write copy from
+  `src/lib/observability/scrub.ts` and `src/lib/analytics/events.ts`, never from a description
+  of them.
+
+```bash
+git grep -n "resolveRideDetailActions\|horizon === null && shown" -- src/
+npx vitest run src/lib/rides src/lib/data/__tests__/club-timeline.test.ts src/components/profile
+```
+
 ## A block and a hide can be undone, and neither was a screen problem — 2026-09-05
 
 **PD-298, `105_a_block_and_a_hide_can_be_undone.sql` + `106` (which narrows the hides accessor after review), applied to DEV.** Profile → ⋯ → **Privacy**

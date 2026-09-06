@@ -46,6 +46,31 @@ import { queryKeys } from '@/lib/query/keys'
  * `FeedbackSheet` and `DeleteAccountSheet` are the same shape, opened the same
  * way from `ProfileMenu`.
  *
+ * ## The copy says less than it used to, and the trim had one hard edge
+ *
+ * Product owner, 2026-09-05 (PD-405): make these options **more subtle** —
+ * *"All that detailed info can be viewed in the privacy policy, so Record how I
+ * use the app, and the label below, should say something more professional."*
+ * The checkbox is three words now and its sub-label is gone entirely.
+ *
+ * **What could not be trimmed away is the replay disclosure, only MOVED.** It
+ * is the only place a rider is told their screen is recorded *before* they
+ * consent, so it is now a clause in the intro paragraph above the toggle rather
+ * than a caption under it. A sheet reading only `Share usage data` over a switch
+ * that turns on session replay is the shape a regulator or a store reviewer
+ * reads as consent that was not informed — and it is the shape this file is one
+ * careless trim away from at any time, which is why
+ * `__tests__/PrivacySheet.test.tsx` pins the fact and its ORDER rather than
+ * trusting a comment.
+ *
+ * Three surfaces have to keep agreeing about this and only one of them is
+ * enforceable from here: this sheet, `/legal/privacy` (the exhaustive version —
+ * what the replay shows, and the two things withheld from it), and the App
+ * Store *Data Collection* / Play *Data safety* forms, which are still
+ * unanswered and parked on PD-232. Write copy here from
+ * `src/lib/observability/scrub.ts` and `src/lib/analytics/events.ts`, which are
+ * what actually ships, never from a description of them.
+ *
  * ## The copy is doing load-bearing work, in two places
  *
  * **It must not claim the opt-out removes what was already collected.** It
@@ -132,9 +157,16 @@ function PrivacyControls({ onClose }: { onClose: () => void }) {
       <div className="flex max-h-[60vh] flex-col gap-6 overflow-y-auto">
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-semibold text-foreground">Privacy</h2>
+          {/* **The replay clause lives HERE, and moving it is not a copy
+              decision** — see the class note above. One sentence: what is
+              collected, that it includes a recording of the rider's own screen,
+              and what it is for. `/legal/privacy` carries the exhaustive
+              version (what the replay shows, the two things withheld from it);
+              this is the summary a rider reads before deciding, which is the
+              part that has to be here rather than behind a link. */}
           <p className="text-sm text-muted">
-            We record how the app is used so we can find out what is broken or confusing. It
-            helps most while LetsRide is small.
+            We record how the app is used — the screens you open and a replay of your own
+            screen — so we can find what is broken or confusing.
           </p>
         </div>
 
@@ -143,15 +175,14 @@ function PrivacyControls({ onClose }: { onClose: () => void }) {
           checked={optedIn}
           disabled={pending || !online}
           onChange={(event) => void toggle(event.target.checked)}
-          label={
-            <span className="flex flex-col gap-1">
-              <span>Record how I use the app</span>
-              <span className="text-sm font-normal text-muted">
-                Which screens you open, when you create or join something, and a replay of
-                your own screen. Never your password.
-              </span>
-            </span>
-          }
+          // Three words, and no sub-label at all (PD-405). What was under it —
+          // "a replay of your own screen. Never your password." — is the app
+          // explaining its own mechanism at a rider who opened a sheet to flip
+          // one switch. The half that is a DISCLOSURE moved up into the intro;
+          // the half that was reassurance ("never your password") is gone,
+          // because withholding a promise nobody asked for costs a rider
+          // nothing and `/legal/privacy` states it in full.
+          label="Share usage data"
         />
 
         {error && (
@@ -165,11 +196,16 @@ function PrivacyControls({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex flex-col gap-2">
+          {/* Trimmed rather than cut (PD-405). Both claims here are claims
+              about the rider's DATA rather than descriptions of a feature, so
+              neither may go: that opting out does not erase what was already
+              collected, and that it cannot reach another rider's replay. What
+              went is the worked example after the dash — `/legal/privacy` gives
+              it in full, one tap below. */}
           <p className="text-xs text-muted">
             Turning this off stops any further recording. It does not delete what has already
-            been collected, and it cannot remove you from another rider’s replay — if their
-            screen showed your postcard or your name, that is in their recording, not yours. To
-            have your records deleted, email us.
+            been collected, and it cannot remove you from another rider’s replay. To have your
+            records deleted, email us.
           </p>
           <p className="text-xs text-muted">
             <Link href="/legal/privacy" className="underline">
