@@ -118,12 +118,15 @@ shape is what makes it run on every row, and the privilege failure is then uncon
 splits by path:
 
 - **`joinClub` inserts into `club_members` directly as `authenticated`**, under `001`'s
-  `auth.uid() = user_id` policy. Invoker rights there mean `42501` on **every** press of Join,
-  barred pair or not — loud, and caught by any behavioural test of that path.
-- **The invite paths are already `security definer`** (`accept_club_invite` and
-  `claim_club_invite_link`, through `private.join_club_from_invite`), so the trigger inherits the
-  function owner's rights and the delete **succeeds silently** — green whatever the privilege mode
-  says.
+  `auth.uid() = user_id` policy, and it is the only such write in `src/`. Invoker rights there mean
+  `42501` on every press that **actually joins** — barred pair or not. Not literally every press:
+  it is an `on conflict do nothing` upsert, so a press by an existing member inserts no row and
+  fires no AFTER INSERT trigger. Loud, and caught by any behavioural test of that path.
+- **Every other admission path is already `security definer`** — `private.join_club_from_invite`
+  (both invite paths), `private.join_club_from_request`, `complete_onboarding`'s default-club join
+  and `103`'s `establish_club_owner_membership` — so the trigger inherits the function owner's
+  rights and the delete **succeeds silently** on all four, green whatever the privilege mode says.
+  Four green paths can hide the outage, not two, which is why the assertion reads the catalogue.
 
 That asymmetry is the whole reason group 3 asserts `prosecdef` from the catalogue rather than
 inferring it from a join that worked. Measured on DEV: all three triggers already on that table are

@@ -194,10 +194,11 @@ reason; copying the shape of the one beside it means copying its privilege mode,
 absent `WHEN` clause.
 
 **The failure is decided by the writer's role and not by whether a removal row exists**, because
-Postgres checks table privileges at executor start rather than per row. So the client-direct join
-path fails on every attempt, while the two `security definer` invite paths inherit the owner's
-rights and succeed silently — which is why the assertion below reads the catalogue rather than
-trusting a join that worked.
+Postgres checks table privileges at executor start rather than per row. So the one client-direct
+join path fails on every attempt that inserts a row, while **every other admission path — both
+invite paths, the approved join request, the default-club join and the creator trigger — is already
+`security definer`** and inherits the owner's rights, succeeding silently. That is why the
+assertion below reads the catalogue rather than trusting a join that worked.
 
 #### Scenario: Readmission clears the bar
 - **WHEN** a removed rider is readmitted by any route and later leaves voluntarily, then claims a

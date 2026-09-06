@@ -118,7 +118,10 @@ assertion is not finished.**
       and `claim_club_invite_link` — are themselves `security definer`, so the trigger inherits the
       owner's rights there and passes whatever its own mode is; and **the RLS suite runs as the
       table owner, for whom neither barrier exists**, which is exactly how `029` shipped a function
-      no client role could reach with nothing red. Some `club_members` fixtures do run under
+      the role that needed it — `service_role` — could not reach, with nothing red. **Read that
+      precedent as "a privilege barrier is invisible to a suite running as the owner", NOT as
+      "revoking from client roles is what went wrong":** `029` revoked from the client roles
+      deliberately, and task 1.3 does the same thing on purpose. Some `club_members` fixtures do run under
       `set role authenticated` and would catch it — but a privilege mode proven by whichever
       fixtures happen to reset their role is proven by accident.
 - [ ] 3.14 The participation-gate count is asserted **by delta and by table name**, not by absolute:

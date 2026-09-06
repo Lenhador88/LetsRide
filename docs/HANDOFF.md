@@ -193,9 +193,10 @@ See `docs/reference/running-locally.md` §The walk.
 ## The queue is jammed on a dead slot, and both queued stories are proposals now — 2026-09-06
 
 **`slot-1` has held PD-98 since 2026-09-05T17:25Z**, its session having applied `107` to DEV and
-never pushed a branch (the section below). **Five** consecutive firings have found it there, and
-every one is timed: 23:42, 00:41, 01:46, 02:41 (which wrote the previous version of this entry,
-committing at 03:37:14Z) and 03:41. It is **already alarmed**
+never pushed a branch (the section below). **The five firings since the stall alarm** have all
+found it there, and every one is timed: 23:42, 00:41, 01:46, 02:41 (which wrote the previous
+version of this entry, committing at 03:37:14Z) and 03:41. Earlier firings ran while the slot was
+held too — the alarm is the datum, not the start. It is **already alarmed**
 (`<!-- stall-alarm slot:1 -->`, 23:44Z), and `queue-run.md` STEP 6 forbids a firing from reaping it:
 an age-based reaper that returns a story a live session is still building is the one failure worse
 than a held slot.
@@ -267,8 +268,9 @@ them silently.
 **One question is the owner's and is non-blocking:** a rider removed while holding a **pending
 in-app invite** can still accept it — the same defect one table over, on `club_invites` rather than
 `club_invite_links`. Left open because the owner's decision names the link path alone. `088` already
-deletes a pending **`club_join_requests`** row on removal — belt and braces, because a survivor
-*"would let a second admin undo this removal"* — so the `club_invites` counterpart is one line in
+deletes any **`club_join_requests`** row for the pair on removal — unscoped by status, though a
+`pending` survivor is the stated reason: it *"would let a second admin undo this removal"* — so the
+`club_invites` counterpart is one line in
 the same migration. **`088` touches no invite table at all**, which is the defect this proposal
 exists to fix; do not read that precedent as covering links. It lives on PD-361, not as a second
 row.
