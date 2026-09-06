@@ -56,13 +56,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
  * — which nothing else in the repo would catch and which would break the app for
  * every rider rather than for a minority.
  *
- * **The fourth was found by the pre-merge review and is why the allowed-case
- * assertion reads `not.toMatch(/aria-hidden/)` rather than
- * `not.toContain('aria-hidden="true"')`.** Under the looser form that mutation
- * passed — `aria-hidden="false"` is not the string `"true"` — so the test would
- * have blessed markup announcing the shell as explicitly *not* hidden. Do not
- * loosen it back.
- *
  * `leaves the shell reachable when the guard has allowed it` passing under the
  * fifth mutation is correct rather than a gap: bare `children` carry neither
  * attribute, so the allowed case genuinely is reachable. That mutation is caught
@@ -126,12 +119,16 @@ describe('RouteGuard — what the warm overlay leaves underneath it', () => {
     // **Absent, not merely not-"true".** `aria-hidden="false"` is a different
     // thing from no attribute — it announces the shell as explicitly not
     // hidden — and it is exactly what a bare `aria-hidden={view.overlay}`
-    // would emit on this path, since React renders `false` for `aria-*` and
-    // omits it only for real boolean attributes like `inert`. An assertion
-    // written as `not.toContain('aria-hidden="true"')` passes against that,
-    // which is the hole this closes.
+    // would emit here, since React renders `false` for `aria-*` and omits it
+    // only for real boolean attributes like `inert`. `not.toContain(
+    // 'aria-hidden="true"')` passes against that, which is the hole this
+    // closes; do not loosen it back.
+    //
+    // Scoped to the wrapper rather than the whole string: `src/` holds ~133
+    // `aria-hidden` sites, essentially all decorative icons, so an unscoped
+    // match false-fails the day this fixture renders any real subtree.
     expect(html).not.toMatch(/\binert\b/)
-    expect(html).not.toMatch(/aria-hidden/)
+    expect(html).not.toMatch(/<div[^>]*aria-hidden/)
   })
 
   it('wraps the shell in the same layout-free element on both of those paths', () => {

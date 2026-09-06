@@ -153,12 +153,20 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   // from focus and from hit-testing; `aria-hidden` removes it from the
   // accessibility tree. `aria-hidden` is the older and wider of the two by
   // roughly a decade — `inert` landed in Chrome 102, Safari 15.5 and Firefox
-  // 112, all 2022-23 — so on an un-updated Android System WebView, which this
-  // app reaches through the native shell, `inert` is the one that silently does
-  // nothing and `aria-hidden` is what still holds. Neither is the other's
-  // fallback: drop `inert` and the subtree is focusable again, drop
-  // `aria-hidden` and old WebViews lose the whole protection. Set them
-  // together, and keep it that way.
+  // 112, all 2022-23.
+  //
+  // **That gap is inside this repo's own shipping floor, not a hypothetical.**
+  // `ios/App/App.xcodeproj/project.pbxproj` sets `IPHONEOS_DEPLOYMENT_TARGET =
+  // 15.0`, and `inert` needs Safari 15.5 — so on iOS 15.0-15.4, installable
+  // under the target this repo has committed, `inert` does nothing at all and
+  // `aria-hidden` is the entire protection:
+  //
+  //     grep -n IPHONEOS_DEPLOYMENT_TARGET ios/App/App.xcodeproj/project.pbxproj
+  //
+  // So neither is the other's fallback: drop `inert` and the subtree is
+  // focusable again on every current engine, drop `aria-hidden` and the oldest
+  // supported iOS loses the whole protection. Set them together, keep it that
+  // way, and raise the deployment target before believing otherwise.
   //
   // **Not "stop rendering children" — that is the wrong half of the trade.**
   // Unmounting the shell for the length of the wait is what PD-111 removed: it

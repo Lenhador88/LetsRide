@@ -220,10 +220,16 @@ while, and only while, the cover is up.
   in another reconciles as a different element and **remounts the shell**, reintroducing PD-111
   through the door this closes. `<>{shell}</>` keeps the fragment for the reason it was already
   there — fragment-to-fragment reconciles by index.
-- **Both attributes, never one.** `inert` is focus and hit-testing; `aria-hidden` is the
-  assistive-technology half browsers have honoured less consistently. `aria-hidden` alone leaves a
-  focusable subtree hidden from a screen reader, which is worse than neither. The test asserts them
-  **separately** so neither can regress under the other's cover.
+- **Both attributes, never one, and `aria-hidden` is the one with the WIDER reach — not the
+  fallback.** `inert` is focus and hit-testing; `aria-hidden` is the accessibility tree, and it
+  predates `inert` by about a decade (`inert` is Chrome 102 / Safari 15.5 / Firefox 112, 2022-23).
+  **The gap is inside this repo's own shipping floor**: `IPHONEOS_DEPLOYMENT_TARGET = 15.0` and
+  `inert` needs Safari 15.5, so on iOS 15.0-15.4 `inert` does nothing and `aria-hidden` is the
+  entire protection — `grep -n IPHONEOS_DEPLOYMENT_TARGET ios/App/App.xcodeproj/project.pbxproj`.
+  So neither is the other's belt: drop `inert` and the subtree is focusable on every current
+  engine; drop `aria-hidden` and the oldest supported iOS loses everything. The test asserts them
+  **separately** so neither can regress under the other's cover. (An earlier draft of this entry
+  had the support ordering backwards and would have sent the next reader to drop the wrong one.)
 
 **`RouteGuard.test.tsx` is new and had no predecessor** — the component had no test at all, which
 is how this survived. **Node environment rather than jsdom, deliberately: jsdom does not implement
@@ -234,14 +240,21 @@ so it is not "upgraded" later.
 **The over-correction is the mutation that matters.** Setting both attributes unconditionally
 rather than from `view.overlay` leaves an app inert on every screen — it breaks the app for every
 rider rather than for a minority, and no other gate in the repo would catch it. That is why
-*leaves the shell reachable when the guard has allowed it* is its own assertion. Measured: drop
-`inert` → 1F/5P, drop `aria-hidden` → 1F/5P, both unconditional → 1F/5P, children bare → 3F/3P.
-**The first three fail disjoint assertions**, which is what proves they are pinned separately.
+*leaves the shell reachable when the guard has allowed it* is its own assertion. **Five mutations,
+measured**: drop `inert` → 1F/5P, drop `aria-hidden` → 1F/5P, both unconditional → 1F/5P, drop the
+`|| undefined` → 1F/5P, children bare → 3F/3P. **The first three fail disjoint assertions**, which
+is what proves they are pinned separately.
 
-**Folded in: two comments in `guard-cache.ts` this change made false.** The `overlay` docstring
-claimed nothing could see whether `RouteGuard` honoured the value because *"the repo has no
-component test framework"*; something now can. And `resolveGuardView`'s comment exempted the splash
-from the tab-order hazard because it *"holds nothing focusable"* — true of the splash and
+**The fourth was found by the pre-merge review and closed a real hole.** The allowed-case assertion
+read `not.toContain('aria-hidden="true"')`, which passes against `aria-hidden="false"` — exactly
+what a bare `aria-hidden={view.overlay}` emits, since React omits `inert={false}` but renders
+`aria-hidden="false"`. It is now `not.toMatch(/<div[^>]*aria-hidden/)`. **Do not loosen it**, and
+note the `|| undefined` in the source is load-bearing on `aria-hidden` alone.
+
+**Folded in: four stale comments — three in `guard-cache.ts`, one in `RouteGuard.tsx`.** Two
+claimed *"this repo has no component test framework"*, which stopped being true the moment the test
+above existed; the fold-in caught one and the review caught the other two. The third exempted the
+splash from the tab-order hazard because it *"holds nothing focusable"* — true of the splash and
 irrelevant, since the focusable thing is the shell underneath it. **The retry's own argument is
 left intact and the two branches are now protected differently on purpose**: an overlay lasting a
 round trip can afford an attribute and must not remount, while a screen up until the rider acts is
