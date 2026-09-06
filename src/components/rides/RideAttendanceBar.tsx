@@ -36,9 +36,26 @@ const toChoice = (attendance: RideAttendance): Choice | null =>
 export function RideAttendanceBar({
   rideId,
   attendance,
+  onAnswered,
 }: {
   rideId: string
   attendance: RideAttendance
+  /**
+   * Fired after a write the server accepted — PD-404's collapse.
+   *
+   * **On success only, and that is the whole of its contract.** The page uses
+   * it to drop the `reopened` flag that this bar is being shown under, so the
+   * bar folds back into the chip. Firing it on a failure would collapse the bar
+   * under a rider whose answer did not land, leaving them looking at a chip
+   * showing the *old* value with no indication anything went wrong — which is
+   * the rollback path this component already handles by keeping the bar and
+   * saying why.
+   *
+   * Optional, because a rider answering for the first time reaches this bar
+   * with no `reopened` flag to clear: the collapse there is driven by
+   * `attendance` itself changing from `null`, through the query invalidation.
+   */
+  onAnswered?: () => void
 }) {
   const [choice, setChoice] = useState<Choice | null>(toChoice(attendance))
   const [error, setError] = useState<string | null>(null)
@@ -54,7 +71,9 @@ export function RideAttendanceBar({
       if (result.error) {
         setChoice(previous)
         setError(result.error)
+        return
       }
+      onAnswered?.()
     })
   }
 

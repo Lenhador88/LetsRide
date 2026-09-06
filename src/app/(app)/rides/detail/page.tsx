@@ -1,14 +1,15 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import { notFound, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { CalendarIcon, LocationOutlineIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { RideAttendanceBar } from '@/components/rides/RideAttendanceBar'
 import { RideThreadsRow } from '@/components/rides/RideThreadsRow'
-import { RideCreateBar } from '@/components/rides/RideCreateBar'
+import { RideCreateAction } from '@/components/rides/RideCreateAction'
 import { RideCrewRail } from '@/components/rides/RideCrewRail'
+import { RideStatusChip } from '@/components/rides/RideStatusChip'
 import { RideHeader } from '@/components/rides/RideHeader'
 import { RideTimeline } from '@/components/rides/RideTimeline'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -32,7 +33,7 @@ import {
   formatRideTime,
   googleMapsDirectionsUrl,
 } from '@/lib/utils'
-import type { RideCreateOption, RideDetail } from '@/types'
+import type { RideAttendance, RideDetail } from '@/types'
 
 /**
  * The ride — **a timeline with a header on it**, as of 2026-09-05 (PD-393); one
@@ -169,7 +170,20 @@ function RideScreen() {
    * has: the bottom padding that clears the RSVP bar is owed only once we know
    * the bar is there, and guessing either way would be wrong half the time.
    */
-  const canRsvp = !!ride.data && ride.data.is_upcoming && !ride.data.is_organizer
+  const rsvpApplies = !!ride.data && ride.data.is_upcoming && !ride.data.is_organizer
+
+  /**
+   * The rider tapped their status chip to change an answer they have already
+   * given, so the RSVP bar comes back for as long as they leave it open
+   * (PD-404).
+   *
+   * **Page state rather than a stored fact**, and it clears on a successful
+   * write — `RideAttendanceBar`'s `onAnswered` — so the bar folds back into the
+   * chip as soon as the new answer lands. It also clears on `No`, and it has to:
+   * that deletes the row, so `attendance` returns to `null` and the bar is owed
+   * again on its own terms rather than on this flag.
+   */
+  const [rsvpReopened, setRsvpReopened] = useState(false)
 
   /**
    * What gates the header's chat button, the labelled chat row and the
@@ -228,13 +242,15 @@ function RideScreen() {
    * `private.is_ride_crew` to tag a postcard to a ride.
    *
    * The decision itself is `resolveRideDetailActions` — a pure function with
-   * its own exhaustive test — because the two answers are complementary and
+   * its own exhaustive test — because the answers constrain one another and
    * that property is what a later tidy-up would quietly break.
    */
-  const { bottomSlot, timelineAdd, createOptions } = resolveRideDetailActions({
+  const { bottomSlot, statusChip, createOptions } = resolveRideDetailActions({
     rideId: id,
-    canRsvp,
+    rsvpApplies,
+    attendance: ride.data?.attendance ?? null,
     canCreate: isCrew === true,
+    reopened: rsvpReopened,
   })
 
   return (
@@ -282,13 +298,9 @@ function RideScreen() {
           <RidePlan
             ride={ride.data}
             isCrew={isCrew === true}
-            // The fallback half of option B: the heading keeps its `(+)`
-            // exactly when the bar could not have the slot. Read off the same
-            // decision as `bottomSlot` rather than restated from `canRsvp`, so
-            // the two cannot drift into both being true — two entrances to one
-            // composer — or both false, which leaves the crew none.
-            canAdd={timelineAdd}
-            createOptions={createOptions}
+            statusChip={statusChip}
+            rsvpOpen={bottomSlot === 'rsvp'}
+            onToggleRsvp={() => setRsvpReopened((open) => !open)}
             near={position}
           />
         ) : (
@@ -297,9 +309,17 @@ function RideScreen() {
       </div>
 
       {bottomSlot === 'rsvp' && ride.data && (
-        <RideAttendanceBar rideId={ride.data.id} attendance={ride.data.attendance} />
+        <RideAttendanceBar
+          rideId={ride.data.id}
+          attendance={ride.data.attendance}
+          // Collapses the bar back into the chip once a new answer has landed.
+          // Only ever meaningful when the chip is what opened it; a rider
+          // answering for the first time has no flag set, and the collapse there
+          // comes from `attendance` itself leaving `null`.
+          onAnswered={() => setRsvpReopened(false)}
+        />
       )}
-      {bottomSlot === 'create' && ride.data && <RideCreateBar options={createOptions} />}
+      {bottomSlot === 'create' && ride.data && <RideCreateAction options={createOptions} />}
     </>
   )
 }
@@ -307,24 +327,23 @@ function RideScreen() {
 function RidePlan({
   ride,
   isCrew,
-  canAdd,
-  createOptions,
+  statusChip,
+  rsvpOpen,
+  onToggleRsvp,
   near,
 }: {
   ride: RideDetail
   isCrew: boolean
-  /** Whether the timeline heading draws its `(+)` — the fallback entrance,
-   *  owed only when `RideCreateBar` could not take the bottom slot. Separate
-   *  from `isCrew` because crew is the database's rule (`041`) and this is the
-   *  composition's: a crew member on an upcoming ride they do not organize is
-   *  `isCrew` true and `canAdd` true, and the same rider on a past ride is
-   *  `isCrew` true and `canAdd` FALSE, because the bar has it instead. */
-  canAdd: boolean
-  /** What the create sheet holds — passed through to the timeline heading's
-   *  `(+)`, which opens the same sheet `RideCreateBar` does (`108`, PD-402).
-   *  Read off the same `resolveRideDetailActions` call as `canAdd`, so the two
-   *  entrances cannot offer different rows. */
-  createOptions: RideCreateOption[]
+  /** The rider's own answer, drawn as a chip on the first content line, or
+   *  `null` to draw none — `resolveRideDetailActions` decides which (PD-404).
+   *  Not re-derived from `ride.attendance` here: the organizer reads `going`
+   *  whatever is stored, and a chip whose tap does nothing is worse than none. */
+  statusChip: RideAttendance
+  /** Whether the RSVP bar is currently showing, so the chip can announce what
+   *  its tap will do. Read off `bottomSlot` rather than from the reopened flag,
+   *  because the bar is also drawn before any answer exists. */
+  rsvpOpen: boolean
+  onToggleRsvp: () => void
   near: RiderLocation | null
 }) {
   // PD-340. `null` at every step is "nothing to say", never zero: the rider has
@@ -362,18 +381,45 @@ function RidePlan({
     // swapping to this is always a fresh mount and the animation always
     // fires exactly once, on arrival.
     <div className="flex flex-col gap-4 motion-safe:animate-fade-in">
-      {ride.club && (
-        // The club, not the rides list filtered to it (PD-289). A club name on a
-        // ride names the club, and `PostcardCard`'s chip already resolves the
-        // same tap the same way. The filtered list is not wrong to exist — it is
-        // what `RideFilterBar`'s club tiles are for — it is just not what this
-        // link means. Through `routes.club` rather than a literal: a hand-written
-        // path skips `encodeURIComponent` and is invisible to a grep for the
-        // shape, which is the defect `lib/routes.ts` exists to remove.
-        <Link href={routes.club(ride.club.id)} className="flex items-center gap-1 px-6">
-          <Avatar src={ride.club.avatar_url} name={ride.club.name} size="xs" className="h-5 w-5" />
-          <span className="text-xs font-semibold text-foreground">{ride.club.name}</span>
-        </Link>
+      {/* The ride's first content line, and since PD-404 it carries two things
+          that are drawn independently: the club it belongs to, and the rider's
+          own RSVP once they have given one.
+
+          **A row rather than the bare club link it used to be**, so the chip has
+          a home on a ride with no club — which is most of them. `justify-between`
+          with the chip last puts it against the right margin in both cases
+          rather than beside a club name whose length varies. The row renders at
+          all only when it has something in it: an empty flex row would still
+          consume the parent's `gap-4`. */}
+      {(ride.club || statusChip) && (
+        <div className="flex items-center justify-between gap-3 px-6">
+          {ride.club ? (
+            // The club, not the rides list filtered to it (PD-289). A club name
+            // on a ride names the club, and `PostcardCard`'s chip already
+            // resolves the same tap the same way. The filtered list is not wrong
+            // to exist — it is what `RideFilterBar`'s club tiles are for — it is
+            // just not what this link means. Through `routes.club` rather than a
+            // literal: a hand-written path skips `encodeURIComponent` and is
+            // invisible to a grep for the shape, which is the defect
+            // `lib/routes.ts` exists to remove.
+            <Link href={routes.club(ride.club.id)} className="flex min-w-0 items-center gap-1">
+              <Avatar
+                src={ride.club.avatar_url}
+                name={ride.club.name}
+                size="xs"
+                className="h-5 w-5"
+              />
+              <span className="truncate text-xs font-semibold text-foreground">
+                {ride.club.name}
+              </span>
+            </Link>
+          ) : (
+            // Holds the left half so the chip stays right-aligned without the
+            // row changing justification depending on what is in it.
+            <span />
+          )}
+          <RideStatusChip attendance={statusChip} open={rsvpOpen} onToggle={onToggleRsvp} />
+        </div>
       )}
 
       {/* Two lines where two 64px rows were. The icons are the same ones the
@@ -492,8 +538,6 @@ function RidePlan({
           organizer_id: ride.organizer_id,
           organizer: ride.organizer,
         }}
-        canAdd={canAdd}
-        createOptions={createOptions}
       />
     </div>
   )
