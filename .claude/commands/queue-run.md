@@ -482,7 +482,10 @@ Ask how long the oldest of these has been true:
   `conflicted` where `mergeable_state` says so. It is one line, it is the shape §What the final
   message says calls *a hold that nothing ages*, and it is an instruction the owner can act on in
   one step, where `unknown` is a mystery they have to re-derive. **The Linear comment obeys the
-  marker rule below unchanged** — one `<!-- stall-alarm slot:<N> -->` per issue, never a second.
+  marker rule below unchanged** — one `<!-- stall-alarm slot:<N> band:3h -->` per issue, never a
+  second. **A held slot never escalates**, so `3h` is the only band it ever carries; the band
+  segment is written anyway so one marker form serves both subjects and the legacy rule below has
+  nothing to except.
 
   **No hit — then age the branch tip if there is one**, because a live build keeps resetting it
   and a dead one does not:
@@ -519,8 +522,11 @@ you did**, as a comment beginning `<!-- stall-alarm slot:<N> band:<B> -->` on th
 look for the marker across all of them and write it on just one.
 
 **`<B>` is the age band the subject has reached, and every band has an explicit token:** `3h`,
-`24h`, `72h`, `7d`, then **`14d`, `21d`, `28d` and so on in 7-day steps** — `<N>d` where `<N>` is
-the age in whole days rounded DOWN to a multiple of 7. **Never alarm on an issue that already
+`24h`, `72h`, `7d`, then **`14d`, `21d`, `28d` and so on in 7-day steps** — for an age of **7 days
+or more**, `<N>d` where `<N>` is the age in whole days rounded DOWN to a multiple of 7. **Under 7
+days the four named tokens are the whole list** and the formula does not apply: at day 4 it would
+give `0d`, which is in neither list, so a subject carrying `72h` would fail to match and alarm
+again. **Never alarm on an issue that already
 carries a marker for its current band**, and **fall through to the next oldest unalarmed subject**
 rather than stopping. Crossing into a new band is a new alarm on the same issue.
 
@@ -536,10 +542,11 @@ week** (`3h`, `24h`, `72h`, `7d`) and one a week after that, where alarming once
 for ever and alarming every firing would leave 24 a day.
 
 **A marker written before this change has no `band:` segment**, so the first firing to check an
-already-alarmed story will not match its current band and will alarm once more. That is correct
-rather than a migration to write: one extra comment per story that was already parked, and the
+already-alarmed subject will not match its current band and will alarm once more. That is correct
+rather than a migration to write: one extra comment per subject that was already alarmed, and the
 alternative is treating an unbanded marker as covering every band, which is the permanent silence
-again.
+again. **It is once and not once an hour** because the replacement marker carries a band — for a
+held slot always `3h`, which it then matches for ever.
 
 **The bands are for the `Needs help` clock. A held slot keeps the single 3h alarm it always
 had** — that subject has a session behind it that either finishes or is cleared by the owner, and

@@ -52,9 +52,11 @@ import type { RideAttendance, RideDetail } from '@/types'
  *   now, exactly as `ClubPostcardCarousel`'s were on the club's. A strip
  *   repeating what the stream says twenty pixels below it is the length that
  *   made the club screen confusing, and the same argument arrives here with
- *   the same shape. Its `Add` tile survives as the `(+)` on the timeline's own
- *   heading — the entrance PD-125 exists to protect, moved rather than
- *   dropped. **`PostcardStamp` went with it**, one commit later: the strip was
+ *   the same shape. Its `Add` tile became the `(+)` on the timeline's own
+ *   heading — the entrance PD-125 exists to protect, moved rather than dropped,
+ *   and moved twice more since: into the sticky slot by PD-401 and into the
+ *   floating action by PD-404, which is where it is now.
+ *   **`PostcardStamp` went with it**, one commit later: the strip was
  *   its last surface, and the product owner chose deleting it over keeping the
  *   perforated tile for PD-257's unbuilt journal route. That story owes a tile
  *   of its own now; `docs/FIGMA-FIDELITY-TODO.md` §The stamp as a franked
@@ -221,8 +223,39 @@ function RideScreen() {
   const [answerFocusToken, setAnswerFocusToken] = useState(0)
 
   /**
-   * What gates the header's chat button, the labelled chat row and the
-   * timeline's `(+)`.
+   * The answer the rider just gave, held until the read catches up.
+   *
+   * **`setRideAttendance` invalidates rather than writing through**, and
+   * `invalidate` starts a background refetch it does not await — so for one
+   * round trip after a successful answer, `ride.data.attendance` is still the
+   * PREVIOUS value. Without this the bar collapses into a chip showing the
+   * answer the rider just replaced, and the focus move announces it: *"You
+   * answered Going"* at the moment they answered Maybe. On `No` it is worse —
+   * the chip is drawn from the stale `going`, takes focus, and then unmounts
+   * when the read lands, dropping focus to `document.body`, which is the whole
+   * of the defect this focus handling exists to fix.
+   *
+   * `undefined` means *nothing pending*, which is why this cannot be a plain
+   * `RideAttendance`: `null` is itself an answer here — the rider tapped `No`.
+   * `RideAttendanceBar` holds the same value internally for the same round trip
+   * and for the same reason; this is that decision at the one level up that
+   * also owns the composition.
+   */
+  const [pendingAnswer, setPendingAnswer] = useState<RideAttendance | undefined>(undefined)
+
+  // **Not cleared when the read catches up, and that is deliberate.** Clearing
+  // it needs a `setState` inside an effect, which is a cascading render the lint
+  // rule refuses — and it would buy nothing, because once the read agrees the
+  // two values are equal and this expression returns the same answer either way.
+  // What it costs is that a change made on ANOTHER device stays masked for the
+  // life of this screen. `RideAttendanceBar` holds its own `choice` on exactly
+  // the same terms, so this is the existing behaviour one level up rather than a
+  // new compromise, and every fresh mount reads the truth.
+  const answer = pendingAnswer !== undefined ? pendingAnswer : (ride.data?.attendance ?? null)
+
+  /**
+   * What gates the header's chat button, the labelled chat row and the create
+   * affordance.
    *
    * `undefined` until the ride lands, so all three appear a moment late rather
    * than being drawn and then withdrawn. **Read, not re-derived** — this screen,
@@ -257,20 +290,14 @@ function RideScreen() {
    *   and taking D unattended would be making it by omission. D stays available
    *   and this change forecloses nothing: it is B *plus* one predicate.
    *
-   * ## Why B is lossless here, unlike the version the issue priced
+   * ## Nobody loses an entrance, and it is no longer the `(+)` that guarantees it
    *
-   * The issue's cost for B was *"an upcoming ride's crew loses it"*. They do
-   * not: the `(+)` on the timeline heading survives as the fallback for exactly
-   * the case where the bar cannot have the slot, so no rider ends up with fewer
-   * entrances than before this change. `bottomSlot` and `RideTimeline`'s
-   * `canAdd` are complementary by construction below rather than by two
-   * conditions that could drift into agreeing.
-   *
-   * B also lands the bar where it matters most, which is not a coincidence: a
-   * rider photographs a ride that has **happened**, and a past ride has no RSVP
-   * bar (`is_upcoming` false), so it gets the discoverable bar. What keeps the
-   * `(+)` is the upcoming-and-not-yours case — posting a photo of a ride that
-   * has not left yet.
+   * PD-401's cost for option B was *"an upcoming ride's crew loses it"*, and it
+   * kept the timeline `(+)` as the fallback that refused that cost. **PD-404
+   * pays it differently**: the RSVP bar is not competing for the slot any more,
+   * so a crew member gets the floating action in every state except the one
+   * where they have deliberately reopened the bar with their own chip — which
+   * is transient and closes with the same tap.
    *
    * `undefined` until the ride lands, so neither affordance is drawn and then
    * withdrawn. **Crew is the database's rule, not the UI's**: `041` requires
@@ -283,7 +310,7 @@ function RideScreen() {
   const { bottomSlot, statusChip, createOptions } = resolveRideDetailActions({
     rideId: id,
     rsvpApplies,
-    attendance: ride.data?.attendance ?? null,
+    attendance: answer,
     canCreate: isCrew === true,
     reopened: rsvpReopened,
   })
@@ -325,11 +352,11 @@ function RideScreen() {
           // `--navbar-action`'s 64 for the club detail's full-width create bar,
           // which this screen no longer has.
           //
-          // **`.pb-navbar-action-extra` is the wrong one here and was live for
-          // three commits.** It is 64px — the number derived for the 40px
-          // button in the bar PD-404 deleted — so the last timeline row cleared
-          // the 56px floating control by 8px instead of 24. Not buried, which
-          // is why no gate saw it.
+          // **`.pb-navbar-action-extra` is the wrong one here**: its 64px is
+          // the number derived for the 40px button in the bar PD-404 deleted,
+          // and against the 56px floating control it leaves the last timeline
+          // row 8px of gap instead of 24. Tight rather than buried, so no gate
+          // can see it.
           //
           // **The floating action opts INTO clearance, which is not its
           // default** — it floats over content, which is the point of the
@@ -365,11 +392,13 @@ function RideScreen() {
           // Only ever meaningful when the chip is what opened it; a rider
           // answering for the first time has no flag set, and the collapse there
           // comes from `attendance` itself leaving `null`.
-          onAnswered={() => {
+          onAnswered={(next) => {
+            // The answer the bar just landed, NOT `ride.data.attendance`, which
+            // is still the previous value for one round trip — see
+            // `pendingAnswer`. Taking it from the callback is what makes the
+            // collapse and the focus announcement say the right thing.
+            setPendingAnswer(next)
             setRsvpReopened(false)
-            // Hands focus to the chip that is about to replace this bar — see
-            // `answerFocusToken`. Bumped on the first answer too, where the chip
-            // is mounting rather than staying put.
             setAnswerFocusToken((n) => n + 1)
           }}
         />
@@ -591,9 +620,11 @@ function RidePlan({
           crew-gated (PD-282): `ride_journal_postcard_ids` gates on
           `can_read_ride` and the postcard SELECT qual and never on crew, and
           `102`'s roster policy follows ride visibility, so anyone who can open
-          this ride can see both sources. `canAdd` carries the half that IS a
-          database rule: tagging wants `private.is_ride_crew`, so only the crew
-          is offered the `(+)`. */}
+          this ride can see both sources. The crew rule that used to gate this
+          component's `(+)` did not go away with it — it moved to the bottom
+          slot, where `canCreate` carries it: tagging wants
+          `private.is_ride_crew`, so only the crew is offered the create
+          affordance. */}
       <RideTimeline
         ride={{
           id: ride.id,

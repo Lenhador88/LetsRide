@@ -80,6 +80,36 @@ describe('RideAttendanceBar — the collapse contract', () => {
 
     expect(setRideAttendance).toHaveBeenCalledWith('r1', 'maybe')
     expect(onAnswered).toHaveBeenCalledTimes(1)
+    // **It carries the answer, and that is what makes the caller correct.**
+    // `setRideAttendance` invalidates rather than writing through, so the
+    // page's own `attendance` is still the previous value when this fires. A
+    // caller reading its prop instead of this argument collapses the bar into a
+    // chip showing the answer the rider just replaced — and then announces it.
+    expect(onAnswered).toHaveBeenCalledWith('maybe')
+  })
+
+  it('reports `null` for No, because that answer is the absence of a row', async () => {
+    // The asymmetry the owner priced: `No` deletes the `ride_members` row, so
+    // the answer that lands is `null` rather than a third status. Reporting
+    // `'no'` here would hand the caller a value `RideAttendance` does not have;
+    // reporting nothing would make No indistinguishable from Maybe, and the two
+    // compose differently — Maybe keeps the rider crew, No does not.
+    setRideAttendance.mockResolvedValue({})
+    const onAnswered = vi.fn()
+
+    await act(async () => {
+      root.render(
+        <RideAttendanceBar rideId="r1" attendance="going" onAnswered={onAnswered} />
+      )
+    })
+    const no = [...container.querySelectorAll('button')].find((b) => b.textContent === 'No')
+    expect(no, 'the No control must be rendered').toBeTruthy()
+    await act(async () => {
+      no!.click()
+    })
+
+    expect(setRideAttendance).toHaveBeenCalledWith('r1', null)
+    expect(onAnswered).toHaveBeenCalledWith(null)
   })
 
   it('stays open and says why when the write is refused, and does NOT report an answer', async () => {

@@ -51,11 +51,18 @@ export function RideAttendanceBar({
    * the rollback path this component already handles by keeping the bar and
    * saying why.
    *
+   * **It carries the answer that landed, and the caller needs it.**
+   * `setRideAttendance` invalidates rather than writing through, and
+   * `invalidate` starts a background refetch it does not await — so at the
+   * moment this fires, the caller's own `attendance` is still the PREVIOUS
+   * value for one round trip. A caller that collapses this bar on the callback
+   * and reads its own prop would draw, and announce, the answer the rider just
+   * replaced.
+   *
    * Optional, because a rider answering for the first time reaches this bar
-   * with no `reopened` flag to clear: the collapse there is driven by
-   * `attendance` itself changing from `null`, through the query invalidation.
+   * with no `reopened` flag to clear.
    */
-  onAnswered?: () => void
+  onAnswered?: (answer: RideAttendance) => void
 }) {
   const [choice, setChoice] = useState<Choice | null>(toChoice(attendance))
   const [error, setError] = useState<string | null>(null)
@@ -73,7 +80,7 @@ export function RideAttendanceBar({
         setError(result.error)
         return
       }
-      onAnswered?.()
+      onAnswered?.(next === 'no' ? null : next)
     })
   }
 

@@ -210,9 +210,7 @@ silently passed over for ever:
 - the stall alarm escalates in **bands** — `3h`, `24h`, `72h`, `7d`, then `<N>d` in 7-day steps —
   one marker per band, which bounds a parked story to four comments in its first week and one a week
   after, where alarming once left it silent for ever and alarming hourly would leave 24 a day.
-  **Every band needs a computable token**: a first draft ended at `7d` and said "weekly after
-  that", which at day 14 either reuses `7d` and goes permanently silent — the exact failure being
-  fixed — or has each firing invent its own token and alarm repeatedly;
+  `queue-run.md` STEP 6 carries why every band needs a computable token;
 - `queue-pickup.md` STEP 2c's `blockedBy` relation is now **mandatory**, because the freeze is what
   used to hold sequencing;
 - **one queue-wide stop survives and is marked rather than inferred**: `<!-- halt-queue -->`,

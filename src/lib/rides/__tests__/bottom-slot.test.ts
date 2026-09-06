@@ -217,14 +217,8 @@ describe('resolveRideDetailActions', () => {
     // true, the state PD-401's `(+)` covered becomes reachable again and this
     // row is the thing that says so.
     //
-    // **Against the imported `isRideCrew`, never a local copy of it.** An
-    // earlier revision of this file declared
-    // `const nonOrganizerIsCrew = (a) => a !== null` here and asserted that
-    // against itself, which is a tautology: narrowing the real helper to
-    // `isOrganizer || attendance === 'going'` — the exact narrowing its own
-    // docstring anticipates — left all nine cases green. The comment claimed
-    // the opposite, and a grep for `isRideCrew` found the word in that comment,
-    // which is §the comment trap making an absent assertion look present.
+    // **Against the imported `isRideCrew`, never a local copy of it** — see the
+    // module docstring for what a local copy cost here.
     for (const attendance of ATTENDANCES) {
       expect({ attendance, crew: isRideCrew(false, attendance) }).toEqual({
         attendance,
