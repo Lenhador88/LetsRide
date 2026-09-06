@@ -118,9 +118,12 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   const destination = state === undefined ? undefined : resolveDestination(pathname, state)
 
   // Which of the three covers to draw, and whether `children` stay mounted under
-  // it. A pure function in `guard-cache.ts`, so the mapping has a test — this
-  // repo has no component test framework, and PD-122's branch is one that
-  // reaches a rider as a dead screen if it is wrong.
+  // it. A pure function in `guard-cache.ts`, so the mapping has a test —
+  // PD-122's branch is one that reaches a rider as a dead screen if it is wrong.
+  // **The value and the honouring are pinned in two different files**, and
+  // neither alone is the property: `guard-cache.test.ts` asserts what this
+  // returns, `__tests__/RouteGuard.test.tsx` asserts what this component then
+  // does with it. A fourth `kind` owes a case in both.
   const view = resolveGuardView(snapshot, destination)
 
   const retry = useCallback(() => retryGuardRead(pathname), [pathname])
@@ -145,12 +148,17 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   // rider on a keyboard could Tab into a `Navbar` link they could not see, and
   // Enter would navigate an app the guard had not finished vetting them for.
   //
-  // **Both attributes, because they answer different questions.** `inert`
-  // removes the subtree from focus and from hit-testing; `aria-hidden` is the
-  // belt to its braces for the assistive-technology half, which browsers have
-  // honoured less consistently than the focus half. They are set together and
-  // must stay that way — `aria-hidden` alone would leave a focusable subtree
-  // hidden from a screen reader, which is worse than either.
+  // **Both attributes, because they answer different questions AND because
+  // neither covers every browser this ships to.** `inert` removes the subtree
+  // from focus and from hit-testing; `aria-hidden` removes it from the
+  // accessibility tree. `aria-hidden` is the older and wider of the two by
+  // roughly a decade — `inert` landed in Chrome 102, Safari 15.5 and Firefox
+  // 112, all 2022-23 — so on an un-updated Android System WebView, which this
+  // app reaches through the native shell, `inert` is the one that silently does
+  // nothing and `aria-hidden` is what still holds. Neither is the other's
+  // fallback: drop `inert` and the subtree is focusable again, drop
+  // `aria-hidden` and old WebViews lose the whole protection. Set them
+  // together, and keep it that way.
   //
   // **Not "stop rendering children" — that is the wrong half of the trade.**
   // Unmounting the shell for the length of the wait is what PD-111 removed: it
@@ -171,9 +179,13 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   // `<>{shell}</>` keeps the fragment for the reason it was already there:
   // fragment-to-fragment reconciles by index, so the shell stays put.
   //
-  // `|| undefined` rather than the bare boolean: it renders identically
-  // whether the renderer treats `inert` as a true boolean attribute or as a
-  // string one, and `__tests__/RouteGuard.test.tsx` pins the absent case.
+  // **`|| undefined` is load-bearing on `aria-hidden` and a no-op on `inert`.**
+  // Measured on React 19.2.4: `inert={false}` is omitted, because React treats
+  // it as a genuine boolean attribute — but `aria-hidden={false}` renders
+  // `aria-hidden="false"`, which is not the same as absent and would announce
+  // the shell as explicitly *not* hidden on every allowed screen. So the one to
+  // keep is the one that looks redundant. It is written on both for symmetry,
+  // and `__tests__/RouteGuard.test.tsx` pins the absent case for each.
   const shell = (
     <div
       className="contents"

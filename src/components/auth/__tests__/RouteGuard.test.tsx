@@ -32,9 +32,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
  * focusable subtree hidden from a screen reader, which is worse than neither —
  * so one assertion spanning both would let either regress silently.
  *
- * Verified both ways per CLAUDE.md §Working Principles. Four mutations against
- * `RouteGuard.tsx`, each isolating a different assertion — **re-measure rather
- * than adjust these if the file changes**:
+ * Verified both ways per CLAUDE.md §Working Principles. Five mutations against
+ * `RouteGuard.tsx` — **re-measure rather than adjust these if the file
+ * changes**:
  *
  * - **drop `inert`**, keeping `aria-hidden` → **1 failed, 5 passed** (only
  *   *makes the covered shell inert*);
@@ -43,6 +43,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
  * - **set both unconditionally** rather than from `view.overlay` → **1 failed,
  *   5 passed** — only *leaves the shell reachable when the guard has allowed
  *   it*;
+ * - **drop the `|| undefined`**, leaving `inert={view.overlay}` and
+ *   `aria-hidden={view.overlay}` → **1 failed, 5 passed** — the same assertion,
+ *   because React omits `inert={false}` but renders `aria-hidden="false"`;
  * - **render `{children}` bare instead of through the wrapper** → **3 failed,
  *   3 passed** (both attribute assertions plus the structural one).
  *
@@ -53,10 +56,17 @@ import { renderToStaticMarkup } from 'react-dom/server'
  * — which nothing else in the repo would catch and which would break the app for
  * every rider rather than for a minority.
  *
+ * **The fourth was found by the pre-merge review and is why the allowed-case
+ * assertion reads `not.toMatch(/aria-hidden/)` rather than
+ * `not.toContain('aria-hidden="true"')`.** Under the looser form that mutation
+ * passed — `aria-hidden="false"` is not the string `"true"` — so the test would
+ * have blessed markup announcing the shell as explicitly *not* hidden. Do not
+ * loosen it back.
+ *
  * `leaves the shell reachable when the guard has allowed it` passing under the
- * fourth mutation is correct rather than a gap: bare `children` carry neither
+ * fifth mutation is correct rather than a gap: bare `children` carry neither
  * attribute, so the allowed case genuinely is reachable. That mutation is caught
- * by the other three.
+ * by the other three assertions.
  */
 
 const guardCache = {
@@ -113,8 +123,15 @@ describe('RouteGuard — what the warm overlay leaves underneath it', () => {
     const html = render({ kind: 'children', overlay: false })
 
     expect(html).toContain(SHELL)
+    // **Absent, not merely not-"true".** `aria-hidden="false"` is a different
+    // thing from no attribute — it announces the shell as explicitly not
+    // hidden — and it is exactly what a bare `aria-hidden={view.overlay}`
+    // would emit on this path, since React renders `false` for `aria-*` and
+    // omits it only for real boolean attributes like `inert`. An assertion
+    // written as `not.toContain('aria-hidden="true"')` passes against that,
+    // which is the hole this closes.
     expect(html).not.toMatch(/\binert\b/)
-    expect(html).not.toContain('aria-hidden="true"')
+    expect(html).not.toMatch(/aria-hidden/)
   })
 
   it('wraps the shell in the same layout-free element on both of those paths', () => {

@@ -283,9 +283,15 @@ export function hasGuardBooted(state: GuardSnapshot): boolean {
  * for "leaving".
  *
  * A pure function rather than three conditionals inside the component, because
- * this repo has no component test framework and the branch PD-122 adds is
- * exactly the kind that reaches a rider as a dead screen if it is wrong. Here it
- * is a case in `__tests__/guard-cache.test.ts`.
+ * the branch PD-122 adds is exactly the kind that reaches a rider as a dead
+ * screen if it is wrong. Here it is a case in `__tests__/guard-cache.test.ts`.
+ *
+ * **That is half the property, and a fourth `kind` owes the other half.** This
+ * file's tests assert what this function *returns*;
+ * `components/auth/__tests__/RouteGuard.test.tsx` asserts that `RouteGuard`
+ * *honours* it. A case added here needs a case there too — adding one only to
+ * this file leaves the honouring half unpinned, which is the exact gap PD-251
+ * was filed to close.
  *
  * `overlay` is the boot/warm split `hasGuardBooted` names, **and it applies to
  * the splash only** — the retry is exempt, for the reason the body gives.
