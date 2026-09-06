@@ -28,8 +28,7 @@ const { RideAttendanceBar } = await import('@/components/rides/RideAttendanceBar
  * **The counts are deliberately not written here.** `CLAUDE.md` §Technology
  * Decisions carries them beside the two commands that derive them, and that copy
  * is gated by `docs:check`'s `component-tests-count-claude` where a second copy
- * in this file would not be — which is how the version that used to sit here
- * ("28 of 33") went stale on this very branch while the gated one was corrected.
+ * in this file would not be.
  *
  * ## What breaks if it fires on failure
  *
@@ -47,9 +46,7 @@ const { RideAttendanceBar } = await import('@/components/rides/RideAttendanceBar
  *
  * **Verified both ways.** Moving the callback above the error branch, so it
  * fires unconditionally, gives **1 failed, 3 passed** — the refusal case alone,
- * which is exactly the row that distinguishes the two implementations. (It read
- * `1 failed, 2 passed` while this file had three cases; the `No` case below
- * made it four.)
+ * which is exactly the row that distinguishes the two implementations.
  */
 describe('RideAttendanceBar — the collapse contract', () => {
   let container: HTMLDivElement

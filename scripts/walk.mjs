@@ -3033,6 +3033,34 @@ async function discoverRsvpCandidate() {
 /** `RideAttendanceBar`'s own selector, read from rather than re-derived. */
 const RSVP_BAR = '[role="radiogroup"][aria-label="Are you going?"]'
 
+/**
+ * `RideStatusChip` — the control the bar collapses into once answered (PD-404),
+ * and the only route back to it.
+ *
+ * Matched on the **accessible name's prefix** rather than on the visible word,
+ * because the visible word is the thing under test: `Going` and `Maybe` are what
+ * the assertions read out of it, so keying the selector on them would make the
+ * check pass by construction.
+ */
+const RSVP_CHIP = 'button[aria-label^="You answered "]'
+
+/** `RideCreateAction`'s floating control — drawn exactly when the bar is not. */
+const CREATE_ACTION = 'button[aria-label="Create on this ride"]'
+
+/** The chip's visible answer, or `null` when the chip is not drawn. */
+async function rsvpChipLabel() {
+  return page.$eval(RSVP_CHIP, (b) => b.textContent.trim()).catch(() => null)
+}
+
+/**
+ * Reopens the RSVP bar from the chip and waits for it — the composition PD-404
+ * introduced, where the bar is not on screen until the rider asks for it.
+ */
+async function reopenRsvpBar() {
+  await page.click(RSVP_CHIP)
+  await page.waitForSelector(RSVP_BAR, { timeout: 20_000 })
+}
+
 async function rsvpCheckedLabel() {
   return page.$eval(RSVP_BAR, (group) => {
     const checked = [...group.querySelectorAll('[role="radio"]')].find(
@@ -3070,6 +3098,20 @@ async function clickRsvpOption(label) {
  * organizer and has no retraction. See the block comment above
  * `waitForTableWrite` for why that is not standing residue on CI's minted
  * path.
+ *
+ * ## It walks the collapse now, not just the stored value (PD-404)
+ *
+ * The bar is no longer on screen after an answer: it folds into
+ * `RideStatusChip` and the floating create action takes the corner. So the
+ * phase reads the **chip** between steps, reopens the bar through it to change
+ * the answer, and asserts **both directions** of *the two are never both
+ * drawn* — which is the property the owner's design rests on, and the one a
+ * screen showing neither would sneak past a check for either alone.
+ *
+ * **This is the only gate that can see any of it.** The composition is three
+ * components and a pure function agreeing; `tsc` sees a boolean, the unit tests
+ * see the function, and nothing but a rendered screen sees whether the controls
+ * actually swap.
  */
 async function checkRsvpToRide(rideId) {
   let bad = 0
@@ -3108,23 +3150,67 @@ async function checkRsvpToRide(rideId) {
     const startedAt = await rsvpCheckedLabel()
     report(startedAt === null, 'starts unanswered, as Explore promised', `already answered ${JSON.stringify(startedAt)}`)
 
+    // **Answering collapses the bar (PD-404), so every read-back after this
+    // point is of the CHIP, not of the bar.** Waiting for the bar here is what
+    // the phase did until 2026-09-06, and it timed out at 20s against a screen
+    // that was working perfectly — the same defect PD-410 fixed in the join
+    // phase, arriving from the same direction: the walk asserting against a
+    // flow the app has replaced.
     await waitForTableWrite('ride_members', () => clickRsvpOption('Yes!'))
     await page.goto(`${BASE}/rides/detail?id=${rideId}`, { waitUntil: 'networkidle' })
-    await page.waitForSelector(RSVP_BAR, { timeout: 20_000 })
-    const afterYes = await rsvpCheckedLabel()
-    report(afterYes === 'Yes!', '"Yes!" survives a reload', `read ${JSON.stringify(afterYes)}`)
+    await page.waitForSelector(RSVP_CHIP, { timeout: 20_000 })
+    const afterYes = await rsvpChipLabel()
+    report(afterYes === 'Going', '"Yes!" survives a reload, as a Going chip', `read ${JSON.stringify(afterYes)}`)
+
+    // The half no other gate can see: the bar is gone and the floating action
+    // has the corner. Both directions, because "the two are never both drawn"
+    // is the property the owner's design rests on and a screen showing neither
+    // would pass a check for either one alone.
+    report(
+      (await page.$(RSVP_BAR)) === null,
+      'answering puts the RSVP bar away',
+      'the bar is still drawn beside the chip'
+    )
+    report(
+      (await page.$(CREATE_ACTION)) !== null,
+      'the floating create action takes the freed corner',
+      'no floating action drawn for a rider who is now crew'
+    )
+
+    // Changing the answer goes through the chip — it is the only route back to
+    // the bar, which is why it is a control rather than a badge.
+    await reopenRsvpBar()
+    report(
+      (await page.$(CREATE_ACTION)) === null,
+      'reopening the bar puts the floating action away',
+      'both controls drawn at once'
+    )
 
     await waitForTableWrite('ride_members', () => clickRsvpOption('Maybe...'))
     await page.goto(`${BASE}/rides/detail?id=${rideId}`, { waitUntil: 'networkidle' })
-    await page.waitForSelector(RSVP_BAR, { timeout: 20_000 })
-    const afterMaybe = await rsvpCheckedLabel()
-    report(afterMaybe === 'Maybe...', 'changing to "Maybe..." survives a reload', `read ${JSON.stringify(afterMaybe)}`)
+    await page.waitForSelector(RSVP_CHIP, { timeout: 20_000 })
+    const afterMaybe = await rsvpChipLabel()
+    report(
+      afterMaybe === 'Maybe',
+      'changing to "Maybe..." survives a reload, as a Maybe chip',
+      `read ${JSON.stringify(afterMaybe)}`
+    )
 
+    // `No` deletes the row, so the rider is unanswered again — the bar comes
+    // back on its own terms and the chip goes. That asymmetry is deliberate
+    // (`setRideAttendance` stores no `no`), so this is the one step that ends
+    // where the bar reads rather than where the chip does.
+    await reopenRsvpBar()
     await waitForTableWrite('ride_members', () => clickRsvpOption('No'))
     await page.goto(`${BASE}/rides/detail?id=${rideId}`, { waitUntil: 'networkidle' })
     await page.waitForSelector(RSVP_BAR, { timeout: 20_000 })
     const afterNo = await rsvpCheckedLabel()
     report(afterNo === null, 'clearing it survives a reload', `read ${JSON.stringify(afterNo)}`)
+    report(
+      (await rsvpChipLabel()) === null,
+      'clearing it takes the chip away too',
+      'a chip is still drawn for a rider with no stored answer'
+    )
   } catch (e) {
     console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
     ran += 1

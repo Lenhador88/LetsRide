@@ -250,10 +250,12 @@ function RideScreen() {
   // What it costs is that a change made on ANOTHER device stays masked for the
   // life of this screen. **That is a longer window than `RideAttendanceBar`'s
   // own `choice`, and the two are not the same bargain**: `choice` dies with the
-  // bar, which unmounts on every accepted answer, so its masking lasts one
-  // open-and-answer cycle where this lasts the whole page mount. The cost is
-  // still small — it takes an external write to `ride_members` to become visible
-  // at all — and every fresh mount reads the truth.
+  // bar, and the bar unmounts on every answer that STORES one, so its masking
+  // usually lasts a single open-and-answer cycle where this lasts the whole page
+  // mount. (`No` is the exception, and it is the exception everywhere in this
+  // change: it stores nothing, so the bar stays and `choice` survives with it.)
+  // The cost is still small — it takes an external write to `ride_members` to
+  // become visible at all — and every fresh mount reads the truth.
   const answer = pendingAnswer !== undefined ? pendingAnswer : (ride.data?.attendance ?? null)
 
   /**
@@ -284,6 +286,18 @@ function RideScreen() {
    * on — *for a non-organizer, crew ⟺ answered* — and the proof holds only for
    * values taken from one row. **So the two arguments move together or not at
    * all.**
+   *
+   * **`answer` is the FOLDED value, which `isRideCrew`'s own docstring tells
+   * callers not to pass, and this is the exception with its condition
+   * attached.** It is safe only because `isOrganizer ||` short-circuits before
+   * the folded arm is read, so the two never both matter. **The day that stops
+   * being true, this diverges silently**: drop the organizer arm from
+   * `isRideCrew` — which its docstring names as a live possibility, going with
+   * `enforce-creator-membership` — and `getRide` would compute `is_crew` from
+   * the raw `null` while this computes from the folded `'going'`. One rule, two
+   * answers, `tsc` green, and an organizer offered a create action `041`
+   * refuses. **If that arm ever moves, pass the unfolded status here in the
+   * same commit.**
    */
   const isCrew = ride.data ? isRideCrew(ride.data.is_organizer, answer) : undefined
 
