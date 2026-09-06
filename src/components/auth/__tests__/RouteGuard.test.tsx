@@ -124,9 +124,11 @@ describe('RouteGuard — what the warm overlay leaves underneath it', () => {
     // 'aria-hidden="true"')` passes against that, which is the hole this
     // closes; do not loosen it back.
     //
-    // Scoped to the wrapper rather than the whole string: `src/` holds ~133
-    // `aria-hidden` sites, essentially all decorative icons, so an unscoped
-    // match false-fails the day this fixture renders any real subtree.
+    // Scoped to the wrapper rather than the whole string: `src/` is full of
+    // `aria-hidden` on decorative icons (`grep -rn aria-hidden src/ | wc -l`),
+    // so an unscoped match false-fails the day this fixture renders any real
+    // subtree. Anchoring on `<div` is safe against the obvious escape — a
+    // wrapper refactored to another element fails the two tests above first.
     expect(html).not.toMatch(/\binert\b/)
     expect(html).not.toMatch(/<div[^>]*aria-hidden/)
   })

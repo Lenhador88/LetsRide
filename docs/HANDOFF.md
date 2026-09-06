@@ -220,16 +220,22 @@ while, and only while, the cover is up.
   in another reconciles as a different element and **remounts the shell**, reintroducing PD-111
   through the door this closes. `<>{shell}</>` keeps the fragment for the reason it was already
   there — fragment-to-fragment reconciles by index.
-- **Both attributes, never one, and `aria-hidden` is the one with the WIDER reach — not the
-  fallback.** `inert` is focus and hit-testing; `aria-hidden` is the accessibility tree, and it
-  predates `inert` by about a decade (`inert` is Chrome 102 / Safari 15.5 / Firefox 112, 2022-23).
-  **The gap is inside this repo's own shipping floor**: `IPHONEOS_DEPLOYMENT_TARGET = 15.0` and
-  `inert` needs Safari 15.5, so on iOS 15.0-15.4 `inert` does nothing and `aria-hidden` is the
-  entire protection — `grep -n IPHONEOS_DEPLOYMENT_TARGET ios/App/App.xcodeproj/project.pbxproj`.
-  So neither is the other's belt: drop `inert` and the subtree is focusable on every current
-  engine; drop `aria-hidden` and the oldest supported iOS loses everything. The test asserts them
-  **separately** so neither can regress under the other's cover. (An earlier draft of this entry
-  had the support ordering backwards and would have sent the next reader to drop the wrong one.)
+- **Both attributes, never one — and old iOS is a RESIDUAL GAP, not a case `aria-hidden` covers.**
+  `inert` is focus and hit-testing; `aria-hidden` is the accessibility tree, and it predates
+  `inert` by about a decade (`inert` is Chrome 102 / Safari 15.5 / Firefox 112, 2022-23). **The gap
+  is inside this repo's own shipping floor**: `IPHONEOS_DEPLOYMENT_TARGET = 15.0` — as do
+  `CapApp-SPM/Package.swift` and Capacitor 8 — while `inert` needs Safari 15.5, and on iOS the
+  WKWebView engine is the system WebKit, versioned with the OS. So on **iOS 15.0-15.4** this
+  renders `aria-hidden="true"` over a still-focusable subtree, which is `aria-hidden-focus` and the
+  state the test docstring calls *worse than neither*. **Do not read that as old iOS being
+  protected** — raising the target to 15.5 is what closes it, filed as PD-422, and the support-floor
+  decision is the owner's. Both still earn their place for different engine ranges rather than as
+  belt and braces. The test asserts them **separately** so neither can regress under the other's
+  cover.
+
+  ```bash
+  grep -n IPHONEOS_DEPLOYMENT_TARGET ios/App/App.xcodeproj/project.pbxproj   # 15.0, four sites
+  ```
 
 **`RouteGuard.test.tsx` is new and had no predecessor** — the component had no test at all, which
 is how this survived. **Node environment rather than jsdom, deliberately: jsdom does not implement
@@ -251,9 +257,9 @@ what a bare `aria-hidden={view.overlay}` emits, since React omits `inert={false}
 `aria-hidden="false"`. It is now `not.toMatch(/<div[^>]*aria-hidden/)`. **Do not loosen it**, and
 note the `|| undefined` in the source is load-bearing on `aria-hidden` alone.
 
-**Folded in: four stale comments — three in `guard-cache.ts`, one in `RouteGuard.tsx`.** Two
+**Folded in: four stale comments — three in `guard-cache.ts`, one in `RouteGuard.tsx`.** **Three**
 claimed *"this repo has no component test framework"*, which stopped being true the moment the test
-above existed; the fold-in caught one and the review caught the other two. The third exempted the
+above existed; the fold-in caught one and the review caught the other two. The fourth exempted the
 splash from the tab-order hazard because it *"holds nothing focusable"* — true of the splash and
 irrelevant, since the focusable thing is the shell underneath it. **The retry's own argument is
 left intact and the two branches are now protected differently on purpose**: an overlay lasting a

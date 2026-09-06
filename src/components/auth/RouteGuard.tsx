@@ -155,18 +155,27 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   // roughly a decade — `inert` landed in Chrome 102, Safari 15.5 and Firefox
   // 112, all 2022-23.
   //
-  // **That gap is inside this repo's own shipping floor, not a hypothetical.**
-  // `ios/App/App.xcodeproj/project.pbxproj` sets `IPHONEOS_DEPLOYMENT_TARGET =
-  // 15.0`, and `inert` needs Safari 15.5 — so on iOS 15.0-15.4, installable
-  // under the target this repo has committed, `inert` does nothing at all and
-  // `aria-hidden` is the entire protection:
+  // **`inert`'s gap is inside this repo's own shipping floor, and it is a
+  // RESIDUAL GAP rather than a case `aria-hidden` covers.** The iOS project
+  // sets `IPHONEOS_DEPLOYMENT_TARGET = 15.0` — as do `CapApp-SPM`'s
+  // `Package.swift` and Capacitor 8 itself — while `inert` needs Safari 15.5,
+  // and on iOS the WKWebView engine is the system WebKit, versioned with the
+  // OS and not separately updatable:
   //
   //     grep -n IPHONEOS_DEPLOYMENT_TARGET ios/App/App.xcodeproj/project.pbxproj
   //
-  // So neither is the other's fallback: drop `inert` and the subtree is
-  // focusable again on every current engine, drop `aria-hidden` and the oldest
-  // supported iOS loses the whole protection. Set them together, keep it that
-  // way, and raise the deployment target before believing otherwise.
+  // So on iOS 15.0-15.4 this renders `aria-hidden="true"` over a subtree that
+  // is still focusable — which is the state the test docstring calls **worse
+  // than neither**, and an `aria-hidden-focus` violation: a VoiceOver rider can
+  // still reach the covered `Navbar` link and it now announces as nothing.
+  // **Do not read this paragraph as saying old iOS is protected.** What closes
+  // it is raising the deployment target to 15.5; PD-422 carries that, and the
+  // support-floor decision is the owner's.
+  //
+  // Both attributes still earn their place, for different versions rather than
+  // as belt and braces: drop `inert` and the subtree is focusable on every
+  // CURRENT engine, which is nearly every rider; drop `aria-hidden` and old iOS
+  // loses even the swipe-navigation half it does get. Set them together.
   //
   // **Not "stop rendering children" — that is the wrong half of the trade.**
   // Unmounting the shell for the length of the wait is what PD-111 removed: it
