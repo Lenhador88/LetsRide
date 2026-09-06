@@ -113,6 +113,26 @@ describe('PrivacySheet', () => {
     expect(disclosure).toBeLessThan(checkbox)
   })
 
+  it('names all three collection categories, not the two that are easiest to keep', () => {
+    // The pre-merge review's finding, and the reason it is pinned rather than
+    // commented: the em-dash clause reads as a closed enumeration, so dropping
+    // one category understates what is collected instead of merely saying less.
+    // The first cut of PD-405's trim lost `moments` along with the sub-label it
+    // came from, and every other gate stayed green.
+    //
+    // Ground truth is `/legal/privacy` (screens, moments, replay) and
+    // `src/lib/analytics/events.ts`, which ships `ride_created`, `ride_joined`,
+    // `club_joined`, `postcard_posted` and `onboarding_step` — the `moments`
+    // category. This surface is what the App Store *Data Collection* and Play
+    // *Data safety* forms get transcribed from (PD-232), so understating it
+    // here is the expensive direction.
+    const markup = html()
+
+    expect(markup).toContain('screens you open')
+    expect(markup).toContain('creating a ride')
+    expect(markup).toContain('replay of your own screen')
+  })
+
   it('keeps both claims about the rider’s data that the opt-out must not overstate', () => {
     const markup = html()
 

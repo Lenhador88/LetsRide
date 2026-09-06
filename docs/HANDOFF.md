@@ -210,6 +210,14 @@ always used.
 - **`resolveClubTimelineAdvance` needed no change** — it reads the flag rather than re-deriving
   it, so it became correct by the fix upstream. Do not "simplify" the two merges into one; they
   diverge on more than this.
+- **The stricter test under-reports at the exact-boundary read, and that is NOT a new bug** —
+  found in the pre-merge review and recorded so nobody re-files it. A source returning *exactly*
+  its limit sets a horizon at its oldest row even when nothing is behind it, so `complete` is
+  `false` where the old expression could read `true`. It **self-heals**:
+  `resolveClubTimelineAdvance` returns `fetch-window`, the next window comes back empty,
+  `absorbClubTimelineWindow` nulls the accumulated horizon, and `complete` flips true on the
+  following merge. The cost is one extra read on a boundary-exact club, and it is byte-identical
+  to what `mergeRideTimeline` has always done — which is what the issue asked for.
 
 **PD-401 — the ride detail's create bar, and the collision it had to settle.** `RideCreateBar` is
 `ClubCreateBar`'s slot and geometry with **one** action (a postcard tagged to the ride), because

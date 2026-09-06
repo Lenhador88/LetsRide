@@ -60,7 +60,7 @@ import { queryKeys } from '@/lib/query/keys'
  * that turns on session replay is the shape a regulator or a store reviewer
  * reads as consent that was not informed — and it is the shape this file is one
  * careless trim away from at any time, which is why
- * `__tests__/PrivacySheet.test.tsx` pins the fact and its ORDER rather than
+ * `__tests__/PrivacySheet.dom.test.tsx` pins the fact and its ORDER rather than
  * trusting a comment.
  *
  * Three surfaces have to keep agreeing about this and only one of them is
@@ -163,10 +163,21 @@ function PrivacyControls({ onClose }: { onClose: () => void }) {
               and what it is for. `/legal/privacy` carries the exhaustive
               version (what the replay shows, the two things withheld from it);
               this is the summary a rider reads before deciding, which is the
-              part that has to be here rather than behind a link. */}
+              part that has to be here rather than behind a link.
+
+              **All THREE categories, because the em-dash clause reads as a
+              closed enumeration.** `/legal/privacy` discloses screens, moments
+              and the replay, and `events.ts` ships `ride_created`,
+              `ride_joined`, `club_joined`, `postcard_posted` and
+              `onboarding_step` — so naming two of the three understates what is
+              collected on the very surface the App Store *Data Collection* and
+              Play *Data safety* forms get transcribed from (PD-232). Caught in
+              review: the first cut of this trim dropped the middle one along
+              with the sub-label it came from. */}
           <p className="text-sm text-muted">
-            We record how the app is used — the screens you open and a replay of your own
-            screen — so we can find what is broken or confusing.
+            We record how the app is used — the screens you open, moments like creating a ride
+            or joining a club, and a replay of your own screen — so we can find what is broken
+            or confusing.
           </p>
         </div>
 
