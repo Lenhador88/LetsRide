@@ -550,7 +550,8 @@ in `public` — `delete_own_ride_thread_message` and `moderate_ride_thread`; its
 `authenticated` EXECUTE. The rest are things this repo chose: one
 `authenticated_security_definer_function_executable` WARN per `security definer` RPC in
 `public` (each narrow by design — takes a row id or nothing at all, never a rider id, one raise
-site), and three `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding
+site), and three `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright —
+client-role grants; the `service_role` half is a separate question, below. **A migration adding
 two such functions adds two**, and one whose functions live in `private` adds none. Re-derive with
 `get_advisors(security)`; `docs/reference/migrations.md` §Security advisors has the per-migration
 accounting and the count query. An unexpected advisor is one not in that table; a one-advisor
@@ -573,8 +574,7 @@ about the other tables."* So the two are not competing precedents, and revoking 
 tables to "settle" them would make six tables inconsistent with the other twenty-four.
 
 **The criterion is a judgement about the ROWS, and there is no mechanical test for it. Do not
-invent one** — three drafts of this paragraph tried, and the last was actively dangerous: it
-proposed *RLS-enabled + no policy + definer-RPC-only*, which **excludes `postcard_reports` and
+invent one.** An earlier draft did, and it was actively dangerous: it proposed *RLS-enabled + no policy + definer-RPC-only*, which **excludes `postcard_reports` and
 `club_thread_reports`**, the two tables most obviously covered. Both carry two policies and an
 `authenticated` SELECT grant. A session applying that test would have concluded their revokes were
 mistakes and re-granted `service_role` — re-opening the reporter-identity exposure `076` exists to
@@ -593,10 +593,15 @@ whom"*. **PD-413.** `111` shipped that way *while this paragraph was being writt
 the candidate set is worth re-running rather than trusting any list here:
 
 ```sql
-select count(*) filter (where sr) as kept, count(*) filter (where not sr) as revoked
-  from (select has_table_privilege('service_role', c.oid, 'SELECT') as sr
+select count(*) filter (where sr)                          as kept,
+       count(*) filter (where not sr)                      as revoked,
+       string_agg(relname, ', ' order by relname) filter (where not sr) as revoked_tables
+  from (select c.relname, has_table_privilege('service_role', c.oid, 'SELECT') as sr
           from pg_class c join pg_namespace n on n.oid = c.relnamespace
-         where n.nspname='public' and c.relkind='r') t;   -- 30 kept, 3 revoked, 2026-09-06
+         where n.nspname='public' and c.relkind='r') t;
+-- 30 kept · 3 revoked · club_thread_reports, postcard_reports, push_devices (2026-09-06).
+-- It names them because a COUNT cannot see a swap: revoke one new sink while another is
+-- re-granted and the count stays 3 while the trio named above is silently wrong.
 ```
 
 **Elsewhere this file calls `push_devices`, `password_reset_grants` and `club_removals` tables
@@ -604,7 +609,7 @@ select count(*) filter (where sr) as kept, count(*) filter (where not sr) as rev
 and `authenticated`, and only `push_devices` also named `service_role`. It is **not** the revoked
 trio above, which overlaps it only in `push_devices`.
 
-**All three revokes DO carry a local, grantee-scoped assertion — in two different forms, and that
+**All three `service_role` revokes DO carry a local, grantee-scoped assertion — in two different forms, and that
 is the trap.** `postcard_reports` and `club_thread_reports` use a savepoint-staged
 `has_table_privilege` (`rls_test.sql` :1630, :25674), which is needed because `service_role` is a
 bare role in `harness.sql` and a naked `has_table_privilege` reads false for *every* table there —
