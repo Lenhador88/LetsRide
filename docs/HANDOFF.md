@@ -257,11 +257,32 @@ unanswered.
 deletes the row for `No`, so a rider who declined is byte-for-byte identical to one who never
 answered. Symmetry needs a migration *and* a change to `private.is_ride_crew`.
 
+**The walk caught a regression no other gate could, and CI skips the walk.** Its RSVP phase
+answered, reloaded and waited 20s for a radiogroup PD-404 had just taught the app to put away —
+one hard FAIL on a screen working exactly as designed, which is PD-410's join-phase defect
+arriving from the same direction. The `Smoke walk` job is skipped until `WALK_CI=1` exists, so
+nothing on the PR showed it. **Run the walk by hand for any change that moves a control**; the
+phase now reads the chip, reopens the bar through it, and asserts both directions of *the two are
+never both drawn*. 26/26 screens, 79/79 checks (it was 72/73 with 4 checks in that phase).
+
+**Four review passes, and the last three each found a defect the previous fix introduced.** The
+story was working; the defects were all created *afterwards*, while fixing findings — which is
+exactly what `queue-pickup.md` STEP 4c predicts, since a commit made after a pass is not covered
+by it. Worth knowing concretely: a focus fix that announced the answer the rider had just
+replaced (`setRideAttendance` invalidates without awaiting), then a fix for *that* which made
+`attendance` optimistic while leaving `is_crew` stale beside it — same row, so the sticky slot
+went empty for a round trip. **The pattern only broke when the fix became structural** — both
+values now derive from one row through `getRide`'s own `isRideCrew` — rather than another patch.
+Do not skip the delta re-review on the grounds that the last pass was clean.
+
 **A concurrent subagent ran `git stash` in this shared working tree and reverted uncommitted `src/`
-edits twice.** Everything was recovered, and `RideCreateBar.tsx`'s deletion — lost that way — is
-restored in `fe1fbde`. `CLAUDE.md` §Delegating while the owner is at the keyboard already warns that
-the working tree is a shared resource; **it is now measured**. A subagent must not run `git` in the
-main thread's checkout, and `isolation: "worktree"` is the fix if one needs to.
+edits — three times, and the third was caught by `reviewer` rather than by me.** `RideCreateBar.tsx`'s
+deletion was lost that way (restored in `fe1fbde`), and so was the clearance-class fix, which shipped
+wrong for three commits with three docstrings asserting it had been applied. `CLAUDE.md` §Delegating
+while the owner is at the keyboard already warns that the working tree is a shared resource; **it is
+now measured**. A subagent must not run `git` in the main thread's checkout, and
+`isolation: "worktree"` is the fix if one needs to. **Re-check every edit a stash touched** — the
+tree looking right is not evidence, because a revert leaves no conflict.
 
 **Both retired names still appear in `src/`, and every hit is an obituary** — §Technology Decisions'
 comment trap, so the filter has to exclude comment lines and be checked both ways:
