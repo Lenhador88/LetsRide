@@ -1243,15 +1243,22 @@ created before 14:41 have tiles (3 of 3), every one after does not (0 of 7).
 **PROD carries the identical build** — same `ezbr_sha256` `c09a0474…`. It matters less only because
 PROD has few rides.
 
-**The durable lesson is PD-369's, now with a price.** `deploy-functions.yml` already redeploys on
-any push touching `supabase/functions/**`; it is skipped with a warning because
-`SUPABASE_ACCESS_TOKEN` does not exist. That missing secret cost seven days of silently missing map
-tiles on both projects. **A redeploy also does not heal the existing rows** — nothing re-renders a
-ride whose address did not change, so the affected rides need a deliberate pass.
+**Deployed 2026-09-06 — ten days after the fix was committed, and PD-369 is the durable lesson.**
+`SUPABASE_ACCESS_TOKEN` landed and the catch-up dispatch put `b343d6d` on both projects:
+`resolve-ride-location` DEV v6→7, PROD v5→6, `ezbr_sha256` `3a88a35e…` equal across the two.
+Nothing was red anywhere for the whole ten days, which is the entire cost of that missing secret.
+**A redeploy does not heal the existing rows** — nothing re-renders a ride whose address did not
+change, so the DEV rides that were created blind still need a deliberate pass (PD-385). PROD's two
+rides are not geocoded, so no rider-visible row is affected.
 
 ```bash
-# is the deployed build still behind? the only line that matters
-git grep -n "MARKER_STYLE =" -- supabase/functions/resolve-ride-location/gates.ts
+# is the deploy still behind the repo? the file's date alone cannot answer it
+TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/resolve-ride-location/
+# mcp__Supabase__list_edge_functions <ref> → an updated_at older than that is stale
+```
+```sql
+-- how many rides were created blind and still carry no tile (11 on DEV, 0 on PROD)
+select count(*) from public.rides where latitude is not null and map_card_path is null;
 ```
 
 ## The creator's membership row is the database's to write — 2026-09-03
@@ -1511,12 +1518,10 @@ pass on 2026-09-02 (this file ~9k, `CLAUDE.md` ~22k; measure with `wc -c`, divid
 left in `CLAUDE.md` is rules and their anchored sentences; cutting further means deleting rules; and
 `deploy-functions.yml` deploys the Edge Functions on every merge that touches them (owner's
 decision, 2026-09-02: autonomous), waiting for Vercel's GitHub Deployment of that sha in that
-branch's environment first, so the app is serving before the function is (PD-236). **Written and
-unverified** — it needs `SUPABASE_ACCESS_TOKEN` as a repository secret (PD-369) and is skipped with
-a warning until then. **The day the token lands, one dispatch per project (`all`) is still owed**:
-`resolve-ride-location` on both projects predates PD-236's marker fix (`b343d6d`, measured
-2026-09-02 — the deployed `ezbr_sha256` is from 2026-08-27), and no future merge touches it. The
-push trigger fixes future drift, not that one. The walk is wired into CI (`walk` job): it needs no credential because it mints
+branch's environment first, so the app is serving before the function is (PD-236). **Verified 2026-09-06**:
+the token landed (PD-369), and the two owed catch-up dispatches — one per project, `all` — ran
+green and closed the `resolve-ride-location` gap that no future merge would ever have touched. The
+CLI needed no `config.toml`; `--project-ref` was enough, as the workflow header predicted. The walk is wired into CI (`walk` job): it needs no credential because it mints
 its own rider, so the only thing it costs DEV is one signed-up-then-deleted rider per run. **It is
 skipped until the repository variable `WALK_CI=1` exists, because its guard step measured the
 Actions secrets naming PROD** — `docs/ENVIRONMENTS.md` §Owner setup item 5 was never done, and

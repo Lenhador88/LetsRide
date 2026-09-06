@@ -14,7 +14,9 @@ name: Deploy Edge Functions
 #
 # IT FIXES FUTURE DRIFT ONLY. A push deploys only when it touches a function,
 # so whatever was already stale when this landed stays stale until one
-# manual dispatch catches it up — PD-369 step 3, `all` to each project.
+# manual dispatch catches it up — PD-369 step 3, `all` to each project. Both
+# of those ran on 2026-09-06 and the backlog is clear; the rule stands for the
+# next time something goes stale between merges.
 #
 # THE ORDERING RULE IS HONOURED BY WAITING, NOT BY HAND. A function can
 # depend on the app already serving — PD-236: `resolve-ride-location` sends
@@ -34,17 +36,20 @@ name: Deploy Edge Functions
 #
 # WHAT IT NEEDS. One repository secret, `SUPABASE_ACCESS_TOKEN` — a personal
 # access token from the Supabase dashboard (Account → Access Tokens), PD-369.
-# Without it the deploy job is SKIPPED with a warning rather than red on
-# every merge: a job that can only be red trains everyone to ignore red. The
-# project refs are not secrets; both ship in the client bundle.
+# It exists as of 2026-09-06. Without it the deploy job is SKIPPED with a
+# warning rather than red on every merge: a job that can only be red trains
+# everyone to ignore red. The cost of that choice is that a RUN is green
+# either way, so read the `Deploy` step rather than the run. The project refs
+# are not secrets; both ship in the client bundle.
 #
-# UNVERIFIED until the token exists — written without a way to run it (the
-# build container has no CLI, no route to supabase.com, and no deployments
-# endpoint on the GitHub MCP to confirm the environment names above; the
-# commit-status half WAS measured on #373). `--project-ref` is what lets
-# `functions deploy` run without a `supabase link` or a `config.toml`; if
-# the CLI insists on one, `supabase init` before the deploy step is the fix,
-# not a committed config.
+# THE DISPATCH HALF IS VERIFIED, THE PUSH HALF IS NOT. Two dispatches on
+# 2026-09-06 (`all` → dev, `all` → prod) deployed all three functions to both
+# projects, confirmed by `ezbr_sha256` equal per function across the two.
+# `--project-ref` was enough on its own: the CLI asked for no `supabase link`
+# and no `config.toml`. What no run has exercised yet is the Vercel wait
+# below — it is skipped on a dispatch, and no push has touched a function
+# since this landed, so the environment names (`Production` / `Preview`) are
+# still inferred rather than measured.
 
 on:
   push:

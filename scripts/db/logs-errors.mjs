@@ -100,6 +100,19 @@
  * transport test, and `workflow_dispatch` exists so that run can be triggered
  * deliberately rather than waited for.
  *
+ * THAT TEST RAN ON 2026-09-06 AND THE TRANSPORT FAILED. With the token finally
+ * in place (PD-369), both projects answered 200 carrying
+ * `{"error": "Backend error! Retry your query. Please contact support if this
+ * continues."}`, so `parseRows` threw and the run exited 2. Reproduced on DEV
+ * and PROD, twice each — run 14 and its re-run — so it is not the retry the
+ * message invites. The SQL above is NOT the suspect: that exact constant was
+ * run through `query_logs` against `fpmrimzxadewsaiwpsel` the same evening and
+ * returned seven rows. What is unverified is everything between the constant
+ * and the wire — the `logs.all` endpoint, the `sql` query parameter, and the
+ * two `iso_timestamp_*` values, one of which is a full 24h before `new Date()`
+ * against an API that caps the window at exactly 24h. Bisect it with a
+ * `workflow_dispatch` on a branch; nothing else here can reach the API.
+ *
  * What the envelope sighting DID settle is `result` as the key and `error` as
  * its sibling, which is why `parseRows` reads exactly those and throws on
  * anything else.

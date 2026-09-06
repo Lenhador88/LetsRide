@@ -67,11 +67,18 @@ below on a schedule rather than when something is already suspected, and
 PD-352 built the schedule: `.github/workflows/log-digest.yml` reads both
 projects at 06:00 and 18:00 UTC, plus `workflow_dispatch`.
 
-**It is not yet producing readings, and the gap is an owner action.** The
-workflow needs `SUPABASE_ACCESS_TOKEN` — a Management API personal access token
-— as a repository secret. Until that exists every run exits 2 and says so in its
-summary. Check rather than trust this paragraph, since the fix happens outside
-the repo and nothing here changes when it does:
+**The credential landed on 2026-09-06 (PD-369) and the digest is STILL not
+producing readings — the reason changed underneath it.** With the token in place
+both projects answer `{"error": "Backend error! Retry your query. …"}`, so
+`parseRows` throws and the run exits 2 carrying that sentence. Reproduced on DEV
+and PROD, twice each (run 14 and its re-run), so it is not the retry the message
+invites. **The SQL is not the suspect** — the exact `SQL` constant runs and
+returns rows through `mcp__Supabase__query_logs` against the same project, same
+window. What has never once completed a live call is the script's own HTTP call:
+`GET /v1/projects/<ref>/analytics/endpoints/logs.all` with `sql`,
+`iso_timestamp_start` and `iso_timestamp_end`. That is the thing to bisect, and a
+`workflow_dispatch` on a branch is how to test it without a token in hand.
+Check rather than trust this paragraph:
 
 ```
 # via the GitHub MCP tools

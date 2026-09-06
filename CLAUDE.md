@@ -381,11 +381,14 @@ GitHub Deployment of that sha in that branch's environment to be `success`** (th
 below, mechanised — the bare `Vercel` commit status cannot tell a Production build from a Preview
 of the same sha after a promotion's fast-forward), then deploys every function; a
 `workflow_dispatch` deploys one or all to a chosen project from any sha without the wait.
-**Nothing deploys until the `SUPABASE_ACCESS_TOKEN` secret exists (PD-369)** — the job is skipped
-with a warning, not red — so until that lands an edit under `supabase/functions/` is still drift
-from the moment it merges. **It fixes future drift only**: a push deploys only when it touches a
-function, so what was stale the day it landed (`resolve-ride-location` on both projects, behind
-PD-236's marker fix) stays stale until one manual dispatch per project catches it up. No session deploys by hand: there is no `supabase` CLI in
+**The `SUPABASE_ACCESS_TOKEN` secret exists as of 2026-09-06 (PD-369), and the catch-up dispatch
+put all three functions on both projects** — `771f650`, equal `ezbr_sha256` per function across the
+two. Without the secret the gate job SKIPS the deploy with a warning rather than reddening, so **a
+green run is not proof of a deploy**: read the `Deploy` step, ~15s against ~3s for a skip. **It
+fixes future drift only**: a push deploys only when it touches a function, so anything already stale
+when one lands stays stale until a `workflow_dispatch` (`all`, per project) catches it up — which is
+how `resolve-ride-location` sat ten days behind PD-236's marker fix, rendering no tile for any ride
+created in that window, through green everything. No session deploys by hand: there is no `supabase` CLI in
 the build container, and the MCP server's `deploy_edge_function` stays on `.claude/settings.json`'s
 `deny` list.
 **Version numbers differ per project and always will** (they count deploys), so the `ezbr_sha256`
