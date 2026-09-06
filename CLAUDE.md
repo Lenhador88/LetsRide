@@ -564,14 +564,18 @@ everything by Supabase default.
 `076` §3 is the rule** — surfaced here by PD-409 because it was stated only in that migration's
 body, where the next table's author does not look. Revoke from `service_role` when the table is a
 **restricted-readership sink**: its rows are something the one credential that bypasses RLS must
-not be able to enumerate. **Three tables qualify and they are the whole list** —
-`postcard_reports` (`076`), `club_thread_reports` (`094`) and `push_devices` (`078`): two
-moderation queues whose rows are reporter identities, and a device-token store. Ordinary content
-tables do not, and **`081`/`108` leaving the six club and ride thread tables alone was correct
-rather than an oversight** — `076` says so in as many words: *"The narrowness is deliberate and is
-not a claim about the other tables."* So the two are not competing precedents, and revoking
-across the thread tables to "settle" them would make six tables inconsistent with the other
-twenty-four. Measure rather than trust the split — 3 revoked, 30 not, on DEV 2026-09-06:
+not be able to enumerate. **Three are revoked today** — `postcard_reports` (`076`),
+`club_thread_reports` (`094`) and `push_devices` (`078`): two moderation queues whose rows are
+reporter identities, and a device-token store. **That is not the same as the list of tables the
+rule covers, and the gap has a name**: `password_reset_grants` meets the test — RLS-enabled with no
+policy, reachable only through definer RPCs — and is **not** revoked, because `026` named
+`anon, authenticated` and stopped, which is verbatim the shape `076` §3b calls the defect it
+existed to fix. **PD-413**, not an oversight in this paragraph. Ordinary content tables are outside
+the rule, and **`081`/`108` leaving the six club and ride thread tables alone was correct rather
+than an oversight** — `076` says so in as many words: *"The narrowness is deliberate and is not a
+claim about the other tables."* So the two are not competing precedents, and revoking across the
+thread tables to "settle" them would make six tables inconsistent with the other twenty-four.
+Measure rather than trust the split — 3 revoked, 30 not, on DEV 2026-09-06:
 
 ```sql
 select has_table_privilege('service_role', c.oid, 'SELECT') as sr_select, count(*),
@@ -582,9 +586,12 @@ select has_table_privilege('service_role', c.oid, 'SELECT') as sr_select, count(
 
 **The local suite cannot measure this and does not claim to.** `service_role` is a bare role in
 `harness.sql`, so `has_table_privilege` reads false for *every* table there — an assertion would
-pass for the wrong reason. The three sink assertions defeat that per table by granting the hosted
-default and then revoking it inside a savepoint (`rls_test.sql` :1630, :25674); that trick does
-not generalise to the set, so the hosted query above is the measurement.
+pass for the wrong reason. **Two of the three revokes** defeat that per table by granting the
+hosted default and then revoking it inside a savepoint (`rls_test.sql` :1630, :25674). **`push_devices`
+has no such assertion at all** — `078`'s revoke is verified only against the hosted project, and the
+suite says so itself at `:6559` and `:8736`, so do not read the count of revokes as a count of
+tripwires. That staging is also per table and does not generalise to a set, which is why the hosted
+query above is the measurement rather than an assertion.
 
 **The project is on the free tier, which auto-pauses after ~7 days idle.** A paused project
 serves nothing, so the deployed app goes down with no alert. This needs to be on Pro before

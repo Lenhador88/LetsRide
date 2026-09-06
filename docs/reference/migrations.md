@@ -342,36 +342,25 @@ Additive and **nothing to sequence against**: it touches no file under `src/`, a
 table or PostgREST relationship, and changes no policy, so neither `096`'s
 newer-bundle-against-older-database case nor `092`'s reverse exists. **The PROD promotion carries
 the same ordering for the same reason.** What it owes instead of an ordering decision is the
-**hand-exercise gate** — it hangs `AFTER DELETE` triggers on `rides`, `club_threads` and
-`club_members`, three already-shipped write paths, the last being the busiest delete path in the
-app. That gate ran on DEV before the apply, in two `DO` blocks that raise at the end so they cannot
-commit, with the ordinary rider paths driven as `authenticated`: **ten checks, all PASS**, the two
-worth keeping being a rider LEAVING a club (the ordinary action this file put new code in front of)
-and an account erasure running the new `club_members` trigger inside the rider's own deletion
-transaction, where a raise would abort the erasure itself. The rollback was confirmed rather than
-assumed.
+**hand-exercise gate**, because it hangs `AFTER DELETE` triggers on three already-shipped write
+paths, `club_members` being the busiest delete path in the app. That gate ran on DEV before the
+apply — **ten checks, all PASS**, rollback confirmed rather than assumed; the file's own
+§Verification carries the list and the reasoning, and is not restated here.
 
-**One file for two issues, deliberately**: both rewrite the same `comment on function
-private.reap_ownerless_club()`, so split across two numbers the first would ship a comment the
-second immediately replaces, and whichever landed second would silently discard the other's edit.
-
-It was **applied REDUCED and proved by object diff**, per §Applying a large file — the file is
-~19,000 bytes against 2,660 bytes of executable statements, so its recorded text will not equal
-`md5sum` of the file, which is the norm rather than drift. The diff that proves it, between DEV and
-a local database that applied **the file itself** through `supabase/tests/run.sh` — all three
-identical: `pg_get_triggerdef` for all four triggers name-ordered
-(`1a338a3756c20d5ba74129cd56b0216e`), the function's `obj_description`
-(`4876f819cddda283572a829ee70a9ffc`), and `pg_get_functiondef`
-(`6d0b6d8f3d5f43d8cd9c39d24dcb4a66`). **The third is the load-bearing one**: it is identical on both
-sides *and* unchanged from before this file, which is what says `112` did not move the body — the
-function already tested all four conditions and reads `old.club_id`, a column every one of the four
-child tables carries under that name, so one body serves four triggers.
+It was **applied REDUCED and proved by object diff**, per §Applying a large file — ~19,000 bytes
+against 2,660 bytes of executable statements, so its recorded text will not equal `md5sum` of the
+file, which is the norm rather than drift. Compared between DEV and a local database that applied
+**the file itself** through `supabase/tests/run.sh`, all three identical: `pg_get_triggerdef` for
+the four triggers name-ordered (`1a338a3756c20d5ba74129cd56b0216e`), the function's
+`obj_description` (`4876f819cddda283572a829ee70a9ffc`), and `pg_get_functiondef`
+(`6d0b6d8f3d5f43d8cd9c39d24dcb4a66`). **The third is the load-bearing one**: identical on both sides
+*and* unchanged from before this file, which is what says `112` did not move the body — one
+function serves all four triggers.
 
 Its verification passed on every point: **four** reaper triggers where there was one, **one**
-function definition, and the `WHEN (old.club_id IS NOT NULL)` clause on exactly `postcards` and
-`rides` — the two whose `club_id` is nullable — and absent on `club_members` and `club_threads`,
-where it could never be false. **Advisors did not move: 42 on DEV, unchanged**, because the file
-creates no function and moves none between schemas.
+function definition, and the `WHEN` clause on exactly the two tables whose `club_id` is nullable.
+**Advisors did not move: 42 on DEV**, because the file creates no function and moves none between
+schemas.
 
 **`111_a_removal_bars_a_live_invite_link` (PD-361), applied to DEV 2026-09-06T11:59Z.** Additive,
 and **nothing to sequence against**: it touches no file under `src/`, so neither `096`'s

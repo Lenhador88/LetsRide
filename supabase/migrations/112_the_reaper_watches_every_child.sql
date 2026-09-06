@@ -56,13 +56,25 @@
 --     by that change's pre-merge review — the conjunct makes the reaper DECLINE,
 --     and nothing then re-asks the question.
 --   * `club_members` .. ** NOT REACHABLE TODAY, and it is still built. ** No
---     rider can join an ownerless club (§2b), and at the instant §4 creates one
---     the only roster row is the departing owner's, which the `profiles` cascade
---     removes inside the same erasure transaction — while the third-party
---     postcards that caused the club to be preserved are by definition still
---     there, so the reap correctly declines then. For this trigger to be the one
---     that reaps, a member must outlive every postcard, ride and thread, which
---     no path produces.
+--     rider can join an ownerless club — and ** §2b is only part of why, so do
+--     not cite it alone. ** §2b is the `club_members` INSERT policy, and
+--     `relforcerowsecurity` is FALSE on that table, so a `security definer`
+--     function owned by `postgres` bypasses it outright. `107` enumerated the
+--     four definer writers of `club_members` for exactly this reason and closed
+--     the one that was unguarded — `complete_onboarding` — with §4b's
+--     welcome-club exclusion rather than with §2b; the invite and request paths
+--     are closed by the §3a/§3d helper guards. It takes ALL THREE (the policy,
+--     §4b, and the helpers) to say no rider can join an ownerless club, and
+--     citing the policy alone is the same overclaim PD-408 is fixing one
+--     statement below.
+--
+--     Given that, at the instant §4 creates an ownerless club the only roster
+--     row is the departing owner's, which the `profiles` cascade removes inside
+--     the same erasure transaction — while the third-party postcards that caused
+--     the club to be preserved are by definition still there, so the reap
+--     correctly declines then. For this trigger to be the one that reaps, a
+--     member must outlive every postcard, ride and thread, which no path
+--     produces.
 --
 --     It is built anyway because the reaper's conjuncts are a ** whitelist of
 --     emptiness **: `club_members` is one of the four, so a membership row can

@@ -202,32 +202,14 @@ other order was never revisited and stayed for ever: invisible, unjoinable, uned
 and unreapable. `112` adds the three missing `AFTER DELETE` triggers — one per remaining conjunct —
 and rewrites the comment that claimed an enumeration it never had.
 
-**Five things a later session should not re-derive:**
-
-- **One file for two issues, and that is the point of grouping them.** Both rewrite the same
-  `comment on function`. Split across `112` and `113`, the first ships a comment the second
-  immediately replaces, and whichever landed second would silently discard the other's edit.
-- **The function body did NOT move, and that is asserted rather than assumed.**
-  `pg_get_functiondef`'s md5 is identical on both sides of the reduced apply *and* unchanged from
-  before the file. `old.club_id` names a column all four child tables carry, and plpgsql resolves
-  `OLD` per firing, so one body serves four triggers. Four copies would be four things to keep in
-  step — `107` §3c's recorded defect, one object across.
-- **Reachability is NOT uniform, and the migration says so per table.** `rides` is PD-399's own
-  scenario and `club_threads` is the pairing `107`'s pre-merge review found. **`club_members` is
-  not reachable today** — §2b refuses a join to an ownerless club, and the only roster row at the
-  moment §4 creates one is the departing owner's, which the `profiles` cascade removes while the
-  third-party postcards are still there. It is built anyway because `club_members` is one of the
-  four conjuncts: **a table that can make the reaper decline must be able to re-ask when it
-  clears**, or PD-399 reopens for whichever change makes it reachable.
-- **Re-entrancy is free, and it is the same fact as the whitelist.** Each of the four
-  trigger-bearing tables is also a conjunct, so the `delete from public.clubs` only runs when that
-  table contributes **zero** cascade rows. The six children that do cascade carry no reaper
-  trigger. One level by construction, not by luck.
-- **The WHEN clause is on `postcards` and `rides` and deliberately nowhere else** — those are the
-  two whose `club_id` is nullable. On the other two it could never be false, so it would buy
-  nothing and read as though the column were nullable. `112.2` derives that split from the
-  **columns** rather than transcribing it, so making `club_threads.club_id` nullable without adding
-  the clause turns two assertions against each other.
+**`112`'s own header is the canonical account and is not restated here** — it argues, per table,
+why the function body does not move, why `club_members` is built despite being unreachable today,
+why re-entrancy is one level *by construction*, and why the `WHEN` clause is on `postcards` and
+`rides` and nowhere else. Read it before touching the reaper. The two things worth carrying out of
+it: **a table that can make the reaper decline must be able to re-ask when it clears** (which is
+why the unreachable `club_members` trigger ships), and **the whitelist and the re-entrancy bound
+are the same fact** — each trigger-bearing table is also a conjunct, so the delete only runs when
+that table contributes zero cascade rows.
 
 **The hand-exercise gate ran BEFORE the apply**, in `DO` blocks that raise at the end so they
 cannot commit, ordinary paths driven as `authenticated`. Ten checks, all PASS. The two worth
