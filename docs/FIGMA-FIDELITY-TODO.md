@@ -892,23 +892,55 @@ measurement as current.
   - [ ] **The empty state is gone with the strip, and nothing replaces it.** A ride's timeline is
         never empty — the founding entry is its floor — so the `Nothing yet · Prep shots count`
         tile has nothing left to say. What it carried that still matters is the `Add`, which is
-        crew only (`041` requires `private.is_ride_crew` to tag) and lands in one of two places
-        since PD-401 — `RideCreateBar` in the sticky slot, or the `(+)` on the timeline's
-        heading when the RSVP bar has that slot. See the create-bar bullet below.
-  - [ ] **There IS a create bar now, and it holds the slot only when the RSVP bar does not**
-        (PD-401, 2026-09-05 — this bullet said the opposite until then). `RideCreateBar` is
-        `ClubCreateBar`'s slot, geometry and border rule with **one** action rather than a
-        three-row sheet, because a ride creates exactly one thing today
-        (`routes.newPostcardInRide`); PD-402 is what makes a second exist, and the sheet shape
-        becomes right on the day it lands. `RideAttendanceBar` still wins the slot outright on
-        an upcoming ride the viewer does not organize, and there the `(+)` on the timeline
-        heading survives as the fallback — so the two entrances are complementary and a crew
-        member always has exactly one. `resolveRideDetailActions` is that decision, with an
-        exhaustive test.
-        **The frame deviation to price is what is NOT done here:** PD-401's own recommendation
-        was to move the RSVP out of the sticky slot into the page body, which contradicts
-        `2375:8771` drawing it stacked ON the navigation bar. Left for the owner, alongside
-        PD-404's floating-action question, which is the same frame decision one step further.
+        crew only (`041` requires `private.is_ride_crew` to tag) and, since PD-404, lands in
+        exactly one place — the floating action in the bottom-right corner. The `(+)` on the
+        timeline heading is gone with the bar that made it necessary. See the bullet below.
+  - [ ] **THREE departures now, and they are one decision — PD-404, 2026-09-06. This bullet
+        described a create BAR until then; the bar is deleted.** The owner answered the frame
+        question the two bullets below were parked on, with a shape none of PD-401's four options
+        offered: **the RSVP bar and the create affordance are never both present, because
+        answering the RSVP replaces the bar.** Answering collapses it into a status chip on the
+        first content line; the create affordance becomes a **floating action** in the bottom-right
+        corner; tapping the chip brings the bar back. Each departure and its class:
+
+        1. **A create affordance exists at all.** `2375:8771` draws the ride's nav bar at 390×88
+           with no create control, so this was already additive when PD-401 added it and
+           contradicts nothing drawn.
+        2. **It is a circle rather than a full-width bar, with the app's first PERSISTENT
+           elevation** (`--shadow-floating`). `grep -ic "shadow\|elevation" design/TOKENS.md` is
+           **0** — there is no elevation token in the design at all and no frame for a floating
+           action anywhere (`grep -ril "floating\|fab\b" design/` is 0), so the value is invented
+           within the token system rather than measured. This is the departure a designer most
+           needs to look at.
+        3. **The RSVP bar is HIDDEN once answered, and `2375:8771` draws it permanently stacked
+           on the navigation bar.** This is the largest of the three and the one PD-401
+           explicitly refused to make unattended. It is now the owner's decision, taken
+           knowingly, and it supersedes PD-401's "left for the owner" note below.
+
+        **The geometry is not a saving and must not be written up as one.** With the tokens' own
+        `16 pad + control + 8` rule a 56px control reserves **80px** against `--navbar-action`'s
+        **64px**, and matching 64px would need a 40px control — under the 44×44 glove floor. So
+        nothing breaks even: the screen opts into `.pb-floating-action-extra` because the timeline's
+        last entry would otherwise sit permanently under the button, and that clearance costs
+        **more** vertical room than the bar it replaces. **The honest gain is horizontal.**
+
+        **The timeline `(+)` is deleted, and it was unreachable rather than unwanted.** PD-401 kept
+        it for *upcoming + crew + the RSVP bar owns the slot*; the bar is now owed only while the
+        answer is `null`, and for a non-organizer `is_crew` IS `attendance !== null`
+        (`src/lib/data/rides.ts:618,692`), so that state cannot occur. `resolveRideDetailActions`
+        is still the whole decision, with an exhaustive test that pins the identity it rests on.
+
+        **The chip is a control, not a badge** — 44×44 target, a visible chevron, `aria-expanded`.
+        Once the bar is gone it is the only route back to it. It shares the first content line with
+        the club link rather than taking a row of its own, for the vertical-space reason above.
+
+        **There is no `Not going` chip**, and that asymmetry was priced: `setRideAttendance`
+        deletes the row for `No`, so a rider who declined is identical to one who never answered.
+        Symmetry needs a migration and a change to `private.is_ride_crew`; the owner declined it.
+
+        **The club detail is NOT converted** — `ClubCreateBar` still draws the full-width bar,
+        because `2043:10604` instances a variant **26 other frames** use. That half of PD-404 is
+        still the owner's and the issue stays open for it.
   - [ ] **The stream does not page, and the club's does.** Both sources are read whole at their
         own bounds; a ride that overruns them is cut at the horizon and says so, handing off to
         the crew list. See `src/lib/data/ride-timeline.ts` for why a bounded event does not

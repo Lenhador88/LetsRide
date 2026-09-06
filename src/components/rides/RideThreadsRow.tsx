@@ -22,9 +22,18 @@ import { routes } from '@/lib/routes'
  * the chat.
  *
  * **Crew only**, on the predicate that gates the header bubble, so the two entry
- * points cannot disagree about who has threads to open. Its caller passes
- * `is_crew` straight from `getRide` — the client's mirror of
- * `private.is_ride_crew` — rather than re-deriving it.
+ * points cannot disagree about who has threads to open. Its caller reaches that
+ * predicate through `getRide`'s own `isRideCrew` — the client's mirror of
+ * `private.is_ride_crew` — never through a hand-written copy of the rule.
+ *
+ * **Since PD-404 the caller DERIVES it rather than reading `is_crew` off the
+ * row**, and the distinction matters to this row: `is_crew` and the rider's own
+ * `attendance` come from the same `ride_members` row, so reading one while
+ * optimistically holding the other made them disagree for a round trip. Derived
+ * from the same answer, this row appears the moment a rider's `Yes!` commits
+ * rather than a read later — and disappears on `No`, whose refetch is already
+ * in flight before the unmount, which `useQuery` handles without rendering an
+ * error.
  *
  * ## The unread mark, and why it costs no request
  *
