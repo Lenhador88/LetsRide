@@ -190,6 +190,68 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The warm splash covers the shell and now also unreaches it — 2026-09-06
+
+**PD-251, one branch, taken into `slot-2`. A group of one, and the two other candidates were
+dropped rather than deferred by size** — which is the part worth carrying, because both drops were
+correct and neither is a defect: **PD-220** collides with `slot-1`'s declared territory on three
+paths (`src/components/ui/`, `src/components/rides/`, `src/app/(app)/rides/`) and `slot-1` declares
+`primitive: Y`, so it waits for [PR #417](https://github.com/Lenhador88/LetsRide/pull/417);
+**PD-415** opens `Ready N` on an owner-only Geoapify check nobody has answered.
+
+`RouteGuard` renders `{children}` and then an opaque `fixed inset-0` cover on the warm-splash
+branch. Neither `inert` nor `aria-hidden` was set on what it covered, so the shell kept its place in
+the tab order and the accessibility tree — Tab twice and focus was on a `Navbar` link behind the
+cover. The covered subtree is now wrapped in a `display: contents` element carrying both attributes
+while, and only while, the cover is up.
+
+**Four things a later session should not re-derive:**
+
+- **"Stop rendering children" is the wrong fix and looks like the obvious one.** Unmounting the
+  shell for the length of the wait is exactly what PD-111 removed — it tears down
+  `(app)/layout.tsx` and every `useQuery` on the page, so a tab tap reads as a reload. The overlay
+  branch exists *to keep the shell mounted*, so the remedy has to be an attribute.
+- **The wrapper is permanent, hence `display: contents`.** It renders on every screen in the app,
+  in the allowed case too. A box there would be a new block between `<body>` and the route;
+  `contents` generates none, so the non-overlay render is unchanged rather than believed to be.
+  `AppBackground`'s `min-h-dvh` would have survived a plain block — checking that once is not the
+  same as being safe for every screen added later.
+- **One element, one position, every branch.** Rendering `children` bare in one branch and wrapped
+  in another reconciles as a different element and **remounts the shell**, reintroducing PD-111
+  through the door this closes. `<>{shell}</>` keeps the fragment for the reason it was already
+  there — fragment-to-fragment reconciles by index.
+- **Both attributes, never one.** `inert` is focus and hit-testing; `aria-hidden` is the
+  assistive-technology half browsers have honoured less consistently. `aria-hidden` alone leaves a
+  focusable subtree hidden from a screen reader, which is worse than neither. The test asserts them
+  **separately** so neither can regress under the other's cover.
+
+**`RouteGuard.test.tsx` is new and had no predecessor** — the component had no test at all, which
+is how this survived. **Node environment rather than jsdom, deliberately: jsdom does not implement
+`inert`**, so a jsdom test would assert the same attribute while *looking* as though it had proved
+focus containment. The weaker-looking test is the honest one, and the reason is written in the file
+so it is not "upgraded" later.
+
+**The over-correction is the mutation that matters.** Setting both attributes unconditionally
+rather than from `view.overlay` leaves an app inert on every screen — it breaks the app for every
+rider rather than for a minority, and no other gate in the repo would catch it. That is why
+*leaves the shell reachable when the guard has allowed it* is its own assertion. Measured: drop
+`inert` → 1F/5P, drop `aria-hidden` → 1F/5P, both unconditional → 1F/5P, children bare → 3F/3P.
+**The first three fail disjoint assertions**, which is what proves they are pinned separately.
+
+**Folded in: two comments in `guard-cache.ts` this change made false.** The `overlay` docstring
+claimed nothing could see whether `RouteGuard` honoured the value because *"the repo has no
+component test framework"*; something now can. And `resolveGuardView`'s comment exempted the splash
+from the tab-order hazard because it *"holds nothing focusable"* — true of the splash and
+irrelevant, since the focusable thing is the shell underneath it. **The retry's own argument is
+left intact and the two branches are now protected differently on purpose**: an overlay lasting a
+round trip can afford an attribute and must not remount, while a screen up until the rider acts is
+better served by rendering nothing, which no future child can forget to inherit.
+
+```bash
+git grep -n 'className="contents"' -- src/components/auth/RouteGuard.tsx
+npx vitest run src/components/auth src/lib/auth   # RouteGuard 6/6
+```
+
 ## The reaper watches every child, and the service_role split was never a split — 2026-09-06
 
 **PD-399 + PD-408 + PD-409, one branch, taken into `slot-1`.** Grouped because all three would
