@@ -190,6 +190,78 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The walk is green again, and both its baselines are measured — 2026-09-06
+
+**PD-410 + PD-390 + PD-344, one branch, taken into `slot-1`.** Grouped because the first two are the
+same file and the same measurement, and the third needed the identical relay + dev-server +
+Chromium setup to separate its two candidate explanations.
+
+**The walk's own printed totals, both runs green, exit 0** — this is what
+[`docs/reference/running-locally.md`](reference/running-locally.md) §The walk now records, replacing
+the dispute PD-390 was filed over:
+
+| Account | Screens | Checks |
+|---|---|---|
+| Minted (no `WALK_EMAIL`) — CI's path | **26** | **74** |
+| Named (`walk-fixture@letsride.dev`) | **26** | **77** |
+
+**Neither number in the old argument was right**, which is why no amount of reading could settle it.
+The named account measures 3 higher for one reason: `checkEditRetention` runs against a ride the
+rider owns, and a freshly minted rider owns none.
+
+**PD-410 — the walk's join phase was asserting against the flow PD-392 replaced.** `checkJoinClub`
+wrapped the Join tap in `waitForTableWrite('club_members', …)` and then dismissed the sheet with
+`Not now`; since PD-392 the tap writes nothing on that path and `Post` is the join. Three things a
+later session should not re-derive:
+
+- **The watcher is armed BEFORE the tap and that is the fix, not a style choice.** The tap writes on
+  one of two paths — the sheet opens (`Post` joins), or `joinClub` runs on the tap itself for the
+  default club and for a stale row where an introduction already exists. Which one happened is only
+  knowable afterwards, and on the sheet path the write is a second click away. A watcher armed after
+  the fact misses the direct join outright. `watchForTableWrite` is that half, split out of
+  `waitForTableWrite`, which now returns the boolean rather than only warning.
+- **Do not navigate on the membership write alone.** `Post` is two writes with no transaction across
+  them; the membership lands first and the introduction second, and the sheet closes on the second.
+  Navigating early cancels the introduction in flight, which leaves the rider in `097`'s *joined,
+  owes an introduction* state — and the club detail then opens the MEMBER-mode sheet on arrival,
+  which is `aria-modal` over a scrim, so the `Club options` click fails its actionability check and
+  times out at 20s. **Measured exactly that way on the first run of the fix**, so the phase now waits
+  for the sheet to detach and also dismisses a member-mode sheet if one appears.
+- **`097`'s one-introduction-per-membership rule does NOT bound the residue.** The refusal keys on
+  `club_threads.introduces_user_id`, and the composite FK is `on delete set null` on that column — so
+  *leaving the club NULLs the marker* and the next run is not refused. **One introduction thread per
+  `WALK_EMAIL` run, accumulating**; on the minted path `author_id`'s cascade takes it with the
+  account. The phase posts a body that says it is automated rather than impersonating a rider.
+
+**PD-344 — the reported symptom and the actual defect are two different things, and only the second
+was real.** Measured in this container's Chromium against the dev server:
+
+- `navigator.share` is **`undefined`** here, so the arm the issue blamed cannot have run at all; the
+  clipboard arm runs and resolves.
+- The label **does** change: `"Link copied"` at 150ms, still there at ~1.05s, back to `"Share this
+  postcard"` at ~2.65s. So *"the label never changes"* is `ShareButton`'s own 2-second `setNotice`
+  reset being missed by an observer stepping through with tool calls — not the share path.
+
+**The defect its body describes is real and is fixed**, and it is reachable on every platform that
+has a share sheet, which is every platform a rider is on: `shareAppLink` returned `'shared'` from
+**both** arms of its `navigator.share` try/catch, and all five callers read `'shared'` as *the sheet
+was its own feedback, say nothing*. The fix branches on `AbortError` — which the Web Share API
+specifies for a cancelled share and nothing else — so a dismissal still stays silent and every other
+rejection falls through to the clipboard. **Where it is genuinely ambiguous it resolves as a
+dismissal**, which reproduces today's behaviour for that subset and can therefore only improve on
+the old unconditional `'shared'`, never regress it.
+
+**`src/lib/__tests__/share.test.ts` is new and had no predecessor** — the function had no test at
+all, which is how this survived. Verified both ways: reverting the branch fails exactly three of its
+seven cases.
+
+```bash
+NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://fpmrimzxadewsaiwpsel.supabase.co node scripts/supabase-relay.mjs &
+NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
+npm run walk                                     # 26/26 screens, 74/74 checks
+npx vitest run src/lib/__tests__/share.test.ts   # 7/7
+```
+
 ## Threads replace the ride chat — 2026-09-06
 
 **PD-402 — three migrations: `108_ride_threads.sql` (additive, applied to DEV),
