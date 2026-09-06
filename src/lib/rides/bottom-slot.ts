@@ -123,8 +123,22 @@ export function resolveRideDetailActions({
   /**
    * The stored answer. `null` is *unanswered* — and for a non-organizer it is
    * also *not crew*, which is the identity the `timelineAdd` proof above rests
-   * on. An organizer reads `going` whatever is stored (`withOrganizer`,
-   * PD-391), and `rsvpApplies` is false for them, so they get no chip.
+   * on.
+   *
+   * **`RideDetail.attendance` is the FOLDED field and passing it here is
+   * deliberate rather than an oversight.** `getRide` returns
+   * `ownRow?.status ?? (isOrganizer ? 'going' : null)`, so it reads `going` for
+   * an organizer holding no row — but `rsvpApplies` is false for every
+   * organizer, and both outputs that consume this input are behind it. The fold
+   * is therefore unreachable, and threading a second unfolded field down from
+   * the data layer would add a column to `RideDetail` that nothing could
+   * observe a difference from.
+   *
+   * **What that costs, stated so it is a decision rather than luck**: the
+   * safety is `rsvpApplies`', not this input's. If a later change ever lets the
+   * organizer answer — `103`'s `protect_ride_organizer_membership` is what
+   * stops it today — this must become the raw `ride_members.status` in the same
+   * commit, or the organizer gets a chip offering a bar the database refuses.
    */
   attendance: RideAttendance
   /**

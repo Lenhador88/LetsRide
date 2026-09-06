@@ -457,8 +457,18 @@ The owner's decision says *"the ride title line — the first line of the conten
 title line**: PD-393 deleted `<h2>{ride.title}</h2>` because `RideHeader` draws the title in the
 fixed header 40px above.
 
-**Default: the first line of the scrolling content** — a dedicated row above the club link and the
-date/location lines, so the chip is the first thing under the header and is never in fixed chrome.
+**Built: the first line of the scrolling content, SHARED with the club link** — one row, club on the
+left, chip on the right, so the chip is the first thing under the header and is never in fixed
+chrome.
+
+**A shared row rather than a dedicated one, which is a change from this question's first draft.**
+A dedicated row spends ~28px of vertical space plus the parent's `gap-4` on a single chip, on the
+one screen whose entire stated gain is reclaiming space — and the arithmetic in §The geometry
+already says this pattern costs *more* vertical room than the bar it replaces, so spending more
+again here would make that worse rather than better. The row is drawn only when it has something in
+it, and on a ride with no club — which is most of them — the chip sits alone against the right
+margin exactly as a dedicated row would have drawn it. `justify-between` with the chip last keeps it
+on the right margin whether or not a club name is beside it.
 
 **Not the fixed header**, and this is the part worth stating: that row is 40px tall, already carries
 back plus `RideThreadsButton` (x302) and `RideOptionsMenu`, and a 44px control added to it changes
