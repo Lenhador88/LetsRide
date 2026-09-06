@@ -190,26 +190,78 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
-## The queue jammed on a dead slot for five firings — 2026-09-06
+## The queue is jammed on a dead slot, and both queued stories are proposals now — 2026-09-06
 
 **`slot-1` has held PD-98 since 2026-09-05T17:25Z**, its session having applied `107` to DEV and
-never pushed a branch (the section below). Five consecutive firings — 23:42, 00:41, 01:46, 02:41
-and the one that wrote this — found it there. It is **already alarmed** (`<!-- stall-alarm slot:1 -->`,
-23:44Z), and `queue-run.md` STEP 6 forbids a firing from reaping it: an age-based reaper that
-returns a story a live session is still building is the one failure worse than a held slot.
+never pushed a branch (the section below). Seven consecutive firings — 23:42, 00:41, 01:46, 02:41,
+03:41 and the ones between — have found it there. It is **already alarmed**
+(`<!-- stall-alarm slot:1 -->`, 23:44Z), and `queue-run.md` STEP 6 forbids a firing from reaping it:
+an age-based reaper that returns a story a live session is still building is the one failure worse
+than a held slot.
 
 **Only the owner clears it** — move PD-98 back to `Queued (AI)` and strip `slot-1`.
 
-**What it is costing is not abstract.** The two highest-value queued stories both need
-`supabase/tests/rls_test.sql` and the next migration number, which is exactly what that territory
-claims, so both hit two of STEP 4's three caps and neither can be taken:
+**What it is costing is now precise: both queued stories have had their proposal written and
+neither can have its code.** Each needs `supabase/tests/rls_test.sql`, the next migration number and
+`docs/reference/schema.md` — exactly what that territory claims — so each hits two of STEP 4's three
+caps. The proposals were the halves that collided with nothing:
 
 - **PD-402** (High) — ride threads. Proposal merged (#400); the build waits.
-- **PD-361** — the removed rider who walks back in through a live invite link. Owner decision
-  already recorded (the narrow reading); nothing else blocks it.
+- **PD-361** — the removed rider who walks back in through a live invite link. Proposal merged
+  (#403, the section below); the build waits.
+
+**So the jam no longer costs a proposal — it costs only migrations, and it costs both of them.**
+That is the shape to expect from the next few firings too: there is nothing else on the board they
+can do, and a firing that finds both stories already proposed will end `idle`.
 
 ```bash
 git ls-remote --heads origin | grep -iE "pd-98|outliv|preserve-postcard"   # nothing, still
+```
+
+## The removal bar is proposed, not built — 2026-09-06
+
+**PD-361, [PR #403](https://github.com/Lenhador88/LetsRide/pull/403) — the proposal only, and the
+story stays open.** `openspec/changes/refuse-a-removed-rider-a-live-invite-link/` specifies a
+`public.club_removals` row keyed on `(club_id, user_id)`, an eighth conjunct in
+`private.club_invite_link_reachable_by`, and a trigger that clears the row on readmission. **No
+code, and no migration number** — the build was deferred by the concurrency cap, not by any
+judgement about the story.
+
+**The defect, verified first-hand rather than from the issue:** `088`'s `remove_club_member` deletes
+one `club_members` row and its own comment says *"removal is not a ban"*. `093` shipped afterwards,
+and its reachability helper carries seven conjuncts of which none is about removal — so a removed
+rider passes `not is_club_member_for` **because** they were removed, and a pre-minted link readmits
+them silently.
+
+**Four things a build must not re-derive:**
+
+- **The predicate has exactly one legal home**, and that is what makes the owner's narrow reading
+  expressible at all. `093.22` forbids a caller predicate in the public bodies, `093.18` requires the
+  preview and the claim to answer identically in every dead state, and
+  `private.join_club_from_invite` is shared with the in-app accept — so a predicate there would close
+  PD-360's door too, which is the wide reading the owner declined. The reachability helper is the
+  only site that closes one door and not the other.
+- **The clearing trigger is the change's one real hazard.** `after insert on public.club_members`
+  with no `WHEN` clause runs inside **every club join in the app**, beside `notify_club_joined`, and
+  a raise there takes a rider's join down with it. It exists because without a clearing path the bar
+  silently becomes the permanent ban the owner explicitly rejected — invisibly, since no role can
+  read the row. It fires the hand-exercise gate, and `tasks.md` group 4 is that gate.
+- **`removed_by` is deliberately absent, and that is a spec requirement rather than a saving.**
+  `manage-club-riders` requires that *"nothing anywhere SHALL record who removed whom"*. That same
+  spec's *"no tombstone row SHALL be created"* is now false, handled by an explicit REMOVED+ADDED
+  delta pair — do not read the contradiction as an oversight.
+- **A voluntary leaver is not barred**, and the distinction is made by writing the row **inside
+  `remove_club_member`**, never by a DELETE trigger on `club_members` — which would also fire on
+  cascades and on anyone leaving.
+
+**One question is the owner's and is non-blocking:** a rider removed while holding a **pending
+in-app invite** can still accept it — the same defect one table over, on `club_invites` rather than
+`club_invite_links`. Left open because the owner's decision names the link path alone. `088` already
+clears the other pre-minted grant on removal, so the counterpart is one line in the same migration.
+It lives on PD-361, not as a second row.
+
+```bash
+npx openspec validate refuse-a-removed-rider-a-live-invite-link --strict
 ```
 
 ## The floating action is proposed, not built — 2026-09-06
