@@ -1,4 +1,4 @@
-# Tasks — the create affordance becomes a floating action (ride detail)
+# Tasks — the create affordance becomes a floating action (both details)
 
 **Read `design.md` before touching any of this.** Six of its findings change what the obvious
 implementation would be:
@@ -20,9 +20,14 @@ implementation would be:
    there. It applies to the **chip** as much as to the control.
 
 **There is no owner gate on this work.** PD-404's composition question was answered on 2026-09-06 and
-the route is a **recorded departure**. **Q1 — the club detail — is still open and is NOT in scope:
-do not touch `src/components/clubs/ClubCreateBar.tsx` or anything under `src/app/(app)/clubs/`.**
-Q3–Q8 have stated defaults; build against them and record the assumption rather than waiting.
+the route is a **recorded departure**. **Q1 — the club detail — was answered the same day and IS now
+in scope**: group 8 below is that half, and it is the last group because it depends on group 9's
+offset fix rather than on anything in groups 1–7. Q3–Q8 have stated defaults; build against them and
+record the assumption rather than waiting.
+
+**Groups 0–7 are the RIDE half and shipped on 2026-09-06** (`d4fd70b`, PR #417); their boxes are
+left as they were ticked. **Groups 8 and 9 are what remains**, and group 9 comes first in the
+branch even though it is numbered last — see its own note.
 
 ## 0. Before any component
 
@@ -44,8 +49,9 @@ Q3–Q8 have stated defaults; build against them and record the assumption rathe
       `--navbar-action` and `--ride-rsvp-bar`, each with the same `/* 16 + 40 + 8 */`-style
       arithmetic comment, so every number is auditable rather than typed.
 - [x] 1.2 Add a **new** clearance class for the floating pattern. Do **not** reuse or rename
-      `.pb-navbar-action-extra` — it stays correct for the four `STICKY_ACTIONS` screens *and* for
-      the club detail, which this change does not touch (D7).
+      `.pb-navbar-action-extra` — it stays correct for the four `STICKY_ACTIONS` screens (D7). **It
+      is no longer correct for the club detail**, which group 8 converts; that screen swaps to the
+      new class rather than the class changing meaning under the screens that still want a bar.
 - [x] 1.3 **Leave `--ride-rsvp-bar` and `.pb-rsvp-bar-extra` exactly as they are.** The RSVP bar still
       reserves its 96px whenever it is drawn, including when the chip has reopened it. The offset an
       earlier revision designed — lifting the control by that token — is **deleted**: the two
@@ -198,11 +204,81 @@ Q3–Q8 have stated defaults; build against them and record the assumption rathe
 
 ## 7. Record
 
-- [ ] 7.1 Comment on PD-404 with what landed, the defaults taken for Q3–Q8, **the corrected value
+- [x] 7.1 Comment on PD-404 with what landed, the defaults taken for Q3–Q8, **the corrected value
       sentence** (horizontal space, not vertical), and the `timelineAdd` finding with its evidence.
-- [ ] 7.2 **Leave PD-404 open.** The title names both screens and **Q1, the club detail, is
-      unanswered**. Per `docs/reference/linear.md` §Sequencing, partly delivered means it stays open:
-      the club half is not a new row and not a comment on a closed one.
+- [x] 7.2 **Leave PD-404 open** after the ride half. The title names both screens and Q1 was
+      unanswered at that point. Per `docs/reference/linear.md` §Sequencing, partly delivered means it
+      stays open: the club half is not a new row and not a comment on a closed one. **Q1 has since
+      been answered and group 8 is that half — PD-404 closes when it merges.**
 - [ ] 7.3 `reviewer` on the final diff, before the PR. It did not write this and that is the point.
 - [ ] 7.4 PR to **`development`**, merged in the same session; the story reaches `Deployed to DEV`
       when it is running there.
+
+## 8. The club half — `ClubCreateBar` → the same floating action (Q1)
+
+**Only the trigger moves.** The sheet, its three rows, their order, their icons, the
+`Create in this club` label and the club-scoped route each carries are all unchanged, so
+`backFromCreateScreen` and `CREATE_CLUB_PARAM` keep working untouched. Do **not** reopen PD-312,
+PD-318 or PD-342 — this replaces the bar, not those decisions.
+
+- [ ] 8.1 Write the departure into `docs/FIGMA-FIDELITY-TODO.md` under a new **§Club detail**
+      heading **before** writing the component, and put the **26** in it. This is the largest
+      departure the change makes and it is a different *class* from the ride's three: `2043:10604`
+      instances `v2 / Component / Navigation / Bar` at 390×152 with `Button Container 358×56` as a
+      child of that instance, and 27 frames instance the component at 152 — so this **deletes a
+      drawn child of a variant 26 other frames share**, where the ride's departures were confined to
+      one frame. A note on this screen alone is invisible to the other 26, which is why the count
+      goes in the log rather than only in `design.md`.
+- [ ] 8.2 Rename `ClubCreateBar` to the shape it now is. The file's whole docstring is an argument
+      about a *bar* — the `STICKY_ACTIONS` approximation, the 358×40 primary, the absent `border-t`
+      "so the two read as one bar" — and every sentence of it is about to become false. Rewrite it
+      rather than editing around it; a docstring describing a bar on a circle is the comment trap
+      being created deliberately.
+- [ ] 8.3 Keep the member gate **byte-for-byte**: the control is drawn on the club detail's existing
+      `isMember` (`!!club.data.viewer_role`), the same expression that drew the bar. No `role` read,
+      no owner branch, and specifically **not** `private.is_club_member_for` — the spec's own
+      scenario forbids substituting it, because the affordance must reflect the membership row the
+      screen already reads.
+- [ ] 8.4 The label is the **category**, not an act: arity is 3, so the arity rule gives
+      `Create in this club` rather than a name for any one row. It is icon-only, so this is the whole
+      of what a screen reader gets — a bare `Create` would say nothing about *where*.
+- [ ] 8.5 **Move the page's reserved clearance with the bar.** `src/app/(app)/clubs/detail/page.tsx`
+      applies `isMember && 'pb-navbar-action-extra'`; that 64px is the bar's geometry
+      (16 + 40 button + 8) and is the wrong number for a 56px floating control. Leaving it behind
+      gives the club timeline a **64px dead strip**, which is PD-407's defect arriving on a second
+      screen. It becomes `.pb-floating-action-extra`, and it stays gated on `isMember` so no
+      clearance is reserved for a control that is not drawn — the spec requires exactly that.
+- [ ] 8.6 Confirm the club timeline's last entry is not permanently underneath the control, the
+      negative case PD-404's issue names by hand. This is why the club opts into clearance at all;
+      the floating action reserves none by default.
+- [ ] 8.7 Sheet behaviour from the new trigger: Escape closes, the scrim closes, Tab stays inside,
+      focus returns to the control, the page behind does not scroll. `ContextMenu` already owns all
+      six and none of them is being rewritten — this is confirming the trigger swap did not drop the
+      wiring.
+- [ ] 8.8 Record the hit-area loss rather than discovering it, as the spec requires: a 358×40 bar
+      target becomes a 56×56 circle. It clears the 44×44 floor and is still roughly a **6×**
+      reduction, which "clears the floor" does not describe.
+- [ ] 8.9 Confirm nothing else on the club detail changes — the rides strip, the member rail,
+      `ClubTimeline`, `ClubOptionsMenu` and the non-member branch are untouched.
+
+## 9. The shared primitive's offset — PD-423, and it is built FIRST
+
+**Numbered last, built first.** It is a separate issue with its own commit, and group 8 depends on
+it: converting the club onto a known-wrong offset ships the reported defect onto a second screen and
+then fixes it twice.
+
+- [x] 9.1 `FloatingAction` inherited `.bottom-navbar`, which is correct for a full-width bar and
+      wrong for a circle. Measured in Chromium at 390×844 against the real compiled stylesheet: nav
+      top y775, control bottom y776 — a **−1px** gap — with `--shadow-floating`'s two offsets both
+      downward, so the shadow fell entirely on the tab bar.
+- [x] 9.2 The tab row measures **56px exactly**, matching `--navbar-tabs`, which rules out the
+      other candidate cause the issue offered (a nav rendering taller than the variable). What the
+      variable misses is the nav's own `border-t` — the same exclusion `--header-height` makes for
+      the header's `border-b` and `scroll-padding-top` adds back as `+ 1px`.
+- [x] 9.3 `.bottom-floating-action` = `.bottom-navbar` + that 1px + a 16px gap, the same number as
+      the control's `right-4` so it is inset equally from both chrome edges. Re-measured: **+16px**.
+- [x] 9.4 `--shadow-floating`, `z-40`, the absent `border-t` and the 56px size are all unchanged.
+      Raising the z-index would have hidden the overlap rather than fixed it, and the tabs must stay
+      reachable.
+- [x] 9.5 `--floating-action-clearance` is derived from the offset rather than restated, 80px → 81px,
+      so a page's reserved space cannot drift from where the control sits.

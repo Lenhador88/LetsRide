@@ -7,10 +7,15 @@
 > `ride-chat`) and none of them owns this behaviour — so this delta **ADDS** a capability and
 > **MODIFIES nothing**.
 >
-> **The requirements are written about a create affordance, not about a floating one.** The change
-> that carries them converts the **ride detail** only; the club detail's own bar is unchanged and
-> **Q1 is still unanswered**. The club scenarios below therefore describe what already ships and must
-> keep holding, and they are what the later conversion inherits rather than re-decides.
+> **The requirements are written about a create affordance, not about a floating one**, and that is
+> what let the change widen without them moving. The change now converts **both** detail screens —
+> the ride shipped 2026-09-06 (`d4fd70b`) and Q1 answered the club the same day — and **not one
+> requirement below needed rewriting for it**: the club scenarios were already written as behaviour
+> the conversion must preserve, so they became its acceptance criteria unchanged rather than
+> describing a screen left alone. A requirement that had named the *bar* would have had to be
+> rewritten here; that is the argument for writing them this way, recorded because it paid off.
+>
+> The four `STICKY_ACTIONS` **list** screens keep their full-width primary and are out of scope.
 >
 > **Every requirement below is about the affordance, never about enforcement.** Each gate named here
 > is already enforced in Postgres and is unchanged by this change; the requirements say the control

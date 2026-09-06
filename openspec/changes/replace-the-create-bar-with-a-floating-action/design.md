@@ -16,16 +16,26 @@ composition is the answer, and D3 below is what it does to the code.
 
 ## D1 — The ride detail's departure is larger than it was scoped as, and the club's is a different class
 
-The frame problem is two decisions with different costs. Only one of them is answered.
+The frame problem is two decisions with different costs. **Both are now answered — the ride on
+2026-09-06 and the club the same day (Q1) — and they are still different in KIND, which is why this
+table stays.** Answering them the same way does not make them the same departure, and the row that
+matters is the last one.
 
-| | Ride detail — **in scope** | Club detail — **Q1, open** |
+| | Ride detail — **shipped `d4fd70b`** | Club detail — **Q1 answered, in scope** |
 |---|---|---|
 | Frame | `Ride - Ride plan (Details)` `2375:8771` | `Private club - Timeline` `2043:10604` |
 | Navigation bar drawn | `v2 / Component / Navigation / Bar` **390×88** | the same component, **390×152** |
 | Create control drawn | **none** | `Button Container 358×56`, **inside** the bar instance |
 | Other bottom chrome | `Content / Ride Details / Join Ride Selector 390×96`, stacked, **unconditional** | none |
-| What this change does | adds two undrawn controls **and makes a drawn one conditional** | nothing |
+| What this change does | adds two undrawn controls **and makes a drawn one conditional** | **deletes a drawn child of a shared variant** |
 | Class | **two additions + one contradiction of a drawn element** | **contradiction of a shared component** |
+| Blast radius | this screen's frame | the variant **26 other frames** instance |
+
+**The club's is the largest departure this change makes, and it is the last row that says so.** The
+ride's contradictions are confined to one frame; the club's deletes an element from a component
+twenty-six other frames draw, so a note recorded on the club's screen is invisible to all of them.
+That is why the count is logged in `docs/FIGMA-FIDELITY-TODO.md` §Club detail rather than only here:
+the person who updates the Figma has to read the radius before they start, not discover it.
 
 **The zero-frame-cost line this file used to carry is withdrawn.** It held while the change only
 *added* to `2375:8771`. The decided composition hides the Join Ride Selector once a rider has
@@ -301,8 +311,9 @@ from — including `/rides/explore`, which reserves that clearance for an action
 all** (PD-407 is filed; untouched here).
 
 **Out of scope, and the resulting inconsistency is named rather than hidden** (Q5): after this
-change `/rides` has a full-width bar, the ride detail one tap away has a floating action, and the
-club detail keeps its bar until Q1 is answered.
+change the four `STICKY_ACTIONS` **list** screens keep the full-width bar and both **detail** screens
+float. So the shape changes once, on the list → detail step, and no longer changes again between one
+detail and another — which is the half Q1's answer removed.
 
 ---
 
@@ -361,7 +372,13 @@ Named so they are decisions rather than omissions:
   database story and not this one.
 - **No chip on a past ride**, even though the answer is a fact about it. The chip is a control, and
   a control that opens a bar nobody may use is worse than the crew rail already saying who rode.
-- **No club detail.** Q1 is open; `ClubCreateBar` is not touched.
+- **No change to the club's create SHEET.** Q1 is answered and `ClubCreateBar`'s trigger becomes the
+  floating action, but its three-row `ContextMenu` — the rows, their order, their icons, the
+  `Create in this club` label and the club-scoped route each carries — is unchanged. Only the trigger
+  moves, so `backFromCreateScreen` and `CREATE_CLUB_PARAM` are untouched.
+- **No new club gate.** The floating action is drawn on the club detail's existing `isMember`
+  (`!!club.data.viewer_role`) — the same expression that drew the bar. No `role` read, no owner
+  branch, no `private.is_club_member_for`, which the spec's own scenario forbids substituting.
 - **No scroll-responsive behaviour.** No hide-on-scroll-down, no shrink-on-scroll. Nothing in the app
   does this and no frame draws it.
 - **One elevation value, defined here and named as invented.** The design system has none
