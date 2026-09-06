@@ -240,10 +240,29 @@ body {
   --navbar-tabs: 3.5rem;
   --navbar-action: 4rem; /* 16 pad + 40 button + 8 */
   --ride-rsvp-bar: 6rem; /* 16 pad + 20 prompt + 12 gap + 40 group + 8 */
+  /* The gap between the floating action and the navigation bar's top edge —
+     16px, the same number as `FloatingAction`'s own `right-4`, so the control
+     is inset equally from the two chrome edges it sits against.
+
+     **PD-423: there was no gap at all, and the reason is worth keeping.** The
+     control inherited `.bottom-navbar`, which puts an element's bottom edge on
+     the nav's top edge. That is *correct* for a full-width bar — a bar is meant
+     to read as continuous with the chrome — and wrong for a circle, whose whole
+     idiom is being detached. One class cannot serve both, hence
+     `.bottom-floating-action` below. */
+  --floating-action-gap: 1rem;
   /* `FloatingAction`'s reserved-space number, opted into (never applied by
      default) via `.pb-floating-action-extra` below — see that class and
-     `FloatingAction.tsx` for why the default is to reserve nothing. */
-  --floating-action-clearance: 5rem; /* 16 pad + 56 control + 8 */
+     `FloatingAction.tsx` for why the default is to reserve nothing.
+
+     Derived from the offset rather than restated, so the two cannot drift: the
+     control's own box now starts `1px + gap` above `.pb-navbar`'s edge. The
+     `3.5rem` is the CONTROL's height (`h-14`) and is **not** `--navbar-tabs`
+     despite being the same number — do not de-duplicate them, they are a
+     control and a tab row and nothing keeps them equal. */
+  --floating-action-clearance: calc(
+    1px + var(--floating-action-gap) + 3.5rem + 0.5rem
+  ); /* 1 navbar border + 16 gap + 56 control + 8 = 81px, from 80 */
   --safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
   /* `Header`'s own content height (`Header.tsx`'s `pt-safe` + `h-10` row + its
      8px bottom padding) — the same expression `.pt-header` uses below, lifted
@@ -323,6 +342,36 @@ html {
    page tops up its own padding by the same 96. */
 .bottom-navbar {
   bottom: calc(var(--safe-bottom) + var(--navbar-tabs));
+}
+
+/* `FloatingAction`'s offset, and it is deliberately NOT `.bottom-navbar`. Two
+   terms separate them, and only the second is a design choice:
+
+   - **`+ 1px`, the navigation bar's own `border-t`.** `--navbar-tabs` is the
+     tab ROW and excludes the hairline above it — the same exclusion
+     `--header-height` makes for the header's `border-b`, which the
+     `scroll-padding-top` rule below adds back as its own `+ 1px`. So
+     `.bottom-navbar` lands an element's bottom edge 1px *inside* the nav. On a
+     bar that is invisible: it shares the nav's background and draws no border
+     of its own there. On a circle the lower arc is clipped, because `z-40`
+     paints under the nav's `z-50` — which is correct and must stay (the tabs
+     have to remain reachable), so the offset is what moves.
+   - **the gap.** See `--floating-action-gap` above.
+
+   **Measured, not reasoned** — Chromium at 390×844, the real compiled stylesheet
+   and both components' real class strings: nav top y775, control bottom y776,
+   gap **−1px**, tab row 56px exactly. The tab row matching `--navbar-tabs` is
+   what rules out the other candidate cause PD-423 offered (a nav rendering
+   taller than the variable); the missing hairline is the whole of the overlap.
+
+   `--shadow-floating` is untouched and needed no change. Its two offsets are
+   both downward (`0 2px 6px`, `0 1px 2px`), so with no gap it fell entirely on
+   the tab bar — the "shadow bleeds onto it" half of the report. Give the control
+   somewhere to cast and the same shadow lands on content. */
+.bottom-floating-action {
+  bottom: calc(
+    var(--safe-bottom) + var(--navbar-tabs) + 1px + var(--floating-action-gap)
+  );
 }
 .pb-rsvp-bar-extra {
   padding-bottom: var(--ride-rsvp-bar);
