@@ -17,13 +17,18 @@ import { cn } from '@/lib/utils'
  * "simplify" this into mounting empty and filling it from an effect, which
  * would break the first:
  *
- * - **A cold load or a client-side navigation in** mounts the screen with no
- *   data, so `label` is already set and the region enters the DOM **with its
- *   text**. That insertion is the announcement — there is no earlier empty
- *   state to change from — and it is the path PD-220 was filed about.
- * - **A wait that begins later** — a filter tap, or a retry after the filters
- *   read failed — changes the text of a region that is already mounted, from
- *   empty to the label. That is the ordinary live-region update.
+ * - **A cold load, or a navigation in with nothing cached**, mounts the screen
+ *   with no data, so `label` is already set and the region enters the DOM
+ *   **with its text**. That insertion is the announcement — there is no earlier
+ *   empty state to change from — and it is the path PD-220 was filed about.
+ *   (A navigation onto a warm cache mounts *with* data and a `null` label, so
+ *   nothing announces, which is right: there is no wait.)
+ * - **A wait that begins later** changes the text of an already-mounted region
+ *   from empty to the label — the ordinary live-region update. Three paths
+ *   reach it: a filter tap, a retry after the *filters* read failed, and a
+ *   retry after the *list* read failed. The last is easy to miss and is a
+ *   consequence of `queryClient`'s `refetch` clearing `error` before the
+ *   outcome is known, which flips `label` from null the moment the rider taps.
  *
  * **The fixed index is the whole mechanism and it is easy to lose.** React
  * matches the children of a fragment by position, so this has to be the same

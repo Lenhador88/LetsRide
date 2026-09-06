@@ -167,14 +167,18 @@ describe('each list screen silences every skeleton and carries one LoadingRegion
       expect(drawn.length).toBeGreaterThan(0)
       for (const site of drawn) expect(site).toContain('announce={false}')
 
-      // No live region written into the screen itself either — the region is
-      // `LoadingRegion` and nothing else. Matched loosely enough to catch
-      // `role={'status'}`, which a plain string search reads as absent.
-      expect(source).not.toMatch(/role=\s*\{?\s*['"]status/)
+      // No hand-rolled live region in the screen either — the region is
+      // `LoadingRegion` and nothing else. **The property is "no second live
+      // region", not "no `role="status"` string"**, so both spellings are
+      // checked: `aria-live` alone IS a live region and needs no `role` at
+      // all, which is what someone hand-rolling one writes first.
+      expect(source).not.toMatch(/aria-live/)
+      expect(source).not.toMatch(/role=[^>\n]*status/)
     })
 
-    it(`${path} opens EVERY branch with LoadingRegion`, () => {
-      const body = screenBody(stripComments(readFileSync(path, 'utf8')), screen)
+    it(`${path} opens EVERY branch with LoadingRegion, and carries no others`, () => {
+      const source = stripComments(readFileSync(path, 'utf8'))
+      const body = screenBody(source, screen)
 
       // **Every `return` the screen can take, found rather than counted.** The
       // count is deliberately derived here: an earlier version asserted a
@@ -188,12 +192,25 @@ describe('each list screen silences every skeleton and carries one LoadingRegion
       // every branch returns a fragment whose FIRST child is the region. A
       // single-line `return <X />` cannot satisfy that and fails here, which is
       // the intent rather than a limitation.
+      // The floor is load-bearing twice over: it also fails if `screenBody`'s
+      // `\n}\n` slice ever cuts short, since a truncated body loses returns.
       const returns = [...body.matchAll(/\breturn\s*([\s\S]{0,60})/g)]
       expect(returns.length, 'expected the screen to have branches').toBeGreaterThanOrEqual(3)
 
       for (const [, tail] of returns) {
         expect(tail.replace(/\s+/g, ' ').trimStart()).toMatch(/^\(\s*<>\s*<LoadingRegion\b/)
       }
+
+      // **One region per branch and not one more, counted over the whole FILE
+      // rather than the screen slice.** The branch assertion above cannot see
+      // a region outside the screen function, and the dangerous place to put
+      // one is `RidesLoading`/`PostcardsLoading` — which is exactly the shape
+      // PD-220's body proposes, and which is rendered at BOTH cold-load
+      // positions, so a region there is inserted twice and announces twice.
+      // That is the original defect restored, and without this count the whole
+      // suite stays green through it.
+      const regions = source.match(/<LoadingRegion\b/g) ?? []
+      expect(regions).toHaveLength(returns.length)
     })
   }
 })
