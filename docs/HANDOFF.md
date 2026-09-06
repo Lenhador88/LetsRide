@@ -190,6 +190,90 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The walk is green again, and both its baselines are measured — 2026-09-06
+
+**PD-410 + PD-390 + PD-344, one branch, taken into `slot-1`.** Grouped because the first two are the
+same file and the same measurement, and the third needed the identical relay + dev-server +
+Chromium setup to separate its two candidate explanations.
+
+**The walk's own printed totals, both runs green, exit 0** — this is what
+[`docs/reference/running-locally.md`](reference/running-locally.md) §The walk now records, replacing
+the dispute PD-390 was filed over:
+
+| Account | Screens | Checks |
+|---|---|---|
+| Minted (no `WALK_EMAIL`) — CI's path | **26** | **74** |
+| Named (`walk-fixture@letsride.dev`) | **26** | **77** |
+
+**Neither number in the old argument was right**, which is why no amount of reading could settle it.
+The named account measures 3 higher for one reason: `checkEditRetention` runs against a ride the
+rider owns, and a freshly minted rider owns none.
+
+**PD-410 — the walk's join phase was asserting against the flow PD-392 replaced.** `checkJoinClub`
+wrapped the Join tap in `waitForTableWrite('club_members', …)` and then dismissed the sheet with
+`Not now`; since PD-392 the tap writes nothing on that path and `Post` is the join. Three things a
+later session should not re-derive:
+
+- **The watcher is armed BEFORE the tap and that is the fix, not a style choice.** The tap writes on
+  one of two paths — the sheet opens (`Post` joins), or `joinClub` runs on the tap itself for the
+  default club and for a stale row where an introduction already exists. Which one happened is only
+  knowable afterwards, and on the sheet path the write is a second click away. A watcher armed after
+  the fact misses the direct join outright. `watchForTableWrite` is that half, split out of
+  `waitForTableWrite`, which now returns the boolean rather than only warning.
+- **Do not navigate on the membership write alone.** `Post` is two writes with no transaction across
+  them; the membership lands first and the introduction second, and the sheet closes on the second.
+  Navigating early cancels the introduction in flight, which leaves the rider in `097`'s *joined,
+  owes an introduction* state — and the club detail then opens the MEMBER-mode sheet on arrival,
+  which is `aria-modal` over a scrim, so the `Club options` click fails its actionability check and
+  times out at 20s. **Measured exactly that way on the first run of the fix**, so the phase now waits
+  for the sheet to detach and also dismisses a member-mode sheet if one appears.
+- **`097`'s one-introduction-per-membership rule does NOT bound the residue.** The refusal keys on
+  `club_threads.introduces_user_id`, and the composite FK is `on delete set null` on that column — so
+  *leaving the club NULLs the marker* and the next run is not refused. **One introduction thread per
+  `WALK_EMAIL` run, accumulating**; on the minted path `author_id`'s cascade takes it with the
+  account. The phase posts a body that says it is automated rather than impersonating a rider.
+  Cleaning it up is **PD-411**, and the ordering there is the trap: `club_threads` SELECT is
+  membership-gated, so a delete has to run *before* the leave or the author can no longer see the
+  thread they wrote.
+- **The membership watcher carries its own 45s budget and must keep one.** It is armed before the
+  tap, so at the default 20s the sheet wait in front of it can spend half the budget before `Post`
+  is clicked — and a slow-but-successful join then reports a hard FAIL, which since this change
+  reddens the run rather than printing a `!`. A gate that goes red on latency is the defect PD-410
+  exists to remove, arriving from the far side.
+- **The failure path leaves the club anyway, and that is not tidiness.** A missed write is not proof
+  of a missed join, and on the `WALK_EMAIL` path nothing else ever collects the membership — that
+  account is never deleted. It compounds rather than repeating: `discoverJoinableClub` picks a club
+  the rider is *not* in, so each false failure would permanently shrink the pool by one club.
+
+**PD-344 — the reported symptom and the actual defect are two different things, and only the second
+was real.** Measured in this container's Chromium against the dev server:
+
+- `navigator.share` is **`undefined`** here, so the arm the issue blamed cannot have run at all; the
+  clipboard arm runs and resolves.
+- The label **does** change: `"Link copied"` at 150ms, still there at ~1.05s, back to `"Share this
+  postcard"` at ~2.65s. So *"the label never changes"* is `ShareButton`'s own 2-second `setNotice`
+  reset being missed by an observer stepping through with tool calls — not the share path.
+
+**The defect its body describes is real and is fixed**, and it is reachable on every platform that
+has a share sheet, which is every platform a rider is on: `shareAppLink` returned `'shared'` from
+**both** arms of its `navigator.share` try/catch, and all five callers read `'shared'` as *the sheet
+was its own feedback, say nothing*. The fix branches on `AbortError` — which the Web Share API
+specifies for a cancelled share and nothing else — so a dismissal still stays silent and every other
+rejection falls through to the clipboard. **Where it is genuinely ambiguous it resolves as a
+dismissal**, which reproduces today's behaviour for that subset and can therefore only improve on
+the old unconditional `'shared'`, never regress it.
+
+**`src/lib/__tests__/share.test.ts` is new and had no predecessor** — the function had no test at
+all, which is how this survived. Verified both ways: reverting the branch fails exactly three of its
+seven cases.
+
+```bash
+NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://fpmrimzxadewsaiwpsel.supabase.co node scripts/supabase-relay.mjs &
+NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
+npm run walk                                     # 26/26 screens, 74/74 checks
+npx vitest run src/lib/__tests__/share.test.ts   # 7/7
+```
+
 ## Threads replace the ride chat — 2026-09-06
 
 **PD-402 — three migrations: `108_ride_threads.sql` (additive, applied to DEV),
@@ -847,13 +931,10 @@ bare route list, and the phase opens each with a 32-hex token that parses and ma
 - **The route-list entries carry no token deliberately.** `adoptInviteTokenFromLocation` strips the
   query with `history.replaceState`, so a token there makes `finalPath` come back without it and
   the loop reports a redirect that did not happen.
-- **The phase adds `+20` checks (10 per landing route × 2) and `+2` screens — and those DELTAS are
-  the only figures to quote.** #390 landed four social-write phases the same day and its commit
-  uses `47` as the *named* base where this file records `44`; nothing in a container can settle
-  that, so the absolute total is in dispute and adding to either number propagates the wrong one.
-  `docs/reference/running-locally.md` §The walk carries the disagreement and the re-derivation
-  command; **do not copy a bare total out of it into here.** Nobody has run the phase: Chromium here cannot reach Supabase without the relay and CI's `walk` job is
-  skipped until `WALK_CI=1`.
+- **The phase adds `+20` checks (10 per landing route × 2) and `+2` screens.** The base those
+  deltas were once added to is no longer in dispute: both were measured on 2026-09-06 (PD-390) and
+  live in `docs/reference/running-locally.md` §The walk — **quote that, and do not add a delta to
+  a remembered number.** **The phase HAS now been run**, both accounts, all 20 assertions green.
 
 **PD-387 — `.claude/commands/queue-pickup.md` §The cost record.** One labelled block in one Linear
 comment, one line in the PR body. Three things a later session should not re-derive:
@@ -1313,21 +1394,14 @@ anchor, no migration), `PD-367` (club-thread notifications, `098` plus `100`) an
 fan-out widened, `099`). Both projects are at `100`; `main` and `development` are both at the
 promotion merge with identical trees.
 
-**IT HAS NOW BEEN RENDERED — the walk ran against DEV on 2026-09-01 and is green.** 23/23 screens
-and 47/47 guard, navigation and sign-out checks, run twice: once as the club's OWNER and once as an
-ordinary MEMBER, which are different code paths on the club detail because the introduction prompt
-exempts an owner. **The two figures are from different accounts and no single run produces both**:
-23/23 screens is the named account, whose check total is 44; 47/47 checks is the minted rider,
-which walks 22. `docs/reference/running-locally.md` carries the split.
+**IT HAS NOW BEEN RENDERED — the walk ran against DEV on 2026-09-01 and is green**, run twice: once
+as the club's OWNER and once as an ordinary MEMBER, which are different code paths on the club
+detail because the introduction prompt exempts an owner.
 
-**23 needs a `WALK_EMAIL`; a MINTED rider walks 22, and that is a pass rather than a shrink.**
-Re-measured 2026-09-02, both ways in one sitting. `/clubs/detail/thread` is discovered by scraping
-a link off the Threads list, and the walk's own fixtures create a ride and a club but **no thread**
-— so a freshly-minted rider's club has nothing to open and the walk says so in words
-(`(no threads in that club — /clubs/detail/thread unwalked)`). The guard-check total moves with it
-for the same reason: 47 as a minted rider, **44** as a named one, because minting adds three
-checks of its own. So compare a walk against the account it ran as, and read the parenthesised
-lines — the walk names every route it skipped.
+**That run's totals are superseded and are deliberately not repeated here** — see §The walk is green
+again, and both its baselines are measured (2026-09-06), which measured both accounts and is the
+only baseline to quote. Five routes have been added since. Compare a walk against the account it ran
+as, and read the parenthesised lines — the walk names every route it skipped.
 
 **Two durable DEV fixtures were created for it, and they are the reason the next walk needs no
 setup:**
