@@ -41,11 +41,16 @@ The affordance is never the enforcement. A rider who defeats the control SHALL g
 - **AND** a rider whose row is `admin` SHALL be offered exactly what a `member` is offered, because
   `private.is_club_member` ignores `role` and gating on it would invent a hierarchy no policy has
 
-#### Scenario: A club owner is admitted as a member, not as an owner
-- **WHEN** a club's owner opens its detail
-- **THEN** the control SHALL be drawn because they hold a membership row, not because they are the
-  owner
+#### Scenario: A club owner is admitted on their membership row, which ownership does not guarantee
+- **WHEN** a club's owner opens its detail and holds a `club_members` row
+- **THEN** the control SHALL be drawn because of that row, not because they are the owner
 - **AND** no separate owner branch SHALL exist in the control
+- **AND** where the owner holds **no** membership row — reachable on any project without `103`'s
+  seeding trigger — the control SHALL NOT be drawn, even though `private.is_club_member_for` admits
+  them through `054`'s owner arm and the INSERT policy would accept the write
+- **AND** the control SHALL NOT be "fixed" by gating on `private.is_club_member_for` instead: the
+  affordance SHALL reflect the membership row the screen already reads, so it fails by withholding
+  rather than by offering a control whose basis it has not established
 
 #### Scenario: A non-member of a public club is offered nothing
 - **WHEN** a rider with no `club_members` row opens a public club's detail

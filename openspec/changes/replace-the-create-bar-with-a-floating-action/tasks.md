@@ -4,7 +4,9 @@
 implementation would be:
 
 1. **D2** — a floating action that reserves its clearance costs **more** vertical space than the bar
-   it replaces (72px against 64px). The gain is horizontal. Do not write the change record's value
+   it replaces: derived with the tokens' own `16 pad + control + 8` rule, 56px reserves **80px** and
+   48px reserves **72px**, both against the bar's **64px**. **Nothing breaks even**, so do not go
+   looking for a size that does. The gain is horizontal. Do not write the change record's value
    sentence from the issue body.
 2. **D3** — `resolveRideDetailActions` does **not** retire. It is reshaped, because the two controls
    still contend for the same pixels even though they no longer contend for the same slot. Deleting
@@ -95,8 +97,10 @@ the assumption rather than waiting.
       navigating directly**, keeping the *Add a photo* label visible (D6). No sheet until PD-402.
 - [ ] 4.2 Reshape `src/lib/rides/bottom-slot.ts`. Same inputs `(canRsvp, canCreate)`; the return
       becomes `{ rsvpBar, floatingAction, clearance }`. Carry the docstring's argument forward and
-      **add** D3's finding: the contest is now an offset rather than a slot, and PD-401's option D is
-      made *unnecessary* rather than reopened.
+      **add** D3's finding: the contest is now an offset rather than a slot, so PD-401's option D
+      loses its slot-contention reason. **Do not write "D is unnecessary" into the docstring** — D's
+      second reason, that the RSVP is a question answered once rather than a standing control, is
+      untouched by this change and stating otherwise puts an overreach into `src/`.
 - [ ] 4.3 Rewrite `src/lib/rides/__tests__/bottom-slot.test.ts` exhaustively over the four input
       combinations, asserting the clearance as well as the two booleans.
 - [ ] 4.4 **Q2 = A**: the RSVP bar and the control coexist, the control lifted by the RSVP bar's

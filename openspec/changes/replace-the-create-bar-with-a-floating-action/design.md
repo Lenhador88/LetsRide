@@ -47,9 +47,12 @@ wants motion before a design session, that half is free.
 --ride-rsvp-bar:  6rem = 96px   (16 + 20 prompt + 12 gap + 40 group + 8)
 ```
 
-A conventional floating action is 56×56. With a 16px gap above the navigation bar and 16px of
-breathing room above it, a page reserving its clearance reserves **72px** — 8px *more* than the bar
-it replaces. At 48×48 it is 64px, exactly break-even.
+**Derive the control's clearance with the token's own rule, `16 pad + control + 8`, rather than a
+second rule invented for it.** A conventional 56×56 floating action therefore reserves
+`16 + 56 + 8` = **80px**, 16px *more* than the bar it replaces; a 48×48 one reserves **72px**, still
+8px more. **Nothing breaks even.** Matching 64px needs a 40px control — the button's own height, and
+below the 44×44 floor — so there is no size at which a floating action that reserves its clearance
+is cheaper vertically than the bar.
 
 So the issue's *"a rider gets the screen's content back"* is true only if content is allowed to run
 **underneath** the control, which is the occlusion defect the issue itself lists as owed. The value
@@ -115,11 +118,17 @@ export type RideDetailActions = {
 
 Still `(canRsvp, canCreate) → ...`, still exhaustive over four inputs, still one test file.
 
-### PD-401's option D is made **unnecessary**, not reopened
+### PD-401's option D loses **one of its two reasons**, and is not reopened
 
-D — move the RSVP into the page body — existed to free the sticky slot, because two full-width bars
-cannot share it. A floating action does not want the slot. So D's motivation is gone and the RSVP
-bar stays exactly where `2375:8771` draws it.
+D — move the RSVP into the page body — was given two reasons in PD-401's own table: *"Frees the slot
+properly; **the RSVP is a question answered once, not a standing control**"*.
+
+A floating action dissolves the **first**: it does not want the slot, so the RSVP bar stays exactly
+where `2375:8771` draws it and the two coexist. **The second survives untouched** — it is an
+argument about what the RSVP *is*, not about what contends with it, and PD-401 rated D 8/10 partly
+on it. So the honest claim is *unnecessary-for-the-slot*, not unnecessary; anyone writing "D's
+motivation is gone" is overstating this design's reach, and Q2 must not price C as though the frame
+contradiction were its only cost.
 
 This matters because PD-404's 01:48Z comment offers D as answer **C** to the composition question,
 and **C is the only one of the three answers that contradicts a frame**. Answer A costs no frame on

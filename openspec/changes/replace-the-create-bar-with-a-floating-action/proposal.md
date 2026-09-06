@@ -40,10 +40,12 @@ grep -n "navbar-action\|ride-rsvp-bar" src/app/globals.css
 # --ride-rsvp-bar: 6rem;    /* 16 + 20 + 12 + 40 + 8 */    = 96px
 ```
 
-The create bar reserves **64px** of scroll clearance through `.pb-navbar-action-extra`. A
-conventional floating action is 56×56; give it the same 16px gap above the navigation bar and its
-own 16px breathing room and the clearance a page must reserve is **72px** — *more* than the bar it
-replaced. Even a 48px circle with a 16px gap reserves 64px, exactly breaking even.
+The create bar reserves **64px** of scroll clearance through `.pb-navbar-action-extra`, and that
+64px is `16 pad + 40 button + 8` — the token's own comment. **Apply the same rule to a floating
+action rather than inventing a second one:** a conventional 56×56 control reserves
+`16 + 56 + 8` = **80px**, which is 16px *more* than the bar it replaced. A 48×48 control reserves
+`16 + 48 + 8` = **72px**, still 8px more. **Nothing breaks even** — the control would have to be
+40px, the button's own height, to match, and that is below the 44×44 floor.
 
 **The space only comes back if content is allowed to scroll underneath the floating action**, which
 is the second negative case the issue lists. So the story's value proposition and its most dangerous
@@ -86,9 +88,15 @@ npm run figma -- tree "Private club - Timeline" | grep -i "navigation / bar\|but
 
 Converting this screen changes **which variant of a shared component the screen instances** (152 → 88)
 and deletes a drawn child of that instance. `Navbar.tsx`'s own measurement says 27 frames draw the
-152 variant against 44 drawing the 88. A departure on one screen is containable; a departure that
-changes how a screen instances a component **27 other frames also instance** is not, because the next
-person reading any of those 27 frames has no way to know this screen stopped agreeing with them.
+152 variant against 44 drawing the 88 — **and this screen is one of the 27, so 26 others are left.**
+A departure on one screen is containable; a departure that changes how a screen instances a component
+**26 other frames also instance** is not, because the next person reading any of those 26 has no way
+to know this screen stopped agreeing with them.
+
+**Whoever answers Q1 should know the 26 is an upper bound.** Four of the 27 are the club detail's own
+sub-pages (`-timeline`, `-members`, `-rides`, `-sub-pages`), so if the conversion covers the club
+detail's tabs the number of genuinely-disagreeing frames is nearer 23. The argument holds at any of
+these figures; only the precision moves.
 
 **That asymmetry is the whole of the recommendation in Q1.**
 
@@ -281,14 +289,27 @@ slot. A floating action can always be drawn, so the entrance becomes `isCrew` an
 one condition, one control, invariant satisfied by construction rather than by a decision table.
 `timelineAdd` becomes constant `false` and `RideTimeline`'s `canAdd` prop can go.
 
-**And a floating action makes PD-401's option D unnecessary rather than reopening it.** D was
-proposed to *free the sticky slot*, because two full-width bars cannot share it. A floating action
-does not want the slot, so D's entire motivation evaporates — the two coexist with the RSVP bar
-staying exactly where frame `2375:8771` draws it. That is the better outcome and it is worth
-stating plainly to the owner, because the 01:48Z comment on PD-404 offers D as answer **C** and it
-is the only one of the three that contradicts a frame. **Answer A costs no frame at all on this
-screen.** (Answer B — RSVP bar alone, composer stays on the `(+)` — keeps `resolveRideDetailActions`
-exactly as it is today and makes this change club-only on the ride screen's terms.)
+**And a floating action removes ONE of PD-401's two reasons for option D, rather than reopening it —
+but it does not remove both, and the difference is the owner's to weigh.** PD-401's own table gives
+D two:
+
+> **D** | Move the RSVP out of the sticky slot into the page body | *Frees the slot properly; **the
+> RSVP is a question answered once, not a standing control***
+
+The first is slot contention, and a floating action **does** dissolve it: the control does not want
+the slot, so the two coexist with the RSVP bar staying exactly where frame `2375:8771` draws it.
+That is a real resolution and it is what answer A rests on. **The second is untouched** — it is a
+claim about what the RSVP *is*, not about what competes with it, and PD-401 rated D 8/10 partly on
+it. So D is **not** made unnecessary; it is made *unnecessary-for-the-slot*, and a rider who has
+answered *Going* still sees a standing control asking a question they have already answered.
+
+This still matters, because the 01:48Z comment on PD-404 offers D as answer **C** and it is the only
+one of the three that contradicts a frame — **answer A costs no frame at all on this screen.** But
+Q2 must not present C's only cost as that contradiction: choosing A also declines PD-401's
+answered-once argument, and the owner should decline it knowingly rather than by omission.
+
+(Answer B — RSVP bar alone, composer stays on the `(+)` — keeps `resolveRideDetailActions` exactly
+as it is today and makes this change club-only on the ride screen's terms.)
 
 ## Negative cases — who must NOT see or reach this
 
@@ -300,7 +321,7 @@ so that no rider is offered an action the database will refuse.
 
 | Role | May reach the control? | Why, and what must not happen |
 |---|---|---|
-| **Owner** | **Yes** | `054` makes the owner a member; `is_club_member` is true. |
+| **Owner** | **Yes on DEV, and NOT guaranteed on PROD** | **The control and the policy do not use the same test, and this row is where that shows.** The screen gates on `club.viewer_role` (`clubs/detail/page.tsx`), which is a `club_members` **row**; `private.is_club_member_for` admits on a row **or** `clubs.owner_id`, `054`'s still-live owner arm. So an owner with no membership row would be accepted by the INSERT policy and shown no control. `103`'s trigger and backfill make that unreachable on DEV — measured, `owners_without_member_row = 0` across 15 clubs — but `103` sits in the unpromoted `101`–`106` gap, so on PROD (at `100`) an owner orphan is reachable. **Fails in the safe direction** (a missing affordance, never a leak), and the build SHALL still gate on `viewer_role` rather than on the helper, so the control never claims reach the row does not carry. |
 | **Admin** (`club_members.role = 'admin'`) | **Yes** | `is_club_member` ignores `role` entirely. **The control MUST NOT gate on `role`** — doing so invents a hierarchy `001`'s CHECK allows and nothing writes. |
 | **Member** | **Yes** | All three destinations admit them. |
 | **Non-member, public club** | **NO** | All three policies refuse. The screen renders the club and **no** control. It MUST NOT render a disabled one — a disabled control still announces the action exists. |
@@ -423,8 +444,9 @@ in `docs/FIGMA-FIDELITY-TODO.md`.
 process.** Two specifics:
 
 1. The club detail's departure is not a screen's — it changes which **variant of a shared component**
-   the screen instances, and 27 other frames instance that component at 152. A departure recorded on
-   one screen is invisible to the next person reading any of the other 27.
+   the screen instances. 27 frames instance that component at 152 and this screen is one of them, so
+   a departure recorded here is invisible to the next person reading any of the other **26** (nearer
+   23 if the club's own sub-pages convert with it).
 2. A floating action needs an **elevation value this design system does not have**. Under B the
    build invents the app's first persistent shadow token, which is precisely the invention
    decision #4 exists to prevent. `Banner` and `NotificationsPanel` already invented one each, for
@@ -455,8 +477,14 @@ rewrite unchanged, keeps a 40×40 sub-floor target as the only entrance for this
 slot properly and **contradicts frame `2375:8771`**, which draws that bar stacked on the navigation
 bar.
 
-**Default if unanswered: A** — it is the only one that both preserves the invariant and costs no
-frame, and it is the answer the floating-action pattern was asked for in order to make possible.
+**Default: A, and it is conditional on Q1 — it is NOT a licence to start.** A applies only once the
+owner has answered **Q1**; if Q1 is unanswered this question has no default at all and no code is
+written. Stated that way because the two together would otherwise read as a self-authorising path:
+Q1's own narrowing offers the ride detail at no frame cost, so *Q1-narrowing plus an unconditional
+Q2-A* would let a firing build this screen tonight having asked nobody anything — exactly the
+"the build must not pick one silently" failure this proposal exists to avoid. Given Q1, A is the
+answer to prefer: it is the only one that both preserves the invariant and costs no frame, and it is
+what the floating-action pattern was asked for in order to make possible.
 
 ---
 

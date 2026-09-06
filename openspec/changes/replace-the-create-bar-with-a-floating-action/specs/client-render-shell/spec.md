@@ -25,10 +25,11 @@ its CSS.
 
 A bar reserves its space and therefore cannot occlude anything; that property is what makes the
 existing bottom bars safe, and it is what a floating control gives up. The trade is not free in the
-direction usually assumed: a 56px control with the same gap the bars use reserves **more** clearance
-than the 64px `--navbar-action` bar it replaces, so a screen that reserves clearance gains no
-vertical space at all — it gains horizontal space, because the control spans a fraction of the width
-the bar did. The space the reserve-nothing option saves is exactly the space the last row loses.
+direction usually assumed: derived with the same `16 pad + control + 8` rule the existing tokens
+use, a 56px control reserves **80px** against the 64px `--navbar-action` bar it replaces, so a
+screen that reserves clearance gains no vertical space at all — it gains horizontal space, because
+the control spans a fraction of the width the bar did. The space the reserve-nothing option saves is
+exactly the space the last row loses.
 
 This is not a rule about floating buttons. It applies to any persistently-drawn overlay a screen
 adds over its own scroll.
