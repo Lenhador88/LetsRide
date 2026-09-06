@@ -1106,10 +1106,18 @@ file already tells you not to optimise. **The letters count up for the whole ses
 restart at A**, and a letter lives inside one session and nothing more is expected of it — another
 session's **A** naming something different is the accepted cost.
 
-**Every lettered option opens with a title and one line of context saying what it actually is.**
-Name the thing, then say in a sentence what it does and what it costs. **Make the name short enough
-to say and specific enough to be unique** — *"the team-scoped pick"*, *"the leaked-password
-toggle"*. That title is also what disambiguates a letter across sessions.
+**Every lettered option opens with a title, then a short PRACTICAL explanation, then the
+ratings.** Standing instruction, product owner 2026-09-06: *"between the title and the options, can
+you give me a short practical explanation."* Two or three sentences, in plain terms, saying what
+actually happens if they say yes — what changes, who does it, what it costs them, and what they
+would notice afterwards. **The ratings answer *how much* and *how urgent*; this answers *what is
+it, concretely*,** and it is the half an owner deciding on a phone needs before the numbers mean
+anything. One line was the old rule and it was too terse to decide from.
+
+Write it for someone who was not in this session: no bare issue id (§the chat rule above), no file
+path standing in for an explanation, and never the title restated in different words. **Make the
+name short enough to say and specific enough to be unique** — *"the team-scoped pick"*, *"the
+leaked-password toggle"*. That title is also what disambiguates a letter across sessions.
 
 **Never write a bare issue id in a chat reply — put a short title in front of it.** So it is
 **the caption swipe (PD-224)**, never **PD-224**: the number means something to whoever just wrote
@@ -1142,10 +1150,14 @@ chat and the body of any issue parked in `Needs decision` or `Needs help` alike.
 point needs a paragraph to defend, the paragraph belongs in the record and the reply gets the
 sentence. **This replaces the long-form debrief for every session, not just long ones.**
 
-**Give every lettered option its own blockquote, with the letter and its description *outside*
-the bar.** Two options means two headings and two bars:
+**Give every lettered option its own blockquote, with the letter, its title and its explanation
+*outside* the bar.** Two options means two headings, two explanations and two bars:
 
 **A) Drop the dead column.**
+
+The column is `profiles.legacy_rank`. Nothing writes it and nothing reads it, but it is still in
+the schema, so the next session building a profile screen finds it and has to work out whether it
+matters. Dropping it is one migration and a handful of type edits; no rider sees any difference.
 
 > **Recommendation** 7/10
 >
@@ -1168,6 +1180,11 @@ the bar.** Two options means two headings and two bars:
 > wants its own branch, and the open PR should land first
 
 **B) Enable leaked-password protection.**
+
+Supabase can check a new password against HaveIBeenPwned and refuse the ones that have already
+leaked. It is off on both projects today — one toggle each in the dashboard, which only you can
+click. Nothing in the app changes; a rider signing up with a breached password would simply be
+asked for a different one.
 
 > **Recommendation** 9/10
 >
