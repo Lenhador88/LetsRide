@@ -206,7 +206,7 @@ so the grep finds nothing on a healthy build *and* on this one. The file says to
 **An open PR is the signal that separates the two, and no step reads it.** Ageing a branch cannot
 tell "still building" from "finished and stranded"; a PR that closes the issue answers both.
 **This merge does not fix that** — it touches no `.claude/` file. PD-406 carries both halves:
-the PR probe STEP 6 needs, and the `db:drift` blindness underneath it.
+the PR probe STEP 6 needs, and the drift check nobody runs.
 
 ```bash
 # what a stall check should ask, before it ages anything
@@ -319,10 +319,14 @@ sitting in an unmerged PR that the section above explains nobody looked for. **P
 decision is withdrawn on the issue** — its option B, *revert it on DEV*, would now drop a migration
 the repo has a file for. Its last section survives and is what that issue carries.
 
-**Nothing here compares the applied chain against `ls supabase/migrations/`.** `npm run db:drift`
-compares DEV against PROD by *name*, so a migration applied to a project with no file behind it is
-invisible to every gate this repo has. That is the direction that cannot be fixed by applying
-something, and it stayed unmeasured through six firings.
+**The check that catches this exists, and nobody ran it.** `scripts/db/check-migration-drift.mjs`
+builds the union of the files and both applied sets and reports `applied to a database but has no
+file` — exactly this case, by name, in one line. But it needs `DEV_DATABASE_URL` and
+`PROD_DATABASE_URL`, **which no session holds**, and it is not in `ci.yml`
+([`docs/reference/migrations.md`](reference/migrations.md) §What reads as drift, and why none of it
+is says the same of `074`). So the drift ran unseen for six firings past a gate that was written
+for it. What a session CAN reach is `list_migrations`, and nothing tells it to compare that against
+`ls supabase/migrations/` before it picks a number.
 
 ```bash
 git ls-files supabase/migrations/*.sql | tail -1   # 107_a_club_may_outlive_its_last_member.sql
