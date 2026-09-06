@@ -270,9 +270,10 @@ So: **`096` before the build serves, then `092`–`095` after it is `READY` on t
 `092`–`095` create — its only mention of them is a comment — and they name nothing of its.
 `CLAUDE.md` §Supabase Rules carries the same split, in its applied-state paragraph; keep the two in step.
 
-**PROD is at `091` and is fine today**, and the bundle carrying `MEMBER_PROFILE_EMBED` is correct
-against a pre- and post-`092` database alike, so deploy-first has no unsafe side. Re-derive rather
-than trusting this line — one `curl`, no session needed:
+**PROD carried `091` while this was written and both projects are at `107` now**, and the bundle
+carrying `MEMBER_PROFILE_EMBED` is correct against a pre- and post-`092` database alike, so
+deploy-first had no unsafe side. Re-derive rather than trusting this line — one `curl`, no session
+needed:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' \

@@ -149,7 +149,7 @@ here until 2026-08-19 was that every pickable place is Dutch — measured with
 `select country, count(*) from public.places`, one row, NL 736,538 — so a picked ride could not
 reach a foreign zone and the `APP_TIME_ZONE` fallback was already right in practice. `070` dropped
 that index and the typeahead now reads a **global** geocoder through `search-places`, so **a rider
-can pick a foreign meeting point today**, on DEV now and on PROD at the promotion. The query above
+can pick a foreign meeting point today**, on both projects since the 2026-09-06 promotion. The query above
 no longer runs on DEV, and re-deriving the same conclusion from PROD's surviving copy would read
 the retired index rather than the live search. **"A picked ride never learns a zone" is a real
 wrong answer now, not a theoretical one** — which raises this half of PD-193 rather than settling

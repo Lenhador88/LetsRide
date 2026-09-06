@@ -198,12 +198,10 @@ two branches do not diverge. Riders have block/hide undo, the paging club timeli
 timeline, the introduction-as-join, the trimmed privacy sheet, and a club that survives its last
 member instead of taking other riders' postcards down with it.
 
-**The promotion's real decision was an ORDERING CONFLICT, and it will recur** — `105`/`106` wanted
-migration-first (the promoted bundle calls their accessors) while `101`/`103` wanted deploy-first
-(each is an outage against the bundle that was serving). **Deploy-first wins**: it is the side
-protecting against an outage and destroyed data, where migration-first costs a transient
-`PGRST202`. It also keeps PROD's apply order equal to filename order.
-[`docs/reference/migrations.md`](reference/migrations.md) §Applied state has the per-file rule.
+**The promotion's real decision was an ORDERING CONFLICT and it will recur** — the seven files did
+not agree about which side of the deploy they wanted. `CLAUDE.md` §Supabase Rules carries the rule
+that settled it and [`docs/reference/migrations.md`](reference/migrations.md) §Applied state the
+per-file detail; do not copy either back here.
 
 **`103`'s already-loaded-tab hazard was measured empty rather than waived.** That file's own log
 says a PROD promotion should ship the transitional group-1 upsert and let it soak, because an SPA
@@ -213,13 +211,16 @@ riders that argument evaporates and the soak is the answer** — do not read thi
 precedent for skipping it.
 
 **PROD's objects were proved against DEV rather than against the recorded text**, which is the only
-check that catches a transcription error in an apply that succeeded: eight of nine object classes
-byte-identical, 121 of 123 functions, and the two exceptions comment-only in the direction where
-PROD matches the file and DEV does not.
+check that catches a transcription error in an apply that succeeded. Both exceptions it found were
+comment-only, and in the direction where PROD matches the repo file and DEV does not —
+`migrations.md` §What reads as drift carries them.
+
+**The check is three answers, not one** — the applied chain on each project against the files, in
+both directions. `list_migrations` on `zwprydcyryvudhurbnye` and on `fpmrimzxadewsaiwpsel` (both 107
+names, DEV carrying three extra rows with no file) against:
 
 ```bash
-# both projects, both directions — the check that would have caught 107's phantom
-mcp__Supabase__list_migrations zwprydcyryvudhurbnye   # 107, level with DEV and with ls
+ls supabase/migrations/*.sql | wc -l   # 107
 ```
 
 ## The queue jam was an unmerged PR, and the stall check cannot see one — 2026-09-06
@@ -603,8 +604,8 @@ fix, and each carries a visibility rule, which is why this went through `openspe
   grant. `105` revokes from `public, anon`; `009` got away with `from public` alone only because
   `private` denies `anon` schema USAGE. `105.11` pins it as a privilege assertion, never a call —
   the suite runs as the table owner, which is what let `029` ship broken.
-- **Advisors are 39 on DEV and 37 on PROD, and the difference IS the pending promotion**, not
-  drift. `105` adds exactly two, one per accessor — run rather than derived.
+- **`105` adds exactly TWO advisors, one per accessor** — run rather than derived. It stood as a
+  two-advisor difference between the projects until the 2026-09-06 promotion; both are at 39 now.
 
 ```bash
 git grep -n "my_blocked_riders\|my_hidden_postcards" -- src/ supabase/

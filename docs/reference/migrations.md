@@ -368,10 +368,6 @@ value; compare PROD's objects against DEV's directly, which is strictly stronger
 serving** — `READY` on the merge sha with `aliasError` null, never merely "after the merge":
 `CLAUDE.md` §Supabase Rules names that distinction with a measured incident behind it (a destructive
 file applied 102 seconds after a merge, out from under a Preview still calling what it dropped), and
-`103` is exactly the class it describes. `103`/`104` were applied only once the build carrying them was **confirmed
-serving** — `READY` on the merge sha with `aliasError` null, never merely "after the merge":
-`CLAUDE.md` §Supabase Rules names that distinction with a measured incident behind it (a destructive
-file applied 102 seconds after a merge, out from under a Preview still calling what it dropped), and
 `103` is exactly the class it describes. Reconciled name by name on 2026-08-31, again for `096`
 on 2026-09-01, again for `101`/`102` on 2026-09-03, and again for `103`/`104` on 2026-09-04 —
 **both recorded WITHOUT their numeric prefix** (`creator_membership`, `club_member_owner_arm`),
