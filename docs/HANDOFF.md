@@ -190,6 +190,77 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## A removal now bars a live invite link, and the join waves got their behaviour back — 2026-09-06
+
+**PD-361 + PD-376, one branch, taken into `slot-1`.** Grouped because both land assertions in
+`supabase/tests/rls_test.sql` and the first carries the migration that fixes the number.
+
+**PD-361 — `111_a_removal_bars_a_live_invite_link.sql`, applied to DEV.** `088`'s
+`remove_club_member` deleted one `club_members` row and its own comment said *"removal is not a
+ban"*; `093` shipped afterwards with a reachability helper carrying no conjunct about removal, so a
+removed rider pasted the same pre-minted URL back in and was a member again. `public.club_removals`
+is the bar — keyed on the pair, written inside the RPC after its authority block, read by one new
+conjunct, and deleted the moment the rider is readmitted by any other route. Built from the proposal
+that PR #403 landed; **the narrow reading is the owner's** and this closes the link door alone.
+
+**Six things a later session should not re-derive:**
+
+- **The predicate has exactly one legal home**, and the proposal's table of rejected sites is the
+  reason. The one to watch is `private.join_club_from_invite`: it is shared with the in-app accept
+  path, so a conjunct there closes a door the owner deliberately left open — and it is the tidiest-
+  looking fix, which is what makes it dangerous.
+- **The clearing trigger MUST be `security definer` with `set search_path = ''`, and this is
+  measured rather than argued.** Dropping that line turns the *pre-existing* assertion `anyone can
+  join a public club` red with a permission error — the outage arriving exactly where `design.md`
+  D3 predicts it. `joinClub` inserts as `authenticated`; the other four admission paths are definer
+  and would pass silently, which is why `111.13a` reads `prosecdef` from the **catalogue**.
+- **The live helper carried EIGHT conjuncts, not the seven `093` shipped** — `107` added
+  `k.owner_id is not null`. The body was read off DEV rather than reconstructed from `093`'s file,
+  which is exactly what a `create or replace` against a stale body would have silently reverted.
+- **The suite's derived `029 §A` caught a real omission during the build**: `user_id` is a second FK
+  into `profiles` whose leading column the PK does not index. Hence `club_removals_user_id_idx`. A
+  hand-written list of indexed tables would have missed it; the derivation did not.
+- **The hand-exercise gate ran BEFORE the apply**, in `DO` blocks that raise at the end so they
+  cannot commit. The public Join button was measured with and against the trigger on **two
+  independent clubs** — `notifications` delta **1** either way. A first attempt read 1 vs 0, and
+  that was **fixture state, not suppression**: the first join's notification survived the membership
+  delete and the fan-out deduplicated the second. An AFTER INSERT trigger returning `null` cannot
+  cancel a sibling AFTER trigger.
+- **Applied REDUCED and proved by object diff**, so its recorded statement will not equal `md5sum`
+  of the file — the norm, not drift. The diff compared `md5` of `pg_get_functiondef` for all three
+  functions, the column list, and the three `obj_description` strings between DEV and a local
+  database that applied **the file itself**: all five identical.
+
+**Open, and deliberately not built:** a rider removed while holding a **pending in-app invite** can
+still accept it — the same defect one table over, on `club_invites`. It stays on PD-361 rather than
+becoming a second row, because the owner's decision names the link path alone and this is one
+statement in a later migration if they widen it.
+
+**PD-376 — the two behavioural assertions `101` took away are back, retargeted.** `101` dropped
+`club_thread_waves` and with it the only *behavioural* fixture for two properties `092.1`'s own
+comment claims of **both** wave tables. They are now `092.3a` (a block hides the row and drops the
+count, in each direction, with the waver still reading their own wave) and `092.7a` (owner, admin
+and member reach the same rows).
+
+- **The structural half was never a substitute, and the isolation proves it.** `092.7` reads
+  `pg_policies` for the *shape* of the predicate; it cannot see a role diverging through the
+  **parent**, because the EXISTS runs against `club_members` under the reader's own RLS. Removing
+  the admin's roster row fails `092.7a` and nothing else.
+- **`092.3a` must not end with `reset role`.** `092.5` below it sets `test.uid` and reads without
+  setting the role itself, so it inherits `authenticated` — reset it and `092.5` runs as the table
+  owner, bypasses RLS, and reads the very row it exists to prove is hidden. Measured, not feared.
+- **The reader is `920008` on purpose**: `920006` is blocked with the subject (`092.5`) and `920007`
+  has blocked both wavers, so either would be counting an already-filtered set and the drop would
+  not be this policy's doing.
+
+**Suite 3570 → 3630**, reconciled by **label set** rather than by count: +51 `111.*`, +9 `092.3a`/
+`092.7a`, **7 relabelled 1:1, 0 lost**. Every new assertion was verified both ways.
+
+```bash
+git grep -n "club_removals\|092.3a\|092.7a" -- supabase/
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3630, from 3570
+```
+
 ## The walk is green again, and both its baselines are measured — 2026-09-06
 
 **PD-410 + PD-390 + PD-344, one branch, taken into `slot-1`.** Grouped because the first two are the

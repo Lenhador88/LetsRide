@@ -334,7 +334,39 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 through `107` **promoted to PROD on 2026-09-06** between 08:26:24Z and 08:40:28Z, closing the gap
 this heading described for a week; `108` and `110` (PD-402) opened a new one the same day.
 
-**What is open is the ordinary promotion gap: `108`–`110` (PD-402), all three applied to DEV.**
+**What is open is the ordinary promotion gap: `108`–`111`, all four applied to DEV** — `108`–`110`
+from PD-402, and `111` from PD-361.
+
+**`111_a_removal_bars_a_live_invite_link` (PD-361), applied to DEV 2026-09-06T11:59Z.** Additive,
+and **nothing to sequence against**: it touches no file under `src/`, so neither `096`'s
+newer-bundle-against-older-database case nor `092`'s reverse exists, and no shipped bundle can
+observe any object it creates. **The PROD promotion carries the same ordering for the same reason**
+and needs no separate sequencing decision.
+
+It was **applied REDUCED and proved by object diff**, per §Applying a large file — the file is 26,161
+bytes and the recorded statement is the comment-stripped form, so its recorded text will not equal
+`md5sum` of the file and that is the norm rather than drift. The diff that proves it: `md5` of
+`pg_get_functiondef` for all three functions, of the column list of `club_removals`, and of the three
+`obj_description` strings, compared between DEV and a local database that applied **the file itself**
+through `supabase/tests/run.sh` — all five hashes identical.
+
+Its verification passed on every point: table present with RLS on and **zero** policies, **zero**
+privileges held by `anon` or `authenticated` across all seven verbs,
+`private.clear_club_removal_on_join` `prosecdef = true` with `proconfig = {search_path=""}`, its
+trigger carrying **no `WHEN` clause**, participation-gate triggers **unchanged at 22**, exactly
+**three** functions mentioning `club_removals` (the writer, the clearer, the reader), FKs into
+`profiles` 33 → **34**, and advisors 41 → **42** — exactly **+1 INFO** (`rls_enabled_no_policy` on
+`club_removals`) and **+0 WARN**, because every function it creates or replaces lives in `private` or
+already existed in `public`.
+
+**The hand-exercise gate ran BEFORE it applied**, which this file's own header requires of any
+migration hanging a trigger off a shipped write path: every admission path exercised on DEV inside a
+`DO` block that raises at the end, so the whole thing rolls back atomically however the tool wraps
+it. The public Join button was measured **with and against** the trigger on two independent clubs —
+`notifications` delta **1** either way. A first attempt read 1 vs 0 and that was **fixture state, not
+suppression**: the first join's notification row survived the membership delete and the fan-out
+deduplicated the second. An AFTER INSERT trigger returning `null` cannot cancel a sibling AFTER
+trigger, which is why the measurement was repeated rather than reported.
 
 **`109_retire_ride_chat` was held back until the merged bundle was confirmed *serving***, which is
 the whole point of splitting the change across two files. The gate it waited on, recorded because
@@ -633,7 +665,7 @@ and re-derive both rather than trusting the numbers in this heading — they hav
 before, in the direction of reading one row too few.
 
 ```bash
-ls supabase/migrations/*.sql | wc -l    # 110
+ls supabase/migrations/*.sql | wc -l    # 111
 ```
 
 *(The `docs:check` anchor for this count is the copy further down, in the promotion log's code
@@ -1314,7 +1346,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 110 — DEV at 110, PROD at 107 (108-110 await promotion)
+ls supabase/migrations/*.sql | wc -l     # 111 — DEV at 111, PROD at 107 (108-111 await promotion)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```

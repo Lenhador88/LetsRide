@@ -449,9 +449,11 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 110 files. DEV is at `110` and PROD at `107` — measured 2026-09-06.** `101`–`107`
+**Applied state: 111 files. DEV is at `111` and PROD at `107` — measured 2026-09-06.** `101`–`107`
 **promoted to PROD on 2026-09-06**, so the long-standing seven-file gap this line used to describe
-is closed. What is open is the ordinary three-file promotion gap, `108`–`110` (PD-402), all applied to DEV.
+is closed. What is open is the ordinary four-file promotion gap, `108`–`110` (PD-402) and `111`
+(PD-361), all applied to DEV. **`111` is additive with nothing to sequence against** — it touches no
+file under `src/`, so the PROD promotion needs no separate ordering decision for it.
 **`109` was held back until the merged bundle was confirmed *serving*** — `READY` on merge sha
 `923541c` with `aliasError` null, which is not the same as merged — and applied at 10:09Z once it
 was. **`108` went MIGRATION-FIRST and `109` LAST**, the sequencing rule with its two halves pulling
@@ -509,7 +511,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3570** assertions — re-derive rather than trust it:
+Suite **3630** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 
@@ -528,10 +530,13 @@ never run. `complete_onboarding` also joins the caller to the club carrying `clu
 (`058`), inside a `when others` block, because a raise there would roll the completion stamp back
 and decision #5 gives a rider with a NULL stamp no way out of the wizard.
 
-**Security advisors: forty-one on DEV and thirty-nine on PROD, and only one is outstanding** —
-`auth_leaked_password_protection`, a dashboard click. **The two-advisor difference IS `108`, which
-is applied to DEV and not yet promoted** — the ordinary shape this section's last line describes
-rather than drift. Both projects read **39** before it, measured 2026-09-06 after the `101`–`107`
+**Security advisors: forty-two on DEV and thirty-nine on PROD, and only one is outstanding** —
+`auth_leaked_password_protection`, a dashboard click. **The three-advisor difference IS `108` and
+`111`, both applied to DEV and neither promoted** — the ordinary shape this section's last line
+describes rather than drift. **`111` (PD-361) adds exactly one INFO** and no WARN:
+`rls_enabled_no_policy` on `club_removals`, a third table in the position `password_reset_grants`
+and `push_devices` already hold. It adds no WARN because it creates no function in `public` —
+its two new functions live in `private` and `remove_club_member` was already there. Both projects read **39** before it, measured 2026-09-06 after the `101`–`107`
 promotion, so the older two-advisor gap this line used to attribute to `105` is closed and this is
 a new one with the same shape. `108` adds exactly two, one per `security definer` RPC it publishes
 in `public` — `delete_own_ride_thread_message` and `moderate_ride_thread`; its third function,
@@ -541,7 +546,7 @@ in `public` — `delete_own_ride_thread_message` and `moderate_ride_thread`; its
 `authenticated` EXECUTE. The rest are things this repo chose: one
 `authenticated_security_definer_function_executable` WARN per `security definer` RPC in
 `public` (each narrow by design — takes a row id or nothing at all, never a rider id, one raise
-site), and two `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding
+site), and three `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding
 two such functions adds two**, and one whose functions live in `private` adds none. Re-derive with
 `get_advisors(security)`; `docs/reference/migrations.md` §Security advisors has the per-migration
 accounting and the count query. An unexpected advisor is one not in that table; a one-advisor
