@@ -44,11 +44,25 @@ Three rules that outlive any rename:
   the `DEV` label, and **not `Todo AI`** — that name reads like permission and is not one. A
   session that picks its own work from another column has taken the one decision this board exists
   to give the owner.
-- **`Development (AI)` is a per-issue claim; `Needs help` stops the whole queue.** They used to be
-  one two-name lock, because one session built one story at a time. Now stories build in parallel
-  sessions, so a `Development (AI)` row says *this story is taken* and nothing about the others,
-  while a `Needs help` row still halts every dispatch — deliberately, so a story that needs the
-  owner is not buried under three merged PRs.
+- **`Development (AI)` and `Needs help` are both per-issue, and neither is a queue-wide lock.**
+  They used to be one two-name lock, because one session built one story at a time. Stories now
+  build in parallel sessions, so a `Development (AI)` row says *this story is taken* and nothing
+  about the others — and since **PD-416** (product owner, 2026-09-06: *"maybe needs help doesnt
+  need to block the queue?"*) a `Needs help` row says the same: this story waits on the owner,
+  every other story carries on.
+
+  **The one queue-wide stop is a marker, not the status.** A firing that read DEV's deployment of
+  its own merge as `ERROR` parks with `<!-- halt-queue -->` in the comment, and every firing takes
+  nothing while that marker stands — merging the next story onto a broken DEV is the one case
+  where carrying on is worse than waiting. **A firing reads those comments only when
+  `Needs help` is non-empty, and treats an unreadable answer as a halt.**
+
+  **What replaced the freeze is louder than it was**, which is why it was worth removing: a parked
+  story is named in **every** firing's push notification until it moves, where a frozen queue sent
+  the owner the single word `idle` — the same thing a healthy empty queue sends. `queue-run.md`
+  STEP 6 also escalates its stall alarm in bands (`3h`, `24h`, `72h`, `7d`, then weekly) rather
+  than alarming once, and `queue-pickup.md` STEP 2c now **requires** the `blockedBy` relation on a
+  sequencing park, since the freeze used to be what held that ordering.
 
   **Never widen either to "any `started` issue".** `Queued (AI)` and `Deployed to DEV` are typed
   `started` too, so that version is held by every queued and every shipped story: the queue
@@ -216,9 +230,11 @@ What has to be known outside those files:
   re-anchors it** (adding the repo once rewrote `0 0-23 * * *` to `24 * * * *`), so re-read
   `cron_expression` after one. `next_run_at` carries a separate per-trigger constant offset that
   nothing can clear; it is not the schedule.
-- **`Needs help` still parks the whole queue, deliberately.** A parked story is waiting on the
-  owner, and building past it buries it under the next merged PR. A firing that finds one takes
-  nothing and says so.
+- **`Needs help` parks its own story only, since PD-416.** A firing that finds one takes its
+  group as usual and **names the parked story in its final message, every firing, until it
+  moves** — that line is what stops it being buried, and the freeze it replaced could not do the
+  job because a frozen firing said `idle`. Only a `<!-- halt-queue -->` marker in the park's
+  comment — written by the broken-DEV exit and nothing else — makes a firing take nothing.
 - **Two labels are the concurrency cap, and the board is the whole lock.** `slot-1` and `slot-2`
   (created 2026-08-18) go on every issue a build session holds; a slot label present in
   `Development (AI)` means that session is live, so a firing counts free slots in the same call
@@ -254,7 +270,7 @@ mcp__Claude_Code_Remote__get_session  session_id=<last_run.session_id>
 set and reports the flag, never whether anything is firing; `next_run_at` answers that. And **no
 Routine field answers whether a firing DOES anything** — nine `SUCCEEDED` runs on 2026-08-28 and a
 hundred more between 08-29 and 09-02 all spawned nothing. **The board does**: work in `Queued (AI)`
-with a free slot, no `Needs help` row, and nothing new in `Development (AI)` across two hour
+with a free slot, no halted queue, and nothing new in `Development (AI)` across two hour
 boundaries. Then open the last run's session and read its transcript, which the owner can and a
 session cannot.
 
@@ -378,5 +394,7 @@ to the block, and do not drop it from the table.
   before building, not after — `.claude/commands/queue-pickup.md` STEP 3 is the procedure, and
   it applies to a story picked up by hand just as much as to one a dispatch takes off the queue.
   **A stale story goes to `Needs decision` with the command and its output in a comment, never
-  to `Needs help`** — that name is half the concurrency lock, so parking finished work there
-  freezes the queue over nothing. **Only the owner cancels**; a session measures and reports.
+  to `Needs help`** — that column is read as *a session is stuck and needs you now*, and every
+  firing repeats it in the owner's notification until it moves, so parking a measurement there
+  spends an hourly interruption on work nobody is doing. **Only the owner cancels**; a session
+  measures and reports.

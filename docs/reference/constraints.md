@@ -128,7 +128,8 @@ session already running — stopping one of those is the owner archiving it.
 ```bash
 # via the Linear MCP: list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c state=<one status>
 #   -> Queued (AI) is the queue; Development (AI) is what is being built, and the slot-1/slot-2
-#      labels on those rows are the concurrency count; any Needs help row stops every firing
+#      labels on those rows are the concurrency count; a Needs help row stops its own story only,
+#      and only a <!-- halt-queue --> marker in its comment stops every firing (PD-416)
 ```
 
 ## Connector rotation

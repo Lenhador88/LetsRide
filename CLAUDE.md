@@ -1315,7 +1315,9 @@ a Routine fired.** What must be true without reading it:
   label, move between statuses, and close. Deleting anything a human authored is the exception.
 - **`Queued (AI)` is the only start signal**, and the owner keeps it hand-fed on purpose, so a
   full `Todo AI` column is not a starved queue to route around. `Development (AI)` claims **one
-  issue** — stories build in parallel sessions — while `Needs help` stops every dispatch.
+  issue** — stories build in parallel sessions — and since PD-416 so does `Needs help`: a parked
+  story waits on the owner and every other story carries on. The one queue-wide stop is a
+  `<!-- halt-queue -->` marker, written only by a park over a broken DEV deploy.
 - **The two `slot-*` labels are the concurrency cap, and the board is the whole lock.** An issue
   moved into `Development (AI)` by hand carries no slot label and holds no slot.
 - **Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave`. A
