@@ -171,8 +171,8 @@ grep -rn "44×44\|44x44" CLAUDE.md docs/ .claude/ src/
 
 **`CLAUDE.md` returns zero hits.** Two primitives cite it as the source and it is not there; the
 floor lives in two agent briefs. Recorded because the obvious first command — grep `CLAUDE.md` —
-returns a plausible wrong answer (*there is no floor*), which is the test `CLAUDE.md` §Working
-Principles sets for keeping a correction rather than deleting it.
+returns a plausible wrong answer (*there is no floor*), which is the test `CLAUDE.md` sets for
+keeping a correction rather than deleting it.
 
 **Today's bar already clears the floor, and by hit area rather than pixels.** `Button`'s `md` is
 `h-10` (40px) with `before:absolute before:inset-x-0 before:-inset-y-0.5` — an invisible 44px touch

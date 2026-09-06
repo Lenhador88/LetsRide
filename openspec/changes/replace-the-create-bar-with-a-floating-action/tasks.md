@@ -129,7 +129,7 @@ the assumption rather than waiting.
       pairs a migration with an assertion, and the pairing is satisfied by there being no migration.
 - [ ] 5.7 `npm run docs:check` if any doc claim moved, and
       `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs` because this change's artifacts
-      carry `file.md §Section` pointers.
+      cite sections of other documents by name, and moving a section is what breaks those.
 
 ## 6. Record
 
