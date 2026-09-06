@@ -49,9 +49,14 @@ confirm the territory is free before starting group 1.
 ## 2. The migration — the three function changes
 
 - [ ] 2.1 `private.clear_club_removal_on_join()` — a trigger function that deletes the removal row
-      for `new.club_id, new.user_id`. **No `WHEN` clause on the trigger**, so it fires for
-      `security definer` writers too; state that choice in the file, per the standing integrity
-      requirement that a trigger's guard is a recorded decision.
+      for `new.club_id, new.user_id`. **Declared `security definer` with `set search_path = ''`.**
+      That is load-bearing rather than conventional: a trigger function defaults to
+      `security invoker`, task 1.3 revokes all on `club_removals` from `authenticated` and 1.2
+      leaves it with no policy, so an invoker-rights delete raises `42501` and rolls back the
+      `club_members` INSERT — on every club join in the app, not only a barred pair. All three
+      triggers already on that table are `security definer`. **No `WHEN` clause on the trigger**,
+      so it fires for `security definer` writers too; state both choices in the file, per the
+      standing integrity requirement that a trigger's guard is a recorded decision.
 - [ ] 2.2 `create trigger ... after insert on public.club_members for each row execute function
       private.clear_club_removal_on_join();` — beside the existing `notify_club_joined`.
 - [ ] 2.3 `revoke all on function private.clear_club_removal_on_join() from public, anon,
@@ -98,8 +103,15 @@ assertion is not finished.**
 - [ ] 3.12 The dead-state assertion moves from **eleven to twelve** states, comparing the **message**
       and not only the SQLSTATE, and the removed rider's answer is byte-identical to the expired
       one.
-- [ ] 3.13 `prosrc` for both public RPCs contains no `club_removals` reference — the existing
-      single-site assertion, extended by one name.
+- [ ] 3.13 `prosrc` for both public RPCs contains no `club_removals` reference. **`093.22` is a
+      closed list of five substrings — `is_blocked`, `terms_accepted_at`, `onboarding_completed_at`,
+      `revoked_at`, `expires_at` — so it does NOT catch `club_removals` today and this change must
+      extend that list by one name.** Until it does, the single-site rule is an argument rather than
+      a guard; do not read the existing assertion as already enforcing it.
+- [ ] 3.13a `private.clear_club_removal_on_join` is asserted `prosecdef = true` **as a catalogue
+      read**, not inferred from a join succeeding: a join test passes under invoker rights whenever
+      no removal row exists for the pair, which is almost every fixture, so the outage in task 2.1
+      would ship green behind a behavioural test.
 - [ ] 3.14 The participation-gate count is asserted **by delta and by table name**, not by absolute:
       `club_removals` is absent from the gated list and the count is unchanged.
 - [ ] 3.15 Deleting a club writes no removal rows.

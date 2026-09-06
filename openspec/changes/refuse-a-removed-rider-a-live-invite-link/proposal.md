@@ -14,12 +14,13 @@ is the decision this change builds to. The Supabase connector answered: DEV
 and the participation-gate trigger count (**21**, matching the repo's own claim). `088` and `093`
 were read from the migration files in this repo, not from prose about them.
 
-**One mechanical deviation, and it is not about content.** `npx openspec` and `npm run openspec`
-both fail in this container — `node_modules/.bin/` does not exist, so the shim that would resolve
-the binary is missing. The package itself is installed, so the CLI was driven directly as
-`node node_modules/@fission-ai/openspec/bin/openspec.js …`; these artifacts were scaffolded by
-`openspec new change` and validated by `openspec validate … --strict` through that path. Nothing
-about the artifacts is hand-rolled around the tooling.
+**One mechanical note, and it is not about content.** These artifacts were scaffolded by
+`openspec new change` and validated by `openspec validate … --strict`, driven as
+`node node_modules/@fission-ai/openspec/bin/openspec.js …` because `node_modules/.bin/` did not yet
+exist at the moment they were written — the container's `npm ci` was still running. **That was
+transient and is not a repo defect:** `npx openspec validate … --strict` resolves normally once
+dependencies are installed, and is the command to use. Nothing about the artifacts is hand-rolled
+around the tooling.
 
 ## The product owner's decision, verbatim (2026-09-05)
 
@@ -83,9 +84,15 @@ argued for and asserted.
 **Into `private.club_invite_link_reachable_by`, and nowhere else.** Three constraints in `093`
 between them leave exactly one site:
 
-- **`093.22` reads `prosrc`** for the *absence* of any caller predicate in the two public bodies.
-  Putting the removal test in `claim_club_invite_link` fails that assertion by design, and it fails
-  it for a reason: a caller predicate that lives in a public body has no policy underneath it.
+- **`093.22` reads `prosrc`** for the *absence* of any caller predicate in the two public bodies —
+  and **this change must extend it before that argument is true.** `093.22` is a closed list of
+  five substrings (`is_blocked`, `terms_accepted_at`, `onboarding_completed_at`, `revoked_at`,
+  `expires_at`); `club_removals` matches none of them, so a removal predicate dropped into either
+  public body leaves it green today. `093.18` does not cover the case either — it enumerates four
+  named dead states and a removed rider is a fifth. So the single-site rule here is an *architectural*
+  reason that the build has to turn into a mechanical one (`tasks.md` 3.13), not a guard already
+  standing. The reason itself is unchanged: a caller predicate in a public body has no policy
+  underneath it.
 - **`093.18` asserts the preview and the claim answer identically in every dead state.** A test in
   the claim alone would make the preview *more* permissive than its claim — the removed rider
   browses the club, taps Join, and is refused. `093`'s comment names that case: *"A preview MORE

@@ -105,6 +105,15 @@ being edited. The standing integrity requirement about `current_user` guards dec
 must fire for **every** writer, including `security definer` ones, so it carries **no `WHEN`
 clause**, exactly like `notify_club_joined` beside it.
 
+**It is `security definer` with `set search_path = ''`, and this is the one line whose omission
+turns this design into an outage.** A trigger function defaults to `security invoker`, so its
+`delete` would run as the rider pressing Join — who holds no grant on `club_removals` and is
+covered by no policy, because D4 revokes everything from every client role. The result is `42501`
+on the delete and a rolled-back `club_members` INSERT, on **every** join in the app rather than
+only on a barred pair, since the trigger has no `WHEN` clause and fires for every row. Measured on
+DEV: all three triggers already on that table are `prosecdef = true`. Group 3 asserts it directly
+rather than inferring it from a join succeeding.
+
 **Alternatives rejected:**
 
 - **Clear it inside each admission path.** Three edits today, and the fourth path is written by

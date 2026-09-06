@@ -193,8 +193,9 @@ See `docs/reference/running-locally.md` §The walk.
 ## The queue is jammed on a dead slot, and both queued stories are proposals now — 2026-09-06
 
 **`slot-1` has held PD-98 since 2026-09-05T17:25Z**, its session having applied `107` to DEV and
-never pushed a branch (the section below). Seven consecutive firings — 23:42, 00:41, 01:46, 02:41,
-03:41 and the ones between — have found it there. It is **already alarmed**
+never pushed a branch (the section below). **Six** consecutive firings have found it there, and
+they enumerate: 23:42, 00:41, 01:46, 02:41, the one that wrote the previous version of this entry,
+and this one at 03:41. It is **already alarmed**
 (`<!-- stall-alarm slot:1 -->`, 23:44Z), and `queue-run.md` STEP 6 forbids a firing from reaping it:
 an age-based reaper that returns a story a live session is still building is the one failure worse
 than a held slot.
@@ -246,6 +247,13 @@ them silently.
   a raise there takes a rider's join down with it. It exists because without a clearing path the bar
   silently becomes the permanent ban the owner explicitly rejected — invisibly, since no role can
   read the row. It fires the hand-exercise gate, and `tasks.md` group 4 is that gate.
+- **That trigger function MUST be `security definer`, and the pre-merge review is what caught its
+  absence.** A trigger function defaults to `security invoker`, and `club_removals` grants nothing
+  to `authenticated` and carries no policy — so an invoker-rights delete raises `42501` and rolls
+  the rider's join back, on **every** join rather than only a barred pair. All three triggers
+  already on `club_members` are `security definer`. **A behavioural join test passes anyway**
+  whenever no removal row exists for the pair, which is almost every fixture, so `tasks.md` 3.13a
+  asserts `prosecdef` as a catalogue read rather than inferring it from a green join.
 - **`removed_by` is deliberately absent, and that is a spec requirement rather than a saving.**
   `manage-club-riders` requires that *"nothing anywhere SHALL record who removed whom"*. That same
   spec's *"no tombstone row SHALL be created"* is now false, handled by an explicit REMOVED+ADDED

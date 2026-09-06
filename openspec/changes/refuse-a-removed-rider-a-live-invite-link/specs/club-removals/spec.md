@@ -182,6 +182,16 @@ membership row rather than the route that wrote it.
 It SHALL NOT raise. It runs inside every club join in the app, alongside the existing join
 notification trigger, and a raise there takes a rider's join down with it.
 
+**It SHALL be `security definer` with `set search_path = ''`, and that is not a style choice — it
+is the difference between this change working and every club join in the app failing.** A Postgres
+trigger function is `security invoker` by default, so its `delete from public.club_removals` would
+execute as the *invoking* role. `club_removals` grants nothing to `authenticated` and carries no
+policy, so a signed-in rider pressing **Join** on a public club would raise `42501 permission
+denied for table club_removals`, and the `club_members` INSERT would roll back with it. All three
+triggers already on `public.club_members` — `enforce_participation_gate`, `notify_club_joined` and
+`protect_club_owner_membership` — are `security definer` for the same reason; copying the shape of
+the one beside it means copying its privilege mode, not only its absent `WHEN` clause.
+
 #### Scenario: Readmission clears the bar
 - **WHEN** a removed rider is readmitted by any route and later leaves voluntarily, then claims a
   live link
