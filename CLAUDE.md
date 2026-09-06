@@ -536,7 +536,9 @@ and decision #5 gives a rider with a NULL stamp no way out of the wizard.
 describes rather than drift. **`111` (PD-361) adds exactly one INFO** and no WARN:
 `rls_enabled_no_policy` on `club_removals`, a third table in the position `password_reset_grants`
 and `push_devices` already hold. It adds no WARN because it creates no function in `public` —
-its two new functions live in `private` and `remove_club_member` was already there. Both projects read **39** before it, measured 2026-09-06 after the `101`–`107`
+it creates exactly ONE function and that one lives in `private`
+(`clear_club_removal_on_join`); its other two — `club_invite_link_reachable_by` and
+`remove_club_member` — are `create or replace` of `093`'s and `088`'s and were already there. Both projects read **39** before it, measured 2026-09-06 after the `101`–`107`
 promotion, so the older two-advisor gap this line used to attribute to `105` is closed and this is
 a new one with the same shape. `108` adds exactly two, one per `security definer` RPC it publishes
 in `public` — `delete_own_ride_thread_message` and `moderate_ride_thread`; its third function,
