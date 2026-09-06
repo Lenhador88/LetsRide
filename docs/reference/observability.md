@@ -67,18 +67,26 @@ below on a schedule rather than when something is already suspected, and
 PD-352 built the schedule: `.github/workflows/log-digest.yml` reads both
 projects at 06:00 and 18:00 UTC, plus `workflow_dispatch`.
 
-**The credential landed on 2026-09-06 (PD-369) and the digest is STILL not
-producing readings — the reason changed underneath it.** With the token in place
-both projects answer `{"error": "Backend error! Retry your query. …"}`, so
-`parseRows` throws and the run exits 2 carrying that sentence. Reproduced on DEV
-and PROD, twice each (run 14 and its re-run), so it is not the retry the message
-invites. **The SQL is not the suspect** — the exact `SQL` constant runs and
-returns rows through `mcp__Supabase__query_logs` against the same project, same
-window. What has never once completed a live call is the script's own HTTP call:
+**It has never produced a reading, and it was NEVER the missing credential this
+paragraph used to blame.** Every run since the first — 2026-08-31, 14 runs across
+both projects — fails identically: the token is present and masked in the env
+block, the API answers **200**, and the body carries
+`{"error": "Backend error! Retry your query. …"}`, so `parseRows` throws and the
+run exits 2 with that sentence. Invariant over seven days and two projects is
+deterministic, which rules the retry out far harder than a repeat would.
+
+**Both ends are exonerated; the middle is not.** Auth and reachability are proven
+by the 200. The SQL is proven by running the exact `SQL` constant through
+`mcp__Supabase__query_logs` against the same project and window, which returns
+rows. What is refused is the *query as this script poses it*:
 `GET /v1/projects/<ref>/analytics/endpoints/logs.all` with `sql`,
-`iso_timestamp_start` and `iso_timestamp_end`. That is the thing to bisect, and a
-`workflow_dispatch` on a branch is how to test it without a token in hand.
-Check rather than trust this paragraph:
+`iso_timestamp_start` and `iso_timestamp_end`. PD-421 has the three suspects; a
+`workflow_dispatch` on a branch is the only way to test one, since no session can
+reach `api.supabase.com`.
+
+**The four-day claim that the secret was missing is the lesson here.** Nothing
+was red, nothing contradicted it, and the check that would have caught it is the
+one printed directly below — unrun. Check rather than trust this paragraph:
 
 ```
 # via the GitHub MCP tools
@@ -119,10 +127,11 @@ SUPABASE_ACCESS_TOKEN=sbp_... npm run logs:errors -- --prod  # PRODUCTION
 ```
 
 `scripts/db/logs-errors.mjs` carries the query and the credential rules. **Its
-SQL is verified against both projects; its HTTP transport is not, and no session
-can verify it** — `api.supabase.com:443` is a policy denial at the agent proxy,
-which answers 403 to CONNECT, so `fetch` reports only "fetch failed" and curl
-reports status 000 — which is the reason not to spend a session on it.
+SQL is verified against both projects; its HTTP call reaches the API and is
+refused there, 14 runs out of 14** (above). **No session can exercise it** —
+`api.supabase.com:443` is a policy denial at the agent proxy, which answers 403
+to CONNECT, so `fetch` reports only "fetch failed" and curl reports status 000 —
+so a fix is tested through `workflow_dispatch` on a branch, not from here.
 Re-derive rather than trusting it, since a network policy changes without
 announcement:
 

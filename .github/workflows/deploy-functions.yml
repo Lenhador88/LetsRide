@@ -36,11 +36,14 @@ name: Deploy Edge Functions
 #
 # WHAT IT NEEDS. One repository secret, `SUPABASE_ACCESS_TOKEN` — a personal
 # access token from the Supabase dashboard (Account → Access Tokens), PD-369.
-# It exists as of 2026-09-06. Without it the deploy job is SKIPPED with a
-# warning rather than red on every merge: a job that can only be red trains
-# everyone to ignore red. The cost of that choice is that a RUN is green
-# either way, so read the `Deploy` step rather than the run. The project refs
-# are not secrets; both ship in the client bundle.
+# It has existed since at least 2026-08-31, which is BEFORE this workflow was
+# written; PD-369 was filed on the assumption it was missing and nothing here
+# could tell. Without it the deploy job is SKIPPED with a warning rather than
+# red on every merge: a job that can only be red trains everyone to ignore
+# red. The cost of that choice is that the RUN is green either way and there
+# is no `Deploy` step to look for, since the `if:` below is job-level — so the
+# thing to read is the `deploy` job's own conclusion. The project refs are not
+# secrets; both ship in the client bundle.
 #
 # THE DISPATCH HALF IS VERIFIED, THE PUSH HALF IS NOT. Two dispatches on
 # 2026-09-06 (`all` → dev, `all` → prod) deployed all three functions to both

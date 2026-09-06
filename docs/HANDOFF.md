@@ -126,13 +126,14 @@ working around them.** Four carry detail worth having at hand:
    the split rather than the errand: a probe that creates and deletes nothing is not deferred
    alongside one that costs a real account.
 
-   The redeploy carrying PD-102's re-authentication proof closed **2026-08-17T14:32Z** — `delete-account`
-   at **PROD v9 / DEV v5**, both `ezbr_sha256` `9793933d…`, both newer than the directory's last
-   *behavioural* commit. Both functions are `ACTIVE` on both projects with `verify_jwt` true;
-   `resolve-ride-location` sits at `c09a0474…`, DEV v6 / PROD v5, redeployed 2026-08-27T14:41Z with
-   PD-236 — and `search-places` at `97ae3134…`, DEV v5 / PROD v9, redeployed 14:28Z the same
-   sitting. **Nothing is owed on any of the three today**, which is rare enough to be worth
-   re-measuring rather than trusting.
+   The redeploy carrying PD-102's re-authentication proof closed **2026-08-17T14:32Z**. **Every
+   version and digest that used to be listed here is superseded by the 2026-09-06 catch-up
+   dispatch** — all three functions redeployed to both projects from `771f650`: `delete-account`
+   DEV v6 / PROD v10 `11600c52…`, `resolve-ride-location` DEV v7 / PROD v6 `3a88a35e…`,
+   `search-places` DEV v6 / PROD v10 `c63afa77…`, all `ACTIVE` with `verify_jwt` true and each
+   digest equal across the two projects. That is a reading, not a standing fact — the reason this
+   passage kept a table for three weeks and then held nine false numbers for the length of one
+   dispatch. Re-measure with `list_edge_functions` on both refs rather than trusting any of it.
 
    **What IS still owed is a re-render of the stored tiles.** A tile is rendered once and written to
    `rides.map_card_path` / `map_detail_path`; nothing re-renders it, so every ride created before
@@ -1243,13 +1244,16 @@ created before 14:41 have tiles (3 of 3), every one after does not (0 of 7).
 **PROD carries the identical build** — same `ezbr_sha256` `c09a0474…`. It matters less only because
 PROD has few rides.
 
-**Deployed 2026-09-06 — ten days after the fix was committed, and PD-369 is the durable lesson.**
-`SUPABASE_ACCESS_TOKEN` landed and the catch-up dispatch put `b343d6d` on both projects:
-`resolve-ride-location` DEV v6→7, PROD v5→6, `ezbr_sha256` `3a88a35e…` equal across the two.
-Nothing was red anywhere for the whole ten days, which is the entire cost of that missing secret.
+**Deployed 2026-09-06, ten days late, and the durable lesson is NOT the one PD-369 told.** The
+catch-up dispatch put `b343d6d` on both projects: `resolve-ride-location` DEV v6→7, PROD v5→6,
+`ezbr_sha256` `3a88a35e…` equal across the two. What kept it stale was **nobody dispatching** —
+`SUPABASE_ACCESS_TOKEN` was never missing, and PD-369 said it was for four days (see §The
+`log-digest.yml` header below). A push deploys only when it touches a function, so a gap that opens
+between merges closes only by hand.
+
 **A redeploy does not heal the existing rows** — nothing re-renders a ride whose address did not
-change, so the DEV rides that were created blind still need a deliberate pass (PD-385). PROD's two
-rides are not geocoded, so no rider-visible row is affected.
+change — so the rides created blind need a deliberate pass (PD-385). PROD's two rides carry no
+coordinate, so no rider-visible row is affected.
 
 ```bash
 # is the deploy still behind the repo? the file's date alone cannot answer it
@@ -1257,8 +1261,12 @@ TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- supabase/functions/res
 # mcp__Supabase__list_edge_functions <ref> → an updated_at older than that is stale
 ```
 ```sql
--- how many rides were created blind and still carry no tile (11 on DEV, 0 on PROD)
-select count(*) from public.rides where latitude is not null and map_card_path is null;
+-- Scope it: an untimed count blames this outage for rows it did not cause. 2026-09-06, DEV:
+-- 11 blind in total, but only 7 created after the bad deploy. The other 4 predate it and are the
+-- separate "geocoded, render failed" end state schema.md describes. PROD: 0 of either.
+select count(*) filter (where created_at >= '2026-08-27 14:41:00+00') as blind_in_window,
+       count(*)                                                       as blind_all
+  from public.rides where latitude is not null and map_card_path is null;
 ```
 
 ## The creator's membership row is the database's to write — 2026-09-03
