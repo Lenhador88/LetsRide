@@ -193,13 +193,23 @@ See `docs/reference/running-locally.md` §The walk.
 ## Threads replace the ride chat — 2026-09-06
 
 **PD-402 — three migrations: `108_ride_threads.sql` (additive, applied to DEV),
-`109_retire_ride_chat.sql` (destructive, applied NOWHERE until the bundle is confirmed serving) and
+`109_retire_ride_chat.sql` (destructive, held back until the merged bundle was confirmed serving,
+then applied) and
 `110_a_ride_watermark_is_not_an_oracle.sql` (applied to DEV).** `034`'s
 single unbounded chat stream is replaced by the club's model one domain over — `ride_threads` /
 `ride_thread_messages` / `ride_thread_reads` on `081`/`082`'s shape, with the audience swapped from
 club membership to `private.is_ride_crew` ∩ ride visibility. Owner's data call, 2026-09-05: *"we are
 not live yet, so all ride chats can be dropped."* PROD held **0** `ride_messages` and **0**
 `ride_reads` either way.
+
+**All three are applied to DEV and the change is complete there.** `109` was held back until the
+merged bundle was confirmed *serving* — `READY` on merge sha `923541c` with `aliasError` null — and
+applied at 10:09Z, about 25 minutes after the merge. Its verification passed on every point: both
+tables gone, `private.is_ride_crew` still present, publication down to
+`club_messages, ride_thread_messages`, gate triggers 23 → 22, `notifications` untouched, advisors
+unchanged at 41. **The post-`109` walk rendered 26/26 screens clean**, including all three new
+thread routes, with `ride_messages` and `ride_reads` no longer in the database — which is the only
+gate that could have caught a surviving read of a dropped table.
 
 **THE ORDERING IS THE STORY, and it breaks in one direction.** `108` applies **before** the client
 merges — it is purely additive and creates no object a shipped bundle can observe. `109` applies
@@ -261,6 +271,22 @@ seconds after a merge once, out from under a Preview still calling the function 
   collapsing source is exactly why. The club's weaker form (*"the horizon filter dropped nothing"*)
   was reachable-wrong through `getClubThreadReplies` for that reason; PD-400 has since made the two
   expressions byte-identical, and that is the state to keep them in. Do not "align" them.
+
+**The OpenSpec archive is deliberately NOT done, and `openspec/specs/ride-chat/` is still there.**
+`tasks.md` 10.1 asks for it and `design.md` D11 gives the order — archive `add-ride-chat-unread` and
+`invite-riders-to-a-ride` first, because both carry `MODIFIED` deltas against requirements this
+change removes, and whichever archives second has its edit silently discarded. **The reason it was
+left is one D11 does not mention**: `invite-riders-to-a-ride` carries **six** spec deltas and only
+one is `ride-chat` — the other five (`client-cache-invalidation`,
+`database-enforced-integrity`, `event-fanout-integrity`, `notifications`, `ride-invites`) fold into
+live specs and belong to a different story. Archiving it with `--skip-specs` to dodge the ordering
+problem would discard those five, which is the same silent loss D11 warns about arriving from the
+other direction; archiving it properly means folding another story's spec edits on this session's
+judgement, and `openspec/` is in the CI denylist so nothing would catch a mistake.
+
+So it is left whole rather than half-done. Whoever picks it up: archive the two others **with**
+specs, in D11's order, then this one, then confirm `openspec/specs/ride-chat/` is **deleted** rather
+than left as an empty shell.
 
 **There is no `ride_message` notification kind, and the issue says there is.** `036` and `060` name
 `ride_messages` only in **comments**, as the precedent their own reasoning copies — the comment

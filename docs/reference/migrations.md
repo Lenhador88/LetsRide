@@ -334,17 +334,30 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 through `107` **promoted to PROD on 2026-09-06** between 08:26:24Z and 08:40:28Z, closing the gap
 this heading described for a week; `108` and `110` (PD-402) opened a new one the same day.
 
-**What is open now is three files open for TWO different reasons — do not read it as a three-file
-gap.** `108_ride_threads` and `110_a_ride_watermark_is_not_an_oracle` are applied to DEV and
-awaiting promotion in the ordinary way. **`109_retire_ride_chat` is applied NOWHERE and that is
-deliberate**: it drops `ride_messages` and `ride_reads`, so it must not apply until the bundle that
-stopped reading them is confirmed **serving** on DEV. A file in the repo and in no database is
-normally drift; this one is the sequencing rule mid-flight, and its own header carries the gate.
+**What is open is the ordinary promotion gap: `108`–`110` (PD-402), all three applied to DEV.**
 
-**DEV's recorded order will end up `108, 110, 109`** once `109`'s gate opens, because the recorded
-version is an apply-time timestamp. That is the shape this file already records for PROD, the suite
-replays in filename order where the two commute, and `npm run db:drift` compares names rather than
-versions — so it is not drift. `110`'s own header says the same.
+**`109_retire_ride_chat` was held back until the merged bundle was confirmed *serving***, which is
+the whole point of splitting the change across two files. The gate it waited on, recorded because
+"it merged" and "CI is green" do not satisfy it: deployment `dpl_65twsuyd8bb…`, `githubCommitSha`
+`923541c5a0ba0c97fd83a195ea7dd76179377f05` — the merge sha — `state: READY`, `aliasError: null`,
+aliased to `app-dev.letsride.social`. Applied 2026-09-06T10:09Z, roughly 25 minutes after the merge
+rather than the 102 seconds this repo once managed.
+
+Its §Verification block ran and passed: both tables gone, `stamp_ride_read` and `ride_has_unread`
+gone, **`private.is_ride_crew` still present** (`041`, `051` and `108`'s own policies call it),
+publication down to `club_messages, ride_thread_messages`, gate triggers 23 → 22, `notifications`
+untouched at 32 rows with no `ride_message` arm, and advisors **unchanged at 41** — `109` removes
+none, because `ride_has_unread` is `prosecdef = false` and `stamp_ride_read` held no `authenticated`
+EXECUTE. Rows destroyed, counted immediately before the drop: 7 `ride_messages`, 14 `ride_reads`;
+PROD had 0 / 0.
+
+**DEV's recorded order is `108, 110, 109`**, because the recorded version is an apply-time
+timestamp. That is the shape this file already records for PROD, the suite replays in filename order
+where the two commute, and `npm run db:drift` compares names rather than versions — so it is not
+drift. `110`'s own header says the same.
+
+**The same two-file split is owed on the PROD promotion and must not be collapsed**: `108`, then the
+promotion build confirmed serving on `main`, then `109`. `110` may go with either half.
 
 **`101`–`107` were promoted to PROD on 2026-09-06, all seven in one pass, DEPLOY-FIRST and in
 filename order** — `f3c55b4` (PR #405) `READY` on the Production target with `aliasError` null
@@ -437,7 +450,8 @@ against `public.club_thread_unread` (`prosecdef = false`) rather than assumed. G
 one of the 14 pairing with a rename** (13 gate-trigger canaries restated, plus `6.1`, whose label
 embeds the `profiles` FK count) — zero lost, compared as label sets rather than counts.
 
-**`109_retire_ride_chat` (PD-402) — WRITTEN, COMMITTED, AND APPLIED NOWHERE.** It drops
+**`109_retire_ride_chat` (PD-402) — applied to DEV 2026-09-06T10:09Z, AFTER the serving gate
+above.** It drops
 `ride_messages`, `ride_reads`, `public.stamp_ride_read()` and `public.ride_has_unread(uuid)`.
 **The gate is not "the PR merged" and not "CI is green"**: it is the Vercel deployment for the merge
 sha, in that branch's environment, reading `READY` with `aliasError` null. This repo applied a
@@ -619,11 +633,8 @@ and re-derive both rather than trusting the numbers in this heading — they hav
 before, in the direction of reading one row too few.
 
 ```bash
-ls supabase/migrations/*.sql | wc -l    # 109
+ls supabase/migrations/*.sql | wc -l    # 110
 ```
-**The file count is one AHEAD of DEV on purpose**, which no other reading of this line has ever
-been: `109` is written and applied nowhere until the new bundle is confirmed serving. Everywhere
-else in this file, a file with no row is drift.
 
 *(The `docs:check` anchor for this count is the copy further down, in the promotion log's code
 block — it is the one carrying the `— DEV at N, PROD at N` relationship the registry pins on, and
@@ -1303,7 +1314,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 110 — DEV at 110, PROD at 107 (108+110 await promotion; 109 is applied nowhere)
+ls supabase/migrations/*.sql | wc -l     # 110 — DEV at 110, PROD at 107 (108-110 await promotion)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
