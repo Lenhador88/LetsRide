@@ -7,7 +7,7 @@ import { NotificationsHeaderControl } from '@/components/notifications/Notificat
 import { PostcardDeck } from '@/components/postcards/PostcardDeck'
 import { PostcardFilterBar } from '@/components/postcards/PostcardFilterBar'
 import { ErrorState } from '@/components/ui/ErrorState'
-import { SkeletonDeck, SkeletonFilterBar } from '@/components/ui/Skeleton'
+import { LoadingRegion, SkeletonDeck, SkeletonFilterBar } from '@/components/ui/Skeleton'
 import { getFeed, getPostcardFilters, type FeedFilter } from '@/lib/data/postcards'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
@@ -52,12 +52,7 @@ export default function PostcardsPage() {
     <>
       <Header title="Home" secondaryAction={<NotificationsHeaderControl />} />
       <div className="pb-navbar-action pt-header fixed inset-0 flex flex-col">
-        {/* `announce={false}` HERE and not at the gate below — PD-220, and the
-            direction is the fix rather than a preference. `SkeletonRegion`
-            carries why: this position only ever renders in the prerendered
-            HTML, so announcing here and not at the gate leaves a rider
-            arriving from another tab with no announcement at all. */}
-        <Suspense fallback={<PostcardsLoading announce={false} />}>
+        <Suspense fallback={<PostcardsLoading />}>
           <PostcardsScreen />
         </Suspense>
       </div>
@@ -91,23 +86,21 @@ export default function PostcardsPage() {
  * same `min-h-0 flex-1 py-2` wrapper — because anything less is a second
  * boundary to get wrong. Used at **both** cold-load positions: the `<Suspense>`
  * fallback while `useSearchParams` resolves, and the `!filters.data` gate.
- * `SkeletonFilterBar` is `aria-hidden`, so it adds no second announcement
- * beside `SkeletonDeck`'s own `role="status"`.
  *
- * **Those two positions are also why this takes `announce` — PD-220.** Being
- * rendered twice is what makes the shape settle without moving; it is also what
- * announced *"Loading postcards"* twice, because the two sit either side of a
- * Suspense boundary, so React mounts a fresh live region rather than reconciling
- * the old one. The fallback passes `announce={false}` and the gate does not, so
- * the geometry is still drawn at both and the region is inserted at exactly one.
- * `SkeletonRegion` carries why the gate is the position that keeps it.
+ * **It announces nothing, at either position — PD-220.** Being rendered twice
+ * is what makes the shape settle without moving; it is also what made this
+ * component the wrong place for a live region, since the two sit either side of
+ * a Suspense boundary and React mounts a fresh one rather than reconciling. The
+ * announcement is `PostcardsScreen`'s single `LoadingRegion` instead, so every
+ * skeleton here is `announce={false}` — including the one in the deck slot
+ * below, which is the third position and not part of this component at all.
  */
-function PostcardsLoading({ announce = true }: { announce?: boolean } = {}) {
+function PostcardsLoading() {
   return (
     <>
       <SkeletonFilterBar />
       <div className="min-h-0 flex-1 py-2">
-        <SkeletonDeck announce={announce} />
+        <SkeletonDeck announce={false} />
       </div>
     </>
   )
@@ -144,14 +137,39 @@ function PostcardsScreen() {
   // The bar is gated on its own read on the error path too, for the reason
   // `/rides` gives at the same line: a failed feed read is not a failed filter
   // read, and swapping the bar out is the defect this change exists to remove.
-  if (filters.error) return <ErrorState onRetry={gate.refetch} />
+
+  // **`LoadingRegion` is child 0 of every branch below, and that is load-
+  // bearing — PD-220.** This screen draws a skeleton at three positions during
+  // one cold load (the `<Suspense>` fallback, the `!filters.data` gate, and the
+  // deck slot below while `feed` is still in flight), and no two of them
+  // reconcile, so a region inside any of them is inserted afresh and announces
+  // again. Every skeleton here is therefore silent and this one element carries
+  // the announcement, reconciled by position across all three branches so it
+  // mounts once and only its text changes. Keep it first in each; the index is
+  // what makes it the same element.
+  const loadingLabel = !filters.data || (!feed.error && !feed.data) ? 'Loading postcards' : null
+
+  if (filters.error)
+    return (
+      <>
+        <LoadingRegion label={null} />
+        <ErrorState onRetry={gate.refetch} />
+      </>
+    )
 
   // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
   // where `isLoading` is false and there is still nothing to draw.
-  if (!filters.data) return <PostcardsLoading />
+  if (!filters.data)
+    return (
+      <>
+        <LoadingRegion label={loadingLabel} />
+        <PostcardsLoading />
+      </>
+    )
 
   return (
     <>
+      <LoadingRegion label={loadingLabel} />
       <PostcardFilterBar filters={filters.data} active={filter} />
       <div className="min-h-0 flex-1 py-2">
         {feed.error ? (
@@ -163,7 +181,10 @@ function PostcardsScreen() {
             className="motion-safe:animate-fade-in"
           />
         ) : (
-          <SkeletonDeck />
+          // Silent: the screen's own `LoadingRegion` above is the
+          // announcement, and this is the third of the three positions that
+          // would otherwise each insert one.
+          <SkeletonDeck announce={false} />
         )}
       </div>
     </>

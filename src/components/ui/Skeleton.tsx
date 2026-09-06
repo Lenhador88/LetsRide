@@ -1,6 +1,44 @@
 import { cn } from '@/lib/utils'
 
 /**
+ * One live region for a whole screen, mounted for the screen's life and
+ * announcing by CHANGING rather than by being inserted — PD-220.
+ *
+ * **The insertion is the announcement, so the fix is to be inserted once.** A
+ * screen that draws a skeleton at several positions cannot get that from the
+ * skeletons: each position is a separate mount, so each is a separate region
+ * and a separate announcement. This element is rendered by the screen itself,
+ * at a fixed child index in every branch it can return, so React reconciles it
+ * across the gate → loaded transition and the DOM node is never replaced. It is
+ * inserted once, when the screen mounts, and after that only its text moves.
+ *
+ * **The fixed index is the whole mechanism and it is easy to lose.** React
+ * matches the children of a fragment by position, so this has to be the same
+ * child number in the loading branch, the loaded branch and the error branch.
+ * Move it below a conditional — or wrap one branch and not another — and it
+ * reconciles against a different element, remounts, and announces again. That
+ * is the defect it exists to remove, reintroduced silently: the markup is
+ * identical either way and nothing but a screen reader can see the difference.
+ *
+ * **Text content, not `aria-label`.** A live region announces the content that
+ * changed; an empty region with a label has nothing to change and support for
+ * announcing one is inconsistent. `null` renders the empty string, which is a
+ * removal rather than an update, so finishing a load is silent — announcing
+ * "" or "done" is noise the rider did not ask for.
+ *
+ * `sr-only` is `position: absolute`, so this is out of flow on both screens and
+ * reserves nothing. It must stay that way: these two layouts are the ones
+ * PD-217 and PD-218 pinned to the pixel.
+ */
+export function LoadingRegion({ label }: { label: string | null }) {
+  return (
+    <div role="status" aria-live="polite" className="sr-only">
+      {label ?? ''}
+    </div>
+  )
+}
+
+/**
  * The loading treatments the render migration needs (design D7 / task 5.2),
  * plus `SkeletonFilterBar`, which PD-217 added for a different reason — see
  * its own note. The committed Figma snapshot has zero loading, error or
@@ -57,44 +95,49 @@ export function Skeleton({ className }: { className?: string }) {
  * The live region each announcing shape wraps itself in — and the opt-out that
  * `/rides` and `/postcards` need, PD-220.
  *
- * **A polite live region announces when it is INSERTED, so a shape rendered at
- * two tree positions during one load announces twice.** Those two screens each
- * draw their loading shape at a `<Suspense>` fallback, while `useSearchParams`
- * resolves, and again at their own `!filters.data` gate once the screen has
- * mounted. Those are different depths either side of a Suspense boundary, so
- * React cannot reconcile them: it discards the fallback subtree and mounts a
- * fresh one, the region goes with it, and a cold load was heard as *"Loading
- * list"* twice.
+ * **A polite live region announces when it is INSERTED, so a screen that draws
+ * a skeleton at more than one tree position announces once per position.** That
+ * is fine for the ~28 call sites that draw one: the region is inserted when the
+ * wait starts and removed when it ends. It is wrong on the two list screens,
+ * which draw one at **three** positions during a single cold load:
  *
- * **The region belongs at the GATE and the fallback carries bare geometry.**
- * The direction is the whole fix and it is not symmetric:
+ * 1. the `<Suspense>` fallback, while `useSearchParams` resolves;
+ * 2. the `!filters.data` gate, once the screen has mounted;
+ * 3. the list/deck slot inside the loaded branch, while the second read is
+ *    still in flight.
  *
- * - **The gate renders on every path into a loading state; the fallback does
- *   not.** `useSearchParams` suspends during the prerender pass and resolves
- *   immediately in the browser, so the fallback only ever appears in the
- *   prerendered HTML — a rider arriving from another tab goes straight to the
- *   gate. Announce at the fallback instead and that arrival is silent, which
- *   is this issue's own *"must not leave a screen with no announcement"* and
- *   the harder failure to notice.
- * - **A region sitting in the initial HTML is page content rather than an
- *   update**, and screen readers do not reliably announce one. So the fallback
- *   is the weaker of the two positions on the cold path as well.
+ * No two of those reconcile. 1 and 2 sit either side of a Suspense boundary; 2
+ * returns a component where 3 returns a fragment, so React tears the subtree
+ * down and mounts a fresh one there too. Three positions, three insertions, and
+ * the ordinary cold load hit two of them — the gate, then the slot — because
+ * `filters` and the list are independent `useQuery` calls and `filters` usually
+ * lands first.
  *
- * Exactly one insertion on every path, and the announcement lands at the moment
- * the rider is actually waiting.
+ * **So the announcement is not the skeleton's job on those screens.** Every
+ * shape they draw passes `announce={false}` and the screen renders one
+ * `LoadingRegion` at a fixed child index instead, which survives all three
+ * transitions. See that component for why the index is what matters.
  *
- * **What does NOT work, because it is the obvious move:** hoisting `role=
- * "status"` one level, onto `RidesLoading`/`PostcardsLoading`, and making these
- * shapes plain geometry everywhere. Those components are themselves what is
- * rendered at both positions, so that relocates the region without changing the
- * count — two insertions, same as before — and it costs every one of the ~28
- * other call sites its announcement on the way. The boundary the region has to
- * clear is the Suspense boundary, not one component.
+ * **Two shapes that look like fixes and are not**, both tried before this:
+ *
+ * - **Hoisting `role="status"` onto `RidesLoading`/`PostcardsLoading`** — the
+ *   shape PD-220's body proposes. Those components are themselves what is
+ *   rendered at positions 1 and 2, so it relocates the region without changing
+ *   the count, and costs the other ~28 call sites their announcement.
+ * - **Silencing one position and announcing at another.** Any such split is a
+ *   guess about which read lands first: silence the gate and a load where the
+ *   list arrives before `filters` never announces at all, which is this issue's
+ *   own *"must not leave a screen with no announcement"*.
  *
  * **`aria-hidden` rather than a bare `<div>` on the silent path**, matching
  * `SkeletonFilterBar`: the children are individually `aria-hidden` already, so
- * this is what makes the fallback contribute nothing to the accessibility tree
- * rather than an unlabelled group in it.
+ * this is what makes a silenced shape contribute nothing to the accessibility
+ * tree rather than an unlabelled group in it. The cost is that between first
+ * paint of the prerendered HTML and hydration there is nothing in the tree
+ * saying the screen is loading — a deliberate trade, because the alternative
+ * puts a region in the initial HTML and screen readers differ on whether they
+ * announce one that was there on arrival. A guaranteed single announcement is
+ * worth more here than discoverability in a window that ends at hydration.
  *
  * The prop is on `SkeletonDeck` and `SkeletonList` alone because those are the
  * two shapes those two screens draw. Every other route's boundary is

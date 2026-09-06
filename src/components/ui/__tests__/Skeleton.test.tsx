@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { SkeletonDeck, SkeletonFilterBar, SkeletonList } from '@/components/ui/Skeleton'
+import {
+  LoadingRegion,
+  SkeletonDeck,
+  SkeletonFilterBar,
+  SkeletonList,
+} from '@/components/ui/Skeleton'
 
 /**
  * PD-220 — a cold load announced *"loading"* twice on both list screens, and
@@ -14,14 +19,16 @@ import { SkeletonDeck, SkeletonFilterBar, SkeletonList } from '@/components/ui/S
  * those issues exist to hold still, and nothing about the announcement would
  * look wrong.
  *
- * **The wiring half**: which of the two positions passes it. `announce={false}`
- * on the `<Suspense>` fallback fixes the double announcement; the same prop on
- * the `!filters.data` gate instead *also* silences one of the two, so the count
- * looks fixed — and leaves a rider who navigates in from another tab with no
- * announcement at all, because the fallback only renders in the prerendered
- * HTML. Both states are one token apart, neither is visible on any screenshot,
- * and no render test can tell them apart, since it would have to drive a
- * Suspense boundary to resolve. So that half is asserted against the source.
+ * **The wiring half**: each list screen must silence *every* skeleton it draws
+ * and carry exactly one `LoadingRegion`. Those screens draw a skeleton at three
+ * positions during one cold load — the `<Suspense>` fallback, the
+ * `!filters.data` gate, and the list/deck slot while the second read is in
+ * flight — and no two of them reconcile, so any region left inside one is
+ * inserted afresh and announces again. Leaving a single position announcing
+ * looks correct in every render and is audible only to a screen reader, so it
+ * is asserted against the source: no static render can drive a Suspense
+ * boundary to resolve, and the failing and passing states produce identical
+ * markup at every individual position.
  *
  * Markup, not pixels — `vitest.config.ts` is `environment: 'node'`, so
  * `renderToStaticMarkup` gives what a browser would parse and no layout at all.
@@ -61,10 +68,11 @@ describe('SkeletonRegion opt-out', () => {
     expect(silent).toContain('aria-hidden')
   })
 
-  it('draws the same geometry either way, so the fallback still reserves the shape', () => {
-    // The silent variant stands at the `<Suspense>` fallback, where its whole
-    // remaining job is to be the same size as the gate below it. Same bar count
-    // and same root classes; only the accessibility attributes differ.
+  it('draws the same geometry either way, so a silenced shape still reserves it', () => {
+    // The silenced variants stand at the `<Suspense>` fallback and the gate,
+    // where their whole remaining job is to be the same size as what replaces
+    // them. Same bar count and same classes; only the accessibility attributes
+    // differ.
     for (const [announcing, silent] of [
       [renderToStaticMarkup(<SkeletonList />), renderToStaticMarkup(<SkeletonList announce={false} />)],
       [renderToStaticMarkup(<SkeletonDeck />), renderToStaticMarkup(<SkeletonDeck announce={false} />)],
@@ -79,23 +87,45 @@ describe('SkeletonRegion opt-out', () => {
 
   it('SkeletonFilterBar still carries no region at all', () => {
     // Pre-existing and load-bearing: it reserves height and describes nothing,
-    // so a region here would be the second announcement all over again, this
-    // time inside a single position.
+    // so a region here would be one more insertion on the two screens that draw
+    // it, which are the two this issue is about.
     const html = renderToStaticMarkup(<SkeletonFilterBar />)
     expect(countRegions(html)).toBe(0)
     expect(html).toContain('aria-hidden')
   })
 })
 
+describe('LoadingRegion', () => {
+  it('announces by its text content and is out of flow', () => {
+    const loading = renderToStaticMarkup(<LoadingRegion label="Loading rides" />)
+
+    expect(countRegions(loading)).toBe(1)
+    expect(loading).toContain('Loading rides')
+    // Text, not `aria-label`: a live region announces the content that changed,
+    // and an empty region with a label has nothing to change.
+    expect(loading).not.toContain('aria-label')
+    // `sr-only` is `position: absolute`, so this reserves no space on two
+    // layouts PD-217 and PD-218 pinned to the pixel.
+    expect(loading).toContain('sr-only')
+  })
+
+  it('renders the same element when idle, so finishing a load is silent', () => {
+    // A null label must EMPTY the region, never unmount it. Unmounting and
+    // remounting is the insertion that announces, which is the whole defect.
+    const idle = renderToStaticMarkup(<LoadingRegion label={null} />)
+
+    expect(countRegions(idle)).toBe(1)
+    expect(idle).not.toContain('Loading')
+  })
+})
+
 /**
- * `queryKeys`-style source assertions: the two list screens, read off disk with
- * comments stripped, because a `<Suspense fallback>` cannot be rendered to the
- * point of resolving from a static render.
+ * Source assertions for the wiring, read off disk with comments stripped.
  *
  * **Comments are stripped for the reason `CLAUDE.md` §Technology Decisions
- * calls the comment trap** — both files now carry prose explaining which
- * position takes `announce={false}` and why, so an unstripped search for it
- * matches the explanation as readily as the code.
+ * calls the comment trap** — both files now carry prose explaining the three
+ * positions and the silencing, so an unstripped search for `announce={false}`
+ * or `role="status"` matches the explanation as readily as the code.
  */
 function stripComments(source: string): string {
   return source
@@ -104,29 +134,44 @@ function stripComments(source: string): string {
 }
 
 const SCREENS = [
-  { path: 'src/app/(app)/rides/page.tsx', loading: 'RidesLoading' },
-  { path: 'src/app/(app)/postcards/page.tsx', loading: 'PostcardsLoading' },
+  { path: 'src/app/(app)/rides/page.tsx', skeleton: 'SkeletonList', branches: 3 },
+  { path: 'src/app/(app)/postcards/page.tsx', skeleton: 'SkeletonDeck', branches: 3 },
 ] as const
 
-describe('the live region sits at the gate, not at the Suspense fallback', () => {
-  for (const { path, loading } of SCREENS) {
-    it(`${path} silences only the fallback`, () => {
+describe('each list screen silences every skeleton and carries one LoadingRegion', () => {
+  for (const { path, skeleton, branches } of SCREENS) {
+    it(`${path} leaves no skeleton announcing`, () => {
       const source = stripComments(readFileSync(path, 'utf8'))
 
-      // Exactly one silenced position on the screen. Two would mean the gate
-      // was silenced as well, which is the no-announcement failure.
-      const silenced = source.match(/announce=\{false\}/g) ?? []
-      expect(silenced).toHaveLength(1)
+      // Every occurrence of the screen's own shape passes `announce={false}`.
+      // A bare `<SkeletonList />` here is one more insertion, and it is exactly
+      // what a later edit adds without noticing.
+      const drawn = source.match(new RegExp(`<${skeleton}[^>]*/>`, 'g')) ?? []
+      expect(drawn.length).toBeGreaterThan(0)
+      for (const site of drawn) expect(site).toContain('announce={false}')
 
-      // ...and it is the one inside the boundary's `fallback`, not the gate.
-      const boundary = source.slice(source.indexOf('<Suspense'), source.indexOf('</Suspense>'))
-      expect(boundary).toContain('announce={false}')
+      // No `role="status"` written into the screen itself either — the region
+      // is `LoadingRegion` and nothing else.
+      expect(source).not.toContain('role="status"')
+    })
 
-      // The gate renders the same component and must NOT carry the prop: it is
-      // the position every path into a loading state passes through.
-      const gate = source.match(new RegExp(`if \\(!filters\\.data\\) return <${loading}[^>]*>`))
-      expect(gate).not.toBeNull()
-      expect(gate![0]).not.toContain('announce')
+    it(`${path} renders LoadingRegion once per branch, first`, () => {
+      const source = stripComments(readFileSync(path, 'utf8'))
+
+      // One per returnable branch — the error branch, the gate and the loaded
+      // branch — because React matches fragment children by position: the same
+      // child index in every branch is what makes it one element that persists
+      // rather than three that each announce on mount.
+      const regions = source.match(/<LoadingRegion label=/g) ?? []
+      expect(regions).toHaveLength(branches)
+
+      // ...and it leads each of them. A `LoadingRegion` after a conditional
+      // sibling reconciles against a different element and remounts.
+      for (const branch of source.split('return (').slice(1)) {
+        if (!branch.includes('<LoadingRegion')) continue
+        const opener = branch.slice(branch.indexOf('<>') + 2).trimStart()
+        expect(opener.startsWith('<LoadingRegion')).toBe(true)
+      }
     })
   }
 })

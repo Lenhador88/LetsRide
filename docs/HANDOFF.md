@@ -213,37 +213,52 @@ from `MAP_CREDITS.length >= 2` to an exact length plus an explicit `not.toContai
 form existed because dropping the third line was a legitimate *future* edit, and that reason is
 spent now that it is a decision.
 
-**PD-220 — the double announcement, and the issue's own proposed shape does not fix it.** That is
-the one thing here worth not re-deriving. The issue asks for `role="status"` to be hoisted onto
-`RidesLoading`/`PostcardsLoading` with the four skeleton shapes becoming bare geometry. But those
-two components are themselves what is rendered at both positions, so hoisting one level relocates
-the region without changing the count — still two insertions — and it costs every one of the other
-~28 call sites its announcement on the way. **The boundary the region has to clear is the Suspense
-boundary, not one component.**
+**PD-220 — there are THREE loading positions on those screens, not two, and the issue names two.**
+That is the thing worth not re-deriving. Both `/rides` and `/postcards` draw a skeleton at the
+`<Suspense>` fallback (while `useSearchParams` resolves), at the `!filters.data` gate, **and** in the
+list/deck slot inside the loaded branch while the second read is still in flight. No two of them
+reconcile — 1 and 2 sit either side of a Suspense boundary, and 2 returns a component where 3 returns
+a fragment — so each is a fresh mount and each inserts its own live region.
 
-**What shipped instead: `announce?: boolean` on `SkeletonDeck` and `SkeletonList`, passed `false` at
-the `<Suspense>` fallback and nowhere else.** Four things a later session should not re-derive:
+**The ordinary cold load hit positions 2 and 3**, because `filters` and the list are independent
+`useQuery` calls and `filters` usually lands first. A fix that only addressed 1 and 2 would have left
+the audible defect exactly as it was while every claim in the tree said it was fixed. **That is what
+the pre-merge review caught, and it is the whole reason this branch has a second round.**
 
-- **The direction is the fix and it is not symmetric.** The gate is the position *every* path into a
-  loading state passes through; the fallback only ever renders in the prerendered HTML, because
-  `useSearchParams` suspends during the prerender pass and resolves immediately in the browser. So
-  silencing the gate instead also drops the count to one — and leaves a rider arriving from another
-  tab with no announcement at all, which is the issue's own *"must not leave a screen with no
-  announcement"* arriving from the far side. Both states are one token apart and neither is visible
-  on a screenshot.
-- **A region sitting in the initial HTML is page content rather than an update**, so screen readers
-  do not reliably announce it. The fallback is the weaker position on the cold path as well, not
-  merely on the client-nav one.
-- **Only these two screens were ever affected, measured rather than assumed.** No other route draws
-  a **skeleton shape** at a `<Suspense>` fallback: 20 of the other boundaries are `fallback={null}`,
-  and the two that are not — `/auth/confirm` and `/auth/callback` — render their own `Confirming` /
-  `SigningIn` and no `Skeleton*` at all. So every other skeleton has exactly one position and its
-  region is correct as it stands. That is why the prop is on two shapes rather than four, and why 28
-  call sites are untouched — the issue's "touching every caller" was the cost of its own shape.
-- **The wiring half is pinned against the source, not a render**, because a static render cannot
-  resolve a Suspense boundary and the two failure states produce different behaviour with identical
-  markup. `Skeleton.test.tsx` reads both pages on comment-stripped source — both files now carry
-  prose naming the prop, so an unstripped search matches the explanation.
+**What shipped: every skeleton on those two screens is `announce={false}`, and each screen renders
+one `LoadingRegion` at a fixed child index in all three of its branches.** React matches fragment
+children by position, so the same index in the error, gate and loaded branches is one element that
+persists across every transition — inserted once when the screen mounts, then only its text changes.
+Four things a later session should not re-derive:
+
+- **The fixed index IS the mechanism.** Move `LoadingRegion` below a conditional sibling, or wrap one
+  branch and not another, and it reconciles against a different element, remounts and announces
+  again. The markup is identical either way and only a screen reader can hear the difference, which
+  is why `Skeleton.test.tsx` asserts the position rather than the presence.
+- **Text content, not `aria-label`.** A live region announces the content that *changed*; an empty
+  region carrying a label has nothing to change and support for announcing one is inconsistent. The
+  ~28 other call sites still use `SkeletonRegion`'s `aria-label` — untouched, out of scope, and worth
+  knowing is a weaker mechanism than this one.
+- **No split between positions can work, and this was tried first.** Silencing one and announcing at
+  another is a bet on which read lands first: silence the gate and a load where the list arrives
+  before `filters` announces nothing at all, which is the issue's own *"must not leave a screen with
+  no announcement"*. Only a region that outlives all three transitions is ordering-independent.
+- **Only these two screens were ever affected, measured rather than assumed.** No other route draws a
+  **skeleton shape** at a `<Suspense>` fallback: 20 of the other boundaries are `fallback={null}`, and
+  the two that are not — `/auth/confirm` and `/auth/callback` — render their own `Confirming` /
+  `SigningIn`. Every other skeleton has one position, so its own region is correct and 28 call sites
+  are untouched — the issue's "touching every caller" was the cost of its own proposed shape.
+
+**The shape the issue proposes does not fix it either**, and that is worth stating because it reads
+as a specification: hoisting `role="status"` onto `RidesLoading`/`PostcardsLoading` relocates the
+region without changing the count, since those components are themselves what is rendered at
+positions 1 and 2 — and it strips the other ~28 call sites of their announcement on the way.
+
+**One trade taken deliberately:** a silenced skeleton is `aria-hidden`, so between first paint of the
+prerendered HTML and hydration nothing in the accessibility tree says the screen is loading. The
+alternative puts a region in the initial HTML, where screen readers differ on whether they announce
+one that was present on arrival — and a guaranteed single announcement is worth more than
+discoverability in a window that ends at hydration.
 
 **Filed rather than folded in: `RideMap.tsx` carries ~40 lines of prose describing a
 `Powered by Geoapify` element it has not rendered since PD-236** moved the credit into
@@ -257,8 +272,11 @@ outside `docs:check --cheap`. Run the full sweep locally when a branch adds a te
 
 ```bash
 git grep -n "GEOAPIFY_CREDIT" -- src/            # 0
-# The two screens that silence a fallback, and the 20 that need no prop at all.
-git grep -l "announce={false}" -- 'src/app/**/page.tsx'          # rides, postcards
+# The two screens that silence every skeleton, and the 20 that need no prop.
+# Comment-filtered, because both files EXPLAIN the prop as well as passing it:
+git grep -n "announce={false}" -- 'src/app/**/page.tsx' | grep -vE ':[0-9]+:\s*(\*|//|/\*)' | wc -l   # 4
+git grep -c "announce={false}" -- 'src/app/**/page.tsx'          # 3 each — the filter's control
+git grep -c "<LoadingRegion label=" -- 'src/app/**/page.tsx'     # 3 branches each
 git grep -l "Suspense fallback={null}" -- 'src/app/**/page.tsx' | wc -l   # 20
 npx vitest run src/components/ui/__tests__/Skeleton.test.tsx src/__tests__/ride-geocode-gates.test.ts
 npm run docs:check                               # 39 passed, 0 failed, 3 skipped (no Postgres)
