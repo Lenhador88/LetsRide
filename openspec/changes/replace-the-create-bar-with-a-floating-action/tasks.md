@@ -16,8 +16,11 @@ implementation would be:
 4. **D5** — the 44×44 floor is real but is **not** in `CLAUDE.md`; two primitives cite it as being
    there. Do not conclude from a grep of `CLAUDE.md` that there is no floor.
 
-**T0 is a hard gate.** Q1 in `proposal.md` is the product owner's, has no default, and nothing below
-group 1 may start without it — that is the issue's own *"the build must not pick one silently"*.
+**T0 is a hard gate.** Q1 in `proposal.md` is the product owner's, has no default, and
+nothing from group 1 onward may start without it — **group 1 included**, because 1.1 and 1.2 write
+real CSS into `src/app/globals.css` and the control's size is what Q1 decides. That is the issue's
+own *"the build must not pick one silently"*, and group 1 is precisely the harmless-looking work an
+unattended session would talk itself into starting.
 Q2 gates the ride detail only. Q3–Q7 all have stated defaults; build against the defaults and record
 the assumption rather than waiting.
 

@@ -125,8 +125,10 @@ properly; **the RSVP is a question answered once, not a standing control**"*.
 
 A floating action dissolves the **first**: it does not want the slot, so the RSVP bar stays exactly
 where `2375:8771` draws it and the two coexist. **The second survives untouched** — it is an
-argument about what the RSVP *is*, not about what contends with it, and PD-401 rated D 8/10 partly
-on it. So the honest claim is *unnecessary-for-the-slot*, not unnecessary; anyone writing "D's
+argument about what the RSVP *is*, not about what contends with it, and PD-401 named D **its
+recommendation** partly on it ("*D is the recommendation and is the largest*"; the 8/10 in that
+issue is its own Recommendation rating, not a score on D). So the honest claim is
+*unnecessary-for-the-slot*, not unnecessary; anyone writing "D's
 motivation is gone" is overstating this design's reach, and Q2 must not price C as though the frame
 contradiction were its only cost.
 

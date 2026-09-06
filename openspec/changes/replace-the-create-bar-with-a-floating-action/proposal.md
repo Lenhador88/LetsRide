@@ -299,8 +299,9 @@ D two:
 The first is slot contention, and a floating action **does** dissolve it: the control does not want
 the slot, so the two coexist with the RSVP bar staying exactly where frame `2375:8771` draws it.
 That is a real resolution and it is what answer A rests on. **The second is untouched** — it is a
-claim about what the RSVP *is*, not about what competes with it, and PD-401 rated D 8/10 partly on
-it. So D is **not** made unnecessary; it is made *unnecessary-for-the-slot*, and a rider who has
+claim about what the RSVP *is*, not about what competes with it, and PD-401 named D **its
+recommendation** partly on it. So D is **not** made unnecessary; it is made
+*unnecessary-for-the-slot*, and a rider who has
 answered *Going* still sees a standing control asking a question they have already answered.
 
 This still matters, because the 01:48Z comment on PD-404 offers D as answer **C** and it is the only
@@ -314,8 +315,11 @@ as it is today and makes this change club-only on the ride screen's terms.)
 ## Negative cases — who must NOT see or reach this
 
 Each row is a testable statement about a role and a resource. **None of them is a policy change**:
-every one is already true in Postgres, and the requirement is that the control agrees with the policy
-so that no rider is offered an action the database will refuse.
+every one is already true in Postgres, and the requirement is that the control never offers what the
+policy would refuse — and that **where the control's test and the policy's differ, it errs toward
+withholding.** The owner row below is exactly that case and is not an exception to this sentence:
+the control gates on a membership row where the policy admits row-or-owner, so it can withhold from
+someone the database would have accepted. Withholding is the safe direction; the reverse never is.
 
 ### Club detail — the three-action floating action
 
@@ -468,14 +472,22 @@ than blocking it, at the price of the two screens disagreeing for the length of 
 **A — The RSVP bar, with the floating action lifted above it.** Both reachable at once.
 `resolveRideDetailActions` keeps its inputs and changes its output to a clearance; the timeline `(+)`
 retires; the complementary-entrance invariant becomes trivial. **Costs no frame** — the RSVP bar
-stays exactly where `2375:8771` draws it. **This is the recommended default.**
+stays exactly where `2375:8771` draws it. **This is the recommended default.** **Its cost is not
+zero:** choosing A also declines PD-401's second argument for D — that the RSVP is *a question
+answered once, not a standing control* — so a rider who has already tapped *Going* keeps a bar
+asking them something they have answered. This change does not fix that and does not claim to.
 
 **B — The RSVP bar alone**, composer stays on the timeline `(+)`. Today's behaviour, survives the
-rewrite unchanged, keeps a 40×40 sub-floor target as the only entrance for this rider.
+rewrite unchanged, keeps a 40×40 sub-floor target as the only entrance for this rider. Declines the
+answered-once argument too.
 
-**C — The floating action alone**, RSVP moved into the page body. PD-401's option **D**. Frees the
-slot properly and **contradicts frame `2375:8771`**, which draws that bar stacked on the navigation
-bar.
+**C — The floating action alone**, RSVP moved into the page body. PD-401's option **D**, which that
+issue named its recommendation. **Two costs, and the frame is only one of them:** it
+**contradicts frame `2375:8771`**, which draws that bar stacked on the navigation bar — and it is
+the only answer here that *takes up* PD-401's answered-once argument, so it is the only one that
+stops a rider being asked a question they have already answered. A floating action removes D's
+slot-contention reason; it does not remove this one, which is why C is still on the table rather
+than superseded.
 
 **Default: A, and it is conditional on Q1 — it is NOT a licence to start.** A applies only once the
 owner has answered **Q1**; if Q1 is unanswered this question has no default at all and no code is
