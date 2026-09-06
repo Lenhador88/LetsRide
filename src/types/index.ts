@@ -1287,9 +1287,11 @@ export type Postcard = {
   /** This viewer authored it — decides which overflow menu the card shows. */
   is_own?: boolean
   /**
-   * This postcard reached the club's strip through the club's RIDE rather than
-   * because it was posted to the club (`086`, PD-328). `PostcardStamp` draws a
-   * small ride glyph when it is true.
+   * This postcard reached the club's feed through the club's RIDE rather than
+   * because it was posted to the club (`086`, PD-328). `PostcardCard` draws a
+   * small ride glyph when it is true, and is the only renderer of the flag
+   * there is — the stamp that drew it first went with the ride Journal
+   * (PD-393).
    *
    * **Optional, and the default is false everywhere else on purpose.** Only
    * `getClubFeed` can answer it — the flag comes from

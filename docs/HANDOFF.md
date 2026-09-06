@@ -190,6 +190,251 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The queue jam was an unmerged PR, and the stall check cannot see one — 2026-09-06
+
+**`slot-1` held PD-98 from 2026-09-05T17:25Z until this merge, and its build never died.** It
+opened [PR #396](https://github.com/Lenhador88/LetsRide/pull/396) at 20:35Z with `107` in it,
+gates green, and ended there without merging. Six firings and two handoff entries then reported
+the branch as never pushed, and PD-406 was filed on that.
+
+**`queue-run.md` STEP 6 missed it exactly as written.** It ages the branch with
+`git ls-remote --heads origin | grep -i "pd-<n>"`, and this repo's branches are `claude/<slug>`,
+so the grep finds nothing on a healthy build *and* on this one. The file says to read that as
+**unknown, not dead** — the 23:44Z alarm did; every prose entry after it hardened `unknown` into
+`never pushed`, which is the one claim the file forbids.
+
+**An open PR is the signal that separates the two, and no step reads it.** Ageing a branch cannot
+tell "still building" from "finished and stranded"; a PR that closes the issue answers both.
+`queue-run.md` STEP 6 now asks for one before it alarms — PD-406 carries the drift half.
+
+```bash
+# what a stall check should ask, before it ages anything
+mcp__github__search_pull_requests  query="repo:Lenhador88/LetsRide is:pr is:open PD-98 in:body"
+```
+
+## The removal bar is proposed, not built — 2026-09-06
+
+**PD-361, [PR #403](https://github.com/Lenhador88/LetsRide/pull/403) — the proposal only, and the
+story stays open.** `openspec/changes/refuse-a-removed-rider-a-live-invite-link/` specifies a
+`public.club_removals` row keyed on `(club_id, user_id)`, an eighth conjunct in
+`private.club_invite_link_reachable_by`, and a trigger that clears the row on readmission. **No
+code, and no migration number** — the build was deferred by the concurrency cap, not by any
+judgement about the story.
+
+**The defect, verified first-hand rather than from the issue:** `088`'s `remove_club_member` deletes
+one `club_members` row and its own comment says *"removal is not a ban"*. `093` shipped afterwards,
+and its reachability helper carries seven conjuncts of which none is about removal — so a removed
+rider passes `not is_club_member_for` **because** they were removed, and a pre-minted link readmits
+them silently.
+
+**Five things a build must not re-derive:**
+
+- **The predicate has exactly one legal home**, and that is what makes the owner's narrow reading
+  expressible at all. `093.22` forbids a caller predicate in the public bodies, `093.18` requires the
+  preview and the claim to answer identically in every dead state, and
+  `private.join_club_from_invite` is shared with the in-app accept — so a predicate there would close
+  PD-360's door too, which is the wide reading the owner declined. The reachability helper is the
+  only site that closes one door and not the other.
+- **The clearing trigger is the change's one real hazard.** `after insert on public.club_members`
+  with no `WHEN` clause runs inside **every club join in the app**, beside `notify_club_joined`, and
+  a raise there takes a rider's join down with it. It exists because without a clearing path the bar
+  silently becomes the permanent ban the owner explicitly rejected — invisibly, since no role can
+  read the row. It fires the hand-exercise gate, and `tasks.md` group 4 is that gate.
+- **That trigger function MUST be `security definer` with `set search_path = ''`.** A trigger
+  function defaults to `security invoker`, and `club_removals` grants nothing to `authenticated`
+  and carries no policy — so an invoker-rights delete raises `42501` and rolls the rider's join
+  back. All three triggers already on `club_members` are `security definer`. **Which joins break is
+  a question about the writer's role, not about whether a removal row exists** — Postgres checks
+  table privileges at executor start, so `joinClub`'s direct insert as `authenticated` fails every
+  time while the two `security definer` invite paths inherit the owner's rights and pass silently.
+  That asymmetry, plus the fact that the RLS suite runs as the table owner (the `029` trap), is why
+  `tasks.md` 3.13a asserts `prosecdef` as a catalogue read rather than from a green join.
+- **`removed_by` is deliberately absent, and that is a spec requirement rather than a saving.**
+  `manage-club-riders` requires that *"nothing anywhere SHALL record who removed whom"*. That same
+  spec's *"no tombstone row SHALL be created"* is now false, handled by an explicit REMOVED+ADDED
+  delta pair — do not read the contradiction as an oversight.
+- **A voluntary leaver is not barred**, and the distinction is made by writing the row **inside
+  `remove_club_member`**, never by a DELETE trigger on `club_members` — which would also fire on
+  cascades and on anyone leaving.
+
+**One question is the owner's and is non-blocking:** a rider removed while holding a **pending
+in-app invite** can still accept it — the same defect one table over, on `club_invites` rather than
+`club_invite_links`. Left open because the owner's decision names the link path alone. `088` already
+deletes any **`club_join_requests`** row for the pair on removal — unscoped by status, though a
+`pending` survivor is the stated reason: it *"would let a second admin undo this removal"* — so the
+`club_invites` counterpart is one line in
+the same migration. **`088` touches no invite table at all**, which is the defect this proposal
+exists to fix; do not read that precedent as covering links. It lives on PD-361, not as a second
+row.
+
+```bash
+npx openspec validate refuse-a-removed-rider-a-live-invite-link --strict
+```
+
+## The floating action is proposed, not built — 2026-09-06
+
+**PD-404, [PR #401](https://github.com/Lenhador88/LetsRide/pull/401) — the proposal only, and the
+story moved to `Needs decision` rather than `Deployed to DEV`.**
+`openspec/changes/replace-the-create-bar-with-a-floating-action/`. **No code, deliberately**: the
+issue says *"the build must not pick one silently"* about its frame decision, and both ways forward
+are closed to an unattended session — option 1 needs a Figma write (explicit owner ask), option 2
+contradicts an approved v2 frame against decision #4.
+
+**Three findings a build must not re-derive:**
+
+- **The frame problem is TWO decisions.** `2375:8771` draws the ride detail's nav bar at **390×88
+  with no create control**, so `RideCreateBar` is already an additive departure and converting it
+  contradicts nothing. `2043:10604` instances the same component at **390×152** with
+  `Button Container 358×56` inside it, so converting the club changes a variant **26 other** frames
+  instance. That asymmetry is what makes a split available: ride detail now, club detail later.
+- **The story's value and its worst defect are one decision.** With the tokens' own
+  `16 pad + control + 8` rule, a 56px control reserves **80px** and a 48px one **72px** against
+  `--navbar-action`'s **64px**. **Nothing breaks even** — matching 64px needs a 40px control, below
+  the 44×44 floor. The honest value is *horizontal* space; do not repeat the issue body's sentence.
+- **There is no elevation token at all**, so a floating action would be the app's first persistent
+  one — `grep -in "shadow\|elevation" design/TOKENS.md` is 0.
+
+**Two blocking questions are the owner's**, both phrased as the rider's state in the proposal's
+§Open questions. Filed **PD-407** (`/rides/explore` reserves 64px for a sticky action
+`STICKY_ACTIONS` does not hold).
+
+**The crossrefs gate now sits exactly at its ambiguous ceiling of 35**, so the next ambiguous
+section pointer added anywhere in the repo trips it. Note in particular that **`§Working
+Principles` can never be cited that way** — it is ambiguous against `§Working With the Product
+Owner` on its leading word, and the checker counts a one-word leading match. Writing the
+`<file> §<Section>` idiom out as an *example* trips the gate too: the checker cannot tell an
+illustration from a citation, which is how this very entry went red once.
+
+```bash
+npx openspec validate replace-the-create-bar-with-a-floating-action --strict
+npx vitest run scripts/docs/__tests__/crossrefs.test.mjs   # 26/26, at the ceiling
+```
+
+## `107` has its file, and nothing in the repo could tell — 2026-09-06
+
+**DEV's applied `a_club_may_outlive_its_last_member` (`20260905203011`) is
+`supabase/migrations/107_a_club_may_outlive_its_last_member.sql`**, merged with this change. It was
+sitting in an unmerged PR that the section above explains nobody looked for, so PD-406's A/B/C
+decision — reconstruct the file or revert it on DEV — is moot. **Its last section is not**, and is
+what that issue now carries.
+
+**Nothing here compares the applied chain against `ls supabase/migrations/`.** `npm run db:drift`
+compares DEV against PROD by *name*, so a migration applied to a project with no file behind it is
+invisible to every gate this repo has. That is the direction that cannot be fixed by applying
+something, and it stayed unmeasured through six firings.
+
+```bash
+git ls-files supabase/migrations/*.sql | tail -1   # 107_a_club_may_outlive_its_last_member.sql
+```
+
+## Ride threads are proposed, not built — 2026-09-06
+
+**PD-402, [PR #400](https://github.com/Lenhador88/LetsRide/pull/400) — the `openspec` proposal only,
+and the story stays open.** `openspec/changes/retire-ride-chat-for-ride-threads/` retires
+`ride_messages` (`034`) and `ride_reads` (`061`) for `ride_threads` / `ride_thread_messages` /
+`ride_thread_reads` on `081`/`082`/`094`'s model. **The build was deferred by the concurrency cap,
+not by a judgement about the story**: it needs `supabase/tests/rls_test.sql` and
+`docs/reference/schema.md`, which `slot-1` had declared.
+
+**Three of the issue's premises were false, and two of them remove work:**
+
+- **There is no `ride_message` notification kind.** `notifications_type_check` has 16 arms and that
+  is not one; the only trigger on `ride_messages` is `enforce_participation_gate`. `036` and `060`
+  name the table only in **comments**, as the precedent their own reasoning copies — the comment
+  trap, where the issue's own suggested grep counts obituaries. So there is no enum arm to retire and
+  `101`'s precedent question has no subject.
+- **`107` is taken on DEV by a file the repo lacks** — the section above.
+- **Nothing in `design/` draws a ride thread, and nothing draws a club thread either.** The club's
+  thread screens were built without a v2 frame. The build copies the shipped implementation; do not
+  go looking for a frame.
+
+**Two things the proposal settles that a build must not re-decide.** The additive and destructive
+halves are **two migration files** — the publication entry must precede the deploy and
+`ride_messages` must outlive the old bundle, so one file cannot be both sides of it; that also forces
+the new table to be named `ride_thread_messages`, since `ride_messages` still exists when A applies.
+And deletion is `082`'s `security definer` RPC rather than a DELETE policy, which **closes** the
+residual silent `DELETE 0` on `ride_messages` that `102` deliberately left open rather than porting
+it into two new tables.
+
+**Q1 is blocking and is the owner's:** a rider who accepted an invite to a private club's ride, and
+is not in that club, opens the ride and taps Threads — what do they see? The spec is written to *the
+ride's threads in full, and no part of the club*.
+
+```bash
+npx openspec validate retire-ride-chat-for-ride-threads --strict
+```
+
+## Three from one queue firing — a timeline lie, the ride's bottom slot, the privacy copy — 2026-09-06
+
+**PD-400 + PD-401 + PD-405, one branch, taken into `slot-2`.** Grouped because all three are
+small `src/`-only changes with no migration, so they fit one `reviewer` pass; they collide with
+nothing, which is why the group is three rather than two.
+
+**PD-400 — `mergeClubTimeline` could append the club's founding under a stream that had rows
+behind it.** `complete` was derived from *"the horizon filter dropped nothing"*
+(`inside.length === events.length`), which is a different question from the one the flag answers.
+It is now `horizon === null && shown.length === ordered.length`, the test `mergeRideTimeline` has
+always used.
+
+- **Reachable through exactly one of the five sources, which is why it stayed invisible.** A full
+  read of the other four returns at least `CLUB_TIMELINE_LIMIT` rows, so the display cap cuts
+  before the horizon can lie. **`getClubThreadReplies` is the exception**: it collapses its window
+  to one row per thread, so two busy threads return two rows out of a two-hundred-message window
+  with a live horizon.
+- **`resolveClubTimelineAdvance` needed no change** — it reads the flag rather than re-deriving
+  it, so it became correct by the fix upstream. Do not "simplify" the two merges into one; they
+  diverge on more than this.
+- **The stricter test under-reports at the exact-boundary read, and that is NOT a new bug** —
+  found in the pre-merge review and recorded so nobody re-files it. A source returning *exactly*
+  its limit sets a horizon at its oldest row even when nothing is behind it, so `complete` is
+  `false` where the old expression could read `true`. It **self-heals, with one condition**:
+  `resolveClubTimelineAdvance` returns `fetch-window`, the next window comes back empty,
+  `absorbClubTimelineWindow` nulls the accumulated horizon, and `complete` flips true on the
+  following merge. The cost is one extra read on a boundary-exact club, and it is byte-identical
+  to what `mergeRideTimeline` has always done — which is what the issue asked for.
+  **The condition is the mount's window ceiling**, and it is the variant a later session would
+  otherwise re-file as a fresh bug: at `CLUB_TIMELINE_MAX_WINDOWS` (10) that call returns
+  `capped` rather than `fetch-window`, so the horizon is never nulled and the tail reads
+  *cannot get more* instead of showing the true end. It needs a boundary-exact club **and** a
+  rider who has already taken ten fetch steps, and it still fails in the safe direction —
+  understating the end rather than asserting a false one.
+
+**PD-401 — the ride detail's create bar, and the collision it had to settle.** `RideCreateBar` is
+`ClubCreateBar`'s slot and geometry with **one** action (a postcard tagged to the ride), because
+that is all a ride creates until PD-402 lands. `RideCrewRail` moved above `RideMap` and lost its
+`SectionHeader`; it carries its own `mx-4`, so no geometry moved with it.
+
+- **Option B of the issue's four, plus the fallback that makes it lossless.** `RideAttendanceBar`
+  keeps the sticky slot outright; where it has it, the timeline heading's `(+)` survives. So a
+  crew member always has **exactly one** entrance to the composer, never two and never none.
+- **`resolveRideDetailActions` (`src/lib/rides/bottom-slot.ts`) is that decision, as a pure
+  function, because the property is what a tidy-up breaks.** Simplifying `bottomSlot !== 'create'`
+  back to `canRsvp` looks correct and re-opens it. Its test is exhaustive over the four-input
+  space.
+- **Option D — moving the RSVP into the page body — is deliberately NOT taken, and is still
+  open.** It is the issue's own recommendation and it contradicts `2375:8771`, which draws that
+  bar stacked on the navigation bar. That is the same frame decision PD-404 is parked on, and it
+  is the owner's. **D is B minus one predicate**, so nothing here forecloses it.
+
+**PD-405 — the privacy sheet says less.** The checkbox is `Share usage data` and its sub-label is
+gone. **The replay disclosure did not go; it MOVED into the intro above the toggle**, because it
+is the only place a rider is told their screen is recorded before consenting.
+
+- **A sheet reading only `Share usage data` over a switch that enables session replay is the
+  shape to avoid**, and this file is one careless trim away from it at any time.
+  `PrivacySheet.dom.test.tsx` pins the fact **and its position** — presence alone is not the
+  property, and the mutation that moves the clause below the checkbox fails only the order
+  assertion (1 failed, 3 passed), which is what proves the two are independent.
+- **Three surfaces must keep agreeing and only one is enforceable from here**: this sheet,
+  `/legal/privacy`, and the App Store / Play data forms still parked on PD-232. Write copy from
+  `src/lib/observability/scrub.ts` and `src/lib/analytics/events.ts`, never from a description
+  of them.
+
+```bash
+git grep -n "resolveRideDetailActions\|horizon === null && shown" -- src/
+npx vitest run src/lib/rides src/lib/data/__tests__/club-timeline.test.ts src/components/profile
+```
+
 ## A club may outlive its last member — 2026-09-05
 
 **PD-98, `107_a_club_may_outlive_its_last_member.sql`, applied to DEV.** `transfer_owned_clubs`'
@@ -306,6 +551,51 @@ fix, and each carries a visibility rule, which is why this went through `openspe
 git grep -n "my_blocked_riders\|my_hidden_postcards" -- src/ supabase/
 PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3440, from 3382
 ```
+## The introduction sheet is the join now — 2026-09-05
+
+**PD-392, [PR #395](https://github.com/Lenhador88/LetsRide/pull/395).** `IntroductionPrompt` opened
+*after* `joinClub` had written the `club_members` row, so `Not now` read as *"don't join yet"* and
+meant *"you have joined"*. On the Join-button path it now offers **Post** (join, then introduce) and
+**Join later** (write nothing, join nothing). No migration — the sheet opening for a non-member is a
+client mode, not a relaxation of `owesIntroduction`, whose `viewerRole !== null` conjunct is
+untouched.
+
+**Five things a later session should not have to re-derive:**
+
+- **The order is forced and cannot be swapped.** `097`'s `introduce_to_club` refuses a non-member
+  via `private.is_club_member`, so the membership lands first. The two writes are separately
+  failable with no transaction across them, and a failed introduction deliberately leaves a member
+  who owes one — `097`'s own first-class state. **No compensating delete**: a join-then-leave has
+  the `club_joined` notification wake the story refuses, and `095`'s owner guard makes it not even
+  total.
+- **The dismissal rule is an iff and it has THREE call sites**, not the one the proposal first
+  named: `record a session dismissal ⟺ a membership exists`. The sheet reports the fact out through
+  `onDismiss` because it is the only thing that knows its own write returned; reading it back off
+  the cache races `invalidateClubMembership`. `onPosted`'s unconditional write **is** the iff, not
+  an exception to it.
+- **`ExploreClubsList` is mounted TWICE** — `/clubs/explore` and `/clubs`' first-run screen — and
+  the first cut wired only one. Every `Join club` on the screen a rider sees before joining anything
+  did nothing at all: no membership, no sheet, no error, because the handler returns before the
+  write. `onIntroduce` is **required** now and `ClubCard` is a discriminated union on `joined`, so a
+  repeat is a type error. The queue is `src/lib/clubs/use-introduction-queue.ts` — one home, because
+  two copies is how the two screens drift.
+- **The latch is per sheet INSTANCE and hoisting it to a page is a defect.** After club A's `Post`
+  lands, a page-level latch would open club B's sheet in member mode, `introduceToClub` alone would
+  be refused for a non-member, and **B would become unjoinable** — surfacing as an introduction
+  error rather than anything about joining. Both screens key the sheet per club for this.
+- **The default club still joins in one tap.** It is exempt from introductions and reachable today
+  with a live `Join club` button, so a sheet-only membership would make it unjoinable.
+  `ClubMembershipButton` gained `is_default` as a required prop, **read as data** — asserting it
+  from a screen's position in the flow is PD-384's defect.
+
+**One open question is the owner's:** whether `Join later` emits an analytics event. Default taken —
+no.
+
+```bash
+git grep -n "joinAndIntroduceToClub\|useIntroductionQueue" -- src/
+npx vitest run src/components/clubs src/lib/actions/__tests__/join-and-introduce.test.ts
+```
+
 ## The ride detail is a timeline now — 2026-09-05
 
 **PD-393, [PR #393](https://github.com/Lenhador88/LetsRide/pull/393).** `/rides/detail` adopts the
@@ -321,17 +611,19 @@ over rows already in hand. If a ride ever routinely overruns `RIDE_TIMELINE_JOIN
 
 **Two things this left standing, both the owner's call:**
 
-- **`PostcardStamp` is rendered by nothing.** It is the perforated tile asked for on 2026-08-27 and
-  the presentation PD-257's journal route is drawn with, so it was not deleted with the strip that
-  used it. Either PD-257 brings it back or it goes with that story. Check rather than assume it is
-  still orphaned — a later screen may have picked it up:
+- **`PostcardStamp` is DELETED — product owner, 2026-09-05, asked directly.** It was orphaned the
+  moment the ride Journal dissolved, and the choice was between PD-257 bringing it back and it
+  going with that story; the owner chose deletion. The component, its test, its `stamp-edge` mask
+  and its postmark are gone, and **PD-257 now owes a tile of its own** if that story is ever
+  built — `docs/FIGMA-FIDELITY-TODO.md` §The stamp as a franked postal stamp keeps the four
+  measurements a rebuild would need. Every postcard in the app is a `PostcardCard`:
 
   ```bash
-  git grep -l "postcards/PostcardStamp'" -- src/ | grep -vE '__tests__|PostcardStamp\.tsx'
+  git ls-files src/ | grep -c PostcardStamp    # 0
   ```
 
-  Grep the IMPORT, not the name: four files mention `PostcardStamp` in prose, and the second
-  filter drops the component itself, which matches its own doc comment.
+  The FILE, not the name: three files still mention the stamp in past tense, deliberately, and a
+  grep for the word counts those obituaries — CLAUDE.md §Technology Decisions' comment trap.
 
 - **`mergeClubTimeline` can read `complete` while a source still has rows behind it.** It derives
   completeness from *"the horizon filter dropped nothing"*; `mergeRideTimeline` uses the stronger

@@ -23,18 +23,28 @@ const { owesIntroduction } = await import('@/lib/data/club-introductions')
 const { JoinClubButton } = await import('@/components/clubs/JoinClubButton')
 
 /**
- * `PD-384` — Explore's `Join club` never asked for an introduction because
- * the sheet used to live inside this row, and `joinClub`'s own invalidate can
- * unmount the row before a second round trip decides whether one is owed.
- * The fix moves the sheet to the caller (`ExploreClubsPage`) and leaves this
- * component with one job: call `onJoined` once, only when it should.
+ * `PD-384` moved the introduction sheet out of this row and into the caller,
+ * because `joinClub`'s own invalidate can unmount the row before a second round
+ * trip decides whether one is owed.
+ *
+ * **`PD-392` inverted what the callback means, and this file is where that is
+ * pinned.** The control no longer writes a membership for a club owing an
+ * introduction: it reads the freshness guard, opens the sheet and writes
+ * **nothing**. `Post` is what joins. So the two orderings this file asserts are
+ * the reverse of the ones it used to:
+ *
+ * - the guard runs **before** any write, not after the join;
+ * - `onIntroduce` fires **instead of** `joinClub`, not after it.
+ *
+ * Both are invisible to a type check and both revert in silence, which is why
+ * they are asserted on the source rather than inferred.
  *
  * No jsdom here (`vitest.config.ts` stays `environment: 'node'`), so the tap
  * itself is not simulated — the same source-assertion shape
  * `ClubInviteJoin.test.tsx` uses for a click handler no static render can
  * reach. Comment-stripped for the same reason that file strips its own: this
- * docstring names `owesIntroduction` and `hasIntroducedClub`, so a bare
- * substring match would pass against its own header.
+ * docstring names `owesIntroduction`, `joinClub` and `hasIntroducedClub`, so a
+ * bare substring match would pass against its own header.
  */
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
@@ -47,36 +57,64 @@ const SOURCE = stripComments(
   )
 )
 
-describe('JoinClubButton — onJoined fires from the action, never from render', () => {
-  it('calls joinClub, hasIntroducedClub and onJoined nowhere during a static render', () => {
+const HANDLER = SOURCE.slice(SOURCE.indexOf('onClick={(event) => {'))
+
+describe('JoinClubButton — the sheet opens instead of the join, never after it', () => {
+  it('calls joinClub, hasIntroducedClub and onIntroduce nowhere during a static render', () => {
     joinClub.mockClear()
     hasIntroducedClub.mockClear()
-    const onJoined = vi.fn()
+    const onIntroduce = vi.fn()
     renderToStaticMarkup(
-      <JoinClubButton clubId="club-1" clubName="Test Club" isDefaultClub={false} onJoined={onJoined} />
+      <JoinClubButton
+        clubId="club-1"
+        clubName="Test Club"
+        isDefaultClub={false}
+        onIntroduce={onIntroduce}
+      />
     )
     expect(joinClub).not.toHaveBeenCalled()
     expect(hasIntroducedClub).not.toHaveBeenCalled()
-    expect(onJoined).not.toHaveBeenCalled()
+    expect(onIntroduce).not.toHaveBeenCalled()
   })
 
-  it('checks hasIntroducedClub only after a successful joinClub, and gates onJoined on owesIntroduction', () => {
-    const handler = SOURCE.slice(SOURCE.indexOf('onClick={(event) => {'))
-
-    // The error branch returns before the introduction check ever runs.
-    const errorBranch = handler.slice(
-      handler.indexOf('if (result.error)'),
-      handler.indexOf('const alreadyIntroduced')
+  it('reads the freshness guard BEFORE anything is written', () => {
+    // PD-392's whole ordering, and the reverse of what this file asserted
+    // before it. `hasIntroducedClub` used to run after `joinClub`; a refactor
+    // that puts it back there reintroduces the stale-row defect in §D4 — a
+    // cached row that still says `Join club` to a rider already in the club,
+    // whose `Post` then reports a join that `ignoreDuplicates` never made.
+    expect(HANDLER).toContain('const alreadyIntroduced = await hasIntroducedClub(clubId)')
+    expect(HANDLER.indexOf('hasIntroducedClub(clubId)')).toBeLessThan(
+      HANDLER.indexOf('joinClub(clubId)')
     )
-    expect(errorBranch).toContain('return')
+  })
 
-    // hasIntroducedClub is read for THIS join, and onJoined is behind the
-    // owesIntroduction gate rather than called unconditionally.
-    expect(handler).toContain('const alreadyIntroduced = await hasIntroducedClub(clubId)')
-    expect(handler.indexOf('owesIntroduction(')).toBeGreaterThan(
-      handler.indexOf('alreadyIntroduced')
+  it('opens the sheet INSTEAD of joining, and returns before the write', () => {
+    // The `return` is the whole deferral: without it the control would open the
+    // sheet and then join anyway, which is the defect PD-392 exists to fix
+    // wearing a sheet.
+    const gate = HANDLER.slice(
+      HANDLER.indexOf('if (owesIntroduction('),
+      HANDLER.indexOf('const result = await joinClub(clubId)')
     )
-    expect(handler.indexOf('onJoined?.(clubId)')).toBeGreaterThan(handler.indexOf('owesIntroduction('))
+    // Called, not optionally-called: the prop is required, because an
+    // undefined opener here is a Join button that writes nothing and opens
+    // nothing — which is what `/clubs`' first-run screen shipped into review.
+    expect(gate).toContain('onIntroduce(clubId)')
+    expect(gate).not.toContain('onIntroduce?.(')
+    expect(gate).toContain('return')
+
+    // …and the gate is on the real rule, reached with the freshness answer.
+    expect(HANDLER.indexOf('owesIntroduction(')).toBeGreaterThan(
+      HANDLER.indexOf('alreadyIntroduced')
+    )
+  })
+
+  it('still joins outright when no introduction is owed', () => {
+    // The default club's path, and the reason it is not sheet-only: it is
+    // exempt from introductions, so a membership written only by `Post` would
+    // make the one club every rider is auto-joined to unjoinable.
+    expect(HANDLER).toContain('const result = await joinClub(clubId)')
   })
 
   it('reads isDefaultClub from its prop and never hardcodes it', () => {
@@ -98,11 +136,24 @@ describe('JoinClubButton — onJoined fires from the action, never from render',
     // themselves, which is exactly the state that used to open the sheet.
     expect(owesIntroduction({ viewerRole: 'member', isDefaultClub: true }, false)).toBe(false)
     expect(owesIntroduction({ viewerRole: 'member', isDefaultClub: false }, false)).toBe(true)
+
+    // The stale-row case the freshness read exists for: already introduced, so
+    // nothing is owed and the sheet must not open.
+    expect(owesIntroduction({ viewerRole: 'member', isDefaultClub: false }, true)).toBe(false)
   })
 
-  it('still renders Join club and preventDefault/stopPropagation on the tap, unchanged by onJoined', () => {
+  it('still renders Join club and preventDefault/stopPropagation on the tap', () => {
+    // `onIntroduce` is REQUIRED, and this render is why that matters: it used
+    // to omit the callback and assert only the label, which is exactly the
+    // shape that let `/clubs`' first-run screen mount this control with no
+    // opener — a Join button that wrote nothing and opened nothing.
     const html = renderToStaticMarkup(
-      <JoinClubButton clubId="club-1" clubName="Test Club" isDefaultClub={false} />
+      <JoinClubButton
+        clubId="club-1"
+        clubName="Test Club"
+        isDefaultClub={false}
+        onIntroduce={vi.fn()}
+      />
     )
     expect(html).toContain('Join club')
     expect(SOURCE).toContain('event.preventDefault()')

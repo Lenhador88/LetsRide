@@ -265,6 +265,54 @@ export const CLUB_INTRODUCTION_STARTER =
   "Hi, I'm new here! I ride a... and I'm looking forward to meeting the club."
 
 /**
+ * The sheet's two modes' wording — PD-392, `design.md` §D5.
+ *
+ * **The same rule as the starter above governs all of it: copy only, and
+ * nothing may compare against it.** The sheet's mode is decided by whether a
+ * membership exists, never by reading a heading — so a translation, a reword
+ * or an owner's overrule can move any of these strings without touching a
+ * predicate.
+ *
+ * **Member mode keeps every word it had**, byte-for-byte, because `097`'s sheet
+ * is correct for a rider who is already a member however they got there — an
+ * approved join request, a claimed invite link, `058`'s welcome club, an invite
+ * acceptance, or creating the club.
+ *
+ * **Pre-join mode needs its own, because "Welcome to the club!" asserts a
+ * membership that does not exist yet.** That is the whole defect PD-392 names:
+ * the sheet took the decision it appeared to be asking about. A heading that is
+ * false is worse than a plain one.
+ */
+export const CLUB_INTRODUCTION_COPY = {
+  member: {
+    heading: 'Welcome to the club!',
+    body: 'Say hello — the club can read it, wave and reply.',
+    dismiss: 'Not now',
+  },
+  'pre-join': {
+    heading: 'Introduce yourself',
+    body: "Post an introduction and you'll join the club.",
+    dismiss: 'Join later',
+  },
+} as const
+
+/**
+ * The one string that exists only because `Post` is two separately failable
+ * writes — `design.md` §D1.
+ *
+ * `introduce_to_club` refuses a non-member, so the membership is written first
+ * and the introduction second, with no transaction across them. When the second
+ * fails the rider IS a member, and the bare introduction error under a
+ * `Join later` label would tell them nothing happened when something did. This
+ * is the only place the product tells a rider that half of one action
+ * succeeded, and it is what makes that failure benign rather than merely
+ * tolerated: they land in `097`'s first-class "joined, owes an introduction"
+ * state, and the club detail's own state-driven sheet asks again next visit.
+ */
+export const CLUB_INTRODUCTION_PARTIAL_FAILURE =
+  "You've joined the club. Your introduction couldn't be posted."
+
+/**
  * A thread id out of the URL, untrusted like any other query parameter —
  * `clubIdSchema`'s reasoning, applied to the thread screen's own `?id=`. A
  * malformed id means "no such thread", and 404 is the honest answer.

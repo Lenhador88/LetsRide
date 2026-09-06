@@ -75,9 +75,19 @@ export function RideTimeline({
    *  the time this renders, so the founding is a prop rather than a third read
    *  of a row the page is holding. */
   ride: Pick<RideDetail, 'id' | 'created_at' | 'organizer_id' | 'organizer'>
-  /** Crew only — `041` requires `private.is_ride_crew` to tag a postcard to a
-   *  ride, so this is the database's rule rather than the UI's. An affordance
-   *  and never the enforcement. */
+  /** Whether this heading draws its `(+)`.
+   *
+   *  **Crew is necessary and, since PD-401, no longer sufficient.** `041`
+   *  requires `private.is_ride_crew` to tag a postcard to a ride, so no
+   *  non-crew rider is ever offered this — an affordance and never the
+   *  enforcement. What the page adds on top is the composition: `RideCreateBar`
+   *  takes the sticky bottom slot whenever `RideAttendanceBar` is not using it,
+   *  and the two entrances are complementary, so a crew member on a PAST ride
+   *  gets the bar and this reads false. See the page's `bottomSlot`.
+   *
+   *  This component does not compute that and must not start: it cannot see the
+   *  RSVP bar, and a second copy of the rule here is the drift that would put
+   *  two entrances to one composer on the same screen. */
   canAdd: boolean
 }) {
   const rideId = ride.id

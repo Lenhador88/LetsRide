@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useSyncExternalStore } from 'react'
+import { Suspense, useState, useSyncExternalStore } from 'react'
 import { notFound, useSearchParams } from 'next/navigation'
 import { Globe2Icon, LocationOutlineIcon, Lock2Icon } from '@/components/icons/generated'
 import { ClubCreateBar } from '@/components/clubs/ClubCreateBar'
@@ -119,6 +119,24 @@ function ClubScreen() {
   const id = useSearchParams().get(DETAIL_ID_PARAM) ?? ''
 
   const club = useQuery(queryKeys.clubs.detail(id), () => getClub(id))
+
+  /**
+   * The pre-join sheet's own opener — PD-392. Set by `ClubMembershipButton`
+   * when it declines to write a membership, and cleared when the sheet closes.
+   *
+   * **Sticky across its own join, deliberately.** `showIntroductionPrompt`
+   * below turns TRUE the instant `Post`'s membership write lands (`viewer_role`
+   * becomes `member`, `hasIntroduced` is still `false`, nothing is dismissed) —
+   * while the rider's words are on screen and the introduction is still in
+   * flight. Both openers feed **one** `<IntroductionPrompt>` element, so that
+   * transition changes neither the mount nor the draft: it is an `open`
+   * expression that stays true, not a second sheet. `design.md` §D3.
+   *
+   * The element is keyed on `id`, and that does not weaken this — `id` comes
+   * from the URL and cannot move while the sheet is open. See the `key`'s own
+   * comment for what it is there for.
+   */
+  const [preJoinClubId, setPreJoinClubId] = useState<string | null>(null)
 
   // For the ride strip's `· 12 km` (PD-340). Up here with the other hooks
   // rather than beside the strip it feeds, because everything below the gates
@@ -390,7 +408,16 @@ function ClubScreen() {
             always a member and never sees this either way. */}
         {!isMember && (
           <div className="px-4">
-            <ClubMembershipButton clubId={id} />
+            {/* `is_default` is READ, never assumed from this screen's position
+                in the flow — PD-384's defect, and the reason the prop is
+                required. The welcome club is exempt from introductions, so
+                without it a sheet-only membership would make the one club every
+                rider is supposed to be in unjoinable. */}
+            <ClubMembershipButton
+              clubId={id}
+              isDefaultClub={club.data.is_default}
+              onIntroduce={setPreJoinClubId}
+            />
           </div>
         )}
 
@@ -402,17 +429,62 @@ function ClubScreen() {
           non-member — see `ClubCreateBar`. */}
       {isMember && <ClubCreateBar clubId={id} />}
 
-      {/* `097`, PD-365. Driven entirely by `showIntroductionPrompt`'s state
-          rule — never by `joinClub`'s success path — so it reaches a rider
-          however their membership came to exist. `onPosted` also records the
-          session dismissal: `hasIntroduced`'s own invalidated read will
-          confirm the same answer, but recording it here closes the sheet on
-          the same tick rather than waiting on that round trip. */}
+      {/* `097`, PD-365 — and PD-392's second opener.
+
+          **One sheet, two openers.** The member-mode rule is unchanged and
+          keeps every conjunct: driven by `showIntroductionPrompt`, never by
+          `joinClub`'s success path, so it reaches a rider however their
+          membership came to exist — an approved request, an invite link,
+          onboarding's auto-join, creating the club. The pre-join opener is
+          `ClubMembershipButton`'s and reaches nobody else.
+
+          **One element, so the moment `Post`'s join makes
+          `showIntroductionPrompt` true underneath an open pre-join sheet, this
+          is the same element with the same draft rather than a remount.** The
+          `key` below is on `id`, which the URL owns and which cannot move
+          during that transition, so it does not reintroduce a remount.
+
+          `onDismiss` records the session dismissal **if and only if a
+          membership exists** — PD-392. It was unconditional, and
+          `ContextMenu`'s scrim and Escape both close through here, so a
+          `Join later`, a scrim tap or an Escape all reached one unconditional
+          write. A rider who declined the join on this club's own screen and was
+          then admitted by another door in the same session would never be asked
+          to introduce themselves. The sheet is what knows whether a membership
+          exists, so it tells us.
+
+          `onPosted` still records unconditionally, and that IS the iff: a
+          successful `Post` means a membership exists. `hasIntroduced`'s own
+          invalidated read will confirm the same answer, but recording it here
+          closes the sheet on the same tick rather than waiting on that round
+          trip. */}
       <IntroductionPrompt
+        // `key={id}` makes "a sheet instance is one club" TRUE rather than
+        // merely believed. `ClubScreen` reads its id from `useSearchParams()`,
+        // so `?id=A` → `?id=B` is a same-route navigation: it re-renders
+        // without remounting, and a keyless sheet would carry `joined`, the
+        // draft and the error across. No such link exists today — every route
+        // to another club leaves this one — but the per-instance latch is
+        // asserted in prose as a safety property, and the failure it would
+        // cause is club B opening in member mode and becoming unjoinable
+        // (`097` refuses `introduceToClub` for a non-member). One line, so the
+        // guarantee does not depend on no one ever adding that link.
+        //
+        // It does NOT remount on the transition the no-key argument was about:
+        // `showIntroductionPrompt` flipping true under an open pre-join sheet
+        // does not change `id`.
+        key={id}
         clubId={id}
-        open={showIntroductionPrompt}
-        onDismiss={() => dismissIntroductionPrompt(id)}
-        onPosted={() => dismissIntroductionPrompt(id)}
+        mode={preJoinClubId === id ? 'pre-join' : 'member'}
+        open={showIntroductionPrompt || preJoinClubId === id}
+        onDismiss={(membershipExists) => {
+          if (membershipExists) dismissIntroductionPrompt(id)
+          setPreJoinClubId(null)
+        }}
+        onPosted={() => {
+          dismissIntroductionPrompt(id)
+          setPreJoinClubId(null)
+        }}
       />
     </>
   )

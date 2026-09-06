@@ -586,10 +586,29 @@ export function mergeClubTimeline(
   const ordered = inside.sort(byNewestThenKey)
   const shown = ordered.slice(0, limit)
 
-  // Complete means nothing was dropped at either end: the horizon cut nothing
-  // AND the limit cut nothing. Only then does the club's own founding sit
+  // Complete means nothing was dropped at either end: no source's picture stops
+  // short AND the limit cut nothing. Only then does the club's own founding sit
   // legitimately under the oldest entry — see `club-created`.
-  const complete = inside.length === events.length && shown.length === ordered.length
+  //
+  // **`horizon === null`, not "the filter dropped nothing" (PD-400).** Those are
+  // different questions, and the second is the one that lies. A source declaring
+  // a horizon means *that source's picture stops there*, whether or not any
+  // OTHER source happened to hold a row below it — so when the only source
+  // carrying a horizon is also the only one carrying rows in that region, the
+  // filter drops nothing, the old `inside.length === events.length` read true,
+  // and the founding entry was appended under a stream with rows still behind
+  // it. `mergeRideTimeline` has always used this stronger test and
+  // `ride-timeline.ts` carries the argument at its own site.
+  //
+  // **Reachable through exactly one of the five sources**, which is what kept it
+  // invisible: a full read of the other four returns at least
+  // `CLUB_TIMELINE_LIMIT` rows, so `shown.length === ordered.length` fails first
+  // and the display cap cuts before the horizon can lie. `getClubThreadReplies`
+  // is the exception — it collapses its window to one row per thread, so a club
+  // with two busy threads returns two rows from a two-hundred-message window
+  // with a live horizon: few enough that the cap does not cut, and a horizon
+  // that does.
+  const complete = horizon === null && shown.length === ordered.length
 
   if (complete) {
     shown.push({

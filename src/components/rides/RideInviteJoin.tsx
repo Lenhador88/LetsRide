@@ -200,9 +200,9 @@ function RidePreviewCard({ ride }: { ride: RideInviteLinkPreview }) {
           size="sm"
         />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          {/* `Rider` where the organizer has no readable username — the same
-              fallback `PostcardStamp` draws, and reachable here for the same
-              reason: the preview is a definer read and `profiles` is not. */}
+          {/* `Rider` where the organizer has no readable username, reachable
+              here because the preview is a definer read and `profiles` is
+              not. */}
           {ride.organizer.username ?? 'Rider'} is organizing
         </span>
         <span className="shrink-0 text-sm font-medium text-muted">

@@ -24,15 +24,51 @@ import { hasIntroducedClub, owesIntroduction } from '@/lib/data/club-introductio
  * *under* this control, so without it a tap would join the club and open it —
  * and the join would be invisible because the page changed.
  *
- * ## `onJoined` — why the introduction sheet is not rendered here (PD-384)
+ * ## `onIntroduce` — the callback means OPEN THE SHEET, not "a join happened"
  *
- * `joinClub`'s own invalidate is what moves this row off Explore, and that
- * refetch can complete before a second round trip (`hasIntroducedClub`) does —
- * so this component may already be unmounted by the time it would decide to
- * show a sheet. The caller owns a durable place to put it instead: `onJoined`
- * fires only once this rider is confirmed to still owe an introduction for
- * `clubId`, and the parent screen (which outlives this row) is what opens
- * `IntroductionPrompt`.
+ * **It was `onJoined` until PD-392 and the rename is the point.** This control
+ * no longer writes the membership for a club where an introduction is owed: it
+ * asks its parent to open the sheet in pre-join mode and writes nothing at all.
+ * `Post` is what joins. Leaving the old name on the new meaning would have been
+ * a lie at every call site.
+ *
+ * PD-384's reason for the callback survives the change and gets sharper. The
+ * sheet cannot be rendered here, because `joinClub`'s invalidate moves this row
+ * off Explore and unmounts this component — and under PD-392 that now happens
+ * **while the rider's typed introduction is still in flight**, since the join
+ * lands first and the introduction second. A sheet owned by the row would take
+ * the draft with it. The parent screen outlives the row and owns it instead.
+ *
+ * ## The freshness read stays, and it moved in front of the sheet
+ *
+ * `hasIntroducedClub` used to run *after* the join, to decide whether to
+ * prompt. It now runs on tap, before anything is written, because it is the
+ * only guard against a **stale row**: both lists carrying a Join control are
+ * cached queries, so a rider who joined in another tab — or was admitted by an
+ * approved request or an invite link — still sees `Join club` here. Without the
+ * read, that tap would open a sheet saying *"Post an introduction and you'll
+ * join the club"* to somebody already in it, and `Post` would then report a
+ * join that created nothing: `joinClub` upserts with `ignoreDuplicates`, so a
+ * duplicate is a clean success. `design.md` §D4 has the trace.
+ *
+ * **The path is still cheaper than it was** — one read before the sheet,
+ * against `joinClub` *and* `hasIntroducedClub` after it.
+ *
+ * **What the read cannot tell us is membership**, only whether an introduction
+ * exists. A rider who is already a member and has *not* introduced themselves
+ * is a stale row this guard still lets through, and they see the pre-join copy
+ * over a membership they already hold.
+ *
+ * **That is one imprecise sentence AND one hole in the dismissal iff**, and the
+ * second is the part worth writing down. If that rider taps `Join later`, the
+ * sheet reports `membershipExists: false` — because its latch only knows about
+ * a join *it* performed — so no session dismissal is recorded although a
+ * membership exists. **It fails in the safe direction**: they are re-prompted
+ * by the club detail's own state-driven sheet rather than silenced, which is
+ * the opposite of the failure PD-392 is about. Closing it properly costs a
+ * second round trip on every tap to fix a state that costs one extra prompt, so
+ * it is left open deliberately and recorded here rather than left for the next
+ * reader to find an iff hole and re-derive that it is benign.
  *
  * ## `isDefaultClub` is READ, never assumed
  *
@@ -58,13 +94,23 @@ export function JoinClubButton({
   clubId,
   clubName,
   isDefaultClub,
-  onJoined,
+  onIntroduce,
 }: {
   clubId: string
   clubName: string
   /** `clubs.is_default` for this row — see the header; never hardcoded. */
   isDefaultClub: boolean
-  onJoined?: (clubId: string) => void
+  /**
+   * Open the pre-join sheet for this club. Nothing has been written when it
+   * fires — see the header.
+   *
+   * **Required, because it carries the entire write.** Without an opener this
+   * handler returns before `joinClub`, so the control writes nothing, opens
+   * nothing and reports no error — a `Join club` button that does nothing at
+   * all. `mode`, `isDefaultClub` and `ClubMembershipButton`'s own opener are
+   * required for the same reason.
+   */
+  onIntroduce: (clubId: string) => void
 }) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -80,17 +126,26 @@ export function JoinClubButton({
           event.stopPropagation()
           setError(null)
           startTransition(async () => {
-            const result = await joinClub(clubId)
-            if (result.error) {
-              setError(result.error)
+            // BEFORE any write — the freshness guard, see the header.
+            const alreadyIntroduced = await hasIntroducedClub(clubId)
+
+            // `viewerRole: 'member'` is what this rider WOULD be once joined,
+            // which is what makes this the same predicate the club detail
+            // evaluates for a member. A Join control renders for a non-member
+            // alone, so 'owner' is unreachable here.
+            if (owesIntroduction({ viewerRole: 'member', isDefaultClub }, alreadyIntroduced)) {
+              // Write nothing. `Post` joins; `Join later` does not.
+              onIntroduce(clubId)
               return
             }
-            const alreadyIntroduced = await hasIntroducedClub(clubId)
-            if (
-              owesIntroduction({ viewerRole: 'member', isDefaultClub }, alreadyIntroduced)
-            ) {
-              onJoined?.(clubId)
-            }
+
+            // No introduction is owed — the default club, or a stale row for a
+            // rider who already introduced themselves. Join outright, exactly
+            // as before PD-392, and open no sheet. Joining the welcome club has
+            // to stay a one-tap action: it is exempt from introductions, so a
+            // sheet-only membership would make it unjoinable.
+            const result = await joinClub(clubId)
+            if (result.error) setError(result.error)
           })
         }}
         className="rounded px-1 py-1.5 text-sm font-semibold text-accent transition-opacity disabled:opacity-50"
