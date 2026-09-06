@@ -190,6 +190,66 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The reaper watches every child, and the service_role split was never a split — 2026-09-06
+
+**PD-399 + PD-408 + PD-409, one branch, taken into `slot-1`.** Grouped because all three would
+otherwise have taken migration number `112` and all three land in `supabase/tests/rls_test.sql`;
+the first two edit the same `comment on function`.
+
+**PD-399 + PD-408 — `112_the_reaper_watches_every_child.sql`, applied to DEV.** `107` §5 hung the
+ownerless-club reaper on `postcards` DELETE **alone** and filed the rest, so a club emptied in any
+other order was never revisited and stayed for ever: invisible, unjoinable, uneditable, undeletable
+and unreapable. `112` adds the three missing `AFTER DELETE` triggers — one per remaining conjunct —
+and rewrites the comment that claimed an enumeration it never had.
+
+**`112`'s own header is the canonical account and is not restated here** — it argues, per table,
+why the function body does not move, why `club_members` is built despite being unreachable today,
+why re-entrancy is one level *by construction*, and why the `WHEN` clause is on `postcards` and
+`rides` and nowhere else. Read it before touching the reaper. The two things worth carrying out of
+it: **a table that can make the reaper decline must be able to re-ask when it clears** (which is
+why the unreachable `club_members` trigger ships), and **the whitelist and the re-entrancy bound
+are the same fact** — each trigger-bearing table is also a conjunct, so the delete only runs when
+that table contributes zero cascade rows.
+
+**The hand-exercise gate ran BEFORE the apply**, in `DO` blocks that raise at the end so they
+cannot commit, ordinary paths driven as `authenticated`. Ten checks, all PASS. The two worth
+keeping: a rider **leaving a club** (the ordinary action this put new code in front of), and an
+**account erasure** running the new `club_members` trigger inside the rider's own deletion
+transaction, where a raise would abort the erasure itself.
+
+**PD-409 — no migration, and the issue's own framing was the thing that was wrong.** It reports
+`081` and `094` as "opposite precedents" with "nothing saying which is the rule", and offers
+revoking `service_role` across the six club/ride thread tables as the honest fix. **Measured, the
+split is 30-vs-3, not 2-vs-1**, and the three are a category rather than a precedent:
+`postcard_reports`, `club_thread_reports`, `push_devices` — two moderation queues whose rows are
+reporter identities, and a device-token store. **`076` §3 already states the rule and scopes it in
+as many words**: *"The narrowness is deliberate and is not a claim about the other tables."* So
+`094` followed `076`; `081`/`108` leaving the thread tables alone was **correct**, and revoking
+across them would make six tables inconsistent with the other twenty-four.
+
+What was genuinely missing is what the issue's title says: the rule was written only in a migration
+body, where the next table's author does not look. It is now in `CLAUDE.md` §Supabase Rules.
+**No migration, no grant change** — the schema was already right under the correct rule.
+
+- **The local suite cannot measure this and must not pretend to.** `service_role` is a bare role in
+  `harness.sql`, so `has_table_privilege` reads **false for every table** there — an assertion
+  would pass for the wrong reason. The three existing per-table assertions defeat that by granting
+  the hosted default and revoking it inside a savepoint (`rls_test.sql` :1630, :25674); that trick
+  does not generalise to a set, so the hosted query in `CLAUDE.md` is the measurement.
+
+**Suite 3630 → 3642**, reconciled by **label set**: +12 `112.*`, **6 relabelled 1:1, 0 lost**. Four
+of the six were pre-existing trigger pins that the new triggers turned red — working exactly as
+designed. Two were converted from a **count** to a **name list** while updating them (`rides`'
+eight triggers, `club_threads`'), because a count cannot see a swap and its failure diff names
+nothing; `107.12b`'s own reasoning, applied where it was already being edited. Every new assertion
+verified both ways, and the three behavioural ones by counterfactual on DEV: **without the trigger
+the club survives as a permanent orphan; with it, reaped.**
+
+```bash
+git grep -n "reap_ownerless_club" -- supabase/ | grep -c .
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"   # 3642, from 3630
+```
+
 ## A removal now bars a live invite link, and the join waves got their behaviour back — 2026-09-06
 
 **PD-361 + PD-376, one branch, taken into `slot-1`.** Grouped because both land assertions in

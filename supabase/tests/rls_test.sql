@@ -13454,10 +13454,17 @@ select assert_eq(
   (select bool_and(proconfig[1] = 'search_path=""') from pg_proc
     where proname in ('clear_ride_map_tiles', 'protect_picked_ride_location')),
   true, '067: ... and both carry the pinned empty search_path every function in this repo does');
+-- ** Pinned as a NAME LIST rather than a count, changed by 112. ** The count
+-- read 7 and said which migration contributed each one, which is more than a
+-- bare number — but it still could not see a SWAP, and the failure diff named
+-- no trigger, so `expected 7, got 8` sent the reader back to the catalogue to
+-- find out which. Same reasoning as 107.12b, one table across.
 select assert_eq(
-  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+  (select string_agg(t.tgname, ',' order by t.tgname)
+     from pg_trigger t join pg_class c on c.oid = t.tgrelid
     where c.relname = 'rides' and not t.tgisinternal),
-  7, '067/080/103: rides carries seven non-internal triggers — 051 took it from three to four, 067 adds the precedence one, 080 the zone one, and 103 the organizer-crew seed');
+  'clear_ride_map_tiles,enforce_participation_gate,enforce_ride_club_audience,enforce_ride_timezone,establish_ride_organizer_membership,notify_ride_created_in_club,protect_picked_ride_location,reap_ownerless_club',
+  '067/080/103/112: rides carries these EIGHT non-internal triggers — 051 took it from three to four, 067 adds the precedence one, 080 the zone one, 103 the organizer-crew seed, and 112 the reaper. A name arriving or leaving means somebody changed what runs inside a rider''s own ride write, which is the review this pin exists to force');
 
 rollback to savepoint ride_start_location_067;
 
@@ -16270,7 +16277,7 @@ select assert_eq(
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgrelid = 'public.rides'::regclass and not tgisinternal),
-  7, '080/103: ... and seven non-internal triggers in total — 051 took it from three to four, 067 added the precedence one, 080 the zone one, and the two the BEFORE-filtered list above deliberately excludes are AFTER triggers: 036''s notify_ride_created_in_club and 103''s establish_ride_organizer_membership');
+  8, '080/103/112: ... and eight non-internal triggers in total — 051 took it from three to four, 067 added the precedence one, 080 the zone one, and the THREE the BEFORE-filtered list above deliberately excludes are AFTER triggers: 036''s notify_ride_created_in_club, 103''s establish_ride_organizer_membership and 112''s reap_ownerless_club. This count is the half that sees an AFTER trigger arriving, which the filtered list above cannot; 112 also pins all eight by name at 067/080/103/112 above');
 
 rollback to savepoint ride_timezone_080;
 
@@ -24973,8 +24980,8 @@ select assert_eq(
                  where tgrelid = 'public.club_members'::regclass and not tgisinternal
                  order by 1)),
   array['clear_club_removal_on_join', 'enforce_participation_gate',
-        'notify_club_joined', 'protect_club_owner_membership'],
-  '093.27: ** and club_members gains NO compensating gate trigger ** — 078.9''s lesson: one here could never fire, current_user inside private.join_club_from_invite being the owner, and it would raise the gate count while gating nothing. The gate is restated in that function''s BODY instead, through may_participate_for. The third name is 095''s BEFORE DELETE owner guard, which is a different event and a different question; the fourth is 111''s clearing trigger, which is an AFTER INSERT and is deliberately NOT a gate — it reads no participation stamp and refuses nothing');
+        'notify_club_joined', 'protect_club_owner_membership', 'reap_ownerless_club'],
+  '093.27: ** and club_members gains NO compensating gate trigger ** — 078.9''s lesson: one here could never fire, current_user inside private.join_club_from_invite being the owner, and it would raise the gate count while gating nothing. The gate is restated in that function''s BODY instead, through may_participate_for. The third name is 095''s BEFORE DELETE owner guard, which is a different event and a different question; the fourth is 111''s clearing trigger, which is an AFTER INSERT and is deliberately NOT a gate — it reads no participation stamp and refuses nothing; the fifth is 112''s reaper, an AFTER DELETE that is not a gate either — it refuses nothing and writes only to `clubs`, and it is on the DELETE side, where no participation question arises');
 select assert_eq(
   (select array(select tgname::text from pg_trigger
                  where tgrelid = 'public.club_invites'::regclass and not tgisinternal
@@ -26331,8 +26338,8 @@ select assert_eq(
   (select array(select tgname::text from pg_trigger
                  where tgrelid = 'public.club_members'::regclass and not tgisinternal
                    and (tgtype & 8) = 8 order by 1)),
-  array['protect_club_owner_membership'],
-  '095.5: it is the ONLY delete trigger on club_members, so there is no name-ordering interaction to reason about');
+  array['protect_club_owner_membership', 'reap_ownerless_club'],
+  '095.5: the two delete triggers on club_members, and there is STILL no name-ordering interaction to reason about — but for a different reason since 112. It is no longer "there is only one": the guard is BEFORE DELETE and 112''s reaper is AFTER DELETE, so their order is fixed by TIMING rather than by name, and a refusal by the guard means the reaper never runs at all. A third name sorting between them matters only if it shares a timing with one of them');
 
 -- ** THE PARENT PROBE MUST NOT BE VISIBILITY-DEPENDENT, and this is the pair
 -- that shows why. ** Under invoker rights the guard's `select 1 from clubs
@@ -27904,10 +27911,15 @@ select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
   22, '097.14: TWENTY-TWO participation-gate triggers — 097 adds no table and therefore no gate, and its content write is gated inside the function instead. The absolute moves without 097 moving: -1 for 101''s club_thread_waves, +2 for 108''s two thread tables, -1 for 109''s ride_messages');
+-- Pinned by NAME since 112, because the claim is about WHICH triggers are here
+-- rather than how many: a count that moves says nothing about whether 097 was
+-- the one that moved it, which is the only thing this assertion is about.
 select assert_eq(
-  (select count(*)::int from pg_trigger
-    where tgrelid = 'public.club_threads'::regclass and not tgisinternal),
-  1, '097.14: ... and club_threads carries exactly one non-internal trigger, so 097 hung nothing on it — no fan-out, no marker maintenance, no notification. This change adds no notification behaviour at all; that is notify-a-club-thread''s, and it treats an introduction as an ordinary thread');
+  (select array(select tgname::text from pg_trigger
+                 where tgrelid = 'public.club_threads'::regclass and not tgisinternal
+                 order by 1)),
+  array['enforce_participation_gate', 'reap_ownerless_club'],
+  '097.14: ... and 097 hung NOTHING on club_threads — no fan-out, no marker maintenance, no notification. It adds no notification behaviour at all; that is notify-a-club-thread''s, and it treats an introduction as an ordinary thread. The second name is 112''s reaper, an AFTER DELETE that writes only to `clubs` and is not 097''s either');
 select assert_eq(
   (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'private' and p.proname like '%introduc%'),
@@ -29767,8 +29779,8 @@ select assert_eq(
                  where tgrelid = 'public.club_members'::regclass and not tgisinternal
                  order by 1)),
   array['clear_club_removal_on_join', 'enforce_participation_gate',
-        'notify_club_joined', 'protect_club_owner_membership'],
-  '099.9: ... and club_members carries exactly those four triggers — 099 hangs nothing new on the table, so anything beyond 111''s clearing trigger is a failed apply rather than a finding');
+        'notify_club_joined', 'protect_club_owner_membership', 'reap_ownerless_club'],
+  '099.9: ... and club_members carries exactly those five triggers — 099 hangs nothing new on the table, so anything beyond 111''s clearing trigger and 112''s reaper is a failed apply rather than a finding');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where tgname = 'enforce_participation_gate' and not tgisinternal),
@@ -32329,15 +32341,19 @@ select assert_eq(
 rollback to savepoint reaper_threads_107;
 
 -- ---------------------------------------------------------------------------
--- 107.12b  ** THE FIVE CHILD TABLES THE REAP DELETES ON PURPOSE **
+-- 107.12b  ** THE SIX CHILD TABLES THE REAP DELETES ON PURPOSE **
 -- ---------------------------------------------------------------------------
--- `107`'s own comment says "a NEW child table of `clubs` needs a fifth conjunct",
--- which reads as though the existing set were enumerated and covered. ** It was
--- not. ** Nine FKs point at `public.clubs`; four have a conjunct
--- (`club_members`, `postcards`, `club_threads`, `rides`) and five do not:
+-- `107`'s own comment said "a NEW child table of `clubs` needs a fifth
+-- conjunct", which reads as though the existing set were enumerated and
+-- covered. ** It was not. ** `112` (PD-408) rewrites that comment; this block is
+-- the tripwire it wrongly claimed to be, and the two must keep agreeing.
+--
+-- ** TEN FKs point at `public.clubs` ** — nine until `111` added
+-- `club_removals` on 2026-09-06, which is why the count is not written down
+-- anywhere as a number that has to be maintained by hand. Four have a conjunct
+-- (`club_members`, `postcards`, `club_threads`, `rides`) and SIX do not:
 -- `club_invites`, `club_invite_links`, `club_join_requests`, `notifications`,
--- `feed_reads` and — since `111` — `club_removals`: all CASCADE, all destroyed
--- by the reap.
+-- `feed_reads` and `club_removals`: all CASCADE, all destroyed by the reap.
 --
 -- ** That is a judgement, and it is recorded here rather than re-derived. **
 -- `club_invites`, `club_invite_links` and `club_join_requests` are already
@@ -32405,6 +32421,189 @@ select assert_eq(
   (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c3'),
   1, '107.12: ** an OWNED club is never reaped **, however empty it becomes. The reap is scoped to owner_id is null, which is the whole difference between housekeeping and deleting a live rider''s club out from under them');
 rollback to savepoint reaper_owned_107;
+
+-- ===========================================================================
+-- 112. THE REAPER WATCHES EVERY CHILD THAT CAN BE THE LAST ONE (PD-399)
+-- ===========================================================================
+-- ** These live inside the 107 fixture on purpose: C1 is the only ownerless
+-- club in the suite, and building a second one costs an auth.users row, a
+-- profile and a whole transfer_owned_clubs run to assert the same thing. **
+--
+-- 107 §5 hung the reaper on `postcards` DELETE ALONE and filed the rest. So a
+-- club emptied in any OTHER order was never revisited and stayed for ever:
+-- invisible, unjoinable, uneditable, undeletable and now unreapable — verbatim
+-- the state §5 opens by saying it exists to prevent, closed for one ordering out
+-- of four. 112 adds the three missing triggers, one per remaining conjunct.
+--
+-- ** Each behavioural block below asserts the DECLINE and then the REAP **, in
+-- that order, because only the pair distinguishes the fix from a reaper that
+-- simply stopped checking: a trigger that reaped on the first step would satisfy
+-- a reap-only assertion while destroying exactly the content 107 preserves.
+
+-- ---------------------------------------------------------------------------
+-- 112.1  ONE TRIGGER PER CONJUNCT, and the set is pinned as a NAME LIST
+-- ---------------------------------------------------------------------------
+-- A cardinality pin cannot see a SWAP — the same reason 107.12b pins names.
+select assert_eq(
+  (select string_agg(distinct rel.relname, ',' order by rel.relname)
+     from pg_trigger t join pg_class rel on rel.oid = t.tgrelid
+    where t.tgname = 'reap_ownerless_club' and not t.tgisinternal),
+  'club_members,club_threads,postcards,rides',
+  '112.1: ** the reaper fires on all FOUR conjunct tables, not on postcards alone. ** A table that can make the reaper DECLINE must also be able to re-ask the question when it clears; a name missing here is PD-399 reopened for that ordering');
+
+-- ---------------------------------------------------------------------------
+-- 112.2  THE WHEN CLAUSE IS ON EXACTLY THE TWO NULLABLE COLUMNS
+-- ---------------------------------------------------------------------------
+-- 107 property 2: an app-wide postcard's deletion must pay nothing. The same
+-- holds for an app-wide ride. It is ABSENT on club_members and club_threads
+-- because `club_id` is NOT NULL there, so the clause could never be false — it
+-- would buy nothing and read as though the column were nullable.
+select assert_eq(
+  (select string_agg(distinct rel.relname, ',' order by rel.relname)
+     from pg_trigger t join pg_class rel on rel.oid = t.tgrelid
+    where t.tgname = 'reap_ownerless_club' and not t.tgisinternal
+      and pg_get_triggerdef(t.oid) like '%WHEN%'),
+  'postcards,rides',
+  '112.2: ** only the two tables whose club_id is NULLABLE carry a WHEN clause **, and those are exactly the two that can hold an app-wide row. A third name here is a dead predicate on a NOT NULL column; a missing one makes every app-wide delete call the function for nothing');
+select assert_eq(
+  (select string_agg(distinct c.relname, ',' order by c.relname)
+     from pg_attribute a join pg_class c on c.oid = a.attrelid
+     join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and a.attname = 'club_id' and not a.attnotnull
+      and c.relname in ('club_members','club_threads','postcards','rides')),
+  'postcards,rides',
+  '112.2: ... and that split is derived from the COLUMNS rather than transcribed — make club_threads.club_id nullable without adding its WHEN clause and these two assertions disagree');
+
+-- ---------------------------------------------------------------------------
+-- 112.3  ONE FUNCTION BODY SERVES ALL FOUR
+-- ---------------------------------------------------------------------------
+-- `OLD` is resolved per firing, so no per-table copy is needed. Four bodies
+-- would be four things to keep in step — the shape 107 §3c records as a defect.
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'reap_ownerless_club'),
+  1, '112.3: ** four triggers, ONE function. ** A per-table copy is four bodies to keep in step, which is exactly how the reaper and its conjuncts drift apart');
+
+-- ---------------------------------------------------------------------------
+-- 112.4  ** THE REPORTED DEFECT: the ride outlives the postcard **
+-- ---------------------------------------------------------------------------
+-- PD-399's own sequence, and the reason `rides` is the reachable case: 107 §4
+-- KEEPS a preserved club's private rides on purpose, so this is the ordinary
+-- shape of an ownerless club rather than a contrived one.
+savepoint reaper_ride_last_112;
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id)
+  values ('00000000-0000-0000-0000-0001120000e1',
+          'the ride that outlives the postcard', 'Zandvoort',
+          now() + interval '10 days', false,
+          '00000000-0000-0000-0000-0001070000c1',
+          '00000000-0000-0000-0000-000000107002');
+delete from postcards where id = '00000000-0000-0000-0000-0001070000f1';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  1, '112.4: the club correctly DECLINES to be reaped while its ride remains — 107''s behaviour, unchanged, and the half that must not regress');
+delete from rides where id = '00000000-0000-0000-0000-0001120000e1';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  0, '112.4: ** ... and is reaped the moment the ride goes. ** Before 112 nothing fired here and the club was orphaned for ever. Drop the rides trigger and this reads 1');
+rollback to savepoint reaper_ride_last_112;
+
+-- ---------------------------------------------------------------------------
+-- 112.5  THE THREAD OUTLIVES THE POSTCARD
+-- ---------------------------------------------------------------------------
+-- The second reachable ordering: a rider who posted both a thread and a
+-- postcard, left, and deletes the postcard first. 107's club_threads conjunct is
+-- what makes the reaper decline; nothing then re-asked the question.
+savepoint reaper_thread_last_112;
+insert into club_threads (id, club_id, author_id, title, created_at) values
+  ('00000000-0000-0000-0000-0001120000e2', '00000000-0000-0000-0000-0001070000c1',
+   '00000000-0000-0000-0000-000000107002', 'the thread that outlives the postcard',
+   now() - interval '3 days');
+delete from postcards where id = '00000000-0000-0000-0000-0001070000f1';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  1, '112.5: the club DECLINES while its thread remains — and the thread is third-party content that a reap would DESTROY, because club_threads.club_id cascades');
+delete from club_threads where id = '00000000-0000-0000-0000-0001120000e2';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  0, '112.5: ** ... and is reaped once the thread goes. ** Drop the club_threads trigger and this reads 1');
+rollback to savepoint reaper_thread_last_112;
+
+-- ---------------------------------------------------------------------------
+-- 112.6  THE MEMBERSHIP ROW OUTLIVES THE POSTCARD
+-- ---------------------------------------------------------------------------
+-- ** This ordering is NOT reachable through the app today, and the trigger is
+-- built anyway. ** §2b refuses a join to an ownerless club, and at the instant
+-- §4 creates one the only roster row is the departing owner's, which the
+-- profiles cascade removes while the third-party postcards are still there. So
+-- no path makes a membership row the LAST thing standing.
+--
+-- It is asserted because `club_members` is one of the four conjuncts: it can
+-- make the reaper decline, and a conjunct that can decline without being able to
+-- re-ask is PD-399 exactly. The row is written as the table owner here, which is
+-- the only way to produce a state the policy forbids.
+savepoint reaper_member_last_112;
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0001070000c1', '00000000-0000-0000-0000-000000107003', 'member');
+delete from postcards where id = '00000000-0000-0000-0000-0001070000f1';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  1, '112.6: the club DECLINES while a roster row remains — 107''s club_members conjunct doing its job');
+delete from club_members where club_id = '00000000-0000-0000-0000-0001070000c1';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  0, '112.6: ** ... and is reaped once that row goes. ** Drop the club_members trigger and this reads 1');
+rollback to savepoint reaper_member_last_112;
+
+-- ---------------------------------------------------------------------------
+-- 112.7  RE-ENTRANCY IS ONE LEVEL BY CONSTRUCTION, not by luck
+-- ---------------------------------------------------------------------------
+-- The reap cascades to every child of `clubs`, and three of those children now
+-- carry this same trigger. It cannot recurse, and the reason is the SAME fact as
+-- the whitelist: each of the four trigger-bearing tables is also a conjunct, so
+-- the delete only runs when that table contributes ZERO cascade rows.
+--
+-- Exercised as a MULTI-ROW delete through one of the NEW triggers — the first
+-- firing reaps, the rest must find nothing and no-op rather than raise.
+savepoint reaper_reentrancy_112;
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-0001120000e3', 'first', 'Assen',
+   now() + interval '10 days', false, '00000000-0000-0000-0000-0001070000c1',
+   '00000000-0000-0000-0000-000000107002'),
+  ('00000000-0000-0000-0000-0001120000e4', 'second', 'Venlo',
+   now() + interval '11 days', false, '00000000-0000-0000-0000-0001070000c1',
+   '00000000-0000-0000-0000-000000107002');
+delete from postcards where id = '00000000-0000-0000-0000-0001070000f1';
+delete from rides where club_id = '00000000-0000-0000-0000-0001070000c1';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  0, '112.7: ** a multi-row delete through a NEW trigger reaps once and does not raise on the second firing. ** Both rows go in one statement, both AFTER-ROW firings see zero rides remaining, and the second finds no club to delete');
+rollback to savepoint reaper_reentrancy_112;
+
+-- ---------------------------------------------------------------------------
+-- 112.8  AN OWNED CLUB IS STILL NEVER REAPED, through any of the new triggers
+-- ---------------------------------------------------------------------------
+-- 107.12 asserts this for the postcards trigger. The three new ones hang on the
+-- busiest delete paths in the app — every ride deletion, every thread deletion
+-- and EVERY LEAVE — so the ordinary case is worth pinning per trigger rather
+-- than inferred from the shared function body.
+savepoint reaper_owned_112;
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0001120000c4', 'PD399 Still Owned MC', true,
+   '00000000-0000-0000-0000-000000107002');
+insert into rides (id, title, meeting_point, departure_at, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-0001120000e5', 'a ride in an owned club', 'Utrecht',
+   now() + interval '10 days', false, '00000000-0000-0000-0000-0001120000c4',
+   '00000000-0000-0000-0000-000000107002');
+insert into club_threads (id, club_id, author_id, title) values
+  ('00000000-0000-0000-0000-0001120000e6', '00000000-0000-0000-0000-0001120000c4',
+   '00000000-0000-0000-0000-000000107002', 'a thread in an owned club');
+delete from rides where id = '00000000-0000-0000-0000-0001120000e5';
+delete from club_threads where id = '00000000-0000-0000-0000-0001120000e6';
+delete from club_members where club_id = '00000000-0000-0000-0000-0001120000c4';
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001120000c4'),
+  1, '112.8: ** an OWNED club survives losing its ride, its thread AND its last member. ** The reap is scoped to owner_id is null through all four triggers — the difference between housekeeping and deleting a live rider''s club out from under them');
+rollback to savepoint reaper_owned_112;
 
 -- ---------------------------------------------------------------------------
 -- 107.13  THE SITES THAT WERE CLOSED ONLY BY A NEIGHBOURING CONJUNCT

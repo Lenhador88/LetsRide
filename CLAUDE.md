@@ -449,11 +449,13 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 111 files. DEV is at `111` and PROD at `107` — measured 2026-09-06.** `101`–`107`
+**Applied state: 112 files. DEV is at `112` and PROD at `107` — measured 2026-09-06.** `101`–`107`
 **promoted to PROD on 2026-09-06**, so the long-standing seven-file gap this line used to describe
-is closed. What is open is the ordinary four-file promotion gap, `108`–`110` (PD-402) and `111`
-(PD-361), all applied to DEV. **`111` is additive with nothing to sequence against** — it touches no
-file under `src/`, so the PROD promotion needs no separate ordering decision for it.
+is closed. What is open is the ordinary five-file promotion gap, `108`–`110` (PD-402), `111`
+(PD-361) and `112` (PD-399/PD-408), all applied to DEV. **`111` and `112` are additive with nothing
+to sequence against** — neither touches a file under `src/`, so the PROD promotion needs no separate
+ordering decision for either. **`112` hangs triggers on three already-shipped write paths**, so it
+owes the hand-exercise gate rather than an ordering decision; that gate is in its own §Verification.
 **`109` was held back until the merged bundle was confirmed *serving*** — `READY` on merge sha
 `923541c` with `aliasError` null, which is not the same as merged — and applied at 10:09Z once it
 was. **`108` went MIGRATION-FIRST and `109` LAST**, the sequencing rule with its two halves pulling
@@ -511,7 +513,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3630** assertions — re-derive rather than trust it:
+Suite **3642** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 
@@ -548,7 +550,8 @@ in `public` — `delete_own_ride_thread_message` and `moderate_ride_thread`; its
 `authenticated` EXECUTE. The rest are things this repo chose: one
 `authenticated_security_definer_function_executable` WARN per `security definer` RPC in
 `public` (each narrow by design — takes a row id or nothing at all, never a rider id, one raise
-site), and three `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding
+site), and three `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright —
+client-role grants; the `service_role` half is a separate question, below. **A migration adding
 two such functions adds two**, and one whose functions live in `private` adds none. Re-derive with
 `get_advisors(security)`; `docs/reference/migrations.md` §Security advisors has the per-migration
 accounting and the count query. An unexpected advisor is one not in that table; a one-advisor
@@ -557,6 +560,65 @@ difference between the projects is almost always a pending promotion.
 **Scope a grant assertion to its grantee**, or use `has_table_privilege`: a table-wide
 DELETE-grant count reads 2 against a correct database, because `postgres` and `service_role` hold
 everything by Supabase default.
+
+**A new table KEEPS Supabase's default `service_role` grants. Revoking is the exception, and
+`076` §3 is the rule** — surfaced here by PD-409 because it was stated only in that migration's
+body, where the next table's author does not look. Revoke from `service_role` when the table is a
+**restricted-readership sink**: its rows are something the one credential that bypasses RLS must
+not be able to enumerate. Three are revoked today — `postcard_reports` (`076`),
+`club_thread_reports` (`094`) and `push_devices` (`078`): two moderation queues whose rows are
+reporter identities, and a device-token store. Ordinary content tables are outside the rule, and
+**`081`/`108` leaving the six club and ride thread tables alone was correct rather than an
+oversight** — `076` says so in as many words: *"The narrowness is deliberate and is not a claim
+about the other tables."* So the two are not competing precedents, and revoking across the thread
+tables to "settle" them would make six tables inconsistent with the other twenty-four.
+
+**The criterion is a judgement about the ROWS, and there is no mechanical test for it. Do not
+invent one.** An earlier draft did, and it was actively dangerous: it proposed *RLS-enabled + no policy + definer-RPC-only*, which **excludes `postcard_reports` and
+`club_thread_reports`**, the two tables most obviously covered. Both carry two policies and an
+`authenticated` SELECT grant. A session applying that test would have concluded their revokes were
+mistakes and re-granted `service_role` — re-opening the reporter-identity exposure `076` exists to
+close, which is worse than the error it was written to fix.
+
+**`rls_enabled_no_policy` is a CANDIDATE SET worth checking, never the criterion.** Its three
+members are `push_devices`, `password_reset_grants` and `club_removals`, and checking them found
+**two that are not revoked and should be** — each because its migration named client roles and
+stopped, leaving Supabase's default in place: `026:189` (`anon, authenticated`) and `111:83`
+(`public, anon, authenticated` — and revoking from `PUBLIC` does not touch `service_role`'s own
+direct grant, which is *why* the default survived). Their readership argument is `076` §3b's, made
+per table: `password_reset_grants` says who is mid-password-reset, and `club_removals` holds the
+(club, rider) pairs an admin removed, over a table whose own comment says *"NOBODY READS IT"* and
+against a `manage-club-riders` requirement that *"nothing anywhere SHALL record who removed
+whom"*. **PD-413.** `111` shipped that way *while this paragraph was being written*, which is why
+the candidate set is worth re-running rather than trusting any list here:
+
+```sql
+select count(*) filter (where sr)                          as kept,
+       count(*) filter (where not sr)                      as revoked,
+       string_agg(relname, ', ' order by relname) filter (where not sr) as revoked_tables
+  from (select c.relname, has_table_privilege('service_role', c.oid, 'SELECT') as sr
+          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         where n.nspname='public' and c.relkind='r') t;
+-- 30 kept · 3 revoked · club_thread_reports, postcard_reports, push_devices (2026-09-06).
+-- It names them because a COUNT cannot see a swap: revoke one new sink while another is
+-- re-granted and the count stays 3 while the trio named above is silently wrong.
+```
+
+**Elsewhere this file calls `push_devices`, `password_reset_grants` and `club_removals` tables
+"whose grants were revoked outright"; read that as CLIENT-role grants** — all three revoked `anon`
+and `authenticated`, and only `push_devices` also named `service_role`. It is **not** the revoked
+trio above, which overlaps it only in `push_devices`.
+
+**All three `service_role` revokes DO carry a local, grantee-scoped assertion — in two different forms, and that
+is the trap.** `postcard_reports` and `club_thread_reports` use a savepoint-staged
+`has_table_privilege` (`rls_test.sql` :1630, :25674), which is needed because `service_role` is a
+bare role in `harness.sql` and a naked `has_table_privilege` reads false for *every* table there —
+passing for the wrong reason. `push_devices` instead counts `information_schema.role_table_grants`
+scoped to the grantee (**`078.1j`**), which is sound without staging. **A grep for one form finds
+none of the other** — there are 14 `role_table_grants` sites — and that is exactly how a review of
+this paragraph concluded `push_devices` had no assertion at all. §The comment trap's rule applies
+to a grep for an *assertion* as much as to one for a retired pattern: verify the filter both ways
+before writing down an absence.
 
 **The project is on the free tier, which auto-pauses after ~7 days idle.** A paused project
 serves nothing, so the deployed app goes down with no alert. This needs to be on Pro before

@@ -329,13 +329,39 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 113 rows on DEV and 107 on PROD against 110 files, measured
+**`list_migrations` prints 115 rows on DEV and 107 on PROD against 112 files, measured
 2026-09-06. The DEV surplus is not a gap, and the PROD shortfall is the ordinary one.** `101`
 through `107` **promoted to PROD on 2026-09-06** between 08:26:24Z and 08:40:28Z, closing the gap
 this heading described for a week; `108` and `110` (PD-402) opened a new one the same day.
 
-**What is open is the ordinary promotion gap: `108`–`111`, all four applied to DEV** — `108`–`110`
-from PD-402, and `111` from PD-361.
+**What is open is the ordinary promotion gap: `108`–`112`, all five applied to DEV** — `108`–`110`
+from PD-402, `111` from PD-361, and `112` from PD-399/PD-408.
+
+**`112_the_reaper_watches_every_child` (PD-399 + PD-408), applied to DEV 2026-09-06T15:5xZ.**
+Additive and **nothing to sequence against**: it touches no file under `src/`, adds no column,
+table or PostgREST relationship, and changes no policy, so neither `096`'s
+newer-bundle-against-older-database case nor `092`'s reverse exists. **The PROD promotion carries
+the same ordering for the same reason.** What it owes instead of an ordering decision is the
+**hand-exercise gate**, because it hangs `AFTER DELETE` triggers on three already-shipped write
+paths, `club_members` being the busiest delete path in the app. That gate ran on DEV before the
+apply — **ten checks, all PASS**, rollback confirmed rather than assumed; the file's **first**
+§Verification (the hand-exercise gate, above the post-apply one) carries the list and the
+reasoning, and is not restated here.
+
+It was **applied REDUCED and proved by object diff**, per §Applying a large file — ~19,000 bytes
+against 2,660 bytes of executable statements, so its recorded text will not equal `md5sum` of the
+file, which is the norm rather than drift. Compared between DEV and a local database that applied
+**the file itself** through `supabase/tests/run.sh`, all three identical: `pg_get_triggerdef` for
+the four triggers name-ordered (`1a338a3756c20d5ba74129cd56b0216e`), the function's
+`obj_description` (`4876f819cddda283572a829ee70a9ffc`), and `pg_get_functiondef`
+(`6d0b6d8f3d5f43d8cd9c39d24dcb4a66`). **The third is the load-bearing one**: identical on both sides
+*and* unchanged from before this file, which is what says `112` did not move the body — one
+function serves all four triggers.
+
+Its verification passed on every point: **four** reaper triggers where there was one, **one**
+function definition, and the `WHEN` clause on exactly the two tables whose `club_id` is nullable.
+**Advisors did not move: 42 on DEV**, because the file creates no function and moves none between
+schemas.
 
 **`111_a_removal_bars_a_live_invite_link` (PD-361), applied to DEV 2026-09-06T11:59Z.** Additive,
 and **nothing to sequence against**: it touches no file under `src/`, so neither `096`'s
@@ -665,7 +691,7 @@ and re-derive both rather than trusting the numbers in this heading — they hav
 before, in the direction of reading one row too few.
 
 ```bash
-ls supabase/migrations/*.sql | wc -l    # 111
+ls supabase/migrations/*.sql | wc -l    # 112
 ```
 
 *(The `docs:check` anchor for this count is the copy further down, in the promotion log's code
@@ -1346,7 +1372,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 111 — DEV at 111, PROD at 107 (108-111 await promotion)
+ls supabase/migrations/*.sql | wc -l     # 112 — DEV at 112, PROD at 107 (108-112 await promotion)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
