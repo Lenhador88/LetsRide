@@ -33049,9 +33049,37 @@ select assert_denied(
     values ('00000000-0000-0000-0000-0001070000c1',
             '00000000-0000-0000-0000-000000107003', 'member')$$,
   '107.7b: ** and the join is STILL refused, by §2b alone. ** This is the assertion that goes red if somebody removes club_members INSERT''s `c.owner_id is not null` conjunct as redundant — which it is, exactly until the day the SELECT policy is widened, and on that day it is the only thing standing between a preserved postcard and every rider in the app');
-reset role;
-select set_config('test.uid', '', false);
+
+-- ** THE ROLLBACK IS THE ONLY THING RESTORING §2a, AND NOTHING ELSE IN THIS FILE
+-- WOULD NOTICE IF IT FAILED. ** DDL is transactional, so `rollback to savepoint`
+-- does restore the narrowed policy — that is a guarantee rather than an
+-- observation, and this block is the only place in 33k lines that mutates a
+-- policy. Every later assertion is blind to it: the five plain-text pins of this
+-- policy and both md5 pins run EARLIER, and what follows either reads as the
+-- table owner with RLS bypassed or goes through a definer accessor that bypasses
+-- SELECT by design. So the restore is re-asserted here, as an ordinary rider,
+-- against the same row 107.5 used.
+--
+-- ** The reset lines go AFTER the rollback, not before. ** `set_config(..., false)`
+-- is SET rather than SET LOCAL, and both `role` and `test.uid` revert to their
+-- values at savepoint creation — which are `authenticated` / …107003, left by
+-- 107.7. Cleanup written above the rollback is undone by it, and the later
+-- data-modifying CTEs then run as a rider rather than as the owner while
+-- appearing to run as the owner.
 rollback to savepoint defence_in_depth_107;
+
+-- ** These two lines also hand 107.7 back the identity it was running under, and
+-- that is not incidental. ** This block interrupts 107.7 between its join
+-- assertion and its UPDATE/DELETE CTEs below, and those CTEs prove the UPDATE and
+-- DELETE policies refuse a RIDER — which they can only do while one is set.
+-- Measured rather than reasoned: `reset role` here makes 107.7's UPDATE read 1
+-- instead of 0, because the table owner bypasses RLS and the assertion silently
+-- changes subject without failing.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000107003', false);
+select assert_eq(
+  (select count(*)::int from clubs where id = '00000000-0000-0000-0000-0001070000c1'),
+  0, '107.7b: ** and §2a is RESTORED — the ownerless club is invisible again. ** Without this the savepoint above is the one place in the suite that can leave a widened policy behind, and every assertion after it would stay green while running against the wrong rule. Two-sided: the assertion above reads 1 for the same row under the widened policy, so neither can pass vacuously');
 -- Data-modifying CTEs: an UPDATE/DELETE cannot sit in a plain subquery. Zero
 -- rows affected is the RLS refusal — a policy that admits nobody filters the
 -- statement to nothing rather than raising, which is why these count rows
@@ -33242,8 +33270,44 @@ select assert_eq(
   1, '107.12: ** the club SURVIVES its last postcard while a THREAD is still attached. ** Drop the club_threads conjunct and this reads 0 — and the thread below is destroyed rather than merely orphaned, because that FK cascades');
 select assert_eq(
   (select count(*)::int from club_threads where id = '00000000-0000-0000-0000-0001070000e2'),
-  1, '107.12: ... and the thread is still there. ** The reap conjuncts are a whitelist of emptiness rather than a claim that nothing else references the club ** — a new child table of `clubs` needs its own conjunct, and its FK''s delete action says whether omitting it destroys content or strands it');
+  1, '107.12: ... and the thread is still there. ** The reap conjuncts are a whitelist of emptiness rather than a claim that nothing else references the club ** — its FK''s delete action says whether omitting a table destroys content or strands it');
 rollback to savepoint reaper_threads_107;
+
+-- ---------------------------------------------------------------------------
+-- 107.12b  ** THE FIVE CHILD TABLES THE REAP DELETES ON PURPOSE **
+-- ---------------------------------------------------------------------------
+-- `107`'s own comment says "a NEW child table of `clubs` needs a fifth conjunct",
+-- which reads as though the existing set were enumerated and covered. ** It was
+-- not. ** Nine FKs point at `public.clubs`; four have a conjunct
+-- (`club_members`, `postcards`, `club_threads`, `rides`) and five do not:
+-- `club_invites`, `club_invite_links`, `club_join_requests`, `notifications` and
+-- `feed_reads` — all CASCADE, all destroyed by the reap.
+--
+-- ** That is a judgement, and it is recorded here rather than re-derived. **
+-- `club_invites`, `club_invite_links` and `club_join_requests` are already
+-- unanswerable against an ownerless club (107 §3a, §3d), so their rows are dead
+-- letters. `feed_reads` is derived read state. `notifications` is the one with a
+-- real claim — a rider notified about the club keeps that row after leaving, and
+-- the reap removes it from their list — and it is allowed to go because the
+-- notification's own subject has just ceased to exist.
+--
+-- ** Pinned as a NAME LIST rather than a count, deliberately. ** A cardinality
+-- pin cannot see a SWAP — drop `feed_reads.club_id` and add `club_events.club_id`
+-- and the count stays 9, the pin stays green, and the reap-coverage decision is
+-- never forced, which is the whole purpose. The list also names the arriving
+-- table in the failure diff, so the next author does not re-derive it.
+select assert_eq(
+  (select string_agg(distinct conrelid::regclass::text, ',' order by conrelid::regclass::text)
+     from pg_constraint
+    where contype = 'f' and confrelid = 'public.clubs'::regclass),
+  'club_invite_links,club_invites,club_join_requests,club_members,club_threads,feed_reads,notifications,postcards,rides',
+  '107.12b: ** these NINE tables reference public.clubs. ** Four are named in the reaper''s conjuncts (club_members, postcards, club_threads, rides) and five are deliberately allowed to cascade with the club. A name arriving or leaving means somebody changed the child set without deciding whether the reap should wait for it — and that table''s FK delete action says which failure applies: CASCADE destroys its rows, SET NULL strands them');
+select assert_eq(
+  (select string_agg(distinct conrelid::regclass::text, ',' order by conrelid::regclass::text)
+     from pg_constraint
+    where contype = 'f' and confrelid = 'public.clubs'::regclass and confdeltype = 'n'),
+  'rides',
+  '107.12b: ... and `rides` is the ONLY one that is ON DELETE SET NULL. Every other child CASCADES, which is why the reap''s job is to decline rather than to clean up: declining preserves, cascading destroys. A second name here is a child that would be STRANDED rather than deleted, which is the harm 032 §2 names');
 
 -- A MULTI-ROW delete fires the trigger once per row, after the statement, and
 -- each invocation sees zero remaining postcards. The first reaps; the rest must
