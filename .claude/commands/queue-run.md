@@ -229,6 +229,7 @@ mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  state=<N
   (`queue-pickup.md` STEP 5 bullet 3): merging another story onto a broken DEV is the one case
   where carrying on is worse than waiting. **An *unverified* deploy is not that case** — that
   firing continues and says so, and writes no marker.
+
   **So when — and only when — `Needs help` is non-empty, read the comments on those issues** and
   look for that marker:
 
