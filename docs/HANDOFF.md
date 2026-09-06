@@ -190,6 +190,80 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The Geoapify credit is gone, and the cold load announces once — 2026-09-06
+
+**PD-415 + PD-220, one branch, taken into `slot-1`.** The only two candidates in `Queued (AI)`.
+Grouped rather than split under `queue-run.md` STEP 4's *when you cannot tell, group them*: PD-220
+reaches `src/components/ui/Skeleton.tsx` and its ~30 callers, and PD-415 sits in
+`src/components/rides/`, where several of those callers live. In the event they did not overlap at
+all.
+
+**PD-415 — `Powered by Geoapify` is deleted from `MAP_CREDITS`, and nothing else moved.** The
+condition `MapAttribution`'s header set was White Label *confirmed active*, not merely paid, and it
+is answered twice: the owner confirmed a paid Geoapify account carries no White Label switch to
+throw, and PD-234 had already verified a real render with `attribution=none` honoured — which an
+unentitled account ignores while burning the credit in anyway. **That second one was the stronger
+evidence and it sat unlinked on another issue for ten days**, which is what made this story park
+overnight; the story's own `Ready N` was over-cautious rather than wrong.
+
+**The two that remain are licence obligations and the deletion may not reach them.**
+`© OpenStreetMap contributors` is ODbL 1.0 on every plan and every OSM-based vendor;
+`© OpenMapTiles` applies to every style except `osm-carto`, which `MAP_STYLE` is not. The test moved
+from `MAP_CREDITS.length >= 2` to an exact length plus an explicit `not.toContain` — the permissive
+form existed because dropping the third line was a legitimate *future* edit, and that reason is
+spent now that it is a decision.
+
+**PD-220 — the double announcement, and the issue's own proposed shape does not fix it.** That is
+the one thing here worth not re-deriving. The issue asks for `role="status"` to be hoisted onto
+`RidesLoading`/`PostcardsLoading` with the four skeleton shapes becoming bare geometry. But those
+two components are themselves what is rendered at both positions, so hoisting one level relocates
+the region without changing the count — still two insertions — and it costs every one of the other
+~28 call sites its announcement on the way. **The boundary the region has to clear is the Suspense
+boundary, not one component.**
+
+**What shipped instead: `announce?: boolean` on `SkeletonDeck` and `SkeletonList`, passed `false` at
+the `<Suspense>` fallback and nowhere else.** Four things a later session should not re-derive:
+
+- **The direction is the fix and it is not symmetric.** The gate is the position *every* path into a
+  loading state passes through; the fallback only ever renders in the prerendered HTML, because
+  `useSearchParams` suspends during the prerender pass and resolves immediately in the browser. So
+  silencing the gate instead also drops the count to one — and leaves a rider arriving from another
+  tab with no announcement at all, which is the issue's own *"must not leave a screen with no
+  announcement"* arriving from the far side. Both states are one token apart and neither is visible
+  on a screenshot.
+- **A region sitting in the initial HTML is page content rather than an update**, so screen readers
+  do not reliably announce it. The fallback is the weaker position on the cold path as well, not
+  merely on the client-nav one.
+- **Only these two screens were ever affected, measured rather than assumed.** No other route draws
+  a **skeleton shape** at a `<Suspense>` fallback: 20 of the other boundaries are `fallback={null}`,
+  and the two that are not — `/auth/confirm` and `/auth/callback` — render their own `Confirming` /
+  `SigningIn` and no `Skeleton*` at all. So every other skeleton has exactly one position and its
+  region is correct as it stands. That is why the prop is on two shapes rather than four, and why 28
+  call sites are untouched — the issue's "touching every caller" was the cost of its own shape.
+- **The wiring half is pinned against the source, not a render**, because a static render cannot
+  resolve a Suspense boundary and the two failure states produce different behaviour with identical
+  markup. `Skeleton.test.tsx` reads both pages on comment-stripped source — both files now carry
+  prose naming the prop, so an unstripped search matches the explanation.
+
+**Filed rather than folded in: `RideMap.tsx` carries ~40 lines of prose describing a
+`Powered by Geoapify` element it has not rendered since PD-236** moved the credit into
+`MapAttribution`, and asserting the account is on the Free plan it left on 2026-08-27. Over the
+discretionary fold-in cap and in a file this diff does not open.
+
+**Four `docs:check` claims were already stale on `development` and are fixed here** — the unit-test
+totals in `docs/reference/ci.md` and `docs/reference/running-locally.md`, off by 32 tests and 4
+files before this branch existed. **CI cannot catch these**: they need a test runner, so they are
+outside `docs:check --cheap`. Run the full sweep locally when a branch adds a test file.
+
+```bash
+git grep -n "GEOAPIFY_CREDIT" -- src/            # 0
+# The two screens that silence a fallback, and the 20 that need no prop at all.
+git grep -l "announce={false}" -- 'src/app/**/page.tsx'          # rides, postcards
+git grep -l "Suspense fallback={null}" -- 'src/app/**/page.tsx' | wc -l   # 20
+npx vitest run src/components/ui/__tests__/Skeleton.test.tsx src/__tests__/ride-geocode-gates.test.ts
+npm run docs:check                               # 39 passed, 0 failed, 3 skipped (no Postgres)
+```
+
 ## `Needs help` stops its own story now, and the ride's create affordance floats — 2026-09-06
 
 **PD-416 + PD-404, one branch, taken into `slot-1`.** Not a collision — they share no paths at all.

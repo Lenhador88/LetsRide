@@ -53,15 +53,73 @@ export function Skeleton({ className }: { className?: string }) {
   )
 }
 
+/**
+ * The live region each announcing shape wraps itself in — and the opt-out that
+ * `/rides` and `/postcards` need, PD-220.
+ *
+ * **A polite live region announces when it is INSERTED, so a shape rendered at
+ * two tree positions during one load announces twice.** Those two screens each
+ * draw their loading shape at a `<Suspense>` fallback, while `useSearchParams`
+ * resolves, and again at their own `!filters.data` gate once the screen has
+ * mounted. Those are different depths either side of a Suspense boundary, so
+ * React cannot reconcile them: it discards the fallback subtree and mounts a
+ * fresh one, the region goes with it, and a cold load was heard as *"Loading
+ * list"* twice.
+ *
+ * **The region belongs at the GATE and the fallback carries bare geometry.**
+ * The direction is the whole fix and it is not symmetric:
+ *
+ * - **The gate renders on every path into a loading state; the fallback does
+ *   not.** `useSearchParams` suspends during the prerender pass and resolves
+ *   immediately in the browser, so the fallback only ever appears in the
+ *   prerendered HTML — a rider arriving from another tab goes straight to the
+ *   gate. Announce at the fallback instead and that arrival is silent, which
+ *   is this issue's own *"must not leave a screen with no announcement"* and
+ *   the harder failure to notice.
+ * - **A region sitting in the initial HTML is page content rather than an
+ *   update**, and screen readers do not reliably announce one. So the fallback
+ *   is the weaker of the two positions on the cold path as well.
+ *
+ * Exactly one insertion on every path, and the announcement lands at the moment
+ * the rider is actually waiting.
+ *
+ * **What does NOT work, because it is the obvious move:** hoisting `role=
+ * "status"` one level, onto `RidesLoading`/`PostcardsLoading`, and making these
+ * shapes plain geometry everywhere. Those components are themselves what is
+ * rendered at both positions, so that relocates the region without changing the
+ * count — two insertions, same as before — and it costs every one of the ~28
+ * other call sites its announcement on the way. The boundary the region has to
+ * clear is the Suspense boundary, not one component.
+ *
+ * **`aria-hidden` rather than a bare `<div>` on the silent path**, matching
+ * `SkeletonFilterBar`: the children are individually `aria-hidden` already, so
+ * this is what makes the fallback contribute nothing to the accessibility tree
+ * rather than an unlabelled group in it.
+ *
+ * The prop is on `SkeletonDeck` and `SkeletonList` alone because those are the
+ * two shapes those two screens draw. Every other route's boundary is
+ * `fallback={null}`, so its skeleton has one position and its region is right
+ * as it stands — an opt-out on the other shapes would be API nothing can reach.
+ */
 function SkeletonRegion({
   label,
+  announce = true,
   className,
   children,
 }: {
   label: string
+  announce?: boolean
   className?: string
   children: React.ReactNode
 }) {
+  if (!announce) {
+    return (
+      <div aria-hidden className={className}>
+        {children}
+      </div>
+    )
+  }
+
   return (
     <div role="status" aria-label={label} className={className}>
       {children}
@@ -75,10 +133,17 @@ function SkeletonRegion({
  * whatever is left after an `xs` (24px) avatar row, a capped caption and the
  * four-item action row — all reasoned in that component's own doc comment
  * rather than re-measured here.
+ *
+ * `announce={false}` at `/postcards`' `<Suspense>` fallback and nowhere else —
+ * see `SkeletonRegion` for why the region belongs at the gate below it.
  */
-export function SkeletonDeck() {
+export function SkeletonDeck({ announce = true }: { announce?: boolean } = {}) {
   return (
-    <SkeletonRegion label="Loading postcards" className="relative flex h-full items-center justify-center px-6">
+    <SkeletonRegion
+      label="Loading postcards"
+      announce={announce}
+      className="relative flex h-full items-center justify-center px-6"
+    >
       {/* **The OUTER box tracks `PostcardDeck` exactly, and that is the part
           that has to**: this stands in the deck's own slot, so a mismatch there
           moves the card at the moment the feed arrives. Since PD-343 that means
@@ -116,10 +181,20 @@ export function SkeletonDeck() {
  * self-stretch`, both cards' measured width) beside a title bar, a subtitle
  * bar and a 28px (`h-7 w-7`) overlapping avatar pair — both cards' own
  * measured avatar size.
+ *
+ * `announce={false}` at `/rides`' `<Suspense>` fallback and nowhere else — see
+ * `SkeletonRegion` for why the region belongs at the gate below it. The other
+ * ~20 call sites draw this at one position and keep their announcement.
  */
-export function SkeletonList({ rows = 5 }: { rows?: number }) {
+export function SkeletonList({
+  rows = 5,
+  announce = true,
+}: {
+  rows?: number
+  announce?: boolean
+}) {
   return (
-    <SkeletonRegion label="Loading list" className="flex flex-col gap-2 px-4">
+    <SkeletonRegion label="Loading list" announce={announce} className="flex flex-col gap-2 px-4">
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="flex gap-4 rounded-lg bg-surface p-1 pr-4">
           <Skeleton className="w-20 shrink-0 self-stretch rounded" />
@@ -203,8 +278,9 @@ function DetailRowSkeleton() {
  * already announces the load (`SkeletonList` on `/rides`, `SkeletonDeck` on
  * `/postcards`). A region here would add a second announcement beside that
  * one, which is what the base `Skeleton`'s own `aria-hidden` note exists to
- * avoid. It does **not** fix the separate double-announce those two screens
- * already have across their `<Suspense>` fallback and their gate — PD-220.
+ * avoid. It was never what caused the separate double-announce those two
+ * screens had across their `<Suspense>` fallback and their gate, and it is not
+ * what fixed it either — that is `SkeletonRegion`'s `announce`, PD-220.
  *
  * `shrink-0` is copied from the real `FilterBar` and is load-bearing: the
  * parent is `flex flex-col`, so without it the reservation compresses under

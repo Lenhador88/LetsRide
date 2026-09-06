@@ -52,7 +52,12 @@ export default function PostcardsPage() {
     <>
       <Header title="Home" secondaryAction={<NotificationsHeaderControl />} />
       <div className="pb-navbar-action pt-header fixed inset-0 flex flex-col">
-        <Suspense fallback={<PostcardsLoading />}>
+        {/* `announce={false}` HERE and not at the gate below — PD-220, and the
+            direction is the fix rather than a preference. `SkeletonRegion`
+            carries why: this position only ever renders in the prerendered
+            HTML, so announcing here and not at the gate leaves a rider
+            arriving from another tab with no announcement at all. */}
+        <Suspense fallback={<PostcardsLoading announce={false} />}>
           <PostcardsScreen />
         </Suspense>
       </div>
@@ -88,13 +93,21 @@ export default function PostcardsPage() {
  * fallback while `useSearchParams` resolves, and the `!filters.data` gate.
  * `SkeletonFilterBar` is `aria-hidden`, so it adds no second announcement
  * beside `SkeletonDeck`'s own `role="status"`.
+ *
+ * **Those two positions are also why this takes `announce` — PD-220.** Being
+ * rendered twice is what makes the shape settle without moving; it is also what
+ * announced *"Loading postcards"* twice, because the two sit either side of a
+ * Suspense boundary, so React mounts a fresh live region rather than reconciling
+ * the old one. The fallback passes `announce={false}` and the gate does not, so
+ * the geometry is still drawn at both and the region is inserted at exactly one.
+ * `SkeletonRegion` carries why the gate is the position that keeps it.
  */
-function PostcardsLoading() {
+function PostcardsLoading({ announce = true }: { announce?: boolean } = {}) {
   return (
     <>
       <SkeletonFilterBar />
       <div className="min-h-0 flex-1 py-2">
-        <SkeletonDeck />
+        <SkeletonDeck announce={announce} />
       </div>
     </>
   )

@@ -119,7 +119,14 @@ export default function RidesPage() {
           variant, so it owes the sticky action's own height. The number lives
           in globals.css beside the other two, not here. */}
       <div className="pb-navbar-action-extra flex flex-col">
-        <Suspense fallback={<RidesLoading strip={<ExploreRidesStrip near={null} />} />}>
+        {/* `announce={false}` HERE and not at the gate below — PD-220, and the
+            direction is the fix rather than a preference. `SkeletonRegion`
+            carries why: this position only ever renders in the prerendered
+            HTML, so announcing here and not at the gate leaves a rider
+            arriving from another tab with no announcement at all. */}
+        <Suspense
+          fallback={<RidesLoading announce={false} strip={<ExploreRidesStrip near={null} />} />}
+        >
           <RidesScreen />
         </Suspense>
       </div>
@@ -305,8 +312,19 @@ function RidesScreen() {
  * `!filters.data` gate below it — so the bar's 104px and the list wrapper's
  * 8px are reserved at both, rather than each appearing at a different boundary
  * and moving every row down twice on the way to a settled screen.
+ *
+ * **Those two positions are also why this takes `announce` — PD-220.** Being
+ * rendered twice is what reserves the geometry at both boundaries; it is also
+ * what announced *"Loading list"* twice, because the two sit either side of a
+ * Suspense boundary, so React mounts a fresh live region rather than reconciling
+ * the old one. The fallback passes `announce={false}` and the gate does not, so
+ * the geometry is still drawn at both and the region is inserted at exactly one.
+ * `SkeletonRegion` carries why the gate is the position that keeps it.
  */
-function RidesLoading({ strip }: { strip?: ReactNode } = {}) {
+function RidesLoading({
+  strip,
+  announce = true,
+}: { strip?: ReactNode; announce?: boolean } = {}) {
   return (
     <>
       <SkeletonFilterBar />
@@ -326,7 +344,7 @@ function RidesLoading({ strip }: { strip?: ReactNode } = {}) {
       {/* `py-2` on the wrapper, not the skeleton — same reason as the loaded
           branch: `SkeletonList`'s root is `px-4` only. */}
       <div className="py-2">
-        <SkeletonList />
+        <SkeletonList announce={announce} />
       </div>
     </>
   )
