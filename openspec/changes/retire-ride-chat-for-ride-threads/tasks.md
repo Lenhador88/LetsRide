@@ -51,12 +51,15 @@ function it dropped.
 
 ## 1. Pre-flight measurements that can change the plan
 
-- [ ] 1.1 **The junction check (D12).** Confirm every `profiles` embed reachable from a `rides`-side
-      query names its foreign key:
-      `grep -rn "profiles!" src/lib/data/*.ts` and
-      `npx vitest run src/lib/data/__tests__/embed-hints.test.ts`. If any unhinted
-      `rides`↔`profiles` embed exists, **stop**: migration A becomes deploy-first as well as
-      migration-first, which deadlocks, and the resolution is a preparatory hint-only deploy first.
+- [ ] 1.1 **The junction check (D12) — expected to be a no-op, run it anyway.** `ride_threads` has
+      PK `id` and is therefore not a junction; the only junction migration A adds is
+      `ride_thread_reads`, over a pair no shipped bundle can already embed. Confirm rather than
+      trust: run `columns.ts`'s own junction query against DEV and check `ride_threads` is absent
+      from the result, then `npx vitest run src/lib/data/__tests__/embed-hints.test.ts`. **Do not
+      apply the loose rule** — `columns.ts` names *"any third table holding a key to both"* as false
+      and gives `postcards` as the counter-example. There is no deadlock here and no preparatory
+      hint-only deploy is needed; if the query unexpectedly returns `ride_threads`, that means the
+      PK was written wrong, which is the actual thing to stop on.
 - [ ] 1.2 Re-count the rows migration B destroys, on **both** projects, and put the numbers in the PR
       body. Expected: DEV 7 `ride_messages` / 14 `ride_reads`, PROD 0 / 0.
 - [ ] 1.3 Re-derive the advisor baseline with `get_advisors(security)` on both refs so the +2 claim
@@ -134,9 +137,13 @@ comment saying why the `EXISTS` against `rides` is there.
       both require it, and a policy change with no new assertion is not finished. Minimum set:
       organizer with no crew row; `going`; `maybe`; visible-ride non-crew (read **and** write, and
       the conjunct asserted in isolation); **pending invitee**; **accepted invitee to a private
-      club's ride**; ex-club-member with a surviving `ride_members` row; blocked pair **in both
-      directions**; own-row arm survives a block; ex-crew member reads nothing including their own;
-      direct-by-id message read refused; `anon` (scoped to the grantee, or `has_table_privilege`);
+      club's ride**; **club owner and club admin with no `ride_members` row on their own club's
+      ride**; ex-club-member with a surviving `ride_members` row; blocked pair **in both
+      directions** (which pins the block's symmetry — **not** the own-row disjunct, which is a
+      provable no-op inside the block conjunct and which no assertion can detect); **ex-crew member
+      reads nothing including their own rows, which is the assertion that pins the own-row arm's
+      ceiling and is the one that can actually fail**; direct-by-id message read refused; `anon`
+      (scoped to the grantee, or `has_table_privilege`);
       no UPDATE grant; no DELETE grant; `has_function_privilege` for each new RPC and for `anon`.
 - [ ] 2.22 `PGPASSWORD=postgres npm test`. Record the new assertion total and **compare label sets,
       not counts**, against the previous run — a count cannot tell a rename from a loss.
@@ -282,9 +289,14 @@ firing did not touch them. Check the territory is clear before writing.
 - [ ] 9.1 The two files promote **in filename order, behind the whole existing `101`–`107` gap**, per
       `docs/ENVIRONMENTS.md` §Migrations.
 - [ ] 9.2 **The same ordering rule applies on PROD and must not be collapsed**: migration A, then the
-      promotion build confirmed serving on `main`, then migration B. PROD holds **0** ride messages,
-      so nothing is lost either way — but the ordering is about the *bundle*, not the rows, and an
-      old tab against PROD is exactly the population the rule protects.
+      promotion build confirmed serving on `main`, then migration B. **What the serving gate bounds
+      is the deployment, never the client population** — an already-loaded tab keeps its pre-merge
+      JS until it is reloaded, so a tab sitting on `/rides/detail/chat` when migration B applies
+      gets `PGRST205` whatever the gate says. **No soak is specified here, and the reason is the
+      row count rather than the rule**: PROD holds 0 ride messages and has no riders, so the
+      population is empty. Do not copy this into a destructive change with live users — `103` is
+      the worked example that did owe a transitional soak, and `CLAUDE.md` §Supabase Rules carries
+      why.
 - [ ] 9.3 Re-run `get_advisors(security)` on PROD and reconcile against DEV. A one-advisor difference
       between the projects is almost always a pending promotion.
 

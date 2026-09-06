@@ -246,15 +246,29 @@ This is recorded because it is silent: nothing fails, the second archive just di
 
 ## D12 — The junction risk this change introduces, and why it is contained
 
-`ride_threads` will carry `ride_id → rides` and `author_id → profiles`, making it a **junction
-between `rides` and `profiles`**. `092` turned four screens into `PGRST201` / HTTP 300 through every
-gate green by doing exactly this, and none of those gates issues a query.
+**`ride_threads` is not a junction, and getting that wrong is the more expensive mistake here.**
+`src/lib/data/columns.ts` gives the definition — *two foreign keys, and a primary key that is exactly
+the union of their columns* — and explicitly refutes the loose version: *"any third table holding a
+key to both" is the tempting rule and it is FALSE*, with `postcards` as the counter-example.
+`ride_threads` has PK `id`, so holding `ride_id → rides` and `author_id → profiles` does **not** make
+it one. Its exact analogue `club_threads` (PK `id`) is likewise absent from the junction set that
+`columns.ts`'s own query returns against DEV:
 
-Measured before writing this: **every `profiles` embed in `src/lib/data/` names its foreign key** —
-`organizer:profiles!organizer_id`, `author:profiles!author_id`, `invitee:profiles!invitee_id`,
-`MEMBER_PROFILE_EMBED` — and `src/lib/data/__tests__/embed-hints.test.ts` refuses an unhinted one.
-`ride_members` and `ride_invites` are already junctions on the same table pair, so the ambiguity this
-adds is a third path where two already exist and are already handled.
+```
+club_join_waves, club_members, club_thread_reads, postcard_hides, postcard_likes,
+ride_members, ride_reads
+```
+
+**The table migration A does add as a junction is `ride_thread_reads`** — PK `(user_id, thread_id)`,
+exactly the union of its keys to `profiles` and `ride_threads`, mirroring `club_thread_reads`, which
+that query confirms is one. It is harmless: `ride_threads` is created by the same migration, so no
+shipped bundle holds an embed of that pair that could become ambiguous.
+
+So there is no `092`-class risk to contain, and **no reason for the build to stop**. `092` remains
+the reason the discipline exists — every `profiles` embed in `src/lib/data/` names its foreign key
+(`organizer:profiles!organizer_id`, `author:profiles!author_id`, `invitee:profiles!invitee_id`,
+`MEMBER_PROFILE_EMBED`) and `src/lib/data/__tests__/embed-hints.test.ts` refuses an unhinted one —
+but this change does not test it.
 
 **Contained, not absent.** `tasks.md` T2 re-measures it against the tree at build time rather than
 trusting this paragraph, because the hint test protects `src/lib/data/` and a new embed written

@@ -193,14 +193,17 @@ safe, and this is the reason — not luck.
   merge. This repo applied a destructive file 102 seconds after a merge, out from under a Preview
   still calling the function it dropped. `tasks.md` makes the confirmation its own numbered task
   with its own command, so the two cannot collapse.
-- **PostgREST relationship count — checked, not assumed.** `ride_threads` carries `ride_id →
-  rides` and `author_id → profiles`, making it a **junction between `rides` and `profiles`** and
-  therefore a `092`-class HTTP 300 risk for any unhinted embed between that pair. Measured: every
-  `profiles` embed in `src/lib/data/` names its foreign key, and
-  `src/lib/data/__tests__/embed-hints.test.ts` refuses an unhinted one. `ride_members` and
-  `ride_invites` are already junctions on the same pair, so the ambiguity this would introduce is
-  already present and already handled. `tasks.md` T2 re-measures it before migration A applies
-  rather than trusting this paragraph.
+- **PostgREST relationship count — `ride_threads` is NOT a junction, and the loose rule that says
+  it is would be worse to carry than the risk.** `src/lib/data/columns.ts` defines one precisely:
+  *two foreign keys, and a primary key that is exactly the union of their columns* — and warns that
+  *"any third table holding a key to both" is the tempting rule and it is FALSE*, with `postcards`
+  as the counter-example. `ride_threads` has PK `id`, so it adds **no** `rides`↔`profiles`
+  relationship path, exactly as its analogue `club_threads` (PK `id`) adds none. The table migration
+  A does add as a junction is **`ride_thread_reads`**, PK `(user_id, thread_id)` over `profiles` and
+  `ride_threads` — mirroring `club_thread_reads` — and it is harmless because `ride_threads` is
+  brand new, so no shipped embed of that pair can exist to become ambiguous. No `092`-class break
+  either way; every `profiles` embed in `src/lib/data/` already names its foreign key and
+  `src/lib/data/__tests__/embed-hints.test.ts` refuses an unhinted one.
 - **Migration numbers are named relative to the chain at build start, never hardcoded** — see
   `tasks.md` T0 and premise 2 above.
 - **RLS suite grows.** Every negative case in `specs/ride-threads/spec.md` maps onto an assertion in

@@ -55,6 +55,21 @@ are two different riders and both can reach the ride detail screen.
   SHALL be asserted in isolation so that a later edit cannot remove one conjunct while the suite
   stays green
 
+#### Scenario: A club owner or admin who is not on the crew reads nothing on their own club's ride
+- **WHEN** the owner of a club, or a `club_members` row of role `admin` in it, opens a ride
+  belonging to that club on which they hold **no** `ride_members` row
+- **THEN** the ride SHALL be readable — club membership is what makes a private club's ride
+  visible — and zero rows SHALL be returned from `ride_threads` and `ride_thread_messages`
+- **AND** an insert into either SHALL be refused
+- **AND** this SHALL hold for the club owner specifically, who is not otherwise a special case at
+  any level of this capability
+- **AND** it SHALL be asserted, because it is the one role the intersection excludes that also
+  holds authority *somewhere* in the same subtree: `094` makes the club admin the moderation
+  authority over **club** threads, so a build porting `094` is being invited to give them a ride
+  thread too. The answer is no — moderation here is `rides.organizer_id` and nothing else.
+- **AND** the club owner/admin therefore has authority over a ride thread they cannot read only in
+  the sense that they have **none**; `design.md` D2 records the rejection of the alternative
+
 #### Scenario: A rider holding a PENDING ride invite reads the ride and none of its threads
 - **WHEN** a rider whose `ride_invites` row is `pending` opens the ride
 - **THEN** the ride SHALL be readable, through `083`'s fourth audience arm
@@ -154,24 +169,33 @@ In every new SELECT policy, the arm admitting a rider to their own row SHALL be 
 block-dominated group — `<ride EXISTS> and is_ride_crew(...) and (author_id = auth.uid() or not
 private.is_blocked(auth.uid(), author_id))` — and SHALL NOT be hoisted to the top level.
 
-This placement is load-bearing and has already been a defect seven times over in this repo (`102`,
-PD-362). Two failures sit on either side of it:
+**The disjunct itself is a no-op, and it is written anyway as a convention.** `102`'s header is
+explicit: *"Inside the block conjunct the own-row branch is a no-op — `blocks_no_self_block` (`009`
+§1) already makes `is_blocked(x, x)` false, so it rescues nothing while reading as though it does."*
+So `author_id = auth.uid()` never changes a result here, and **no assertion can distinguish its
+presence from its absence.** It is required only because `034`, `081` and `082` all carry it and a
+policy that reads differently from its three neighbours invites a "fix" — not because it does work.
+Do not write an assertion claiming it does.
 
-- **Too low** — written as `... and not is_blocked(...)` with the own-row arm omitted or buried
-  inside the block conjunct where `blocks_no_self_block` makes it a no-op — and a rider loses sight
-  of what they themselves wrote the moment someone blocks them.
+**What IS load-bearing is the ceiling, and that is assertable.** `102` found this shape on seven
+policies, **hoisted three and deliberately left four alone** — a sweep would have got them wrong,
+and `club_messages` is one of the four it did not touch. The direction that matters here is the
+upper bound:
+
 - **Too high** — hoisted above `is_ride_crew` or above the ride `EXISTS` — and the audience stops
   being an intersection, which is this capability's central invariant. `docs/HANDOFF.md` records
   this exact refusal for `ride_messages`: *"hoisting past `is_ride_crew` would break the documented
-  invariant that this table's audience is an INTERSECTION."*
+  invariant that this table's audience is an INTERSECTION."* **This is the failure the suite must
+  catch**, and the ex-crew scenario below is what catches it.
 
-#### Scenario: A blocked author still reads their own thread and their own messages
+#### Scenario: A blocked pair lose sight of each other, and neither loses their own rows
 - **WHEN** rider A has written a thread and messages on a ride, and rider B — also on the crew —
   blocks A
-- **THEN** A SHALL still read A's own thread and messages, because the own-row arm dominates the
-  block conjunct
-- **AND** B SHALL NOT see A's thread or A's messages
+- **THEN** B SHALL NOT see A's thread or A's messages
 - **AND** A SHALL NOT see B's
+- **AND** A SHALL still read A's own rows — which follows from `blocks_no_self_block` rather than
+  from the own-row disjunct, so this assertion pins the **symmetry** of the block and SHALL NOT be
+  described as pinning the disjunct
 
 #### Scenario: An ex-crew member does not read their own messages either
 - **WHEN** a rider leaves the crew of a ride they can still see, and reads back
