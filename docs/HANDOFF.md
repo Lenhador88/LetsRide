@@ -271,6 +271,110 @@ git grep -n 'className="contents"' -- src/components/auth/RouteGuard.tsx
 npx vitest run src/components/auth src/lib/auth   # RouteGuard 6/6
 ```
 
+## `Needs help` stops its own story now, and the ride's create affordance floats — 2026-09-06
+
+**PD-416 + PD-404, one branch, taken into `slot-1`.** Not a collision — they share no paths at all.
+Grouped as the two highest-priority buildable candidates under `queue-run.md` STEP 4's caps, which
+admit one `L` (PD-404) plus one more.
+
+**PD-416 — the queue-wide freeze is gone, and its own notification was the argument.** Product
+owner: *"maybe needs help doesnt need to block the queue?"* The freeze was never part of the
+concurrency lock — that is `slot-1`/`slot-2` — it was a **visibility** device. And at the one
+moment it fired, a firing that found a `Needs help` row took nothing and ended with the single word
+`idle`: the same thing a healthy empty queue says, written to be dismissed unread. So the mechanism
+meant to make a parked story impossible to miss was indistinguishable from nothing happening.
+
+**Four things replace it, and each answers the failure this could otherwise introduce** — a story
+silently passed over for ever:
+
+- every parked story is named in **every** firing's final message until it moves;
+- the stall alarm escalates in **bands** — `3h`, `24h`, `72h`, `7d`, then `<N>d` in 7-day steps —
+  one marker per band, which bounds a parked story to four comments in its first week and one a week
+  after, where alarming once left it silent for ever and alarming hourly would leave 24 a day.
+  `queue-run.md` STEP 6 carries why every band needs a computable token;
+- `queue-pickup.md` STEP 2c's `blockedBy` relation is now **mandatory**, because the freeze is what
+  used to hold sequencing;
+- **one queue-wide stop survives and is marked rather than inferred**: `<!-- halt-queue -->`,
+  written **only** by the broken-DEV park (STEP 5 bullet 3). Read by `queue-run.md` STEP 1 only when
+  `Needs help` is non-empty, and **failing closed** if unreadable.
+
+**Two exits that feel like emergencies deliberately do NOT write that marker** — three-attempt CI
+red (red CI on one branch says nothing about DEV, which is serving the last merge) and a docs
+conflict. Both would reinstate the blanket freeze through the door that feels most urgent.
+
+**PD-404 — the RIDE half only, and the issue stays open for the club.** The owner answered the
+frame question on 2026-09-06 with a shape none of PD-401's four options offered: the RSVP bar and
+the create affordance are **never both present**, because answering collapses the bar into a status
+chip on the first content line and hands the corner to a floating action. `ClubCreateBar` is
+untouched — `2043:10604` instances a variant **26 other frames** use, and that half (Q1) is
+unanswered.
+
+**Five things a later session should not re-derive:**
+
+- **`timelineAdd` is dead and the timeline `(+)` is deleted — unreachable, not unwanted.** `getRide`
+  derives `is_crew` as `isRideCrew(isOrganizer, ownRow?.status ?? null)`
+  (`src/lib/data/rides.ts:618,692`), so for a non-organizer **crew ⟺ answered**; the bar is owed
+  only while unanswered; so PD-401's *upcoming + crew + bar owns the slot* state cannot occur. The
+  test pins that identity against the helper rather than restating it, so a change to `is_crew`
+  fails there instead of leaving a stale comment.
+- **The folded `RideDetail.attendance` is passed to the resolver deliberately.** It reads `going`
+  for an organizer holding no row, but both outputs that consume it sit behind `rsvpApplies`, which
+  is false for every organizer — so the fold is unreachable and a second unfolded field would be one
+  nothing could observe. **The safety is `rsvpApplies`', not the input's**: if `103`'s
+  `protect_ride_organizer_membership` ever stops refusing an organizer's departure, this must become
+  the raw status in the same commit.
+- **The chip is a control, not a badge**, which is what stops it being de-duplicated against
+  `RideCard`'s `AttendancePill`: 44×44, a visible chevron, `aria-expanded`. It **stays drawn while
+  the bar is open** — it is the toggle shut as well as the toggle open, and hiding it there strands
+  a rider who changed their mind with no create affordance either.
+- **The geometry is not a saving.** `.pb-floating-action-extra` is 80px against the old bar's 64px,
+  and matching 64px needs a 40px control, under the 44×44 floor. **The gain is horizontal.** Do not
+  repeat the issue body's sentence about vertical space; nothing in the tree does.
+- **`--shadow-floating` is the app's first PERSISTENT elevation**, invented rather than measured —
+  `grep -ic "shadow\|elevation" design/TOKENS.md` is 0 and no frame for a floating action exists.
+  All three departures are logged in `docs/FIGMA-FIDELITY-TODO.md` §Ride detail.
+
+**There is no `Not going` chip and that asymmetry was priced by the owner**: `setRideAttendance`
+deletes the row for `No`, so a rider who declined is byte-for-byte identical to one who never
+answered. Symmetry needs a migration *and* a change to `private.is_ride_crew`.
+
+**The walk caught a regression no other gate could, and CI skips the walk.** Its RSVP phase
+answered, reloaded and waited 20s for a radiogroup PD-404 had just taught the app to put away —
+one hard FAIL on a screen working exactly as designed, which is PD-410's join-phase defect
+arriving from the same direction. The `Smoke walk` job is skipped until `WALK_CI=1` exists, so
+nothing on the PR showed it. **Run the walk by hand for any change that moves a control**; the
+phase now reads the chip, reopens the bar through it, and asserts both directions of *the two are
+never both drawn*. 26/26 screens, 79/79 checks (it was 72/73 with 4 checks in that phase).
+
+**Four review passes, and the last three each found a defect the previous fix introduced.** The
+story was working; the defects were all created *afterwards*, while fixing findings — which is
+exactly what `queue-pickup.md` STEP 4c predicts, since a commit made after a pass is not covered
+by it. Worth knowing concretely: a focus fix that announced the answer the rider had just
+replaced (`setRideAttendance` invalidates without awaiting), then a fix for *that* which made
+`attendance` optimistic while leaving `is_crew` stale beside it — same row, so the sticky slot
+went empty for a round trip. **The pattern only broke when the fix became structural** — both
+values now derive from one row through `getRide`'s own `isRideCrew` — rather than another patch.
+Do not skip the delta re-review on the grounds that the last pass was clean.
+
+**A concurrent subagent ran `git stash` in this shared working tree and reverted uncommitted `src/`
+edits — three times, and the third was caught by `reviewer` rather than by me.** `RideCreateBar.tsx`'s
+deletion was lost that way (restored in `fe1fbde`), and so was the clearance-class fix, which shipped
+wrong for three commits with three docstrings asserting it had been applied. `CLAUDE.md` §Delegating
+while the owner is at the keyboard already warns that the working tree is a shared resource; **it is
+now measured**. A subagent must not run `git` in the main thread's checkout, and
+`isolation: "worktree"` is the fix if one needs to. **Re-check every edit a stash touched** — the
+tree looking right is not evidence, because a revert leaves no conflict.
+
+**Both retired names still appear in `src/`, and every hit is an obituary** — §Technology Decisions'
+comment trap, so the filter has to exclude comment lines and be checked both ways:
+
+```bash
+git grep -n "halt-queue" -- .claude/ docs/ CLAUDE.md    # the one queue-wide stop, 6 files
+git grep -n "timelineAdd\|RideCreateBar" -- src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'   # 0
+git grep -c "timelineAdd\|RideCreateBar" -- src/        # 5 files, all prose — the filter's control
+npx vitest run src/lib/rides src/components/rides src/components/ui/__tests__/FloatingAction.test.tsx
+```
+
 ## The reaper watches every child, and the service_role split was never a split — 2026-09-06
 
 **PD-399 + PD-408 + PD-409, one branch, taken into `slot-1`.** Grouped because all three would

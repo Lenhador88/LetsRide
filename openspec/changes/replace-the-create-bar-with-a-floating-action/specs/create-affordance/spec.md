@@ -7,6 +7,11 @@
 > `ride-chat`) and none of them owns this behaviour — so this delta **ADDS** a capability and
 > **MODIFIES nothing**.
 >
+> **The requirements are written about a create affordance, not about a floating one.** The change
+> that carries them converts the **ride detail** only; the club detail's own bar is unchanged and
+> **Q1 is still unanswered**. The club scenarios below therefore describe what already ships and must
+> keep holding, and they are what the later conversion inherits rather than re-decides.
+>
 > **Every requirement below is about the affordance, never about enforcement.** Each gate named here
 > is already enforced in Postgres and is unchanged by this change; the requirements say the control
 > must *agree* with the policy, so that no rider is offered an action the database will refuse.
@@ -61,10 +66,17 @@ The affordance is never the enforcement. A rider who defeats the control SHALL g
 #### Scenario: A ride's crew is the organizer plus the joined riders, and nobody else
 - **WHEN** a rider opens a ride's detail
 - **THEN** the create affordance SHALL be drawn only if `private.is_ride_crew` would return true —
-  the organizer, or a rider with a `ride_members` row
+  the organizer, or a rider with a `ride_members` row of either status
 - **AND** a rider who has been **invited but has not joined** SHALL NOT be offered it
 - **AND** a rider who can merely **read** the ride SHALL NOT be offered it, because readability and
   crew membership are different predicates
+
+#### Scenario: Declining a ride withdraws the affordance, and that is not an error state
+- **WHEN** a rider answers *No*, which deletes their `ride_members` row rather than storing a status
+- **THEN** the create affordance SHALL NOT be drawn, because `041` and `108` both refuse the writes
+  behind it
+- **AND** the screen SHALL NOT explain the withdrawal as a consequence of their answer, because the
+  same absence is what every non-crew reader sees
 
 ### Requirement: A create affordance SHALL NOT be drawn before its gate has an answer
 
@@ -171,38 +183,108 @@ returns the plausible wrong answer that no floor exists.
 - **THEN** whether it met the floor SHALL be recorded, so removing a sub-floor target is not confused
   with removing a compliant one
 
+#### Scenario: An indicator that reopens a control is measured as a control
+- **WHEN** an inline indicator is the only route back to a control the screen has hidden
+- **THEN** its hit area SHALL be at least 44×44 CSS px, extended without moving a rendered pixel
+  where the drawn box is smaller
+- **AND** it SHALL carry a visible affordance that it can be tapped, because inline text at a title's
+  size reads as a label and a rider who does not tap it cannot revise their answer at all
+
 ### Requirement: The bottom composition of a screen SHALL be decided in one place, and complementary affordances SHALL NOT be expressed as separate conditions
 
 Where a screen can draw more than one thing at its bottom edge — an RSVP bar, a create affordance,
-neither — which ones are drawn and where they sit SHALL be one pure function with an exhaustive test,
-not two or more conditions in the markup.
+neither — which ones are drawn and what clearance the page reserves SHALL be one pure function with
+an exhaustive test, not two or more conditions in the markup.
 
 Two conditions written at two points can drift into agreeing, which produces either two entrances to
-one composer or none at all. This survives the affordance changing shape: a floating control does not
-contend for the sticky slot, but it does contend for the same **pixels**, because the RSVP bar's
-button group reaches the same corner. The contest becomes an offset rather than a slot, and the
-condition deciding it is unchanged.
+one composer or none at all. The function survives the affordance changing shape, and it survives the
+contest being *removed*: a screen whose two bottom controls are mutually exclusive still has to
+decide which one is drawn, what the chip beside them says, and which clearance the page owes.
 
 #### Scenario: One decision, one test
 - **WHEN** the ride detail decides what to draw at its bottom edge
-- **THEN** a single pure function SHALL answer it from the RSVP condition and the crew condition
+- **THEN** a single pure function SHALL answer it, from whether the RSVP question is live for this
+  rider, what they have stored, whether they may create, and whether they have asked to answer again
 - **AND** its test SHALL be exhaustive over those inputs
 
 #### Scenario: The clearance a screen reserves comes from the same decision as the control it clears
 - **WHEN** a screen reserves bottom clearance
 - **THEN** the amount SHALL be read from the same decision that drew the control
-- **AND** clearance SHALL NOT be reserved for a control that is not drawn
+- **AND** clearance SHALL NOT be reserved for a control that is not drawn, nor while its gate is
+  unresolved
 
-#### Scenario: A floating control above an existing bottom bar is offset, not overlapped
-- **WHEN** a floating create control and a bottom bar are drawn on the same screen
-- **THEN** the control SHALL be offset by that bar's height
-- **AND** it SHALL NOT cover any control the bar carries
+#### Scenario: Two persistent bottom controls SHALL NOT share a corner
+- **WHEN** a screen can draw both a fixed bottom bar and a floating create control
+- **THEN** at most one of them SHALL be drawn at any moment
+- **AND** where a screen is ever built that must draw both, the floating control SHALL be offset by
+  the bar's height and SHALL NOT cover a control the bar carries, including one that reaches the same
+  corner because it spans the screen's width
 
-#### Scenario: Exactly one entrance survives the rewrite
+#### Scenario: Exactly one entrance, and the one state that has none is rider-initiated
 - **WHEN** a rider who may create opens the screen
-- **THEN** they SHALL be offered exactly one entrance to the composer, never two and never none
-- **AND** where a fallback entrance existed only because the primary could not be drawn, it SHALL be
-  removed when the primary can always be drawn, rather than left as a second entrance
+- **THEN** they SHALL be offered exactly one entrance to the composer, never two
+- **AND** they SHALL be offered none only while they are answering a question they themselves
+  reopened, and that state SHALL be dismissable by answering it
+
+#### Scenario: A fallback entrance whose condition became unreachable is removed, and the removal is proved
+- **WHEN** a fallback entrance existed only for a combination of conditions the change makes
+  unreachable
+- **THEN** it SHALL be removed rather than left as a second entrance
+- **AND** the unreachability SHALL be established from the database rule that makes it so — a column
+  that cannot be null, and every writer of that column — rather than from reading the components
+
+### Requirement: A question a rider has answered SHALL NOT keep a standing control, and the answer SHALL stay changeable from a control that meets the target floor
+
+Where a screen draws a standing control to ask a rider something, and the rider has answered it, the
+control SHALL be replaced by an indicator of their answer that reopens it. The indicator SHALL be a
+control in its own right: it SHALL meet the target floor, SHALL carry a visible affordance that it
+can be tapped, and SHALL be reachable without scrolling past the thing it describes.
+
+Hiding the standing control is what frees the screen; the indicator is what stops that from being a
+one-way door. An answer a rider cannot revise is worse than a control they must look past, because
+the cost lands on somebody else — a ride cancelled for rain, counted with a rider who is not coming.
+
+The indicator SHALL show the rider's **own** stored answer and nothing else. It SHALL NOT be derived
+from a roster, a count or any read that includes other riders, both because those are filtered by
+blocking and truncated for display, and because one rider's answer is not a fact this control is for.
+
+#### Scenario: An unanswered rider keeps the standing control
+- **WHEN** the question is live for a rider and they have stored no answer
+- **THEN** the standing control SHALL be drawn
+- **AND** no indicator SHALL be drawn
+- **AND** the create affordance SHALL NOT be drawn beside it
+
+#### Scenario: An answered rider gets the indicator and the create affordance
+- **WHEN** the question is live for a rider and they have stored an answer
+- **THEN** the standing control SHALL NOT be drawn
+- **AND** the indicator SHALL show that answer
+- **AND** the create affordance SHALL take the bottom corner, because the writes behind it are
+  exactly the ones a stored answer admits
+
+#### Scenario: The indicator reopens the question
+- **WHEN** the rider taps the indicator
+- **THEN** the standing control SHALL be drawn again
+- **AND** the create affordance SHALL be withdrawn for as long as it is
+
+#### Scenario: An answer that clears the stored row leaves the standing control drawn
+- **WHEN** a rider's answer is recorded by deleting their row rather than by storing a status
+- **THEN** the standing control SHALL remain drawn and no indicator SHALL be drawn, because that
+  rider is indistinguishable from one who never answered
+- **AND** the screen SHALL NOT invent an indicator for a state the database does not store
+
+#### Scenario: A rider who cannot change their answer is offered no indicator
+- **WHEN** the question is not live for a rider — they own the thing being asked about, or the moment
+  to answer has passed
+- **THEN** no indicator SHALL be drawn, even where a stored row exists for them
+- **AND** the gate SHALL be the question's liveness and SHALL NOT be a folded value that supplies an
+  answer on their behalf, because a control that reopens a question the database refuses to let them
+  answer is a control with nothing behind it
+
+#### Scenario: A failed answer leaves the reopened control open
+- **WHEN** the rider answers from the reopened control and the write fails
+- **THEN** the control SHALL stay open with its failure message readable
+- **AND** the screen SHALL collapse it only on a write that succeeded, so a failed answer is never
+  presented as an accepted one
 
 ### Requirement: Changing a create affordance SHALL NOT change who can create, and blocking SHALL NOT be added to it
 

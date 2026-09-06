@@ -135,6 +135,20 @@
      the same guard `Skeleton.tsx`'s own `animate-pulse` already uses. */
   --animate-fade-in: fade-in 230ms ease-out;
 
+  /* `FloatingAction`'s elevation — the app's first PERSISTENT one.
+     `design/TOKENS.md` carries no elevation token at all (`grep -ic
+     "shadow|elevation" design/TOKENS.md` is 0), and the only two live
+     `shadow-` uses in `src/` before this (`Banner.tsx`, `NotificationsPanel.tsx`)
+     both sit on TRANSIENT overlays — on screen for seconds, then gone, where a
+     heavy shadow reads as "temporarily floating above everything". A control
+     that sits on screen for the life of the page, over this app's flat cards
+     and flat gradient background, is a different question: nothing else on
+     screen carries elevation for it to read as louder than, so the value is
+     kept restrained rather than borrowed from `shadow-lg` — this app's
+     surfaces are flat by design, and a heavy drop shadow on a permanent
+     fixture would be the loudest thing on every screen it appears on. */
+  --shadow-floating: 0 2px 6px 0 rgba(26, 26, 26, 0.16), 0 1px 2px 0 rgba(26, 26, 26, 0.08);
+
   /* The deck's one-time swipe coach mark (PD-324) — `SwipeCoach`. Registered
      here in the same `--animate-*` namespace as `fade-in` above, so the call
      site reads `motion-safe:animate-swipe-hint` and the timing lives with the
@@ -226,6 +240,10 @@ body {
   --navbar-tabs: 3.5rem;
   --navbar-action: 4rem; /* 16 pad + 40 button + 8 */
   --ride-rsvp-bar: 6rem; /* 16 pad + 20 prompt + 12 gap + 40 group + 8 */
+  /* `FloatingAction`'s reserved-space number, opted into (never applied by
+     default) via `.pb-floating-action-extra` below — see that class and
+     `FloatingAction.tsx` for why the default is to reserve nothing. */
+  --floating-action-clearance: 5rem; /* 16 pad + 56 control + 8 */
   --safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
   /* `Header`'s own content height (`Header.tsx`'s `pt-safe` + `h-10` row + its
      8px bottom padding) — the same expression `.pt-header` uses below, lifted
@@ -278,6 +296,23 @@ html {
    the shell's `.pb-navbar` — it tops it up by exactly the action's height. */
 .pb-navbar-action-extra {
   padding-bottom: var(--navbar-action);
+}
+
+/* `FloatingAction`'s own reserved-space number, in `--navbar-action`'s own
+   "16 pad + control + 8" arithmetic: 16 pad + 56 control + 8 = 80px. Nothing
+   breaks even against `--navbar-action`'s 64px — matching it needs a 40px
+   control, under the 44×44 glove floor — so reserving clearance for this
+   control costs MORE vertical space than the sticky bar it replaces, not
+   less. `FloatingAction` therefore does NOT reserve this space itself: by
+   default it sits on top of the last row of content, which is what
+   "floating" means. A page that wants clearance instead opts in with
+   `.pb-floating-action-extra` below, which TOPS UP `.pb-navbar` the same way
+   `.pb-navbar-action-extra` does rather than replacing it. The honest gain of
+   this pattern over the bar it replaces is horizontal space — the rest of the
+   row stays usable — never vertical room, which this arithmetic says it does
+   not give back. */
+.pb-floating-action-extra {
+  padding-bottom: var(--floating-action-clearance);
 }
 
 /* The ride detail's RSVP bar. Unlike `/rides`'s "Create ride", this is NOT the
