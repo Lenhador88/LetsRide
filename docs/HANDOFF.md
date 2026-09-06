@@ -443,6 +443,13 @@ So it is left whole rather than half-done. Whoever picks it up: archive the two 
 specs, in D11's order, then this one, then confirm `openspec/specs/ride-chat/` is **deleted** rather
 than left as an empty shell.
 
+**It has an owner and an order now (2026-09-06).** The archive is `PD-403`'s remaining half — that
+story delivered everything else and stays open for this — and `PD-403` is `blockedBy` **`PD-359`**
+(*"Archive the two invite OpenSpec changes so ride-invites becomes a standing spec"*), which is the
+story that owns the five deltas above. So the sequence is `PD-359`, then `PD-403`'s remainder. Do
+not archive `add-ride-chat-unread` alone to make one of them look finished; that is the ordering
+failure this whole section exists to prevent.
+
 **There is no `ride_message` notification kind, and the issue says there is.** `036` and `060` name
 `ride_messages` only in **comments**, as the precedent their own reasoning copies — the comment
 trap, where a grep for the retired thing counts its obituaries. `notifications_type_check` has 16
