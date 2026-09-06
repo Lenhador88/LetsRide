@@ -665,7 +665,7 @@ and re-derive both rather than trusting the numbers in this heading — they hav
 before, in the direction of reading one row too few.
 
 ```bash
-ls supabase/migrations/*.sql | wc -l    # 110
+ls supabase/migrations/*.sql | wc -l    # 111
 ```
 
 *(The `docs:check` anchor for this count is the copy further down, in the promotion log's code
@@ -1346,7 +1346,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 110 — DEV at 110, PROD at 107 (108-110 await promotion)
+ls supabase/migrations/*.sql | wc -l     # 111 — DEV at 111, PROD at 107 (108-111 await promotion)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```

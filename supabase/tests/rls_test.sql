@@ -22547,9 +22547,95 @@ select assert_denied($$
 --     row over an invisible parent. 092.6's surviving un-hoist detector covers
 --     the withdrawal half of that on `club_join_waves`; the READ half does not.
 --
--- Neither is retargeted here, because writing new `club_join_waves` coverage is
--- a change to a table 101 does not touch and belongs in its own change with its
--- own review.
+-- ** BOTH ARE RETARGETED BELOW AS 092.3a AND 092.7a (111 / PD-376). ** That is
+-- the change 101's note asked for, taken in its own commit with its own review:
+-- the properties were always claimed of BOTH wave tables — 092.1's own comment
+-- says so — and only the behavioural FIXTURE happened to be written against the
+-- dropped one. Structural coverage in 092.7 is not a substitute: it reads
+-- `pg_policies` for the SHAPE of the predicate, so it stays green against a
+-- policy whose text is right and whose behaviour is wrong.
+
+-- ---------------------------------------------------------------------------
+-- 092.3a  A block hides the ROW and drops the COUNT, in EACH direction —
+--         retargeted at club_join_waves (111, PD-376)
+-- ---------------------------------------------------------------------------
+-- ** TWO CASES, NOT ONE: the row and the AGGREGATE. ** The count in this app is
+-- a PostgREST aggregate over the rows RLS returns, so if it did not move with
+-- the rows there would be no single mechanism and the client would be
+-- subtracting. That is the half a row-only assertion cannot see.
+--
+-- The reader is wvspare (920008): an ordinary member of c1 with no block in the
+-- fixture, chosen because 920006 is blocked with the SUBJECT (092.5) and 920007
+-- has blocked both wavers, so either would be counting an already-filtered set
+-- and the drop asserted here would not be this policy's doing.
+--
+-- The waves on (c1, subject 920004) are wvmember's (920003) and wvninth's
+-- (920009), written through the policy as their own authors and BEFORE any
+-- block — which is what makes "a wave placed before a block SURVIVES it, hidden
+-- rather than deleted" observable at all.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000920008', false);
+select assert_eq(
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'
+      and subject_user_id = '00000000-0000-0000-0000-000000920004'),
+  2, '092.3a: an unblocked member reads BOTH waves on the join — the baseline the two drops below are measured against, and without it a policy returning zero for everyone would pass them');
+
+savepoint join_wave_block_forward_092;
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000920008', '00000000-0000-0000-0000-000000920003');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000920008', false);
+select assert_eq(
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'
+      and subject_user_id = '00000000-0000-0000-0000-000000920004'
+      and user_id = '00000000-0000-0000-0000-000000920003'),
+  0, '092.3a: after the READER blocks the waver, that waver''s row is gone from their read');
+select assert_eq(
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'
+      and subject_user_id = '00000000-0000-0000-0000-000000920004'),
+  1, '092.3a: ... and the COUNT drops by exactly one, from the same rows and not from a client-side subtraction');
+reset role;
+rollback to savepoint join_wave_block_forward_092;
+
+savepoint join_wave_block_reverse_092;
+reset role;
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000000920003', '00000000-0000-0000-0000-000000920008');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000920008', false);
+select assert_eq(
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'
+      and subject_user_id = '00000000-0000-0000-0000-000000920004'
+      and user_id = '00000000-0000-0000-0000-000000920003'),
+  0, '092.3a: and the OTHER direction is identical — the waver blocked the reader. private.is_blocked is symmetric and the policy calls it ONCE, so a fixture with only one direction would pass against a policy that had resolved the symmetry at the call site instead');
+select assert_eq(
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'
+      and subject_user_id = '00000000-0000-0000-0000-000000920004'),
+  1, '092.3a: ... with the same one-row drop in the count');
+reset role;
+rollback to savepoint join_wave_block_reverse_092;
+
+-- The waver's own view is untouched by either block — the own-row arm, which
+-- `102` hoisted OUT of the block conjunct on this very policy. A rider blocked
+-- by everybody still reads their own wave, and still counts 1.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000920003', false);
+select assert_eq(
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'
+      and subject_user_id = '00000000-0000-0000-0000-000000920004'
+      and user_id = '00000000-0000-0000-0000-000000920003'),
+  1, '092.3a: ... and the waver still reads their OWN wave throughout, which is the own-row arm 102 hoisted and the reason a rider blocked by everyone still counts 1');
+-- ** NO `reset role` HERE, deliberately. ** 092.5 below sets `test.uid` and
+-- reads without setting the role itself, so it inherits `authenticated` from
+-- this block. Resetting here would run it as the TABLE OWNER, who bypasses RLS
+-- entirely — and 092.5 would then read the row it exists to prove is hidden.
 
 -- ---------------------------------------------------------------------------
 -- 092.5  Blocked with the join's SUBJECT
@@ -22702,6 +22788,41 @@ rollback to savepoint wave_owner_cannot_delete_092;
 -- see a predicate no rider in it triggers. A session restoring the behavioural
 -- half should write it against `club_join_waves`.
 reset role;
+-- ---------------------------------------------------------------------------
+-- 092.7a  Owner, admin and member reach the SAME rows — the behavioural half,
+--         retargeted at club_join_waves (111, PD-376)
+-- ---------------------------------------------------------------------------
+-- ** THE STRUCTURAL CHECK BELOW AND THIS ONE ANSWER DIFFERENT QUESTIONS, which
+-- is why losing this half mattered. ** `pg_policies` proves no policy NAMES
+-- `role`; it cannot prove the three roles actually land on the same rows,
+-- because the audience here is INHERITED — the EXISTS runs against
+-- `club_members` under the reader's own RLS, so a role could diverge through
+-- the PARENT's policy without this table's text changing by a character.
+--
+-- Three readers on c1, all reading the same join: the OWNER (920001, who holds
+-- no club_members row of their own on this club and reaches it through 054's
+-- owner arm), the ADMIN (920002) and an ordinary MEMBER (920008).
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000920001', false);
+select assert_eq(
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'
+      and subject_user_id = '00000000-0000-0000-0000-000000920004'),
+  2, '092.7a: the club OWNER reads both waves on the join');
+select set_config('test.uid', '00000000-0000-0000-0000-000000920002', false);
+select assert_eq(
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'
+      and subject_user_id = '00000000-0000-0000-0000-000000920004'),
+  2, '092.7a: ... the ADMIN reads both');
+select set_config('test.uid', '00000000-0000-0000-0000-000000920008', false);
+select assert_eq(
+  (select count(*)::int from club_join_waves
+    where club_id = '00000000-0000-0000-0000-0000009200c1'
+      and subject_user_id = '00000000-0000-0000-0000-000000920004'),
+  2, '092.7a: ... and an ordinary MEMBER reads both. No role reaches further than another, and none of the three is the waver, so this is the inherited audience rather than the own-row arm answering');
+reset role;
+
 select assert_eq(
   (select count(*)::int from pg_policies
     where schemaname = 'public'
