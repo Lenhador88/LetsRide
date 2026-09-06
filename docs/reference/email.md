@@ -37,9 +37,12 @@ curl -s -X POST "https://<ref>.supabase.co/auth/v1/recover" \
   -d '{"email":"<an address that already has an account>"}'
 ```
 
-A mail from Resend carries `d=letsride.social s=resend`, a `Return-Path` on
-`send.letsride.social`, and Supabase's own `X-Pm-Metadata-Project-Ref` naming the project — so one
-header block answers "which sender" and "which project" together.
+A mail from Resend carries `d=letsride.social s=resend` and a `Return-Path` on
+`send.letsride.social`; the built-in sender carries neither. **Which project sent it is in the
+link, not in a header** — the `https://<ref>.supabase.co/...` the body points at. Do not look for
+`X-Pm-Metadata-Project-Ref`: it is Postmark's prefix, it was present on a PROD mail on 2026-08-28
+and absent from one on 2026-09-05, and a header that comes and goes cannot tell you whether its
+absence means "wrong project" or "wrong instruction".
 
 **The signup form leaves a row on a production auth server.** Delete it, and re-select the same
 address rather than a placeholder pattern — a `like 'you+%'` returns 0 whether or not the delete
@@ -78,7 +81,7 @@ what an apex SPF record can break. Read off a delivered message's `Authenticatio
 
 - `spf=pass … smtp.mailfrom=…@send.letsride.social`
 - `dkim=pass header.i=@letsride.social header.s=resend`
-- `dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=letsride.social`
+- `dmarc=pass (p=NONE) header.from=letsride.social`
 
 `_dmarc` carries no `aspf` or `adkim` tag, so **both alignments are relaxed** — the default — and
 relaxed compares organizational domains. `send.letsride.social` and `letsride.social` share one,
@@ -90,8 +93,18 @@ record cannot affect this mail, because SPF is evaluated against the `MAIL FROM`
 is `send.letsride.social`.** The apex record is never consulted. It only ever answers for mail
 *claiming* `@letsride.social` directly — which is the spoofer, and is exactly what publishing
 `v=spf1 -all` there refuses. PD-108 carries that step and the `p=none` → `p=quarantine` →
-`p=reject` schedule, plus the condition that would make `-all` wrong: an apex mailbox, which
-needs an apex MX, and there is none today.
+`p=reject` schedule.
+
+**The condition that would make an apex `-all` wrong is a *sending* one, and the obvious check is
+the wrong check.** SPF governs sending; an apex MX governs receiving, and they are unrelated
+mechanisms — so "is there an apex MX?" reads all-clear for senders that need no MX at all. What
+breaks under `-all` is anything that ever sends with envelope `MAIL FROM` on the bare apex: a
+marketing platform for the `PD-34` site, a contact-form or helpdesk mailer, a Workspace mailbox.
+The question to ask before publishing it, and again before adding any sender, is *what will use
+`@letsride.social` as an envelope sender* — not what can receive there.
+
+Separately, and true rather than a tripwire: the apex has **no MX**, so nothing can receive at
+`@letsride.social`. `noreply@` is a genuinely one-way address rather than a convention.
 
 ## Templates: three files, six fields per project
 
@@ -117,18 +130,20 @@ not; the discriminators there are the **subject** and the body prose. That is ho
 `Reset your LetsRide password`. *Magic Link* cannot be read back at all: nothing in the app sends
 one (`grep -rn "signInWithOtp" src/` is 0).
 
-The file half does have a gate — `src/__tests__/auth-email-templates.test.ts` holds the links in
-all three files identical to each other and to a constant in the test. It says nothing about what
-a project serves.
-
 ## The rate limit is a separate page, and it is Supabase's rather than the provider's
 
 **Authentication → Rate Limits → *Rate limit for sending emails*.** Supabase sets it to **30
-messages per hour** when custom SMTP is saved — its docs call that "a low rate-limit" relative to
-what a real provider can carry, not relative to the built-in mailer, whose limit is lower still.
-So configuring SMTP *raises* the ceiling; it just raises it to a number far below what Resend
-would accept, which makes **Supabase's cap the one that binds first**. It is not readable from a
-session.
+messages per hour** when custom SMTP is saved. Its docs call that "a low rate-limit", and **they
+mean low relative to what a real provider can carry, not relative to the built-in mailer** — read
+the other way round, that sentence says enabling SMTP makes things worse, which is backwards and
+is the reading to guard against. Configuring SMTP *raises* the ceiling; it raises it to a number
+far below what Resend would accept, which makes **Supabase's cap the one that binds first**.
+
+Neither number is readable from a session. The project's configured value is
+`rate_limit_email_sent` on `GET /v1/projects/{ref}/config/auth`, which needs the personal access
+token this environment does not hold; the dashboard page above is the other place it is written.
+The built-in mailer's own default is lower, per that same page — Supabase states it only through
+a rendered placeholder, never as a literal in prose, so it is not quoted here.
 
 **Over the limit, the failure is silent on every surface.** GoTrue stamps `confirmation_sent_at`
 and sends nothing: `signUp` returns the same `{ sent: true }` (`src/lib/actions/auth.ts`),
