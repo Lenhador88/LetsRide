@@ -190,6 +190,39 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## Production is level with DEV for the first time since 2026-09-01 — 2026-09-06
+
+**`main` carries `f3c55b4` (35 commits, PR #405) and PROD is at migration `107`.** Both projects
+now hold 107 files and 39 security advisors, and `development` was fast-forwarded to `main` so the
+two branches do not diverge. Riders have block/hide undo, the paging club timeline, the ride
+timeline, the introduction-as-join, the trimmed privacy sheet, and a club that survives its last
+member instead of taking other riders' postcards down with it.
+
+**The promotion's real decision was an ORDERING CONFLICT and it will recur** — the seven files did
+not agree about which side of the deploy they wanted. `CLAUDE.md` §Supabase Rules carries the rule
+that settled it and [`docs/reference/migrations.md`](reference/migrations.md) §Applied state the
+per-file detail; do not copy either back here.
+
+**`103`'s already-loaded-tab hazard was measured empty rather than waived.** That file's own log
+says a PROD promotion should ship the transitional group-1 upsert and let it soak, because an SPA
+tab holding the pre-merge bundle keeps issuing the plain insert for days. PROD had **0 sign-ins in
+seven days** and a most-recent sign-in of 2026-08-14, so no such tab existed. **On a PROD with live
+riders that argument evaporates and the soak is the answer** — do not read this promotion as a
+precedent for skipping it.
+
+**PROD's objects were proved against DEV rather than against the recorded text**, which is the only
+check that catches a transcription error in an apply that succeeded. Both exceptions it found were
+comment-only, and in the direction where PROD matches the repo file and DEV does not —
+`migrations.md` §What reads as drift carries them.
+
+**The check is three answers, not one** — the applied chain on each project against the files, in
+both directions. `list_migrations` on `zwprydcyryvudhurbnye` and on `fpmrimzxadewsaiwpsel` (both 107
+names, DEV carrying three extra rows with no file) against:
+
+```bash
+ls supabase/migrations/*.sql | wc -l   # 107
+```
+
 ## The queue jam was an unmerged PR, and the stall check cannot see one — 2026-09-06
 
 **`slot-1` held PD-98 from 2026-09-05T19:43:43Z until this merge, and its build never died.** It
@@ -571,8 +604,8 @@ fix, and each carries a visibility rule, which is why this went through `openspe
   grant. `105` revokes from `public, anon`; `009` got away with `from public` alone only because
   `private` denies `anon` schema USAGE. `105.11` pins it as a privilege assertion, never a call —
   the suite runs as the table owner, which is what let `029` ship broken.
-- **Advisors are 39 on DEV and 37 on PROD, and the difference IS the pending promotion**, not
-  drift. `105` adds exactly two, one per accessor — run rather than derived.
+- **`105` adds exactly TWO advisors, one per accessor** — run rather than derived. It stood as a
+  two-advisor difference between the projects until the 2026-09-06 promotion; both are at 39 now.
 
 ```bash
 git grep -n "my_blocked_riders\|my_hidden_postcards" -- src/ supabase/
@@ -950,7 +983,7 @@ trips left a club with an owner and no membership row. Two `AFTER INSERT` trigge
   by any client.** Nine sites in the suite relied on that state arising by accident; each now
   manufactures it as the table owner. Any prose describing it as reachable is false.
 - **All three functions live in `private`, not the proposal's `public`** (following `095`), so the
-  advisor count does not move — both projects stay at thirty-seven. On the ride guard
+  advisor count does not move on either project. On the ride guard
   `security definer` is **correctness**: its parent probe cannot tell an invisible ride from a
   deleted one under invoker rights, and would fail open.
 
