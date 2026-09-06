@@ -3170,12 +3170,31 @@ async function leaveClubIfJoined(clubId) {
     const canLeave = await page.$$eval(row, (buttons) =>
       buttons.some((b) => b.textContent?.trim() === 'Leave club')
     )
-    if (!canLeave) return
+    if (!canLeave) {
+      // No `Leave club` row means one of two things and they are not the same
+      // news, so they do not share a silent return: either the rider genuinely
+      // never joined — nothing to clean up, which is the good case — or the menu
+      // did not render and a membership may be standing. This runs on an
+      // already-red run, where the only cost of a line is that somebody reads it.
+      console.log('  (no Leave club row — either the join never landed, or the options menu did not render)')
+      return
+    }
 
-    await waitForTableWrite('club_members', () =>
+    // **Report what the write actually did.** The success line used to print
+    // unconditionally, which is worst precisely here: the two failures are
+    // correlated rather than independent, because a slow round trip is what
+    // produced the false `joined === false` that brought us into this function,
+    // so a leave that also times out is the EXPECTED case rather than a remote
+    // one. An affirmative "left the club again" over an unobserved DELETE is
+    // the only line telling an operator whether DEV needs cleaning by hand.
+    const left = await waitForTableWrite('club_members', () =>
       page.$$eval(row, (buttons) => buttons.find((b) => b.textContent?.trim() === 'Leave club')?.click())
     )
-    console.log('  (left the club again after the failure above, so the next run still has it to join)')
+    console.log(
+      left
+        ? '  (left the club again after the failure above, so the next run still has it to join)'
+        : '  ! the leave was not observed either — a membership may be standing on this club'
+    )
   } catch {
     console.log('  ! could not confirm the club was left — a membership may be standing')
   }

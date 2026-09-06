@@ -103,11 +103,20 @@ owns one, so it asserts the refusal, the club `<select>` restore and the flipped
 three `retain.ts` singles out as hardest. A freshly minted rider owns nothing and `WALK_FIXTURES`
 was unset, so it prints *"no ride or club this rider owns"* and skips.
 
-**The minted run's teardown line is printed and NOT counted, which is a trap worth naming here.** It
-calls no `report()` and is not summed into the total, but it prints `  ok   <email> deleted` —
-character for character the format a passing check uses. Anyone reconciling these totals by counting
-`ok` lines in a transcript will therefore land one over the printed figure on the minted run and
-conclude the delta is 2. It is 3.
+**TWO lines print in a passing check's exact format and are NOT counted, and that is the trap to
+know before reconciling anything by eye.** Both call no `report()` and neither is summed into the
+total, but both print `  ok   …` character for character the way a passing check does:
+
+| Uncounted line | Where | Prints on |
+|---|---|---|
+| `ok   <email> deleted` | `attemptDeleteAccount`'s teardown | the **minted** run only |
+| `ok   the cleanup delete survives a reload` | `checkCommentOnPostcard`'s cleanup | **both** runs |
+
+So counting `ok` lines in a transcript lands you **two** over on the minted run (76 against a printed
+74) and **one** over on the named run (78 against 77) — and the two errors nearly cancel, which is
+worse than either alone: the delta still looks like 2 and the totals still look plausible. It is 3.
+`walk.mjs` names the teardown as the precedent the second one follows, so a third is likely rather
+than hypothetical — **read the printed totals, never a count of your own.**
 
 **Both runs walk the same 26 screens**, and both skip `/rides/detail/thread` and `/postcards/detail`
 for want of data rather than for want of an account — so the old claim that minting *"cannot walk
