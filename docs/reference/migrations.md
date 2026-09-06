@@ -344,8 +344,9 @@ newer-bundle-against-older-database case nor `092`'s reverse exists. **The PROD 
 the same ordering for the same reason.** What it owes instead of an ordering decision is the
 **hand-exercise gate**, because it hangs `AFTER DELETE` triggers on three already-shipped write
 paths, `club_members` being the busiest delete path in the app. That gate ran on DEV before the
-apply — **ten checks, all PASS**, rollback confirmed rather than assumed; the file's own
-§Verification carries the list and the reasoning, and is not restated here.
+apply — **ten checks, all PASS**, rollback confirmed rather than assumed; the file's **first**
+§Verification (the hand-exercise gate, above the post-apply one) carries the list and the
+reasoning, and is not restated here.
 
 It was **applied REDUCED and proved by object diff**, per §Applying a large file — ~19,000 bytes
 against 2,660 bytes of executable statements, so its recorded text will not equal `md5sum` of the
