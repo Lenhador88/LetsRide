@@ -190,6 +190,98 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The Geoapify credit is gone, and the cold load announces once — 2026-09-06
+
+**PD-415 + PD-220, one branch, taken into `slot-1`.** The only two candidates in `Queued (AI)`.
+Grouped rather than split under `queue-run.md` STEP 4's *when you cannot tell, group them*: PD-220
+reaches `src/components/ui/Skeleton.tsx` and its ~30 callers, and PD-415 sits in
+`src/components/rides/`, where several of those callers live. In the event they did not overlap at
+all.
+
+**PD-415 — `Powered by Geoapify` is deleted from `MAP_CREDITS`, and nothing else moved.** The
+condition `MapAttribution`'s header set was White Label *confirmed active*, not merely paid, and it
+is answered twice: the owner confirmed a paid Geoapify account carries no White Label switch to
+throw, and PD-234 had already verified a real render with `attribution=none` honoured — which an
+unentitled account ignores while burning the credit in anyway. **That second one was the stronger
+evidence and it sat unlinked on another issue for ten days**, which is what made this story park
+overnight; the story's own `Ready N` was over-cautious rather than wrong.
+
+**The two that remain are licence obligations and the deletion may not reach them.**
+`© OpenStreetMap contributors` is ODbL 1.0 on every plan and every OSM-based vendor;
+`© OpenMapTiles` applies to every style except `osm-carto`, which `MAP_STYLE` is not. The test moved
+from `MAP_CREDITS.length >= 2` to an exact length plus an explicit `not.toContain` — the permissive
+form existed because dropping the third line was a legitimate *future* edit, and that reason is
+spent now that it is a decision.
+
+**PD-220 — there are THREE loading positions on those screens, not two, and the issue names two.**
+That is the thing worth not re-deriving. Both `/rides` and `/postcards` draw a skeleton at the
+`<Suspense>` fallback (while `useSearchParams` resolves), at the `!filters.data` gate, **and** in the
+list/deck slot inside the loaded branch while the second read is still in flight. No two of them
+reconcile — 1 and 2 sit either side of a Suspense boundary, and 2 returns a component where 3 returns
+a fragment — so each is a fresh mount and each inserts its own live region.
+
+**The ordinary cold load hit positions 2 and 3**, because `filters` and the list are independent
+`useQuery` calls and `filters` usually lands first. A fix that addressed only 1 and 2 leaves the
+audible defect exactly as it was while every claim in the tree says it is fixed.
+
+**What shipped: every skeleton on those two screens is `announce={false}`, and each screen renders
+one `LoadingRegion` at a fixed child index in all three of its branches.** React matches fragment
+children by position, so the same index in the error, gate and loaded branches is one element that
+persists across every transition — inserted once when the screen mounts, then only its text changes.
+Four things a later session should not re-derive:
+
+- **The fixed index IS the mechanism.** Move `LoadingRegion` below a conditional sibling, or wrap one
+  branch and not another, and it reconciles against a different element, remounts and announces
+  again. The markup is identical either way and only a screen reader can hear the difference, which
+  is why `Skeleton.test.tsx` asserts the position rather than the presence.
+- **Text content, not `aria-label`.** A live region announces the content that *changed*; an empty
+  region carrying a label has nothing to change and support for announcing one is inconsistent. The
+  35 other announcing call sites still use `SkeletonRegion`'s `aria-label` — untouched, out of scope,
+  and worth knowing is a weaker mechanism than this one. Count them with the grep in that file's
+  comment rather than trusting the number here.
+- **No split between positions can work, and this was tried first.** Silencing one and announcing at
+  another is a bet on which read lands first: silence the gate and a load where the list arrives
+  before `filters` announces nothing at all, which is the issue's own *"must not leave a screen with
+  no announcement"*. Only a region that outlives all three transitions is ordering-independent.
+- **Only these two screens were ever affected, measured rather than assumed.** No other route draws a
+  **skeleton shape** at a `<Suspense>` fallback: 20 of the other boundaries are `fallback={null}`, and
+  the two that are not — `/auth/confirm` and `/auth/callback` — render their own `Confirming` /
+  `SigningIn`. Every other skeleton has one position, so its own region is correct and 35 announcing
+  call sites are untouched — the issue's "touching every caller" was the cost of its own shape.
+
+**The shape the issue proposes does not fix it either**, and that is worth stating because it reads
+as a specification: hoisting `role="status"` onto `RidesLoading`/`PostcardsLoading` relocates the
+region without changing the count, since those components are themselves what is rendered at
+positions 1 and 2 — and it strips the other 35 announcing call sites of theirs on the way.
+
+**One trade taken deliberately:** a silenced skeleton is `aria-hidden`, so between first paint of the
+prerendered HTML and hydration nothing in the accessibility tree says the screen is loading. The
+alternative puts a region in the initial HTML, where screen readers differ on whether they announce
+one that was present on arrival — and a guaranteed single announcement is worth more than
+discoverability in a window that ends at hydration.
+
+**Filed rather than folded in: `RideMap.tsx` carries ~40 lines of prose describing a
+`Powered by Geoapify` element it has not rendered since PD-236** moved the credit into
+`MapAttribution`, and asserting the account is on the Free plan it left on 2026-08-27. Over the
+discretionary fold-in cap and in a file this diff does not open.
+
+**Four `docs:check` claims were already stale on `development` and are fixed here** — the unit-test
+totals in `docs/reference/ci.md` and `docs/reference/running-locally.md`, off by 32 tests and 4
+files before this branch existed. **CI cannot catch these**: they need a test runner, so they are
+outside `docs:check --cheap`. Run the full sweep locally when a branch adds a test file.
+
+```bash
+git grep -n "GEOAPIFY_CREDIT" -- src/            # 0
+# The two screens that silence every skeleton, and the 20 that need no prop.
+# Comment-filtered, because both files EXPLAIN the prop as well as passing it:
+git grep -n "announce={false}" -- 'src/app/**/page.tsx' | grep -vE ':[0-9]+:\s*(\*|//|/\*)' | wc -l   # 4
+git grep -c "announce={false}" -- 'src/app/**/page.tsx'          # 3 each — the filter's control
+git grep -c "<LoadingRegion label=" -- 'src/app/**/page.tsx'     # 3 branches each
+git grep -l "Suspense fallback={null}" -- 'src/app/**/page.tsx' | wc -l   # 20
+npx vitest run src/components/ui/__tests__/Skeleton.test.tsx src/__tests__/ride-geocode-gates.test.ts
+npm run docs:check                               # 39 passed, 0 failed, 3 skipped (no Postgres)
+```
+
 ## The warm splash covers the shell and now also unreaches it — 2026-09-06
 
 **PD-251, one branch, taken into `slot-2`. A group of one, and the two other candidates were
