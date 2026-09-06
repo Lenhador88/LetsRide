@@ -434,13 +434,19 @@ that is a property of the split:
 **PROD sends as `noreply@letsride.social` through Resend; DEV still sends through Supabase's
 shared built-in mailer.** Measured 2026-09-05 by reading the headers of a mail from each. The
 asymmetry is PD-108's remaining work rather than a decision — PROD was moved and DEV was missed,
-and neither was recorded until three weeks later, which is this file's §Auth configuration lesson
-happening again to the one setting that has no read-back at all.
+and neither was recorded for three weeks, which is this file's §Auth configuration lesson
+happening again to a setting whose only read-back is to send a mail and look at it.
 
-**The DNS half is the part the nameserver decision in step 2 governs**, and it stayed at name.com,
-so the mail records did too. Resend's are published and passing; the apex still has no SPF and
-DMARC is `p=none` with no reporting address. A domain with no mail policy can be spoofed by
-anyone, and a young brand's first experience of that is usually a phishing run at its own signups.
+**The DNS half is what the nameserver decision in step 2 governs**, and the decision held: DNS
+stayed at name.com, so the mail records did too. **If DNS ever does move to Vercel, SPF, DKIM and
+DMARC move with it** — that is the trade-off step 2 weighs, and it is still live for `PD-34`'s
+apex.
+
+Still outstanding, and free: **publish `v=spf1 -all` on the apex, and take DMARC from today's
+`p=none` with no reporting address to `p=reject`** — via `rua` and `p=quarantine`, because a
+policy adopted without reports is adopted blind. PD-108 carries the ordered version and the
+records as name.com wants them typed. A domain with no mail policy can be spoofed by anyone, and
+a young brand's first experience of that is usually a phishing run at its own signups.
 
 ---
 
@@ -637,10 +643,14 @@ Site URL, and committing a file does not change what the setting is.
 The asymmetry with everything else in this repo is worth stating plainly, because a file in git
 *looks* authoritative:
 
-- **Nothing can read a deployed template back.** The Supabase MCP server exposes no template read;
-  `GET /v1/projects/{ref}/config/auth` needs a personal access token this environment does not
-  hold; and `/auth/v1/settings` — the credential-free probe two paragraphs up — returns no bodies.
-  So the drift is not merely ungated, it is **unobservable from a session**.
+- **No deployed template can be read back as markup.** The Supabase MCP server exposes no
+  template read; `GET /v1/projects/{ref}/config/auth` needs a personal access token this
+  environment does not hold; and `/auth/v1/settings` — the credential-free probe two paragraphs
+  up — returns no bodies. **What a session can observe is a template's rendered output**, by
+  causing a mail to be sent and reading it: that is how both projects were found still serving
+  the defaults on 2026-09-05. It discriminates on the *link* for `Confirm signup` only —
+  `reset-password.html` keeps `{{ .ConfirmationURL }}`, so its link is identical either way and
+  the subject is the tell. `docs/reference/email.md` §Templates has both.
 - **The CI job that does open the directory can only see the files.**
   `src/__tests__/auth-email-templates.test.ts` reads all three templates under Vitest, so it
   catches a link that no longer matches its own copy-this-link fallback — or the hardcoded
