@@ -190,6 +190,61 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## A migration is applied to DEV with no file in the repo — 2026-09-06
+
+**`107` is taken on the database and free in the repo.** DEV's last applied row is
+`a_club_may_outlive_its_last_member` (`20260905203011`) — PD-98's build, applied at 20:30Z by a
+session that then stalled and never pushed its branch. Filed as **PD-406**; the decision (reconstruct
+the file, or revert it on DEV) is the owner's.
+
+**Every previous drift row here was the opposite and safer direction** — PD-152, PD-168, PD-144 were
+all *a file that had not been applied*, where the file is reviewable and the fix is to run it. This
+one cannot be fixed by applying anything, and **nothing in the repo measures it**: `db:drift`
+compares DEV against PROD by name, and neither is compared against `ls supabase/migrations/`. It was
+found by a proposal agent counting rows for an unrelated story.
+
+```bash
+git ls-files supabase/migrations/*.sql | tail -1        # 106_the_hidden_list_cannot_detect_a_block.sql
+git ls-files supabase/migrations/ | grep -i outliv      # nothing — but DEV has applied it
+```
+
+## Ride threads are proposed, not built — 2026-09-06
+
+**PD-402, [PR #400](https://github.com/Lenhador88/LetsRide/pull/400) — the `openspec` proposal only,
+and the story stays open.** `openspec/changes/retire-ride-chat-for-ride-threads/` retires
+`ride_messages` (`034`) and `ride_reads` (`061`) for `ride_threads` / `ride_thread_messages` /
+`ride_thread_reads` on `081`/`082`/`094`'s model. **The build was deferred by the concurrency cap,
+not by a judgement about the story**: it needs `supabase/tests/rls_test.sql` and
+`docs/reference/schema.md`, which `slot-1` had declared.
+
+**Three of the issue's premises were false, and two of them remove work:**
+
+- **There is no `ride_message` notification kind.** `notifications_type_check` has 16 arms and that
+  is not one; the only trigger on `ride_messages` is `enforce_participation_gate`. `036` and `060`
+  name the table only in **comments**, as the precedent their own reasoning copies — the comment
+  trap, where the issue's own suggested grep counts obituaries. So there is no enum arm to retire and
+  `101`'s precedent question has no subject.
+- **`107` is taken on DEV by a file the repo lacks** — the section above.
+- **Nothing in `design/` draws a ride thread, and nothing draws a club thread either.** The club's
+  thread screens were built without a v2 frame. The build copies the shipped implementation; do not
+  go looking for a frame.
+
+**Two things the proposal settles that a build must not re-decide.** The additive and destructive
+halves are **two migration files** — the publication entry must precede the deploy and
+`ride_messages` must outlive the old bundle, so one file cannot be both sides of it; that also forces
+the new table to be named `ride_thread_messages`, since `ride_messages` still exists when A applies.
+And deletion is `082`'s `security definer` RPC rather than a DELETE policy, which **closes** the
+residual silent `DELETE 0` on `ride_messages` that `102` deliberately left open rather than porting
+it into two new tables.
+
+**Q1 is blocking and is the owner's:** a rider who accepted an invite to a private club's ride, and
+is not in that club, opens the ride and taps Threads — what do they see? The spec is written to *the
+ride's threads in full, and no part of the club*.
+
+```bash
+npx openspec validate retire-ride-chat-for-ride-threads --strict
+```
+
 ## Three from one queue firing — a timeline lie, the ride's bottom slot, the privacy copy — 2026-09-06
 
 **PD-400 + PD-401 + PD-405, one branch, taken into `slot-2`.** Grouped because all three are
