@@ -1,434 +1,366 @@
 # The create affordance becomes a floating action instead of a full-width bar
 
-> **This proposal does not pick the frame decision, and it must not be read as having picked it.**
-> PD-404's body says *"the build must not pick one silently"*, and Q1 below is that decision put to
-> the product owner with a recommendation attached. Everything else here is measurable today and is
-> written so that **one answer to Q1 unblocks the build** rather than a design session.
+> **The ride detail is DECIDED and buildable. The club detail is not, and is out of scope here.**
+> The product owner answered the composition question on 2026-09-06 with a **fourth shape they
+> designed themselves** — answering the RSVP *replaces* the bar with a status chip, and the floating
+> action takes the bottom corner. That answer supersedes this proposal's earlier options A/B/C,
+> which are gone rather than annotated. **Q1 — the club detail — is still unanswered**, so
+> `src/components/clubs/ClubCreateBar.tsx` is **not touched** by this change and PD-404 stays open
+> after the ride half ships.
 
 ## Why
 
 Product owner, 2026-09-05, referencing the OutSystems *floating actions* pattern
 (`PatternDetail?PatternId=507`): replace the always-drawn full-width create bar with a floating
-action that expands into its actions.
+action. Two screens own such a bar today:
 
-Two screens own such a bar today. Both were built deliberately and both carry their reasoning in
-their own docstrings, which this change reads rather than re-derives:
+| Component | Screen | Actions | Gate | Frame | In this change |
+|---|---|---|---|---|---|
+| `src/components/rides/RideCreateBar.tsx` | ride detail | 2 — Postcard, Thread, via `RideCreateSheet` | crew (`private.is_ride_crew`) | `Ride - Ride plan (Details)` `2375:8771` | **yes** |
+| `src/components/clubs/ClubCreateBar.tsx` | club detail | 3 — Postcard, Ride, Thread, via `ContextMenu` | member (`private.is_club_member`) | `Private club - Timeline` `2043:10604` | **no — Q1 is open** |
 
-| Component | Screen | Actions | Gate | Frame |
+The ride detail's own obstacle was never the component; it was that `RideAttendanceBar` already owns
+the bottom edge for most riders on most rides. The owner's decision removes that collision instead
+of arbitrating it.
+
+## The decided composition
+
+**The RSVP bar and the floating action are never both present, because answering the RSVP replaces
+the bar.**
+
+- A rider who has answered **Going** or **Maybe**: no RSVP bar; a **status chip** (`Going` /
+  `Maybe`) on the ride's first content line; the **floating action** owns the bottom corner.
+- Tapping the chip **brings the RSVP bar back**, so the answer stays changeable. While it is back,
+  the floating action is withdrawn — the two are never on screen together.
+- A rider who has answered **nothing**: RSVP bar, no floating action. Today's behaviour.
+- A rider who taps **No**: the RSVP bar stays, and no chip is drawn.
+
+### Why the `No` half is asymmetric, and why that is the accepted cost
+
+`RideAttendance` is `'going' | 'maybe' | null`, and `RideAttendanceBar`'s own comment records the
+truth: *"`No` has no stored status — it clears the row."* `setRideAttendance` **deletes** the
+`ride_members` row for `null`. Measured on DEV (`fpmrimzxadewsaiwpsel`, 2026-09-06):
+
+```sql
+-- ride_members.status: is_nullable NO, default 'going'::text
+-- ride_members_status_check: CHECK (status = ANY (ARRAY['going','maybe']))
+```
+
+So a rider who declined is byte-for-byte identical to one who never answered, and nothing can draw
+them a `Not going` chip. Making it symmetric needs a real `no` status — a migration **and** a change
+to `private.is_ride_crew`, which is `034`'s *"organizer, or holder of a `ride_members` row of either
+status"* and now gates ride threads (`108`) as well as postcard tagging (`041`). **The owner chose
+cheap: no migration, no helper change, `No` behaves exactly as it does today. This change does not
+widen it.**
+
+### The load-bearing property: the rider's rule and the database's rule are the same rule
+
+`private.is_ride_crew` — read off DEV rather than quoted from a migration — is:
+
+```sql
+select exists (select 1 from public.rides r where r.id = ride and r.organizer_id = auth.uid())
+    or exists (select 1 from public.ride_members m where m.ride_id = ride and m.user_id = auth.uid());
+```
+
+Going and Maybe both carry a `ride_members` row, so both may tag a postcard and open a thread; `No`
+carries no row and may do neither. **The floating action therefore appears exactly when the write
+would succeed**, which is the property PD-401 pinned — *a control the database refuses is worse than
+no control*. Nothing in this change weakens it, and the chip inherits it: a rider who has a chip is
+a rider who is crew.
+
+## What changes
+
+### Scope — the ride detail, one new primitive, no schema
+
+- **`src/components/ui/FloatingAction.tsx`** — new, and the app's first *persistent* floating
+  control. Presentational: it takes its gate, label, icon and action as props and decides nothing.
+- **`RideCreateBar`** becomes that floating action. It keeps its two-row `RideCreateSheet` and its
+  `Create` label — **arity is 2 since `108`/PD-402**, so the sheet is by the rule below rather than
+  by an edit.
+- **A status chip** on the ride detail's first content line, drawn only for a rider whose RSVP is
+  live *and* answered, and tapping it reopens `RideAttendanceBar`.
+- **`resolveRideDetailActions`** (`src/lib/rides/bottom-slot.ts`) keeps being the one place the
+  bottom composition is decided, with new inputs and a new return — see below. `timelineAdd` is
+  **removed**; the finding that makes it dead is stated and measured below.
+- **One geometry token and one clearance class** in `globals.css` for the floating control.
+  `--ride-rsvp-bar` is untouched — see *What happens to `--ride-rsvp-bar`*.
+
+### What `resolveRideDetailActions` becomes
+
+The old inputs cannot express the decision, because `canRsvp` no longer means *may answer*; it means
+*may answer and has not*. Splitting that conjunct out is what makes the chip and the bar readable
+from one decision:
+
+```ts
+resolveRideDetailActions({
+  rideId,
+  mayAnswer,   // is_upcoming && !is_organizer — the RSVP question is live for this rider
+  answer,      // 'going' | 'maybe' | null — the STORED ride_members status
+  canCreate,   // is_crew
+  reopened,    // the rider tapped the chip
+}) => {
+  bottomSlot: 'rsvp' | 'create' | null,
+  statusChip: 'going' | 'maybe' | null,
+  createOptions: RideCreateOption[],
+}
+```
+
+with
+
+- `bottomSlot === 'rsvp'` iff `mayAnswer && (answer === null || reopened)`;
+- `bottomSlot === 'create'` iff `canCreate` and the bar is not drawn — so the two can never share
+  the screen, **by construction rather than by an offset**;
+- `statusChip` non-null iff `mayAnswer && answer !== null`;
+- `createOptions` non-empty **iff `canCreate`** — the invariant is re-proved below.
+
+That reproduces the owner's table exactly:
+
+| mayAnswer | answer | canCreate | bottomSlot | chip |
 |---|---|---|---|---|
-| `src/components/clubs/ClubCreateBar.tsx` | club detail | 3 — Postcard, Ride, Thread, via `ContextMenu` | member (`private.is_club_member`) | `Private club - Timeline` `2043:10604` |
-| `src/components/rides/RideCreateBar.tsx` | ride detail | 1 — `routes.newPostcardInRide`, no sheet | crew (`private.is_ride_crew`) | `Ride - Ride plan (Details)` `2375:8771` |
+| true | `null` (unanswered) | false | `rsvp` | — |
+| true | `going`/`maybe` | true | `create` | `Going` / `Maybe` |
+| true | `going`/`maybe`, chip tapped | true | `rsvp` | `Going` / `Maybe` |
+| false (organizer / past ride) | any | true | `create` | — |
+| false | any | false | `null` | — |
 
-`PD-401` merged at 00:32Z on 2026-09-06, so the second bar now exists and this story can convert
-both screens at once. The mechanical blocker named in the issue is gone.
+**`mayAnswer` is what excludes the organizer, and the stored status is not.** Since `103` the
+organizer holds a real `ride_members` row of status `going`, so a chip gated on the status alone
+would draw for them and offer a bar that `103`'s `protect_ride_organizer_membership` refuses, over a
+roster that `withOrganizer` renders `Going` whatever is stored (PD-391). This is the same trap
+`isRideCrew`'s docstring names about `RideDetail.attendance` — that field folds the organizer in —
+and the answer is the same: read the raw row, and gate on `mayAnswer`.
 
-### Five things were measured while writing this, and four of them change the story's shape
+### `timelineAdd` is dead, and this is measured rather than assumed
 
-Every number below was measured on this tree on 2026-09-06, with the command beside it. They are
-listed first because three of them contradict the framing the issue was written with.
-
----
-
-#### 1. A floating action that reserves its own clearance gives back **no space at all** — it costs 8px more than the bar
-
-This is the finding that most changes the story, because the issue's `Customer value` line is
-*"a rider gets the screen's content back"*.
-
-```bash
-grep -n "navbar-action\|ride-rsvp-bar" src/app/globals.css
-# --navbar-action: 4rem;    /* 16 pad + 40 button + 8 */   = 64px
-# --ride-rsvp-bar: 6rem;    /* 16 + 20 + 12 + 40 + 8 */    = 96px
-```
-
-The create bar reserves **64px** of scroll clearance through `.pb-navbar-action-extra`, and that
-64px is `16 pad + 40 button + 8` — the token's own comment. **Apply the same rule to a floating
-action rather than inventing a second one:** a conventional 56×56 control reserves
-`16 + 56 + 8` = **80px**, which is 16px *more* than the bar it replaced. A 48×48 control reserves
-`16 + 48 + 8` = **72px**, still 8px more. **Nothing breaks even** — the control would have to be
-40px, the button's own height, to match, and that is below the 44×44 floor.
-
-**The space only comes back if content is allowed to scroll underneath the floating action**, which
-is the second negative case the issue lists. So the story's value proposition and its most dangerous
-defect are the *same decision*, and it has to be made explicitly rather than falling out of the
-implementation. Q4 is that decision, with a default.
-
-What genuinely does come back is **horizontal**: the bar spans 358 of 390px and the floating action
-spans ~56, so ~86% of the last visible row becomes readable rather than covered. That is a real gain
-and it is the one worth writing on the issue — it is just not the gain the body claims.
-
----
-
-#### 2. The two screens are two *different classes* of departure, and only one of them is a contradiction
-
-This is the finding that narrows Q1 from "do we depart from v2" to "do we depart on **one** screen".
-
-**The ride detail is an addition.** `Ride - Ride plan (Details)` (`2375:8771`) draws the navigation
-bar at **390×88** — the plain variant, with no `Button Container` — plus a separate
-`Content / Ride Details / Join Ride Selector 390×96` frame stacked on it:
+Its case was *upcoming + crew + the RSVP bar owns the slot*, which under this design needs a crew
+row **and** no stored answer. **No such rider exists**, because `ride_members.status` is `not null
+default 'going'` with a two-value CHECK, so a crew row always carries an answer. Every writer of a
+row agrees, and there are exactly four:
 
 ```bash
-npm run figma -- tree "Ride - Ride plan (Details)" | grep -i "navigation / bar\|join ride"
-# INSTANCE · v2 / Component / Navigation / Bar 390×88
-# FRAME · Content / Ride Details / Join Ride Selector 390×96
+grep -rn "into public.ride_members" supabase/migrations/*.sql
+# 083:534  private.join_ride_from_invite  → status 'going'
+# 103:283  private.establish_ride_organizer_membership → 'going'
+# 103:346  the organizer backfill → 'going'
+grep -rn "from('ride_members')" src/lib/actions/rides.ts
+# 351 delete (No) · 356 upsert with status: 'going' | 'maybe'
 ```
 
-The frame draws **no create control of any kind**. `RideCreateBar` is therefore *already* a departure
-— an addition to a frame, contradicting nothing drawn — and replacing it with a floating action
-changes one undrawn thing into a different undrawn thing. **Nothing in `2375:8771` moves.**
+The client cannot see a stale disagreement either: `102`'s SELECT policy on `ride_members` leads with
+`user_id = auth.uid()`, so a rider's **own** row is always returned, and `getRide` derives both
+`attendance` and `is_crew` from that one row (`isRideCrew(isOrganizer, ownRow?.status ?? null)`).
+For a non-organizer, therefore, `answer === null ⟺ !canCreate`, and the input combination
+`mayAnswer && answer === null && canCreate` is **unreachable**.
 
-**The club detail is a contradiction, and of a shared component rather than a screen.**
-`Private club - Timeline` (`2043:10604`) instances `v2 / Component / Navigation / Bar` at
-**390×152**, with `Button Container 358×56` as a child *inside that instance*:
+**Consequences, all in scope:** `timelineAdd` goes; `RideTimeline`'s `canAdd` and `createOptions`
+props go; the timeline heading's `(+)` goes with them — a **40×40 target with no hit-area
+extension**, i.e. this change *removes* a sub-floor glove target rather than adding one; and
+`SectionHeaderCreate`'s `onClick` union arm is left with **no caller in the tree**
+(`grep -rn "create={" src --include=*.tsx -A 3 | grep onClick` → 1 line, `RideTimeline` only). The
+arm stays — deleting a primitive's API is `design-system`'s call, not this change's — and its
+now-caller-less state is recorded rather than discovered.
 
-```bash
-npm run figma -- tree "Private club - Timeline" | grep -i "navigation / bar\|button container"
-# INSTANCE · v2 / Component / Navigation / Bar 390×152
-#   FRAME · Button Container 358×56
-```
+**The `createOptions` invariant is re-proved, not inherited.** It was *non-empty iff an entrance is
+drawn*. It is now **non-empty iff `canCreate`**, and the entrance is drawn iff `canCreate && the bar
+is not`. The one state where a non-empty list draws no control is the **reopened** one — the rider
+tapped the chip and is answering — and it is transient, rider-initiated and rider-dismissable. A
+sheet with no rows behind a live control, the failure the old invariant existed to pin, is still
+impossible.
 
-Converting this screen changes **which variant of a shared component the screen instances** (152 → 88)
-and deletes a drawn child of that instance. `Navbar.tsx`'s own measurement says 27 frames draw the
-152 variant against 44 drawing the 88 — **and this screen is one of the 27, so 26 others are left.**
-A departure on one screen is containable; a departure that changes how a screen instances a component
-**26 other frames also instance** is not, because the next person reading any of those 26 has no way
-to know this screen stopped agreeing with them.
+### Arity — the rule stays, and the ride is now on its other side
 
-**Whoever answers Q1 should know the 26 is an upper bound.** Four of the 27 are the club detail's own
-sub-pages (`-timeline`, `-members`, `-rides`, `-sub-pages`), so if the conversion covers the club
-detail's tabs the number of genuinely-disagreeing frames is nearer 23. The argument holds at any of
-these figures; only the precision moves.
+- **≥ 2 actions** → the control opens the sheet; its name is the category (*Create*).
+- **exactly 1 action** → the control *is* the action; its name is the act (*Add a photo*).
 
-**That asymmetry is the whole of the recommendation in Q1.**
-
----
-
-#### 3. There is no elevation token in this design system, and a floating action cannot be built without one
-
-```bash
-grep -in "shadow\|elevation" design/TOKENS.md        # 0
-grep -rn "shadow-" src --include=*.tsx               # 3 lines, 2 live + 1 comment
-```
-
-The generated token set carries colour and type and **no elevation of any kind**. The two live uses
-of `shadow-` in the tree are `Banner` and `NotificationsPanel` — both transient floating overlays,
-both using stock Tailwind `shadow-lg`, both invented rather than measured (`NotificationsPanel`'s
-docstring says so in as many words: *"`shadow-lg` per `Banner`"*).
-
-A floating action needs separation from the content beneath it — a shadow, a ring or a hard border —
-or it reads as a sticker. **Building it as a departure therefore means inventing the app's first
-persistent elevation value**, on a control that sits on screen permanently rather than for the two
-seconds a banner does. Inventing a token is `design-system`'s work under decision #4, not a build's.
-This is the second half of the Q1 recommendation and it applies to **both** screens, including the
-ride detail where nothing is contradicted.
-
----
-
-#### 4. `/clubs`' `Create club` is not a bar this change can convert, and that creates a consistency problem the issue does not name
-
-The issue and this task both describe *"`/clubs`' own `Create club` bottom bar"*. It is not a bar and
-it is not a sibling of these two — it is `Navbar`'s own action slot:
-
-```bash
-grep -n "STICKY_ACTIONS" -A 10 src/components/layout/Navbar.tsx
-# '/postcards': Create postcard · '/rides': Create ride
-# '/clubs': Create club  · '/clubs/explore': Create club
-```
-
-It renders **inside** the `<nav>`, above the tabs and under the bar's single top border — it *is* the
-152px variant the frames draw, correctly, on four pathnames. `ClubCreateBar` exists as a separate
-component only because that map is keyed on pathname alone and cannot answer *is this rider a member*.
-
-**Consequence the issue does not state: converting only the two screen-owned bars makes the app less
-consistent, not more.** Today a rider taps `Create club` on a full-width bar at `/clubs` and, one tap
-later on the club detail, gets an identical full-width bar. After this change they would get a
-floating action on the detail and a full-width bar on the list — one tap apart, same visual slot.
-Converting all six surfaces instead means changing the shared navigation component itself, which is
-a much larger story and squarely `design-system`'s.
-
-**This change converts the two screen-owned bars only** (see *What Does NOT Change*), and records the
-inconsistency as Q5 rather than hiding it.
-
----
-
-#### 5. A side finding, recorded because this change touches exactly this geometry
-
-`/rides/explore` applies `.pb-navbar-action-extra` — 64px of reserved clearance — with a comment
-saying *"the Navbar carries a sticky `Create ride` on this route too"*. It does not:
-`STICKY_ACTIONS` holds `/clubs/explore` and **not** `/rides/explore`.
-
-```bash
-grep -n "explore" src/components/layout/Navbar.tsx    # '/clubs/explore' only
-grep -n "pb-navbar-action-extra" "src/app/(app)/rides/explore/page.tsx"   # present
-```
-
-So that screen reserves 64px at the bottom for a button nobody draws. **Out of scope for this change
-and left untouched** — it is a one-line fix on `src/`, which this proposal-only branch may not write
-— but it must not be "fixed" accidentally by a build that rewrites the clearance classes, and it is
-one more reason the clearance question (Q4) deserves a written rule rather than a per-screen habit.
-
-## What Changes
-
-### Scope: two screen-owned bars, one new primitive, no schema
-
-- **`src/components/ui/FloatingAction.tsx`** — new, and the app's first floating control. It is a
-  primitive, so it belongs to `design-system` under the standard order and this proposal does not
-  design it beyond the requirements in `specs/create-affordance/spec.md`.
-- **`ClubCreateBar`** becomes a floating action whose tap opens the **existing `ContextMenu`** with
-  the same three rows, unchanged, each still carrying the club so the composer opens scoped.
-- **`RideCreateBar`** becomes a floating action that **navigates directly** — one action, no sheet,
-  the non-generalisation PD-401 recorded and this change keeps.
-- **The ride detail's bottom-slot decision changes shape rather than retiring** — see *The
-  `resolveRideDetailActions` question* below. It stays a pure function with an exhaustive test.
-- **One new geometry token and one new clearance class** in `globals.css`, so the offset rule is one
-  decision rather than two screens' habits.
-
-### The trigger keeps `ContextMenu`, and that is the default rather than an omission
-
-The OutSystems reference *expands* the actions out of the button. `ContextMenu` is a bottom sheet.
-Both are "a labelled action list"; the difference is where the animation starts, not what the rider
-gets. What `ContextMenu` already has, measured in `src/components/ui/ContextMenu.tsx`, is six
-behaviours an expand-in-place rewrite would have to reimplement:
-
-1. a portal to `document.body` — required, because a transformed ancestor becomes the containing
-   block for `position: fixed` descendants and silently reparents the whole overlay;
-2. a focus trap on Tab and Shift-Tab;
-3. Escape to close;
-4. a `Grey/70%` scrim that closes on tap;
-5. `document.body.style.overflow = 'hidden'` while open;
-6. focus restoration to the trigger on close.
-
-It also has a jsdom test behind it (`PostcardMenu.test.tsx` exercises a real click through the
-portal, and `PrivacySheet.dom.test.tsx` exists because a static render of a portalled sheet returns
-nothing to assert against). **Reimplementing six behaviours to move an animation's origin is not
-what the owner asked for**, so the default is: the floating action is a *trigger*, the sheet is
-unchanged. Q3 offers the alternative with what it costs.
-
-### Arity — a one-action floating action navigates, it does not expand
-
-`RideCreateBar`'s docstring states the rule already: *"a sheet holding a single row is a tap that
-asks a question with one answer"*. A floating action inherits it. So:
-
-- **≥ 2 actions** → the control opens the sheet, and its accessible name is the category (*Create*).
-- **exactly 1 action** → the control **is** the action, navigates directly, and its accessible name
-  is the act (*Add a photo*), never a bare `+`.
-
-PD-402 (ride threads) makes the ride's arity 2, at which point the ride's control crosses this rule
-and starts opening a sheet **by the rule rather than by an edit**. That is the point of writing it
-as a rule.
+`108` (PD-402) gave the ride a second destination, so `RideCreateBar` already says `Create` and
+opens `RideCreateSheet`. The floating action inherits that state, not PD-401's single-destination
+one — **the earlier revision of this proposal defaulted to preserving `Add a photo`, and that label
+no longer exists in the tree.**
 
 ### Gating is unchanged, and stays an affordance rather than enforcement
 
-Verified against DEV (`fpmrimzxadewsaiwpsel`) on 2026-09-06 rather than assumed:
-
 | Destination | Policy predicate |
 |---|---|
-| postcard in club | `(club_id is null or private.is_club_member(club_id))` |
-| ride in club | `(club_id is null or private.is_club_member(club_id))` |
-| club thread | `private.is_club_member(club_id)` |
-| postcard tagged to ride | `(ride_id is null or (exists(…rides…) and private.is_ride_crew(ride_id)))` |
+| postcard tagged to ride | `(ride_id is null or (exists(…rides…) and private.is_ride_crew(ride_id)))` (`041`) |
+| ride thread | ride visibility `and private.is_ride_crew(ride_id)` (`108`) |
+| RSVP write | `008`/`102` — own row only; `103` refuses the organizer's deletion |
 
-`private.is_ride_crew(ride)` is `organizer_id = auth.uid()` **or** a `ride_members` row — so the
-organizer is crew without a membership row. `private.is_club_member` delegates to
-`is_club_member_for(auth.uid(), …)` and **does not look at `club_members.role`**, so `admin` and
-`member` are indistinguishable to it. Both facts are load-bearing for the negative-case table below.
+## What does not change
 
-## What Does NOT Change
-
-- **`Navbar`'s `STICKY_ACTIONS`** and its four pathnames. `/postcards`, `/rides`, `/clubs` and
-  `/clubs/explore` keep the full-width primary drawn inside the navigation bar, exactly as 27 frames
-  draw it. See finding 4 and Q5.
+- **`ClubCreateBar` and the club detail.** Q1 is open. Nothing under `src/components/clubs/` or
+  `src/app/(app)/clubs/` is touched, and `.pb-navbar-action-extra` stays correct there.
+- **`Navbar`'s `STICKY_ACTIONS`** and its four pathnames — `/postcards`, `/rides`, `/clubs`,
+  `/clubs/explore` keep the full-width primary drawn inside the navigation bar.
+- **`RideAttendanceBar`'s own markup, geometry and copy.** It gains one thing only: a way to tell
+  the screen that an answer *succeeded*, so the screen can collapse it. Its border, its
+  `.bottom-navbar` offset, its `z-40`, its optimistic rollback and its `role="status"` are unchanged.
+- **`No` behaviour.** No migration, no new status, no change to `private.is_ride_crew`.
 - **No migration, no policy, no grant, no RLS assertion.** This change writes nothing to
-  `supabase/`. Every gate it reads already exists and is unchanged; the control is an affordance and
-  a rider who defeats it is still refused by the policy.
-- **The section `(+)` on the club detail (PD-342) and the empty-section create tiles (PD-312 /
-  PD-318) stay.** They answer a different question — *add to this section* and *this section exists*
-  — and PD-404 explicitly does not reopen them. Only the **ride timeline's** `(+)`, which exists
-  solely as PD-401's fallback, is in scope, and only under Q2's answer A.
-- **`RideAttendanceBar` and frame `2375:8771` are untouched.** PD-401's option D — moving the RSVP
-  into the page body — is **not** taken here and is not needed here; see below.
-- **Decisions #1, #2, #3 and #8.** No anonymous reach, blocking stays in RLS, no mapping SDK, no new
-  backend. **No new dependency**: a floating action is a `div`, a `button` and a token, and the
-  twelve-dependency rule forbids reaching for a library for it.
+  `supabase/`. Every gate it reads already exists.
+- **The empty-section create tiles and the club's section `(+)`** (PD-312, PD-318, PD-342). Only the
+  **ride timeline's** `(+)`, which existed solely as PD-401's fallback, is removed.
+- **Decisions #1, #2, #3, #4, #8.** No anonymous reach, blocking stays in RLS, no mapping SDK, no
+  new backend, **no new dependency** — a floating action is a `div`, a `button` and a token.
 
-## The `resolveRideDetailActions` question, answered
+## Three measurements that still govern the build
 
-**The task asks whether a floating action dissolves the collision `src/lib/rides/bottom-slot.ts`
-exists to resolve, and therefore retires it. The measured answer is: it retires the *fallback*, not
-the *function*, and only under one of Q2's three answers.**
+**1. A floating action that reserves its clearance gives back no vertical space.** With the tokens'
+own `16 pad + control + 8` rule, a 56px control reserves **80px** and a 48px one **72px**, against
+`--navbar-action`'s **64px**. **Nothing breaks even** — matching 64px needs a 40px control, below the
+44×44 floor. **The honest value is horizontal**: the bar spans 358 of 390px and the control spans
+~56–150, so most of the last visible row becomes readable. Do not write the issue body's
+*"a rider gets the screen's content back"* into the change record.
 
-The collision is real and is exactly one of five cases. With `canRsvp = is_upcoming && !is_organizer`
-and `canCreate = is_crew` (both read off `src/app/(app)/rides/detail/page.tsx`):
+**2. There is no elevation token in this design system.** `grep -in "shadow\|elevation"
+design/TOKENS.md` is 0, and the two live `shadow-` uses in `src/` (`Banner`,
+`NotificationsPanel`) are stock Tailwind on *transient* overlays, invented rather than measured. This
+control is the app's first **persistent** one, so its elevation is a token this change must define
+beside the existing geometry tokens and name as invented.
 
-| Ride | Viewer | `canRsvp` | `canCreate` | Today |
-|---|---|---|---|---|
-| upcoming | organizer | false | true | create bar |
-| **upcoming** | **crew, not organizer** | **true** | **true** | **RSVP bar + timeline `(+)`** ← the collision |
-| upcoming | not crew | true | false | RSVP bar |
-| past | crew | false | true | create bar |
-| past | not crew | false | false | nothing |
+**3. The glove floor is 44×44, and it is not in `CLAUDE.md`.** It is in
+`.claude/agents/rider-ux.md:14` and `.claude/agents/design-system.md:258`; `Button.tsx` and
+`Checkbox.tsx` both cite `CLAUDE.md` for it, which does not contain it — so the obvious grep returns
+the plausible wrong answer *there is no floor*. Today's bar is a 358×44 hit target
+(`Button`'s `md` is 40px tall with an invisible `::before` extension); a 56×56 circle is **5×
+smaller**, all of it horizontal. **The chip is a control and pays the same floor**, and an inline
+chip on a title line is typically ~24px.
 
-**A floating action does not occupy the full-width slot, so it can coexist with the RSVP bar — but
-the collision does not dissolve, it changes from a slot question into an offset question.**
-`.bottom-navbar` anchors a bar at `calc(var(--safe-bottom) + var(--navbar-tabs))`. A floating action
-anchored at the same offset lands squarely on the RSVP bar's `ButtonGroup`, which is 358 wide and
-therefore reaches the bottom-right corner — the floating action would sit on top of the `No` pill.
-So the control must be lifted by `--ride-rsvp-bar` exactly when the RSVP bar is present, and *that
-condition is `canRsvp`* — the same input the function takes today.
+## What happens to `--ride-rsvp-bar`
 
-So the function survives, with a different return:
+**It stays exactly as it is, and this change adds no second use for it.** Measured:
 
-```
-{ bottomSlot: 'rsvp' | 'create' | null, timelineAdd: boolean }
-  →  { rsvpBar: boolean, floatingAction: boolean, clearance: 'navbar' | 'rsvp' }
+```bash
+grep -rn "ride-rsvp-bar\|pb-rsvp-bar-extra" src/
+# globals.css:228  --ride-rsvp-bar: 6rem;  /* 16 pad + 20 prompt + 12 gap + 40 group + 8 */
+# globals.css:293  .pb-rsvp-bar-extra { padding-bottom: var(--ride-rsvp-bar) }
+# app/(app)/rides/detail/page.tsx:275  bottomSlot === 'rsvp' && 'pb-rsvp-bar-extra'
 ```
 
-**What genuinely retires is the `(+)` fallback and the complementary-entrance invariant it protects
-— under answer A only.** That invariant is *"exactly one entrance to the composer, never two and
-never none"*, and it needed a two-branch function because the create bar could not always have the
-slot. A floating action can always be drawn, so the entrance becomes `isCrew` and nothing else:
-one condition, one control, invariant satisfied by construction rather than by a decision table.
-`timelineAdd` becomes constant `false` and `RideTimeline`'s `canAdd` prop can go.
+The RSVP bar still exists and still reserves its 96px whenever it is drawn — unanswered, or reopened
+from the chip — so the token and the class keep their single caller and their single meaning. **What
+goes away is the *offset* the previous revision of this proposal designed**: lifting the floating
+action by `--ride-rsvp-bar` when `canRsvp`. The two controls are now mutually exclusive, so nothing
+needs lifting clear of anything, and `.pb-rsvp-bar-extra` is applied on `bottomSlot === 'rsvp'`
+exactly as it is today.
 
-**And a floating action removes ONE of PD-401's two reasons for option D, rather than reopening it —
-but it does not remove both, and the difference is the owner's to weigh.** PD-401's own table gives
-D two:
+## The departure this ships as, and it is larger than the earlier reasoning assumed
 
-> **D** | Move the RSVP out of the sticky slot into the page body | *Frees the slot properly; **the
-> RSVP is a question answered once, not a standing control***
+**Route: a recorded departure**, logged in `docs/FIGMA-FIDELITY-TODO.md` §Ride detail, frame updated
+afterwards. Figma-first is not available: `CLAUDE.md` §Design System requires an explicit owner ask
+to write to Figma and none was given.
 
-The first is slot contention, and a floating action **does** dissolve it: the control does not want
-the slot, so the two coexist with the RSVP bar staying exactly where frame `2375:8771` draws it.
-That is a real resolution and it is what answer A rests on. **The second is untouched** — it is a
-claim about what the RSVP *is*, not about what competes with it, and PD-401 named D **its
-recommendation** partly on it. So D is **not** made unnecessary; it is made
-*unnecessary-for-the-slot*, and a rider who has
-answered *Going* still sees a standing control asking a question they have already answered.
+**Do not repeat this proposal's earlier zero-frame-cost line.** That reasoning held because
+`2375:8771` draws no create control of any kind, so a floating action only *added* to the frame. But
+the same frame draws `Content / Ride Details / Join Ride Selector 390×96` **permanently stacked** on
+the 390×88 navigation bar, for every viewer — and **hiding that bar once a rider has answered
+contradicts it.** So this screen now carries three departures, of two different classes:
 
-This still matters, because the 01:48Z comment on PD-404 offers D as answer **C** and it is the only
-one of the three that contradicts a frame — **answer A costs no frame at all on this screen.** But
-Q2 must not present C's only cost as that contradiction: choosing A also declines PD-401's
-answered-once argument, and the owner should decline it knowingly rather than by omission.
+| Departure | Class |
+|---|---|
+| The create control is a floating action | addition — the frame draws none |
+| The status chip on the first content line | addition — the frame draws none |
+| **The RSVP bar is conditional on being unanswered** | **contradiction of a drawn element** |
 
-(Answer B — RSVP bar alone, composer stays on the `(+)` — keeps `resolveRideDetailActions` exactly
-as it is today and makes this change club-only on the ride screen's terms.)
+The third is new. The screen already hides that bar from the organizer and on past rides, which the
+frame also does not express — so the divergence exists today and this widens it deliberately rather
+than opening it.
 
 ## Negative cases — who must NOT see or reach this
 
-Each row is a testable statement about a role and a resource. **None of them is a policy change**:
-every one is already true in Postgres, and the requirement is that the control never offers what the
-policy would refuse — and that **where the control's test and the policy's differ, it errs toward
-withholding.** The owner row below is exactly that case and is not an exception to this sentence:
-the control gates on a membership row where the policy admits row-or-owner, so it can withhold from
-someone the database would have accepted. Withholding is the safe direction; the reverse never is.
+Each row is a testable statement about a role and a resource. **None is a policy change**: every one
+is already true in Postgres, and the requirement is that the control never offers what the policy
+would refuse, and that where the control's test and the policy's differ it errs toward
+**withholding**.
 
-### Club detail — the three-action floating action
+### The floating action — ride detail
 
 | Role | May reach the control? | Why, and what must not happen |
 |---|---|---|
-| **Owner** | **Yes on DEV, and NOT guaranteed on PROD** | **The control and the policy do not use the same test, and this row is where that shows.** The screen gates on `club.viewer_role` (`clubs/detail/page.tsx`), which is a `club_members` **row**; `private.is_club_member_for` admits on a row **or** `clubs.owner_id`, `054`'s still-live owner arm. So an owner with no membership row would be accepted by the INSERT policy and shown no control. `103`'s trigger and backfill make that unreachable on DEV — measured, `owners_without_member_row = 0` across 15 clubs — but `103` sits in the unpromoted `101`–`106` gap, so on PROD (at `100`) an owner orphan is reachable. **Fails in the safe direction** (a missing affordance, never a leak), and the build SHALL still gate on `viewer_role` rather than on the helper, so the control never claims reach the row does not carry. |
-| **Admin** (`club_members.role = 'admin'`) | **Yes** | `is_club_member` ignores `role` entirely. **The control MUST NOT gate on `role`** — doing so invents a hierarchy `001`'s CHECK allows and nothing writes. |
-| **Member** | **Yes** | All three destinations admit them. |
-| **Non-member, public club** | **NO** | All three policies refuse. The screen renders the club and **no** control. It MUST NOT render a disabled one — a disabled control still announces the action exists. |
-| **Non-member, private club** | **NO — and the screen must not exist** | `ClubPreviewScreen` is what a non-member gets, and it issues no query that could return zero rows. The floating action MUST NOT be rendered anywhere on that branch, and its absence MUST NOT be a clue about the club's contents. |
-| **Blocked rider who is still a member** | **YES, deliberately** | Blocking is symmetric and removes *visibility*, not *membership*. A member blocked by another member still creates in the club. **Nobody may "fix" this by adding a block predicate to the control** — the negative case is that the control does NOT change, and every blocking effect stays where decision #2 puts it, in RLS. |
-| **Signed-out visitor** | **NO — unreachable, not merely hidden** | `/clubs/detail` is outside the guard's public denylist and `anon` holds zero grants. Asserting the negative: the visitor reaches `/auth/login` and no data. No `anon` grant is added by this change. |
+| **Organizer** | **Yes** | `is_ride_crew`'s first arm, and since `103` they also hold a row. They get the control on every ride they organize, upcoming or past, and **never a chip and never the RSVP bar**. |
+| **Crew — answered Going or Maybe** | **Yes** | The second arm. On an upcoming ride they also get the chip. |
+| **Crew — while the chip has reopened the bar** | **NO, transiently** | The two are never both drawn. The rider dismisses it by answering; nothing else may withdraw the control. |
+| **A rider who answered `No`** | **NO** | The row is deleted, so they are not crew: `041` and `108` both refuse. The control's absence is correct and is **not** a message about their answer. |
+| **Invited, not joined** | **NO** | An invite is not a `ride_members` row. `083`'s live-invite arm widens ride *visibility* and grants no crew. |
+| **A rider who can READ the ride but is not crew** | **NO** | The largest group and the one most likely to be got wrong: readability and crew membership are different predicates. |
+| **Blocked rider** | **NO, and presented as an ordinary absence** | The block removes the crew relationship's reads. The screen MUST NOT indicate a block is the reason, in either direction. |
+| **Signed-out visitor** | **NO — unreachable, not merely hidden** | `/rides/detail` is outside the guard's public denylist and `anon` holds zero grants. The visitor reaches `/auth/login` and no data. No `anon` grant is added. |
 
-### Ride detail — the one-action floating action
+### The status chip — a control, and a disclosure surface
 
-| Role | May reach the control? | Why, and what must not happen |
+| Role | Sees a chip? | Why, and what must not happen |
 |---|---|---|
-| **Organizer** | **Yes** | `is_ride_crew` returns true on `organizer_id` without a `ride_members` row. |
-| **Crew (`ride_members` row)** | **Yes** | The second arm of `is_ride_crew`. |
-| **Invited, not joined** | **NO** | An invite is not a `ride_members` row. `041` refuses the tagged insert, so the control must not appear. |
-| **A rider who can READ the ride but is not crew** | **NO** | This is the largest group and the one most likely to be got wrong: ride *readability* and crew membership are different predicates, and the control follows the second. |
-| **Blocked rider** | **NO, and presented as an ordinary absence** | The block removes them from the crew relationship's reads. The screen MUST NOT indicate a block is the reason, in either direction. |
+| **Crew, upcoming, answered** | **Yes, and it is theirs alone** | It renders the viewer's own `ride_members.status` and nothing else. |
+| **Organizer** | **NO** | `mayAnswer` is false. Their chip must not exist, because tapping it would open a bar whose `No` `103` refuses and whose `Maybe` every screen ignores (`withOrganizer`, PD-391). Gating on the stored status alone draws it — `103` gave them a real `going` row. |
+| **Any rider on a past ride** | **NO** | The answer can no longer be changed; a chip that opens a bar nobody may use is a control with nothing behind it. |
+| **Unanswered rider** | **NO** | They have the bar. |
+| **Every other rider on the ride** | **NEVER, about anyone else** | The chip MUST NOT be derived from the crew roster or the `riders` embed, and MUST NOT show another rider's answer. Who else is going is `RideCrewRail`'s question and is block-filtered there. |
+| **Blocked rider** | **Their own chip, unchanged** | `102`'s SELECT leads with `user_id = auth.uid()`, so a rider's own row survives every block arm. The chip is therefore never a block signal in either direction. |
 | **Signed-out visitor** | **NO — unreachable** | As above. |
 
-### Structural negatives — the ones that are about the control rather than a role
+### Structural negatives — about the controls rather than a role
 
-- **The floating action MUST NOT be hoisted into `(app)/layout.tsx`, the root layout, or `Navbar`.**
-  This is the single most likely wrong turn, because "a floating action is global chrome" is true in
-  most apps and false in this one. Hoisting it puts an uncallable control on every screen for every
-  rider, breaks the membership gate the way `STICKY_ACTIONS` already cannot answer, and drops it on
-  top of the two `BARLESS` screens — the ride chat and the club thread — whose own fixed composers
-  are bottom-anchored and which PD-081 already shipped broken once for exactly this class of
-  mistake.
-- **It MUST NOT render while its gate is `undefined`.** `isMember` and `isCrew` are `undefined`
-  until the read lands. A control drawn on `undefined` and withdrawn on `false` is an affordance
-  that flickers into existence for a rider who may not use it.
-- **It MUST NOT render over an error or a not-found state.** A floating create button on top of
-  *We could not load this club* offers an action into a screen whose subject failed to load.
-- **It MUST NOT permanently occlude an interactive element.** See Q4.
-- **It MUST NOT be smaller than 44×44 CSS px of hit area.** See below.
-- **Neither the control nor its sheet may name a club or ride the viewer cannot already see** — no
-  new string is introduced that leaks a private club's name, and none is needed.
-
-### The glove floor, measured — and today's fallback already fails it
-
-The floor is **44×44pt**, and it is written in `.claude/agents/rider-ux.md` line 14 and
-`.claude/agents/design-system.md` line 258. It is **not** in `CLAUDE.md`, though `Button.tsx` and
-`Checkbox.tsx` both cite it as *"CLAUDE.md's accessibility floor"* — a misattribution worth knowing
-about before someone greps `CLAUDE.md` for it, finds nothing, and concludes there is no floor.
-
-```bash
-grep -rn "44×44\|44x44" CLAUDE.md docs/ .claude/ src/
-# .claude/agents/rider-ux.md:14  ·  .claude/agents/design-system.md:258
-# src/components/ui/Button.tsx:64  ·  src/components/ui/Checkbox.tsx:26   (both cite CLAUDE.md)
-```
-
-`Button`'s `md` size is 40px tall and already clears the floor **by hit area rather than by pixels**:
-an invisible `::before` extends the touch target to 44 without moving a rendered pixel. So today's
-bar is a 358×44 hit target. A 56×56 circle is 3,136px² against 15,752px² — **a 5× reduction**, all
-of it horizontal. That is the real glove cost, and it is not fixed by clearing 44×44; it is fixed by
-choosing an **extended** floating action (a pill: icon + label) over a plain circle, which also
-preserves `RideCreateBar`'s deliberately-chosen *Add a photo* label. Q6.
-
-And a fact that cuts the other way: `SectionHeader`'s `(+)` — today's fallback entrance on the ride
-timeline — is **40×40 with no hit-area extension**, so it is already *below* the floor. If Q2's
-answer A retires it, this change removes a sub-floor target rather than adding one.
+- **Neither control may be hoisted into `(app)/layout.tsx`, the root layout, or `Navbar`.** The most
+  likely wrong turn, because "a floating action is global chrome" is true in most apps and false in
+  this one: a layout knows the pathname, not the crew relationship, and a hoisted control lands on
+  the two `BARLESS` screens — the ride threads and the club thread — whose fixed composers are
+  bottom-anchored. `081` shipped that defect once and **only `npm run walk` can see it**.
+- **Neither may render while its gate is `undefined`.** `ride.data` is `undefined` until the read
+  lands. A control drawn on `undefined` and withdrawn on `false` is an affordance that flickers into
+  existence for a rider who may not use it, and a chip drawn early would announce an answer the
+  rider has not given.
+- **Neither may render over the error or not-found state.** A floating create button on top of
+  *We could not load this ride* offers an action into a screen whose subject failed to load.
+- **The chip MUST NOT be smaller than 44×44 of hit area, and MUST carry a visible affordance** — a
+  chevron or equivalent. Once the bar is hidden the chip is the **only** route back to the answer,
+  and the cost of a rider not finding it is a stale headcount on a ride cancelled for rain.
+- **The floating action MUST NOT permanently occlude an interactive element** — see Q4.
+- **A failed answer MUST NOT collapse the bar.** `RideAttendanceBar` rolls back and shows why; if
+  the screen collapsed on tap rather than on success, the rollback and its message would be
+  destroyed by the collapse and the tap would read as having worked.
+- **Neither control nor the sheet may name a ride or club the viewer cannot already see.**
 
 ## The state checklist
 
-| State | Club detail | Ride detail |
-|---|---|---|
-| **Empty** | Empty timeline still draws its per-section create tiles (PD-318) — the floating action does not replace them, because a floating icon teaches nothing about what a section is for. Both are present and that is intended. | Empty timeline, same rule. |
-| **Loading** | Gate is `undefined`; **no control**. Never drawn-then-withdrawn. | Same. Also: `bottomSlot`/`clearance` must not flip after first paint. |
-| **Error** | Club read failed → `ErrorState`, **no control**, and the page reserves no clearance for one. | Same. |
-| **Offline** | The control still draws (membership is cached) and the composer owns the refusal — unchanged from the bar, and `client-render-shell`'s standing rule already governs it. No queue. | Same. |
-| **Permission denied** | Indistinguishable from empty at the client and must stay so: a private club's non-member gets `ClubPreviewScreen`, never an empty timeline with no create button. | A non-crew reader gets the ride with no control; that is not a permission message. |
-| **Partial** | Club loaded, rides strip failed → control still draws; it is gated on membership alone. | Ride loaded, crew read failed (`undefined`) → **no control**, per the `undefined` rule. |
-| **Stale** | Rider leaves the club in another tab → the control persists until the cache invalidates, then goes. RLS refuses in the gap. Acceptable, unchanged, and stated so it is not rediscovered as a bug. | Rider leaves the crew → same. |
+| State | Ride detail |
+|---|---|
+| **Empty** | An empty timeline still draws its own empty state; the floating action is unaffected — it is gated on crew, not on content. |
+| **Loading** | `ride.data === undefined`: no bar, no chip, no floating action, and **no clearance reserved**. Never drawn-then-withdrawn. |
+| **Error** | `ErrorState` with a retry, no control of any kind over it, no clearance. |
+| **Offline** | Both controls still draw from cached data; the writes behind them own the refusal. An RSVP made offline fails visibly and rolls back, and **the bar stays open** so the message is readable. No queue. |
+| **Permission denied** | Indistinguishable from empty at the client and must stay so: a non-crew reader gets the ride with no control and no explanation, never a permission message. |
+| **Partial** | Ride loaded, crew rail or timeline read failed → the controls still draw; they are gated on the ride's own `is_crew`. Ride not loaded → nothing. |
+| **Stale** | The rider's answer changed in another tab → the composition follows the cache: `setRideAttendance` invalidates `rides.all()`, so the chip, the bar and the control flip together on the next read. In the gap RLS refuses. Stated so it is not rediscovered as a bug. |
+| **Transitional** | The moment an answer succeeds, the bar unmounts, the chip appears and the clearance changes from 96px to the control's. That is one deliberate layout change per answer, not a flicker. |
 
 ## Impact
 
-- **Files** — new `src/components/ui/FloatingAction.tsx`; rewritten `ClubCreateBar.tsx`,
-  `RideCreateBar.tsx`, `src/lib/rides/bottom-slot.ts` (+ its test);
-  `src/app/(app)/clubs/detail/page.tsx` and `src/app/(app)/rides/detail/page.tsx` for clearance;
-  `src/app/globals.css` for the new token and class; `RideTimeline.tsx` only under Q2-A.
-- **No `supabase/` change**, so the RLS suite job does not run and no assertion is owed. Stated
-  explicitly because `openspec/config.yaml`'s task rule pairs migrations with assertions and there is
-  no migration here.
-- **Tests owed** — an exhaustive unit test for the reshaped `resolveRideDetailActions`; a component
-  test pinning the `undefined` gate; and, if Q3 goes to expand-in-place, a **jsdom** test, because a
-  scrim, an Escape key and a portal are unreachable from `renderToStaticMarkup` (the reason all five
-  existing jsdom tests exist).
-- **`npm run walk`** renders both screens already and is the only gate that would catch a floating
-  action painted under the navigation bar.
-- **`docs/FIGMA-FIDELITY-TODO.md`** gains an entry under whichever route Q1 takes — a *departure to
-  be drawn* under option 2, or nothing at all under option 1. Written by the build, not by this
-  proposal-only branch.
-- **Sequencing** — none. No migration, so `CLAUDE.md`'s additive/destructive rule does not apply, and
-  there is no ordering against a deploy.
+- **Files** — new `src/components/ui/FloatingAction.tsx`; new or extended chip component under
+  `src/components/rides/`; rewritten `RideCreateBar.tsx`, `src/lib/rides/bottom-slot.ts` and its
+  test; `RideAttendanceBar.tsx` (a success callback only); `RideTimeline.tsx` (props removed);
+  `src/app/(app)/rides/detail/page.tsx`; `src/app/globals.css` for the control's geometry and
+  elevation tokens and one clearance class.
+- **`docs/FIGMA-FIDELITY-TODO.md` §Ride detail** gains the three departures above, the third marked
+  as a contradiction of a drawn element.
+- **No `supabase/` change**, so the `RLS Policy Tests` job does not run and no assertion is owed —
+  stated explicitly because `openspec/config.yaml`'s task rule pairs a migration with an assertion
+  and there is no migration here.
+- **Tests owed** — an exhaustive unit test for the reshaped `resolveRideDetailActions` over its
+  whole input space; a component test pinning the `undefined` gate and the chip's absence for the
+  organizer; and a **jsdom** test for the chip → bar → answer → chip cycle, because a static render
+  cannot dispatch a tap (the reason all five existing jsdom tests exist).
+- **`npm run walk`** renders this screen already and is the only gate that would catch a control
+  painted under the navigation bar.
+- **Sequencing** — none. No migration, so `CLAUDE.md`'s additive/destructive rule does not apply.
 
-## Open Questions
+## Open questions
 
-**Q1 is blocking on everything. Q2 is blocking on the ride detail only. Q3–Q7 all have defaults a
-build can proceed on.** Each is phrased as the rider's state per the standing instruction: the
-screen, what the rider did, and what they did not do.
+**Q1 blocks the club half only and nothing in this change waits on it. Q3–Q8 all have defaults a
+build proceeds on.** Each is phrased as the rider's state: the screen, what the rider did, and what
+they did not do.
 
 ---
 
-### Q1 — BLOCKING · product owner only · the frame decision
+### Q1 — BLOCKING on the club detail · product owner only · still open
 
 > A rider opens a **private club they are a member of** and scrolls to the bottom of its timeline.
 > They have not tapped anything. Today the navigation bar is 152px tall and carries a full-width
@@ -436,112 +368,60 @@ screen, what the rider did, and what they did not do.
 > change, and what does `design/` say it is?**
 
 **A — Figma first.** `design-system` writes the floating action, its elevation token and the club
-detail's 88px navigation variant into Figma; the next `figma:pull` bakes them into the snapshot; the
-build follows. `design/` stays the source of truth and decision #4 is untouched.
-**Requires an explicit owner ask** — `CLAUDE.md` §Design System — so **no unattended session can take
-this path**, which is why the queue has now dropped this story twice.
+detail's 88px navigation variant into Figma; the next `figma:pull` bakes them in; the build follows.
+**Requires an explicit owner ask**, so no unattended session can take it.
 
-**B — Build it as a recorded departure**, with the frame updated afterwards and the deviation logged
-in `docs/FIGMA-FIDELITY-TODO.md`.
+**B — A recorded departure**, frame updated afterwards.
 
-**Recommended: A, and the reasoning is finding 2 plus finding 3, not a general preference for
-process.** Two specifics:
+**Recommended: A**, and the reason is specific rather than a preference for process: the club's
+departure is not a screen's. `2043:10604` instances `v2 / Component / Navigation / Bar` at 390×152
+with `Button Container 358×56` as a child *inside* that instance, and **27 frames instance that
+component at 152** — so converting this screen changes a variant **26 other frames** share (nearer
+23 if the club's own sub-pages convert with it), and a note recorded on one screen is invisible to
+the rest. The ride detail had no such problem, which is why it could ship first.
 
-1. The club detail's departure is not a screen's — it changes which **variant of a shared component**
-   the screen instances. 27 frames instance that component at 152 and this screen is one of them, so
-   a departure recorded here is invisible to the next person reading any of the other **26** (nearer
-   23 if the club's own sub-pages convert with it).
-2. A floating action needs an **elevation value this design system does not have**. Under B the
-   build invents the app's first persistent shadow token, which is precisely the invention
-   decision #4 exists to prevent. `Banner` and `NotificationsPanel` already invented one each, for
-   transient overlays, and neither is measured against anything.
-
-**A narrowing worth offering, because it may be the cheapest correct answer:** the ride detail can be
-converted under **B** today at no frame cost at all — `2375:8771` draws no create control, so nothing
-is contradicted, only added — while the club detail waits for **A**. That splits the story rather
-than blocking it, at the price of the two screens disagreeing for the length of the wait.
+**Nothing in this change is blocked on this.** The ride half ships and PD-404 stays open.
 
 ---
 
-### Q2 — BLOCKING on the ride detail · product owner only · the composition
+### Q3 — non-blocking · build, default stated · what the control opens
 
-> A rider opens an **upcoming ride they are crew on but did not organize**, has tapped neither
-> *Going* nor *Not going*, and scrolls to the bottom of the timeline to add a photo of it. **What is
-> drawn there?**
+> A crew member taps the floating action on a ride and has not chosen an action yet. **What appears?**
 
-**A — The RSVP bar, with the floating action lifted above it.** Both reachable at once.
-`resolveRideDetailActions` keeps its inputs and changes its output to a clearance; the timeline `(+)`
-retires; the complementary-entrance invariant becomes trivial. **Costs no frame** — the RSVP bar
-stays exactly where `2375:8771` draws it. **This is the recommended default.** **Its cost is not
-zero:** choosing A also declines PD-401's second argument for D — that the RSVP is *a question
-answered once, not a standing control* — so a rider who has already tapped *Going* keeps a bar
-asking them something they have answered. This change does not fix that and does not claim to.
+**Default: `RideCreateSheet`, unchanged**, exactly as `RideCreateBar` opens it today. The reference
+pattern expands the actions out of the button; the sheet already carries a portal to `document.body`,
+a focus trap, Escape, a dismissing scrim, a body-scroll lock and focus restoration — six behaviours
+an expand-in-place rewrite would reimplement to move an animation's origin.
 
-**B — The RSVP bar alone**, composer stays on the timeline `(+)`. Today's behaviour, survives the
-rewrite unchanged, keeps a 40×40 sub-floor target as the only entrance for this rider. Declines the
-answered-once argument too.
-
-**C — The floating action alone**, RSVP moved into the page body. PD-401's option **D**, which that
-issue named its recommendation. **Two costs, and the frame is only one of them:** it
-**contradicts frame `2375:8771`**, which draws that bar stacked on the navigation bar — and it is
-the only answer here that *takes up* PD-401's answered-once argument, so it is the only one that
-stops a rider being asked a question they have already answered. A floating action removes D's
-slot-contention reason; it does not remove this one, which is why C is still on the table rather
-than superseded.
-
-**Default: A, and it is conditional on Q1 — it is NOT a licence to start.** A applies only once the
-owner has answered **Q1**; if Q1 is unanswered this question has no default at all and no code is
-written. Stated that way because the two together would otherwise read as a self-authorising path:
-Q1's own narrowing offers the ride detail at no frame cost, so *Q1-narrowing plus an unconditional
-Q2-A* would let a firing build this screen tonight having asked nobody anything — exactly the
-"the build must not pick one silently" failure this proposal exists to avoid. Given Q1, A is the
-answer to prefer: it is the only one that both preserves the invariant and costs no frame, and it is
-what the floating-action pattern was asked for in order to make possible.
-
----
-
-### Q3 — non-blocking · build, default stated · expand in place, or the existing sheet
-
-> A member taps the floating action on a **club they belong to** and has not chosen an action yet.
-> **What appears?**
-
-**Default: the existing `ContextMenu` bottom sheet, unchanged.** It already has the portal, the focus
-trap, Escape, the scrim, the body-scroll lock and focus restoration — six behaviours an
-expand-in-place rewrite must reproduce, plus a jsdom test the new one would not have. The reference
-pattern expands; the semantic result is the same labelled action list.
-
-**Alternative: expand in place.** If taken, the expanded list SHALL keep all six behaviours and SHALL
-be tested under jsdom, because a static render cannot dispatch a scrim tap or an Escape.
+**A floating action is exactly the case the portal exists for**: it is `position: fixed`, and any
+transformed ancestor becomes its containing block. Mount it where no ancestor transform can reparent
+it, and verify by rendering.
 
 ---
 
 ### Q4 — non-blocking · build, default stated · what the control covers while scrolling
 
-> A member scrolls a **club timeline with more rows than fit** all the way to the last row.
-> **Is any part of that row underneath the floating action?**
+> A crew member scrolls a **ride timeline with more rows than fit** to its last row. **Is any part of
+> that row underneath the floating action?**
 
 **Default: reserve the clearance — the last row is never underneath it.** Content ends above the
-control, exactly as `.pb-navbar-action-extra` does today for the bar; the class is renamed and
-re-sized for the control's geometry. This costs the vertical saving (finding 1) and keeps the
-horizontal one, which is where the real gain is anyway.
+control, as `.pb-navbar-action-extra` does for the bar today, through a new class sized from the
+control's own geometry. This costs the vertical saving (measurement 1) and keeps the horizontal one.
 
-**Alternative: let content run under it**, which is the only way the vertical space comes back. If
-taken, the requirement is narrower rather than absent: no *interactive* element may be permanently
-occluded, so the last row's tap target must still be reachable — which on a full-width timeline row
-it is not, because the control sits inside it.
+**Alternative: let content run under it**, the only way vertical space comes back. If taken, no
+*interactive* element may be permanently occluded, which on a full-width timeline row it would be.
 
 ---
 
-### Q5 — non-blocking · product owner · the four `STICKY_ACTIONS` screens
+### Q5 — non-blocking · product owner · the shape changes between two screens one tap apart
 
-> A rider on **`/clubs`** taps a club and lands on its detail. **Does the create affordance change
+> A rider on **`/rides`** taps a ride and lands on its detail. **Does the create affordance change
 > shape between those two screens?**
 
-Under this change's scope: **yes** — `/clubs` keeps its full-width `Create club` in the navigation
-bar and the detail gets a floating action. **Default: accept it for now and record it**, because
-converting the other four means changing the shared navigation component and its four frames, which
-is a separate story. **If the answer is that they must match, this story is larger than it looks and
-should be re-scoped before any code is written**, not extended mid-build.
+Under this change's scope: **yes** — `/rides` keeps its full-width `Create ride` inside the
+navigation bar, the ride detail gets a floating action, and the **club** detail keeps its full-width
+bar until Q1 is answered. **Default: accept it and record it.** Converting the four `STICKY_ACTIONS`
+screens means changing the shared navigation component and its frames, which is a separate story.
 
 ---
 
@@ -549,22 +429,42 @@ should be re-scoped before any code is written**, not extended mid-build.
 
 > A crew member opens a **past ride** they rode. **What does the control at the bottom-right say?**
 
-**Default: an extended floating action — a pill carrying the icon and the label.** It preserves
-`RideCreateBar`'s deliberately-chosen *Add a photo* (which "names the act rather than the category"),
-and it recovers most of the 5× hit-area loss a bare circle costs a gloved hand. A plain circle is
-correct only for the club's multi-action control, where the label would be the meaningless *Create*.
-
-**Consequence if the default holds:** the two screens' controls are different shapes, and that is
-right — one is an action and one is a menu.
+**Default: an extended floating action — a pill carrying the icon and the word `Create`.** The arity
+rule fixes the *name* (category, because the ride creates two things since `108`); the pill fixes the
+*shape*, and it is chosen for hit area: a bare 56×56 circle is a 5× reduction against today's
+358×44 bar, and a ~150×56 pill recovers most of it. A circle stays correct where a label would be
+noise; it is not correct here.
 
 ---
 
 ### Q7 — non-blocking · build, default stated · which corner
 
-> A rider holding the phone in their **left hand**, gloved, opens a club detail. **Which thumb
+> A rider holding the phone in their **left hand**, gloved, opens a ride detail. **Which thumb
 > reaches the control?**
 
-**Default: bottom-right**, matching the reference and every platform convention, accepting that it
-favours right-handed one-thumb use. No frame states it, nothing in `design/` draws it, and a
-mirrored variant is not worth a setting. Recorded so that "the design said so" is not later claimed
-for it.
+**Default: bottom-right**, matching the reference and platform convention, accepting that it favours
+right-handed one-thumb use. No frame states it and a mirrored variant is not worth a setting.
+Recorded so that *"the design said so"* is not later claimed for it.
+
+---
+
+### Q8 — non-blocking · build, default stated · where the chip sits
+
+> A rider has answered **Going** on an upcoming ride and opens it again. **Where on the screen is the
+> word `Going`?**
+
+The owner's decision says *"the ride title line — the first line of the content"*. **The body has no
+title line**: PD-393 deleted `<h2>{ride.title}</h2>` because `RideHeader` draws the title in the
+fixed header 40px above.
+
+**Default: the first line of the scrolling content** — a dedicated row above the club link and the
+date/location lines, so the chip is the first thing under the header and is never in fixed chrome.
+
+**Not the fixed header**, and this is the part worth stating: that row is 40px tall, already carries
+back plus `RideThreadsButton` (x302) and `RideOptionsMenu`, and a 44px control added to it changes
+`--header-height`, which **every screen in the app** derives its top padding from. A chip in the
+header would also persist across the ride's crew and threads screens, where there is no bar to
+reopen.
+
+If the owner meant the header's title row, that is a one-line correction and only this question's
+default moves.

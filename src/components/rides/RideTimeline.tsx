@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
-import { RideCreateSheet } from '@/components/rides/RideCreateSheet'
 import { RideTimelineEventRow } from '@/components/rides/RideTimelineEventRow'
 import { RideTimelineThreadRow } from '@/components/rides/RideTimelineThreadRow'
 import { ErrorState } from '@/components/ui/ErrorState'
@@ -23,7 +22,7 @@ import {
 import { combineQueries, useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
-import type { RideCreateOption, RideDetail } from '@/types'
+import type { RideDetail } from '@/types'
 
 /**
  * The ride's timeline — what has happened on it, newest first (PD-393).
@@ -38,8 +37,12 @@ import type { RideCreateOption, RideDetail } from '@/types'
  * `RideJournal` — the horizontal strip of stamps this replaces — is deleted in
  * the same change, exactly as `ClubPostcardCarousel` was: a section repeating
  * what the timeline says twenty pixels below it is the length that made the
- * screen confusing in the first place. Its `Add` tile survives as the `(+)` on
- * this section's own heading, which is the entrance PD-125 exists to protect.
+ * screen confusing in the first place. Its `Add` tile became the `(+)` on this
+ * section's own heading — the entrance PD-125 exists to protect — and PD-401
+ * then moved that entrance into the sticky bottom slot, where PD-404 turned it
+ * into a floating action. **The entrance was never dropped, only relocated**,
+ * which is the whole of what PD-125 asks; this heading now carries no control
+ * at all. See §The `(+)` is gone below for why it cannot come back here.
  *
  * ## Who sees this — and why there is no membership branch
  *
@@ -49,9 +52,11 @@ import type { RideCreateOption, RideDetail } from '@/types'
  * such split.** `public.ride_journal_postcard_ids` (`062`) gates on
  * `private.can_read_ride` and the postcard qual and says nothing about crew
  * (PD-282), and `102`'s `ride_members` SELECT policy follows ride visibility.
- * So anyone who can open this ride can see every source on it, and the only
- * crew-gated thing here is `canAdd` — because tagging a postcard wants
- * `private.is_ride_crew` (`041`) and a `(+)` a non-member's insert would
+ * So anyone who can open this ride can see every source on it, and since PD-404
+ * this component has **no crew-gated element at all** — the create entrance
+ * that carried that rule now lives in the page's bottom slot. The rule itself
+ * is unchanged and still belongs to the database: tagging a postcard wants
+ * `private.is_ride_crew` (`041`), and a control a non-member's insert would
  * refuse is a promise the database breaks.
  *
  * ## Blocking needs no code here
@@ -73,39 +78,11 @@ import type { RideCreateOption, RideDetail } from '@/types'
  */
 export function RideTimeline({
   ride,
-  canAdd,
-  createOptions,
 }: {
   /** The ride itself, for the floor entry — `getRide` has already answered by
    *  the time this renders, so the founding is a prop rather than a third read
    *  of a row the page is holding. */
   ride: Pick<RideDetail, 'id' | 'created_at' | 'organizer_id' | 'organizer'>
-  /** Whether this heading draws its `(+)`.
-   *
-   *  **Crew is necessary and, since PD-401, no longer sufficient.** `041`
-   *  requires `private.is_ride_crew` to tag a postcard to a ride, so no
-   *  non-crew rider is ever offered this — an affordance and never the
-   *  enforcement. What the page adds on top is the composition: `RideCreateBar`
-   *  takes the sticky bottom slot whenever `RideAttendanceBar` is not using it,
-   *  and the two entrances are complementary, so a crew member on a PAST ride
-   *  gets the bar and this reads false. See the page's `bottomSlot`.
-   *
-   *  This component does not compute that and must not start: it cannot see the
-   *  RSVP bar, and a second copy of the rule here is the drift that would put
-   *  two entrances to one composer on the same screen. */
-  canAdd: boolean
-  /**
-   * What the `(+)` sheet holds — `resolveRideDetailActions`' own list, passed
-   * straight through.
-   *
-   * **A prop rather than built here**, for the reason `canAdd` is one: this
-   * component cannot see the RSVP bar, and the create bar offers the same rows
-   * from the other entrance. Two lists built independently is the drift that
-   * would let the bar and the `(+)` create different things.
-   *
-   * Ignored entirely when `canAdd` is false, because no trigger is drawn.
-   */
-  createOptions: RideCreateOption[]
 }) {
   const rideId = ride.id
 
@@ -127,12 +104,6 @@ export function RideTimeline({
   // beside it and no ceiling: every step draws rows already fetched, so the
   // only bound that matters is how many exist.
   const [steps, setSteps] = useState(1)
-
-  // The create sheet the heading's `(+)` opens — `108`, PD-402. Held here
-  // rather than on the page because the trigger is this component's; the ROWS
-  // are the page's, so they arrive as a prop and the two entrances cannot
-  // disagree about what a ride creates.
-  const [createOpen, setCreateOpen] = useState(false)
 
   // Gated on the data, never on `isLoading` — see `combineQueries`. Every read
   // resolves to a `TimelineSource`, so `undefined` is the only "not yet".
@@ -181,38 +152,24 @@ export function RideTimeline({
 
   // The sheet travels WITH the heading rather than being mounted once at the
   // bottom of the component, because `heading` is rendered from three different
-  // return branches (error, loading, loaded) and the `(+)` is drawn in all
-  // three. Mounted in only one, the trigger would open nothing on the other two
-  // — a state no gate but a rider's tap can see.
-  const heading = (
-    <>
-      <SectionHeader
-        title="Timeline"
-        className="px-4 py-0"
-        // `Create on this ride` rather than bare `Add`: the icon carries no
-        // text, so the accessible name has to say what is being added —
-        // `SectionHeader`'s own rule. It names the sheet rather than one act,
-        // because as of `108` (PD-402) it opens the same two-row sheet the
-        // create bar does; PD-401's `Add a photo to this ride` was right while
-        // a ride created exactly one thing.
-        //
-        // **The `onClick` form of `SectionHeaderCreate`**, which exists for
-        // this caller — every other `(+)` in the app still navigates.
-        create={
-          canAdd
-            ? { label: 'Create on this ride', onClick: () => setCreateOpen(true) }
-            : undefined
-        }
-      />
-      {canAdd && (
-        <RideCreateSheet
-          options={createOptions}
-          open={createOpen}
-          onClose={() => setCreateOpen(false)}
-        />
-      )}
-    </>
-  )
+  // return branches (error, loading, loaded).
+  //
+  // ## The `(+)` is gone, and it was unreachable rather than unwanted (PD-404)
+  //
+  // PD-401 kept it here as the fallback for the one state its create bar could
+  // not have: *upcoming + crew + the RSVP bar owns the slot*. PD-404 made
+  // answering the RSVP collapse that bar, so the bar is now owed only while the
+  // answer is still `null` — and for a non-organizer, `is_crew` IS
+  // `attendance !== null` (`src/lib/data/rides.ts:618,692`). The two conditions
+  // are contradictory, so the state this covered cannot occur.
+  //
+  // **Do not add it back "for safety".** A `(+)` on this heading that no input
+  // reaches is furniture that reads as a live affordance to whoever edits this
+  // screen next, and the only state with no create entrance now is a rider who
+  // deliberately reopened the RSVP bar with their own chip — transient, and
+  // reversible by the same tap. `bottom-slot.ts` carries the proof and its test
+  // pins the identity it rests on.
+  const heading = <SectionHeader title="Timeline" className="px-4 py-0" />
 
   if (gate.error)
     return (
