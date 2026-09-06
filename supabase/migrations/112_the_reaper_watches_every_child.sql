@@ -1,0 +1,305 @@
+-- 112: the reaper watches every child that can be the last one, and its comment
+-- stops claiming an enumeration it never had.
+--
+-- PD-399 (the three missing triggers) and PD-408 (the overclaiming comment).
+--
+-- ** ONE FILE FOR TWO ISSUES, deliberately. ** Both rewrite the SAME
+-- `comment on function private.reap_ownerless_club()`. Split across `112` and
+-- `113` the first would ship a comment the second immediately replaces, and
+-- whichever landed second would silently discard the other's edit — the same
+-- hazard `107` §3c records for its policy/helper twin, one object across. The
+-- two issues stay two issues on the board; the statement is written once.
+--
+-- ---------------------------------------------------------------------------
+-- PD-399 — the defect, and the one ordering `107` closed
+-- ---------------------------------------------------------------------------
+-- `107` §5 reaps an ownerless club once nothing it was preserved for remains,
+-- and hangs that on `postcards` DELETE ** ALONE **. Its own §5 says so and files
+-- the rest. So a club emptied in any other order is never revisited:
+--
+--   Club C goes ownerless holding rider B's postcard and rider D's private ride
+--   — both ex-members, both deliberately preserved by §4. B deletes the postcard
+--   -> the reaper correctly DECLINES, because a ride remains. D later deletes
+--   the ride -> ** nothing fires the reaper. ** C is now permanently orphaned:
+--   invisible (§2a), unjoinable (§2b), uneditable and undeletable (`auth.uid() =
+--   owner_id` is NULL), and now unreapable.
+--
+-- That is verbatim the state §5 opens by saying it exists to prevent —
+-- "unreachable by every role for ever" — closed for one ordering out of four.
+--
+-- ** No exposure, and this is why it was filed rather than rushed. ** The row is
+-- invisible to every role, so this is accumulated garbage rather than a leak.
+--
+-- ---------------------------------------------------------------------------
+-- The function body is UNCHANGED, and that is the point
+-- ---------------------------------------------------------------------------
+-- `private.reap_ownerless_club()` already tests all four conditions and reads
+-- `old.club_id`, which every one of the four child tables carries under that
+-- exact name. plpgsql resolves `OLD` per firing, so ONE function serves four
+-- triggers and no `create or replace` is needed here. A second copy per table
+-- would be four bodies to keep in step — which is how `107` §3c's twin defect
+-- happens — so there is deliberately only one.
+--
+-- ---------------------------------------------------------------------------
+-- Reachability is NOT uniform across the three, and a later session should not
+-- have to re-derive which is which
+-- ---------------------------------------------------------------------------
+-- Stated per table, because "we added the missing triggers" is true of all three
+-- and useful about none of them:
+--
+--   * `rides` ......... ** REACHABLE, and it is PD-399's own scenario. ** A
+--     preserved club holds a surviving private ride (§4 keeps those rides on
+--     purpose); the last postcard goes first, the ride goes later.
+--   * `club_threads` .. ** REACHABLE. ** A rider who posted both a thread and a
+--     postcard, left, and later deletes the postcard and then the thread. This
+--     is the pairing `107` §5's own club_threads conjunct was added for, found
+--     by that change's pre-merge review — the conjunct makes the reaper DECLINE,
+--     and nothing then re-asks the question.
+--   * `club_members` .. ** NOT REACHABLE TODAY, and it is still built. ** No
+--     rider can join an ownerless club (§2b), and at the instant §4 creates one
+--     the only roster row is the departing owner's, which the `profiles` cascade
+--     removes inside the same erasure transaction — while the third-party
+--     postcards that caused the club to be preserved are by definition still
+--     there, so the reap correctly declines then. For this trigger to be the one
+--     that reaps, a member must outlive every postcard, ride and thread, which
+--     no path produces.
+--
+--     It is built anyway because the reaper's conjuncts are a ** whitelist of
+--     emptiness **: `club_members` is one of the four, so a membership row can
+--     make the reaper decline, and any conjunct that can make it decline must
+--     also be able to re-ask the question when it clears. Leaving this one out
+--     would re-create PD-399 exactly, scoped to whichever future change makes a
+--     roster row outlive the content — `095`'s leave-owned-club path and any
+--     widening of §2b are both one edit away from it. The cost is bounded and
+--     measured below; the cost of rediscovering this is another PD-399.
+--
+-- ---------------------------------------------------------------------------
+-- Re-entrancy is FREE here, and it is the same fact as the whitelist
+-- ---------------------------------------------------------------------------
+-- `107` property 4 notes the reaper re-enters itself through
+-- `postcards_club_id_fkey`. Adding three more triggers widens that fan, and it
+-- costs nothing for a reason worth writing down rather than re-deriving:
+--
+-- ** Every table carrying one of these four triggers is also one of the four
+-- conjuncts, so the delete only runs when that table contributes ZERO cascade
+-- rows. ** No members, no postcards, no threads (all CASCADE) and no rides (SET
+-- NULL) — so the `delete from public.clubs` fires none of the four triggers, at
+-- any depth. The six children that DO cascade — `club_invites`,
+-- `club_invite_links`, `club_join_requests`, `notifications`, `feed_reads` and
+-- `111`'s `club_removals` — carry no reaper trigger, so they cannot re-enter
+-- either. The recursion is one level by construction, not by luck.
+--
+-- ---------------------------------------------------------------------------
+-- Ordering: MIGRATION-FIRST, and there is no unsafe side
+-- ---------------------------------------------------------------------------
+-- Not a default — `CLAUDE.md` §Supabase Rules is explicit that "additive, so the
+-- order does not matter" is wrong in both directions. Specifically here:
+--
+--   * No column, table or PostgREST relationship is added or removed, so there
+--     is no `PGRST204` and no `PGRST201` / HTTP 300 shape.
+--   * No policy changes, so no bundle's reads or writes move.
+--   * Nothing under `src/` changes in this migration, so there is no bundle to
+--     sequence against at all.
+--   * The behaviour delta is unreachable against every row that exists at apply
+--     time: `select count(*) from public.clubs where owner_id is null` is 0 on
+--     both projects (re-measured below), so the reap cannot fire for anything
+--     currently in either database.
+--
+-- ---------------------------------------------------------------------------
+-- ** THE HAND-EXERCISE GATE — `CLAUDE.md` requires it and this file fires it **
+-- ---------------------------------------------------------------------------
+-- "A migration that hangs triggers off an already-shipped write path needs a
+-- hand-exercise gate before it applies ... Exercise every affected path by hand
+-- on DEV first, in a rolled-back transaction, as `authenticated`, counting the
+-- fan-outs' rows rather than assuming them."
+--
+-- This file hangs triggers on THREE already-shipped write paths at once, and
+-- `club_members` DELETE is the busiest delete path in the app — every leave,
+-- every `remove_club_member`, and every account erasure cascade runs it. A raise
+-- there takes a rider's own write down with it.
+--
+-- The gate was run against DEV (`fpmrimzxadewsaiwpsel`) before this file was
+-- applied; the results are in §Verification at the foot of this file. The RLS
+-- suite does not satisfy that rule and is not offered as satisfying it — it runs
+-- as the table owner, for whom neither the policy barrier nor the grant barrier
+-- exists (the `029` trap).
+
+-- ---------------------------------------------------------------------------
+-- §1. The three triggers
+-- ---------------------------------------------------------------------------
+-- `drop trigger if exists` first on each, so this file is re-runnable and so a
+-- rename never leaves two copies firing.
+
+-- §1a. `rides` — the reachable case PD-399 was filed for.
+--
+-- ** The WHEN clause is required here and only here. ** `rides.club_id` is
+-- NULLABLE (it is the ON DELETE SET NULL child), so an app-wide ride's deletion
+-- must not call the function at all — `107` property 2, which is why the
+-- postcards trigger carries the same clause.
+drop trigger if exists reap_ownerless_club on public.rides;
+create trigger reap_ownerless_club
+  after delete on public.rides
+  for each row
+  when (old.club_id is not null)
+  execute function private.reap_ownerless_club();
+
+-- §1b. `club_threads` — the other reachable case.
+--
+-- ** NO WHEN clause, and that is deliberate rather than an omission. **
+-- `club_threads.club_id` is NOT NULL, so `old.club_id is not null` can never be
+-- false: the clause would buy nothing and would read as though the column were
+-- nullable, which is worse than absent. The function's own first statement
+-- (`if old.club_id is null then return null`) still guards the case if that
+-- column is ever made nullable, so nothing depends on this reading.
+drop trigger if exists reap_ownerless_club on public.club_threads;
+create trigger reap_ownerless_club
+  after delete on public.club_threads
+  for each row
+  execute function private.reap_ownerless_club();
+
+-- §1c. `club_members` — the busiest path, and the one that is defensive today.
+--
+-- NOT NULL, so no WHEN clause, exactly as §1b.
+--
+-- ** This is the trigger to think twice about, and the thinking is above ** —
+-- see the reachability block: it cannot be the reaping trigger today, and it is
+-- built because `club_members` is one of the four conjuncts that can make the
+-- reaper decline.
+--
+-- Note what it sits beside: `protect_club_owner_membership` is a BEFORE DELETE
+-- trigger on this table, and it RAISES for an owner's own row when the caller is
+-- `authenticated`. That runs first and is unaffected — an AFTER DELETE trigger
+-- is never reached for a row whose deletion was refused.
+drop trigger if exists reap_ownerless_club on public.club_members;
+create trigger reap_ownerless_club
+  after delete on public.club_members
+  for each row
+  execute function private.reap_ownerless_club();
+
+-- ---------------------------------------------------------------------------
+-- §2. PD-408 — the comment stops claiming an enumeration it never had
+-- ---------------------------------------------------------------------------
+-- `107`'s comment says "a NEW child table of `clubs` needs a fifth [conjunct]",
+-- which reads as though the existing children had been enumerated and covered.
+-- ** They were not. ** TEN FKs point at `public.clubs`; four are named in the
+-- reaper's conjuncts and SIX are not, and all six CASCADE, so the reap destroys
+-- them.
+--
+-- ** The issue was filed against NINE and it is now TEN ** — `111` added
+-- `club_removals` the same morning. Measured from the catalogue rather than
+-- transcribed, which is the whole lesson of the defect being fixed:
+--
+--   select conrelid::regclass from pg_constraint
+--    where contype = 'f' and confrelid = 'public.clubs'::regclass;
+--
+-- ** These are comment defects, not behaviour ones — every omission is
+-- defensible and each reason is now on the record: **
+--
+--   * `club_invites`, `club_invite_links`, `club_join_requests` — already
+--     unanswerable against an ownerless club (`107` §3a, §3d), so dead letters.
+--   * `feed_reads` — derived read state.
+--   * `club_removals` (`111`) — it bars one route into one club; with the club
+--     gone there is no route left to bar, and the links it barred died in the
+--     same cascade. A conjunct here would be actively WRONG: it would keep an
+--     ownerless, memberless, contentless club alive for ever on the strength of
+--     a row no role can read.
+--   * `notifications` — ** the one with a real claim. ** A rider notified about
+--     the club keeps that row after leaving, and the reap removes it from their
+--     list. It is allowed to go because the notification's own subject has just
+--     ceased to exist.
+--
+-- The tripwire the old comment claimed to be already exists and is not this
+-- comment: `rls_test.sql` 107.12b pins the child set as a NAME LIST, so an
+-- arrival or a swap forces the next author to decide.
+comment on function private.reap_ownerless_club() is
+  'Deletes an ownerless club (107) once no members, no postcards, no rides and no threads remain. Without it such a club is unreachable by every role for ever, since it is invisible, unjoinable, uneditable and undeletable. security definer BECAUSE the clubs DELETE policy is `auth.uid() = owner_id`, which is NULL for an ownerless club and admits nobody — a security invoker version would delete zero rows silently. ** The four conjuncts are a whitelist of emptiness, NOT a claim that the child tables were enumerated ** — 112/PD-408 corrects exactly that misreading of this sentence. TEN FKs reference public.clubs. Four have a conjunct: club_members, postcards, club_threads (all CASCADE) and rides (SET NULL). ** SIX are deliberately allowed to cascade away with the club **: club_invites, club_invite_links and club_join_requests are already unanswerable against an ownerless club (107 §3a/§3d) so their rows are dead letters; feed_reads is derived read state; club_removals (111) bars a route into a club that no longer exists, and a conjunct there would keep a contentless club alive for ever on a row no role can read; notifications is the one with a real claim, and goes because its own subject has just ceased to exist. A NEW child table needs that same decision made explicitly, and its FK delete action says which harm applies — CASCADE destroys its rows, SET NULL strands them (032 §2). The name list is pinned at rls_test.sql 107.12b, which is the tripwire this comment is not. ** 112/PD-399: it now fires on DELETE of postcards, rides, club_threads AND club_members — one trigger per conjunct **, because a table that can make the reaper decline must also be able to re-ask the question when it clears; firing on postcards alone left a club emptied in any other order permanently unreapable. Re-entrancy stays one level by construction: each of those four tables is also a conjunct, so the delete only runs when it contributes zero cascade rows.';
+
+-- ---------------------------------------------------------------------------
+-- §Verification — the HAND-EXERCISE GATE, run before this file applied
+-- ---------------------------------------------------------------------------
+-- Run against DEV (`fpmrimzxadewsaiwpsel`) 2026-09-06, in ONE transaction that
+-- created the three triggers, exercised every affected path and then ROLLED
+-- BACK. The ordinary paths were driven as `authenticated` with a matching
+-- `request.jwt.claims`, not as the table owner, because the grant and policy
+-- barriers do not exist for the owner (the `029` trap).
+--
+--   Pre-flight, both projects: clubs with owner_id is null .......... 0 / 0
+--   (so the reap cannot fire for any row that exists at apply time)
+--
+--   6.1  delete a ride in an OWNED club ............. PASS  deleted, club stays
+--   6.2  delete an APP-WIDE ride (club_id null) ..... PASS  deleted; WHEN clause
+--                                                    means the function is never
+--                                                    called
+--   6.3  delete a thread in an OWNED club ........... PASS  deleted, club stays
+--   6.4  LEAVE an owned club as `authenticated` ..... PASS  row deleted, club
+--                                                    stays, no raise
+--   6.5  REAP via the rides trigger ................. PASS  last ride of an
+--                                                    otherwise-empty ownerless
+--                                                    club -> club reaped
+--   6.6  REAP via the club_threads trigger .......... PASS  club reaped
+--   6.7  REAP via the club_members trigger .......... PASS  club reaped
+--   6.8  DECLINE: ride goes while a postcard remains  PASS  club stays, postcard
+--                                                    intact
+--   6.9  multi-row ride delete in one statement ..... PASS  reaped once, second
+--                                                    firing no-ops, no raise
+--   6.10 account erasure through the club_members
+--        cascade, with third-party postcards in a
+--        preserved club ............................ PASS  erasure COMPLETED,
+--                                                    club correctly NOT reaped
+--                                                    (its postcards remain)
+--
+-- 6.10 and 6.4 are the two worth keeping. 6.10 runs the new club_members trigger
+-- inside a rider's own erasure transaction — a raise there would abort the
+-- erasure itself, which is the failure `CLAUDE.md`'s rule exists to catch. 6.4 is
+-- the ordinary rider action that this file put new code in front of, and the one
+-- that would be noticed first if it broke.
+--
+-- The rollback was confirmed rather than assumed — DEV read back immediately
+-- afterwards with the three triggers absent again.
+--
+-- ---------------------------------------------------------------------------
+-- §Applied REDUCED, and proved by object diff
+-- ---------------------------------------------------------------------------
+-- Applied to DEV 2026-09-06 carrying the four executable statements above and
+-- none of this prose, so ** its recorded statement does not equal `md5sum` of
+-- this file — that is the norm here, not drift ** (`CLAUDE.md` §Supabase Rules,
+-- `docs/reference/migrations.md` §Applying a large file). The OBJECT is what was
+-- compared, never the recorded text — between DEV and a local database that
+-- applied THIS FILE ITSELF through `supabase/tests/run.sh`. All three md5s
+-- identical:
+--
+--   pg_get_triggerdef, all four, name-ordered .... 1a338a3756c20d5ba74129cd56b0216e
+--   obj_description of the function .............. 4876f819cddda283572a829ee70a9ffc
+--   pg_get_functiondef of the function ........... 6d0b6d8f3d5f43d8cd9c39d24dcb4a66
+--
+-- The third is the one worth having: it is the same on both sides AND the same
+-- as before this file, which is the check that says 112 did not move the body.
+--
+-- ---------------------------------------------------------------------------
+-- §Verification — after applying, against the live catalogue
+-- ---------------------------------------------------------------------------
+-- Do not assume any of these. Read back on DEV immediately after the apply:
+--
+--   tbl            | WHEN clause
+--   ---------------+--------------------------
+--   club_members   | (no WHEN)
+--   club_threads   | (no WHEN)
+--   postcards      | (old.club_id IS NOT NULL)
+--   rides          | (old.club_id IS NOT NULL)
+--
+-- — four triggers, ONE function definition, and the WHEN clause on exactly the
+-- two tables whose `club_id` is nullable.
+--
+--   -- FOUR reaper triggers now, and only postcards and rides carry a WHEN
+--   select rel.relname, t.tgname, pg_get_triggerdef(t.oid)
+--     from pg_trigger t join pg_class rel on rel.oid = t.tgrelid
+--    where t.tgname = 'reap_ownerless_club' and not t.tgisinternal
+--    order by 1;                                                        -- 4 rows
+--
+--   -- the function body did NOT move: one definition, four triggers
+--   select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname = 'private' and p.proname = 'reap_ownerless_club';  -- 1
+--
+--   -- the advisor count must NOT move. No function is created and none moves
+--   -- schema, so this file adds no advisor of any kind.
+--   get_advisors(security)
