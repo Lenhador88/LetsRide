@@ -192,9 +192,15 @@ describe('each list screen silences every skeleton and carries one LoadingRegion
       // every branch returns a fragment whose FIRST child is the region. A
       // single-line `return <X />` cannot satisfy that and fails here, which is
       // the intent rather than a limitation.
-      // The floor is load-bearing twice over: it also fails if `screenBody`'s
-      // `\n}\n` slice ever cuts short, since a truncated body loses returns.
-      const returns = [...body.matchAll(/\breturn\s*([\s\S]{0,60})/g)]
+      // **The window is a LOOKAHEAD and that is not cosmetic.** A consuming
+      // `matchAll` swallows its own 60 characters, so a `return` beginning
+      // inside a previous match's window is never found — neither tail-checked
+      // nor counted — and since a hidden branch has no region, the count below
+      // stays equal and the whole suite goes green. A compact
+      // `if (x) return <Y />` written just after another return is enough, and
+      // there is no formatter in this repo to break it up. A zero-width match
+      // cannot swallow anything.
+      const returns = [...body.matchAll(/\breturn\s*(?=([\s\S]{0,60}))/g)]
       expect(returns.length, 'expected the screen to have branches').toBeGreaterThanOrEqual(3)
 
       for (const [, tail] of returns) {
