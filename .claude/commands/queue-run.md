@@ -23,11 +23,14 @@ the two apart, which is why the setup below says to attach it if the UI ever off
 outages in three weeks, and a persistent session costing about $1 per idle firing. `docs/reference/linear.md` §The queue is drained by one
 Routine, on one clock carries the measurements; PD-241 carries the record.
 
-**What a Routine-minted session DOES hold, measured, and this file's board half uses nothing
-else:** the repository checkout (so this file, `CLAUDE.md` and `.claude/settings.json` are read —
+**What a Routine-minted session DOES hold, measured, and what this file's board half uses:** the
+repository checkout (so this file, `CLAUDE.md` and `.claude/settings.json` are read —
 2026-08-17, a firing without one prompted for every call), the connectors attached to the Routine
 (Linear, Supabase, Vercel — every relay's board reads answered), and auto mode (`get_session` on the
-relay, 2026-09-02). **Whether it holds git push credentials, the GitHub tools (PR creation),
+relay, 2026-09-02). **STEP 6 also makes one GitHub read, and it is the board half's only tool
+outside that list — it fails soft**: absent, it says so in the final message and falls through to
+ageing the branch, so a firing without it is no worse off than before the read existed.
+**Whether it holds git push credentials, the GitHub tools (PR creation and that read),
 `PushNotification`, `get_session`, `archive_session`, `list_sessions` or `create_session` is
 unknown until STEP 0's self-check reports it** — the previous design assumed a tool it did not
 have, so every firing measures the three a build cannot do without before it touches the board,
@@ -428,13 +431,34 @@ Ask how long the oldest of these has been true:
   firing after it reported the branch as never pushed.
 
   ```
-  mcp__github__search_pull_requests  query="repo:Lenhador88/LetsRide is:pr is:open PD-<n> in:body"
+  mcp__github__list_pull_requests  owner=Lenhador88 repo=LetsRide state=open base=development
+                                   fields=["number","title","body","html_url","mergeable_state"]
   ```
 
+  **`list_pull_requests`, not `search_pull_requests`** — the second is not on
+  `.claude/settings.json`'s allowlist, and an unattended firing that reaches an unlisted tool hits
+  a permission prompt nobody can answer, which is the failure the table below records as measured.
+  Read the answer yourself; there are rarely more than a handful of open PRs.
+
+  **It counts as this issue's PR only if the body carries `Closes PD-<n>` or the title carries
+  `(PD-<n>)`.** A bare mention does not: `queue-pickup.md` STEP 4b/4c require a PR body to name
+  the issues it filed and folded in, so #396 named PD-398 in its own `## Filed` section. Matching
+  a mention would report the wrong issue and — because a hit stops the ageing — silence the real
+  stall on the other slot. **A false positive here suppresses the check; a false negative only
+  falls through to the branch tip, which is the direction to err in.**
+
+  **If the tool is absent** — `No such tool available`, or a keyword `ToolSearch` for it coming
+  back empty — **say `PR state unknown, no GitHub read` in the final message and fall through to
+  the ageing below.** STEP 0 does not probe this one, and `mcp__github__*` is the one connector
+  family with no second spelling to try.
+
   **A hit ends the ageing and changes what you say.** The slot is held by work that is *done*, so
-  the final message and the alarm say `PR #<n> open, unmerged — merge it` with the link, not
-  `unknown`. That is an instruction the owner can act on in one step; `unknown` is a mystery they
-  have to re-derive. Say the same for a PR that is open and red or conflicted, naming which.
+  there is no age to take and none is needed. Name it in the final message on **every** firing
+  while the PR stays open — `PR #<n> open, unmerged — merge it`, with the link, and `red` or
+  `conflicted` where `mergeable_state` says so. It is one line, it is the shape §What the final
+  message says calls *a hold that nothing ages*, and it is an instruction the owner can act on in
+  one step, where `unknown` is a mystery they have to re-derive. **The Linear comment obeys the
+  marker rule below unchanged** — one `<!-- stall-alarm slot:<N> -->` per issue, never a second.
 
   **No hit — then age the branch tip if there is one**, because a live build keeps resetting it
   and a dead one does not:
