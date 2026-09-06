@@ -364,6 +364,30 @@ apply that succeeded. Eight of nine object classes came back byte-identical acro
 with no formula, and nine plausible digest formulations miss it. Do not treat it as a checkable
 value; compare PROD's objects against DEV's directly, which is strictly stronger.
 
+> **Why none of the nine matched, and the formula that does.** The figure is not malformed — it is
+> **stale**. It was measured before `107`'s final-diff review rewrote `private.reap_ownerless_club`
+> (the `club_threads` conjunct and its `comment on function`), so no digest over the *current*
+> objects can reproduce it and none ever will. The formula it was taken with is below, and it now
+> yields **`9bd55b4bb4eb904c4c1744ac596a4be6`, equal on DEV and PROD** — run independently on both
+> refs after the promotion, which is a positive check that the promotion carried the corrected body
+> rather than the reviewed-then-superseded one.
+>
+> ```sql
+> select md5(string_agg(pg_get_functiondef(p.oid), '|' order by p.proname))
+>   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+>  where p.prokind = 'f' and (
+>    (n.nspname = 'private' and p.proname in ('transfer_owned_clubs','can_read_club',
+>      'club_invite_is_answerable_for','notify_club_joined','notify_ride_created_in_club',
+>      'club_takes_join_requests_for','club_invite_link_reachable_by','notify_club_invited',
+>      'notify_club_join_requested','reap_ownerless_club'))
+>    or (n.nspname = 'public' and p.proname = 'complete_onboarding'));
+> ```
+>
+> **The durable lesson is the one above, not this hash: a recorded digest goes stale the moment any
+> object in it is revised, and then reads exactly like drift on a correct apply.** Comparing the two
+> projects against *each other* never does — which is why the sentence above is right and this block
+> is a footnote to it rather than a replacement.
+
 `103`/`104` were applied to DEV only once the build carrying them was **confirmed
 serving** — `READY` on the merge sha with `aliasError` null, never merely "after the merge":
 `CLAUDE.md` §Supabase Rules names that distinction with a measured incident behind it (a destructive
