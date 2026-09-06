@@ -294,6 +294,36 @@ describe('mergeClubTimeline', () => {
     expect(merged.events.some((event) => event.kind === 'club-created')).toBe(false)
   })
 
+  it('withholds the founding entry when a source declared a horizon it happened to hold every row above', () => {
+    // PD-400, and the case a `complete` derived from "the horizon filter dropped
+    // nothing" gets exactly backwards. `getClubThreadReplies` collapses its
+    // window to ONE row per thread, so two busy threads can return two rows out
+    // of a two-hundred-message window and still carry a live horizon. Both rows
+    // sit above that horizon, so the filter drops nothing — and no other source
+    // holds a row below it to be dropped either, because every other source here
+    // is empty.
+    //
+    // Verified both ways per CLAUDE.md §Working Principles: under the old
+    // `inside.length === events.length && shown.length === ordered.length` this
+    // reads `complete: true` and appends `club-created` under a stream with a
+    // two-hundred-message thread still behind it.
+    const merged = mergeClubTimeline(
+      sources({
+        club: { created_at: '2020-01-01T00:00:00Z', owner_id: 'u1' },
+        replies: {
+          rows: [reply('m1', '2026-08-20T10:00:00Z', 't1'), reply('m2', '2026-08-19T10:00:00Z', 't2')],
+          horizon: '2026-08-19T10:00:00Z',
+        },
+      })
+    )
+
+    // Nothing was dropped by either cut — which is precisely why the old
+    // expression could not tell this stream from a finished one.
+    expect(merged.events.filter((event) => event.kind !== 'club-created')).toHaveLength(2)
+    expect(merged.complete).toBe(false)
+    expect(merged.events.some((event) => event.kind === 'club-created')).toBe(false)
+  })
+
   it('withholds the founding entry from a stream the LIMIT cut', () => {
     // The other way a stream can be short, and the one a `complete` derived
     // from `events.length` would get wrong: exactly `limit` entries can mean

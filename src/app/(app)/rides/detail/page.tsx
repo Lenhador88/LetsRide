@@ -7,12 +7,12 @@ import { CalendarIcon, LocationOutlineIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { RideAttendanceBar } from '@/components/rides/RideAttendanceBar'
 import { RideChatRow } from '@/components/rides/RideChatRow'
+import { RideCreateBar } from '@/components/rides/RideCreateBar'
 import { RideCrewRail } from '@/components/rides/RideCrewRail'
 import { RideHeader } from '@/components/rides/RideHeader'
 import { RideTimeline } from '@/components/rides/RideTimeline'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { ExpandableText } from '@/components/ui/ExpandableText'
-import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonDetail } from '@/components/ui/Skeleton'
 import { MapAttribution } from '@/components/rides/MapAttribution'
 import { RideMap } from '@/components/rides/RideMap'
@@ -22,6 +22,7 @@ import type { RiderLocation } from '@/lib/location/rider-location'
 import { useRiderPosition } from '@/lib/location/use-rider-position'
 import { useQuery } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
+import { resolveRideDetailActions } from '@/lib/rides/bottom-slot'
 import { DETAIL_ID_PARAM, RETURN_ANCHOR_PARAM, routes } from '@/lib/routes'
 import {
   cn,
@@ -63,15 +64,24 @@ import type { RideDetail } from '@/types'
  *   reason. The chat row stays above because PD-125's whole finding was that a
  *   rider could not find the chat, and putting it under a stream that grows
  *   re-opens that the moment a ride collects twenty entries.
- * - **There is no create BAR, and that is measured rather than skipped.** The
- *   club's `ClubCreateBar` sits in the sticky bottom slot; on a ride that slot
- *   is `RideAttendanceBar` on every upcoming ride the viewer does not
- *   organize, so a bar there would either collide or appear only for the
- *   riders least likely to need it. It is not needed either: all three actions
- *   already have an entrance — the `(+)` on the timeline heading (add a photo),
- *   `RideChatRow` and the header bubble (chat), and `RideOptionsMenu`'s
- *   `Invite riders` row (invite). A second entrance for any of them would be
- *   furniture.
+ *
+ * ## What PD-401 changed — the rail moves up, and the `(+)` becomes a bar
+ *
+ * Product owner, 2026-09-05: *"Lets have the create button instead of a plus on
+ * timeline. Lets move the rider section above the map, we can drop the title."*
+ * Both are the club detail's settled shape and the ride was the odd one out on
+ * each.
+ *
+ * - **The crew rail sits above the map and has lost its `SectionHeader`.** Who
+ *   is coming is what a rider checks before the map. The heading carried
+ *   `Riding` / `Rode`, which the date line 40px above it already establishes,
+ *   and the rail says what it is by being avatars and a count — the same
+ *   treatment the club member rail got when PD-355 moved it to the top.
+ * - **`RideCreateBar` takes the sticky bottom slot, and `canRsvp` decides
+ *   whether it can have it.** This is option **B** from PD-401's collision
+ *   table, plus the fallback that makes it lossless — see `bottomSlot` below
+ *   for the whole argument and for why D, the issue's own recommendation, is
+ *   not taken here.
  *
  * `Ride - Ride plan (Details)` (`2375:8771`) is still the frame the header half
  * is built from, and it is not the whole specification: the drawn sub-page
@@ -173,6 +183,59 @@ function RideScreen() {
    */
   const isCrew = ride.data?.is_crew
 
+  /**
+   * Who may create, and which of the two affordances they get — PD-401.
+   *
+   * ## The collision, and which of the four ways out this takes
+   *
+   * `RideAttendanceBar` already owns the sticky bottom slot on every upcoming
+   * ride the viewer does not organize, which is most riders on most rides. The
+   * issue put four ways out and called the choice the decision rather than a
+   * detail:
+   *
+   * - **A** stack the two bars — ~190px of chrome over the stream on a 390px
+   *   screen, and the issue says not to ship it silently. Not taken.
+   * - **B** create only when the RSVP bar is absent. Taken, with the fallback
+   *   below.
+   * - **C** put the create inside the RSVP bar — conflates *are you going* with
+   *   *add a photo*. Not taken.
+   * - **D** move the RSVP out of the sticky slot into the page body. The
+   *   issue's own recommendation and **deliberately not taken here**, because
+   *   `RideAttendanceBar`'s frame (`2375:8771`) draws it stacked ON the
+   *   navigation bar: moving it into the body contradicts an approved v2 frame,
+   *   and decision #4 says v2 is the only design. PD-404 is parked on exactly
+   *   that class of decision — the frame problem is the owner's, not a build's,
+   *   and taking D unattended would be making it by omission. D stays available
+   *   and this change forecloses nothing: it is B *plus* one predicate.
+   *
+   * ## Why B is lossless here, unlike the version the issue priced
+   *
+   * The issue's cost for B was *"an upcoming ride's crew loses it"*. They do
+   * not: the `(+)` on the timeline heading survives as the fallback for exactly
+   * the case where the bar cannot have the slot, so no rider ends up with fewer
+   * entrances than before this change. `bottomSlot` and `RideTimeline`'s
+   * `canAdd` are complementary by construction below rather than by two
+   * conditions that could drift into agreeing.
+   *
+   * B also lands the bar where it matters most, which is not a coincidence: a
+   * rider photographs a ride that has **happened**, and a past ride has no RSVP
+   * bar (`is_upcoming` false), so it gets the discoverable bar. What keeps the
+   * `(+)` is the upcoming-and-not-yours case — posting a photo of a ride that
+   * has not left yet.
+   *
+   * `undefined` until the ride lands, so neither affordance is drawn and then
+   * withdrawn. **Crew is the database's rule, not the UI's**: `041` requires
+   * `private.is_ride_crew` to tag a postcard to a ride.
+   *
+   * The decision itself is `resolveRideDetailActions` — a pure function with
+   * its own exhaustive test — because the two answers are complementary and
+   * that property is what a later tidy-up would quietly break.
+   */
+  const { bottomSlot, timelineAdd } = resolveRideDetailActions({
+    canRsvp,
+    canCreate: isCrew === true,
+  })
+
   return (
     <>
       {/* Everything the chrome needs but the title comes out of the URL, so
@@ -200,19 +263,41 @@ function RideScreen() {
           and, with the sub-page switcher gone, 96px is what this screen's header
           is. The bottom padding is owed only when the bar it clears is actually
           there. */}
-      <div className={cn('flex flex-col gap-4 pt-4 pb-4', canRsvp && 'pb-rsvp-bar-extra')}>
+      <div
+        className={cn(
+          'flex flex-col gap-4 pt-4 pb-4',
+          // Whichever bar has the slot, the page tops its own padding up by
+          // that bar's height. `pb-navbar-action-extra` is the class the club
+          // detail already uses for the identical create bar, and the two
+          // values differ (96 against the action's height), so this cannot be
+          // one shared class.
+          bottomSlot === 'rsvp' && 'pb-rsvp-bar-extra',
+          bottomSlot === 'create' && 'pb-navbar-action-extra'
+        )}
+      >
         {ride.error ? (
           <ErrorState onRetry={ride.refetch} />
         ) : ride.data ? (
-          <RidePlan ride={ride.data} isCrew={isCrew === true} near={position} />
+          <RidePlan
+            ride={ride.data}
+            isCrew={isCrew === true}
+            // The fallback half of option B: the heading keeps its `(+)`
+            // exactly when the bar could not have the slot. Read off the same
+            // decision as `bottomSlot` rather than restated from `canRsvp`, so
+            // the two cannot drift into both being true — two entrances to one
+            // composer — or both false, which leaves the crew none.
+            canAdd={timelineAdd}
+            near={position}
+          />
         ) : (
           <SkeletonDetail />
         )}
       </div>
 
-      {canRsvp && ride.data && (
+      {bottomSlot === 'rsvp' && ride.data && (
         <RideAttendanceBar rideId={ride.data.id} attendance={ride.data.attendance} />
       )}
+      {bottomSlot === 'create' && ride.data && <RideCreateBar rideId={ride.data.id} />}
     </>
   )
 }
@@ -220,10 +305,18 @@ function RideScreen() {
 function RidePlan({
   ride,
   isCrew,
+  canAdd,
   near,
 }: {
   ride: RideDetail
   isCrew: boolean
+  /** Whether the timeline heading draws its `(+)` — the fallback entrance,
+   *  owed only when `RideCreateBar` could not take the bottom slot. Separate
+   *  from `isCrew` because crew is the database's rule (`041`) and this is the
+   *  composition's: a crew member on an upcoming ride they do not organize is
+   *  `isCrew` true and `canAdd` true, and the same rider on a past ride is
+   *  `isCrew` true and `canAdd` FALSE, because the bar has it instead. */
+  canAdd: boolean
   near: RiderLocation | null
 }) {
   // PD-340. `null` at every step is "nothing to say", never zero: the rider has
@@ -329,6 +422,32 @@ function RidePlan({
         </p>
       </div>
 
+      {/* The count this rail draws is the one that was removed from this screen
+          once already, for counting `maybe` RSVPs under a "going" label and
+          disagreeing with the roster one tap away. It is allowed back only
+          because `RideCrewRail` reads `queryKeys.rides.crew(id)` — the crew
+          page's own key, through the crew page's own function — and counts the
+          array that page renders under `Going`. See that component.
+
+          **It stays, and the timeline below does not replace it** (PD-393).
+          The rail answers *who is coming*, in the ride's own roster order, at a
+          glance; the stream answers *what has happened*, newest first.
+
+          **Above the map and with no `SectionHeader` (PD-401).** Who is coming
+          is what a rider checks before the map, and the club member rail sits
+          at the top of the club detail for the same reason (PD-355). The
+          heading carried `Riding` / `Rode` — a tense the date line directly
+          above already establishes, on a rail whose avatars and count say what
+          it is without being labelled. This screen no longer imports
+          `SectionHeader` at all — the only heading left on it is the
+          timeline's, which `RideTimeline` draws itself. */}
+      <RideCrewRail
+        rideId={ride.id}
+        organizerId={ride.organizer_id}
+        organizer={ride.organizer}
+        isUpcoming={ride.is_upcoming}
+      />
+
       <RideMap meetingPoint={ride.meeting_point} tileUrl={ride.map_detail_url} />
       {/* Beneath the panel rather than in its corner — PD-236. The tile carries
           no burned-in credit any more (`ATTRIBUTION_MODE`), so this is what
@@ -341,28 +460,6 @@ function RidePlan({
       {!!ride.map_detail_url && <MapAttribution />}
 
       {blurb && <ExpandableText className="px-6">{blurb}</ExpandableText>}
-
-      {/* The count this rail draws is the one that was removed from this screen
-          once already, for counting `maybe` RSVPs under a "going" label and
-          disagreeing with the roster one tap away. It is allowed back only
-          because `RideCrewRail` reads `queryKeys.rides.crew(id)` — the crew
-          page's own key, through the crew page's own function — and counts the
-          array that page renders under `Going`. See that component.
-
-          **It stays, and the timeline below does not replace it** (PD-393).
-          The rail answers *who is coming*, in the ride's own roster order, at a
-          glance; the stream answers *what has happened*, newest first. The club
-          detail keeps its member rail above its timeline for exactly this
-          reason. */}
-      <section className="flex flex-col gap-2">
-        <SectionHeader title={ride.is_upcoming ? 'Riding' : 'Rode'} className="py-0" />
-        <RideCrewRail
-          rideId={ride.id}
-          organizerId={ride.organizer_id}
-          organizer={ride.organizer}
-          isUpcoming={ride.is_upcoming}
-        />
-      </section>
 
       {/* PD-254's whole point, and it stays above the timeline rather than
           below it: a rider could not find the chat, and burying the labelled
@@ -384,7 +481,7 @@ function RidePlan({
           organizer_id: ride.organizer_id,
           organizer: ride.organizer,
         }}
-        canAdd={isCrew}
+        canAdd={canAdd}
       />
     </div>
   )
