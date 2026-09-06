@@ -273,8 +273,8 @@ the dispute PD-390 was filed over:
 
 | Account | Screens | Checks |
 |---|---|---|
-| Minted (no `WALK_EMAIL`) — CI's path | **26** | **74** |
-| Named (`walk-fixture@letsride.dev`) | **26** | **77** |
+| Minted (no `WALK_EMAIL`) — CI's path | **26** | **75** |
+| Named (`walk-fixture@letsride.dev`) | **26** | **78** |
 
 **Neither number in the old argument was right**, which is why no amount of reading could settle it.
 The named account measures 3 higher for one reason: `checkEditRetention` runs against a ride the
@@ -341,7 +341,7 @@ seven cases.
 ```bash
 NODE_USE_ENV_PROXY=1 RELAY_UPSTREAM=https://fpmrimzxadewsaiwpsel.supabase.co node scripts/supabase-relay.mjs &
 NEXT_PUBLIC_SUPABASE_URL=http://localhost:3001 NODE_USE_ENV_PROXY=1 npm run dev
-npm run walk                                     # 26/26 screens, 74/74 checks
+npm run walk                                     # 26/26 screens, 75/75 checks
 npx vitest run src/lib/__tests__/share.test.ts   # 7/7
 ```
 

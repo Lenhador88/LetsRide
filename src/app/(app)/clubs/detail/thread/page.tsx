@@ -229,9 +229,10 @@ function ThreadBody({
 
   /**
    * Retire optimistic rows the server has confirmed — `034`'s ride-chat pruning,
-   * inherited by the ride's threads and kept here for its own reason: rendering already hides them by id, but the
-   * array would grow for the life of the screen and the hiding is only as
-   * durable as the page-size window it checks against.
+   * inherited by the ride's threads and kept here for its own reason:
+   * rendering already hides them by id, but the array would grow for the life
+   * of the screen and the hiding is only as durable as the page-size window it
+   * checks against.
    */
   const serverIdsKey = messages.data?.map((message) => message.id).join(',')
   useEffect(() => {

@@ -80,7 +80,7 @@ export function ChatThread({
    * A club thread passes it because `081` makes deletion the *stated*
    * remedy for a message a rider regrets, through `delete_own_club_message`;
    * a ride thread passes it through `108`'s `delete_own_ride_thread_message`.
-   * **The composition is ours**: `Ride - Chat - Options` (`2226:5205`) draws a
+   * **The composition is ours**: `Ride - Chat - Options` (`2370:7346`) draws a
    * context menu over a chat, but its rows are `Pin chat` and `Mute chat` —
    * a conversation menu, neither row of which this app has — so the sheet
    * primitive is reused and its contents are not measured.
@@ -133,8 +133,8 @@ export function ChatThread({
               erasure lays out through a box that does not exist and every
               measured number below is unchanged by this row existing at all.
               No caller takes that branch today — see `onDeleteMessage`.
-               With a control it becomes the flex row that puts
-              the kebab BESIDE the balloon: the frame's balloon is a text block
+              With a control it becomes the flex row that puts the kebab
+              BESIDE the balloon: the frame's balloon is a text block
               with a time, and a control dropped inside it would move all of
               them. Own, settled messages only — there is nothing to erase
               before the database has the row, and somebody else's words are

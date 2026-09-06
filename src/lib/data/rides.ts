@@ -683,8 +683,8 @@ export async function getRideForEdit(id: string): Promise<RideForEdit | null> {
  * `getRide` returns null for a ride this viewer may not see, so the caller has
  * already cleared the first half. Membership alone is the trap that header
  * names — a `ride_members` row outlives a club membership, so an ex-member's
- * row would otherwise reopen a private club ride's threads. Never call this without that
- * check in front of it.
+ * row would otherwise reopen a private club ride's threads. Never call this
+ * without that check in front of it.
  *
  * **A UX affordance, never the enforcement.** A rider who defeats it reaches a
  * thread whose every query returns nothing and whose every send is refused.

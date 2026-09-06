@@ -154,6 +154,23 @@ rather than a pass, so comparing a named run's total against a minted baseline m
 that is not there, and the reverse hides one that is. The walk names every route it skipped in
 parentheses; read those before the totals.
 
+**Repeated NAMED runs shrink the SCREEN count, and it is the app's own rate limit rather than a
+regression.** Measured 2026-09-06: six runs in about forty-five minutes put `walk-fixture` at **23**
+place lookups in the trailing hour against `069`'s per-rider ceiling of **20**, and the screens that
+resolve a location — `/rides`, `/rides/explore`, `/clubs`, `/clubs/explore`, `/rides/detail` —
+then log a console `429` and are counted unclean. **The give-away is that every one still returns
+200 and still renders**; only the sub-resource fetch fails. The CHECK total is unaffected (78/78
+throughout), because no check reads a map tile. Confirm rather than assume:
+
+```sql
+select count(*) filter (where attempted_at > now() - interval '1 hour')  as last_hour,
+       count(*) filter (where attempted_at > now() - interval '24 hours') as last_24h
+  from public.place_search_attempts;          -- ceilings: 20/hour, 60/day per rider
+```
+
+**A MINTED run is not affected** — the ceiling is per `auth.uid()` and that rider is new every time,
+which is also why CI's path never meets this. Wait the hour out, or walk minted.
+
 **The invite phases HAVE now been run — 2026-09-06, both accounts, all 20 assertions green.**
 `/rides/join` and `/clubs/join` each report their 10 (6
 signed out, 4 signed in), and both dead-token cases land as *"a dead link is a dead link, not a

@@ -3384,10 +3384,16 @@ async function checkJoinClub() {
       // ARMED BEFORE THE CLICK, like `membershipWrite` above. This is the only
       // moment the introduction's thread id is knowable — PD-411; see
       // `watchForRpcId` for why the UI cannot identify the row afterwards.
-      // Its budget is the sheet's own, not the 45s the membership watcher
-      // needs: `Post`'s two writes are sequential and this is the second, so
-      // by the time it is in flight the slow half has already happened.
-      introductionThread = watchForRpcId('introduce_to_club', 20_000)
+      //
+      // **The SAME 45s the membership watcher gets, and for the same reason.**
+      // `Post` is two sequential writes and this is the second, but the clock
+      // starts HERE — before the click — so this budget spans BOTH of them.
+      // Giving it the default 20s would make a slow-but-successful membership
+      // write eat the whole budget, and the failure is doubly wrong: the id is
+      // never captured, so the thread is not deleted AND the check reports
+      // residue as a hard FAIL. A gate that reddens on latency is the defect
+      // PD-410 exists to remove, arriving from the far side.
+      introductionThread = watchForRpcId('introduce_to_club', 45_000)
 
       await page.$$eval(`${sheet} button`, (buttons) =>
         buttons.find((b) => b.textContent?.trim() === 'Post')?.click()
@@ -3423,6 +3429,82 @@ async function checkJoinClub() {
       `no club_members write observed within 45s (${introducing ? 'sheet' : 'direct'} path)`
     )
 
+    // ** BEFORE ANY LEAVE, ON EVERY PATH — that ordering is the whole point of
+    // this step (PD-411), and it is why the block sits ABOVE the bail-out
+    // rather than below it. ** `club_threads` DELETE is
+    // `EXISTS(clubs) AND is_club_member(club_id) AND author_id = auth.uid()`
+    // — membership-gated on the DELETE itself, not merely on the SELECT — so
+    // the moment this rider leaves the club the thread they wrote becomes
+    // undeletable BY THEM, for ever. The `!joined` bail-out below leaves the
+    // club, and a missed membership write is NOT proof of a missed join (its
+    // own comment says so), so a cleanup placed after it would strand the
+    // introduction on exactly the path where the residue is permanent — on the
+    // `WALK_EMAIL` account, which is deliberately never deleted.
+    //
+    // **Why it is asserted rather than a silent tidy-up.** It is both: the
+    // residue this removes is the reason it exists, and the delete it drives
+    // is a real rider action — an author erasing their own thread — that no
+    // other gate exercises. PD-381 was a defect on exactly this path, and a
+    // best-effort version of this step would have stayed green through it.
+    //
+    // **ONE check, reported on BOTH branches, and the label never names which
+    // ran** — the same rule as the membership label above, for the same
+    // reason. A check that only appears on the sheet branch makes a perfectly
+    // good direct-join run print a SHRUNKEN total, and `CLAUDE.md` §Testing
+    // says to read that as a skip rather than a pass. On the direct-join
+    // branch nothing was posted, so "left nothing behind" is true without a
+    // delete — vacuous, and honest: the phase's residue is what is asserted,
+    // not the route it took to have none. Reported ABOVE the bail-out for the
+    // same reason: returning without it shrinks the total.
+    //
+    // **The branch is announced on its own uncounted line**, because `report`
+    // prints its detail only on failure, so a passing run would otherwise be
+    // byte-identical either way and nothing would say whether the delete was
+    // exercised at all. Parenthesised, never in `ok` format — two uncounted
+    // lines already imitate a passing check and a third would be worse.
+    const introThreadId = introductionThread ? await introductionThread : null
+    let introCleanedUp = !introducing
+    let introFailure = 'introduce_to_club did not return a uuid within 45s'
+
+    if (introThreadId) {
+      await page.goto(`${BASE}/clubs/detail/thread?id=${introThreadId}`, {
+        waitUntil: 'networkidle',
+      })
+
+      // Both the menu row and the confirmation button read `Delete thread`, in
+      // two different `ContextMenu`s — so every selector here is scoped to its
+      // own dialog by `aria-label`. An unscoped `text=Delete thread` matches
+      // whichever is mounted and silently picks the wrong one as the sheets
+      // swap.
+      const optionsSheet = '[role="dialog"][aria-label="Thread options"]'
+      const confirmSheet = '[role="dialog"][aria-label="Delete this thread"]'
+
+      await page.click('button[aria-label="Thread options"]', { timeout: 20_000 })
+      await page.waitForSelector(optionsSheet, { timeout: 10_000 }).catch(() => {})
+      await page.$$eval(`${optionsSheet} button`, (buttons) =>
+        buttons.find((b) => b.textContent?.trim() === 'Delete thread')?.click()
+      )
+
+      await page.waitForSelector(confirmSheet, { timeout: 10_000 }).catch(() => {})
+      introCleanedUp = await waitForTableWrite('club_threads', () =>
+        page.$$eval(`${confirmSheet} button`, (buttons) =>
+          buttons.find((b) => b.textContent?.trim() === 'Delete thread')?.click()
+        )
+      )
+      introFailure = 'no club_threads delete observed within 20s'
+    }
+
+    console.log(
+      `  (join took the ${introducing ? 'sheet' : 'direct'} path — introduction ${
+        introThreadId ? 'posted and deleted again' : 'not posted, nothing to clean up'
+      })`
+    )
+    report(
+      introCleanedUp,
+      'the phase leaves no introduction thread behind',
+      `${introFailure} (${introducing ? 'sheet' : 'direct'} path)`
+    )
+
     if (!joined) {
       // **Leave anyway before returning, because the state being bailed out of
       // is exactly the state that needs cleaning up.** A missed write is not
@@ -3451,69 +3533,6 @@ async function checkJoinClub() {
       .waitForSelector('[role="dialog"][aria-label="Introduce yourself to the club"]', { timeout: 3_000 })
       .then(() => page.click('text=Not now'))
       .catch(() => {})
-
-    // ** BEFORE THE LEAVE, NEVER AFTER, and that ordering is the whole point
-    // of this step (PD-411). ** `club_threads` SELECT is membership-gated
-    // (`081`), so the moment this rider leaves the club they can neither see
-    // nor delete the thread they wrote — a cleanup bolted on after the leave
-    // below would silently delete nothing and report success.
-    //
-    // **Why it is asserted rather than a silent tidy-up.** It is both: the
-    // residue this removes is the reason it exists, and the delete it drives
-    // is a real rider action — an author erasing their own thread — that no
-    // other gate exercises. PD-381 was a defect on exactly this path, and a
-    // best-effort version of this step would have stayed green through it.
-    //
-    // **ONE check, reported on BOTH branches, and the label never names which
-    // ran** — the same rule as the membership label above, for the same
-    // reason. A check that only appears on the sheet branch makes a perfectly
-    // good direct-join run print a SHRUNKEN total, and `CLAUDE.md` §Testing
-    // says to read that as a skip rather than a pass. On the direct-join
-    // branch nothing was posted, so "left nothing behind" is true without a
-    // delete — vacuous, and honest: the phase's residue is what is asserted,
-    // not the route it took to have none.
-    const introThreadId = introductionThread ? await introductionThread : null
-    let introCleanedUp = !introducing
-    let introFailure = 'introduce_to_club did not return a uuid within 20s'
-
-    if (introThreadId) {
-      await page.goto(`${BASE}/clubs/detail/thread?id=${introThreadId}`, {
-        waitUntil: 'networkidle',
-      })
-
-      // Both the menu row and the confirmation button read `Delete thread`, in
-      // two different `ContextMenu`s — so every selector here is scoped to its
-      // own dialog by `aria-label`. An unscoped `text=Delete thread` matches
-      // whichever is mounted and silently picks the wrong one as the sheets
-      // swap.
-      const optionsSheet = '[role="dialog"][aria-label="Thread options"]'
-      const confirmSheet = '[role="dialog"][aria-label="Delete this thread"]'
-
-      await page.click('button[aria-label="Thread options"]', { timeout: 20_000 })
-      await page.waitForSelector(optionsSheet, { timeout: 10_000 }).catch(() => {})
-      await page.$$eval(`${optionsSheet} button`, (buttons) =>
-        buttons.find((b) => b.textContent?.trim() === 'Delete thread')?.click()
-      )
-
-      await page.waitForSelector(confirmSheet, { timeout: 10_000 }).catch(() => {})
-      introCleanedUp = await waitForTableWrite('club_threads', () =>
-        page.$$eval(`${confirmSheet} button`, (buttons) =>
-          buttons.find((b) => b.textContent?.trim() === 'Delete thread')?.click()
-        )
-      )
-      introFailure = 'no club_threads delete observed within 20s'
-
-      // `deleteClubThread` redirects to the thread LIST on success, so the
-      // club detail — where `Club options` lives — has to be re-opened before
-      // the leave step below.
-      await page.goto(`${BASE}/clubs/detail?id=${clubId}`, { waitUntil: 'networkidle' })
-    }
-
-    report(
-      introCleanedUp,
-      'the phase leaves no introduction thread behind',
-      `${introFailure} (${introducing ? 'sheet' : 'direct'} path)`
-    )
 
     await page.click('button[aria-label="Club options"]', { timeout: 20_000 })
     await page
