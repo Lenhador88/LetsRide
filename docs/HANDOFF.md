@@ -203,15 +203,31 @@ so the grep finds nothing on a healthy build *and* on this one. The file says to
 **unknown, not dead** — the 23:44Z alarm did; every prose entry after it hardened `unknown` into
 `never pushed`, which is the one claim the file forbids.
 
-**An open PR is the signal that separates the two, and no step reads it.** Ageing a branch cannot
-tell "still building" from "finished and stranded"; a PR that closes the issue answers both.
-**This merge does not fix that** — it touches no `.claude/` file. PD-406 carries both halves:
-the PR probe STEP 6 needs, and the drift check nobody runs.
+**An open PR is the signal that separates the two, and STEP 6 now asks for it FIRST** — before it
+ages any branch, and a hit ends the ageing. The final message then reads
+`PR #<n> open, unmerged — merge it` with the link, which the owner can act on in one step, instead
+of `unknown`, which they have to re-derive.
 
-```bash
-# what a stall check should ask, before it ages anything
-mcp__github__search_pull_requests  query="repo:Lenhador88/LetsRide is:pr is:open PD-98 in:body"
+**Three details in that block are load-bearing and each was a review finding**, so do not
+"simplify" them back:
+
 ```
+mcp__github__list_pull_requests  owner=Lenhador88 repo=LetsRide state=open base=development
+```
+
+- **`list_pull_requests`, not `search_pull_requests`.** The second is not on
+  `.claude/settings.json`'s allowlist, and an unlisted tool on an unattended firing is a permission
+  prompt nobody answers — the stall this change exists to end, made hourly.
+- **The match is `Closes PD-<n>` in the body or `(PD-<n>)` in the title, never a bare mention.**
+  A PR body names the issues it filed and folded in, so #396 carried PD-398 in its own `## Filed`
+  section; matching that would report the wrong issue and, since a hit stops the ageing, silence
+  the other slot's real stall.
+- **Absent tool → say so and fall through to the branch tip.** STEP 0 does not probe this read, and
+  `mcp__github__*` is the one connector family with no second spelling to try.
+
+**The no-hit path is unchanged and its last line is the one that failed.** `unknown` still means
+unknown; STEP 6 now says so twice, because every hardening of that word on 2026-09-06 was false and
+one became a High-priority issue offering to revert a live migration.
 
 ## The removal bar is proposed, not built — 2026-09-06
 
@@ -325,8 +341,14 @@ file` — exactly this case, by name, in one line. But it needs `DEV_DATABASE_UR
 `PROD_DATABASE_URL`, **which no session holds**, and it is not in `ci.yml`
 ([`docs/reference/migrations.md`](reference/migrations.md) §What reads as drift, and why none of it
 is says the same of `074`). So the drift ran unseen for six firings past a gate that was written
-for it. What a session CAN reach is `list_migrations`, and nothing tells it to compare that against
-`ls supabase/migrations/` before it picks a number.
+for it. **What a session CAN reach is `list_migrations`**, so that is now the check that is
+written down: `queue-pickup.md` STEP 4 compares the chain both ways before a build picks a number,
+and `CLAUDE.md`'s drift paragraph names the applied-with-no-file direction rather than only the
+unapplied one. **A `db:drift` CI job is still the better gate and it is the owner's** — it needs
+`DEV_DATABASE_URL` and `PROD_DATABASE_URL` as Actions secrets, and **neither exists**:
+`grep -rn "DATABASE_URL" .github/workflows/` returns nothing. That is an addition rather than the
+repoint of §Owner setup item 5, which is about the `NEXT_PUBLIC_SUPABASE_*` pair naming PROD — a
+different fact, and not an obstacle to adding these two.
 
 ```bash
 git ls-files supabase/migrations/*.sql | tail -1   # 107_a_club_may_outlive_its_last_member.sql

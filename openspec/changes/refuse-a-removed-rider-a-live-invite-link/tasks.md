@@ -10,10 +10,14 @@ confirm the territory is free before starting group 1.
 
 ## 0. Before a line is written
 
-- [ ] 0.1 Settle **PD-406** — DEV records an applied `a_club_may_outlive_its_last_member`
-      (`20260905203011`) with no file in the repo. Resolving it is the owner's, and the migration
-      number for this change cannot be picked until it is. Do not invent a number to unblock
-      yourself.
+- [x] 0.1 **Settled 2026-09-06 — this is no longer a blocker, and it names no number.** PD-406 was
+      filed on a false premise: `a_club_may_outlive_its_last_member` (`20260905203011`) DID have a
+      file, sitting in an unmerged PR nobody searched for. It merged as
+      `supabase/migrations/107_a_club_may_outlive_its_last_member.sql`, so the chain and the
+      database agree again and there is nothing to settle. **0.2 is still where the number comes
+      from** — it moves, because the queue runs two slots and `queue-run.md` groups on *both
+      adding a migration*, so a number written here would be stale before it was read. PD-406 now
+      carries the two checks that missed this, not a decision.
 - [ ] 0.2 Re-derive the next number from the repo and both projects together:
       `ls supabase/migrations/*.sql | tail -3` against `list_migrations` on DEV
       (`fpmrimzxadewsaiwpsel`) and PROD (`zwprydcyryvudhurbnye`).

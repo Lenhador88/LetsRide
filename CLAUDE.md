@@ -1160,9 +1160,19 @@ is biography. The comment trap (§Technology Decisions) and the team-scoped lock
 necessity gate enforces this, and carries a line budget so prose growth is measured rather than
 argued about.
 
-**Unapplied migrations are drift.** Apply them before adding another; a queue of unapplied
-migrations fails in the order nobody tested. Check rather than trust —
-`mcp__Supabase__list_migrations` against the hosted project, against `ls supabase/migrations/`.
+**Migration drift runs in two directions and only one of them has a name.** *Unapplied* is the
+familiar half: apply them before adding another, because a queue of unapplied migrations fails in
+the order nobody tested. **The reverse half — applied to a project with no file behind it — is the
+one that cost six queue firings on 2026-09-06**, and it is worse: it cannot be fixed by applying
+anything, the RLS suite runs the repo's chain so a green suite says nothing about that project, and
+the next author takes the free number and the two projects disagree about what it means for ever.
+**`npm run db:drift` reports it in one line and nothing runs it** — two connection strings no
+session holds, and not in `ci.yml`. So check rather than trust, with what a session does hold, in
+BOTH directions and before you pick a number:
+
+```
+mcp__Supabase__list_migrations <ref>          # against `ls supabase/migrations/`, both ways
+```
 
 ## Product Scope (from Figma)
 
