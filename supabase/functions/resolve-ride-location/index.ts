@@ -3,12 +3,13 @@
  * map tiles, and stores them against the ride.
  *
  * ===========================================================================
- * DEPLOYED, AND THE DEPLOYED BUILD IS BEHIND THIS FILE. Read the state.
+ * THE DEPLOYED BUILD IS CURRENT. Re-measure before trusting that.
  * ===========================================================================
- * Measured 2026-08-19 — `ACTIVE` on both projects, `verify_jwt` true, v1,
- * `ezbr_sha256` `d5932de9…` on each. Re-take it rather than trusting the line;
- * the deploy moves without this file moving, and so does this file without the
- * deploy moving:
+ * Measured 2026-09-07 (PD-385) — `ACTIVE` on both projects, `verify_jwt` true,
+ * v7 on DEV and v6 on PROD, `ezbr_sha256` `3a88a35e…` on each. Equality across
+ * the two says they AGREE; it does not say either is current. Currency is the
+ * deploy's `updated_at` against this directory's last commit, and both numbers
+ * move without the other:
  *
  *   mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
  *   mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
@@ -17,26 +18,34 @@
  *     supabase/functions/resolve-ride-location/
  *   # newer than the deploy's updated_at means the deployed build is stale
  *
- * **It IS stale right now, behaviourally rather than in comments.** PD-114's
- * picked-ride branch is merged in this file and deployed nowhere: a ride
- * carrying `start_place_id` should skip the geocode and render from the stored
- * coordinate, and the deployed build geocodes unconditionally instead. `PD-267`
- * is the owner action that closes it, and it must land together with removing
- * the `if (!location)` guard in `src/lib/actions/rides.ts` — deploying one half
- * alone leaves picked rides with no map at all, silently. Deploying is an OWNER
+ * Today that reads `2026-08-27T15:36Z` (`b343d6d`) against a deploy of
+ * `2026-09-06T22:19Z` — the deploy is the newer of the two, so PD-114's
+ * picked-ride branch and PD-236's lowercase-hex `MARKER_STYLE` are both live.
+ * **This block asserted the opposite until 2026-09-07 and was ten days out of
+ * date when PD-385 measured it.**
+ *
+ * **What ten days of staleness cost, because it is the argument for re-taking
+ * the reading rather than trusting this line.** `b343d6d` fixed
+ * `MARKER_STYLE` to lowercase hex on 2026-08-27; uppercase hex is a hard 400
+ * at the tile vendor, and step 7's both-or-neither rule turns that into
+ * `nothing_to_write`. Until the 09-06 catch-up deploy every render on DEV
+ * failed silently — 5 rides left carrying a coordinate and no tile, with no
+ * error, no red gate and, until PD-385, no route back. Deploying is an OWNER
  * action: no `supabase` CLI in the build container, and `deploy_edge_function`
  * is on `.claude/settings.json`'s deny list. Same blocker as `delete-account`
  * and PD-86.
  *
  * **`*.geoapify.com` is still egress-blocked from the build container**, so no
  * session can issue a request from here — `WebFetch` returns `EGRESS_BLOCKED`
- * and so does a bare `curl` through the agent proxy. What has changed is that
- * the DEPLOYED function has now called the vendor: DEV's
- * `ride_map_render_attempts` holds 2 rows (2026-08-17), PROD's holds none. One
- * of `gates.ts`'s three assumed constants is measured off that traffic —
- * `scaleFactor` is real (`PD-236`) — and the map `style` value and the
- * `result_type` vocabulary are still assumptions. **Do not read "the tests
- * pass" as "the vendor agrees."**
+ * and so does a bare `curl` through the agent proxy. The DEPLOYED function can,
+ * and that is the only route a session has to the vendor: PD-385 exercised it
+ * by creating a ride on DEV as a walk fixture and invoking this function with
+ * that rider's own JWT, which is repeatable and needs no secret. Both branches
+ * answered `{"rendered":true}` and filled both path columns — a typed
+ * meeting point (geocoded, coordinate and `Europe/Amsterdam` written back) and
+ * a picked one (rendered from the stored coordinate). `scaleFactor` is measured
+ * (`PD-236`); the `result_type` vocabulary is still an assumption. **Do not
+ * read "the tests pass" as "the vendor agrees."**
  *
  * Task 8.4 is still open on the parts a ledger row cannot answer: that an edit
  * clears then replaces the tiles, that a non-organizer's call is refused, and
@@ -405,7 +414,16 @@ Deno.serve(async (req: Request) => {
     //
     // The cost is accepted and stated: one flaky render now costs both tiles
     // rather than one, and the ride keeps its coordinate and draws the fallback
-    // until its next address edit.
+    // until it is asked for again.
+    //
+    // **"Until its next ADDRESS edit" is what that used to say, and it was the
+    // whole of PD-385's damage.** `updateRide` re-requested a render only when
+    // the location moved, so a ride whose tiles failed had no route back short
+    // of editing the meeting point into something genuinely different —
+    // re-saving the same address did nothing. It now re-requests on ANY save of
+    // a ride carrying a coordinate with a tile missing, which is exactly this
+    // end state. If that branch is ever narrowed back, this sentence becomes
+    // true again and every vendor blip is permanent.
     const bothRendered = !!cardTile && !!detailTile
 
     const [storedCardPath, storedDetailPath] = bothRendered

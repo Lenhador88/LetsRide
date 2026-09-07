@@ -465,7 +465,7 @@ export async function updateRide(
   const { data: previous } = await supabase
     .from('rides')
     .select(
-      'meeting_point, start_place_id, map_card_path, map_detail_path, timezone, is_public, club_id'
+      'meeting_point, start_place_id, map_card_path, map_detail_path, latitude, timezone, is_public, club_id'
     )
     .eq('id', rideId)
     .maybeSingle()
@@ -531,6 +531,50 @@ export async function updateRide(
   // re-render short of an edit that happens to change the text.
   const pickChanged =
     !!previous && location !== null && location.start_place_id !== previous.start_place_id
+
+  // **A render that already FAILED, on a ride nobody is relocating** — PD-385.
+  //
+  // `requestRideMapRender` fires exactly twice: once at create, and once per
+  // location change below. So a ride whose render failed has **no route back**
+  // short of editing the address into something genuinely different — re-saving
+  // the same address does nothing, because `addressChanged` compares the
+  // strings. `resolve-ride-location`'s step 7 says it in its own words: the ride
+  // "keeps its coordinate and draws the fallback until its next address edit".
+  //
+  // Measured on DEV 2026-09-07: 9 rides carry a coordinate and no tile, 5 of
+  // them from the ten days `resolve-ride-location` was deployed with an
+  // uppercase-hex marker the vendor answers 400 to. Not one of them could
+  // recover on its own, and the same outage on PROD would have been permanent.
+  //
+  // **A COORDINATE with a tile missing is exactly "the render failed", never
+  // "we correctly declined to draw".** Every declining branch — blank meeting
+  // point, `geocode_unavailable`, the granularity gate — returns `noTile`
+  // *before* the coordinate is written, so a vague meeting point keeps a NULL
+  // coordinate and is not retried here. That is what keeps this from spending a
+  // geocode on every save of a ride the gates have already judged.
+  //
+  // **EITHER path, not both — `051`'s constraint permits the half state and
+  // says so.** `rides_map_paths_need_a_coordinate` deliberately "permits one
+  // path present and the other NULL"; the both-or-neither rule arrived later
+  // and lives only in the function (PD-202). So a row predating it can carry a
+  // card tile and no detail tile, which is the licence problem PD-202 exists to
+  // prevent — vendor imagery on every `RideCard` with the mandatory credit
+  // rendering nowhere. Testing `map_card_path` alone would leave exactly that
+  // row unrepaired for ever.
+  //
+  // The spend it admits is one render pair per save of an affected ride,
+  // bounded by `052`'s ledger at ten attempts per ride per rolling 24 hours,
+  // and only for a rider who pressed Save on a ride whose map is missing.
+  // **`typeof … === 'number'`, not `!== null`, and that is the fail-closed
+  // direction.** If `latitude` ever falls off the select above it reads
+  // `undefined`, which is `!== null` — so the loose test would make
+  // `tilesIncomplete` true for every ride and turn every single save into a
+  // render pair, silently and at the vendor's meter. Requiring the number means
+  // a dropped column stops the repair instead of universalising it.
+  const tilesIncomplete =
+    !!previous &&
+    typeof previous.latitude === 'number' &&
+    (previous.map_card_path === null || previous.map_detail_path === null)
 
   // Omitted, not NULLed, when there is nothing to say. An omitted column keeps
   // its value; a NULL erases it, and only one of those is what "the rider did
@@ -681,7 +725,13 @@ export async function updateRide(
   // paths, so gating the re-render on the text alone left the ride with no map
   // and no route back to one short of editing the address into something
   // different.
-  if (addressChanged || pickCleared || pickChanged) {
+  // `tilesIncomplete` joins the three location triggers rather than getting its
+  // own arm, because the work is identical: sweep whatever objects the row still
+  // names — `removeRideMapTiles` takes nulls, and in the repair case there is
+  // usually nothing to sweep — then ask for a fresh pair. The one difference is
+  // invisible from here: `clear_ride_map_tiles` has not fired on this path, so
+  // the coordinate the render draws from is the one already stored.
+  if (addressChanged || pickCleared || pickChanged || tilesIncomplete) {
     await removeRideMapTiles(supabase, [previous!.map_card_path, previous!.map_detail_path])
     // Unconditional, for `createRide`'s reason and with the same warning
     // against reintroducing a pick guard. See the note there.
