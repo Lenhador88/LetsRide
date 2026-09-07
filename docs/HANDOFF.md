@@ -256,7 +256,7 @@ reserves 64px for an action `STICKY_ACTIONS` does not hold *at all*, so its fix 
 where this was a **swap**, in a file the diff never opened.
 
 ```bash
-# 10 hits across 6 files, every one a live pointer to the new name.
+# 10 hits across 5 files — of which 7 are live pointers and 3 are still comment text.
 git grep -n "bottom-floating-action\|ClubCreateAction" -- src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'
 
 # 2 files, and BOTH are obituaries rather than pointers: ClubCreateAction.tsx says what it was,
@@ -265,6 +265,15 @@ git grep -c "ClubCreateBar" -- src/
 
 npx vitest run src/components/ui/__tests__/FloatingAction.test.tsx   # 6/6
 ```
+
+**That first line is the comment trap's own limit, measured here rather than argued.** The
+`grep -vE` idiom this repo uses everywhere strips a comment line that *starts* with `*`, `//` or
+`/*` — and a comment **continuation** starts with whatever word it happens to start with. Three of
+those ten begin with a backtick or a word (`clubs/detail/page.tsx:422` and `:445`,
+`globals.css:252`), so the filter passes them through as if they were code. The count is still
+useful; *"every one a live pointer"* was not, and an earlier revision of this block said exactly
+that. **Read the lines, do not just count them** — and when a filtered count is the claim, check it
+against the unfiltered one, which is 10 files here.
 
 ## The Geoapify credit is gone, and the cold load announces once — 2026-09-06
 

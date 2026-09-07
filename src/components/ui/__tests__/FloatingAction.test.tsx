@@ -29,21 +29,46 @@ import { FloatingAction } from '@/components/ui/FloatingAction'
  * explaining why this control no longer uses it, and an unstripped grep would
  * match its obituaries.
  *
- * **Every numeric assertion here matches its term WITH ITS SIGN, and that is a
- * correction rather than a flourish.** The first version used `toContain`,
- * which is a substring test: `'1px'` is satisfied by `- 1px`, `11px` and
- * `0.1px`, so flipping the offset to `- 1px` — putting the control 2px INSIDE
- * the nav, worse than the defect this fixes — passed green. Dropping the term
- * is the one mutation a substring test does catch, which is exactly what made
- * it look sufficient. The second version used an alternation, and
- * `/1px\s*\+/` matched the `1px +` sitting inside `-1px + …`, so it passed the
- * very mutation it was written for. A lookbehind is what actually holds.
+ * **The sign is asserted as a PROPERTY OF THE DECLARATION, not as a pattern
+ * around the term — after three attempts at the latter each passed the
+ * mutation it was written for.** Worth keeping in full, because the third one
+ * looked airtight:
  *
- * Measured against `globals.css`, each 1 failed / 5 passed and disjoint:
- * offset `+ 1px` → `- 1px`; offset term dropped; clearance `1px` → `-1px`;
- * clearance term dropped; clearance restated as a literal; the control's
- * `h-14` → `h-16` with the clearance left alone; the clearance's `3.5rem` →
- * `4rem` with the control left alone.
+ * 1. `toContain('1px')` — a substring test, satisfied by `- 1px`, `11px`,
+ *    `0.1px`. Flipping the offset to `- 1px` puts the control 2px INSIDE the
+ *    nav, worse than the defect this fixes, and passed green.
+ * 2. `/\+\s*1px\b|1px\s*\+/` — the second alternative matches the `1px +`
+ *    sitting *inside* `-1px + …`, so it passed the exact mutation it replaced 1
+ *    to catch.
+ * 3. `/(?<![-\d.])1px\b/` — a **one-character** lookbehind, so it rejects
+ *    `-1px` and accepts `- 1px` with a space, which is the spelling its own
+ *    comment named. Caught by the delta review, not by me.
+ *
+ * What holds is `not.toMatch(/-\s*[\d.]/)`: the declaration is a sum of
+ * positive lengths, so a `-` before a digit is always wrong however it is
+ * spelled, while `--safe-bottom` and friends are a `-` before a letter. It
+ * needs no cleverness about where the term sits.
+ *
+ * **The measured set — ten mutations against `globals.css` and the component,
+ * with the one that is not 1F/5P stated rather than rounded:**
+ *
+ * | Mutation | Result |
+ * |---|---|
+ * | offset `+ 1px` → `- 1px` (spaced) | 1F/5P |
+ * | offset `+ 1px` → `-1px` (tight) | 1F/5P |
+ * | offset term dropped | 1F/5P |
+ * | clearance `1px` → `- 1px` (spaced) | 1F/5P |
+ * | clearance `1px` → `-1px` (tight) | 1F/5P |
+ * | clearance term dropped | 1F/5P |
+ * | clearance restated as a literal `5.0625rem` | **2F/4P** |
+ * | control `h-14` → `h-16`, clearance untouched | 1F/5P |
+ * | clearance `3.5rem` → `4rem`, control untouched | 1F/5P |
+ * | clearance `3.5rem` → `13.5rem` | 1F/5P |
+ *
+ * **They are not disjoint and an earlier note claimed they were.** The ten land
+ * on three `it` blocks, and the literal mutation trips both the derivation
+ * assertion and the coupling one — which is correct behaviour (a literal has no
+ * `3.5rem` in it either) rather than a redundancy to remove.
  *
  * **The hit target clears the 44×44 glove floor — AND is the control height
  * `--floating-action-clearance` is derived from.** `h-14 w-14` is 56px, and
@@ -91,13 +116,21 @@ describe('FloatingAction', () => {
     expect(rule).toBeDefined()
     // The nav's own `border-t`, which `--navbar-tabs` excludes. Without it the
     // circle's lower arc sits inside the bar and `z-50` paints over it.
+    expect(rule).toMatch(/\b1px\b/)
+    // **Every term is ADDITIVE, asserted as its own property rather than by
+    // pattern-matching the one term.** Three attempts at "1px, with its sign"
+    // failed here, each passing the mutation it was written for: `toContain`
+    // took `- 1px`; `/1px\s*\+/` took the `1px +` inside `-1px + …`; and
+    // `/(?<![-\d.])1px\b/` is a ONE-CHARACTER lookbehind, so it took `- 1px`
+    // with the space — the very spelling its own comment named. All three
+    // measured, none reasoned.
     //
-    // **Matched with its SIGN.** `toContain('1px')` is a substring test and is
-    // satisfied by `- 1px`, `11px` and `0.1px` — and `- 1px` puts the control
-    // 2px inside the nav, which is worse than the defect this fixes, with the
-    // suite green. Dropping the term is the only mutation a substring test
-    // catches, which is exactly what makes it look sufficient.
-    expect(rule).toMatch(/\+\s*1px\b/)
+    // This is not a fourth pattern for the term. It says what is actually
+    // true of the whole declaration: it is a sum of positive lengths. A `-`
+    // before a digit is therefore always wrong, which `- 1px`, `-1px` and
+    // `+ 1px * -1` all are, while `--safe-bottom` and friends are a `-`
+    // before a letter and unaffected.
+    expect(rule).not.toMatch(/-\s*[\d.]/)
     expect(rule).toContain('var(--floating-action-gap)')
     expect(rule).toContain('var(--navbar-tabs)')
     expect(rule).toContain('var(--safe-bottom)')
@@ -111,14 +144,12 @@ describe('FloatingAction', () => {
     // the control actually sits — which is what left it at 80px for an offset
     // that had moved to 81.
     expect(clearance).toContain('var(--floating-action-gap)')
-    // Signed, for the reason above: reserved space is additive, so a `- 1px`
-    // here is a real edit a substring test would wave through.
-    //
-    // The lookbehind is doing the work and an alternation cannot replace it:
-    // `/1px\s*\+/` matches the `1px +` sitting INSIDE `-1px + …`, so the first
-    // attempt at this assertion passed the very mutation it was written for.
-    // Measured, not feared.
-    expect(clearance).toMatch(/(?<![-\d.])1px\b/)
+    expect(clearance).toMatch(/\b1px\b/)
+    // The same additive rule as the offset above, and it is owed here for a
+    // sharper reason: `gap - 1px + 3.5rem + 0.5rem` reserves 79px against an
+    // 81px offset, so the last content row is clipped by the control — the
+    // defect PD-423 exists to remove, arriving through the clearance instead.
+    expect(clearance).not.toMatch(/-\s*[\d.]/)
   })
 
   it('clears the 44×44 glove floor, and is the height the clearance is keyed to', () => {
@@ -132,7 +163,9 @@ describe('FloatingAction', () => {
     // 56px is written into `--floating-action-clearance` as the control's
     // height. Moving one without the other leaves a page reserving the wrong
     // amount, silently.
-    expect(globalsCss).toMatch(/--floating-action-clearance:[^;]*3\.5rem/)
+    // The left boundary is load-bearing: without it `13.5rem` and `23.5rem`
+    // satisfy the match while the control's own height has gone.
+    expect(globalsCss).toMatch(/--floating-action-clearance:[^;]*(?<![\d.])3\.5rem/)
   })
 
   it('names itself for a screen reader, since it draws an icon and no text', () => {
