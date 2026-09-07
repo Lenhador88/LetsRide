@@ -381,11 +381,16 @@ GitHub Deployment of that sha in that branch's environment to be `success`** (th
 below, mechanised — the bare `Vercel` commit status cannot tell a Production build from a Preview
 of the same sha after a promotion's fast-forward), then deploys every function; a
 `workflow_dispatch` deploys one or all to a chosen project from any sha without the wait.
-**Nothing deploys until the `SUPABASE_ACCESS_TOKEN` secret exists (PD-369)** — the job is skipped
-with a warning, not red — so until that lands an edit under `supabase/functions/` is still drift
-from the moment it merges. **It fixes future drift only**: a push deploys only when it touches a
-function, so what was stale the day it landed (`resolve-ride-location` on both projects, behind
-PD-236's marker fix) stays stale until one manual dispatch per project catches it up. No session deploys by hand: there is no `supabase` CLI in
+**The `SUPABASE_ACCESS_TOKEN` secret has existed since at least 2026-08-31, and PD-369 spent four
+days claiming otherwise** — the proof is `log-digest.yml` run 1, which failed *past* that script's
+own token check with the value masked in its env block. Nothing red, nothing checkable, four files
+repeating it. Without the secret the gate job SKIPS the deploy and the RUN IS STILL GREEN, so read
+the `deploy` **job's** conclusion (`success` vs `skipped`), never the run's. **It fixes future drift
+only**: a push deploys only when it touches a function, so anything already stale when one lands
+stays stale until a `workflow_dispatch` (`all`, per project) catches it up — which is what was
+actually owed, and why `resolve-ride-location` sat ten days behind PD-236's marker fix, rendering no
+tile for any ride created in that window. Both dispatches ran 2026-09-06: all three functions on
+both projects at `771f650`, equal `ezbr_sha256` per function across the two. No session deploys by hand: there is no `supabase` CLI in
 the build container, and the MCP server's `deploy_edge_function` stays on `.claude/settings.json`'s
 `deny` list.
 **Version numbers differ per project and always will** (they count deploys), so the `ezbr_sha256`

@@ -100,6 +100,26 @@
  * transport test, and `workflow_dispatch` exists so that run can be triggered
  * deliberately rather than waited for.
  *
+ * THAT TEST ALREADY RAN — RUN 1, 2026-08-31, AND IT REACHED THE API. Every run
+ * since (14 as of 2026-09-06, both projects, scheduled and dispatched alike)
+ * fails identically: the token is present and masked in the job's env block,
+ * the API answers **200**, and the body carries `{"error": "Backend error!
+ * Retry your query. Please contact support if this continues."}`, so
+ * `parseRows` throws and the run exits 2. Invariant across seven days and two
+ * projects is deterministic, not the retry the message invites.
+ *
+ * SO THE TRANSPORT IS HALF-VERIFIED, AND SAYING "it has never completed a live
+ * call" IS NOW WRONG IN THE DIRECTION THAT COSTS A BISECT. It completes:
+ * DNS, TLS, the proxy, the bearer token and the route all work, which removes
+ * auth and reachability from the suspect list. The SQL above is exonerated too
+ * — that exact constant, run through `query_logs` against
+ * `fpmrimzxadewsaiwpsel`, returns rows. What is refused is the query as THIS
+ * FILE poses it: the `logs.all` endpoint, the `sql` parameter carrying a
+ * multi-line query with a comment in it, and the two `iso_timestamp_*` values,
+ * one of which is a full 24h before `new Date()` against an API that caps the
+ * window at exactly 24h. PD-421 carries the three suspects. Bisect with a
+ * `workflow_dispatch` on a branch; nothing here can reach the API.
+ *
  * What the envelope sighting DID settle is `result` as the key and `error` as
  * its sibling, which is why `parseRows` reads exactly those and throws on
  * anything else.
