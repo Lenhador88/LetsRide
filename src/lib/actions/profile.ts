@@ -5,7 +5,7 @@ import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { unwrap } from '@/lib/data/unwrap'
 import { AVATAR_IMAGE_PATH_RE, COVER_IMAGE_PATH_RE, MEDIA_BUCKET } from '@/lib/media/constants'
-import { countryCodeSchema, profileEditSchema } from '@/lib/validation/profile'
+import { countryCodeSchema, locationSchema, profileEditSchema } from '@/lib/validation/profile'
 import type { ActionState } from '@/lib/actions/state'
 
 /**
@@ -31,8 +31,12 @@ export async function updateProfile(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
+  // **No `location`, since PD-425** — `setRiderTown` is that column's only
+  // writer now. Reading it back off this `FormData` would parse `null` for a
+  // form that no longer renders the field, and `optionalText`'s string gate runs
+  // before its transform, so every save would be refused; making it tolerate the
+  // absence instead would write NULL and erase the town `LocationSetting` holds.
   const parsed = profileEditSchema.safeParse({
-    location: formData.get('location'),
     bio: formData.get('bio'),
     bike_model: formData.get('bike_model'),
   })
@@ -59,20 +63,24 @@ export async function updateProfile(
 /**
  * Writes the town a rider says they ride from, or clears it — PD-419.
  *
- * ## Why this exists beside `updateProfile`, which writes the same column
+ * ## It is the column's ONLY writer, since PD-425
  *
- * `updateProfile` is the profile FORM's action: it parses three fields off a
- * `FormData` and writes all three, so calling it to set one would need the other
- * two supplied and would overwrite a bio the rider is halfway through editing in
- * another tab. This is the one-column writer the location control needs, in the
- * shape `updateAvatar`/`setAnalyticsOptOut` already use — a plain argument
- * rather than a form.
+ * `updateProfile` used to write `location` too, off the profile form's free-text
+ * box — the second door this comment used to explain how to live beside. That
+ * box is gone: it sat directly above PD-419's `LocationSetting` under the same
+ * heading, "Where you ride from", accepting any string while the control below
+ * it told the rider that string could not be placed. `profileEditSchema` no
+ * longer carries a `location` member at all, so there is no longer a second
+ * writer to stay consistent with.
  *
- * **It is the same column and the same policy**, so there is no second rule to
- * drift: `001`'s profiles UPDATE policy restricts the write to `auth.uid() = id`
- * and `018`'s CHECK bounds the text. `profileEditSchema`'s own `location`
- * member is reused rather than re-spelled, so the client-side message a rider
- * sees for an over-long town is the one the form already shows.
+ * The shape stays a plain argument rather than a `FormData`, as
+ * `updateAvatar`/`setAnalyticsOptOut` already do — writing one column through
+ * the form's action would need the other two fields supplied and would overwrite
+ * a bio the rider is halfway through editing.
+ *
+ * `001`'s profiles UPDATE policy restricts the write to `auth.uid() = id` and
+ * `018`'s CHECK bounds the text; `locationSchema` is the client-side half of
+ * that bound.
  *
  * ## Clearing is `null`, and it has to actually be possible
  *
@@ -94,21 +102,22 @@ export async function updateProfile(
  */
 export async function setRiderTown(town: string | null): Promise<ActionState> {
   // **`null` never reaches the schema, and that is not a shortcut.**
-  // `profileEditSchema.shape.location` is `optionalText(…)`, a **`ZodString`**
-  // pipeline — `z.string().trim().max(100).transform(v => v || null)`. Its
-  // string type gate runs BEFORE the transform, so `safeParse(null)` fails with
-  // the raw `"Invalid input: expected string, received null"`, which the
-  // profile setting's live region would then render at a rider who tapped
-  // `Remove`. Measured, not reasoned: the empty string parses to `null`
-  // cleanly, and `null` — the one value `LocationSetting.clear()` ever passes —
-  // is the only input that cannot get through.
+  // `locationSchema` is `optionalText(…)`, a **`ZodString`** pipeline —
+  // `z.string().trim().max(100).transform(v => v || null)`. Its string type gate
+  // runs BEFORE the transform, so `safeParse(null)` fails with the raw
+  // `"Invalid input: expected string, received null"`, which the profile
+  // setting's live region would then render at a rider who tapped `Remove`.
+  // Measured, not reasoned: the empty string parses to `null` cleanly, and
+  // `null` — the one value `LocationSetting.clear()` ever passes — is the only
+  // input that cannot get through.
   //
   // Clearing is the obligation PD-419's decision names in as many words
   // ("clearing back to none must work"), so it is a branch here rather than a
-  // schema change: widening the shared schema to accept `null` would change
-  // what the profile FORM accepts too, for a value its `FormData` cannot
-  // produce.
-  const parsed = town === null ? null : profileEditSchema.shape.location.safeParse(town)
+  // schema change. **Still a branch now that this schema has one caller**: the
+  // type gate is a property of the `ZodString` pipeline, not of who shares it,
+  // so widening it to accept `null` would trade a two-token branch for a schema
+  // that no longer says a town is a string.
+  const parsed = town === null ? null : locationSchema.safeParse(town)
   if (parsed && !parsed.success) return { error: parsed.error.issues[0].message }
 
   const supabase = await resolveSupabase()

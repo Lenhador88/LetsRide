@@ -8,6 +8,8 @@ import {
   bikeModelSchema,
   bioSchema,
   checkUsername,
+  LOCATION_MAX_LENGTH,
+  locationSchema,
   profileEditSchema,
   profileIdSchema,
   USERNAME_MAX_LENGTH,
@@ -271,37 +273,75 @@ describe('profileIdSchema', () => {
   })
 })
 
-describe('profileEditSchema', () => {
-  const valid = { location: 'Amsterdam', bio: 'Rides at dawn.', bike_model: 'Kawasaki Z900' }
+/**
+ * `profiles.location`, parsed by `setRiderTown` and by nothing else since
+ * PD-425. These assertions used to live under `profileEditSchema`, where the
+ * profile form's free-text field reached them; the field is gone and the rules
+ * are not, because `018`'s CHECK still stands behind the column and the picker
+ * still has to truncate to it.
+ */
+describe('locationSchema', () => {
+  it('turns an empty field into null, so clearing a town is not storing ""', () => {
+    // `LocationSetting.clear()` passes `null` rather than `''`, but a town
+    // reduced to nothing must land on the same SQL NULL — `getMyLocationText`
+    // reads a stored `''` as truthy-empty and renders a town nobody typed.
+    expect(locationSchema.parse('')).toBeNull()
+    expect(locationSchema.parse('   ')).toBeNull()
+  })
 
-  it('accepts the three fields the form submits', () => {
+  it('trims the value it does keep', () => {
+    expect(locationSchema.parse('  Amsterdam  ')).toBe('Amsterdam')
+  })
+
+  it('accepts the maximum length and rejects one past it — 018 is the ceiling', () => {
+    expect(locationSchema.safeParse('x'.repeat(LOCATION_MAX_LENGTH)).success).toBe(true)
+    expect(locationSchema.safeParse('x'.repeat(LOCATION_MAX_LENGTH + 1)).success).toBe(false)
+  })
+
+  it('still accepts free text that no geocoder could place', () => {
+    // The rows written through the deleted free-text field exist. This schema
+    // bounds LENGTH and has never asserted a town resolves — `LocationSetting`
+    // is what tells a rider theirs cannot be placed, and it needs the value to
+    // survive being read back. Tightening this to pick-only would make every
+    // legacy row unreadable rather than merely unplaceable.
+    expect(locationSchema.parse('asdf')).toBe('asdf')
+  })
+
+  it('rejects null, which is why setRiderTown branches instead of parsing it', () => {
+    // `optionalText` is a `ZodString` pipeline: the string type gate runs before
+    // the `'' -> null` transform, so `null` cannot reach it. This is the defect
+    // PD-419's own review found — `Remove` returned a raw Zod message — and the
+    // branch in `setRiderTown` is what stands in its place.
+    expect(locationSchema.safeParse(null).success).toBe(false)
+  })
+})
+
+describe('profileEditSchema', () => {
+  const valid = { bio: 'Rides at dawn.', bike_model: 'Kawasaki Z900' }
+
+  it('accepts the two fields the form submits', () => {
     expect(profileEditSchema.parse(valid)).toEqual(valid)
   })
 
-  it('location is optional (PD-286) — clearing it stores null rather than refusing the form', () => {
-    // Onboarding stopped requiring a location (075), so this form must not
-    // gate a rider carrying NULL on inventing one before they can save a bio.
-    expect(profileEditSchema.parse({ ...valid, location: '' })).toEqual({
-      ...valid,
-      location: null,
-    })
+  it('does not carry location — the form has no such field since PD-425', () => {
+    // The reversal this pins: re-adding a `location` member makes
+    // `updateProfile` write the column again, and the form does not render a
+    // field for it, so `formData.get('location')` is `null` and every save
+    // either fails the type gate or — if someone "fixes" that by tolerating the
+    // absence — writes NULL over the town `LocationSetting` just stored.
+    //
+    // `.parse` strips unknown keys rather than throwing, so the assertion is on
+    // the OUTPUT: a location supplied here must not survive into what the action
+    // sends to Postgres.
+    expect(profileEditSchema.parse({ ...valid, location: 'Utrecht' })).toEqual(valid)
+    expect('location' in profileEditSchema.shape).toBe(false)
   })
 
-  it('allows bio and bike to be cleared independently of location', () => {
-    expect(profileEditSchema.parse({ location: 'Utrecht', bio: '', bike_model: '' })).toEqual({
-      location: 'Utrecht',
+  it('allows bio and bike to be cleared independently', () => {
+    expect(profileEditSchema.parse({ bio: '', bike_model: '' })).toEqual({
       bio: null,
       bike_model: null,
     })
-  })
-
-  it('rejects a location over 100 characters, same ceiling as before', () => {
-    expect(
-      profileEditSchema.safeParse({ ...valid, location: 'x'.repeat(101) }).success
-    ).toBe(false)
-    expect(
-      profileEditSchema.safeParse({ ...valid, location: 'x'.repeat(100) }).success
-    ).toBe(true)
   })
 
   it('does not accept a username, so the form cannot smuggle one past the action', () => {

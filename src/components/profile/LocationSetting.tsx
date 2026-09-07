@@ -23,11 +23,18 @@ import { queryKeys } from '@/lib/query/keys'
  *
  * The 2026-09-06 decision is explicit that *no position at all* is a supported
  * state rather than a degraded one, and that **clearing back to none has to
- * work**. That is the whole reason this section exists rather than the location
- * field on `EditProfileForm` being considered sufficient: that field says what
- * the rider typed, and this says what the app is actually *using* — which are
- * different the moment a device fix outranks the town, and a rider with no way
- * to see which one is in play has no way to know what they are withdrawing.
+ * work**. That is the whole reason this section exists rather than a plain
+ * location field on `EditProfileForm` being considered sufficient: a field says
+ * what the rider typed, and this says what the app is actually *using* — which
+ * are different the moment a device fix outranks the town, and a rider with no
+ * way to see which one is in play has no way to know what they are withdrawing.
+ *
+ * **PD-425 removed that field**, so this is now the only location control on the
+ * screen and `setRiderTown` the column's only writer. The two shipped side by
+ * side under the same heading for a day: the field accepted any string, and this
+ * section then told the rider it could not be placed. What is load-bearing here
+ * is that this control **requires a pick** — `TownQuestionSheet` gates Save on
+ * one — which is the property the free-text field could not have.
  *
  * ## What it can and cannot clear, stated on screen
  *
