@@ -1,5 +1,6 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { applyAnalyticsPreference } from '@/lib/analytics/client'
+import { clearRiderLocation } from '@/lib/location/rider-location'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { unwrap } from '@/lib/data/unwrap'
@@ -52,6 +53,71 @@ export async function updateProfile(
   if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
   invalidate(queryKeys.profile.all())
+  return { error: null, sent: true }
+}
+
+/**
+ * Writes the town a rider says they ride from, or clears it — PD-419.
+ *
+ * ## Why this exists beside `updateProfile`, which writes the same column
+ *
+ * `updateProfile` is the profile FORM's action: it parses three fields off a
+ * `FormData` and writes all three, so calling it to set one would need the other
+ * two supplied and would overwrite a bio the rider is halfway through editing in
+ * another tab. This is the one-column writer the location control needs, in the
+ * shape `updateAvatar`/`setAnalyticsOptOut` already use — a plain argument
+ * rather than a form.
+ *
+ * **It is the same column and the same policy**, so there is no second rule to
+ * drift: `001`'s profiles UPDATE policy restricts the write to `auth.uid() = id`
+ * and `018`'s CHECK bounds the text. `profileEditSchema`'s own `location`
+ * member is reused rather than re-spelled, so the client-side message a rider
+ * sees for an over-long town is the one the form already shows.
+ *
+ * ## Clearing is `null`, and it has to actually be possible
+ *
+ * PD-419's decision obliges withdrawal: *"the profile setting shows none
+ * alongside device and you told us, and clearing back to none works."* So `null`
+ * is a first-class argument rather than an error, and it writes SQL NULL rather
+ * than the empty string — `localityOf` treats `018`'s permitted string of spaces
+ * as no locality, but a stored `''` would still make `getMyLocationText` answer
+ * truthy-empty and read as a town nobody typed.
+ *
+ * ## The memo is the part that is easy to miss
+ *
+ * `resolveRiderLocation()` caches its resolved chain for `GEOLOCATION_MAX_AGE_MS`
+ * inside `rider-location.ts`, and that memo is module state rather than a cache
+ * entry — so invalidating the query keys alone leaves every screen re-reading a
+ * five-minute-old answer built from the OLD town. `clearRiderLocation()` is what
+ * makes the next resolve go back to the chain. Both are needed and neither
+ * substitutes for the other.
+ */
+export async function setRiderTown(town: string | null): Promise<ActionState> {
+  const parsed = profileEditSchema.shape.location.safeParse(town)
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to set where you ride from.' }
+
+  const { data: updated, error } = await supabase
+    .from('profiles')
+    .update({ location: parsed.data ?? null })
+    .eq('id', user.id)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { error: 'Could not save where you ride from. Try again.' }
+  if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
+
+  // The module memo first, then the cache entries — see the header. Ordering is
+  // not load-bearing (both happen before this returns and no read is in flight),
+  // but doing the memo first means a refetch triggered by the invalidation
+  // cannot possibly resolve against the stale one.
+  clearRiderLocation()
+  invalidate(queryKeys.profile.all())
+  invalidate(queryKeys.riderLocation())
+
   return { error: null, sent: true }
 }
 

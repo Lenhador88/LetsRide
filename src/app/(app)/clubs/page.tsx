@@ -161,11 +161,14 @@ export default function ClubsPage() {
               />
               {/* Under the explore strip rather than beside it: the strip is
                   this screen's one destination and must keep its place. The
-                  row only draws when the rider has no position at all, which
-                  is exactly when the strip's `near …` clause has dropped out
-                  and the sort below is arbitrary. `px-0` because this slot is
+                  row draws when the rider has no position at all — exactly
+                  when the strip's `near …` clause has dropped out and the sort
+                  below is arbitrary — and, since PD-419, a quieter `refine`
+                  line when the position came from their town. No `auto` here:
+                  a tab root must not open a sheet by itself, because the reason
+                  for asking is not on screen. `px-0` because this slot is
                   already inside a padded block — see the prop's own comment. */}
-              <UseMyLocationRow position={near.data} className="px-0" />
+              <UseMyLocationRow position={near.data} town={label?.name} className="px-0" />
             </div>
 
             {yours.error ? (

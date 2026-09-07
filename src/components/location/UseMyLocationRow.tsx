@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ChevronRightIcon, LocationFilledIcon } from '@/components/icons/generated'
 import { LocationPrimingSheet } from '@/components/location/LocationPrimingSheet'
+import { TownQuestionSheet } from '@/components/location/TownQuestionSheet'
+import { hasAskedForLocation, markAskedForLocation } from '@/lib/location/ask-once'
 import { locationPrimingState } from '@/lib/location/priming'
 import {
   deviceLocationPermission,
@@ -16,7 +18,8 @@ import { cn } from '@/lib/utils'
 
 /**
  * The only control in this app that can reach the device's location permission
- * — PD-170.
+ * — PD-170 — and, since PD-419, the only one that asks a rider where they are
+ * at all.
  *
  * ## Before this existed, no rider could grant it
  *
@@ -30,6 +33,37 @@ import { cn } from '@/lib/utils'
  * no geocodable city got nothing at all, with no affordance anywhere to fix
  * it. This row is that affordance, and the sheet behind it is what makes
  * spending the device's one-shot prompt a deliberate act.
+ *
+ * ## PD-419 — the ladder, and the hole that made it necessary
+ *
+ * `075` (PD-286) removed the location step from onboarding, so
+ * `profiles.location` is NULL for every rider who has signed up since. Combined
+ * with a device permission nobody had granted, the ordinary new rider had **no
+ * position at all** — and three screens split their lists into *Nearby* and the
+ * rest against it. The machinery was built and had no input.
+ *
+ * The ladder this row now walks, in order, is: **ask the device once, and if
+ * that is declined or unavailable, ask for a town.** Both rungs end in
+ * `profiles.location` or a device fix; there is no third rung, and in
+ * particular there is no IP lookup — see `TownQuestionSheet`'s header, where
+ * that decision is recorded.
+ *
+ * ## `auto` — asked once, automatically, EVER
+ *
+ * Product owner, 2026-09-06: the app asks *"at Explore, once, automatically,
+ * ever"*. The flag lives in `ask-once.ts` and is per device rather than per
+ * session, because what is being spent is the OS permission dialog, which on
+ * iOS is one-way per install.
+ *
+ * **The automatic ask is spent on the sheet OPENING, not on the rider
+ * answering.** Marking it on the answer would re-open the sheet on every cold
+ * start until a rider tapped `Continue`, which is exactly the shape that
+ * teaches riders to dismiss permission prompts reflexively.
+ *
+ * **Only screens that pass `auto` open it by themselves**, and today that is
+ * the two Explore screens — the reason is visible on screen there, which is
+ * where grants actually come from. `/rides` and `/clubs` draw the same row and
+ * wait to be tapped.
  *
  * ## Geometry is `ExploreClubsStrip`'s, deliberately
  *
@@ -45,10 +79,8 @@ import { cn } from '@/lib/utils'
  * ## When it draws, and when it must not
  *
  * `locationPrimingState` owns that decision and states each rule with the trap
- * it avoids; the short version is that it draws only when the rider has no
- * position at all AND the device has something left to say. **`hidden` is the
- * answer while either input is still undecided**, so this never flashes onto a
- * screen and then vanishes.
+ * it avoids. **`hidden` is the answer while either input is still undecided**,
+ * so this never flashes onto a screen and then vanishes.
  *
  * ## Two things happen on a grant, and both are needed
  *
@@ -57,10 +89,22 @@ import { cn } from '@/lib/utils'
  * would read — but the screens above already hold a resolved `useQuery` entry
  * on `queryKeys.riderLocation()` and would never call it again. So the cache
  * entry is invalidated too, and the strips recompute against the device fix
- * without a navigation.
+ * without a navigation. (`setRiderTown` does the same pair for the town rung,
+ * from inside the action.)
  */
+/**
+ * How long after the screen settles the automatic sheet goes up. Long enough
+ * for both Explore screens' `motion-safe:animate-fade-in` to finish, so the
+ * rider reads the list the permission is being asked FOR before the sheet
+ * covers it; short enough that it is one interaction rather than an interruption
+ * later. See the effect that uses it for the two other jobs the delay does.
+ */
+const AUTO_ASK_DELAY_MS = 700
+
 export function UseMyLocationRow({
   position,
+  town,
+  auto,
   className,
 }: {
   /**
@@ -70,6 +114,21 @@ export function UseMyLocationRow({
    * for the second.
    */
   position: RiderLocation | null | undefined
+  /**
+   * The rider's own town, where the screen already reads it — used only by the
+   * `refine` row, to say where the distances on screen are being measured from.
+   *
+   * **Optional, and its absence is not a defect.** A screen that does not read
+   * `profiles.location` for its own purposes must not take a round trip to
+   * render one word; the row falls back to the bare offer. Pass `localityOf`'s
+   * output rather than the raw column — this renders it verbatim.
+   */
+  town?: string | null
+  /**
+   * Open the priming sheet by itself, once ever, when there is something to
+   * ask. The Explore screens pass this; the tab roots do not. See the header.
+   */
+  auto?: boolean
   /**
    * Classes for the row's own padded WRAPPER, not the button. The wrapper is
    * this component's rather than the page's for `ExploreRidesStrip`'s reason:
@@ -81,6 +140,7 @@ export function UseMyLocationRow({
 }) {
   const [permission, setPermission] = useState<DeviceLocationPermission | undefined>(undefined)
   const [open, setOpen] = useState(false)
+  const [askingTown, setAskingTown] = useState(false)
   const [pending, setPending] = useState(false)
 
   // In an effect, never during render: `deviceLocationPermission()` reads
@@ -98,6 +158,43 @@ export function UseMyLocationRow({
       cancelled = true
     }
   }, [])
+
+  const state = locationPrimingState({ permission, position })
+
+  // **The automatic ask — see the header.** Gated on the resolved state rather
+  // than on the raw inputs, so it fires for exactly the states a tap would open
+  // something for, and never in `hidden` (where both inputs may simply not have
+  // settled yet) or `refine` (a rider who HAS a position must not be
+  // interrupted; the row is there if they want better).
+  //
+  // **The sheet arrives a beat after the screen, and the beat is doing three
+  // jobs** — `PostcardDeck`'s swipe coach is the same shape for the same
+  // reasons. It reads better: both Explore screens draw their list under
+  // `motion-safe:animate-fade-in`, and a sheet thrown up during that fade
+  // covers a screen the rider has not seen yet, which is a permission prompt
+  // arriving with its reason still invisible. It keeps `setOpen` out of an
+  // effect body, which `react-hooks/set-state-in-effect` rejects for the
+  // cascading render it causes. And — the half that is a correctness property
+  // rather than a preference — `markAskedForLocation()` is called INSIDE the
+  // timer, so the flag is spent only if the sheet actually goes up. Claiming it
+  // in the effect body would spend the device's one automatic ask on a rider
+  // who tapped through Explore inside the beat, or on any of the remounts these
+  // screens do routinely, and they would then never be asked again.
+  useEffect(() => {
+    if (!auto) return
+    if (state !== 'ask' && state !== 'blocked' && state !== 'town') return
+    if (hasAskedForLocation()) return
+
+    const timer = setTimeout(() => {
+      // Spent on the sheet OPENING, not on the rider answering — the header
+      // says why that direction is the safe one.
+      markAskedForLocation()
+      if (state === 'town') setAskingTown(true)
+      else setOpen(true)
+    }, AUTO_ASK_DELAY_MS)
+
+    return () => clearTimeout(timer)
+  }, [auto, state])
 
   const onContinue = useCallback(async () => {
     setPending(true)
@@ -121,39 +218,71 @@ export function UseMyLocationRow({
 
       // Denied: leave the sheet open and let it re-render as the `blocked`
       // copy, so the explanation of what was just lost lands in the same
-      // breath as the refusal rather than on some later screen.
+      // breath as the refusal rather than on some later screen — and that copy
+      // now carries the town question, which is the second rung of the ladder.
       if (next !== 'denied') setOpen(false)
     } finally {
       setPending(false)
     }
   }, [])
 
-  const state = locationPrimingState({ permission, position })
+  // **The hand-off between the two sheets, and it is one at a time.** Both are
+  // `ContextMenu`s, which lock body scroll and portal a scrim to
+  // `document.body`; two open at once would stack two scrims and leave the
+  // lower one's cleanup to restore `overflow` after the upper one already did.
+  const askTown = useCallback(() => {
+    setOpen(false)
+    setAskingTown(true)
+  }, [])
+
   if (state === 'hidden') return null
+
+  const label =
+    state === 'ask'
+      ? 'Use my location'
+      : state === 'blocked'
+        ? 'Location is switched off'
+        : state === 'town'
+          ? 'Set where you ride from'
+          : // `refine`. The town is what makes this worth drawing at all — it
+            // answers *why do these distances look wrong* — so without one the
+            // row is the bare offer instead.
+            town
+            ? `Near ${town} · Use my location`
+            : 'Use my location'
 
   return (
     <>
       <div className={cn('px-4 pt-2', className)}>
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => (state === 'town' ? setAskingTown(true) : setOpen(true))}
           aria-haspopup="dialog"
           className="flex h-14 w-full items-center gap-3 rounded-lg bg-surface px-4 text-left transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none active:bg-background"
         >
           <LocationFilledIcon className="h-6 w-6 shrink-0 text-accent" />
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-            {state === 'ask' ? 'Use my location' : 'Location is switched off'}
+            {label}
           </span>
           <ChevronRightIcon className="h-6 w-6 shrink-0 text-muted" />
         </button>
       </div>
 
       <LocationPrimingSheet
-        open={open}
-        mode={state}
+        // `town` is not a priming state — the row opens `TownQuestionSheet`
+        // directly for it — so the sheet only ever sees the two it has copy for.
+        open={open && state !== 'town'}
+        mode={state === 'blocked' ? 'blocked' : 'ask'}
         pending={pending}
         onContinue={() => void onContinue()}
+        onAskTown={askTown}
         onClose={() => setOpen(false)}
+      />
+
+      <TownQuestionSheet
+        open={askingTown}
+        onClose={() => setAskingTown(false)}
+        onSaved={() => setAskingTown(false)}
       />
     </>
   )

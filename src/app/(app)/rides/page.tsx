@@ -199,8 +199,13 @@ function RidesScreen() {
           question from the other side: the strip says there are rides near you,
           this says how to get an answer at all. The row only draws when the
           rider has no position, which is exactly when the strip's `near …`
-          clause has dropped out. */}
-      <UseMyLocationRow position={positionSettled ? positionValue : undefined} />
+          clause has dropped out — and, since PD-419, a quieter `refine` line
+          when the position came from their town. No `auto`: this is a tab root,
+          and the reason for asking is not on screen here. */}
+      <UseMyLocationRow
+        position={positionSettled ? positionValue : undefined}
+        town={label?.name}
+      />
     </>
   )
 
