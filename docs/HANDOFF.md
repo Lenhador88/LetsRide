@@ -191,6 +191,63 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## §D7 has a tripwire, and the rounding it rests on is pinned where it actually lives — 2026-09-07
+
+**PD-278, one branch, taken into `slot-2`. A group of one, and the four stories left behind were
+dropped on COLLISION rather than on size** — slot-1 declared a very wide territory
+(`supabase/migrations/`, `supabase/tests/`, `openspec/`, `src/app/(app)/rides/`,
+`src/components/rides/`, `src/lib/auth/guard.ts`, `scripts/walk/`, `migration: Y`, `primitive: Y`),
+which is every path PD-430, PD-429, PD-431 and PD-264 need. No migration here.
+
+**The issue's own sentence about where the rounding sits is wrong, and a test written from it would
+have been written against nothing.** PD-278 says *"the rounding sits at `reverseGeocodePlace`'s one
+call site"*. It does not: it is **inside** `reverseGeocodePlace` (`src/lib/data/places.ts:429`), and
+the call site in `CreatePostcardForm` passes `capture.latitude` **raw**. So an assertion of the form
+*the call site rounds* fails against correct code, and the honest form is *the sink rounds at its
+own entry* — which is why that is a separate, third assertion rather than a detail of the first.
+
+**Three assertions, and the reason there are three is that no two cover each other:**
+
+- **The holder set is pinned** — every file importing `ExifCapture` or a parser. This is the
+  issue's own named trigger (*"a second reader of `ExifCapture`"*), and it is the only control that
+  catches a **whole-object** leak in a file that never writes `.latitude` at all.
+- **Inside a holder, every mention of the binding is classified**, not only coordinate reads — so a
+  new sink added to a file already on the list fails too.
+- **`reverseGeocodePlace` rounds both parameters.** Without this the sink list is a claim about a
+  function nothing checks: **delete the rounding and every call site is unchanged**, so the first
+  two stay green while the raw fix goes to the vendor. That is the same one-level-up defect the
+  issue warns about for the detector itself.
+
+**Four things a later session should not re-derive:**
+
+- **`return { path, capture }` in `upload.ts` is classified SAFE, and the argument is the holder
+  assertion rather than the classification.** Returning it hands it to a caller, and every caller is
+  a file that imports the type — so the flow is bounded by assertion 1. Reading that as a hole and
+  "tightening" it would fail the producer for doing its job.
+- **Mutating found two detector bugs, both mine, and one was a false positive that reads exactly
+  like a real finding.** `source.slice(start + 1)` dropped the leading `e` of `export`, leaving the
+  signature unmatchable by the strip — so `latitude: number` in the parameter list counted as a raw
+  use. A detector that fails *closed* on correct code is as dangerous as one that fails open,
+  because the fix under time pressure is to loosen it.
+- **The sink window is three lines, and it has a reason.** `resolvePhotoLocation(mode, capture ?? …)`
+  is written across three lines in the composer, so the argument line carries no callee. Three is
+  the smallest window spanning the calls actually written; widening it starts swallowing unrelated
+  statements.
+- **The suite gained 14, not 12.** Twelve own cases plus two from `no-service-role-key.test.ts` and
+  `no-geoapify-key.test.ts`, which emit a case per file walked — exactly the *"+2, not +3"* rule
+  `running-locally.md`'s Unit tests row already states. **The two count claims were NOT stale
+  beforehand**: measured 3442/139 on a clean `development` by removing the file and re-running, not
+  inferred by subtraction, which is what the first pass got wrong.
+
+**Verified by mutating real source, after committing** (the handoff's own `git checkout` hazard):
+an unsanctioned read in the composer → 1F, the rounding removed from `places.ts` → 2F, a new file
+importing `ExifCapture` → 1F, clean tree → 12P.
+
+```bash
+npx vitest run src/__tests__/no-unrounded-photo-coordinate.test.ts   # 12/12
+npm run docs:check                              # 39 passed, 0 failed, 3 skipped (no Postgres)
+```
+
 ## The profile has one location control, and the twin check compares sets — 2026-09-07
 
 **PD-269 + PD-425 + PD-336, one branch, taken into `slot-2`.** PD-269 and PD-336 are a real
