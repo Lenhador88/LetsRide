@@ -169,7 +169,8 @@ Four things come out of these and only the last two are usually worth a line:
 mcp__Linear__list_documents  query="Morning brief log" fields=["id","title","content","url"]
 ```
 
-Read the top entry. It is what stops today's brief repeating yesterday's, and it is where the
+Read the header line and the top entry. The header carries `page: <url>`, the address today's
+brief republishes to; the entries are what stop today repeating yesterday, and where the
 outside-the-box rotation is recorded. §The log is what stops the brief repeating itself has the
 rules.
 
@@ -243,6 +244,9 @@ session is invisible to tomorrow's. One Linear document is the memory.
 
 - **Title `Morning brief log`.** Create it on the first firing if `list_documents` does not find
   it; afterwards **prepend** today's entry with `save_document`.
+- **Its first line is `page: <url>`** — the address the brief republishes to, above every entry so
+  it survives the trim below. It is the only record of that URL: lose it and the next firing
+  publishes a second page, leaving the owner's bookmark showing a brief that stops updating.
 - **The entry is the brief itself**, plus a first line of `YYYY-MM-DD · lens: <weekday lens>`.
 - **Trim to the last fourteen entries** on every write. It is a working memory, not an archive.
 - **Read the previous entries before writing sections 3 and 4.** An option proposed and not acted
@@ -259,18 +263,44 @@ write failed. The brief is the deliverable; the log is how tomorrow's is better.
 
 ## Delivery
 
-**The brief is this session's final message.** That always works and needs no tool.
+**The brief is this session's final message, always.** That needs no tool and cannot fail, and
+everything below is layered on top of it rather than in place of it. A firing that publishes
+nothing but writes a good final message has done its job.
 
-Then, best-effort and in this order, each failing soft:
+### The page, at one address
+
+**Publish the brief as an artifact, and republish it to the SAME URL every morning.** The point is
+a single link the owner bookmarks once — the alternative is hunting for today's session in a list,
+which is the actual problem this solves. Owner, 2026-09-07: *"So I could check that session every
+morning to open that html?"* The answer is one page, not one session:
+
+- **The URL lives in the log document's header**, on a line reading
+  `page: <url>` above the entries. Read it in §Yesterday's brief, before writing anything.
+- **With a URL**: read that artifact first, then publish to it — a publish to a page this session
+  has not read is refused. Title `LetsRide Morning Brief`, unchanged for ever; no favicon on a
+  republish. **Yesterday's page is replaced**, which is why the log keeps the text.
+- **Without one** (the first firing, or the line is gone): publish new, then write `page: <url>`
+  into the log header. Getting this wrong forks a second page and quietly abandons the bookmark,
+  so read the header before publishing and write the URL back in the same firing.
+- **Load the `artifact-design` skill before writing the page.** It is a phone read at 08:00: one
+  column, generous type, theme-aware tokens, no external fonts or scripts.
+
+**Whether a Routine-minted session holds the artifact tool at all is UNMEASURED** — the same class
+of unknown as `create_session`, which the queue assumed for three weeks and did not have. The first
+firing settles it. Until then this is written to fail soft in both directions: **no page is a line
+in the brief, never a missing brief**, and the final message and the log are what the owner reads
+that morning.
+
+### Then
 
 1. **`PushNotification`**, one line, in the form `Morning brief — <the single most important
    thing>`. Not "your brief is ready": the notification is read on a lock screen and should carry
    the headline. If the tool is absent, skip it silently — the Routine's own completion
    notification still fires.
-2. **The log document**, as above.
+2. **The log document**, as above — the page's URL in its header, the brief itself as the entry.
 
-**Do not email, comment on an issue, or open a document per day.** One durable log and one message
-is the whole surface, and every extra channel is a place the brief goes unread.
+**Do not email, comment on an issue, or open a second page per day.** One address, one log and one
+message is the whole surface, and every extra channel is a place the brief goes unread.
 
 ---
 
