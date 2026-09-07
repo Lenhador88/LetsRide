@@ -207,24 +207,28 @@ const LEGACY_DETAIL_REDIRECTS = [
  *
  * **Query strings pass through on the second one and must**: Next appends the
  * incoming query to a destination that does not specify its own, so
- * `/rides/detail/chat?id=<uuid>` arrives at `/rides/detail/threads?id=<uuid>`
- * with the id intact. Writing `?id=:id` there instead would require a named
- * parameter this source does not capture.
+ * `/rides/detail/chat?id=<uuid>` arrives at `/rides/detail?id=<uuid>` with the
+ * id intact. Writing `?id=:id` there instead would require a named parameter
+ * this source does not capture.
  *
- * They land on the ride's **thread list** rather than on the ride, because a
- * rider following a chat link wants the conversation, and the list is the
- * nearest surviving thing — a specific old thread cannot be resolved, the
- * messages being dropped by `109`.
+ * **They landed on the ride's thread LIST until PD-426 deleted it, and now land
+ * on the ride itself** — which is the same answer for the same reason rather
+ * than a weaker one. A rider following a chat link wants the conversation, and
+ * the ride's timeline is where the conversations are; a specific old thread
+ * still cannot be resolved, the messages being dropped by `109`. The hazard the
+ * first entry was lifted out of `LEGACY_DETAIL_REDIRECTS` to avoid is exactly
+ * what this edit prevents a second time: a redirect whose destination has since
+ * been deleted fails with nothing red.
  */
 const RETIRED_CHAT_REDIRECTS = [
   {
     source: `/rides/:id(${UUID})/chat`,
-    destination: '/rides/detail/threads?id=:id',
+    destination: '/rides/detail?id=:id',
     permanent: false,
   },
   {
     source: '/rides/detail/chat',
-    destination: '/rides/detail/threads',
+    destination: '/rides/detail',
     permanent: false,
   },
 ]

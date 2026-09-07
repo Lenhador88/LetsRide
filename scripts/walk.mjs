@@ -963,25 +963,28 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
   const club = preferClub ?? (await firstDetailId('/clubs', '/clubs/detail'))
   if (!club) say('  (no clubs to open — /clubs/detail and its sub-pages unwalked)')
 
-  // The thread route needs a THREAD id, which only the club's own
-  // Threads list carries — so the list is the "list page" here, reached with
-  // the club id it was just given. A club with no threads yields nothing and the
-  // route is skipped rather than guessed at, and it says so: a silent skip here
-  // reads as a pass.
+  // The thread route needs a THREAD id, and since PD-426 deleted the Threads
+  // index the club's own DETAIL page is what carries one — its timeline renders
+  // a row per thread. A club with no threads yields nothing and the route is
+  // skipped rather than guessed at, and it says so: a silent skip here reads as
+  // a pass.
+  //
+  // **The timeline is member-gated**, so this yields nothing on a club the
+  // walking account has not joined — same shape as the ride below. `firstDetailId`
+  // matches the pathname EXACTLY, so `/clubs/detail/threads/new` (still a live
+  // route, linked from the create affordance) cannot be mistaken for a thread.
   const thread = club
-    ? await firstDetailId(
-        `/clubs/detail/threads?id=${club}`,
-        '/clubs/detail/thread'
-      )
+    ? await firstDetailId(`/clubs/detail?id=${club}`, '/clubs/detail/thread')
     : null
   if (club && !thread) say('  (no threads in that club — /clubs/detail/thread unwalked)')
 
   // The ride's thread route needs a THREAD id and is discovered exactly the
-  // same way — `108`, PD-402. **The ride's thread list is crew-only**, so this
-  // yields nothing on a ride the walking account is not on, which is a skip
-  // rather than a failure and says so: a silent skip here reads as a pass.
+  // same way — `108`, PD-402, off the ride's own detail page since PD-426.
+  // **A ride's threads are crew-only**, so this yields nothing on a ride the
+  // walking account is not on, which is a skip rather than a failure and says
+  // so: a silent skip here reads as a pass.
   const rideThread = ride
-    ? await firstDetailId(`/rides/detail/threads?id=${ride}`, '/rides/detail/thread')
+    ? await firstDetailId(`/rides/detail?id=${ride}`, '/rides/detail/thread')
     : null
   if (ride && !rideThread) {
     say('  (no threads on that ride — /rides/detail/thread unwalked)')
@@ -1025,10 +1028,9 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
       ? [
           '/rides/detail',
           '/rides/detail/crew',
-          // `108`, PD-402 — both take a RIDE id, the way the club's two do.
-          // `/rides/detail/thread` takes a THREAD id and is appended below,
-          // discovered from this list.
-          '/rides/detail/threads',
+          // `108`, PD-402. The threads INDEX is gone (PD-426); the composer
+          // stays and still takes a RIDE id. `/rides/detail/thread` takes a
+          // THREAD id and is appended below, discovered from `/rides/detail`.
           '/rides/detail/threads/new',
           '/rides/detail/edit',
           // `083`, PD-329. Unlike `edit`, this one 404s for a rider who is not
@@ -1051,9 +1053,9 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
           // reads as a broken screen rather than a stale line in this list —
           // one permanent red mark in the only gate that renders anything.
           '/clubs/detail/edit',
-          // Both take the CLUB's id; the thread route below takes the
-          // thread's, which is why it is not in this map.
-          '/clubs/detail/threads',
+          // The composer takes the CLUB's id; the thread route below takes the
+          // thread's, which is why it is not in this map. The index that used
+          // to sit between them is deleted — PD-426, the ride's went with it.
           '/clubs/detail/threads/new',
         ].map((p) => detail(p, club))
       : []),

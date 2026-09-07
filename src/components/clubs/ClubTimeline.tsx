@@ -683,11 +683,19 @@ export function ClubTimeline({
    * also the only one that can be offered unconditionally, which is what stops
    * the gating above from ever producing a foot that says "older activity
    * lives in" and then names nowhere.
+   *
+   * **It is three again, and `All threads` is the one that went** — PD-426, and
+   * this is a departure from that spec line rather than a regression to the
+   * first draft: there is no thread index left to send anyone to. The
+   * unconditional Members entry is what keeps the guarantee above intact.
    */
   const handoff = [
     hasPhotos && { label: 'photos', href: photosHref },
     accumulatedRides.rows.length > 0 && { label: 'rides', href: routes.clubRides(clubId) },
-    accumulatedThreads.rows.length > 0 && { label: 'threads', href: routes.clubThreads(clubId) },
+    // No `threads` entry: PD-426 deleted the index it named, and the foot link
+    // exists to say where CUT rows live — a thread the stream cut is on the
+    // stream, so there is nowhere else to send the rider.
+
     { label: 'members', href: routes.clubMembers(clubId) },
   ].filter((link): link is { label: string; href: string } => !!link)
 

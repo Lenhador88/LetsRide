@@ -66,7 +66,6 @@ function RideInviteScreen() {
         rideId={id}
         title={ride.data?.title}
         current="invite"
-        isCrew={ride.data?.is_crew}
         isOrganizer={ride.data?.is_organizer}
       />
 

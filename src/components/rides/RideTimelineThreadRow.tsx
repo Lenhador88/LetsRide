@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ChatBubbleIcon } from '@/components/icons/generated'
+import { NotificationDot } from '@/components/ui/NotificationDot'
 import { routes } from '@/lib/routes'
 import { formatRelativeTime } from '@/lib/utils'
 
@@ -32,13 +33,22 @@ import { formatRelativeTime } from '@/lib/utils'
  * **No participant faces**, for the same reason — they come out of the same
  * collapse. Both are additive later.
  *
+ * ## One thing it now DOES carry, and it arrived by deletion
+ *
+ * **The unread dot** — PD-426. It lived on `RideThreadsButton` and
+ * `RideThreadsRow` as a single aggregate mark meaning *something on this ride is
+ * unread*; both were deleted with the thread index they pointed at, and without
+ * moving it, ride-thread unread indication would have left the app in the same
+ * change. Per thread here rather than aggregate, which is strictly more than the
+ * dot said before and is what `ClubTimelineThreadRow` has always done.
+ *
  * ## No return anchor, unlike the club's
  *
  * The club's row carries `anchorKey` so a Back from the thread lands on the row
  * it was opened from, because a club thread is reachable from five kinds of
  * timeline row on a stream that pages. A ride's timeline does not page and its
- * thread screen goes back to the ride's thread list; `/rides/detail/thread`'s
- * own docstring has why a second anchor scheme is not built here. The row still
+ * thread screen goes back to the ride itself; `/rides/detail/thread`'s own
+ * docstring has why a second anchor scheme is not built here. The row still
  * carries `id={anchorKey}` so a future one has its target — which costs nothing
  * and is what the club's row does too.
  */
@@ -48,6 +58,7 @@ export function RideTimelineThreadRow({
   title,
   lead,
   at,
+  unread,
 }: {
   threadId: string
   /** The row's own DOM id — `mergeRideTimeline`'s key for this entry. A
@@ -60,12 +71,20 @@ export function RideTimelineThreadRow({
    *  copy is the component's business only once it is one string. */
   lead: string
   at: string
+  /** From `rides.threadsUnread` — this thread has messages this rider has not
+   *  read. `false` both for a read thread and for a map that could not be
+   *  fetched, which is why the caller narrows with `=== true`. */
+  unread: boolean
 }) {
   return (
     <div id={anchorKey}>
       <Link
         href={routes.rideThread(threadId)}
-        aria-label={`${title}, ${lead}`}
+        // One label for assistive tech, and the dot has to be IN it: everything
+        // below is `aria-hidden`, so an unread state that exists only as a
+        // coloured circle reaches a screen reader not at all. The club's row
+        // composes its label the same way and for the same reason.
+        aria-label={[title, lead, unread ? 'unread messages' : null].filter(Boolean).join(', ')}
         className="flex min-h-[64px] items-center gap-3 px-3 py-2 transition-colors active:bg-border"
       >
         <span
@@ -84,6 +103,8 @@ export function RideTimelineThreadRow({
           {/* Elapsed time, so no zone at all — see `formatRelativeTime`. */}
           {formatRelativeTime(at)}
         </span>
+
+        {unread && <NotificationDot className="shrink-0" />}
       </Link>
     </div>
   )

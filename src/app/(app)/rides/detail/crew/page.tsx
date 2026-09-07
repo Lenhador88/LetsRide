@@ -89,7 +89,6 @@ function RideCrewScreen() {
         rideId={id}
         title={ride.data?.title}
         current="crew"
-        isCrew={isCrew}
         isOrganizer={ride.data?.is_organizer}
       />
 

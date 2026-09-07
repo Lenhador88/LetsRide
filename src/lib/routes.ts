@@ -127,11 +127,12 @@ export const detailPaths = {
   postcard: '/postcards/detail',
   ride: '/rides/detail',
   rideCrew: '/rides/detail/crew',
-  /** A ride's threads — `108`, PD-402, replacing `/rides/detail/chat`. The
-   * segment says which entity the `id` names, exactly as the club's three do:
-   * `threads` takes a RIDE id, `thread` takes a THREAD id. `next.config.ts`
-   * redirects the retired chat path onto `rideThreads`. */
-  rideThreads: '/rides/detail/threads',
+  /** A ride's threads are read on the ride's own timeline — PD-426 deleted the
+   * index route both `rideThreads` and the club's `clubThreads` named, so a
+   * thread has ONE entrance on each domain and it is the timeline. `thread`
+   * takes a THREAD id; `newRideThread` still takes a RIDE id, because it is the
+   * composer rather than a list. `next.config.ts` redirects the retired chat
+   * path onto the ride itself for the same reason. */
   rideThread: '/rides/detail/thread',
   newRideThread: '/rides/detail/threads/new',
   rideEdit: '/rides/detail/edit',
@@ -150,10 +151,9 @@ export const detailPaths = {
   /** The admin's rider picker and link section — `093`, PD-360,
    * `rideInvite`'s shape one domain over. */
   clubInvite: '/clubs/detail/invite',
-  /** A club's threads — `081`, PD-307. The segment says which
-   * entity the `id` names, matching `/rides/detail/chat?id=`: `threads`
-   * takes a CLUB id, `thread` takes a THREAD id. */
-  clubThreads: '/clubs/detail/threads',
+  /** `clubThreads` is gone with the ride's — PD-426. A club's threads are read
+   * on the club's own timeline; `thread` takes a THREAD id and
+   * `newClubThread` takes a CLUB id. */
   clubThread: '/clubs/detail/thread',
   newClubThread: '/clubs/detail/threads/new',
   profile: '/profile/detail',
@@ -163,7 +163,6 @@ export const routes = {
   postcard: (id: string) => detail(detailPaths.postcard, id),
   ride: (id: string) => detail(detailPaths.ride, id),
   rideCrew: (id: string) => detail(detailPaths.rideCrew, id),
-  rideThreads: (rideId: string) => detail(detailPaths.rideThreads, rideId),
   /** Takes the THREAD's id, not the ride's — see `detailPaths`. */
   rideThread: (threadId: string) => detail(detailPaths.rideThread, threadId),
   newRideThread: (rideId: string) => detail(detailPaths.newRideThread, rideId),
@@ -175,7 +174,6 @@ export const routes = {
   clubManage: (id: string) => detail(detailPaths.clubManage, id),
   clubEdit: (id: string) => detail(detailPaths.clubEdit, id),
   clubInvite: (id: string) => detail(detailPaths.clubInvite, id),
-  clubThreads: (clubId: string) => detail(detailPaths.clubThreads, clubId),
   /** Takes the THREAD's id, not the club's — see `detailPaths`. */
   clubThread: (threadId: string) => detail(detailPaths.clubThread, threadId),
   /**
@@ -386,10 +384,11 @@ export function backFromCreateScreen(
  * read this, so they cannot disagree (the defect PD-341 already closed on
  * this exact screen once). `097`'s follow-up, PD-366 (`design.md` §D9).
  *
- * **Absent or unparseable both answer `routes.clubThreads`** — today's
- * behaviour, and what a notification tap, a shared URL and a reload all
- * produce: it lands the rider somewhere that certainly exists and that they
- * can certainly read, because they just read the thread.
+ * **Absent or unparseable both answer `routes.club`** — what a notification
+ * tap, a shared URL and a reload all produce: it lands the rider somewhere that
+ * certainly exists and that they can certainly read, because they just read the
+ * thread. It answered `routes.clubThreads` until PD-426 deleted that index, so
+ * the anchored and unanchored answers now differ only by the fragment.
  *
  * Parsed with `clubTimelineAnchorSchema` rather than a regex of this file's
  * own — `backFromCreateScreen`'s own reasoning: one definition, bounded to the
@@ -402,5 +401,5 @@ export function backFromCreateScreen(
  */
 export function clubThreadReturnTo(clubId: string, rawAnchor: string | null): string {
   const anchor = rawAnchor && clubTimelineAnchorSchema.safeParse(rawAnchor).success ? rawAnchor : null
-  return anchor ? `${routes.club(clubId)}#${anchor}` : routes.clubThreads(clubId)
+  return anchor ? `${routes.club(clubId)}#${anchor}` : routes.club(clubId)
 }
