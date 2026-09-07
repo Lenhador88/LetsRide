@@ -12,26 +12,46 @@ Archiving folds a delta in by replacing the requirement WHOLESALE, and `openspec
 compares scenario NAMES, not bodies — so whichever change archives last silently wins.
 
 **The asymmetry that matters:** the other two are extending this requirement (deletion ordering;
-read audience and the folder set) and both carry the `Unenforced capacity is recorded, not
+read audience and the folder set) and both carried the `Unenforced capacity is recorded, not
 silently assumed` scenario forward VERBATIM, because at the time they were written it was true.
-This change makes it false. So if either of them archives AFTER this one, the standing spec is
-left asserting that "no policy, trigger or constraint limits `ride_members` by `max_riders`" —
-about a database where a trigger does exactly that. That is not a lost edit; it is a spec that
-contradicts the schema, in the file whose whole job is to be the schema's contract.
+So if either of them archived AFTER this one, the standing spec would be left asserting that
+"no policy, trigger or constraint limits `ride_members` by `max_riders`". That is not a lost
+edit; it is a spec that contradicts the schema, in the file whose whole job is to be the
+schema's contract.
 
-Two things follow, and both are tasks (see tasks.md §6):
+**Since 2026-08-24 the scenario is VOID rather than false, and the difference decides how the
+next reader must treat it.** This change (`063`, PD-174) made it false by adding the trigger.
+`077` (PD-293) then dropped `max_riders` in full — the column, `018`'s
+`rides_max_riders_range` CHECK and `private.enforce_ride_capacity()` — so the scenario's WHEN
+can no longer be satisfied by any row.
+
+**That is why "check whether the cap is enforced" is the wrong check.** A reader who greps
+`enforce_ride_capacity`, finds `077` dropping it, and concludes the scenario is true again would
+restore a claim about a column that does not exist:
+
+    git grep -n "max_riders" -- src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'    # 0 — all four are obituaries
+
+Two things followed, and both are tasks (see tasks.md §6):
 
   1. Before archiving THIS change: re-read `openspec/specs/database-enforced-integrity/spec.md`
      as the previous archive actually left it and rewrite the MODIFIED block below against THAT
      text — the version transcribed here was read on 2026-08-18, before either sibling archived.
      Keep every scenario either sibling has added; the only scenario this change removes is the
-     capacity one.
-  2. Whether this change archives first or last, delete the capacity scenario from the OTHER TWO
-     deltas' copies of this requirement in the same session, so the reinstatement cannot happen.
-     That is an edit to another change's files and is deliberate: it is the only place the fix
-     can live.
+     capacity one. **Still open — it is an archive-time task by construction.**
+  2. **DONE — PD-264, 2026-09-07.** The capacity scenario is deleted from both sibling deltas
+     and each now carries a comment where it stood saying why it must not be restored, plus a
+     pointer to this change in its coordination banner. The reinstatement can no longer happen
+     from either file, whichever order the three archive in.
 
 The two ADDED requirements below have no other claimant.
+
+⚠ **DO NOT ARCHIVE THIS CHANGE WITHOUT READING PD-436 FIRST.** `077` reversed the feature this
+change specifies, and `specs/ride-capacity/spec.md` in this directory is an ADDED capability of
+fourteen requirements describing a cap the database no longer has. Archiving would create
+`openspec/specs/ride-capacity/spec.md` as a standing contract for a dropped feature — a strictly
+larger version of the defect this banner already exists to prevent, and one the banner did not
+name until PD-264's build found it. What to do with this change directory is that issue's
+question, and it is not answered here.
 -->
 
 ## MODIFIED Requirements

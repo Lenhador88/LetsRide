@@ -1,7 +1,17 @@
-> **⚠ COORDINATION — `Storage object ownership SHALL remain database-enforced` is already
-> modified by the active `add-account-deletion` change, and OpenSpec will not warn you.**
+> **⚠ COORDINATION — `Storage object ownership SHALL remain database-enforced` is modified by
+> THREE active changes, and OpenSpec will not warn you.** They are `add-account-deletion`, this
+> one, and **`enforce-ride-capacity`** — the third was added to this banner by PD-264 on
+> 2026-09-07, because neither of the first two knew about it. Re-derive rather than trust it:
+>
+>     grep -rn "^### Requirement:" openspec/changes/*/specs/ | grep -v archive
+>
 > Archiving folds a delta in by replacing the requirement **wholesale**, so whichever change
-> archives second silently discards the first one's edit.
+> archives last silently discards the others' edits.
+>
+> **`enforce-ride-capacity` differs from the other two in direction**: it *removes* a scenario
+> where they extend. The `Unenforced capacity is recorded, not silently assumed` scenario this
+> delta used to carry verbatim is deleted below — see the comment where it stood — so this file
+> can no longer reinstate it whenever it archives.
 >
 > They are reconcilable in substance and they touch different scenarios:
 > `add-account-deletion` extends the requirement toward **deletion ordering** — objects deleted
@@ -89,10 +99,28 @@ conjunction and hides the arm entirely.
   which the same screens render as text to everyone who can see the ride
 - **AND** `private.is_ride_crew` SHALL NOT appear in any `storage.objects` policy
 
-#### Scenario: Unenforced capacity is recorded, not silently assumed
-- **WHEN** `rides.max_riders` is set
-- **THEN** nothing SHALL claim it is enforced: no policy, trigger or constraint limits
-  `ride_members` by it, and this migration does not add one
+<!--
+REMOVED — `Unenforced capacity is recorded, not silently assumed` (PD-264, 2026-09-07).
+
+It read: WHEN `rides.max_riders` is set, THEN nothing SHALL claim it is enforced — no policy,
+trigger or constraint limits `ride_members` by it.
+
+It was true when this delta was written and it is now VOID rather than merely false: `063`
+(PD-174) made it false by adding the trigger, and `077` (PD-293, 2026-08-24) then dropped
+`max_riders` — the column, `018`'s `rides_max_riders_range` CHECK and
+`private.enforce_ride_capacity()` — in full. Its WHEN can no longer be satisfied.
+
+It is deleted rather than carried forward because archiving folds a delta in by replacing the
+requirement WHOLESALE, so whichever of this requirement's three claimants archived last would
+reinstate it into `openspec/specs/database-enforced-integrity/spec.md`, which does not carry it
+today. Do not restore it.
+
+**Checking whether the cap is enforced today is the trap, not the check.** A grep for
+`enforce_ride_capacity` finds `077` dropping it and reads as "no trigger limits `ride_members`
+by `max_riders` — so the scenario is true again". It is not: the column it names is gone.
+
+    git grep -n "max_riders" -- src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'    # 0 — all four are obituaries
+-->
 
 ## ADDED Requirements
 

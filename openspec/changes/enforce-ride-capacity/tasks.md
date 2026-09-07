@@ -1,5 +1,13 @@
 # Tasks — enforce ride capacity
 
+> ⚠ **THE FEATURE THIS CHANGE SPECIFIES WAS REMOVED — do not archive without reading PD-436.**
+> `063` shipped the cap; `077` (PD-293, 2026-08-24) then dropped `max_riders` in full — the
+> column, `018`'s `rides_max_riders_range` CHECK and `private.enforce_ride_capacity()`. So
+> `specs/ride-capacity/spec.md` below is fourteen requirements describing a rule the database no
+> longer has, and archiving this change would fold them into `openspec/specs/` as a standing
+> contract. **§6.2 and §6.3 are done (PD-264) and are the only tasks here that still apply.**
+> What happens to this directory is PD-436's question.
+
 Specs: `specs/ride-capacity/spec.md`, `specs/database-enforced-integrity/spec.md`.
 Mechanism and the rejected alternatives: `design.md`.
 
@@ -139,15 +147,23 @@ dispatched under. Filed as its own issue so it is not lost with this change dire
 - [ ] 6.1 Before archiving: re-read `openspec/specs/database-enforced-integrity/spec.md` as the
       previous archive left it and rewrite the MODIFIED block against **that** text, keeping every
       scenario the siblings added. The version transcribed in the delta was read 2026-08-18.
-- [ ] 6.2 Delete the `Unenforced capacity is recorded, not silently assumed` scenario from
+- [x] 6.2 **DONE — PD-264, 2026-09-07.** Deleted the `Unenforced capacity is recorded, not
+      silently assumed` scenario from
       `openspec/changes/add-account-deletion/specs/database-enforced-integrity/spec.md` and
-      `openspec/changes/add-ride-map-tiles/specs/database-enforced-integrity/spec.md`. Both carry
-      it verbatim, and archiving replaces a requirement wholesale — so whichever of the three
-      archives last reinstates a spec asserting the cap is not enforced, about a database where it
-      is. Re-derive the claimant list first:
-      `grep -rn "^### Requirement:" openspec/changes/*/specs/ | grep -v archive`.
-- [ ] 6.3 Add a one-line pointer to this change in both siblings' existing coordination banners,
-      so the next reader of either finds the third claimant.
+      `openspec/changes/add-ride-map-tiles/specs/database-enforced-integrity/spec.md`. Both
+      carried it verbatim, and archiving replaces a requirement wholesale — so whichever of the
+      three archived last would have reinstated it. Claimant list re-derived first, and it is
+      still exactly these three.
+
+      **The scenario is VOID, not false, and that is stronger than this task assumed.** It said
+      "about a database where it is [enforced]". That was true on 2026-08-18 and stopped being
+      true six days later: `077` (PD-293) dropped `max_riders` — column, CHECK and trigger — so
+      the scenario now names a column that does not exist. Each deletion leaves a comment saying
+      so, because a reader who greps `enforce_ride_capacity`, finds `077` removing it and
+      concludes the scenario is true again would restore a claim about nothing.
+- [x] 6.3 **DONE — PD-264, 2026-09-07.** Both siblings' coordination banners now name this
+      change as the third claimant, carry the re-derivation command, and say that this change
+      *removes* where the other two *extend*.
 
 ## 7. Apply and verify
 
