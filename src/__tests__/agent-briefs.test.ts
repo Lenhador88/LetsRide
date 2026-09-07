@@ -415,12 +415,14 @@ describe('agent briefs do not describe a world that has moved on', () => {
        * stale UUID entry is inert at runtime but it reads as coverage, which is
        * the failure class this whole file exists to end.
        *
-       * **Counted against the three KNOWN prefixes — not against a set derived
-       * from `friendly`, which makes the assertion tautological.** Deriving it
-       * from `friendly` and then filtering `declared` by it can only ever count
-       * what the forward loop above has already proven present, so
-       * `twins.length === friendly.length` held by construction and no input
-       * could fail.
+       * **The two sides are derived INDEPENDENTLY, and that is what makes this
+       * catch anything.** The observed side, `twins`, comes from `declared`
+       * filtered by the three known UUID prefixes. The expected side,
+       * `expectedTwins`, comes from `friendly` through the same table the
+       * forward loop uses. Deriving the *observed* side from `friendly` is the
+       * tautology to avoid — it can only ever count what the forward loop has
+       * already proven present. Deriving the *expected* side from it is
+       * correct and is what this compares against.
        *
        * **It asserts the SETS, not their sizes (PD-336).** It used to compare
        * two CARDINALITIES while the prose said "correspond one to one", and

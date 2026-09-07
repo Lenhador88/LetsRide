@@ -6,8 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *
  * **This file exists because the pre-merge review found that `Remove` could
  * never work, and nothing anywhere would have said so.**
- * `profileEditSchema.shape.location` is `optionalText(…)`, a **`ZodString`**
- * pipeline, so its string type gate runs before the `'' -> null` transform and
+ * `locationSchema` is `optionalText(…)`, a **`ZodString`** pipeline, so its
+ * string type gate runs before the `'' -> null` transform and
  * `safeParse(null)` fails with `"Invalid input: expected string, received
  * null"` — the raw Zod message, rendered at a rider who tapped `Remove`, for
  * ever, with `profiles.location` unchanged.
