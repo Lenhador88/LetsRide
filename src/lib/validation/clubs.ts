@@ -192,7 +192,7 @@ export const clubIdSchema = z.uuid()
  *
  * Zod's `.trim()` transforms before validating, so a naive `.trim().min(1).max()`
  * would check the ceiling against the *trimmed* string and disagree with the
- * database. The raw length is checked first, exactly as `rideMessageBodySchema`
+ * database. The raw length is checked first, exactly as `rideThreadMessageBodySchema`
  * does for the identical constraint shape.
  *
  * **The database's floor is `~ '\S'`, not `length(btrim(...)) >= 1`** — `btrim`
@@ -203,8 +203,9 @@ export const clubIdSchema = z.uuid()
  * so these two agree with it exactly.
  *
  * 80 is `rides_title_length`'s bound from `018` (design.md §Questions Closed,
- * D5); 1000 matches `ride_messages`. Per CLAUDE.md these own the **message**,
- * never the guarantee.
+ * D5); 1000 matches `RIDE_THREAD_MESSAGE_MAX_LENGTH` in `validation/rides.ts`
+ * (`034`'s `ride_messages` until `109` retired it). Per CLAUDE.md these own the
+ * **message**, never the guarantee.
  */
 export const CLUB_THREAD_TITLE_MAX = 80
 export const CLUB_MESSAGE_MAX_LENGTH = 1000
@@ -250,13 +251,21 @@ export const clubIntroductionSchema = z
  * posts it verbatim has posted an ordinary introduction and the system must be
  * unable to tell (`design.md` §Q3).
  *
- * **It is a `placeholder`, never a `defaultValue`, and that is the whole reason
- * this constant is not read by anything except the sheet's `Textarea`.** Q1
- * landed on "Post is inert until the field holds non-whitespace text"; a
- * textarea carrying this as a prefilled *value* is never empty, so Post would
- * be live the instant the sheet opens and one tap would ship this sentence,
- * unedited, into every club. Both spellings screenshot identically — see
- * `IntroductionPrompt.test.tsx`.
+ * **In pre-join mode it is the field's VALUE; in member mode it is still only a
+ * `placeholder`. PD-418 reversed the first half deliberately.** Q1 (`097`,
+ * PD-392) made it a placeholder because `Post` both joined the club and shipped
+ * the text, so a prefilled value meant one tap could ship this sentence
+ * unedited into every club. That argument is spent: the primary control in
+ * pre-join mode now **joins whether or not there is text**, and the
+ * introduction rides along only when the rider leaves some. So the prefill no
+ * longer decides whether a membership is created — it decides what a rider who
+ * wants to say nothing in particular says — which is exactly the wall PD-418
+ * removes.
+ *
+ * **Member mode keeps the placeholder** because there the sheet's only product
+ * IS the text: an empty `Post` there would write nothing and mean nothing, so
+ * `Post` stays inert until the rider writes something and the starter stays a
+ * suggestion.
  *
  * It satisfies `clubIntroductionSchema` itself (non-blank, under the
  * ceiling), so the wording shown to a rider is one the database would accept.
@@ -282,17 +291,34 @@ export const CLUB_INTRODUCTION_STARTER =
  * membership that does not exist yet.** That is the whole defect PD-392 names:
  * the sheet took the decision it appeared to be asking about. A heading that is
  * false is worse than a plain one.
+ *
+ * ## PD-418 moved three of pre-join's four strings, and each names a behaviour
+ *
+ * - **`submit` is `Join club`, not `Post`.** The control joins whether or not
+ *   there is text, so `Post` would name the half of it that is now optional.
+ * - **`dismiss` is `Cancel`, not `Join later`.** That label was the defect
+ *   PD-418's own customer-value line names: it reads as *join now, introduce
+ *   later* and does the opposite — it joins nothing — so a rider who took the
+ *   escape hatch believed they were a member and was not. `Cancel` is what the
+ *   control has always actually done. **Do not restore `Join later`**; if a
+ *   control by that name is ever wanted it has to join.
+ * - **`body` no longer says posting is what joins**, because it is not.
+ *
+ * `member` mode's four are untouched, and its `submit` stays `Post` because
+ * there the text is the only product — see `CLUB_INTRODUCTION_STARTER`.
  */
 export const CLUB_INTRODUCTION_COPY = {
   member: {
     heading: 'Welcome to the club!',
     body: 'Say hello — the club can read it, wave and reply.',
     dismiss: 'Not now',
+    submit: 'Post',
   },
   'pre-join': {
     heading: 'Introduce yourself',
-    body: "Post an introduction and you'll join the club.",
-    dismiss: 'Join later',
+    body: "Say hello to the club — or just join and say it later.",
+    dismiss: 'Cancel',
+    submit: 'Join club',
   },
 } as const
 
@@ -303,7 +329,7 @@ export const CLUB_INTRODUCTION_COPY = {
  * `introduce_to_club` refuses a non-member, so the membership is written first
  * and the introduction second, with no transaction across them. When the second
  * fails the rider IS a member, and the bare introduction error under a
- * `Join later` label would tell them nothing happened when something did. This
+ * `Cancel` label would tell them nothing happened when something did. This
  * is the only place the product tells a rider that half of one action
  * succeeded, and it is what makes that failure benign rather than merely
  * tolerated: they land in `097`'s first-class "joined, owes an introduction"

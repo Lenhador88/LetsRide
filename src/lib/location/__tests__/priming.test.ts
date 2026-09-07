@@ -3,13 +3,21 @@ import { locationPrimingState } from '@/lib/location/priming'
 import type { DeviceLocationPermission, RiderLocation } from '@/lib/location/rider-location'
 
 /**
- * `locationPrimingState` — which of three things, if anything, a screen draws
- * to ask for the device location (PD-170).
+ * `locationPrimingState` — which of five things, if anything, a screen draws
+ * to ask a rider where they are (PD-170, PD-419).
  *
  * The whole reason this decision is a pure function rather than a branch
  * inside `UseMyLocationRow` is that it has twelve reachable states and only
  * two of them are things a rendering test could reach. Each case below names
  * the defect it exists to stop, per this repo's convention.
+ *
+ * **Two of these cases were reversed by PD-419, and both reversals are
+ * deliberate rather than regressions to restore.** `priming.ts`'s own
+ * PD-419 section carries the argument; the short version is that the old
+ * `hidden` answers left two riders with no route to a position at all — the one
+ * on a platform with no geolocation, and the one whose town is nowhere near
+ * where they are. The old assertions are kept below, inverted, so a revert
+ * cannot pass silently.
  */
 
 const DEVICE: RiderLocation = { lat: 52.09, lon: 5.12, source: 'device' }
@@ -49,29 +57,57 @@ describe('states with nothing left to ask for', () => {
     expect(locationPrimingState({ permission: 'granted', position: null })).toBe('hidden')
   })
 
-  it('hides on a platform with no geolocation at all', () => {
-    // There is no dialog to prime and no setting to send the rider to.
-    expect(locationPrimingState({ permission: 'unavailable', position: null })).toBe('hidden')
+  it('hides on a platform with no geolocation when the rider already has a position', () => {
+    // There is no dialog to prime and no setting to send them to, and the
+    // distances on screen are already working.
+    expect(locationPrimingState({ permission: 'unavailable', position: PROFILE })).toBe('hidden')
   })
 })
 
-describe('a rider who already has a position is never nagged', () => {
-  it.each(EVERY_PERMISSION)('hides beside a profile-derived position (%s)', (permission) => {
-    // The near-you strip and the club distances are working — approximately,
-    // from the geocoded onboarding city. A second location row on a screen
-    // that already has one is noise, permanently, for precision nobody asked
-    // for. Documented as a deliberate cost in `priming.ts`.
-    expect(locationPrimingState({ permission, position: PROFILE })).toBe('hidden')
-  })
-
-  it('hides beside a device position even when the permission reads denied', () => {
-    // Reachable: a fix inside the five-minute memo, and the rider revoking
-    // permission in another tab. The cached answer is still good.
-    expect(locationPrimingState({ permission: 'denied', position: DEVICE })).toBe('hidden')
+describe('the town question — PD-419', () => {
+  it('asks for a town on a platform with no geolocation and no position', () => {
+    // **Reversed by PD-419**, and it was the state with the worst outcome: a
+    // rider on a WebView with no geolocation, or behind an MDM that strips it,
+    // had no position, no device to ask, and no affordance anywhere saying so.
+    // The device story never starts here, so the town IS the offer.
+    expect(locationPrimingState({ permission: 'unavailable', position: null })).toBe('town')
   })
 })
 
-describe('the two states the row exists for', () => {
+describe('a rider who already has a position is offered an upgrade, or nothing', () => {
+  it.each<DeviceLocationPermission>(['granted', 'denied', 'unavailable'])(
+    'hides beside a profile-derived position when there is no better answer to offer (%s)',
+    (permission) => {
+      // `granted` already resolves to the device when it can; `denied` and
+      // `unavailable` have no route to one from inside the app. In all three a
+      // control offering the upgrade is a dead end.
+      expect(locationPrimingState({ permission, position: PROFILE })).toBe('hidden')
+    }
+  )
+
+  it('offers refine beside a profile position the device could still improve on', () => {
+    // **Reversed by PD-419.** This read `hidden`, on the grounds that a rider
+    // with a working position must not be nagged — true of a 56px card offering
+    // to enable something, and not of a line saying WHERE the distances on
+    // screen are measured from. The rider this exists for has `Utrecht` on
+    // their profile and is in Maastricht: every distance is wrong and nothing
+    // on the screen said so.
+    expect(locationPrimingState({ permission: 'prompt', position: PROFILE })).toBe('refine')
+  })
+
+  it.each(EVERY_PERMISSION)(
+    'never offers refine beside a DEVICE position (%s)',
+    (permission) => {
+      // A device fix is the best answer this app has, so there is no upgrade to
+      // offer. `denied` beside one is reachable — a fix inside the five-minute
+      // memo, and the rider revoking permission in another tab — and the cached
+      // answer is still good.
+      expect(locationPrimingState({ permission, position: DEVICE })).toBe('hidden')
+    }
+  )
+})
+
+describe('the two states the row was built for', () => {
   it('asks when the device will prompt and the rider has no position at all', () => {
     expect(locationPrimingState({ permission: 'prompt', position: null })).toBe('ask')
   })

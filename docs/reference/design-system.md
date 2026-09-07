@@ -144,14 +144,21 @@ detail screen had been re-deciding it: the club merge put Edit behind the dots w
 a bare pencil, no Delete and no Share at all. Re-derive the set rather than trusting a list here:
 
 ```bash
-grep -rln "OptionsIcon" src/components/ | grep -v icons/   # 6: account, rider, postcard, club, ride, club thread
+grep -rln "OptionsIcon" src/components/ | grep -v icons/   # 7: account, rider, postcard, club, ride, club thread, ride thread
 ```
 
-**It read 7 until 2026-09-01 and the seventh was the club timeline's join row.** PD-365 deleted it
-— its only row was PD-356's `Say welcome`, and that gesture was replaced by a comment glyph opening
-the rider's introduction. So this number can go DOWN as well as up, which the note above does not
-say: a screen losing its last row loses the control, and that is a correct outcome rather than a
-regression to restore.
+**This number goes DOWN as well as up, which the note above does not say.** It read 7 until
+2026-09-01, when PD-365 deleted the club timeline's join-row menu — its only row was PD-356's
+`Say welcome`, and that gesture was replaced by a comment glyph opening the rider's introduction.
+A screen losing its last row loses the control, and that is a correct outcome rather than a
+regression to restore. It is back at 7 as of `108` (PD-402), the seventh now being the **ride
+thread's** menu — a different surface from the one that went, so do not read the two 7s as the
+same set.
+
+**The ride thread's menu is also the one that shows why the rule above is load-bearing.** With
+reporting deferred it has exactly one conditional row, so it is mounted only for a viewer who can
+use it — `canRemoveRideThread`, read by the menu and by the screen that draws its trigger, so
+neither can offer a dots icon that opens an empty sheet.
 
 Three rules the surfaces already agree on, and one exception:
 

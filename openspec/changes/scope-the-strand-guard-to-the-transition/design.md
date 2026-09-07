@@ -265,6 +265,12 @@ coordinate and still render no tile. If that function is not rendering, this cha
 number of rides that can *lose* a tile and not get it back. That is PD-385's to diagnose; the
 contribution here is naming the population it just grew.
 
+> **2026-09-06 — the premise of the paragraph above is gone; the conclusion is not.**
+> `resolve-ride-location` is deployed current on both projects (DEV v7 / PROD v6, `3a88a35e…`),
+> and the secret was never missing — PD-369 was four days of a claim nothing could check. So new
+> rides do render. PD-385 stays open on the rides created blind, and the population this change
+> grows is still worth naming; it is now a backlog to re-render rather than an ongoing outage.
+
 ### D6 — Every state of the edit screen, re-walked against the new predicate
 
 Only the rows that move are argued; the rest are the base spec's and unchanged.

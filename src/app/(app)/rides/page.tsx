@@ -11,7 +11,7 @@ import { RideCard } from '@/components/rides/RideCard'
 import { RideFilterBar } from '@/components/rides/RideFilterBar'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { ErrorState } from '@/components/ui/ErrorState'
-import { SkeletonFilterBar, SkeletonList } from '@/components/ui/Skeleton'
+import { LoadingRegion, SkeletonFilterBar, SkeletonList } from '@/components/ui/Skeleton'
 import { getExploreRides, getRideFilters, getRides, withRideDistance } from '@/lib/data/rides'
 import { isNearby } from '@/lib/location/distance'
 import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
@@ -199,8 +199,13 @@ function RidesScreen() {
           question from the other side: the strip says there are rides near you,
           this says how to get an answer at all. The row only draws when the
           rider has no position, which is exactly when the strip's `near …`
-          clause has dropped out. */}
-      <UseMyLocationRow position={positionSettled ? positionValue : undefined} />
+          clause has dropped out — and, since PD-419, a quieter `refine` line
+          when the position came from their town. No `auto`: this is a tab root,
+          and the reason for asking is not on screen here. */}
+      <UseMyLocationRow
+        position={positionSettled ? positionValue : undefined}
+        town={label?.name}
+      />
     </>
   )
 
@@ -216,9 +221,21 @@ function RidesScreen() {
   // bearing rather than tidy.** It is the only route to `/rides/explore` — the
   // same rule `ExploreClubsStrip` was corrected into — so a rider whose list is
   // failing to load must still be able to leave for the screen that works.
+  // **`LoadingRegion` is child 0 of every branch below, and that is load-
+  // bearing — PD-220.** This screen draws a skeleton at three positions during
+  // one cold load (the `<Suspense>` fallback, the `!filters.data` gate, and the
+  // list slot below while `rides` is still in flight), and no two of them
+  // reconcile, so a region inside any of them is inserted afresh and announces
+  // again. Every skeleton here is therefore silent and this one element carries
+  // the announcement, reconciled by position across all three branches so it
+  // mounts once and only its text changes. Keep it first in each; the index is
+  // what makes it the same element.
+  const loadingLabel = !filters.data || (!rides.error && !rides.data) ? 'Loading rides' : null
+
   if (filters.error)
     return (
       <>
+        <LoadingRegion label={null} />
         {strip}
         <ErrorState onRetry={gate.refetch} />
       </>
@@ -226,10 +243,17 @@ function RidesScreen() {
 
   // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
   // where `isLoading` is false and there is still nothing to draw.
-  if (!filters.data) return <RidesLoading strip={strip} />
+  if (!filters.data)
+    return (
+      <>
+        <LoadingRegion label={loadingLabel} />
+        <RidesLoading strip={strip} />
+      </>
+    )
 
   return (
     <>
+      <LoadingRegion label={loadingLabel} />
       <RideFilterBar filters={filters.data} active={filter} />
 
       {/* Between the bar and the list, and OUTSIDE the list's gate — see the
@@ -244,7 +268,10 @@ function RidesScreen() {
         // list rather than replacing the screen — so without it every filter
         // tap ends with the cards jumping 8px as the data lands.
         <div className="py-2">
-          <SkeletonList />
+          {/* Silent: the screen's own `LoadingRegion` above is the
+              announcement, and this is the third of the three positions that
+              would otherwise each insert one. */}
+          <SkeletonList announce={false} />
         </div>
       ) : rides.data.upcoming.length === 0 && rides.data.past.length === 0 ? (
         <EmptyList filter={filter} />
@@ -305,6 +332,14 @@ function RidesScreen() {
  * `!filters.data` gate below it — so the bar's 104px and the list wrapper's
  * 8px are reserved at both, rather than each appearing at a different boundary
  * and moving every row down twice on the way to a settled screen.
+ *
+ * **It announces nothing, at either position — PD-220.** Being rendered twice
+ * is what reserves the geometry at both boundaries; it is also what made this
+ * component the wrong place for a live region, since the two sit either side of
+ * a Suspense boundary and React mounts a fresh one rather than reconciling. The
+ * announcement is `RidesScreen`'s single `LoadingRegion` instead, so every
+ * skeleton here is `announce={false}` — including the one in the list slot
+ * below, which is the third position and not part of this component at all.
  */
 function RidesLoading({ strip }: { strip?: ReactNode } = {}) {
   return (
@@ -326,7 +361,7 @@ function RidesLoading({ strip }: { strip?: ReactNode } = {}) {
       {/* `py-2` on the wrapper, not the skeleton — same reason as the loaded
           branch: `SkeletonList`'s root is `px-4` only. */}
       <div className="py-2">
-        <SkeletonList />
+        <SkeletonList announce={false} />
       </div>
     </>
   )

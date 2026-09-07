@@ -70,7 +70,7 @@ The live set as last read back off the board:
 | `Needs decision` | unstarted | Blocked on a product answer or a proposal read | **Owner**, and a build session whose story fails STEP 3's premise check |
 | `Queued (AI)` | started | **Approved to build. The only start signal** | **Owner** |
 | `Development (AI)` | started | An agent has it *now*. **Claims one issue; not a lock on the queue** | Agent |
-| `Needs help` | started | An agent stopped and needs the owner. **Also the lock** | Agent |
+| `Needs help` | started | An agent stopped and needs the owner. **Stops its own story only** — unless the park carries `<!-- halt-queue -->` | Agent |
 | **`Deployed to DEV`** | started | **Merged to `development`, green, live on DEV. Where a firing ends** | Agent |
 | `Done (in production)` | completed | Promoted to `main` and live for riders. **Was `Done`** | **Whoever promoted** — never a firing |
 | `Canceled` / `Duplicate` | canceled / duplicate | Closed without shipping. **Both clear a blocker** | Either |
@@ -93,8 +93,9 @@ four times in one batch to the `project` field.
 - **`Deployed to DEV` is typed `started`.** So is `Queued (AI)`. **Never widen the queue's
   lock to "any issue whose statusType is `started`"** — that would count every queued story and
   every story already shipped to DEV as work in flight, and the queue would freeze permanently
-  while looking perfectly healthy. `Needs help` is the one name that stops the queue, and a
-  `Development (AI)` claim binds one issue only. (This is the same
+  while looking perfectly healthy. A `Development (AI)` claim binds one issue only, and since
+  2026-09-06 so does a `Needs help` park — the queue-wide stop is the `<!-- halt-queue -->` marker
+  a broken-DEV park writes, not the status. (This is the same
   never-clearing-guard shape as the team-scoped lock and the buried stall alarm. It is a
   recurring failure here, not a numbered series — do not give it a sequence number, because
   hypotheticals and observed events end up sharing one.)
@@ -177,12 +178,22 @@ the issue it is waiting on and why, and stop — at STEP 7, which will keep this
 than archive it. Sequencing is the owner's to fix, and building
 in the wrong order is expensive in a way a skipped hour is not.
 
-Consider adding the missing `blockedBy` relation while you are there, so the next firing
-catches it at `queue-run.md` STEP 3 instead.
+**Add the missing `blockedBy` relation before you stop. This is mandatory, not a suggestion** —
+`mcp__Linear__save_issue id=<this story> blockedBy=["<the issue it waits on>"]`, then read the
+response back.
+
+**It became mandatory when the freeze went (PD-416), and it is now the only thing enforcing the
+ordering.** While a `Needs help` row stopped every firing, the park itself held the sequence: no
+story could be built out of order because no story could be built at all. It no longer does, so a
+later firing will happily take this story's dependent — or this story, once the owner clears
+it — in whatever order the board offers. **The relation stops exactly the dependent story and
+nothing else**, which is what the freeze was approximating with a sledgehammer, and it is checked
+on every firing at `queue-run.md` STEP 3.
 
 **Send the push before you stop**, exactly as §If you get stuck requires and for the same reason:
 `Done ; ) <issue id> parked, needs you — waiting on <issue id>`. This exit never reaches STEP 5
-bullet 5, and the queue is frozen behind it.
+bullet 5, so nothing else will say it. **Nothing is frozen behind this park**, so the push and the
+relation above are the whole of what stops the story being silently passed over.
 
 **If you got far enough into the build to have a STEP 4b triage list, file it before you
 stop** — same rule as §If you get stuck. This exit is named there as one of the three that leave
@@ -290,7 +301,8 @@ it.** An ambiguous check is a build.
 **Stale, with the command and its output in hand** → do not build it and do not close it. Comment
 with the command, its output and which of the three rows it falls under, move it to
 **`Needs decision`**, strip your slot label from it, and drop it from your group. **Never
-`Needs help`** — that stops the whole queue over work nobody is doing. If every story in your group
+`Needs help`** — a stale story needs a decision, not a rescue, and parking it there puts it in
+every firing's notification for ever over work nobody is doing. If every story in your group
 is stale, say so in a `PushNotification` and end the session — via STEP 7, like every other
 exit.
 
@@ -595,8 +607,8 @@ An unrated fold-in reads as advocacy and cannot be cheaply declined, which is th
 the block exists.
 
 **Unsure whether something should travel? Then it does not — file it.** That is the resolution,
-*not* `Needs help`: sending it there parks a story that is built and green, and holds the
-concurrency lock over finished work. `Needs help` is for uncertainty about **the picked story**
+*not* `Needs help`: sending it there parks a story that is built and green, and asks the owner for
+an answer nothing is waiting on. `Needs help` is for uncertainty about **the picked story**
 — an ambiguous requirement, a visibility rule nobody wrote down.
 
 ---
@@ -717,8 +729,10 @@ live RLS hole letting any signed-in rider post a ride into any club.
    Other stories merge while you build, so this is the expected case rather than an exception —
    and the territory's path caps deliberately exempt `docs/HANDOFF.md` and `CLAUDE.md`, whose
    conflicts it calls "the cheap kind" precisely because this bullet resolves them. **Parking a
-   built, green story into `Needs help` over a docs conflict stops the entire queue**, which is
-   the worst available outcome and the one this paragraph exists to prevent.
+   built, green story into `Needs help` over a docs conflict** leaves finished work unmerged and
+   puts an unanswerable line in every firing's notification until the owner clears it — which is
+   the worst available outcome and the one this paragraph exists to prevent. It stopped the whole
+   queue as well before PD-416; it no longer does, and that is not a reason to reach for it.
 
    ```bash
    git fetch origin development --quiet
@@ -761,10 +775,15 @@ live RLS hole letting any signed-in rider post a ride into any club.
    triage list filed before you stop because STEP 5 will not run to file it, and §The cost record's
    block in the `Needs help` comment — **three CI attempts is the expensive way to reach this exit,
    so it is the one whose cost is most worth writing down**. A park with no push
-   means the owner's first signal is the next firing's three-hour stall clock, with the whole queue
-   stopped in the meantime.
+   means the owner's first signal is the next firing's three-hour stall clock — and since PD-416
+   nothing else is stopped in the meantime to make the silence obvious.
 
-   **One caveat worth naming, because it turns a bad day into a stopped queue:** *absent* counts as
+   **This exit is NOT the broken-DEV one and writes no `<!-- halt-queue -->` marker.** Red CI on
+   one branch says nothing about DEV, which is serving the last merge and is fine; halting every
+   other story over it is the blanket freeze PD-416 removed, arriving back through the exit that
+   feels most like an emergency.
+
+   **One caveat worth naming, because it turns a bad day into a stopped story:** *absent* counts as
    an attempt, so a workflow whose `on:` list no longer names this base branch reports nothing at
    all and parks every story that reaches it. If the third attempt is still `total_count: 0` rather
    than red, say **that** in the comment — the fault is CI configuration, not the story.
@@ -939,8 +958,9 @@ That is why they are numbered and cross-referenced by number.
 
 **Bullet 3 failing means the PR is already merged**, so §If you get stuck's usual claim — that
 parking into `Needs help` leaves a branch and an open PR for the next firing to trip over — does
-**not** apply here. The lock is the only thing holding the queue, which is correct: a broken DEV
-is exactly what should stop the next story from starting.
+**not** apply here. What holds the queue is the `<!-- halt-queue -->` marker rather than the
+status, which is correct and is the whole reason that marker exists: a broken DEV is exactly what
+should stop the next story from starting, and it is the only park that should.
 
 ### `Deployed to DEV` is where a firing ends. Production is not yours.
 
@@ -978,7 +998,9 @@ than none.** There is no branch filter, so the response mixes feature-branch pre
 `main` production build in with DEV. Entry `[0]` is not yours, and *neither is the newest
 `development` entry*: called seconds after the merge, that is usually the **pre-merge** build.
 Reading it green claims `Deployed to DEV` for a build that does not exist; reading a stale
-`ERROR` sends a healthy story to `Needs help` and parks the queue on someone else's old failure.
+`ERROR` sends a healthy story to `Needs help` **and halts every other story** on someone else's
+old failure — this is the one park that writes `<!-- halt-queue -->`, so misreading it here is
+the one misread that still stops the whole queue.
 
 **Find the entry whose `meta.githubCommitSha` equals `git rev-parse origin/development` from
 bullet 2.** Then:
@@ -989,6 +1011,15 @@ bullet 2.** Then:
 - **`ERROR` → stop.** That is a broken DEV, and it is what §If you get stuck is for:
   `Needs help`, with the deployment URL and the failure in the comment. Green CI and a failed
   deploy are different gates; CI passing does not cover this.
+
+  **This park — and only this one — writes `<!-- halt-queue -->` as the first line of that
+  comment.** It is the one exit whose reason is about the *queue* rather than about the story:
+  every other park waits on an answer about one issue, and since PD-416 those no longer stop
+  anything else. A broken DEV is different in kind — the next story would merge onto it, and
+  the one after that, each making the failure harder to attribute. The marker is what
+  `queue-run.md` STEP 1 reads to take nothing, so **omitting it lets the queue build straight
+  past a broken DEV**, and writing it on an ordinary park reinstates the blanket freeze this
+  change removed. Neither is a small mistake; write it here and nowhere else.
 - **No entry matches your sha yet** → the deploy has not been created. Continue, and say
   "deploy not yet visible" in the comment. Do not poll for it.
 - **The Vercel connector is missing or the call fails** → continue, and say the deploy was
@@ -1097,8 +1128,16 @@ mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  state=<D
 Take the highest-priority candidate (Urgent → High → Medium → Low → No priority, ties by oldest
 `createdAt`) that clears **all** of these:
 
-- **`Needs help` is empty.** A parked story stops the whole queue, and that applies to you exactly
-  as it applies to `queue-run.md` STEP 1. Any row → end the session, via STEP 7.
+- **No `Needs help` story carries `<!-- halt-queue -->`.** Since PD-416 an ordinary park stops its
+  own story only, so a `Needs help` row is no longer a reason to stop taking another — but a
+  broken-DEV park is, and it applies to you exactly as it applies to `queue-run.md` STEP 1.
+  **Read the comments on the `Needs help` rows only when there are any**, and treat an unreadable
+  answer as a halt. Marker found, or unreadable → end the session, via STEP 7.
+
+  **A story you yourself parked minutes ago is one of those rows**, and it is the ordinary case
+  here: §If you get stuck's group rule merges the siblings and parks one. That park does not stop
+  you taking another story unless it is the broken-DEV one — which it cannot be, since that exit
+  never reaches this step.
 - **It does not collide with the OTHER slot's territory.** Read that slot's `<!-- territory -->`
   comment the way `queue-run.md` STEP 2 does, and apply the same three caps: overlapping paths,
   both adding a migration, both touching a shared primitive. **You are the one session that cannot
@@ -1246,21 +1285,21 @@ call:
 
 - **The stalled story has nothing committed yet** → drop it. Finish, review and merge the rest of
   the group as an ordinary run, with the PR body and STEP 5's comments saying which story was left
-  out and why. The queue still parks — `Needs help` is the lock — but it parks with two stories
-  merged instead of two stories stranded.
+  out and why. **Since PD-416 that is the whole cost**: the siblings merge, the parked story waits
+  on the owner alone, and no unrelated story waits with it.
 
-  **Move the stalled issue to `Needs help` BEFORE STEP 5 bullet 4, not after the run.** The next
-  firing reads the board as it stands, and it can arrive minutes after your last write: park
-  afterwards and it sees nothing in `Needs help`, so the queue-wide lock does not hold and it
-  dispatches into every free slot — burying the story that needs the owner under the merged PRs,
-  which is the exact harm the lock exists to prevent. **The park is the only signal the queue
-  gets** — the push in bullet 5 goes to the owner, not to the queue — and since bullet 6 no
-  longer pokes anything, a late park is not late by seconds, it is simply missing when the hour
-  turns.
+  **Move the stalled issue to `Needs help` BEFORE STEP 5 bullet 4, not after the run.** Bullet 4
+  moves *every* issue in the group to `Deployed to DEV` with a comment claiming a merge — so a
+  park deferred past it marks the story you never built as shipped, and then contradicts itself
+  when the park finally lands. That is the hazard, and it is entirely inside your own run: it does
+  not depend on when the next firing reads the board.
 
-  **Bullet 4 rather than bullet 6, because bullet 4 is the earlier hazard.** It moves *every* issue
-  in the group to `Deployed to DEV` with a comment claiming a merge — so a park deferred past it
-  marks the story you never built as shipped, and then contradicts itself two bullets later.
+  **That ordering used to carry a second, queue-wide reason and no longer does.** While a
+  `Needs help` row froze every firing, a late park let the next hour dispatch into every free slot
+  and bury the story under merged PRs. Parking on time no longer buys that, because nothing is
+  waiting behind the park — **what surfaces the story now is the push at bullet 5 and its line in
+  every subsequent firing's notification**, neither of which is a race against the hour. Do not
+  restore the old reasoning; the ordering stands on bullet 4 alone.
 - **Its commits are already on the branch and separable** → drop them (`git revert`, or reset and
   recommit the others) and take the branch above. **Re-run `reviewer` on what you actually intend
   to merge**, since the reviewed diff has changed.
@@ -1301,9 +1340,16 @@ re-run (STEP 4c bullet 1), or a decision that is the owner's to make.
 `Needs help` is where those go.
 
 **Stopping into `Needs help` is always better than merging something you are not confident
-in.** It also parks the whole queue until the owner clears it, which is the intended behaviour —
-`Needs help` is the one status a firing refuses to build past, precisely so a story
-needing the owner does not get buried under the next batch of merged PRs.
+in**, and since PD-416 it is cheaper than it was: it parks **this story** until the owner clears
+it and leaves every other story free to build. Product owner, 2026-09-06: *"maybe needs help
+doesnt need to block the queue?"*
+
+**What that costs, and what pays for it.** The freeze made a parked story impossible to miss;
+nothing does that by construction any more. Three things replace it and all three are yours to
+do properly here rather than optional: the push below, the `blockedBy` relation where the park is
+about sequencing (STEP 2c, now mandatory), and the comparison table — because `queue-run.md`
+STEP 6 names this story in **every** firing's notification from now until it moves, and a line the
+owner cannot act on repeated hourly is how a signal stops being read.
 
 **Leave the branch and any PR open, and say so in the comment.** Nothing else will pick this up:
 your session ends here — at STEP 7, which keeps it — and the next dispatch will not touch a story
@@ -1312,9 +1358,10 @@ nothing to the queue** — STEP 5 bullet 6 applies to a park exactly as it appli
 the `Needs help` status is what the next hourly firing reads.
 
 **Then send the push, because a park is the one exit where nothing else will.** `Done ; ) <issue
-id> parked, needs you — <one line why>`. Parking freezes the whole queue and the next firing's
-`Needs help` clock does not alarm until the story is over three hours old, so without this the
-owner's first signal is three to four hours after everything stopped. **This is not the poke coming
+id> parked, needs you — <one line why>`. The next firing's `Needs help` clock does not alarm until
+the story is over three hours old, so without this the owner's first signal is three to four hours
+late — and since PD-416 nothing is stopped in the meantime to make the delay obvious, which makes
+this push more load-bearing than it was rather than less. **This is not the poke coming
 back**: it goes to the owner, not to the queue, and it is the same `PushNotification` STEP 5 bullet
 5 sends on the merge path — a path this exit never reaches.
 
@@ -1510,8 +1557,9 @@ design added:
 | A procedure edit never reached the persistent session that executed it | Every firing clones `development` fresh; a merged edit is live at the next hour |
 
 **What holds the concurrency now is two Linear labels and the territory comment you write at
-STEP 3.** `Needs help` is unchanged: any story parked there stops every firing, including the
-second story you might take at STEP 6.
+STEP 3.** `Needs help` used to be a third thing holding it and since PD-416 is not: a park stops
+its own story, and only a broken-DEV park — marked `<!-- halt-queue -->` — stops every firing,
+including the second story you might take at STEP 6.
 
 **Two things about this session are worth knowing before STEP 6 and STEP 7 — one measured, one
 inferred and labelled as such:**

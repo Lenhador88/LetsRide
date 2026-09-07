@@ -30,9 +30,12 @@ import type { RideTimelineEvent } from '@/lib/data/ride-timeline'
  * keeping: PD-395 and PD-394 both add a kind to THIS union, and each must fail
  * to compile here until its copy is written.
  *
- * **A postcard is not one of these.** `groupRideTimeline` routes it to
- * `PostcardCard`, exactly as the club does — compressing a photo into a 44px
- * row would throw the whole design away.
+ * **A postcard is not one of these, and since `108` (PD-402) neither is a
+ * thread.** `groupRideTimeline` routes a postcard to `PostcardCard` and a
+ * thread or reply to `RideTimelineThreadRow`, exactly as the club does —
+ * compressing a photo into a 44px row would throw the whole design away, and
+ * compressing a conversation into one makes the entry a rider is meant to tap
+ * read like a fact that happened once.
  *
  * **No wave and no introduction door here**, unlike the club's join row. Both
  * are `092`/`097` club machinery (`club_join_waves`, the introduction thread),
@@ -141,11 +144,15 @@ function describe(event: RideTimelineEvent): {
         avatar: null,
       }
 
-    // A postcard draws its own card and never reaches this row —
-    // `groupRideTimeline` routes it away. Typed rather than thrown so the
-    // exhaustiveness above stays a compile-time check and a third event kind is
-    // still an error here.
+    // A postcard draws its own card, and a thread or a reply draws
+    // `RideTimelineThreadRow` — `groupRideTimeline` routes all three away
+    // before this row is reached. Typed rather than thrown so the
+    // exhaustiveness above stays a compile-time check and a new event kind is
+    // still an error here: that is the whole value of this switch, and PD-394
+    // is the next story that will add one.
     case 'postcard':
+    case 'thread':
+    case 'reply':
       return { sentence: '', href: null, avatar: null }
   }
 }

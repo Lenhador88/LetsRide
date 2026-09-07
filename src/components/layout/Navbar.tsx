@@ -92,9 +92,20 @@ const STICKY_ACTIONS: Record<string, { label: string; href: string }> = {
  * reason. It still needs to be a *list* rather than a set membership on the
  * whole path, because a second barless screen is a matter of time — and equality
  * rather than a prefix for the reason the old regex was anchored at both ends: a
- * hypothetical `/rides/detail/chat/settings` should decide for itself.
+ * hypothetical `/rides/detail/thread/settings` should decide for itself.
+ *
+ * **`rideChat` became `rideThread` here rather than being dropped — `108`,
+ * PD-402.** The barless screen is the one with the pinned composer, and that
+ * moved from the ride's single chat to one ride thread. `newRideThread` is
+ * deliberately NOT on this list: a one-field create form scrolls under the nav
+ * bar the way every other ride sub-page does, exactly as `newClubThread` is
+ * absent for the club. Only `clubThread` and `rideThread` draw a composer.
+ *
+ * **The two thread-INDEX keys this once also named are gone** — `rideThreads`
+ * and `clubThreads` were deleted with their routes (PD-426), so their absence
+ * from this list is no longer a decision anyone has to justify.
  */
-const BARLESS: string[] = [detailPaths.rideChat, detailPaths.clubThread]
+const BARLESS: string[] = [detailPaths.rideThread, detailPaths.clubThread]
 
 export function Navbar() {
   const pathname = usePathname()

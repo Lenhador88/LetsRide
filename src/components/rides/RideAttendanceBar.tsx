@@ -36,9 +36,39 @@ const toChoice = (attendance: RideAttendance): Choice | null =>
 export function RideAttendanceBar({
   rideId,
   attendance,
+  onAnswered,
 }: {
   rideId: string
   attendance: RideAttendance
+  /**
+   * Fired after a write the server accepted — PD-404's collapse.
+   *
+   * **On success only, and that is the whole of its contract.** The page uses
+   * it to drop the `reopened` flag that this bar is being shown under, so the
+   * bar folds back into the chip. Firing it on a failure would collapse the bar
+   * under a rider whose answer did not land, leaving them looking at a chip
+   * showing the *old* value with no indication anything went wrong — which is
+   * the rollback path this component already handles by keeping the bar and
+   * saying why.
+   *
+   * **It carries the answer that landed, and the caller needs it.**
+   * `setRideAttendance` invalidates rather than writing through, and
+   * `invalidate` starts a background refetch it does not await — so at the
+   * moment this fires, the caller's own `attendance` is still the PREVIOUS
+   * value for one round trip. A caller that collapses this bar on the callback
+   * and reads its own prop would draw, and announce, the answer the rider just
+   * replaced.
+   *
+   * **Optional in the type, and the ride detail is not one of the callers that
+   * can omit it.** It used to be genuinely optional there: a first answer
+   * collapsed the bar because `attendance` itself moved off `null` when the
+   * refetch landed. That is no longer the mechanism — the collapse, the chip's
+   * first paint and the focus announcement all read the value this callback
+   * supplies, so a ride detail that stopped passing it would show the previous
+   * answer for a round trip and announce it. Omit it only where nothing is
+   * composed around the answer.
+   */
+  onAnswered?: (answer: RideAttendance) => void
 }) {
   const [choice, setChoice] = useState<Choice | null>(toChoice(attendance))
   const [error, setError] = useState<string | null>(null)
@@ -54,7 +84,9 @@ export function RideAttendanceBar({
       if (result.error) {
         setChoice(previous)
         setError(result.error)
+        return
       }
+      onAnswered?.(next === 'no' ? null : next)
     })
   }
 

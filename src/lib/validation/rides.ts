@@ -365,28 +365,45 @@ export const riderSearchQuerySchema = z
   )
 
 /**
- * Mirrors `ride_messages_body_length` in migration `034`, and the asymmetry is
- * deliberate there so it must be deliberate here: the **floor is on the trimmed
- * length** so a message of nothing but spaces is refused, while the **ceiling is
- * on the raw length** so padding cannot smuggle a longer body past a trimmed
- * check.
+ * A ride thread's bounds — PD-402, `108`.
  *
- * Zod's `.trim()` transforms before validating, so a naive
- * `.trim().min(1).max(1000)` would check the ceiling against the *trimmed*
- * string and disagree with the database. The raw length is checked first —
- * exactly as `commentBodySchema` does, for exactly the same constraint shape.
+ * **The same numbers as the club's (`clubThreadTitleSchema`,
+ * `clubMessageBodySchema`) and deliberately a second definition rather than an
+ * import**, for the reason `lib/timeline/window.ts` gives about the direction of
+ * a dependency: a ride module reaching into `lib/validation/clubs` for a bound
+ * would make the club the ride's dependency, which reads as an accident at every
+ * later call site. The bounds agree because `108` copies `081`'s CHECKs; if
+ * either ever moves, it moves in its own migration and its own schema.
  *
- * Same 1000 as a comment rather than the 2000 a caption gets. `034` §2 has the
- * argument: a chat thread holds far more rows than a comment thread, so the
- * per-row bound should be tighter, not looser.
+ * Same raw-length-first shape as every other bounded text in this file: the
+ * **floor is on the trimmed value** so a title of nothing but spaces is refused,
+ * and the **ceiling is on the raw length** so padding cannot smuggle a longer
+ * body past a trimmed check. `108`'s floor is `~ '\S'`, which `.trim()` agrees
+ * with and a `btrim`-only check would not.
  *
- * Per CLAUDE.md this schema owns the **message**, never the guarantee — `034`'s
- * CHECK is what a rider cannot decline to run.
+ * Per CLAUDE.md these schemas own the **message**, never the guarantee — `108`'s
+ * CHECKs are what a rider cannot decline to run.
  */
-export const RIDE_MESSAGE_MAX_LENGTH = 1000
+export const RIDE_THREAD_TITLE_MAX = 80
+export const RIDE_THREAD_MESSAGE_MAX_LENGTH = 1000
 
-export const rideMessageBodySchema = z
+export const rideThreadTitleSchema = z
   .string()
-  .max(RIDE_MESSAGE_MAX_LENGTH, `Must be ${RIDE_MESSAGE_MAX_LENGTH} characters or fewer.`)
+  .max(RIDE_THREAD_TITLE_MAX, `Keep the title under ${RIDE_THREAD_TITLE_MAX} characters.`)
+  .transform((value) => value.trim())
+  .refine((value) => value.length >= 1, 'Give the thread a title.')
+
+export const rideThreadMessageBodySchema = z
+  .string()
+  .max(
+    RIDE_THREAD_MESSAGE_MAX_LENGTH,
+    `Must be ${RIDE_THREAD_MESSAGE_MAX_LENGTH} characters or fewer.`
+  )
   .transform((value) => value.trim())
   .refine((value) => value.length >= 1, 'Write something first.')
+
+/** A ride thread's id, for the same guard every id-taking read in this file
+ *  carries — a non-uuid reaching `.eq(...)` is a `22P02` and a 400, which puts a
+ *  rider on an error boundary offering `Try again` on an address that can never
+ *  succeed (PD-142). */
+export const rideThreadIdSchema = z.uuid()

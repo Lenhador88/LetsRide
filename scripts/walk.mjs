@@ -243,10 +243,16 @@ const problems = []
  * The one console error that is the harness's fault rather than the app's.
  *
  * `scripts/supabase-relay.mjs` forwards HTTP and drops the `upgrade` header, so
- * the ride chat's Realtime subscription cannot connect through it and Chromium
- * logs a failed WebSocket on every load of `/rides/detail/chat`. Left unfiltered
- * that makes the walk permanently red on a screen that renders perfectly — and
- * a gate that is always red is a gate nobody reads.
+ * a thread's Realtime subscription cannot connect through it and Chromium logs a
+ * failed WebSocket on every load of `/rides/detail/thread` and
+ * `/clubs/detail/thread`. Left unfiltered that makes the walk permanently red on
+ * screens that render perfectly — and a gate that is always red is a gate nobody
+ * reads.
+ *
+ * **It named `/rides/detail/chat` until `108` (PD-402) retired it.** The filter
+ * itself never matched on the path — it matches the relay's origin and the
+ * Realtime path — so the retirement moved which screens provoke it and nothing
+ * else.
  *
  * **Deliberately narrow: the relay's own origin and the Realtime path.** A
  * WebSocket failure anywhere else, or to any other host, is still a failure. It
@@ -957,18 +963,32 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
   const club = preferClub ?? (await firstDetailId('/clubs', '/clubs/detail'))
   if (!club) say('  (no clubs to open — /clubs/detail and its sub-pages unwalked)')
 
-  // The thread route needs a THREAD id, which only the club's own
-  // Threads list carries — so the list is the "list page" here, reached with
-  // the club id it was just given. A club with no threads yields nothing and the
-  // route is skipped rather than guessed at, and it says so: a silent skip here
-  // reads as a pass.
+  // The thread route needs a THREAD id, and since PD-426 deleted the Threads
+  // index the club's own DETAIL page is what carries one — its timeline renders
+  // a row per thread. A club with no threads yields nothing and the route is
+  // skipped rather than guessed at, and it says so: a silent skip here reads as
+  // a pass.
+  //
+  // **The timeline is member-gated**, so this yields nothing on a club the
+  // walking account has not joined — same shape as the ride below. `firstDetailId`
+  // matches the pathname EXACTLY, so `/clubs/detail/threads/new` (still a live
+  // route, linked from the create affordance) cannot be mistaken for a thread.
   const thread = club
-    ? await firstDetailId(
-        `/clubs/detail/threads?id=${club}`,
-        '/clubs/detail/thread'
-      )
+    ? await firstDetailId(`/clubs/detail?id=${club}`, '/clubs/detail/thread')
     : null
   if (club && !thread) say('  (no threads in that club — /clubs/detail/thread unwalked)')
+
+  // The ride's thread route needs a THREAD id and is discovered exactly the
+  // same way — `108`, PD-402, off the ride's own detail page since PD-426.
+  // **A ride's threads are crew-only**, so this yields nothing on a ride the
+  // walking account is not on, which is a skip rather than a failure and says
+  // so: a silent skip here reads as a pass.
+  const rideThread = ride
+    ? await firstDetailId(`/rides/detail?id=${ride}`, '/rides/detail/thread')
+    : null
+  if (ride && !rideThread) {
+    say('  (no threads on that ride — /rides/detail/thread unwalked)')
+  }
 
   const postcard = await firstDetailId('/postcards', '/postcards/detail')
   if (!postcard) say('  (no postcard thread link — /postcards/detail unwalked)')
@@ -1008,7 +1028,10 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
       ? [
           '/rides/detail',
           '/rides/detail/crew',
-          '/rides/detail/chat',
+          // `108`, PD-402. The threads INDEX is gone (PD-426); the composer
+          // stays and still takes a RIDE id. `/rides/detail/thread` takes a
+          // THREAD id and is appended below, discovered from `/rides/detail`.
+          '/rides/detail/threads/new',
           '/rides/detail/edit',
           // `083`, PD-329. Unlike `edit`, this one 404s for a rider who is not
           // the organizer — so it is walked on the same assumption `edit`
@@ -1030,13 +1053,14 @@ async function discoverDetailPaths({ quiet = false, preferRide = null, preferClu
           // reads as a broken screen rather than a stale line in this list —
           // one permanent red mark in the only gate that renders anything.
           '/clubs/detail/edit',
-          // Both take the CLUB's id; the thread route below takes the
-          // thread's, which is why it is not in this map.
-          '/clubs/detail/threads',
+          // The composer takes the CLUB's id; the thread route below takes the
+          // thread's, which is why it is not in this map. The index that used
+          // to sit between them is deleted — PD-426, the ride's went with it.
           '/clubs/detail/threads/new',
         ].map((p) => detail(p, club))
       : []),
     ...(thread ? [detail('/clubs/detail/thread', thread)] : []),
+    ...(rideThread ? [detail('/rides/detail/thread', rideThread)] : []),
     ...(postcard ? [detail('/postcards/detail', postcard)] : []),
     ...(profile ? [detail('/profile/detail', profile)] : []),
   ]
@@ -1371,6 +1395,37 @@ async function provision(wanted, existing = {}) {
     ])
     await page.waitForTimeout(1200)
     created.ride = new URL(page.url()).searchParams.get('id')
+
+    // A thread on the fixture ride — `108`, PD-402. Without one
+    // `/rides/detail/thread` is unwalked on every run, because that route takes
+    // a THREAD id and the only place to discover one is the ride's own Threads
+    // list. `103` makes the creator crew of their own ride in the ride's own
+    // transaction, so this account is crew by construction and `108`'s INSERT
+    // policy admits it.
+    //
+    // **Non-fatal, and it says so rather than failing the run.** The route is
+    // then skipped and the discovery step above prints why — the same treatment
+    // the club's thread already gets when a club has none. A fixture that could
+    // not be created must not turn a render check red; what must not happen is
+    // a silent skip, which reads as a pass.
+    if (created.ride) {
+      await page.goto(`${BASE}/rides/detail/threads/new?id=${created.ride}`, {
+        waitUntil: 'networkidle',
+      })
+      const seeded = await page
+        .fill('input[name="title"]', 'Walk fixture thread', { timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false)
+      if (seeded) {
+        await Promise.all([
+          page.waitForURL((u) => !u.pathname.endsWith('/new'), { timeout: 30_000 }).catch(() => {}),
+          page.click('button[type="submit"]'),
+        ])
+        await page.waitForTimeout(1200)
+      } else {
+        console.log('  ! the fixture ride thread could not be created — /rides/detail/thread will be skipped')
+      }
+    }
   }
 
   return created
@@ -2634,15 +2689,73 @@ async function checkEditProfileRetention() {
  * knowing before trusting a FAIL (or a surprising ok) that follows one.
  */
 async function waitForTableWrite(table, action) {
-  const isWrite = (r) =>
-    r.url().includes(`/rest/v1/${table}`) && /^(POST|DELETE|PATCH|PUT)$/.test(r.request().method())
-  const [response] = await Promise.all([
-    page.waitForResponse(isWrite, { timeout: 20_000 }).catch(() => null),
-    action(),
-  ])
-  if (!response) {
+  const seen = watchForTableWrite(table)
+  await action()
+  const observed = await seen
+  if (!observed) {
     console.log(`  ! no ${table} write observed within 20s — the next check may be reading stale state`)
   }
+  return observed
+}
+
+/**
+ * The watcher half of `waitForTableWrite`, armed separately from the action
+ * that is supposed to trigger it.
+ *
+ * **Split out for `checkJoinClub`, which cannot use the combined form** — since
+ * PD-392 the tap it makes writes on one of two paths and not the other, and
+ * which one happened is only knowable *after* the tap, from whether the
+ * introduction sheet opened. So the watcher has to be armed before the click
+ * and read several steps later, with a second click in between on one branch.
+ *
+ * **Arming is what the ordering buys, and it is not cosmetic.** `waitForResponse`
+ * attaches its listener synchronously when called, so a write that lands while
+ * the caller is busy doing something else — waiting out the sheet's 10s
+ * timeout, for instance — is still caught. Calling it after the fact would miss
+ * a write that had already completed and report a healthy join as a timeout.
+ *
+ * Returns `true` if a write to `table` was observed, `false` on timeout; never
+ * throws, and never logs — the caller decides whether a miss is a warning or a
+ * failed assertion.
+ */
+function watchForTableWrite(table, timeout = 20_000) {
+  const isWrite = (r) =>
+    r.url().includes(`/rest/v1/${table}`) && /^(POST|DELETE|PATCH|PUT)$/.test(r.request().method())
+  return page
+    .waitForResponse(isWrite, { timeout })
+    .then(() => true)
+    .catch(() => false)
+}
+
+/**
+ * The id an RPC returned, read off its response — armed before the click, like
+ * `watchForTableWrite`, and for the same reason.
+ *
+ * **Why the walk needs the id rather than finding the row in the UI.** The only
+ * caller is `checkJoinClub`'s introduction cleanup (PD-411), and the thread it
+ * has to delete is titled `Introduction` — a CONSTANT that names nobody
+ * (`097`, deliberately: `club_threads` has no UPDATE grant, so a title is
+ * immutable and publishing a living rider's username into one was refused).
+ * So every rider's introduction to a club carries the same title, and picking
+ * "the first `Introduction` on the list" would delete somebody else's post in
+ * a club this rider does not own. `introduce_to_club` `returns uuid`, so the
+ * response names exactly the row this run created and nothing else.
+ *
+ * Returns the id as a string, or `null` on timeout, a non-2xx, or a body that
+ * is not the scalar the function declares. Never throws — the caller decides
+ * whether a miss is a warning or a failed assertion.
+ */
+function watchForRpcId(fn, timeout = 20_000) {
+  const isCall = (r) =>
+    r.url().includes(`/rest/v1/rpc/${fn}`) && r.request().method() === 'POST'
+  return page
+    .waitForResponse(isCall, { timeout })
+    .then(async (r) => {
+      if (!r.ok()) return null
+      const body = await r.json()
+      return typeof body === 'string' ? body : null
+    })
+    .catch(() => null)
 }
 
 /**
@@ -2898,6 +3011,63 @@ async function checkCommentOnPostcard() {
 }
 
 /**
+ * Closes PD-419's automatic location ask if it has gone up — and every phase
+ * that lands on an Explore screen has to call this.
+ *
+ * **Why it is not optional.** Since PD-419 both Explore screens open a sheet by
+ * themselves, once per device, when the rider has no position — which every
+ * minted walk rider is, and every `WALK_EMAIL` rider whose town nobody set.
+ * `ContextMenu` renders it `aria-modal` over a scrim, so the very next click on
+ * that screen fails its actionability check and times out at 20s. That is
+ * PD-410's defect exactly, arriving from a new direction: a phase going red on
+ * a screen that is working precisely as designed.
+ *
+ * **The 800ms settle after each Explore `goto` is longer than the sheet's own
+ * 700ms beat**, so the sheet is reliably up rather than racing — which is the
+ * good case. A shorter settle would make this intermittent.
+ *
+ * **Scoped by the sheet's own `aria-label`, never by a bare `[role="dialog"]`.**
+ * The introduction sheet is also a `ContextMenu` on these screens, and closing
+ * *that* by accident would silently delete the join phase's coverage rather
+ * than failing.
+ *
+ * Not a phase and not reported: it asserts nothing. It is the walk keeping the
+ * screens reachable, the same way it already dismisses a member-mode
+ * introduction sheet it did not ask for.
+ */
+// **These are `ContextMenu` `label` props, not visible headings, and the two
+// deliberately differ on the town sheet** — its `aria-label` is `Where you ride
+// from` while its `<h2>` reads `Where are you located?` (measured from
+// `2074:5185`). Match the labels. Changing one of these strings without changing
+// its component leaves this helper silently returning false — it asserts
+// nothing — and the failure surfaces as a red JOIN phase on a screen that works.
+const LOCATION_SHEETS = ['Find rides near you', 'Location is switched off', 'Where you ride from']
+
+async function dismissLocationSheet() {
+  const closed = await page
+    .$$eval(
+      LOCATION_SHEETS.map((label) => `[role="dialog"][aria-label="${label}"] button`).join(','),
+      (buttons) => {
+        const target = buttons.find((b) => ['Not now', 'Close'].includes(b.textContent?.trim()))
+        if (!target) return false
+        target.click()
+        return true
+      }
+    )
+    .catch(() => false)
+
+  // Wait for it to actually detach before returning. Returning on the click
+  // alone would hand the caller a screen whose scrim is still in the tree for a
+  // frame, which is the same failed-actionability click one line later.
+  if (closed) {
+    await page
+      .waitForSelector('[role="dialog"]', { state: 'detached', timeout: 5_000 })
+      .catch(() => {})
+  }
+  return closed
+}
+
+/**
  * A ride this rider neither organizes nor has already answered —
  * `/rides/explore` excludes both by construction (`getExploreRides` filters
  * out the organizer's own rides and anything with an existing
@@ -2910,6 +3080,7 @@ async function checkCommentOnPostcard() {
 async function discoverRsvpCandidate() {
   await page.goto(`${BASE}/rides/explore`, { waitUntil: 'networkidle' }).catch(() => {})
   await page.waitForTimeout(800)
+  await dismissLocationSheet()
   return page.evaluate(() =>
     [...document.querySelectorAll('a[href]')]
       .map((a) => new URL(a.href, location.origin))
@@ -2921,6 +3092,34 @@ async function discoverRsvpCandidate() {
 
 /** `RideAttendanceBar`'s own selector, read from rather than re-derived. */
 const RSVP_BAR = '[role="radiogroup"][aria-label="Are you going?"]'
+
+/**
+ * `RideStatusChip` — the control the bar collapses into once answered (PD-404),
+ * and the only route back to it.
+ *
+ * Matched on the **accessible name's prefix** rather than on the visible word,
+ * because the visible word is the thing under test: `Going` and `Maybe` are what
+ * the assertions read out of it, so keying the selector on them would make the
+ * check pass by construction.
+ */
+const RSVP_CHIP = 'button[aria-label^="You answered "]'
+
+/** `RideCreateAction`'s floating control — drawn exactly when the bar is not. */
+const CREATE_ACTION = 'button[aria-label="Create on this ride"]'
+
+/** The chip's visible answer, or `null` when the chip is not drawn. */
+async function rsvpChipLabel() {
+  return page.$eval(RSVP_CHIP, (b) => b.textContent.trim()).catch(() => null)
+}
+
+/**
+ * Reopens the RSVP bar from the chip and waits for it — the composition PD-404
+ * introduced, where the bar is not on screen until the rider asks for it.
+ */
+async function reopenRsvpBar() {
+  await page.click(RSVP_CHIP)
+  await page.waitForSelector(RSVP_BAR, { timeout: 20_000 })
+}
 
 async function rsvpCheckedLabel() {
   return page.$eval(RSVP_BAR, (group) => {
@@ -2959,6 +3158,20 @@ async function clickRsvpOption(label) {
  * organizer and has no retraction. See the block comment above
  * `waitForTableWrite` for why that is not standing residue on CI's minted
  * path.
+ *
+ * ## It walks the collapse now, not just the stored value (PD-404)
+ *
+ * The bar is no longer on screen after an answer: it folds into
+ * `RideStatusChip` and the floating create action takes the corner. So the
+ * phase reads the **chip** between steps, reopens the bar through it to change
+ * the answer, and asserts **both directions** of *the two are never both
+ * drawn* — which is the property the owner's design rests on, and the one a
+ * screen showing neither would sneak past a check for either alone.
+ *
+ * **This is the only gate that can see any of it.** The composition is three
+ * components and a pure function agreeing; `tsc` sees a boolean, the unit tests
+ * see the function, and nothing but a rendered screen sees whether the controls
+ * actually swap.
  */
 async function checkRsvpToRide(rideId) {
   let bad = 0
@@ -2997,23 +3210,67 @@ async function checkRsvpToRide(rideId) {
     const startedAt = await rsvpCheckedLabel()
     report(startedAt === null, 'starts unanswered, as Explore promised', `already answered ${JSON.stringify(startedAt)}`)
 
+    // **Answering collapses the bar (PD-404), so every read-back after this
+    // point is of the CHIP, not of the bar.** Waiting for the bar here is what
+    // the phase did until 2026-09-06, and it timed out at 20s against a screen
+    // that was working perfectly — the same defect PD-410 fixed in the join
+    // phase, arriving from the same direction: the walk asserting against a
+    // flow the app has replaced.
     await waitForTableWrite('ride_members', () => clickRsvpOption('Yes!'))
     await page.goto(`${BASE}/rides/detail?id=${rideId}`, { waitUntil: 'networkidle' })
-    await page.waitForSelector(RSVP_BAR, { timeout: 20_000 })
-    const afterYes = await rsvpCheckedLabel()
-    report(afterYes === 'Yes!', '"Yes!" survives a reload', `read ${JSON.stringify(afterYes)}`)
+    await page.waitForSelector(RSVP_CHIP, { timeout: 20_000 })
+    const afterYes = await rsvpChipLabel()
+    report(afterYes === 'Going', '"Yes!" survives a reload, as a Going chip', `read ${JSON.stringify(afterYes)}`)
+
+    // The half no other gate can see: the bar is gone and the floating action
+    // has the corner. Both directions, because "the two are never both drawn"
+    // is the property the owner's design rests on and a screen showing neither
+    // would pass a check for either one alone.
+    report(
+      (await page.$(RSVP_BAR)) === null,
+      'answering puts the RSVP bar away',
+      'the bar is still drawn beside the chip'
+    )
+    report(
+      (await page.$(CREATE_ACTION)) !== null,
+      'the floating create action takes the freed corner',
+      'no floating action drawn for a rider who is now crew'
+    )
+
+    // Changing the answer goes through the chip — it is the only route back to
+    // the bar, which is why it is a control rather than a badge.
+    await reopenRsvpBar()
+    report(
+      (await page.$(CREATE_ACTION)) === null,
+      'reopening the bar puts the floating action away',
+      'both controls drawn at once'
+    )
 
     await waitForTableWrite('ride_members', () => clickRsvpOption('Maybe...'))
     await page.goto(`${BASE}/rides/detail?id=${rideId}`, { waitUntil: 'networkidle' })
-    await page.waitForSelector(RSVP_BAR, { timeout: 20_000 })
-    const afterMaybe = await rsvpCheckedLabel()
-    report(afterMaybe === 'Maybe...', 'changing to "Maybe..." survives a reload', `read ${JSON.stringify(afterMaybe)}`)
+    await page.waitForSelector(RSVP_CHIP, { timeout: 20_000 })
+    const afterMaybe = await rsvpChipLabel()
+    report(
+      afterMaybe === 'Maybe',
+      'changing to "Maybe..." survives a reload, as a Maybe chip',
+      `read ${JSON.stringify(afterMaybe)}`
+    )
 
+    // `No` deletes the row, so the rider is unanswered again — the bar comes
+    // back on its own terms and the chip goes. That asymmetry is deliberate
+    // (`setRideAttendance` stores no `no`), so this is the one step that ends
+    // where the bar reads rather than where the chip does.
+    await reopenRsvpBar()
     await waitForTableWrite('ride_members', () => clickRsvpOption('No'))
     await page.goto(`${BASE}/rides/detail?id=${rideId}`, { waitUntil: 'networkidle' })
     await page.waitForSelector(RSVP_BAR, { timeout: 20_000 })
     const afterNo = await rsvpCheckedLabel()
     report(afterNo === null, 'clearing it survives a reload', `read ${JSON.stringify(afterNo)}`)
+    report(
+      (await rsvpChipLabel()) === null,
+      'clearing it takes the chip away too',
+      'a chip is still drawn for a rider with no stored answer'
+    )
   } catch (e) {
     console.log(`  FAIL the phase threw  (${String(e).split('\n')[0]})`)
     ran += 1
@@ -3022,6 +3279,19 @@ async function checkRsvpToRide(rideId) {
 
   return { bad, ran }
 }
+
+/**
+ * The words this phase posts to join a club (PD-410).
+ *
+ * **It says what it is, on purpose.** This lands in a real club's Threads list
+ * where real riders can read it, so it identifies itself as automated rather
+ * than impersonating a rider's introduction — the same courtesy the fixture
+ * rows elsewhere in this file extend. Non-blank and well under
+ * `club_threads_introduction_length`'s 1000 characters, which is what `Post`
+ * and the CHECK each require.
+ */
+const WALK_INTRODUCTION =
+  'Hello from the automated smoke walk — this introduction was posted by a test run, not by a rider.'
 
 /**
  * A PUBLIC club this rider is not already a member of — `/clubs/explore` is
@@ -3034,6 +3304,7 @@ async function checkRsvpToRide(rideId) {
 async function discoverJoinableClub() {
   await page.goto(`${BASE}/clubs/explore`, { waitUntil: 'networkidle' }).catch(() => {})
   await page.waitForTimeout(800)
+  await dismissLocationSheet()
   return page.evaluate(() => {
     const button = document.querySelector('button[aria-label^="Join "]')
     if (!button) return null
@@ -3044,6 +3315,67 @@ async function discoverJoinableClub() {
     if (!id) return null
     return { clubId: id, clubName: button.getAttribute('aria-label').slice('Join '.length) }
   })
+}
+
+/**
+ * Best-effort cleanup: leave `clubId` if this rider turns out to be in it.
+ *
+ * **Only ever called on the failure path**, where the phase is about to give up
+ * without reaching its own leave step. The happy path leaves inline and asserts
+ * on it, because there the leave is part of what is being tested rather than
+ * tidying up after a test that did not finish.
+ *
+ * **Silent and total by design.** It reports nothing and throws nothing: it runs
+ * after a failure has already been counted, so a second FAIL line here would
+ * name the cleanup rather than the defect, and a throw would be caught by the
+ * phase's outer `try` and printed as *"the phase threw"*, hiding the real
+ * finding behind the tidy-up.
+ */
+async function leaveClubIfJoined(clubId) {
+  try {
+    await page.goto(`${BASE}/clubs/detail?id=${clubId}`, { waitUntil: 'networkidle' })
+
+    // The member-mode sheet scrims the screen — see the call site in
+    // `checkJoinClub` for why it is open here at all.
+    await page
+      .waitForSelector('[role="dialog"][aria-label="Introduce yourself to the club"]', { timeout: 3_000 })
+      .then(() => page.click('text=Not now'))
+      .catch(() => {})
+
+    await page.click('button[aria-label="Club options"]', { timeout: 10_000 })
+    const row = '[role="dialog"][aria-label="Club options"] button'
+    await page.waitForSelector(row, { timeout: 10_000 })
+    const canLeave = await page.$$eval(row, (buttons) =>
+      buttons.some((b) => b.textContent?.trim() === 'Leave club')
+    )
+    if (!canLeave) {
+      // No `Leave club` row means one of two things and they are not the same
+      // news, so they do not share a silent return: either the rider genuinely
+      // never joined — nothing to clean up, which is the good case — or the menu
+      // did not render and a membership may be standing. This runs on an
+      // already-red run, where the only cost of a line is that somebody reads it.
+      console.log('  (no Leave club row — either the join never landed, or the options menu did not render)')
+      return
+    }
+
+    // **Report what the write actually did.** The success line used to print
+    // unconditionally, which is worst precisely here: the two failures are
+    // correlated rather than independent, because a slow round trip is what
+    // produced the false `joined === false` that brought us into this function,
+    // so a leave that also times out is the EXPECTED case rather than a remote
+    // one. An affirmative "left the club again" over an unobserved DELETE is
+    // the only line telling an operator whether DEV needs cleaning by hand.
+    const left = await waitForTableWrite('club_members', () =>
+      page.$$eval(row, (buttons) => buttons.find((b) => b.textContent?.trim() === 'Leave club')?.click())
+    )
+    console.log(
+      left
+        ? '  (left the club again after the failure above, so the next run still has it to join)'
+        : '  ! the leave was not observed either — a membership may be standing on this club'
+    )
+  } catch {
+    console.log('  ! could not confirm the club was left — a membership may be standing')
+  }
 }
 
 /**
@@ -3076,11 +3408,49 @@ async function discoverJoinableClub() {
  * member (only the owner's `leaveOwnedClub` refuses it), so joining and
  * leaving it back is not a special case this phase needs to detect.
  *
- * **`IntroductionPrompt` is dismissed, never filled in** (`097`, PD-365,
- * PD-384) — a real introduction is content a rider composes, not something a
- * render check should be posting into a stranger's club on every run.
- * `Not now` is the sheet's own escape and costs nothing: it dismisses for
- * this session only (`lib/clubs/introduction-dismissal.ts`).
+ * **`IntroductionPrompt` is FILLED IN and posted, never dismissed** — reversed
+ * by PD-410, and the reversal is forced rather than preferred. Until PD-392
+ * this phase's tap wrote the membership and the sheet was decoration
+ * afterwards, so `Not now` cost nothing. Since PD-392 the sheet **is** the
+ * join on this path: its primary joins and then introduces, and its second
+ * control deliberately writes nothing and joins nothing. Dismissing therefore
+ * asserts that a button opens a sheet and nothing more — it deletes the only
+ * automated coverage of a rider joining a club at all, which is the write this
+ * phase exists for.
+ *
+ * **PD-418 did not soften that, and the tempting shortcut is now available.**
+ * The primary is `Join club`, it is live the instant the sheet opens, and the
+ * field arrives prefilled — so a run could join by tapping it immediately and
+ * skip the `fill` below. It must not: the introduction is what this phase's
+ * cleanup identifies by text (PD-411), and a run that posted the app's own
+ * canned starter would be indistinguishable from a real rider's introduction
+ * and so uncleanable. The second control is `Cancel` and still joins nothing.
+ *
+ * **What posting leaves behind, and why it is acceptable on one path and not
+ * the other** — the same accounting as the `club_joined` notification above,
+ * because it has the same shape. `introduce_to_club` (`097`) creates a
+ * `club_threads` row carrying the introduction, and **leaving the club does not
+ * take it back**. On CI's minted path that is not standing residue:
+ * `club_threads.author_id references public.profiles(id) on delete cascade`
+ * (`081`), and `attemptDeleteAccount` removes the minted rider's profile at the
+ * end of every run, taking the thread with it. **In `WALK_EMAIL` mode it IS
+ * standing residue**, because that account is deliberately never deleted — one
+ * introduction thread in a real club, per run.
+ *
+ * **`097`'s one-introduction-per-membership rule does NOT bound that residue,
+ * and assuming it does is the easy mistake here.** The refusal keys on
+ * `club_threads.introduces_user_id = the caller`, and the composite foreign key
+ * is `on delete set null (introduces_user_id)` — so *leaving the club NULLs the
+ * marker* while keeping the thread and its text (`097`'s own column comment
+ * says so). This phase leaves at the end of every run, which clears the marker,
+ * so the next run is not refused and posts a fresh thread. **One introduction
+ * thread per `WALK_EMAIL` run, accumulating**, rather than one ever.
+ *
+ * The sheet path is likewise not guaranteed run to run: `JoinClubButton` reads
+ * `hasIntroducedClub` before deciding, and that read is the same NULLed marker,
+ * so a rider who left is offered the sheet again rather than joining outright.
+ * Both branches below are live regardless, which is why the write watcher is
+ * armed before the tap rather than after it.
  */
 async function checkJoinClub() {
   let bad = 0
@@ -3125,16 +3495,213 @@ async function checkJoinClub() {
     // "Near <city>" section, which is a metered vendor call — see
     // `069_place_search_metering.sql` — so a redundant reload here is not
     // free).
-    await waitForTableWrite('club_members', clickJoinButton)
+    // ARMED BEFORE THE TAP, and that ordering is the fix — see
+    // `watchForTableWrite`. Since PD-392 the tap writes on one of two paths and
+    // not the other, and which one happened is only knowable afterwards from
+    // whether the sheet opened; on the sheet path the write is a second click
+    // away. A watcher armed after the fact misses the direct join outright.
+    //
+    // **Its own budget, NOT the default 20s, because that budget is shared with
+    // everything between the tap and the write.** On the sheet branch the
+    // `waitForSelector` below can spend 10s of it before `Post` is even
+    // clicked — and that wait is a real round trip, since `JoinClubButton`
+    // reads `hasIntroducedClub` against `eu-west-1` before the sheet renders.
+    // At the default the write would get whatever is left, so a slow but
+    // perfectly successful join reports a hard FAIL — and since PD-410 made the
+    // miss a failure rather than a `!` warning, that reddens the whole run and
+    // goes into CI the moment `WALK_CI=1` is set. A gate that goes red on
+    // latency is the defect PD-410 exists to remove, arriving from the far side.
+    // Set only on the sheet branch, which is the only one that posts an
+    // introduction — the direct-join branch leaves nothing to clean up.
+    let introductionThread = null
 
-    // The introduction sheet, if this rider owes one for this club — dismissed
-    // rather than filled in, see this function's own header.
+    const membershipWrite = watchForTableWrite('club_members', 45_000)
+    await clickJoinButton()
+
+    // The pre-join introduction sheet — opened for a club this rider owes an
+    // introduction to, which is the ordinary case here. It is NOT opened for
+    // the default club, or for a stale row where an introduction already
+    // exists; on those `JoinClubButton` calls `joinClub` on the tap itself.
+    // Both are real states of the app, so this branches rather than assuming.
+    const sheet = '[role="dialog"][aria-label="Introduce yourself to the club"]'
+    const introducing = await page
+      .waitForSelector(sheet, { timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false)
+
+    if (introducing) {
+      // Filled in and SENT, never dismissed — see this function's header.
+      //
+      // **Since PD-418 the fill no longer makes the control clickable; it
+      // decides what gets posted.** The primary (`Join club`) is live from the
+      // instant the sheet opens whatever the field holds, and the field arrives
+      // carrying `CLUB_INTRODUCTION_STARTER`. So this `fill` REPLACES that
+      // default rather than satisfying a guard — and it must stay, because the
+      // walk's own cleanup (PD-411) identifies the thread it wrote by the text
+      // it wrote, and a run posting the app's canned starter would be
+      // indistinguishable from a real rider's introduction.
+      await page.fill(`${sheet} textarea`, WALK_INTRODUCTION)
+
+      // ARMED BEFORE THE CLICK, like `membershipWrite` above. This is the only
+      // moment the introduction's thread id is knowable — PD-411; see
+      // `watchForRpcId` for why the UI cannot identify the row afterwards.
+      //
+      // **The SAME 45s the membership watcher gets, and for the same reason.**
+      // The primary is two sequential writes and this is the second, but the
+      // clock starts HERE — before the click — so this budget spans BOTH.
+      // Giving it the default 20s would make a slow-but-successful membership
+      // write eat the whole budget, and the failure is doubly wrong: the id is
+      // never captured, so the thread is not deleted AND the check reports
+      // residue as a hard FAIL. A gate that reddens on latency is the defect
+      // PD-410 exists to remove, arriving from the far side.
+      introductionThread = watchForRpcId('introduce_to_club', 45_000)
+
+      // **Either label, and that is not defensiveness.** The sheet's primary is
+      // `Join club` in pre-join mode and `Post` in member mode (PD-418), and
+      // both are genuinely reachable here: the ordinary path opens pre-join,
+      // while a stale Explore row for a rider who is already a member opens the
+      // member-mode sheet instead. Matching one label alone would leave the
+      // click silently doing nothing on the other — `$$eval`'s `?.` swallows a
+      // miss — and the run would then fail further down naming a symptom.
+      await page.$$eval(`${sheet} button`, (buttons) =>
+        buttons.find((b) => ['Join club', 'Post'].includes(b.textContent?.trim()))?.click()
+      )
+
+      // WAIT FOR THE SHEET TO CLOSE ITSELF, and do not navigate before it does.
+      // The primary is TWO writes with no transaction across them (`097`, PD-392):
+      // the membership lands first and the introduction second, and the sheet
+      // closes on the second through `onPosted`. Navigating on the membership
+      // alone cancels the introduction in flight — it shares the tab — which
+      // leaves the rider in `097`'s "joined, owes an introduction" state. The
+      // club detail then opens the MEMBER-mode sheet on arrival, and that sheet
+      // is `aria-modal` over a scrim, so the `Club options` click below fails
+      // its actionability check and times out at 20s. Measured exactly that way
+      // on the first run of this fix.
+      await page.waitForSelector(sheet, { state: 'detached', timeout: 20_000 }).catch(() => {})
+    }
+
+    // The real finding when it fails, reported as a FAILURE rather than the `!`
+    // warning it used to be (PD-410). Every assertion below reads state this
+    // write was supposed to produce, so a miss here makes the next one fail for
+    // a second, more confusing reason — `no Leave club row found`, which names
+    // the symptom and not the cause.
+    //
+    // **The label does not name which branch ran**, though the detail does.
+    // `CLAUDE.md` §Supabase Rules asks for label SETS to be compared between
+    // runs, and a label that alternates on state the walk does not control
+    // reports a rename that never happened.
+    const joined = await membershipWrite
+    report(
+      joined,
+      'joining writes a club_members row',
+      `no club_members write observed within 45s (${introducing ? 'sheet' : 'direct'} path)`
+    )
+
+    // ** BEFORE ANY LEAVE, ON EVERY PATH — that ordering is the whole point of
+    // this step (PD-411), and it is why the block sits ABOVE the bail-out
+    // rather than below it. ** `club_threads` DELETE is
+    // `EXISTS(clubs) AND is_club_member(club_id) AND author_id = auth.uid()`
+    // — membership-gated on the DELETE itself, not merely on the SELECT — so
+    // the moment this rider leaves the club the thread they wrote becomes
+    // undeletable BY THEM, for ever. The `!joined` bail-out below leaves the
+    // club, and a missed membership write is NOT proof of a missed join (its
+    // own comment says so), so a cleanup placed after it would strand the
+    // introduction on exactly the path where the residue is permanent — on the
+    // `WALK_EMAIL` account, which is deliberately never deleted.
+    //
+    // **Why it is asserted rather than a silent tidy-up.** It is both: the
+    // residue this removes is the reason it exists, and the delete it drives
+    // is a real rider action — an author erasing their own thread — that no
+    // other gate exercises. PD-381 was a defect on exactly this path, and a
+    // best-effort version of this step would have stayed green through it.
+    //
+    // **ONE check, reported on BOTH branches, and the label never names which
+    // ran** — the same rule as the membership label above, for the same
+    // reason. A check that only appears on the sheet branch makes a perfectly
+    // good direct-join run print a SHRUNKEN total, and `CLAUDE.md` §Testing
+    // says to read that as a skip rather than a pass. On the direct-join
+    // branch nothing was posted, so "left nothing behind" is true without a
+    // delete — vacuous, and honest: the phase's residue is what is asserted,
+    // not the route it took to have none. Reported ABOVE the bail-out for the
+    // same reason: returning without it shrinks the total.
+    //
+    // **The branch is announced on its own uncounted line**, because `report`
+    // prints its detail only on failure, so a passing run would otherwise be
+    // byte-identical either way and nothing would say whether the delete was
+    // exercised at all. Parenthesised, never in `ok` format — two uncounted
+    // lines already imitate a passing check and a third would be worse.
+    const introThreadId = introductionThread ? await introductionThread : null
+    let introCleanedUp = !introducing
+    let introFailure = 'introduce_to_club did not return a uuid within 45s'
+
+    if (introThreadId) {
+      await page.goto(`${BASE}/clubs/detail/thread?id=${introThreadId}`, {
+        waitUntil: 'networkidle',
+      })
+
+      // Both the menu row and the confirmation button read `Delete thread`, in
+      // two different `ContextMenu`s — so every selector here is scoped to its
+      // own dialog by `aria-label`. An unscoped `text=Delete thread` matches
+      // whichever is mounted and silently picks the wrong one as the sheets
+      // swap.
+      const optionsSheet = '[role="dialog"][aria-label="Thread options"]'
+      const confirmSheet = '[role="dialog"][aria-label="Delete this thread"]'
+
+      await page.click('button[aria-label="Thread options"]', { timeout: 20_000 })
+      await page.waitForSelector(optionsSheet, { timeout: 10_000 }).catch(() => {})
+      await page.$$eval(`${optionsSheet} button`, (buttons) =>
+        buttons.find((b) => b.textContent?.trim() === 'Delete thread')?.click()
+      )
+
+      await page.waitForSelector(confirmSheet, { timeout: 10_000 }).catch(() => {})
+      introCleanedUp = await waitForTableWrite('club_threads', () =>
+        page.$$eval(`${confirmSheet} button`, (buttons) =>
+          buttons.find((b) => b.textContent?.trim() === 'Delete thread')?.click()
+        )
+      )
+      introFailure = 'no club_threads delete observed within 20s'
+    }
+
+    console.log(
+      `  (join took the ${introducing ? 'sheet' : 'direct'} path — introduction ${
+        introThreadId ? 'posted and deleted again' : 'not posted, nothing to clean up'
+      })`
+    )
+    report(
+      introCleanedUp,
+      'the phase leaves no introduction thread behind',
+      `${introFailure} (${introducing ? 'sheet' : 'direct'} path)`
+    )
+
+    if (!joined) {
+      // **Leave anyway before returning, because the state being bailed out of
+      // is exactly the state that needs cleaning up.** A missed write is not
+      // proof of a missed JOIN — the watcher can time out on a join that
+      // succeeded — and on the `WALK_EMAIL` path nothing else ever collects it:
+      // that account is deliberately never deleted, so the membership stands.
+      // It compounds rather than repeating: `discoverJoinableClub` picks a club
+      // this rider is NOT already in, so the next run picks a different one and
+      // the pool shrinks by one club per false failure. The minted path is
+      // covered by `attemptDeleteAccount`'s cascade and needs none of this.
+      await leaveClubIfJoined(clubId)
+      return { bad, ran }
+    }
+
+    await page.goto(`${BASE}/clubs/detail?id=${clubId}`, { waitUntil: 'networkidle' })
+
+    // The MEMBER-mode sheet, which `097` opens from STATE on any navigation to
+    // a club this rider owes an introduction to. Reached whenever the
+    // introduction did not land — the direct-join branch above never posts one,
+    // and `Post`'s second write is separately failable. It scrims the screen,
+    // so `Club options` is unclickable until it is dismissed. `Not now` is the
+    // right control here and always was: this rider IS a member by now, so
+    // dismissing asserts nothing about joining — which is exactly what made it
+    // the wrong control on the PRE-JOIN sheet above.
     await page
-      .waitForSelector('[role="dialog"][aria-label="Introduce yourself to the club"]', { timeout: 8_000 })
+      .waitForSelector('[role="dialog"][aria-label="Introduce yourself to the club"]', { timeout: 3_000 })
       .then(() => page.click('text=Not now'))
       .catch(() => {})
 
-    await page.goto(`${BASE}/clubs/detail?id=${clubId}`, { waitUntil: 'networkidle' })
     await page.click('button[aria-label="Club options"]', { timeout: 20_000 })
     await page
       .waitForSelector('[role="dialog"][aria-label="Club options"]', { timeout: 10_000 })
@@ -3153,6 +3720,12 @@ async function checkJoinClub() {
     }
 
     await page.goto(`${BASE}/clubs/explore`, { waitUntil: 'networkidle' })
+    // The ask is once per device, so it will not normally reappear here — but
+    // `hasJoinButton` reads the DOM rather than clicking, and a stray scrim
+    // would not affect it either way. Called for the same reason the other two
+    // sites do: an Explore navigation is where this sheet can appear, and a
+    // phase that skips it is one localStorage clear away from being flaky.
+    await dismissLocationSheet()
     const backOnExplore = await hasJoinButton()
     report(backOnExplore, 'leaving it again survives a reload (back on Explore)', 'the club did not reappear on Explore')
   } catch (e) {
@@ -3348,7 +3921,7 @@ await browser.close()
 
 console.log(`\n${paths.length - failures}/${paths.length} screens rendered clean`)
 if (realtimeSuppressed) {
-  // Named rather than swallowed: this run proved the chat renders and sends,
+  // Named rather than swallowed: this run proved a thread renders and sends,
   // and proved nothing about live delivery. See isRelayWebSocketFailure.
   console.log(
     `  (Realtime NOT exercised — ${realtimeSuppressed} relay WebSocket failure(s) suppressed; ` +

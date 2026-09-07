@@ -55,7 +55,7 @@ just see the stories are in development?"* So:
 | What is already being built? | `Development (AI)` | not a session list, not a comment thread |
 | How many sessions are running? | the `slot-1` / `slot-2` labels on those issues | not `list_sessions`, which this session is not expected to hold — STEP 0's inventory says |
 | What are they touching? | one `<!-- territory -->` comment per occupied slot | not a prediction |
-| Is the queue stopped? | any issue in `Needs help` | not a Routine field |
+| Is the queue stopped? | a `Needs help` issue whose park comment carries `<!-- halt-queue -->` | **not** any `Needs help` row — an ordinary park stops its own story and nothing else |
 
 **Two labels are the concurrency cap, and they are the whole of it.** `slot-1` and `slot-2` exist
 on the `PD` team (created 2026-08-18) — check rather than trust that, because everything below
@@ -197,8 +197,9 @@ status that no longer exists returns nothing, which reads exactly like an empty 
 
 **Scope every query to the PROJECT, never to the team.** A team-scoped `list_issues` is the
 natural query and it is wrong in a way that looks like a working gate: this team carries years of
-issues outside this project, several of them sitting in `Needs help` for ever, so the full stop
-below would hold the queue permanently against a healthy board.
+issues outside this project, several of them sitting in `Needs help` for ever — and a team-scoped
+query would name every one of them as parked in every firing's notification, for ever, which is how
+a signal stops being read.
 
 **Query by state, never the whole project.** One unfiltered `list_issues` on this project returns
 100 issues and ~35k tokens of description; the three state-filtered calls together are a fraction
@@ -216,9 +217,31 @@ mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c  state=<N
   on purpose, 2026-08-18: *"I want to pickup only from Queued AI, as it allows me to prioritise and
   focus work on the features I want to deliver."*
 - **In flight** — everything in `Development (AI)`, with its `labels`.
-- **`Needs help` is a full stop for the whole queue.** An issue parked there is waiting on the
-  owner, and building past it buries a story that needs them under the next merged PR. Any row →
-  **take nothing**, but still run STEP 6.
+- **`Needs help` stops its own story, not the queue** — product owner, 2026-09-06: *"maybe needs
+  help doesnt need to block the queue?"* A parked story is already out of `Queued (AI)`, so it is
+  not a candidate and nothing here can take it by accident. **Ordinary rows change nothing about
+  what you take.** What they do change is STEP 6 and the final message: every parked story is
+  named on **every** firing while it stays parked, which is what replaces the freeze.
+
+  **One park is still queue-wide, and it is marked rather than inferred.** A firing that read
+  DEV's deployment of its own merge as `ERROR` parks with `<!-- halt-queue -->` in its comment
+  (`queue-pickup.md` STEP 5 bullet 3): merging another story onto a broken DEV is the one case
+  where carrying on is worse than waiting. **An *unverified* deploy is not that case** — that
+  firing continues and says so, and writes no marker.
+
+  **So when — and only when — `Needs help` is non-empty, read the comments on those issues** and
+  look for that marker:
+
+  ```
+  mcp__Linear__list_comments  issueId=<each Needs help issue>
+  ```
+
+  Marker present → **take nothing**, say which issue halted the queue in the final message, and
+  still run STEP 6. Marker absent on all of them → carry on and take a group as usual.
+
+  **If that read fails or cannot be made, treat it as present.** A halt you could not rule out is
+  not a halt you have cleared, and failing closed here costs one story an hour — which is exactly
+  what every firing paid unconditionally before this change.
 
 **Then count the free slots:**
 
@@ -227,9 +250,9 @@ free slots = 2 − (DISTINCT slot labels — `slot-1`, `slot-2` — appearing on
                   still in `Development (AI)`)
 ```
 
-**Nothing queued, or zero free slots → take nothing.** Go to STEP 6, which is silent in that case.
-This is the common case and the whole point of the design: an idle firing costs one board read and
-ends.
+**Nothing queued, zero free slots, or a halted queue → take nothing.** Go to STEP 6, which is
+silent when there is nothing parked. An idle firing costing one board read and ending is the common
+case and the whole point of the design.
 
 **Order the candidates**: Urgent (1) beats High (2) beats Medium (3) beats Low (4) beats No
 priority (0). Ties break by oldest `createdAt`.
@@ -252,8 +275,9 @@ what hold them.
 
 ## STEP 2 — What the other slot is touching
 
-**Skip this step entirely if there are no free slots, no candidates, or a `Needs help` row.**
-Go to STEP 6.
+**Skip this step entirely if there are no free slots, no candidates, or a halted queue.**
+Go to STEP 6. **An ordinary `Needs help` row is not one of those** — it stops its own story and
+leaves this step's question, *what is the other slot touching*, exactly as it was.
 
 **For the occupied slot, if there is one, read the territory its session declared** — one call, on
 any one issue carrying that label. The build writes the same comment on every issue it holds
@@ -458,7 +482,10 @@ Ask how long the oldest of these has been true:
   `conflicted` where `mergeable_state` says so. It is one line, it is the shape §What the final
   message says calls *a hold that nothing ages*, and it is an instruction the owner can act on in
   one step, where `unknown` is a mystery they have to re-derive. **The Linear comment obeys the
-  marker rule below unchanged** — one `<!-- stall-alarm slot:<N> -->` per issue, never a second.
+  marker rule below unchanged** — one `<!-- stall-alarm slot:<N> band:3h -->` per issue, never a
+  second. **A held slot never escalates**, so `3h` is the only band it ever carries; the band
+  segment is written anyway so one marker form serves both subjects and the legacy rule below has
+  nothing to except.
 
   **No hit — then age the branch tip if there is one**, because a live build keeps resetting it
   and a dead one does not:
@@ -474,15 +501,56 @@ Ask how long the oldest of these has been true:
   **Write `unknown` and stop there.** Every hardening of that word into *never pushed a branch*
   on 2026-09-06 was false, and one of them became a High-priority issue offering to revert a
   migration whose file was sitting in the PR nobody had searched for.
-- **A `Needs help` issue** — `get_issue` → `stateHistory[].startedAt`. It is a stop by design and
-  it still ages: an issue nobody has come back to for hours is worth telling the owner about.
+- **A `Needs help` issue** — `get_issue` → `stateHistory[].startedAt`. **This clock is now the
+  whole backstop, and before this change it was a second one.** The freeze used to make a parked
+  story impossible to miss; nothing does that any more, so a parked story that nobody comes back to
+  is the one failure this change could introduce. Two rules answer it, and neither is the old
+  hourly-comment shape the marker rule below exists to prevent:
+
+  1. **Name every parked story in the final message, on every firing, for as long as it stays
+     parked** — `PD-415 parked, needs you — <the one line from its comment>`. It is one clause in a
+     notification that is being sent anyway, and it is **strictly louder than the freeze it
+     replaces**: a frozen queue ended its firing with the single word `idle`, which is the same
+     thing a healthy empty queue says and is written to be dismissed unread.
+  2. **The alarm escalates in bands rather than firing once.** A single alarm was enough while the
+     queue was stopped behind it; it is not enough now, because the story can sit for days with
+     work merging past it.
 
 **If the oldest is more than 3 hours old, say so in the final message naming it — and record that
-you did**, as a comment beginning `<!-- stall-alarm slot:<N> -->` on that issue, or
-`<!-- stall-alarm slot:none -->` where there is no label. **Never alarm on an issue that already
-carries one.** A slot holds several issues, so look for the marker across all of them and write it
-on just one. **Fall through when the oldest subject is already alarmed**, rather than stopping:
-take the next oldest that is not.
+you did**, as a comment beginning `<!-- stall-alarm slot:<N> band:<B> -->` on that issue, or
+`<!-- stall-alarm slot:none band:<B> -->` where there is no label. A slot holds several issues, so
+look for the marker across all of them and write it on just one.
+
+**`<B>` is the age band the subject has reached, and every band has an explicit token:** `3h`,
+`24h`, `72h`, `7d`, then **`14d`, `21d`, `28d` and so on in 7-day steps** — for an age of **7 days
+or more**, `<N>d` where `<N>` is the age in whole days rounded DOWN to a multiple of 7. **Under 7
+days the four named tokens are the whole list** and the formula does not apply: at day 4 it would
+give `0d`, which is in neither list, so a subject carrying `72h` would fail to match and alarm
+again. **Never alarm on an issue that already
+carries a marker for its current band**, and **fall through to the next oldest unalarmed subject**
+rather than stopping. Crossing into a new band is a new alarm on the same issue.
+
+**Every band must have a token you can compute, and "weekly after that" was not one.** An earlier
+draft ended the list at `7d` and said weekly thereafter, which leaves a firing at day 14 with two
+readings and no way to choose: reuse `7d`, find the marker and **never alarm again** — the
+alarming-once-and-going-silent failure this change exists to fix, delayed by a week — or invent a
+token, at which point two firings invent different ones and alarm repeatedly. The rounding rule
+above is deterministic, so every firing computes the same token for the same age.
+
+The marker is what keeps this from becoming the comment-an-hour shape: **four comments in the first
+week** (`3h`, `24h`, `72h`, `7d`) and one a week after that, where alarming once left a story silent
+for ever and alarming every firing would leave 24 a day.
+
+**A marker written before this change has no `band:` segment**, so the first firing to check an
+already-alarmed subject will not match its current band and will alarm once more. That is correct
+rather than a migration to write: one extra comment per subject that was already alarmed, and the
+alternative is treating an unbanded marker as covering every band, which is the permanent silence
+again. **It is once and not once an hour** because the replacement marker carries a band — for a
+held slot always `3h`, which it then matches for ever.
+
+**The bands are for the `Needs help` clock. A held slot keeps the single 3h alarm it always
+had** — that subject has a session behind it that either finishes or is cleared by the owner, and
+its final-message line repeats on every firing regardless, which is where its escalation lives.
 
 **A stalled slot is not cleared automatically, and the owner is the one who clears it.** They move
 the issue back to `Queued (AI)` and strip the label, which frees the slot on the next firing. An
@@ -502,9 +570,16 @@ session says is the whole of its reporting. Keep it to one or two lines, in this
   line of the session. If `PushNotification` resolved, that bullet sends it too; a duplicate is
   harmless and an absent one is not.
 - **A stall or a hold that nothing ages** → one line naming it, once per condition.
-- **Empty queue, every candidate blocked, no free slot, `Needs help` occupied** → **end with no
+- **Anything in `Needs help`** → one line per parked story, **on every firing while it stays
+  there**, whether or not this firing built: `PD-415 parked, needs you — <one line why>`. This is
+  the signal that replaces the freeze and it is not optional; a firing that builds a group and
+  says nothing about the parked story has reproduced the exact failure this change was warned
+  about. Where the park carries `<!-- halt-queue -->`, say that instead and say nothing was taken.
+- **Empty queue, every candidate blocked, or no free slot — and nothing parked** → **end with no
   message at all beyond a single word, `idle`**, so the notification the Routine sends is one the
-  owner can dismiss without reading.
+  owner can dismiss without reading. **`Needs help` being occupied no longer qualifies**: that
+  case used to end here, which meant a story waiting on the owner sent them the same dismissible
+  word a healthy empty queue does.
 - **The self-check failed** → never `idle`: `self-check failed — read PD-241`, on the firing that
   wrote the inventory and on every firing after it until it passes. The queue is not running, and
   the notification must not read as if it were.
@@ -582,6 +657,6 @@ mcp__Claude_Code_Remote__get_session  session_id=<that session_id>
                                             # REQUIRES_ACTION = stalled on a prompt; read pending_action
 ```
 
-Then the board: work in `Queued (AI)` with a free slot, no `Needs help` row and nothing new arriving
+Then the board: work in `Queued (AI)` with a free slot, no halted queue and nothing new arriving
 in `Development (AI)` across two hour boundaries is a firing that reaches the board and does nothing
 — read the last run's session transcript, which the owner can open and a session cannot.

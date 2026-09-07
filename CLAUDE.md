@@ -130,9 +130,9 @@ never be dissolved back into components, because:
    writes safe in the first place.
 
    **The participation gate is narrower than "every write"** — `enforce_participation_gate` sits on
-   twenty-one tables on DEV and twenty-two on PROD (`101`/PD-373 dropped `club_thread_waves`' gate
-   on DEV only, awaiting promotion) and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
-   `feed_reads`, `club_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
+   twenty-two tables on DEV and twenty-one on PROD — `101`/PD-373's drop promoted 2026-09-06, then
+   `108` added two on DEV and `109` took one back — and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
+   `feed_reads`, `club_thread_reads`, `ride_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
    `accept_terms()` can still set a username and upload an avatar. `docs/reference/schema.md`
    §The participation gate has the list, the `push_devices` exception and the count query.
 2. `useActionState` gives pending and error states without hand-rolled `useState` triples — and
@@ -229,7 +229,7 @@ Formik; the forms in this app are one to three fields.
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | In place; gates every PR that touches `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (54 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/__tests__/` exercises four actions against a mocked resolver and reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Thirty-two** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways per §Working Principles; all but **five** render through `renderToStaticMarkup` under `environment: 'node'`, and jsdom is the answer only when something needs a **mounted effect, a layout, an event or a portal** — check the reason against that list rather than against the count, because each of the five below is there for a different one — `ClubTimeline.test.tsx`, for a fetch failure and an anchor-hunt latch that only exist inside a mounted `useEffect`; `PostcardMenu.test.tsx`, for a real click through `ContextMenu`'s portal and `useTransition`'s async flow; `EditRideForm.dom.test.tsx`, because that form seeds its controlled state FROM its row, so the refused-transition state is unreachable on first paint and a static render cannot tell a working guard from `disabled={false}`; `IntroductionPrompt.dom.test.tsx`, because the sheet's dismissal lock has to hold against `ContextMenu`'s **scrim and Escape**, which a static render cannot dispatch — asserting the button's `disabled` attribute leaves exactly the path that matters uncovered; and `PrivacySheet.dom.test.tsx`, because that sheet IS a `ContextMenu` and portals to `document.body`, so a static render of it returns nothing at all to assert against. Count them with `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
+| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard | Vitest — `npm run test:unit` | In place; gates every PR that touches code. Also covers `src/lib/query/`, `src/lib/auth/guard.ts` (54 cases, replacing the untestable `proxy.ts`) and `src/lib/supabase/session-store.ts`. `lib/actions/__tests__/` exercises four actions against a mocked resolver and reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Forty-one** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways per §Working Principles; all but **eight** render through `renderToStaticMarkup` under `environment: 'node'`, and jsdom is the answer only when something needs a **mounted effect, a layout, an event or a portal** — check the reason against that list rather than against the count, because each of the eight below is there for a different one — `ClubTimeline.test.tsx`, for a fetch failure and an anchor-hunt latch that only exist inside a mounted `useEffect`; `PostcardMenu.test.tsx`, for a real click through `ContextMenu`'s portal and `useTransition`'s async flow; `EditRideForm.dom.test.tsx`, because that form seeds its controlled state FROM its row, so the refused-transition state is unreachable on first paint and a static render cannot tell a working guard from `disabled={false}`; `IntroductionPrompt.dom.test.tsx`, because the sheet's dismissal lock has to hold against `ContextMenu`'s **scrim and Escape**, which a static render cannot dispatch — asserting the button's `disabled` attribute leaves exactly the path that matters uncovered; `PrivacySheet.dom.test.tsx`, because that sheet IS a `ContextMenu` and portals to `document.body`, so a static render of it returns nothing at all to assert against; `RideAttendanceBar.dom.test.tsx` (PD-404), because its property is a **sequence across an async transition** — tap, await the action, branch on the result — so a static render cannot tell *fires on success only* from *fires always*, both producing byte-identical markup; `RideStatusChip.dom.test.tsx` (PD-404), for a **mounted effect** — the chip catches focus when the RSVP bar unmounts and takes the focused button and the live region with it, and focus is not in markup at all; and `UseMyLocationRow.dom.test.tsx` (PD-419), for a **timer inside a mounted effect** — the automatic ask is a `setTimeout` armed off an async permission read, so under `environment: 'node'` the component renders `null` for ever and every assertion would pass against one that does nothing. Count them with `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
 | Edge Functions | `deno check`, CI's `functions` job | Type-checks every `index.ts` under the runtime it runs in, when `supabase/functions/**` or the workflow changes. `tsconfig.json` excludes the directory, but two helper modules (`gates.ts`, `shape.ts`) are imported by unit tests and `tsc` follows them in — `npx tsc --noEmit --listFiles \| grep supabase/functions` lists them — so the entrypoints are the part only the Deno job reads |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything**: signs in, walks every screen including detail routes discovered from the lists, checks the guard's redirects and sign-out, and refuses a create and an edit. Every other gate stays green through a screen that throws on load, or one nobody can reach (PD-125). `WALK_FIXTURES=1` creates the rows the detail routes need; a shrunken `N/N` is a skip, not a pass. **Wired into CI as the `walk` job (2026-09-02)**, minting its own rider (no credential — PD-268), and **skipped until the repository variable `WALK_CI=1` is set**, because the Actions secrets name PROD and the guard step refuses to walk it. Not a required check yet (PD-370) |
 | End-to-end | Playwright | Deferred as a full suite. The walk asks one question per route — did this render — and asserts behaviour only in its named phases, each covering a defect no other gate can see. Adding a phase means adding a reason, not broadening a remit |
@@ -381,11 +381,16 @@ GitHub Deployment of that sha in that branch's environment to be `success`** (th
 below, mechanised — the bare `Vercel` commit status cannot tell a Production build from a Preview
 of the same sha after a promotion's fast-forward), then deploys every function; a
 `workflow_dispatch` deploys one or all to a chosen project from any sha without the wait.
-**Nothing deploys until the `SUPABASE_ACCESS_TOKEN` secret exists (PD-369)** — the job is skipped
-with a warning, not red — so until that lands an edit under `supabase/functions/` is still drift
-from the moment it merges. **It fixes future drift only**: a push deploys only when it touches a
-function, so what was stale the day it landed (`resolve-ride-location` on both projects, behind
-PD-236's marker fix) stays stale until one manual dispatch per project catches it up. No session deploys by hand: there is no `supabase` CLI in
+**The `SUPABASE_ACCESS_TOKEN` secret has existed since at least 2026-08-31, and PD-369 spent four
+days claiming otherwise** — the proof is `log-digest.yml` run 1, which failed *past* that script's
+own token check with the value masked in its env block. Nothing red, nothing checkable, four files
+repeating it. Without the secret the gate job SKIPS the deploy and the RUN IS STILL GREEN, so read
+the `deploy` **job's** conclusion (`success` vs `skipped`), never the run's. **It fixes future drift
+only**: a push deploys only when it touches a function, so anything already stale when one lands
+stays stale until a `workflow_dispatch` (`all`, per project) catches it up — which is what was
+actually owed, and why `resolve-ride-location` sat ten days behind PD-236's marker fix, rendering no
+tile for any ride created in that window. Both dispatches ran 2026-09-06: all three functions on
+both projects at `771f650`, equal `ezbr_sha256` per function across the two. No session deploys by hand: there is no `supabase` CLI in
 the build container, and the MCP server's `deploy_edge_function` stays on `.claude/settings.json`'s
 `deny` list.
 **Version numbers differ per project and always will** (they count deploys), so the `ezbr_sha256`
@@ -420,7 +425,7 @@ in migrations for any new table.
 **Schema:** **the per-table contract is [`docs/reference/schema.md`](docs/reference/schema.md).**
 Read it before touching any table: it carries the per-column grants, the cascade behaviour and
 the audience predicate for each, and several are counter-intuitive (a club outlives its owner;
-`postcards.ride_id` is a tag rather than a second audience; `ride_messages`' audience is an
+`postcards.ride_id` is a tag rather than a second audience; `ride_threads`' audience is an
 intersection and neither half alone is it; a club's audience is the membership helper ALONE).
 
 **`places` — the self-hosted Overture index the typeahead used to search — is RETIRED (`070`,
@@ -449,33 +454,36 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 107 files. DEV is at `107` and PROD at `100` — measured 2026-09-05.** The gap is
-`101`–`107`, all awaiting promotion. **`107` (PD-98) also goes MIGRATION-FIRST**, for a different
-reason from `105`/`106`: it has no unsafe side at all. It changes no `src/` file, no client writes
-`clubs.owner_id` on an existing row, it adds no PostgREST relationship, and **the policy delta is
-provably a no-op against every row existing at apply time** — `owner_id` is `NOT NULL` until the
-file's own first statement runs, so the added `owner_id is not null` conjuncts are universally true
-for every pre-existing row, and the only rows they can affect are ones the file's last statement can
-create. **`105`/`106` (PD-298) go MIGRATION-FIRST on the PROD
-promotion**, and "additive, so the order does not matter" is the wrong reading: they add two
-`security definer` accessors that the promoted bundle CALLS, so a build serving ahead of them
-answers `PGRST202` on both Privacy-sheet lists — the shipped-client-reads case in the sequencing
-rule below. They touch no policy, grant, CHECK or trigger, so migration-first has no unsafe side
-of its own. `103`/`104` (PD-103) were applied only after the build carrying
-them was confirmed **serving** on DEV (`READY` on the merge sha, `aliasError` null) — that gate is
-the sequencing rule below and is not the same as "after the merge". **`list_migrations` against both
-refs is the only honest answer to this line**, which was written wrong three times in one day before
-the apply, every time in the direction of claiming one that had not happened. `103`/`104` (PD-103) carry an **ordering rule and it breaks
-in one direction only**: deploy the code first, then apply `103`, then `104`. Applying `103`
-against a bundle that still writes the creator's membership row is an instant outage of club and
-ride creation. The reverse gap is *mostly* self-healing — `103`'s backfill repairs the orphans a
-newly-deployed bundle can leave — but **not for an already-loaded browser tab**, which keeps the
-pre-merge JS and goes on issuing the plain insert until it is reloaded. That population is what
-the change's own group 1 (a transitional idempotent upsert, left to soak) exists for, and it is
-why a PROD promotion should use it rather than collapsing the steps as the DEV apply did.
+**Applied state: 112 files. DEV is at `112` and PROD at `107` — measured 2026-09-06.** `101`–`107`
+**promoted to PROD on 2026-09-06**, so the long-standing seven-file gap this line used to describe
+is closed. What is open is the ordinary five-file promotion gap, `108`–`110` (PD-402), `111`
+(PD-361) and `112` (PD-399/PD-408), all applied to DEV. **`111` and `112` are additive with nothing
+to sequence against** — neither touches a file under `src/`, so the PROD promotion needs no separate
+ordering decision for either. **`112` hangs triggers on three already-shipped write paths**, so it
+owes the hand-exercise gate rather than an ordering decision; that gate is in its own §Verification.
+**`109` was held back until the merged bundle was confirmed *serving*** — `READY` on merge sha
+`923541c` with `aliasError` null, which is not the same as merged — and applied at 10:09Z once it
+was. **`108` went MIGRATION-FIRST and `109` LAST**, the sequencing rule with its two halves pulling
+in opposite directions: one file cannot be both sides of a deploy, which is why there are two.
+**The same split is owed on the PROD promotion** and must not be collapsed.
+**The per-file ordering for `101`–`107` is in `docs/reference/migrations.md` §Applied state**, not
+here — that promotion is finished, so which of its files went before the deploy and which after is a
+log entry rather than a rule. What generalises from it is the paragraph below.
 Count rather than trust it: `list_migrations` against both refs,
 against `ls supabase/migrations/*.sql | wc -l`. DEV also records three hand-applied rows with no
 file, so its row count reads high; every file IS applied, which is the direction that matters.
+**`109` was the one file deliberately applied nowhere for the length of a deploy** — it is applied
+now; the paragraph above has the gate it waited on.
+
+**A gap's files rarely agree about which side of the deploy they want**, and `101`–`107` is the
+worked example: `105`/`106` had to be migration-first (the promoted bundle CALLS their two
+accessors), while `101` and `103` had to be deploy-first (each is an outage against the bundle that
+was serving). **Deploy-first wins that argument** — it is the side that protects against an outage
+and destroyed data, where migration-first costs a transient `PGRST202`. **`108`/`109` is the case
+where one file could not settle it and had to become two**: the publication entry and the new
+tables want to be there before the bundle, and `ride_messages` has to outlive it, so the change is
+split rather than compromised. `docs/reference/migrations.md` §Applied state has the per-file rule
+and the order each was actually applied in.
 **Level is the exception, not the resting state** — DEV-ahead is where a migration lives between
 its merge and its promotion. Promote everything the gap contains, in filename order, per
 `docs/ENVIRONMENTS.md` §Migrations, and record each promotion's ordering in
@@ -510,7 +518,7 @@ exactly like drift. Compare the OBJECT, never the recorded text —
 [`docs/reference/migrations.md`](docs/reference/migrations.md) §Applying a large file has the
 procedure, and §What reads as drift the reconciliation SQL.
 
-Suite **3488** assertions — re-derive rather than trust it:
+Suite **3642** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs: a count cannot tell a rename from a loss.
 
@@ -529,13 +537,26 @@ never run. `complete_onboarding` also joins the caller to the club carrying `clu
 (`058`), inside a `when others` block, because a raise there would roll the completion stamp back
 and decision #5 gives a rider with a NULL stamp no way out of the wizard.
 
-**Security advisors: thirty-nine on DEV and thirty-seven on PROD, and only one is outstanding** —
-`auth_leaked_password_protection`, a dashboard click. **The two-advisor difference IS the pending
-`105` promotion**, which is the ordinary shape this section's last line describes rather than drift.
-The rest are things this repo chose: one
+**Security advisors: forty-two on DEV and thirty-nine on PROD, and only one is outstanding** —
+`auth_leaked_password_protection`, a dashboard click. **The three-advisor difference IS `108` and
+`111`, both applied to DEV and neither promoted** — the ordinary shape this section's last line
+describes rather than drift. **`111` (PD-361) adds exactly one INFO** and no WARN:
+`rls_enabled_no_policy` on `club_removals`, a third table in the position `password_reset_grants`
+and `push_devices` already hold. It adds no WARN because it creates no function in `public` —
+it creates exactly ONE function and that one lives in `private`
+(`clear_club_removal_on_join`); its other two — `club_invite_link_reachable_by` and
+`remove_club_member` — are `create or replace` of `093`'s and `088`'s and were already there. Both projects read **39** before it, measured 2026-09-06 after the `101`–`107`
+promotion, so the older two-advisor gap this line used to attribute to `105` is closed and this is
+a new one with the same shape. `108` adds exactly two, one per `security definer` RPC it publishes
+in `public` — `delete_own_ride_thread_message` and `moderate_ride_thread`; its third function,
+`ride_thread_unread`, is `security invoker` and adds none, which is measured against
+`public.club_thread_unread` (`prosecdef = false`) rather than assumed. **`109` removes none**:
+`public.ride_has_unread` is `prosecdef = false` and `public.stamp_ride_read` holds no
+`authenticated` EXECUTE. The rest are things this repo chose: one
 `authenticated_security_definer_function_executable` WARN per `security definer` RPC in
 `public` (each narrow by design — takes a row id or nothing at all, never a rider id, one raise
-site), and two `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright. **A migration adding
+site), and three `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright —
+client-role grants; the `service_role` half is a separate question, below. **A migration adding
 two such functions adds two**, and one whose functions live in `private` adds none. Re-derive with
 `get_advisors(security)`; `docs/reference/migrations.md` §Security advisors has the per-migration
 accounting and the count query. An unexpected advisor is one not in that table; a one-advisor
@@ -544,6 +565,65 @@ difference between the projects is almost always a pending promotion.
 **Scope a grant assertion to its grantee**, or use `has_table_privilege`: a table-wide
 DELETE-grant count reads 2 against a correct database, because `postgres` and `service_role` hold
 everything by Supabase default.
+
+**A new table KEEPS Supabase's default `service_role` grants. Revoking is the exception, and
+`076` §3 is the rule** — surfaced here by PD-409 because it was stated only in that migration's
+body, where the next table's author does not look. Revoke from `service_role` when the table is a
+**restricted-readership sink**: its rows are something the one credential that bypasses RLS must
+not be able to enumerate. Three are revoked today — `postcard_reports` (`076`),
+`club_thread_reports` (`094`) and `push_devices` (`078`): two moderation queues whose rows are
+reporter identities, and a device-token store. Ordinary content tables are outside the rule, and
+**`081`/`108` leaving the six club and ride thread tables alone was correct rather than an
+oversight** — `076` says so in as many words: *"The narrowness is deliberate and is not a claim
+about the other tables."* So the two are not competing precedents, and revoking across the thread
+tables to "settle" them would make six tables inconsistent with the other twenty-four.
+
+**The criterion is a judgement about the ROWS, and there is no mechanical test for it. Do not
+invent one.** An earlier draft did, and it was actively dangerous: it proposed *RLS-enabled + no policy + definer-RPC-only*, which **excludes `postcard_reports` and
+`club_thread_reports`**, the two tables most obviously covered. Both carry two policies and an
+`authenticated` SELECT grant. A session applying that test would have concluded their revokes were
+mistakes and re-granted `service_role` — re-opening the reporter-identity exposure `076` exists to
+close, which is worse than the error it was written to fix.
+
+**`rls_enabled_no_policy` is a CANDIDATE SET worth checking, never the criterion.** Its three
+members are `push_devices`, `password_reset_grants` and `club_removals`, and checking them found
+**two that are not revoked and should be** — each because its migration named client roles and
+stopped, leaving Supabase's default in place: `026:189` (`anon, authenticated`) and `111:83`
+(`public, anon, authenticated` — and revoking from `PUBLIC` does not touch `service_role`'s own
+direct grant, which is *why* the default survived). Their readership argument is `076` §3b's, made
+per table: `password_reset_grants` says who is mid-password-reset, and `club_removals` holds the
+(club, rider) pairs an admin removed, over a table whose own comment says *"NOBODY READS IT"* and
+against a `manage-club-riders` requirement that *"nothing anywhere SHALL record who removed
+whom"*. **PD-413.** `111` shipped that way *while this paragraph was being written*, which is why
+the candidate set is worth re-running rather than trusting any list here:
+
+```sql
+select count(*) filter (where sr)                          as kept,
+       count(*) filter (where not sr)                      as revoked,
+       string_agg(relname, ', ' order by relname) filter (where not sr) as revoked_tables
+  from (select c.relname, has_table_privilege('service_role', c.oid, 'SELECT') as sr
+          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         where n.nspname='public' and c.relkind='r') t;
+-- 30 kept · 3 revoked · club_thread_reports, postcard_reports, push_devices (2026-09-06).
+-- It names them because a COUNT cannot see a swap: revoke one new sink while another is
+-- re-granted and the count stays 3 while the trio named above is silently wrong.
+```
+
+**Elsewhere this file calls `push_devices`, `password_reset_grants` and `club_removals` tables
+"whose grants were revoked outright"; read that as CLIENT-role grants** — all three revoked `anon`
+and `authenticated`, and only `push_devices` also named `service_role`. It is **not** the revoked
+trio above, which overlaps it only in `push_devices`.
+
+**All three `service_role` revokes DO carry a local, grantee-scoped assertion — in two different forms, and that
+is the trap.** `postcard_reports` and `club_thread_reports` use a savepoint-staged
+`has_table_privilege` (`rls_test.sql` :1630, :25674), which is needed because `service_role` is a
+bare role in `harness.sql` and a naked `has_table_privilege` reads false for *every* table there —
+passing for the wrong reason. `push_devices` instead counts `information_schema.role_table_grants`
+scoped to the grantee (**`078.1j`**), which is sound without staging. **A grep for one form finds
+none of the other** — there are 14 `role_table_grants` sites — and that is exactly how a review of
+this paragraph concluded `push_devices` had no assertion at all. §The comment trap's rule applies
+to a grep for an *assertion* as much as to one for a retired pattern: verify the filter both ways
+before writing down an absence.
 
 **The project is on the free tier, which auto-pauses after ~7 days idle.** A paused project
 serves nothing, so the deployed app goes down with no alert. This needs to be on Pro before
@@ -699,6 +779,7 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 | Agent | Use for |
 |---|---|
 | `openspec` | Drives the OpenSpec workflow; enumerates every state and, above all, every **negative case** |
+| `product` | The outside-in view — who a rider is *before* they install, what we may honestly claim, store listing copy, naming and slogans, the funnel, pricing. Writes words, never `src/` |
 | `design-system` | v2 tokens, component library, icon set — **blocks most other work** |
 | `data` | Migrations, RLS policies, block lists, indexes, schema debugging |
 | `feature` | Complete vertical slice — route, page, components, types, wiring |
@@ -735,6 +816,12 @@ diff is the list. `.claude/agents/*.md` and `.claude/commands/*.md` are reviewed
 `.claude/skills/` each run the job for one tripwire; **`.claude/hooks/*.sh` and the rest of
 `.claude/` run zero jobs**, so a diff touching the permission or execution surface is a
 **security** review with, at best, a cardinality check behind it.
+
+**`product` is not in that order and does not join it** — it works inward from a rider who has
+not installed anything, so it is reached before a story exists (is this worth building, and what
+would we say about it) or after one ships (what goes in the listing). Its standing answers are
+[`docs/reference/positioning.md`](docs/reference/positioning.md); the boundary that matters is
+that `native` owns the store *submission* and the guideline reading, `product` only the words.
 
 Skip `openspec` when the change has no domain rules — copy, styling, a dependency bump.
 Requiring a proposal for everything is how process gets ignored. Skip `data` when there's no
@@ -1031,10 +1118,30 @@ file already tells you not to optimise. **The letters count up for the whole ses
 restart at A**, and a letter lives inside one session and nothing more is expected of it — another
 session's **A** naming something different is the accepted cost.
 
-**Every lettered option opens with a title and one line of context saying what it actually is.**
-Name the thing, then say in a sentence what it does and what it costs. **Make the name short enough
-to say and specific enough to be unique** — *"the team-scoped pick"*, *"the leaked-password
-toggle"*. That title is also what disambiguates a letter across sessions.
+**Every lettered option opens with a title, then a short PRACTICAL explanation, then the
+ratings.** Standing instruction, product owner 2026-09-06: *"between the title and the options, can
+you give me a short practical explanation."*
+
+**Break the line after the title** — the title on its own line, the explanation in its own
+paragraph below it, separated by a blank line. Standing instruction, product owner 2026-09-06:
+*"can we break the line after the title?"* It is the same rule as the one for scores above and it
+exists for the same reason: the title is what a reader **skims** to find the option they care
+about, and the explanation is what they read only once one has caught their eye. Run together on
+one line, the bold title stops being a heading and becomes the first clause of a paragraph, so a
+reply offering three options no longer has three things to scan.
+
+The worked example below has always been written this way; the rule was only ever shown, never
+stated, which is why it drifted. Nothing gates it — a chat reply is not a file — so it holds
+because it is here. Two or three sentences, in plain terms, saying what
+actually happens if they say yes — what changes, who does it, what it costs them, and what they
+would notice afterwards. **The ratings answer *how much* and *how urgent*; this answers *what is
+it, concretely*,** and it is the half an owner deciding on a phone needs before the numbers mean
+anything. One line was the old rule and it was too terse to decide from.
+
+Write it for someone who was not in this session: no bare issue id (§the chat rule above), no file
+path standing in for an explanation, and never the title restated in different words. **Make the
+name short enough to say and specific enough to be unique** — *"the team-scoped pick"*, *"the
+leaked-password toggle"*. That title is also what disambiguates a letter across sessions.
 
 **Never write a bare issue id in a chat reply — put a short title in front of it.** So it is
 **the caption swipe (PD-224)**, never **PD-224**: the number means something to whoever just wrote
@@ -1067,10 +1174,14 @@ chat and the body of any issue parked in `Needs decision` or `Needs help` alike.
 point needs a paragraph to defend, the paragraph belongs in the record and the reply gets the
 sentence. **This replaces the long-form debrief for every session, not just long ones.**
 
-**Give every lettered option its own blockquote, with the letter and its description *outside*
-the bar.** Two options means two headings and two bars:
+**Give every lettered option its own blockquote, with the letter, its title and its explanation
+*outside* the bar.** Two options means two headings, two explanations and two bars:
 
 **A) Drop the dead column.**
+
+The column is `profiles.legacy_rank`. Nothing writes it and nothing reads it, but it is still in
+the schema, so the next session building a profile screen finds it and has to work out whether it
+matters. Dropping it is one migration and a handful of type edits; no rider sees any difference.
 
 > **Recommendation** 7/10
 >
@@ -1093,6 +1204,11 @@ the bar.** Two options means two headings and two bars:
 > wants its own branch, and the open PR should land first
 
 **B) Enable leaked-password protection.**
+
+Supabase can check a new password against HaveIBeenPwned and refuse the ones that have already
+leaked. It is off on both projects today — one toggle each in the dashboard, which only you can
+click. Nothing in the app changes; a rider signing up with a breached password would simply be
+asked for a different one.
 
 > **Recommendation** 9/10
 >
@@ -1180,6 +1296,12 @@ mcp__Supabase__list_migrations <ref>          # against `ls supabase/migrations/
 [`docs/reference/product-scope.md`](docs/reference/product-scope.md).** It is a snapshot of what
 exists, so check the code first and Figma second.
 
+**How the app is described to someone who has never heard of it is
+[`docs/reference/positioning.md`](docs/reference/positioning.md)** — the rider states, the list
+of what we may honestly claim, the do-not-say table, and the store listing with its character
+caps. It exists because a listing is the one place an unstated assumption becomes a public
+promise, and because the design is roughly twice the app.
+
 Two decisions rather than status: **the nav is four tabs** (Home, Rides, Clubs, Profile — Inbox
 was removed by PD-100, not shipped as a stub), and **there is no "Friends" tab**, because `013`
 dropped `friendships`. Both look like omissions to anyone reading the five-tab design instead of
@@ -1211,7 +1333,9 @@ a Routine fired.** What must be true without reading it:
   label, move between statuses, and close. Deleting anything a human authored is the exception.
 - **`Queued (AI)` is the only start signal**, and the owner keeps it hand-fed on purpose, so a
   full `Todo AI` column is not a starved queue to route around. `Development (AI)` claims **one
-  issue** — stories build in parallel sessions — while `Needs help` stops every dispatch.
+  issue** — stories build in parallel sessions — and since PD-416 so does `Needs help`: a parked
+  story waits on the owner and every other story carries on. The one queue-wide stop is a
+  `<!-- halt-queue -->` marker, written only by a park over a broken DEV deploy.
 - **The two `slot-*` labels are the concurrency cap, and the board is the whole lock.** An issue
   moved into `Development (AI)` by hand carries no slot label and holds no slot.
 - **Never type a status name from memory** — `list_issue_statuses team=Pedro & Dave`. A

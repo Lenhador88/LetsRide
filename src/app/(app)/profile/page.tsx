@@ -8,6 +8,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonDetail } from '@/components/ui/Skeleton'
 import { Header } from '@/components/layout/Header'
 import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
+import { LocationSetting } from '@/components/profile/LocationSetting'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { EditProfileForm } from '@/components/profile/EditProfileForm'
 import { ProfileCountries } from '@/components/profile/ProfileCountries'
@@ -186,6 +187,14 @@ function ProfileScreen({ profile }: { profile: Profile }) {
       <ProfileCountries codes={countries.data} />
 
       <EditProfileForm profile={profile} />
+
+      {/* PD-419, and since PD-425 the ONLY location control on this screen. The
+          editor above carried a free-text `location` field under this section's
+          own heading — two controls, one column, and the field accepted towns
+          this section then reported as unplaceable. Deleting the field is what
+          made `setRiderTown` the single writer; a second picker up there would
+          have been two pickers. */}
+      <LocationSetting />
 
       <section className="flex flex-col gap-2">
         {/* No `meta` count. `postcards.length` is the length of a page

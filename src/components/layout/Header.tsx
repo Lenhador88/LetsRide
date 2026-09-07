@@ -33,8 +33,10 @@ type HeaderProps = {
    */
   onBack?: () => void
   /**
-   * The 20px sub-page row beneath the title, centred. **The ride chat is the
-   * only caller left** — it puts its crew count here. The ride detail used to
+   * The 20px sub-page row beneath the title, centred. **`RideHeader` is the
+   * only caller left** — it puts its crew count here. (It was the ride CHAT's
+   * header until `109` retired that screen; the slot and its one caller
+   * survived the swap to threads.) The ride detail used to
    * put a `Ride plan ⌄` sub-page switcher in this slot; PD-254 deleted it, so
    * the plan and crew screens now pass nothing and get the plain 96px header.
    * Named for what it does rather than for that switcher, because the next
@@ -69,7 +71,8 @@ type HeaderProps = {
    * catch the swap, and it silently changes what every existing `action`
    * caller means without touching their code. `secondaryAction` costs one prop
    * and leaves both of today's `action` callers (`/profile`'s `<ProfileMenu
-   * />`, `RideHeader`'s chat button) untouched.
+   * />`, `RideHeader`'s `RideThreadsButton` — its chat button until `109`)
+   * untouched.
    *
    * Fixed at x302 regardless of whether `action` is present — measured off
    * `Ride - Ride plan - Sub pages` (`2375:9114`), where Chat sits at x302 and

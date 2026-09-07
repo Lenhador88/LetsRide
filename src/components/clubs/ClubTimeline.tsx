@@ -136,8 +136,10 @@ function useFirstWindowRemovalGuard<T>(
  * starts, and then we show chronologically what's been going on. For eg. a new
  * discussion created, someone created a postcard, rider joining the club."*
  * The Postcards carousel and the Threads section were dissolved into it in the
- * same change — they are entries here now, and `ClubCreateBar` carries the creates and
- * `ClubThreadsRow` the entrance they used to own.
+ * same change — they are entries here now, and `ClubCreateAction` carries the
+ * creates. **The entrance they used to own is this stream itself as of PD-426**,
+ * which deleted `/clubs/detail/threads` and the `ClubOptionsMenu` row that
+ * pointed at it.
  *
  * ## The non-member branch is the one rule that is not cosmetic
  *
@@ -220,7 +222,9 @@ export function ClubTimeline({
   const threads = useQuery(isMember ? queryKeys.clubs.threads(clubId) : null, () =>
     getClubThreads(clubId)
   )
-  // Shares its key — and so its request — with `ClubThreadsRow`'s aggregate dot.
+  // The only reader of this key now: `ClubOptionsMenu`'s aggregate dot shared it
+  // until PD-426 deleted that. See `getClubThreadUnread` — its corrective read
+  // existed for that aggregate and is now inert (PD-433).
   const unread = useQuery(isMember ? queryKeys.clubs.threadsUnread(clubId) : null, () =>
     getClubThreadUnread(clubId)
   )
@@ -235,8 +239,9 @@ export function ClubTimeline({
   // ---------------------------------------------------------------------
   // Paging state — PD-375. The first window of each source above lives in
   // the shared cache; everything below is session-local and dies with the
-  // mount, matching `/clubs/detail/threads`' own trade (`client-cache-
-  // invalidation`'s "first page shared, later pages local").
+  // mount — `client-cache-invalidation`'s "first page shared, later pages
+  // local". (`/clubs/detail/threads` made the same trade until PD-426 deleted
+  // it; this is now the only screen making it.)
   // ---------------------------------------------------------------------
 
   const [extraRides, setExtraRides] = useState<ClubTimelineWindow<RideListItem>[]>([])
@@ -683,11 +688,18 @@ export function ClubTimeline({
    * also the only one that can be offered unconditionally, which is what stops
    * the gating above from ever producing a foot that says "older activity
    * lives in" and then names nowhere.
+   *
+   * **It is three again, and `All threads` is the one that went** — PD-426, and
+   * this is a departure from that spec line rather than a regression to the
+   * first draft: there is no thread index left to send anyone to. The
+   * unconditional Members entry is what keeps the guarantee above intact.
    */
   const handoff = [
     hasPhotos && { label: 'photos', href: photosHref },
     accumulatedRides.rows.length > 0 && { label: 'rides', href: routes.clubRides(clubId) },
-    accumulatedThreads.rows.length > 0 && { label: 'threads', href: routes.clubThreads(clubId) },
+    // No `threads` entry: PD-426 deleted the index it named, and the foot link
+    // exists to say where CUT rows live — a thread the stream cut is on the
+    // stream, so there is nowhere else to send the rider.
     { label: 'members', href: routes.clubMembers(clubId) },
   ].filter((link): link is { label: string; href: string } => !!link)
 

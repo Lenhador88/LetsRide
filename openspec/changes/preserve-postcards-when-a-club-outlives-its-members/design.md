@@ -7,7 +7,7 @@ Everything measured below was read from the live DEV catalogue (`fpmrimzxadewsai
 three-valued logic rather than a catalogue fact, it was executed and the result is quoted.
 
 The change adds one lifecycle state — a club with no owner — to a schema where `clubs.owner_id`
-appears in **7 policies, 24 functions and 2 CHECK constraints**. Re-derive rather than trust —
+appears in **7 policies, 26 functions and 2 CHECK constraints**. Re-derive rather than trust —
 **and all three, not just the functions**, which is how the first two versions of this line went
 wrong:
 
@@ -19,7 +19,7 @@ select schemaname, tablename, policyname, cmd from pg_policies
 
 select n.nspname||'.'||p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
  where n.nspname in ('public','private') and p.prokind='f'
-   and pg_get_functiondef(p.oid) ilike '%owner_id%' order by 1;                            -- 24
+   and pg_get_functiondef(p.oid) ilike '%owner_id%' order by 1;                            -- 26
 
 select conname from pg_constraint
  where contype='c' and conrelid='public.clubs'::regclass
@@ -31,9 +31,11 @@ select conname from pg_constraint
 > `club_members` INSERT but scoped to `schemaname = 'public'`, which cannot see
 > `storage.objects`). The re-derivation block originally re-derived only the *function* count, so
 > a reader running it reproduced one of the three numbers and had no way to check the other two.
-> §D10 has the per-site table. **The function count reads 24 before this change applies and 26
-> after** — `reap_ownerless_club` and the rewritten bodies — so re-derive it against the right
-> side of the apply.
+> §D10 has the per-site table. **The function count is 26**, measured on DEV *and* PROD after the
+> apply, with identical name-lists. An earlier version of this line said 24 and explained it as a
+> before/after difference; that is not reproducible on either catalogue, and the annotation
+> disagreed with what the command directly above it returns — the same defect class this correction
+> set out to close, reintroduced inside the correction. **Run the block; do not trust the number.**
 
 ## Goals / Non-Goals
 

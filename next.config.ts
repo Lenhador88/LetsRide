@@ -180,7 +180,6 @@ const LEGACY_DETAIL_REDIRECTS = [
   ['/postcards', ''],
   ['/rides', ''],
   ['/rides', '/crew'],
-  ['/rides', '/chat'],
   ['/rides', '/edit'],
   ['/clubs', ''],
   ['/clubs', '/rides'],
@@ -193,9 +192,50 @@ const LEGACY_DETAIL_REDIRECTS = [
   permanent: false,
 }))
 
+/**
+ * The ride chat is retired and its two URL shapes must not dead-end — `108`,
+ * PD-402.
+ *
+ * **Two entries, because the chat had two live shapes and they redirect
+ * differently.** The first is the pre-PD-142 path-segment form, which used to
+ * be one of `LEGACY_DETAIL_REDIRECTS` above and is lifted out because its
+ * destination is no longer `${base}/detail${tail}` — that pattern would send it
+ * to `/rides/detail/chat`, a route this change deletes, so leaving it in the
+ * list would have turned a working redirect into a redirect to a 404 with
+ * nothing red. The second is the shape the app itself shipped until today, which
+ * a rider may have bookmarked or a notification may still name.
+ *
+ * **Query strings pass through on the second one and must**: Next appends the
+ * incoming query to a destination that does not specify its own, so
+ * `/rides/detail/chat?id=<uuid>` arrives at `/rides/detail?id=<uuid>` with the
+ * id intact. Writing `?id=:id` there instead would require a named parameter
+ * this source does not capture.
+ *
+ * **They landed on the ride's thread LIST until PD-426 deleted it, and now land
+ * on the ride itself** — which is the same answer for the same reason rather
+ * than a weaker one. A rider following a chat link wants the conversation, and
+ * the ride's timeline is where the conversations are; a specific old thread
+ * still cannot be resolved, the messages being dropped by `109`. The hazard the
+ * first entry was lifted out of `LEGACY_DETAIL_REDIRECTS` to avoid is exactly
+ * what this edit prevents a second time: a redirect whose destination has since
+ * been deleted fails with nothing red.
+ */
+const RETIRED_CHAT_REDIRECTS = [
+  {
+    source: `/rides/:id(${UUID})/chat`,
+    destination: '/rides/detail?id=:id',
+    permanent: false,
+  },
+  {
+    source: '/rides/detail/chat',
+    destination: '/rides/detail',
+    permanent: false,
+  },
+]
+
 const webConfig: NextConfig = {
   async redirects() {
-    return LEGACY_DETAIL_REDIRECTS
+    return [...LEGACY_DETAIL_REDIRECTS, ...RETIRED_CHAT_REDIRECTS]
   },
   /**
    * The one file the native shell reads from the web origin, and the one that

@@ -509,21 +509,25 @@ is a drawn value this repo no longer builds:
 
       - **The identity band** — the type/started line, the member rail and the description, at
         the top. The frame draws none of it; the product owner asked for it on 2026-08-31.
-      - **The create bar** — `ClubCreateBar`, which moved TOWARDS the frame on 2026-08-31 and
-        does not reach it. The first pass drew a three-tile action band in the scroll and called
-        the frame's own arrangement a deviation; the product owner then asked for *"a bottom bar
-        like the one create club on the club list"*, which is the `Button Container` the frame
-        draws. So the slot, the 358×40 primary and the geometry are now the frame's.
+      - **The create bar is GONE as of 2026-09-06 — see the §Club detail departure below**, which
+        is a larger deviation than anything in this list and is logged as its own entry. What
+        follows is the history, kept because it is what the departure departs *from*.
 
-        **What is still ours is that it is a SIBLING of the navigation bar rather than part of
+        `ClubCreateBar` moved TOWARDS the frame on 2026-08-31 and did not reach it. The first
+        pass drew a three-tile action band in the scroll and called the frame's own arrangement a
+        deviation; the product owner then asked for *"a bottom bar like the one create club on
+        the club list"*, which is the `Button Container` the frame draws. So the slot, the 358×40
+        primary and the geometry became the frame's.
+
+        **What was still ours is that it was a SIBLING of the navigation bar rather than part of
         it.** The frame's `v2 / Component / Navigation / Bar` is one 390×152 component with the
         button container inside it, under a single `Grey/10%` top stroke — the `STICKY_ACTIONS`
-        construction. This bar cannot be that, because `STICKY_ACTIONS` is keyed on pathname and
-        this one is member-gated, so it is positioned against the nav bar instead and **draws no
-        border of its own** so the two still read as one. If that action slot ever learns a
-        predicate, this belongs inside it. It also holds one primary opening a sheet rather than
-        the frame's `Create postcard`, because the screen has three things to create and the
-        frame predates two of them.
+        construction. That bar could not be that, because `STICKY_ACTIONS` is keyed on pathname
+        and this one is member-gated, so it was positioned against the nav bar instead and drew
+        **no border of its own** so the two still read as one. It also held one primary opening a
+        sheet rather than the frame's `Create postcard`, because the screen has three things to
+        create and the frame predates two of them. **That sheet survives the conversion
+        unchanged**; only the trigger moved.
       - **The thread event.** The frame predates `081` (PD-307) entirely, so a club had no
         threads when it was drawn.
 
@@ -534,6 +538,38 @@ is a drawn value this repo no longer builds:
       uses `SectionHeader` rather than the frame's `Poppins/14/Medium` `Grey/80` title —
       deviating from every other section heading in the app inside one screen is the worse of
       the two inconsistencies.
+- [ ] **§Club detail — the create bar becomes a floating action, and this DELETES A CHILD OF A
+      SHARED VARIANT. PD-404 Q1, product owner 2026-09-06.** *"It should become the same floating
+      yes."* Shipped as a **recorded departure** (route 2) rather than Figma-first, because route 1
+      needs a Figma *write* and `CLAUDE.md` §Design System requires an explicit ask for one;
+      *"however you see best"* delegates the route and does not grant the write.
+
+      **Read the blast radius before opening Figma, because it is the whole point of this entry.**
+      `2043:10604` instances `v2 / Component / Navigation / Bar` at **390×152** with
+      `Button Container 358×56` as a **child of that instance**, and **27 frames instance the
+      component at 152 — so 26 others share the variant this screen now contradicts** (nearer 23
+      if the club's own sub-pages convert with it). Whoever updates the design is not editing one
+      frame; they are deciding what happens to a component twenty-six frames draw.
+
+      **This is a different CLASS from §Ride detail's three departures, and answering both
+      questions the same way is what makes that easy to stop noticing.** `2375:8771` draws the
+      ride's nav bar at 390×88 with **no create control at all**, so every ride departure was
+      *additive* — it contradicted nothing drawn. This one **removes an element the design
+      explicitly draws**, on a shared component. It is the largest departure in this file.
+
+      What is unchanged, so the entry is not read as wider than it is: the three-row
+      *Create in this club* sheet — Postcard, Ride, Thread — with its order, icons, label and
+      club-scoped routes; the member gate, which is the screen's existing `isMember` and reads no
+      `role`; and the `z-40`-under-`z-50` stacking and absent `border-t` the bar already carried.
+
+      **The hit area falls about 6×** — a 358×40 bar target becomes a 56×56 circle. It clears the
+      44×44 glove floor, which is not the same as being unchanged, and the frame draws the wide
+      target. Recorded here because *"clears the floor"* does not describe the loss.
+
+      **The vertical space is not a saving here either** — the same arithmetic as §Ride detail:
+      `.pb-floating-action-extra` is 81px against the bar's `--navbar-action` 64px. The page still
+      opts into it, because the thing underneath is a paging timeline whose last entry would
+      otherwise sit permanently under the button. **The gain is horizontal.**
 
 - [ ] **The stream pages on scroll since PD-375, and none of the affordances that make that
       visible are drawn anywhere — the frame is a static twenty-entry list.** `npm run figma --
@@ -565,7 +601,8 @@ is a drawn value this repo no longer builds:
       Postcards, Members, the `Private club · Started …` line, then the description — Upcoming
       rides moved to lead the screen (with a `Plan a ride` create affordance, `ClubCreateRideRow`,
       when the club has none and the viewer can create one — both that component and the
-      affordance are gone as of 2026-08-31; every create is in `ClubCreateBar`), and Members and Postcards swapped
+      affordance are gone as of 2026-08-31; every create is in the club's own create affordance —
+      `ClubCreateBar` then, `ClubCreateAction` since PD-404), and Members and Postcards swapped
       from what an earlier revision of this same conversation had settled. **Postcards is a
       horizontally-scrolling strip of stamps** (`ClubPostcardCarousel`), not the stacked
       `PostcardCard` list `AI / Club detail merged / 2026-08-17` draws and this section drew
@@ -602,18 +639,26 @@ npm run figma -- ls | grep -i "introduc\|welcome"     # empty
 
 So the sheet's composition, its welcome wording and the introduction's layout on the thread
 detail are **inferred**, not measured, and are the app's own — the same standing as
-`ClubThreadRow`, `CreateThreadForm` and the Journal stamp above, all ours for the same reason.
+`CreateThreadForm` and the Journal stamp above, all ours for the same reason. (`ClubThreadRow`
+stood beside them until PD-426 deleted the Threads list it drew a row for.)
 It borrows `ContextMenu`'s scrim and geometry so it is at least consistent with the sheets that
 were measured. **Nothing here has been rendered against DEV**; `npm run walk` has not run over
 it, which is the gate that would catch a sheet that throws on open.
 
-**It has a SECOND mode since PD-392 (2026-09-05), and that one is ours too.** The sheet now opens
-before a rider joins, offering `Join later` where a member sees `Not now`, and `Post` is what
+**It has a SECOND mode since PD-392 (2026-09-05), and that one is ours too.** The sheet opens
+before a rider joins, offering `Cancel` where a member sees `Not now`, and `Join club` is what
 writes the membership. Its heading, its body line and both control labels are
 `CLUB_INTRODUCTION_COPY` in `src/lib/validation/clubs.ts` — no frame, no measurement, same
 standing as the first mode. Re-run the command above rather than trusting this: the search terms
 that found nothing for the member sheet find nothing for this one either, and a frame appearing
 later is exactly what would make both entries stale.
+
+**PD-418 (2026-09-07) moved three of pre-join's four strings and one piece of its behaviour**, and
+all of it is still inferred: the primary reads `Join club` rather than `Post`, the second control
+reads `Cancel` rather than `Join later`, the body line no longer says posting is what joins, and
+the field opens **prefilled** with `CLUB_INTRODUCTION_STARTER` rather than showing it as a
+placeholder. No frame draws a prefilled introduction field, so the prefill is ours in the same
+sense the sheet is.
 
 Member mode's wording is **unchanged**, so what is inferred here is only the new half:
 
@@ -892,23 +937,85 @@ measurement as current.
   - [ ] **The empty state is gone with the strip, and nothing replaces it.** A ride's timeline is
         never empty — the founding entry is its floor — so the `Nothing yet · Prep shots count`
         tile has nothing left to say. What it carried that still matters is the `Add`, which is
-        crew only (`041` requires `private.is_ride_crew` to tag) and lands in one of two places
-        since PD-401 — `RideCreateBar` in the sticky slot, or the `(+)` on the timeline's
-        heading when the RSVP bar has that slot. See the create-bar bullet below.
-  - [ ] **There IS a create bar now, and it holds the slot only when the RSVP bar does not**
-        (PD-401, 2026-09-05 — this bullet said the opposite until then). `RideCreateBar` is
-        `ClubCreateBar`'s slot, geometry and border rule with **one** action rather than a
-        three-row sheet, because a ride creates exactly one thing today
-        (`routes.newPostcardInRide`); PD-402 is what makes a second exist, and the sheet shape
-        becomes right on the day it lands. `RideAttendanceBar` still wins the slot outright on
-        an upcoming ride the viewer does not organize, and there the `(+)` on the timeline
-        heading survives as the fallback — so the two entrances are complementary and a crew
-        member always has exactly one. `resolveRideDetailActions` is that decision, with an
-        exhaustive test.
-        **The frame deviation to price is what is NOT done here:** PD-401's own recommendation
-        was to move the RSVP out of the sticky slot into the page body, which contradicts
-        `2375:8771` drawing it stacked ON the navigation bar. Left for the owner, alongside
-        PD-404's floating-action question, which is the same frame decision one step further.
+        crew only (`041` requires `private.is_ride_crew` to tag) and, since PD-404, lands in
+        exactly one place — the floating action in the bottom-right corner. The `(+)` on the
+        timeline heading is gone with the bar that made it necessary. See the bullet below.
+  - [ ] **THREE departures now, and they are one decision — PD-404, 2026-09-06. This bullet
+        described a create BAR until then; the bar is deleted.** The owner answered the frame
+        question the two bullets below were parked on, with a shape none of PD-401's four options
+        offered: **the RSVP bar and the create affordance are never both present, because
+        answering the RSVP replaces the bar.** Answering collapses it into a status chip on the
+        first content line; the create affordance becomes a **floating action** in the bottom-right
+        corner; tapping the chip brings the bar back. Each departure and its class:
+
+        1. **A create affordance exists at all.** `2375:8771` draws the ride's nav bar at 390×88
+           with no create control, so this was already additive when PD-401 added it and
+           contradicts nothing drawn.
+        2. **It is a circle rather than a full-width bar, with the app's first PERSISTENT
+           elevation** (`--shadow-floating`). `grep -ic "shadow\|elevation" design/TOKENS.md` is
+           **0** — there is no elevation token in the design at all and no frame for a floating
+           action anywhere (`grep -ril "floating\|fab\b" design/` is 0), so the value is invented
+           within the token system rather than measured. This is the departure a designer most
+           needs to look at.
+        3. **The RSVP bar is HIDDEN once answered, and `2375:8771` draws it permanently stacked
+           on the navigation bar.** This is the largest of the three and the one PD-401
+           explicitly refused to make unattended. It is now the owner's decision, taken
+           knowingly, and it supersedes PD-401's "left for the owner" note below.
+
+        **The geometry is not a saving and must not be written up as one.** With the tokens' own
+        `16 pad + control + 8` rule a 56px control reserves **80px** against `--navbar-action`'s
+        **64px**, and matching 64px would need a 40px control — under the 44×44 glove floor. So
+        nothing breaks even: the screen opts into `.pb-floating-action-extra` because the timeline's
+        last entry would otherwise sit permanently under the button, and that clearance costs
+        **more** vertical room than the bar it replaces. **The honest gain is horizontal.**
+
+        **The timeline `(+)` is deleted, and it was unreachable rather than unwanted.** PD-401 kept
+        it for *upcoming + crew + the RSVP bar owns the slot*; the bar is now owed only while the
+        answer is `null`, and for a non-organizer `is_crew` IS `attendance !== null`
+        (`src/lib/data/rides.ts:618,692`), so that state cannot occur. `resolveRideDetailActions`
+        is still the whole decision, with an exhaustive test that pins the identity it rests on.
+
+        **The chip is a control, not a badge** — 44×44 target, a visible chevron, `aria-expanded`.
+        Once the bar is gone it is the only route back to it. It shares the first content line with
+        the club link rather than taking a row of its own, for the vertical-space reason above.
+
+        **There is no `Not going` chip**, and that asymmetry was priced: `setRideAttendance`
+        deletes the row for `No`, so a rider who declined is identical to one who never answered.
+        Symmetry needs a migration and a change to `private.is_ride_crew`; the owner declined it.
+
+        **The club detail is converted too, as of 2026-09-06** — the owner answered Q1 the same
+        way. It is a **different class of departure** and it is logged separately, in
+        **§Club detail, which is ABOVE this section** in this file; do not read this entry as
+        covering it.
+  - [ ] **The header's chat icon is DELETED and `2375:9114` still draws it — PD-426, 2026-09-06.**
+        That frame puts a chat glyph, with a 16×16 `Warning/100` notification dot, in the ride
+        header's `action` slot (x342). It is not built. Owner: *"I still see a chat icon on the
+        header of ride detail page, we are moving to threads, so that can be dropped."*
+
+        **This is a SUBTRACTION from a drawn frame, which is the class the two bullets above are
+        not** — those add a control the frames do not draw. It is nonetheless the least
+        contentious deletion in this section, because the app's own measurement already said the
+        icon lost: `RideHeader`'s docstring recorded *"in practice nobody found the icon"*, which
+        is why a labelled `Threads` row was added to the ride plan beside it (PD-254, from
+        PD-125's finding).
+
+        **The labelled row goes too, and for the opposite reason.** It was not undiscoverable —
+        it pointed at `/rides/detail/threads`, the thread INDEX, which this change deletes on both
+        rides and clubs so that a conversation has one entrance and it is the timeline. So the
+        frame loses one control that failed and one that worked; what replaces both is the thread
+        rows the timeline already renders.
+
+        **PD-125 is not reopened, and this is the check worth making before restoring anything
+        here.** Its finding was that an entrance BURIED under a growing stream cannot be found.
+        The threads are now rows *in* that stream rather than a link out of it, so there is no
+        entrance left to bury. Restoring the icon would put back a third route to what the screen
+        already shows.
+
+        **The unread dot the frame draws on that icon survives, moved rather than dropped** — it
+        is on `RideTimelineThreadRow` now, per thread instead of aggregate, matching
+        `ClubTimelineThreadRow`. A designer reading `2375:9114` should treat the dot as
+        **relocated**, not deleted: the app still marks unread ride threads, at finer grain than
+        the frame asks for.
   - [ ] **The stream does not page, and the club's does.** Both sources are read whole at their
         own bounds; a ride that overruns them is cut at the horizon and says so, handing off to
         the crew list. See `src/lib/data/ride-timeline.ts` for why a bounded event does not
@@ -923,7 +1030,20 @@ measurement as current.
         PD-176. `text-foreground` `#1A1A1A` on `bg-track` is fine at **12.65:1** and is what the
         sentence itself uses, so the failures are confined to the supporting lines exactly as
         they are on the club.
-- [x] **Chat is built — 2026-08-07** (`034`, Linear PD-115). `Ride - Chat` (`2226:4999`) and
+- [x] ~~**Chat is built — 2026-08-07**~~ — **RETIRED 2026-09-06** (`109`, PD-402). The single
+      chat stream is gone: `ride_messages` and `ride_reads` were dropped and `/rides/detail/chat`
+      no longer exists, replaced by a ride's *threads* on `081`/`082`'s club shape
+      (`/rides/detail/threads`, `/rides/detail/thread`). **The three frames this entry measures
+      are still in `design/` and are no longer built** — `Ride - Chat` (`2226:4999`),
+      `Ride - Chat - Text focus` (`2242:11086`) and `Ride - Chat - Options` (`2370:7346`).
+      **The deviations below are kept rather than deleted**, because each is a measurement
+      against a frame the snapshot still holds, and several were reused verbatim by the thread
+      screens that replaced them; read them as a record of what was measured, not as a
+      description of what ships. **Nothing in `design/` draws a thread in either domain** — the
+      club's thread screens were built without a v2 frame and the ride's copy them, so there is
+      no successor entry to write here and no frame to go looking for.
+      <br>
+      Below, as built in 2026-08: `Ride - Chat` (`2226:4999`) and
       `Ride - Chat - Text focus` (`2242:11086`) at `/rides/detail/chat`. **It did not need the
       Inbox epic**, which this entry asserted: a per-ride chat needs a ride and a crew, both of
       which existed. Every sub-item below is a deviation, and each is a decision rather than a
@@ -1632,7 +1752,8 @@ absent from the mock or a product decision this pass had to make without one:
       control to reach it. A plain secondary `Button` labelled "Load more" is invented rather
       than an infinite-scroll trigger — a deliberate choice, not the only shape this app builds:
       the club timeline auto-loads on scroll since PD-375 (`ScrollSentinel`), and
-      `/clubs/detail/threads` keeps this same button. Re-derive rather than trust which screens
+      `/notifications` keeps this same button. (`/clubs/detail/threads` was the other example
+      until PD-426 deleted it.) Re-derive rather than trust which screens
       currently auto-load: `git grep -n ScrollSentinel -- 'src/app/**/*.tsx' 'src/components/**/*.tsx'`.
 - [ ] **Opening the screen marks everything read, and nothing in the design draws that
       either.** `Inbox - Notifications` has no per-row dismiss and no "mark all read" control
@@ -1764,6 +1885,30 @@ item.
       open"* and *"we never show other riders where you are"* must both stay true of the code —
       nothing in `src/` uses `watchPosition`, and a device fix leaves the device only as a
       ~1 km-rounded proximity bias. A designer rewording this needs to keep both.
+- [ ] **PD-419 (2026-09-07) — the QUESTION has a measured source and the CONTAINER does not.**
+      `npm run figma -- ls` returns two location-question frames —
+      **`Add your location` (`2074:5185`)** and **`Add your location - City focus`
+      (`2077:5320`)**, drawing *"Where are you located?"* (Poppins/32/Semibold), one
+      `v2 / Component / Input / Text` labelled `City`, and a `Skip`/`Next` footer.
+      `docs/specs/login-onboarding.md` records both by node id.
+
+      `TownQuestionSheet` takes the heading STRING from those frames verbatim — not its type
+      token, which is the container's `text-lg` rather than the frame's Poppins/32/Semibold. **Its
+      field label is `Town` rather than the frame's `City`, deliberately**: the frame predates the
+      town rung, and `town` is the word the action, the row label and the body copy all use.
+      **What is still ours, and is what a designer would actually be picking up:**
+      - **The container.** Those frames are the onboarding wizard step `075` (PD-286) deleted,
+        so they carry pagination dots, a `Back` link and `Skip`/`Next` — none of which belongs
+        on a sheet opened from Explore. The bottom sheet is `ContextMenu`'s measured geometry
+        with our explanatory paragraph and our `Save`/`Not now`.
+      - **`LocationPrimingSheet`'s rewritten `blocked` branch**, which hands off to that sheet
+        instead of linking to `/profile`. **It carries a THIRD store-review claim** beside the
+        two above — *"Tell us the town you ride from and we will measure from there instead"* is
+        a promise about what the app does with a refusal.
+      - **`UseMyLocationRow`'s two new labels** — `Set where you ride from`, and
+        `Near {town} · Use my location`, the only line in the app that says where a distance was
+        measured from.
+      - **`LocationSetting` on `/profile`**, which the design has no equivalent of at all.
 
 ### Private clubs in Explore, and the ride marker on a stamp — built 2026-08-28 (PD-325, PD-328)
 

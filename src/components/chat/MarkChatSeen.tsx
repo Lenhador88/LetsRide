@@ -4,7 +4,8 @@ import { useEffect, useRef } from 'react'
 
 /**
  * Advances this rider's read watermark for the thread they are reading — a
- * ride's chat (`061`, PD-120) or a club thread (`081`, PD-307).
+ * ride thread (`108`, PD-402, replacing `061`'s ride-chat watermark) or a club
+ * thread (`081`, PD-307).
  *
  * Renders nothing. `MarkClubSeen`'s shape, and the reason that shape survives is
  * the same one: **the screen mounts this conditionally, on `isCrew`** — or, in a
@@ -12,7 +13,7 @@ import { useEffect, useRef } from 'react'
  * read the thread at all — so "only somebody in the audience marks a thread
  * read" is expressed by whether the component is on the page rather than by a
  * condition inside an effect that runs anyway. The database refuses the write
- * regardless — `061`'s and `081`'s WITH CHECKs each require their own audience —
+ * regardless — `108`'s and `081`'s WITH CHECKs each require their own audience —
  * so the conditional mount is an optimisation and the policy is the
  * enforcement.
  *
@@ -20,7 +21,7 @@ import { useEffect, useRef } from 'react'
  * this file names neither table. Held in a ref and never in the effect's
  * dependencies: it is an inline arrow at one of its two call sites, so naming it
  * would re-fire the write on every render — the same shape and the same
- * reasoning as `useRideMessageStream`'s `onMessageRef`.
+ * reasoning as `useRideThreadStream`'s `onMessageRef`.
  *
  * ## Two triggers, and the second is what PD-119 made necessary
  *

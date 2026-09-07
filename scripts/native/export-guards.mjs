@@ -121,7 +121,19 @@ export const REDIRECTED = [
   [`/postcards/${SAMPLE_ID}`, `/postcards/detail?id=${SAMPLE_ID}`],
   [`/rides/${SAMPLE_ID}`, `/rides/detail?id=${SAMPLE_ID}`],
   [`/rides/${SAMPLE_ID}/crew`, `/rides/detail/crew?id=${SAMPLE_ID}`],
-  [`/rides/${SAMPLE_ID}/chat`, `/rides/detail/chat?id=${SAMPLE_ID}`],
+  // `108`, PD-402: the chat is gone, so both of its shapes land on the ride's
+  // the ride itself. Their destination is no longer `${base}/detail${tail}`, which
+  // is why `next.config.ts` lifts them out of `LEGACY_DETAIL_REDIRECTS`.
+  [`/rides/${SAMPLE_ID}/chat`, `/rides/detail?id=${SAMPLE_ID}`],
+  // **The `?id=` shape is the one a rider actually has**, and it needs its own
+  // row here rather than only leaving `UNTOUCHED`. It was asserted before this
+  // change (as un-swallowed); dropping it from that list without adding it here
+  // would leave it checked by NOTHING, which is exactly the hole this file
+  // exists to close — a later edit to `redirects()` could drop it and send
+  // every bookmarked and notification-borne `/rides/detail/chat?id=…` to a 404
+  // with every other gate green. It carries no `:id`, so the sample id does not
+  // appear: Next forwards the incoming query to a destination that names none.
+  ['/rides/detail/chat', '/rides/detail'],
   [`/rides/${SAMPLE_ID}/edit`, `/rides/detail/edit?id=${SAMPLE_ID}`],
   [`/clubs/${SAMPLE_ID}`, `/clubs/detail?id=${SAMPLE_ID}`],
   [`/clubs/${SAMPLE_ID}/rides`, `/clubs/detail/rides?id=${SAMPLE_ID}`],
@@ -143,8 +155,8 @@ export const UNTOUCHED = [
   '/rides/new',
   '/rides/detail',
   '/rides/detail/crew',
-  '/rides/detail/chat',
   '/rides/detail/edit',
+  '/rides/detail/thread',
   '/clubs',
   '/clubs/new',
   '/clubs/explore',

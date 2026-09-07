@@ -16,10 +16,12 @@ name: Supabase log digest
 # daily run would make every miss a permanent hole in exactly the record this
 # exists to keep.
 #
-# `workflow_dispatch` is not a convenience. The script's HTTP transport has
-# never completed a live call from a shell (no Management API token exists in
-# any build container), so the first manual run IS the transport test — see the
-# VERIFICATION STATUS block in scripts/db/logs-errors.mjs.
+# `workflow_dispatch` is not a convenience. No shell in any build container can
+# reach the Management API, so this workflow is the only thing that can execute
+# the script at all — and a dispatch is how a fix gets tested without waiting
+# 12 hours for the schedule. The transport test itself was NOT the first manual
+# run: run 1, scheduled, 2026-08-31, already reached the API and was refused.
+# See the VERIFICATION STATUS block in scripts/db/logs-errors.mjs.
 #
 # GitHub disables a repository's scheduled workflows after 60 days with no
 # commits. This repo is far more active than that today; if it ever goes quiet,
@@ -90,8 +92,15 @@ jobs:
       # nobody reads by the second week, which would leave this no better than
       # the nothing it replaces.
       #
-      # THE FIRST RED WILL PROBABLY BE EXIT 2, and that is expected rather than
-      # a defect: `SUPABASE_ACCESS_TOKEN` is an owner action (PD-352), and until
-      # it exists every run says so in its summary. That is the whole reason the
-      # two codes are separate — without the split, a missing secret would
-      # produce four red jobs a day indistinguishable from a production 5xx.
+      # EVERY RED SO FAR IS EXIT 2, AND NOT FOR THE REASON THIS BLOCK USED TO
+      # PREDICT. It said the first red would be a missing `SUPABASE_ACCESS_TOKEN`
+      # (PD-352's owner action). It was not: run 1 (2026-08-31) already had the
+      # secret — masked in its own env block — and failed where all 14 runs since
+      # have, on BOTH projects, with the API answering 200 and a body of
+      # `{"error": "Backend error! Retry your query. ..."}`. So auth and
+      # reachability are proven and the SQL is proven (the same constant returns
+      # rows through the Supabase MCP `query_logs` tool); what is refused is the
+      # query as this workflow poses it. PD-421 and
+      # docs/reference/observability.md §The 24-hour expiry carry the bisect.
+      # The split still earns its keep: it is what makes "could not look"
+      # legible instead of indistinguishable from a production 5xx.

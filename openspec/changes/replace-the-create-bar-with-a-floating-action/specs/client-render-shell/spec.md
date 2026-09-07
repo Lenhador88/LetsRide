@@ -47,10 +47,18 @@ adds over its own scroll.
   cannot disagree
 
 #### Scenario: Two overlays on one screen do not share a corner
-- **WHEN** a screen draws a persistent overlay and a fixed bar at the same time
-- **THEN** the overlay SHALL be offset by the bar's height
-- **AND** it SHALL NOT cover a control the bar carries, including one that reaches the same corner
-  because it spans the screen's width
+- **WHEN** a screen can draw both a persistent overlay and a fixed bottom bar
+- **THEN** the screen SHALL either draw at most one of them at a time, or offset the overlay by the
+  bar's height
+- **AND** where both are drawn, the overlay SHALL NOT cover a control the bar carries, including one
+  that reaches the same corner because it spans the screen's width
+- **AND** which of the two a screen takes SHALL be one decision the screen reads, never a condition
+  restated at each control
+
+#### Scenario: A composition that changes under the rider changes its clearance with it
+- **WHEN** the rider's own write replaces one bottom control with another of a different height
+- **THEN** the clearance the page reserves SHALL change in the same render as the control
+- **AND** the change SHALL follow the read that confirmed the write, so a failed write moves neither
 
 #### Scenario: An overlay does not paint over the navigation bar
 - **WHEN** a persistent overlay is stacked

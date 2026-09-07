@@ -5,9 +5,11 @@ import { createClient } from '@/lib/supabase/client'
 
 /**
  * The app's **second** Realtime subscription (`081`, PD-307) — one club
- * thread's messages. `useRideMessageStream` (`034`) is the first and this is
- * a transfer of it rather than a new design; every rule below is that file's,
- * with the differences named.
+ * thread's messages. `034`'s ride chat was the first and this was a transfer
+ * of it rather than a new design; every rule below came from that file, with
+ * the differences named. **That hook is gone** — `108` (PD-402) retired the
+ * ride chat, and `useRideThreadStream` is now this file's counterpart rather
+ * than its ancestor: the two are the same shape with the table swapped.
  *
  * ## It signals, it does not deliver
  *
@@ -123,8 +125,8 @@ export function useClubThreadStream(
     // missed nothing. Refetching when the tab becomes visible closes that
     // without depending on which of the two happened — it is the same
     // "assume the gap, do not assume the stream filled it" rule the reconnect
-    // branch follows. Worth transferring to the ride chat; not done here,
-    // because that is shipped code this change has no reason to touch.
+    // branch follows. `useRideThreadStream` is this hook's copy and carries it
+    // already — the ride chat this line used to name was retired by `109`.
     const onForeground = () => {
       if (document.visibilityState === 'visible') onMessageRef.current()
     }

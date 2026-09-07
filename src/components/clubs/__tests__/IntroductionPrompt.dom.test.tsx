@@ -12,7 +12,9 @@ vi.mock('@/lib/actions/club-introductions', () => ({
 }))
 
 const { IntroductionPrompt } = await import('@/components/clubs/IntroductionPrompt')
-const { CLUB_INTRODUCTION_PARTIAL_FAILURE } = await import('@/lib/validation/clubs')
+const { CLUB_INTRODUCTION_PARTIAL_FAILURE, CLUB_INTRODUCTION_STARTER } = await import(
+  '@/lib/validation/clubs'
+)
 
 /**
  * The **wrapper** — the half of PD-392 that `IntroductionPrompt.test.tsx`
@@ -27,7 +29,7 @@ const { CLUB_INTRODUCTION_PARTIAL_FAILURE } = await import('@/lib/validation/clu
  * *producer* was not:
  *
  * - `onDismiss(true)` unconditionally — **the exact defect PD-392 exists to
- *   remove.** A `Join later` would record a session dismissal and silence the
+ *   remove.** A `Cancel` would record a session dismissal and silence the
  *   members-only prompt for a rider who never joined.
  * - dropping `|| joined` from `membershipExists` — the partial-failure copy and
  *   the relabelling both break.
@@ -96,7 +98,7 @@ function click(element: HTMLElement) {
 }
 
 describe('IntroductionPrompt — the dismissal iff, at its producer', () => {
-  it('reports NO membership when a pre-join sheet is dismissed with Join later', async () => {
+  it('reports NO membership when a pre-join sheet is dismissed with Cancel', async () => {
     const onDismiss = vi.fn()
     render(
       <IntroductionPrompt
@@ -108,7 +110,7 @@ describe('IntroductionPrompt — the dismissal iff, at its producer', () => {
       />
     )
 
-    click(button('Join later'))
+    click(button('Cancel'))
 
     // `false` is what stops the caller recording a session dismissal. A rider
     // who declined to join has asserted nothing about introducing themselves
@@ -136,11 +138,137 @@ describe('IntroductionPrompt — the dismissal iff, at its producer', () => {
   })
 })
 
+describe('IntroductionPrompt — the prefill and the optional introduction (PD-418)', () => {
+  it('opens a pre-join sheet with the starter already in the field', () => {
+    // The wrapper's job, and unreachable from the static test: the body renders
+    // whatever `value` it is handed, so only driving the real component proves
+    // the starter is what gets handed down.
+    render(
+      <IntroductionPrompt
+        clubId="club-1"
+        mode="pre-join"
+        open
+        onDismiss={vi.fn()}
+        onPosted={vi.fn()}
+      />
+    )
+
+    expect(document.querySelector('textarea')!.value).toBe(CLUB_INTRODUCTION_STARTER)
+  })
+
+  it('opens a member-mode sheet EMPTY — the prefill is pre-join only', () => {
+    render(
+      <IntroductionPrompt
+        clubId="club-1"
+        mode="member"
+        open
+        onDismiss={vi.fn()}
+        onPosted={vi.fn()}
+      />
+    )
+
+    expect(document.querySelector('textarea')!.value).toBe('')
+  })
+
+  it('joins with an emptied field, writes no introduction, and records the dismissal', async () => {
+    // PD-418's negative case, and the one that decides whether the story
+    // actually removed the wall: a rider who clears the starter must still get
+    // a membership, and must NOT then be nagged for the introduction they just
+    // declined — which is what `onDismiss(true)` buys, since the caller records
+    // the session dismissal exactly when a membership exists.
+    joinAndIntroduceToClub.mockResolvedValue({ outcome: 'joined-without-introduction' })
+    const onDismiss = vi.fn()
+    const onPosted = vi.fn()
+    render(
+      <IntroductionPrompt
+        clubId="club-1"
+        mode="pre-join"
+        open
+        onDismiss={onDismiss}
+        onPosted={onPosted}
+      />
+    )
+
+    type('')
+    await act(async () => {
+      button('Join club').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    // The empty body reaches the action, which is what decides not to attempt a
+    // thread — the component must not silently substitute the starter back in.
+    expect(joinAndIntroduceToClub).toHaveBeenCalledWith('club-1', '', expect.any(Function))
+    expect(onDismiss).toHaveBeenCalledWith(true)
+    // Nothing was posted, so the callback that means "a thread exists" must not
+    // fire. Both close the sheet, so only this assertion tells them apart.
+    expect(onPosted).not.toHaveBeenCalled()
+  })
+
+  it('keeps the starter in the field after its own join lands, on the one path that stays open', async () => {
+    // **The prefill's derivation, which the pre-merge review found nothing
+    // pinned.** `IntroductionPrompt` computes the default from the `mode` PROP,
+    // never from the `membershipExists` latch, and its header states that as a
+    // requirement — but both spellings behave identically everywhere except
+    // here, so the whole suite passed against the one the docstring names as
+    // the defect.
+    //
+    // `introduction-failed` is the only outcome that leaves the sheet open
+    // after the join commits. Keyed off the latch, the field would blank at
+    // that instant and the rider would read the partial-failure message over an
+    // empty textarea — having typed nothing and lost the text they were about
+    // to retry.
+    joinAndIntroduceToClub.mockResolvedValue({ outcome: 'introduction-failed', error: 'nope' })
+    render(
+      <IntroductionPrompt
+        clubId="club-1"
+        mode="pre-join"
+        open
+        onDismiss={vi.fn()}
+        onPosted={vi.fn()}
+      />
+    )
+
+    await act(async () => {
+      button('Join club').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    // The latch HAS flipped — the sheet is in member mode now, which is what
+    // makes this a real distinction rather than a restatement of the test
+    // above.
+    expect(document.body.textContent).toContain(CLUB_INTRODUCTION_PARTIAL_FAILURE)
+    expect(document.querySelector('textarea')!.value).toBe(CLUB_INTRODUCTION_STARTER)
+  })
+
+  it('sends the untouched starter when the rider just presses Join club', async () => {
+    joinAndIntroduceToClub.mockResolvedValue({ outcome: 'joined-and-introduced' })
+    const onPosted = vi.fn()
+    render(
+      <IntroductionPrompt
+        clubId="club-1"
+        mode="pre-join"
+        open
+        onDismiss={vi.fn()}
+        onPosted={onPosted}
+      />
+    )
+
+    await act(async () => {
+      button('Join club').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(joinAndIntroduceToClub).toHaveBeenCalledWith(
+      'club-1',
+      CLUB_INTRODUCTION_STARTER,
+      expect.any(Function)
+    )
+    expect(onPosted).toHaveBeenCalled()
+  })
+})
+
 describe('IntroductionPrompt — the latch', () => {
   it('relabels to Not now and reports a membership once its own join lands', async () => {
     // The partial failure: the join succeeded, the introduction did not. The
-    // rider IS a member, so `Join later` would be a lie on the very screen that
-    // just made it one.
+    // rider IS a member, so the pre-join labels would be a lie on the very
+    // screen that just made them one.
     joinAndIntroduceToClub.mockResolvedValue({
       outcome: 'introduction-failed',
       error: 'nope',
@@ -158,13 +286,13 @@ describe('IntroductionPrompt — the latch', () => {
 
     type('Hi, I ride a Ténéré.')
     await act(async () => {
-      button('Post').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      button('Join club').dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
 
-    // The one string that says half of a Post succeeded.
+    // The one string that says half of a Join club succeeded.
     expect(document.body.textContent).toContain(CLUB_INTRODUCTION_PARTIAL_FAILURE)
     // The latch flipped: the control relabels and now reports a membership.
-    expect(() => button('Join later')).toThrow()
+    expect(() => button('Cancel')).toThrow()
     click(button('Not now'))
     expect(onDismiss).toHaveBeenCalledWith(true)
   })
@@ -187,12 +315,12 @@ describe('IntroductionPrompt — the latch', () => {
 
     type('Hi, I ride a Ténéré.')
     await act(async () => {
-      button('Post').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      button('Join club').dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
 
     // Nothing was written, so the rider is still not a member and the sheet
     // still means what it says.
-    click(button('Join later'))
+    click(button('Cancel'))
     expect(onDismiss).toHaveBeenCalledWith(false)
   })
 })
@@ -227,13 +355,13 @@ describe('IntroductionPrompt — the in-flight dismissal lock covers the scrim, 
 
     type('Hi, I ride a Ténéré.')
     act(() => {
-      button('Post').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      button('Join club').dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
 
     // The scrim is `ContextMenu`'s and closes through the same `onClose` the
     // control does — so asserting the button's `disabled` attribute, as the
     // static test does, leaves this path entirely uncovered. A dismissal
-    // landing here would close a sheet labelled `Join later` over a join that
+    // landing here would close a sheet still offering `Cancel` over a join that
     // may already have committed.
     const scrim = () => document.querySelector('.fixed.inset-0') as HTMLElement
     expect(scrim()).not.toBeNull()
@@ -250,9 +378,9 @@ describe('IntroductionPrompt — the in-flight dismissal lock covers the scrim, 
     // time it looked.
     act(() => landTheJoin())
 
-    // The control relabels at the same instant, because `Join later` is a lie
+    // The control relabels at the same instant, because the pre-join labels are a lie
     // the moment the join commits.
-    expect(() => button('Join later')).toThrow()
+    expect(() => button('Cancel')).toThrow()
 
     click(scrim())
     expect(onDismiss).toHaveBeenCalledWith(true)

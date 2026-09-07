@@ -1,10 +1,11 @@
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { applyAnalyticsPreference } from '@/lib/analytics/client'
+import { clearRiderLocation } from '@/lib/location/rider-location'
 import { invalidate } from '@/lib/query'
 import { queryKeys } from '@/lib/query/keys'
 import { unwrap } from '@/lib/data/unwrap'
 import { AVATAR_IMAGE_PATH_RE, COVER_IMAGE_PATH_RE, MEDIA_BUCKET } from '@/lib/media/constants'
-import { countryCodeSchema, profileEditSchema } from '@/lib/validation/profile'
+import { countryCodeSchema, locationSchema, profileEditSchema } from '@/lib/validation/profile'
 import type { ActionState } from '@/lib/actions/state'
 
 /**
@@ -30,8 +31,12 @@ export async function updateProfile(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
+  // **No `location`, since PD-425** — `setRiderTown` is that column's only
+  // writer now. Reading it back off this `FormData` would parse `null` for a
+  // form that no longer renders the field, and `optionalText`'s string gate runs
+  // before its transform, so every save would be refused; making it tolerate the
+  // absence instead would write NULL and erase the town `LocationSetting` holds.
   const parsed = profileEditSchema.safeParse({
-    location: formData.get('location'),
     bio: formData.get('bio'),
     bike_model: formData.get('bike_model'),
   })
@@ -52,6 +57,94 @@ export async function updateProfile(
   if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
   invalidate(queryKeys.profile.all())
+  return { error: null, sent: true }
+}
+
+/**
+ * Writes the town a rider says they ride from, or clears it — PD-419.
+ *
+ * ## It is the column's ONLY writer, since PD-425
+ *
+ * `updateProfile` used to write `location` too, off the profile form's free-text
+ * box — the second door this comment used to explain how to live beside. That
+ * box is gone: it sat directly above PD-419's `LocationSetting` under the same
+ * heading, "Where you ride from", accepting any string while the control below
+ * it told the rider that string could not be placed. `profileEditSchema` no
+ * longer carries a `location` member at all, so there is no longer a second
+ * writer to stay consistent with.
+ *
+ * The shape stays a plain argument rather than a `FormData`, as
+ * `updateAvatar`/`setAnalyticsOptOut` already do — writing one column through
+ * the form's action would need the other two fields supplied and would overwrite
+ * a bio the rider is halfway through editing.
+ *
+ * `001`'s profiles UPDATE policy restricts the write to `auth.uid() = id` and
+ * `018`'s CHECK bounds the text; `locationSchema` is the client-side half of
+ * that bound.
+ *
+ * ## Clearing is `null`, and it has to actually be possible
+ *
+ * PD-419's decision obliges withdrawal: *"the profile setting shows none
+ * alongside device and you told us, and clearing back to none works."* So `null`
+ * is a first-class argument rather than an error, and it writes SQL NULL rather
+ * than the empty string — `localityOf` treats `018`'s permitted string of spaces
+ * as no locality, but a stored `''` would still make `getMyLocationText` answer
+ * truthy-empty and read as a town nobody typed.
+ *
+ * ## The memo is the part that is easy to miss
+ *
+ * `resolveRiderLocation()` caches its resolved chain for `GEOLOCATION_MAX_AGE_MS`
+ * inside `rider-location.ts`, and that memo is module state rather than a cache
+ * entry — so invalidating the query keys alone leaves every screen re-reading a
+ * five-minute-old answer built from the OLD town. `clearRiderLocation()` is what
+ * makes the next resolve go back to the chain. Both are needed and neither
+ * substitutes for the other.
+ */
+export async function setRiderTown(town: string | null): Promise<ActionState> {
+  // **`null` never reaches the schema, and that is not a shortcut.**
+  // `locationSchema` is `optionalText(…)`, a **`ZodString`** pipeline —
+  // `z.string().trim().max(100).transform(v => v || null)`. Its string type gate
+  // runs BEFORE the transform, so `safeParse(null)` fails with the raw
+  // `"Invalid input: expected string, received null"`, which the profile
+  // setting's live region would then render at a rider who tapped `Remove`.
+  // Measured, not reasoned: the empty string parses to `null` cleanly, and
+  // `null` — the one value `LocationSetting.clear()` ever passes — is the only
+  // input that cannot get through.
+  //
+  // Clearing is the obligation PD-419's decision names in as many words
+  // ("clearing back to none must work"), so it is a branch here rather than a
+  // schema change. **Still a branch now that this schema has one caller**: the
+  // type gate is a property of the `ZodString` pipeline, not of who shares it,
+  // so widening it to accept `null` would trade a two-token branch for a schema
+  // that no longer says a town is a string.
+  const parsed = town === null ? null : locationSchema.safeParse(town)
+  if (parsed && !parsed.success) return { error: parsed.error.issues[0].message }
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to set where you ride from.' }
+
+  const { data: updated, error } = await supabase
+    .from('profiles')
+    // SQL NULL for both routes into "nothing stored" — an explicit clear, and a
+    // string the schema reduced to nothing. A stored `''` would make
+    // `getMyLocationText` answer truthy-empty and read as a town nobody typed.
+    .update({ location: parsed?.success ? parsed.data : null })
+    .eq('id', user.id)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { error: 'Could not save where you ride from. Try again.' }
+  if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
+
+  // The module memo first, then the cache entries — see the header. Ordering is
+  // not load-bearing (both happen before this returns and no read is in flight),
+  // but doing the memo first means a refetch triggered by the invalidation
+  // cannot possibly resolve against the stale one.
+  clearRiderLocation()
+  invalidate(queryKeys.profile.all())
+  invalidate(queryKeys.riderLocation())
+
   return { error: null, sent: true }
 }
 

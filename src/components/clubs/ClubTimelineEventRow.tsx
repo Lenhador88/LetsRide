@@ -46,7 +46,7 @@ import type { ClubTimelineEvent } from '@/lib/data/club-timeline'
  * wave control before adding one — it does not, on its own: avatar 28 +
  * sentence 242 + `Time Since` 16 already fills it with nothing to spare, and
  * there is no second frame drawing a wave, a count and a comment door here.
- * This composition is therefore "ours", the way `ClubThreadRow` and
+ * This composition is therefore "ours", the way the deleted `ClubThreadRow` and
  * `CreateThreadForm` already are for the same reason (no v2 frame), rather
  * than measured — logged here so a reader does not mistake it for the frame's
  * own layout. The sentence is left to truncate under the extra controls

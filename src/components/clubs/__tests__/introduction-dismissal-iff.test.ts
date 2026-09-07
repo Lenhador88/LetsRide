@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
  * sentence applied in two screens, and the pre-build review caught the proposal
  * fixing one of them: the club detail's `onDismiss` was as unconditional as
  * Explore's, and `ContextMenu`'s scrim and Escape both close through it. A
- * rider who taps `Join later` on club X's own screen and is then admitted to X
+ * rider who taps `Cancel` on club X's own screen and is then admitted to X
  * by an approved request or an invite link **in the same session** would never
  * be asked to introduce themselves — a prompt suppressed on a fact the rider
  * never asserted. That is what three requirements of this change forbid, and it
@@ -95,7 +95,7 @@ describe('the composite reports the join landing, and cannot be called without a
     // instead.
     //
     // What omitting it costs: the sheet gets one pending window spanning both
-    // writes, so `Join later` stays on screen over a committed join and the
+    // writes, so `Cancel` stays on screen over a committed join and the
     // dismissal lock is held past the membership write — the two rules this
     // callback exists to make possible.
     expect(ACTION).toContain('onMembershipExists: () => void')

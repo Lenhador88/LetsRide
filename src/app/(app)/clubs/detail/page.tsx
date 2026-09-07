@@ -3,7 +3,7 @@
 import { Suspense, useState, useSyncExternalStore } from 'react'
 import { notFound, useSearchParams } from 'next/navigation'
 import { Globe2Icon, LocationOutlineIcon, Lock2Icon } from '@/components/icons/generated'
-import { ClubCreateBar } from '@/components/clubs/ClubCreateBar'
+import { ClubCreateAction } from '@/components/clubs/ClubCreateAction'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { ClubPreviewScreen } from '@/components/clubs/ClubPreviewScreen'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
@@ -70,11 +70,18 @@ import { cn, formatRideDateLong } from '@/lib/utils'
  *   (product owner, 2026-08-31: *"I would like to remove the section 'threads'
  *   under the members. And the club description goes above the members."*).
  *   The row was two days old and existed to close PD-125 on
- *   `/clubs/detail/threads`, so **its entrance had to go somewhere rather than
- *   nowhere**: it is a `Threads` row on `ClubOptionsMenu` now. The timeline's
- *   own foot link is NOT that entrance and cannot be — it renders only when the
- *   stream is cut, so a club whose whole timeline fits on screen would have
- *   none at all, which is the exact defect the row was written for.
+ *   `/clubs/detail/threads`, so its entrance moved to a `Threads` row on
+ *   `ClubOptionsMenu`.
+ *
+ *   **Both of those are now deleted too, and the argument they rested on is
+ *   spent rather than overruled — PD-426.** `/clubs/detail/threads` is gone, so
+ *   there is no thread list left to need an entrance: the threads are rows on
+ *   the timeline below. PD-125 measured that an entrance BURIED under a growing
+ *   stream cannot be found, and the foot-link objection recorded here (it
+ *   renders only when the stream is cut, so a short timeline would offer none
+ *   at all) was about reaching a separate LIST. Neither survives the list's
+ *   deletion. Restoring either control would add a third route to what this
+ *   screen already shows.
  *
  *   What did not survive the move is the row's **aggregate** unread dot. The
  *   timeline's thread and reply entries still carry per-thread marks, so a
@@ -295,12 +302,27 @@ function ClubScreen() {
       <div
         className={cn(
           'flex flex-col gap-4 pt-4 motion-safe:animate-fade-in',
-          // The create bar is fixed, so the column has to make room or the last
-          // timeline entry sits behind it. `--navbar-action` is exactly this
-          // bar's geometry — 16 pad + 40 button + 8 — because it is the same
-          // control the nav bar's own action slot draws, just owned by this
-          // screen so it can be member-gated. Only when the bar renders.
-          isMember && 'pb-navbar-action-extra'
+          // The create affordance is fixed, so the column has to make room or
+          // the last timeline entry sits behind it — and a paging timeline is
+          // exactly the case where that matters, since there is always another
+          // last row.
+          //
+          // **`.pb-navbar-action-extra` is the wrong one since PD-404**: its
+          // 64px is `--navbar-action`, the geometry of the 40px button in the
+          // full-width bar this screen no longer draws. Against the 56px
+          // floating control it under-reserves, which is tight rather than
+          // buried and so is invisible to every gate. Leaving it behind
+          // entirely would be worse — a 64px dead strip under the timeline,
+          // which is PD-407's defect arriving on a second screen.
+          //
+          // **The floating action opts INTO clearance and does not reserve it
+          // by default**; the club opts in for the same reason the ride detail
+          // does. The clearance costs more vertical room than the bar did
+          // (81px against 64px) — the gain of this pattern is horizontal.
+          //
+          // Still gated on `isMember`, so nothing is reserved for a control
+          // that is not drawn.
+          isMember && 'pb-floating-action-extra'
         )}
       >
         {/* The future. Past rides are on the timeline now, on the day they were
@@ -403,9 +425,10 @@ function ClubScreen() {
         </div>
 
         {/* Join is the non-member's one action and stays on the page. A member
-            gets no button here at all — every create moved to `ClubCreateBar`,
-            which is fixed above the tabs rather than in the scroll. An owner is
-            always a member and never sees this either way. */}
+            gets no button here at all — every create moved to
+            `ClubCreateAction`, which floats above the tabs rather than sitting
+            in the scroll. An owner is always a member and never sees this
+            either way. */}
         {!isMember && (
           <div className="px-4">
             {/* `is_default` is READ, never assumed from this screen's position
@@ -426,8 +449,8 @@ function ClubScreen() {
 
       {/* Outside the scrolling column: it is fixed above the navigation bar.
           Member-only, because all three of its destinations refuse a
-          non-member — see `ClubCreateBar`. */}
-      {isMember && <ClubCreateBar clubId={id} />}
+          non-member — see `ClubCreateAction`. */}
+      {isMember && <ClubCreateAction clubId={id} />}
 
       {/* `097`, PD-365 — and PD-392's second opener.
 
@@ -447,7 +470,7 @@ function ClubScreen() {
           `onDismiss` records the session dismissal **if and only if a
           membership exists** — PD-392. It was unconditional, and
           `ContextMenu`'s scrim and Escape both close through here, so a
-          `Join later`, a scrim tap or an Escape all reached one unconditional
+          `Cancel`, a scrim tap or an Escape all reached one unconditional
           write. A rider who declined the join on this club's own screen and was
           then admitted by another door in the same session would never be asked
           to introduce themselves. The sheet is what knows whether a membership

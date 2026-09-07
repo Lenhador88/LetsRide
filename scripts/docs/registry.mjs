@@ -153,6 +153,37 @@ const NUMBER_WORDS = {
   'thirty-eight': 38,
   'thirty-nine': 39,
   forty: 40,
+  // Extended past forty on 2026-09-07 (PD-426) — **the same claim, the third
+  // time**, and the two comments above record the first two at twenty and
+  // twenty-one. One component test was added and `forty-one` SKIPPED, which is
+  // the outcome this table exists to prevent: a skip is not a pass, and the
+  // claim it silences is the one that just changed.
+  //
+  // **Extended to sixty rather than to forty-one**, because raising the ceiling
+  // by exactly one is what produced three identical incidents. The component
+  // count rises with roughly every second story and nothing else in this table
+  // is near its top, so the cost of the headroom is a few lines and the cost of
+  // not having it has now been paid three times.
+  'forty-one': 41,
+  'forty-two': 42,
+  'forty-three': 43,
+  'forty-four': 44,
+  'forty-five': 45,
+  'forty-six': 46,
+  'forty-seven': 47,
+  'forty-eight': 48,
+  'forty-nine': 49,
+  fifty: 50,
+  'fifty-one': 51,
+  'fifty-two': 52,
+  'fifty-three': 53,
+  'fifty-four': 54,
+  'fifty-five': 55,
+  'fifty-six': 56,
+  'fifty-seven': 57,
+  'fifty-eight': 58,
+  'fifty-nine': 59,
+  sixty: 60,
 }
 
 /**
@@ -317,6 +348,24 @@ export const claims = [
     // Pinned back to DEV AHEAD with both `at \`NNN\`` captures, which is what
     // makes the direction unmissable without pinning the gap's size in words.
     // Two edits, one commit. Still never a relaxed regex.
+    // 2026-09-06: the promotion (PR #405) put `101`-`107` on PROD and this went
+    // red for the TENTH time. Pinned back to LEVEL, and note the same thing the
+    // 2026-09-01 entry noted — at LEVEL the prose names no refs, because there
+    // is no direction to infer, so "BOTH projects are level at" is what this
+    // pattern pins and the day they diverge again the sentence has to name them
+    // and this pattern has to move with it. Two edits, one commit.
+    // 2026-09-06, later: `108` and `110` (PD-402) applied to DEV alone and this
+    // went red for the ELEVENTH time, on the LEVEL sentence again — the second
+    // flip in one day, which the 2026-09-01 entry already said is the mechanism
+    // rather than a defect. Pinned back to DEV AHEAD with both `at \`NNN\``
+    // captures. Note what this change does NOT pin: `109` is committed and
+    // applied to neither project, so the file count is one HIGHER than DEV's
+    // level and that is deliberate rather than drift. Pinning "three files
+    // open" or the gap's shape in words is the churn the 2026-09-01 note
+    // refuses; the two captures still make the direction unmissable, and the
+    // deliberately-unapplied file is explained in the prose beside them where a
+    // reader will actually meet it. Two edits, one commit. Still never a
+    // relaxed regex.
     pattern:
       /\*\*Applied state: (\d+) files\. DEV is at `\d+` and PROD at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
@@ -336,6 +385,10 @@ export const claims = [
     // go and this went red with its CLAUDE.md sibling. Pinned to DEV AHEAD with
     // both `at NNN` numbers, same rule — prose and pattern in one commit, never
     // a relaxed regex, and the relationship stays pinned in both directions.
+    // 2026-09-06: the promotion put `101`-`107` on PROD, so both numbers are the
+    // same again. The pattern is unchanged — it pins both `at NNN` captures in
+    // either state, which is why this sibling did not need moving with the
+    // CLAUDE.md one this time. Only the comment records the flip.
     pattern: /ls supabase\/migrations\/\*\.sql \| wc -l\s+# (\d+) — DEV at \d+, PROD at \d+/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',

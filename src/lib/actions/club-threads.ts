@@ -105,7 +105,7 @@ export async function deleteClubThread(
   if (error) return { error: 'That thread could not be deleted.' }
 
   invalidateThread(threadId, clubId)
-  return { error: null, redirectTo: routes.clubThreads(clubId) }
+  return { error: null, redirectTo: routes.club(clubId) }
 }
 
 /**
@@ -138,7 +138,7 @@ export async function moderateClubThread(
   if (error) return { error: 'That thread could not be deleted.' }
 
   invalidateThread(threadId, clubId)
-  return { error: null, redirectTo: routes.clubThreads(clubId) }
+  return { error: null, redirectTo: routes.club(clubId) }
 }
 
 /**
@@ -292,9 +292,11 @@ function invalidateThreadMessage(threadId: string, clubId?: string) {
  * re-checks `author_id = auth.uid()` itself.
  *
  * **Authorship is the whole test — there is no club-membership conjunct**, so a
- * rider who has left the club can still retract what they wrote. That diverges
- * from `ride_messages` on purpose: a ride's chat disappears with the ride, while
- * a club thread is a permanent titled surface others keep reading.
+ * rider who has left the club can still retract what they wrote. `108`'s
+ * `delete_own_ride_thread_message` states the identical rule for a ride thread,
+ * so there is no divergence left to explain: this was written against `034`'s
+ * `ride_messages`, whose policy-based delete could not reach an author who had
+ * left the crew, and `109` retired that table rather than porting the gap.
  */
 export async function deleteClubMessage(
   messageId: string,
