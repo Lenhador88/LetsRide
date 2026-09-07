@@ -222,10 +222,9 @@ export function ClubTimeline({
   const threads = useQuery(isMember ? queryKeys.clubs.threads(clubId) : null, () =>
     getClubThreads(clubId)
   )
-  // The only reader of this key now — `ClubThreadsRow` and `ClubOptionsMenu`'s
-  // aggregate dot both shared it and both are deleted (PD-426). See
-  // `getClubThreadUnread`: its corrective read existed for that aggregate and is
-  // now inert.
+  // The only reader of this key now: `ClubOptionsMenu`'s aggregate dot shared it
+  // until PD-426 deleted that. See `getClubThreadUnread` — its corrective read
+  // existed for that aggregate and is now inert (PD-433).
   const unread = useQuery(isMember ? queryKeys.clubs.threadsUnread(clubId) : null, () =>
     getClubThreadUnread(clubId)
   )
@@ -240,8 +239,9 @@ export function ClubTimeline({
   // ---------------------------------------------------------------------
   // Paging state — PD-375. The first window of each source above lives in
   // the shared cache; everything below is session-local and dies with the
-  // mount, matching `/clubs/detail/threads`' own trade (`client-cache-
-  // invalidation`'s "first page shared, later pages local").
+  // mount — `client-cache-invalidation`'s "first page shared, later pages
+  // local". (`/clubs/detail/threads` made the same trade until PD-426 deleted
+  // it; this is now the only screen making it.)
   // ---------------------------------------------------------------------
 
   const [extraRides, setExtraRides] = useState<ClubTimelineWindow<RideListItem>[]>([])

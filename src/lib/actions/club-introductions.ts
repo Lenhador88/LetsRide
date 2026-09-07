@@ -48,9 +48,18 @@ export async function introduceToClub(clubId: string, body: string): Promise<Act
   }
 
   // `threads(clubId)` reaches `threadsUnread` and `threadReplies` by prefix
-  // (`keys.ts`'s header table) — the new thread is what makes the Threads
-  // list and the timeline's own thread-creation entry show it, lead line
-  // included (`ClubTimeline` already derives that line from
+  // (`keys.ts`'s header table).
+  //
+  // **It no longer reaches a surface that can SHOW this thread, and the claim
+  // that it did was wrong in both halves.** The Threads list is deleted
+  // (PD-426), and an introduction never reaches the timeline's thread-creation
+  // entry either: it carries `introduces_user_id`, which `getClubThreads`
+  // filters at `.is(ANNOUNCEMENT_MARKER, null)` and the reply source filters on
+  // its embedded thread. What actually renders an introduction is
+  // `attachClubIntroductions` on the JOIN row, invalidated as
+  // `joinIntroductions` below. This claim is kept because over-invalidating is
+  // safe and cheap, not because a reader should trust the old reasoning
+  // (`ClubTimeline` derives the lead line from
   // `author_id`, so no further call names it here). The other two are the
   // decoration this feature adds: the join row's new door and count, and
   // whether this rider is still owed the prompt.

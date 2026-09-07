@@ -141,9 +141,21 @@ const THREAD_SELECT = `
  * `boundedHorizon`'s stated precondition that a source's rows ARE its window.
  *
  * **`until` is PD-375's timeline paging bound, BESIDE `cursor` rather than
- * instead of it** — `/clubs/detail/threads` keeps paging on the keyset cursor
- * and must not change behaviour; the club timeline is the only caller that
- * ever passes `until`, inclusive per `design.md` §D3.
+ * instead of it.** `until` is what the club timeline pages on, inclusive per
+ * `design.md` §D3.
+ *
+ * **`cursor` now has NO caller — PD-426, and it is dead for the same reason the
+ * corrective read below is (PD-433).** It existed so `/clubs/detail/threads`
+ * could keep paging on a keyset without changing behaviour; that screen is
+ * deleted, and both surviving call sites pass `undefined` for it:
+ *
+ * ```bash
+ * git grep -n "getClubThreads(" -- src/ | grep -v __tests__   # 2, both in ClubTimeline
+ * ```
+ *
+ * It is left in place rather than removed here because dropping a parameter is a
+ * signature change wanting its own diff — but do not read it as live, and do not
+ * add a caller for it without deciding whether a thread list is coming back.
  */
 export async function getClubThreads(
   clubId: string,
@@ -309,7 +321,8 @@ export async function getClubThreadMessages(
  * PD-433. Removing a data-layer read and the test that pins its narrowing is a
  * behaviour change that wants its own diff and its own review, and PD-426 is
  * already a large deletion. What must not happen is this sitting here reading as
- * live: it is a second round trip per club-detail load, retaining the total
+ * live: it is a second round trip on any club-detail load where something is
+ * unread — skipped entirely when nothing is, per the paragraph below — retaining the total
  * failure mode described below, for no observable benefit.
  *
  * **Proportional to the UNREAD set, and skipped entirely when nothing is
