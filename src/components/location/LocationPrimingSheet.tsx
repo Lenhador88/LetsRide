@@ -53,18 +53,30 @@ export function LocationPrimingSheet({
   mode,
   pending,
   onContinue,
+  onAskTown,
   onClose,
 }: {
   open: boolean
   /**
    * `ask` — the device will show its dialog. `blocked` — it already refused,
-   * so there is nothing left to ask for and the sheet explains the way back
-   * instead. See `locationPrimingState`.
+   * so there is nothing left to ask for and the sheet offers the town instead.
+   * See `locationPrimingState`.
    */
   mode: 'ask' | 'blocked'
   /** True while the device dialog is up and the fix is being acquired. */
   pending?: boolean
   onContinue: () => void
+  /**
+   * Hand off to the town question — PD-419, and the `blocked` branch's primary
+   * action.
+   *
+   * **Required, because it carries the entire second rung.** Before PD-419 this
+   * branch's button was a link to `/profile`, which asked a rider who had just
+   * declined a permission to navigate away, find a free-text field among three,
+   * and type a town that may or may not geocode. Making it required means a
+   * caller cannot render this sheet with a dead end where the answer is.
+   */
+  onAskTown: () => void
   onClose: () => void
 }) {
   const heading = mode === 'ask' ? 'Find rides near you' : 'Location is switched off'
@@ -106,16 +118,21 @@ export function LocationPrimingSheet({
             </p>
             {/* **The route out that does not go through Settings**, and the
                 reason this branch has a primary button at all. A rider reading
-                this has no position of any kind — `locationPrimingState`
-                hides the row entirely for anyone who has one — so without this
-                the sheet's only advice is the one thing it has just called
-                one-way, and a rider whose browser or MDM blocks location has
-                no in-app route to a working near-you strip at all. PD-286 is
-                what makes it available: the profile editor no longer
-                *requires* a town, so a rider who skipped it can still add one. */}
+                this has no position of any kind — `locationPrimingState` draws
+                `refine` rather than `blocked` for anyone who has one — so
+                without this the sheet's only advice is the one thing it has
+                just called one-way, and a rider whose browser or MDM blocks
+                location has no in-app route to a working near-you strip at all.
+
+                **PD-419 moved the answer INTO this sheet.** It used to point at
+                `/profile`, which asked a rider who had just declined a
+                permission to navigate away, find a free-text field among three,
+                and type a town that may or may not geocode — three chances to
+                give up, at the exact moment they had already said no once. The
+                question is now one tap away and answered here. */}
             <p>
-              You do not have to, though. Add the town you ride from on your profile, and we will
-              measure from there instead.
+              You do not have to, though. Tell us the town you ride from and we will measure from
+              there instead.
             </p>
           </div>
         )}
@@ -126,10 +143,13 @@ export function LocationPrimingSheet({
               Continue
             </Button>
           ) : (
-            // Navigates, so it is the `href` branch of `Button` — an anchor,
-            // which `ContextMenu`'s focus trap already selects for.
-            <Button size="lg" href="/profile" onClick={onClose}>
-              Add your town
+            // A button rather than the `href="/profile"` anchor this was until
+            // PD-419: it hands off to `TownQuestionSheet` in place. The caller
+            // owns closing this sheet before opening that one — two
+            // `ContextMenu`s must never be open at once, since each locks body
+            // scroll and restores it on unmount.
+            <Button size="lg" onClick={onAskTown}>
+              Set your town
             </Button>
           )}
           <Button variant="ghost" size="lg" onClick={onClose}>

@@ -102,8 +102,15 @@ export default function ExploreRidesPage() {
                 collapse to one unordered list and the strip that led here had
                 to drop its `near …` clause. `px-0` because this slot is already
                 inside a padded block. */}
+            {/* `auto` — PD-419. Set on the two Explore screens and nowhere
+                else: this is where the reason for asking is on screen, and a
+                tab root that opened a sheet by itself would ask before the
+                rider had seen why. `town` feeds the `refine` row, which says
+                where the distances above are being measured from. */}
             <UseMyLocationRow
               position={positionDecided ? position : undefined}
+              town={nearLabel(position, city.data)?.name}
+              auto
               className="px-0"
             />
 

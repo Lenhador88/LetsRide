@@ -29,8 +29,14 @@ import { hasIntroducedClub, owesIntroduction } from '@/lib/data/club-introductio
  * **It was `onJoined` until PD-392 and the rename is the point.** This control
  * no longer writes the membership for a club where an introduction is owed: it
  * asks its parent to open the sheet in pre-join mode and writes nothing at all.
- * `Post` is what joins. Leaving the old name on the new meaning would have been
- * a lie at every call site.
+ * The sheet's `Join club` is what joins. Leaving the old name on the new meaning
+ * would have been a lie at every call site.
+ *
+ * **PD-418 did not change that, and the name still holds.** What moved is what
+ * the sheet asks for once it is open — an introduction is now optional there —
+ * but this control still opens it rather than joining, so `onIntroduce` names
+ * the same event it always did. The one thing that changed here is that
+ * reaching the sheet is no longer a commitment to write anything.
  *
  * PD-384's reason for the callback survives the change and gets sharper. The
  * sheet cannot be rendered here, because `joinClub`'s invalidate moves this row
@@ -60,7 +66,7 @@ import { hasIntroducedClub, owesIntroduction } from '@/lib/data/club-introductio
  * over a membership they already hold.
  *
  * **That is one imprecise sentence AND one hole in the dismissal iff**, and the
- * second is the part worth writing down. If that rider taps `Join later`, the
+ * second is the part worth writing down. If that rider taps `Cancel`, the
  * sheet reports `membershipExists: false` — because its latch only knows about
  * a join *it* performed — so no session dismissal is recorded although a
  * membership exists. **It fails in the safe direction**: they are re-prompted
@@ -134,7 +140,7 @@ export function JoinClubButton({
             // evaluates for a member. A Join control renders for a non-member
             // alone, so 'owner' is unreachable here.
             if (owesIntroduction({ viewerRole: 'member', isDefaultClub }, alreadyIntroduced)) {
-              // Write nothing. `Post` joins; `Join later` does not.
+              // Write nothing. The sheet's `Join club` joins; `Cancel` does not.
               onIntroduce(clubId)
               return
             }

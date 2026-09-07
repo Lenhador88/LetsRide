@@ -82,7 +82,14 @@ export const usernameSchema = z
 
 export const BIO_MAX_LENGTH = 500
 export const BIKE_MODEL_MAX_LENGTH = 60
-const LOCATION_MAX_LENGTH = 100
+/**
+ * `018`'s CHECK on `profiles.location`. **Exported since PD-419**, because the
+ * town picker has to truncate what it writes to what the column accepts — a
+ * picker that can return a value its own CHECK refuses is a dead end the rider
+ * cannot escape, since the field owns the value and there is nothing for them
+ * to shorten. `PlaceSearchField`'s `maxNameLength` is where it lands.
+ */
+export const LOCATION_MAX_LENGTH = 100
 
 /**
  * Bio, bike and location are all **optional** on the profile editor, so an

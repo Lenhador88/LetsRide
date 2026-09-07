@@ -463,7 +463,7 @@ function ClubScreen() {
           `onDismiss` records the session dismissal **if and only if a
           membership exists** — PD-392. It was unconditional, and
           `ContextMenu`'s scrim and Escape both close through here, so a
-          `Join later`, a scrim tap or an Escape all reached one unconditional
+          `Cancel`, a scrim tap or an Escape all reached one unconditional
           write. A rider who declined the join on this club's own screen and was
           then admitted by another door in the same session would never be asked
           to introduce themselves. The sheet is what knows whether a membership

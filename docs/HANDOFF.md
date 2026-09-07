@@ -190,6 +190,114 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## Joining stopped demanding an introduction, and the app asks where the rider is — 2026-09-07
+
+**PD-418 + PD-419, one branch, taken into `slot-1`.** Not a path collision — grouped as the two
+buildable candidates under `queue-run.md` STEP 4's ceiling (one `L`, PD-419, plus one), both in the
+clubs route tree and both moving `npm run walk`. Neither carries a migration.
+
+**PD-418 — three changes had to move together**: the field opens carrying
+`CLUB_INTRODUCTION_STARTER` as its **value**, the primary is live whatever the field holds, and it
+reads `Join club`. A prefill without an always-live primary is the old wall with a shortcut; an
+always-live primary still called `Post` posts nothing when the field is empty.
+
+- **The `097` Q1/Q3 invariants are now MEMBER-mode invariants, and the asymmetry is load-bearing.**
+  PD-392 needed *inert until non-whitespace* and *placeholder, never `defaultValue`* because `Post`
+  was the only door to a **membership**. It no longer is, so the argument is spent rather than
+  overruled — and member mode keeps both, since there the text is the only product. **A
+  `describe.each` unifying the modes is the tidy-up to refuse**: it can only pass by making one
+  wrong.
+- **An empty body is not attempted, rather than attempted and caught.**
+  `club_threads_introduction_length` refuses whitespace-only text, so an attempt would return
+  `introduction-failed` on the one path where everything went as asked. The pre-join parse guard
+  stays for **over-length** bodies, which still must be refused ahead of the join.
+- **That path reports through `onDismiss(true)`, and it has to.** The rider is a member, so the
+  dismissal iff records the session dismissal as a `Not now` would — without it they land on club
+  detail and its state-driven sheet reopens asking for what they just declined. `onPosted` closes
+  the sheet too, and would claim a thread that was never written.
+- **`Join later` must not come back under that name.** It read as *join now, introduce later* and
+  joined nothing. A control called `Join later` has to join.
+
+**PD-419 — the ladder, and the hole `075` left.** PD-286 removed the location step from onboarding,
+so `profiles.location` is NULL for every rider since — and with no device grant either, the ordinary
+new rider had **no position at all** while three screens split their lists on distance. The
+machinery was built and had no input. The ladder is now: ask the device once, and if that is
+declined or unavailable, ask for a **town**. There is no third rung and **no IP lookup at any
+point** — decided 2026-09-06, harder than the story proposed.
+
+**Six things a later session should not re-derive:**
+
+- **`locationPrimingState`'s "never nag a rider who has a position" rule was reopened on its own
+  terms** — it carried the escape clause *"reopen it if a feature ever needs a real fix rather than a
+  bias"*. `refine` says **where the distances on screen are measured from**, for the rider whose
+  profile says Utrecht and who is in Maastricht: every distance was wrong and nothing said so. It
+  stays narrow — a device position draws nothing (already the best answer), nor does a profile one
+  whose permission is `denied` (no route to a better one, so the control would be a dead end).
+- **`unavailable` + no position went from `hidden` to `town`, and it was the worst state.** A rider
+  on a WebView with no geolocation had no position, no device to ask, and no affordance anywhere
+  saying so. The old assertions for both reversals are kept in `priming.test.ts`, inverted, so a
+  revert cannot pass silently.
+- **The ask is spent on the sheet OPENING, not on the rider answering** — on the answer it reopens
+  every cold start until someone taps `Continue`, which is how riders learn to decline permanently.
+  `ask-once.ts` is `localStorage` and **per device**, because the OS dialog it spends is one-way per
+  install. It **fails open**: an unreadable store reads as *not yet asked*, costing one sheet per
+  private-window session, where the other reading removes the ask for ever with no signal.
+- **The beat before the sheet does three jobs, one of them correctness** — `PostcardDeck`'s swipe
+  coach is the same shape. It reads better (a sheet thrown up during the list's fade covers the
+  reason it is asking); it keeps `setOpen` out of an effect body, which
+  `react-hooks/set-state-in-effect` rejects; and `markAskedForLocation()` is called **inside the
+  timer**, so a rider tapping through inside the beat does not spend their one ask. **The guard
+  beside it latches on the rider OPENING a sheet and never clears** — mirroring `open` would let the
+  timer reopen a sheet they had just dismissed, 100ms later.
+- **`auto` is on the two Explore screens and nowhere else.** A tab root must not open a sheet by
+  itself: the reason for asking is not on screen there. `/clubs/explore` also gained the row outright
+  — it was the one Explore route with no way to supply a position, while splitting its list on one.
+- **`setRiderTown` clears the module memo AND invalidates the keys, and neither substitutes for the
+  other.** `resolveRiderLocation` memoises its chain for `GEOLOCATION_MAX_AGE_MS`, so invalidating
+  `queryKeys.riderLocation()` alone hands the refetch the cached promise built from the town the
+  rider just replaced. `clearRiderLocation()` now has two callers for two reasons.
+
+**`canRemove` tracks the stored TOWN, not the position** — a rider can have a device fix in use *and*
+a town under it (the chain prefers the device) and must still be able to remove the town.
+**`setRiderTown(null)` could not, until the pre-merge review found it**: `optionalText` is a
+`ZodString` pipeline, so its type gate rejects `null` before the `'' → null` transform runs, and
+`Remove` returned a raw Zod message for ever. A green `tsc`, 3444 green tests, a green build and a
+green walk were all true at once, because `safeParse` takes `unknown`.
+
+**The location question HAS a measured source** — `Add your location` (`2074:5185`) and
+`- City focus` (`2077:5320`) draw *"Where are you located?"*, recorded by node id in
+`docs/specs/login-onboarding.md` all along. `TownQuestionSheet` takes that heading verbatim; its
+field says `Town` rather than the frame's `City`, because the frame predates the town rung. **The
+container stays ours** — those are the onboarding step `075` deleted, so pagination, `Back` and
+`Skip`/`Next` do not transfer to a sheet. `docs/FIGMA-FIDELITY-TODO.md` carries the split.
+
+**The walk was run against DEV — 26/26 screens, 79/79 checks**, the join phase reporting *"join took
+the sheet path"*, which is PD-418's flow end to end against the real database. **Re-run after the
+review fixes**, because `UseMyLocationRow` renders on both walked Explore screens and
+`dismissLocationSheet` exists solely for the sheet it opens there — a delta touching that
+component's behaviour is on a walked path however small it looks. **It had to be run at all**:
+PD-419's sheet opens by itself on both Explore screens, `aria-modal` over a scrim, which is what
+reddened the join phase under PD-404, and no other gate can see it. `dismissLocationSheet()` is
+scoped by the sheet's own `aria-label`, never a bare `[role="dialog"]` — the introduction sheet is
+also a `ContextMenu` there, and closing *that* would delete the join phase's coverage silently
+rather than fail. Two things keep it deterministic: the 800ms settle after each Explore `goto`
+outlasts the sheet's own 700ms beat, and the join phase still `fill`s the textarea despite the
+prefill, because PD-411's cleanup finds its thread by the text it wrote.
+
+**Do not check `Join later` with the usual `grep -vE` idiom** — it strips a comment line that
+*starts* with `*`, `//` or `/*`, so it passes **4** non-code lines here (a JSX comment *continuation*
+starting with a backtick, plus three tests asserting the string's absence) and reads as four
+survivals. The labels live in one place, so check that instead:
+
+```bash
+git grep -n "dismiss:" -- src/lib/validation/clubs.ts     # 'Not now' (member) · 'Cancel' (pre-join)
+git grep -n "submit:"  -- src/lib/validation/clubs.ts     # 'Post'    (member) · 'Join club' (pre-join)
+
+npx vitest run src/lib/location src/components/location src/components/clubs \
+  src/lib/actions/__tests__/join-and-introduce.test.ts
+npm run docs:check                              # 39 passed, 0 failed, 3 skipped (no Postgres)
+```
+
 ## The floating action stopped sitting on the tab bar, and the club got one too — 2026-09-07
 
 **PD-423 + PD-404, one branch, taken into `slot-2`.** A real collision and both issues said so:

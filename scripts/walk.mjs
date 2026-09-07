@@ -3009,6 +3009,63 @@ async function checkCommentOnPostcard() {
 }
 
 /**
+ * Closes PD-419's automatic location ask if it has gone up — and every phase
+ * that lands on an Explore screen has to call this.
+ *
+ * **Why it is not optional.** Since PD-419 both Explore screens open a sheet by
+ * themselves, once per device, when the rider has no position — which every
+ * minted walk rider is, and every `WALK_EMAIL` rider whose town nobody set.
+ * `ContextMenu` renders it `aria-modal` over a scrim, so the very next click on
+ * that screen fails its actionability check and times out at 20s. That is
+ * PD-410's defect exactly, arriving from a new direction: a phase going red on
+ * a screen that is working precisely as designed.
+ *
+ * **The 800ms settle after each Explore `goto` is longer than the sheet's own
+ * 700ms beat**, so the sheet is reliably up rather than racing — which is the
+ * good case. A shorter settle would make this intermittent.
+ *
+ * **Scoped by the sheet's own `aria-label`, never by a bare `[role="dialog"]`.**
+ * The introduction sheet is also a `ContextMenu` on these screens, and closing
+ * *that* by accident would silently delete the join phase's coverage rather
+ * than failing.
+ *
+ * Not a phase and not reported: it asserts nothing. It is the walk keeping the
+ * screens reachable, the same way it already dismisses a member-mode
+ * introduction sheet it did not ask for.
+ */
+// **These are `ContextMenu` `label` props, not visible headings, and the two
+// deliberately differ on the town sheet** — its `aria-label` is `Where you ride
+// from` while its `<h2>` reads `Where are you located?` (measured from
+// `2074:5185`). Match the labels. Changing one of these strings without changing
+// its component leaves this helper silently returning false — it asserts
+// nothing — and the failure surfaces as a red JOIN phase on a screen that works.
+const LOCATION_SHEETS = ['Find rides near you', 'Location is switched off', 'Where you ride from']
+
+async function dismissLocationSheet() {
+  const closed = await page
+    .$$eval(
+      LOCATION_SHEETS.map((label) => `[role="dialog"][aria-label="${label}"] button`).join(','),
+      (buttons) => {
+        const target = buttons.find((b) => ['Not now', 'Close'].includes(b.textContent?.trim()))
+        if (!target) return false
+        target.click()
+        return true
+      }
+    )
+    .catch(() => false)
+
+  // Wait for it to actually detach before returning. Returning on the click
+  // alone would hand the caller a screen whose scrim is still in the tree for a
+  // frame, which is the same failed-actionability click one line later.
+  if (closed) {
+    await page
+      .waitForSelector('[role="dialog"]', { state: 'detached', timeout: 5_000 })
+      .catch(() => {})
+  }
+  return closed
+}
+
+/**
  * A ride this rider neither organizes nor has already answered —
  * `/rides/explore` excludes both by construction (`getExploreRides` filters
  * out the organizer's own rides and anything with an existing
@@ -3021,6 +3078,7 @@ async function checkCommentOnPostcard() {
 async function discoverRsvpCandidate() {
   await page.goto(`${BASE}/rides/explore`, { waitUntil: 'networkidle' }).catch(() => {})
   await page.waitForTimeout(800)
+  await dismissLocationSheet()
   return page.evaluate(() =>
     [...document.querySelectorAll('a[href]')]
       .map((a) => new URL(a.href, location.origin))
@@ -3244,6 +3302,7 @@ const WALK_INTRODUCTION =
 async function discoverJoinableClub() {
   await page.goto(`${BASE}/clubs/explore`, { waitUntil: 'networkidle' }).catch(() => {})
   await page.waitForTimeout(800)
+  await dismissLocationSheet()
   return page.evaluate(() => {
     const button = document.querySelector('button[aria-label^="Join "]')
     if (!button) return null
@@ -3351,11 +3410,19 @@ async function leaveClubIfJoined(clubId) {
  * by PD-410, and the reversal is forced rather than preferred. Until PD-392
  * this phase's tap wrote the membership and the sheet was decoration
  * afterwards, so `Not now` cost nothing. Since PD-392 the sheet **is** the
- * join on this path: `Post` joins and then introduces, and `Join later`
- * deliberately writes nothing and joins nothing. Dismissing therefore asserts
- * that a button opens a sheet and nothing more — it deletes the only automated
- * coverage of a rider joining a club at all, which is the write this phase
- * exists for.
+ * join on this path: its primary joins and then introduces, and its second
+ * control deliberately writes nothing and joins nothing. Dismissing therefore
+ * asserts that a button opens a sheet and nothing more — it deletes the only
+ * automated coverage of a rider joining a club at all, which is the write this
+ * phase exists for.
+ *
+ * **PD-418 did not soften that, and the tempting shortcut is now available.**
+ * The primary is `Join club`, it is live the instant the sheet opens, and the
+ * field arrives prefilled — so a run could join by tapping it immediately and
+ * skip the `fill` below. It must not: the introduction is what this phase's
+ * cleanup identifies by text (PD-411), and a run that posted the app's own
+ * canned starter would be indistinguishable from a real rider's introduction
+ * and so uncleanable. The second control is `Cancel` and still joins nothing.
  *
  * **What posting leaves behind, and why it is acceptable on one path and not
  * the other** — the same accounting as the `club_joined` notification above,
@@ -3461,10 +3528,16 @@ async function checkJoinClub() {
       .catch(() => false)
 
     if (introducing) {
-      // Filled in and POSTED, never dismissed — see this function's header.
-      // `Post` is inert until the field holds non-whitespace text (`097`'s
-      // invariant, deliberately preserved through PD-392), so the fill is what
-      // makes the control clickable rather than decoration.
+      // Filled in and SENT, never dismissed — see this function's header.
+      //
+      // **Since PD-418 the fill no longer makes the control clickable; it
+      // decides what gets posted.** The primary (`Join club`) is live from the
+      // instant the sheet opens whatever the field holds, and the field arrives
+      // carrying `CLUB_INTRODUCTION_STARTER`. So this `fill` REPLACES that
+      // default rather than satisfying a guard — and it must stay, because the
+      // walk's own cleanup (PD-411) identifies the thread it wrote by the text
+      // it wrote, and a run posting the app's canned starter would be
+      // indistinguishable from a real rider's introduction.
       await page.fill(`${sheet} textarea`, WALK_INTRODUCTION)
 
       // ARMED BEFORE THE CLICK, like `membershipWrite` above. This is the only
@@ -3472,8 +3545,8 @@ async function checkJoinClub() {
       // `watchForRpcId` for why the UI cannot identify the row afterwards.
       //
       // **The SAME 45s the membership watcher gets, and for the same reason.**
-      // `Post` is two sequential writes and this is the second, but the clock
-      // starts HERE — before the click — so this budget spans BOTH of them.
+      // The primary is two sequential writes and this is the second, but the
+      // clock starts HERE — before the click — so this budget spans BOTH.
       // Giving it the default 20s would make a slow-but-successful membership
       // write eat the whole budget, and the failure is doubly wrong: the id is
       // never captured, so the thread is not deleted AND the check reports
@@ -3481,12 +3554,19 @@ async function checkJoinClub() {
       // PD-410 exists to remove, arriving from the far side.
       introductionThread = watchForRpcId('introduce_to_club', 45_000)
 
+      // **Either label, and that is not defensiveness.** The sheet's primary is
+      // `Join club` in pre-join mode and `Post` in member mode (PD-418), and
+      // both are genuinely reachable here: the ordinary path opens pre-join,
+      // while a stale Explore row for a rider who is already a member opens the
+      // member-mode sheet instead. Matching one label alone would leave the
+      // click silently doing nothing on the other — `$$eval`'s `?.` swallows a
+      // miss — and the run would then fail further down naming a symptom.
       await page.$$eval(`${sheet} button`, (buttons) =>
-        buttons.find((b) => b.textContent?.trim() === 'Post')?.click()
+        buttons.find((b) => ['Join club', 'Post'].includes(b.textContent?.trim()))?.click()
       )
 
       // WAIT FOR THE SHEET TO CLOSE ITSELF, and do not navigate before it does.
-      // `Post` is TWO writes with no transaction across them (`097`, PD-392):
+      // The primary is TWO writes with no transaction across them (`097`, PD-392):
       // the membership lands first and the introduction second, and the sheet
       // closes on the second through `onPosted`. Navigating on the membership
       // alone cancels the introduction in flight — it shares the tab — which
@@ -3638,6 +3718,12 @@ async function checkJoinClub() {
     }
 
     await page.goto(`${BASE}/clubs/explore`, { waitUntil: 'networkidle' })
+    // The ask is once per device, so it will not normally reappear here — but
+    // `hasJoinButton` reads the DOM rather than clicking, and a stray scrim
+    // would not affect it either way. Called for the same reason the other two
+    // sites do: an Explore navigation is where this sheet can appear, and a
+    // phase that skips it is one localStorage clear away from being flaky.
+    await dismissLocationSheet()
     const backOnExplore = await hasJoinButton()
     report(backOnExplore, 'leaving it again survives a reload (back on Explore)', 'the club did not reappear on Explore')
   } catch (e) {

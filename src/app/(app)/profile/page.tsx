@@ -8,6 +8,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonDetail } from '@/components/ui/Skeleton'
 import { Header } from '@/components/layout/Header'
 import { NotificationsHeaderControl } from '@/components/notifications/NotificationsHeaderControl'
+import { LocationSetting } from '@/components/profile/LocationSetting'
 import { PostcardCard } from '@/components/postcards/PostcardCard'
 import { EditProfileForm } from '@/components/profile/EditProfileForm'
 import { ProfileCountries } from '@/components/profile/ProfileCountries'
@@ -186,6 +187,13 @@ function ProfileScreen({ profile }: { profile: Profile }) {
       <ProfileCountries codes={countries.data} />
 
       <EditProfileForm profile={profile} />
+
+      {/* PD-419. Below the editor deliberately: the editor's `location` field
+          says what the rider TYPED, and this says what the app is actually
+          measuring from, which are different whenever a device fix outranks the
+          town. Reading them the other way round would suggest the field is the
+          setting. */}
+      <LocationSetting />
 
       <section className="flex flex-col gap-2">
         {/* No `meta` count. `postcards.length` is the length of a page

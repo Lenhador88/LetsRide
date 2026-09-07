@@ -3,6 +3,7 @@
 import { Header } from '@/components/layout/Header'
 import { ExploreClubsList } from '@/components/clubs/ExploreClubsList'
 import { IntroductionPrompt } from '@/components/clubs/IntroductionPrompt'
+import { UseMyLocationRow } from '@/components/location/UseMyLocationRow'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { useIntroductionQueue } from '@/lib/clubs/use-introduction-queue'
@@ -105,6 +106,23 @@ export default function ExploreClubsPage() {
           both are built at the list's own padding, so nesting would draw them
           16px narrower than the cards they stand in for. */}
       <div className="pb-navbar-action-extra">
+        {/* PD-419. This screen splits its list on distance and was the one
+            Explore route with no way to supply one — `/rides`, `/clubs` and
+            `/rides/explore` have carried the row since PD-170. `auto` is set
+            here and on `/rides/explore` and nowhere else: an Explore screen is
+            where the reason for asking is visible, which is where grants
+            actually come from. */}
+        {/* `positionDecided ? position : undefined` — `position` collapses
+            `undefined` to `null` for the query above, and the row must NOT see
+            that: `null` is a decided "nowhere" it draws for, so passing the
+            collapsed value flashes the row on every load before the position
+            settles. `/rides/explore` carries the same line. */}
+        <UseMyLocationRow
+          position={positionDecided ? position : undefined}
+          town={nearLabel(position, city.data)?.name}
+          auto
+        />
+
         {clubs.error ? (
           <ErrorState onRetry={clubs.refetch} />
         ) : !clubs.data ? (

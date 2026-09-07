@@ -442,12 +442,22 @@ export async function requestDeviceLocation(): Promise<RiderLocation | null> {
 }
 
 /**
- * Sign-out's own sweep, matching `clearQueryCache`/`clearGuardCache`
+ * Drops the memo so the very next `resolveRiderLocation()` walks the chain
+ * again. **Two callers, for two different reasons, and neither is a
+ * generalisation of the other.**
+ *
+ * **Sign-out's own sweep**, matching `clearQueryCache`/`clearGuardCache`
  * (`src/lib/actions/auth.ts`). A `RiderLocation` carries no user id and no
  * ownership check of its own — nothing here would notice a different rider —
  * so without this, rider A's coordinates survive `signOut`'s client-side
  * `router.replace` (there is no page reload) straight into rider B's session
  * on the same device.
+ *
+ * **`setRiderTown`'s** (PD-419), because the profile source is one half of the
+ * chain and the memo outlives a write to it by up to `GEOLOCATION_MAX_AGE_MS`.
+ * Invalidating `queryKeys.riderLocation()` alone is not enough: the refetch it
+ * triggers calls straight back into this module and is handed the cached
+ * promise built from the town the rider just replaced.
  *
  * Guarded the same way `clearGuardCache` is: a no-op with no `document`, so
  * "nothing writes this module's state during a server render" holds by

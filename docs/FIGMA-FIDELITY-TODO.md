@@ -644,13 +644,20 @@ It borrows `ContextMenu`'s scrim and geometry so it is at least consistent with 
 were measured. **Nothing here has been rendered against DEV**; `npm run walk` has not run over
 it, which is the gate that would catch a sheet that throws on open.
 
-**It has a SECOND mode since PD-392 (2026-09-05), and that one is ours too.** The sheet now opens
-before a rider joins, offering `Join later` where a member sees `Not now`, and `Post` is what
+**It has a SECOND mode since PD-392 (2026-09-05), and that one is ours too.** The sheet opens
+before a rider joins, offering `Cancel` where a member sees `Not now`, and `Join club` is what
 writes the membership. Its heading, its body line and both control labels are
 `CLUB_INTRODUCTION_COPY` in `src/lib/validation/clubs.ts` — no frame, no measurement, same
 standing as the first mode. Re-run the command above rather than trusting this: the search terms
 that found nothing for the member sheet find nothing for this one either, and a frame appearing
 later is exactly what would make both entries stale.
+
+**PD-418 (2026-09-07) moved three of pre-join's four strings and one piece of its behaviour**, and
+all of it is still inferred: the primary reads `Join club` rather than `Post`, the second control
+reads `Cancel` rather than `Join later`, the body line no longer says posting is what joins, and
+the field opens **prefilled** with `CLUB_INTRODUCTION_STARTER` rather than showing it as a
+placeholder. No frame draws a prefilled introduction field, so the prefill is ours in the same
+sense the sheet is.
 
 Member mode's wording is **unchanged**, so what is inferred here is only the new half:
 
@@ -1847,6 +1854,30 @@ item.
       open"* and *"we never show other riders where you are"* must both stay true of the code —
       nothing in `src/` uses `watchPosition`, and a device fix leaves the device only as a
       ~1 km-rounded proximity bias. A designer rewording this needs to keep both.
+- [ ] **PD-419 (2026-09-07) — the QUESTION has a measured source and the CONTAINER does not.**
+      `npm run figma -- ls` returns two location-question frames —
+      **`Add your location` (`2074:5185`)** and **`Add your location - City focus`
+      (`2077:5320`)**, drawing *"Where are you located?"* (Poppins/32/Semibold), one
+      `v2 / Component / Input / Text` labelled `City`, and a `Skip`/`Next` footer.
+      `docs/specs/login-onboarding.md` records both by node id.
+
+      `TownQuestionSheet` takes the heading STRING from those frames verbatim — not its type
+      token, which is the container's `text-lg` rather than the frame's Poppins/32/Semibold. **Its
+      field label is `Town` rather than the frame's `City`, deliberately**: the frame predates the
+      town rung, and `town` is the word the action, the row label and the body copy all use.
+      **What is still ours, and is what a designer would actually be picking up:**
+      - **The container.** Those frames are the onboarding wizard step `075` (PD-286) deleted,
+        so they carry pagination dots, a `Back` link and `Skip`/`Next` — none of which belongs
+        on a sheet opened from Explore. The bottom sheet is `ContextMenu`'s measured geometry
+        with our explanatory paragraph and our `Save`/`Not now`.
+      - **`LocationPrimingSheet`'s rewritten `blocked` branch**, which hands off to that sheet
+        instead of linking to `/profile`. **It carries a THIRD store-review claim** beside the
+        two above — *"Tell us the town you ride from and we will measure from there instead"* is
+        a promise about what the app does with a refusal.
+      - **`UseMyLocationRow`'s two new labels** — `Set where you ride from`, and
+        `Near {town} · Use my location`, the only line in the app that says where a distance was
+        measured from.
+      - **`LocationSetting` on `/profile`**, which the design has no equivalent of at all.
 
 ### Private clubs in Explore, and the ride marker on a stamp — built 2026-08-28 (PD-325, PD-328)
 
