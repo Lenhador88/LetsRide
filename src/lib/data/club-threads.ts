@@ -286,14 +286,31 @@ export async function getClubThreadMessages(
  * this cannot change it: `club_thread_unread` is a database function and there
  * is no migration here. So the correction is in the read.
  *
- * Two of the three consumers need nothing — `ClubThreadRow` and `ClubTimeline`
- * both index by thread id, and after `getClubThreads`' own filter no
- * announcement produces a row for them to look up. **The third aggregates**:
- * `ClubOptionsMenu`'s `Threads` item is `Object.values(...).some(Boolean)`, and
- * it is now the only aggregate dot in the app. Left alone, an unread comment on
- * an introduction would light a dot that points at the Threads list and
- * **cannot be cleared by visiting it**, because the thread it names is not on
- * it.
+ * **THE CORRECTION IS NOW INERT, AND THAT IS THE FIRST THING TO KNOW — PD-426.**
+ * It existed for exactly one consumer, and that consumer is deleted.
+ *
+ * The docstring here used to name three: `ClubThreadRow`, `ClubTimeline` and
+ * `ClubOptionsMenu`'s `Threads` item. The first two "need nothing" — both index
+ * by thread id, and after `getClubThreads`' own filter no announcement produces
+ * a row for them to look up. **The third aggregated**:
+ * `Object.values(...).some(Boolean)`, the app's only aggregate dot. Left alone,
+ * an unread comment on an introduction would have lit a dot pointing at the
+ * Threads list that **could not be cleared by visiting it**, because the thread
+ * it named was not on that list.
+ *
+ * PD-426 deleted the Threads list, the menu item and its aggregate, and
+ * `ClubThreadRow` with them. **`ClubTimeline` is the only caller left and it
+ * indexes by id**, so the round trip below removes keys nobody reads — verified
+ * both ways rather than assumed: `getClubThreads` filters announcements at
+ * `.is(ANNOUNCEMENT_MARKER, null)` and the timeline's reply source does the same
+ * on its embedded thread, so no surviving consumer can hold an announcement id.
+ *
+ * **So this should be deleted, and it is deliberately not deleted here** —
+ * PD-433. Removing a data-layer read and the test that pins its narrowing is a
+ * behaviour change that wants its own diff and its own review, and PD-426 is
+ * already a large deletion. What must not happen is this sitting here reading as
+ * live: it is a second round trip per club-detail load, retaining the total
+ * failure mode described below, for no observable benefit.
  *
  * **Proportional to the UNREAD set, and skipped entirely when nothing is
  * unread.** Only ids the RPC actually marked can light anything, so only those

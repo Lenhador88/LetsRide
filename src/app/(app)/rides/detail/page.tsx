@@ -409,7 +409,6 @@ function RideScreen() {
         ) : ride.data ? (
           <RidePlan
             ride={ride.data}
-            isCrew={isCrew === true}
             statusChip={statusChip}
             rsvpOpen={bottomSlot === 'rsvp'}
             onToggleRsvp={() => setRsvpReopened((open) => !open)}
@@ -452,7 +451,6 @@ function RideScreen() {
 
 function RidePlan({
   ride,
-  isCrew,
   statusChip,
   rsvpOpen,
   onToggleRsvp,
@@ -460,7 +458,6 @@ function RidePlan({
   near,
 }: {
   ride: RideDetail
-  isCrew: boolean
   /** The rider's own answer, drawn as a chip on the first content line, or
    *  `null` to draw none — `resolveRideDetailActions` decides which (PD-404).
    *  Not re-derived from `ride.attendance` here: the organizer reads `going`

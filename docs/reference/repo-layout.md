@@ -10,8 +10,8 @@ src/
 │   │   ├── layout.tsx      # Renders <Navbar /> (fixed bottom tabs); each page renders its own <Header>
 │   │   ├── error.tsx       # The app's only error boundary
 │   │   ├── postcards/      # /postcards (the home screen), /postcards/new, /postcards/detail (one card + its comment thread)
-│   │   ├── rides/          # /rides (From clubs), /rides/explore, /rides/new, /rides/detail (Ride plan), /rides/detail/crew, /rides/detail/chat, /rides/detail/edit (PD-101)
-│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/detail (merged 2026-08-18) + /rides, /members, /edit (PD-101), /threads, /threads/new, /thread (PD-307), /manage (PD-326)
+│   │   ├── rides/          # /rides (From clubs), /rides/explore, /rides/new, /rides/detail (Ride plan), /rides/detail/crew, /rides/detail/edit (PD-101), /rides/detail/invite (PD-329), /rides/detail/thread + /threads/new (PD-402; the /threads INDEX and /detail/chat are both deleted)
+│   │   ├── clubs/          # /clubs (Your clubs), /clubs/explore, /clubs/new, /clubs/detail (merged 2026-08-18) + /rides, /members, /edit (PD-101), /threads/new, /thread (PD-307; the /threads INDEX is deleted, PD-426), /manage (PD-326), /invite (PD-360)
 │   │   ├── notifications/  # /notifications — PD-118. Becomes /inbox/notifications when the tab returns
 │   │   └── profile/        # /profile (your own), /profile/detail (another rider's — view-rider-profile)
 │   ├── auth/               # /auth/login, /auth/signup, /auth/callback (public)
@@ -27,7 +27,7 @@ src/
 │   ├── auth/               # AuthScreen, FormError, ResetPasswordForm, RouteGuard (mounted in the ROOT layout) — plus username-verdict.ts, pure + tested, the postcards/deck.ts shape rather than a fifth component
 │   ├── chat/              # ChatComposer, ChatThread, MarkChatSeen — shared by the ride chat and club threads since 081
 │   ├── rides/              # CreateRideForm, CreateRideThreadForm, DeleteRideControl, EditRideForm, MapAttribution, RideAttendanceBar, RideCard, RideChip, RideCreateAction, RideCreateSheet, RideCrewRail, RideFilterBar, RideHeader, RideInviteJoin, RideInviteLinkSection, RideInviteList, RideInvitePicker, RideMap, RideOptionsMenu, RideStatusChip, RideThreadOptions, RideTimeline, RideTimelineEventRow, RideTimelineThreadRow, ExploreRidesList, ExploreRidesStrip, recentStarts
-│   ├── clubs/              # ClubCard, ClubCreateAction, ClubDeclinedRequestsSection, ClubDetailHeader, ClubJoinRequestsSection, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPreviewScreen, ClubTimeline, ClubTimelineEventRow, ClubTimelineRideCard, ClubTimelineThreadRow, CreateClubForm, CreateThreadForm, DeleteClubControl, EditClubForm, ExploreClubsList, ExploreClubsStrip, JoinClubButton, ManageRidersRoster, MarkClubSeen, RequestToJoinButton
+│   ├── clubs/              # ClubCard, ClubCreateAction, ClubDeclinedRequestsSection, ClubDetailHeader, ClubInviteJoin, ClubInviteLinkSection, ClubInviteList, ClubInvitePicker, ClubJoinRequestsSection, ClubMemberRail, ClubMembershipButton, ClubOptionsMenu, ClubPreviewScreen, ClubShareOrInviteItem, ClubTimeline, ClubTimelineEventRow, ClubTimelineRideCard, ClubTimelineThreadRow, ClubWaveButton, CreateClubForm, CreateThreadForm, DeleteClubControl, EditClubForm, ExploreClubsList, ExploreClubsStrip, IntroductionPrompt, JoinClubButton, ManageRidersRoster, MarkClubSeen, RequestToJoinButton, ThreadOptions
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, PostcardViewer, ShareButton, SwipeCoach, coachMark, deck, locationCopy, viewerContext
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem, NotificationsPanel
 │   ├── observability/      # Observability — mounts error reporting (module scope) and analytics (an effect). Draws nothing (PD-315, PD-353)

@@ -139,8 +139,7 @@ function useFirstWindowRemovalGuard<T>(
  * same change — they are entries here now, and `ClubCreateAction` carries the
  * creates. **The entrance they used to own is this stream itself as of PD-426**,
  * which deleted `/clubs/detail/threads` and the `ClubOptionsMenu` row that
- * pointed at it; the row named here (`ClubThreadsRow`) had already gone in
- * 2026-08-31's merge.
+ * pointed at it.
  *
  * ## The non-member branch is the one rule that is not cosmetic
  *
@@ -223,7 +222,10 @@ export function ClubTimeline({
   const threads = useQuery(isMember ? queryKeys.clubs.threads(clubId) : null, () =>
     getClubThreads(clubId)
   )
-  // Shares its key — and so its request — with `ClubThreadsRow`'s aggregate dot.
+  // The only reader of this key now — `ClubThreadsRow` and `ClubOptionsMenu`'s
+  // aggregate dot both shared it and both are deleted (PD-426). See
+  // `getClubThreadUnread`: its corrective read existed for that aggregate and is
+  // now inert.
   const unread = useQuery(isMember ? queryKeys.clubs.threadsUnread(clubId) : null, () =>
     getClubThreadUnread(clubId)
   )

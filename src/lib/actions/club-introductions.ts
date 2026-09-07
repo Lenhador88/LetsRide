@@ -50,7 +50,7 @@ export async function introduceToClub(clubId: string, body: string): Promise<Act
   // `threads(clubId)` reaches `threadsUnread` and `threadReplies` by prefix
   // (`keys.ts`'s header table) — the new thread is what makes the Threads
   // list and the timeline's own thread-creation entry show it, lead line
-  // included (`ClubThreadRow`/`ClubTimeline` already derive that line from
+  // included (`ClubTimeline` already derives that line from
   // `author_id`, so no further call names it here). The other two are the
   // decoration this feature adds: the join row's new door and count, and
   // whether this rider is still owed the prompt.

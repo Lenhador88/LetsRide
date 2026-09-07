@@ -639,7 +639,8 @@ npm run figma -- ls | grep -i "introduc\|welcome"     # empty
 
 So the sheet's composition, its welcome wording and the introduction's layout on the thread
 detail are **inferred**, not measured, and are the app's own — the same standing as
-`ClubThreadRow`, `CreateThreadForm` and the Journal stamp above, all ours for the same reason.
+`CreateThreadForm` and the Journal stamp above, all ours for the same reason. (`ClubThreadRow`
+stood beside them until PD-426 deleted the Threads list it drew a row for.)
 It borrows `ContextMenu`'s scrim and geometry so it is at least consistent with the sheets that
 were measured. **Nothing here has been rendered against DEV**; `npm run walk` has not run over
 it, which is the gate that would catch a sheet that throws on open.

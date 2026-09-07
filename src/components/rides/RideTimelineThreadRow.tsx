@@ -16,9 +16,8 @@ import { formatRelativeTime } from '@/lib/utils'
  * one undifferentiated list, which is what these screens were rebuilt to stop.
  *
  * So: the thread glyph on its own tinted tile at the left, the title at the
- * weight the deleted `RideThreadRow` gave it on the deleted Threads list, and a
- * lead line saying
- * who did what.
+ * weight the deleted `RideThreadRow` gave it on the Threads list that went with
+ * it, and a lead line saying who did what.
  *
  * ## Two things `ClubTimelineThreadRow` carries and this deliberately does not
  *
