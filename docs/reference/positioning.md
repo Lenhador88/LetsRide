@@ -314,12 +314,61 @@ Measured candidates, and what each buys:
 | `LetsRide: Motorcycle Riders` | 27 | Names the person rather than the activity | `Riders` is close to the brand and adds little |
 | `LetsRide: Riders & Clubs` | 24 | Two product-true nouns | **Drops `Motorcycle`, which is disqualifying** — see below |
 
-**`Motorcycle` is not optional, and the strongest evidence is from this project.** `LetsRide`
-plus any word about riding reads as bicycles, horses or carpooling to someone who has never seen
-it — and the product owner, whose app it is, wrote *"this is a cycling app"* in the same message
-that proposed the name. If the word can slip for the person who built it, it will slip for a
-stranger reading 26 characters in a search result. Whatever else the name carries, it carries
-`Motorcycle`.
+**`Motorcycle` is not optional, and there are two independent reasons.** `LetsRide` plus any
+word about riding reads as bicycles, horses or carpooling to someone who has never seen it — and
+the product owner, whose app it is, wrote *"this is a cycling app"* in the same message that
+proposed the name. If the word can slip for the person who built it, it will slip for a stranger
+reading 26 characters in a search result. The second reason is the census below.
+
+### What the category actually named itself — read 2026-09-07
+
+The one honest proxy for search volume available without a paid ASO tool: **every competitor has
+already done this research, and their store names are the answer they bought.**
+
+| Store name | `Motorcycle` | Second slot |
+|---|---|---|
+| `REVER - Motorcycle GPS & Rides` | ✓ | GPS, Rides |
+| `MotoVerse - Motorcycle Community` | ✓ | Community |
+| `MOTOSPOT Motorcycle Social App` | ✓ | Social |
+| `TONIT Motorcycle App` | ✓ | — |
+| `EatSleepRIDE` — "the motorcycle community…" | ✓ | Community |
+| `MotoCommunity — Find Your Ride` | `Moto` | Community, Ride |
+| `MotoMate: Group Rides` | `Moto` | Group Rides |
+
+**`Motorcycle` or `Moto` is in 7 of 7.** That settles the first slot: it is table stakes, not a
+differentiator, and an app without it is invisible.
+
+**The second slot splits, and `Community` is the crowded one — three of seven.** A new app with
+no ratings does not out-rank three incumbents on the phrase they have all optimised for; the ASO
+literature's own advice is that a narrower term with matching intent produces fewer impressions
+and more installs. **`Clubs` appears in none of the seven**, and it is the one word that is
+exactly true of this product — clubs *are* the social graph here.
+
+**[unvalidated] and this is the honest limit of the method**: a census of names is a proxy for
+volume, not volume. It cannot tell whether *"motorcycle club"* is searched by riders looking for
+a club to join or by people interested in outlaw-MC culture, and that distinction decides whether
+`Clubs` is an opportunity or a trap. A free ASO tool tier (App Radar, AppTweak) settles it in an
+hour and nothing here can. **`apps.apple.com` is blocked by this container's egress proxy**, so
+even the listings above are read from search-result titles rather than from the pages.
+
+### The name does not have to carry everything
+
+The 100-character keyword field is indexed too, and Apple builds phrases across name, subtitle
+and keywords — so a word already in the name or subtitle is **wasted** if repeated there. With
+`LetsRide: Motorcycle Clubs` and `Tell your story, ride together`, the name and subtitle already
+own `motorcycle`, `clubs`, `ride`, `story`, `together`. The keyword field then spends its 100
+characters on what they do not:
+
+```
+group,rides,riders,near,me,community,social,meetup,biker,motorbike,crew,tour,bike,trip
+```
+
+**Not `friends`.** The app has no such concept — see the do-not-say table — and a keyword is a
+claim like any other.
+
+**Arithmetic worth knowing before arguing about a word:** `LetsRide: ` is 10 of the 30 and
+`Motorcycle ` is another 11, so the second slot has **nine characters**. `Community` is exactly
+nine and `Clubs` is five; nothing longer than nine fits without dropping something.
 
 The reason the name changes shape: **the word "motorcycle" appears nowhere in "LetsRide" or
 "Ride Together"**. That absence is a fact about two strings. **Everything drawn from it is
