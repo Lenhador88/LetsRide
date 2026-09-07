@@ -182,9 +182,14 @@ dispatched under. Filed as its own issue so it is not lost with this change dire
       `parseScenarioBlocks` captures `/^####\s*Scenario:\s*(.+)\s*$/` and
       `findMissingCurrentScenarios` compares those strings **raw** — unlike requirement names,
       which go through `normalizeRequirementName`. So pasting it without the backticks around
-      `ride_members` adds a near-identical second name, archive still throws naming the real one
-      as missing, and the requirement ends up carrying **two** capacity scenarios — which is the
-      exact outcome §6.2 exists to prevent, reached by following this task.
+      `ride_members` throws again, naming the real scenario as still missing.
+
+      **The trap is what a reader then does about that throw.** `findMissingCurrentScenarios`
+      only checks current ⊆ incoming, so an EXTRA scenario in the delta is never refused — adding
+      the correctly-named one *beside* the mistyped one clears the throw and archives, leaving the
+      requirement carrying **two** capacity scenarios. That is the exact outcome §6.2 exists to
+      prevent, reached by following this task and then fixing the error it caused. Delete the
+      mistyped line; do not add a second beside it.
 
       **Why this is filed here rather than in each sibling.** `add-account-deletion`'s tasks say
       nothing about the refresh at all (its §7.7 re-reads for drift, which is a different job).
