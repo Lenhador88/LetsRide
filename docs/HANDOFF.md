@@ -25,12 +25,13 @@ history.
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 113 files on `development`. DEV is at `113`, PROD at `112`** — `108`–`112`
+- **Migrations: 114 files on `development`. DEV is at `114`, PROD at `112`** — `108`–`112`
   promoted 2026-09-07 with [#431](https://github.com/Lenhador88/LetsRide/pull/431); `113` landed
-  its file with #428 and is the one thing waiting on a promotion. `list_migrations` against both
-  refs is the check. **`113`'s partner `114` is still deliberately unwritten** — it refuses a NULL
-  country and must not exist until the merged bundle is *serving* on DEV (`READY` on the merge sha
-  with `aliasError` null), or every new signup is stuck in the wizard.
+  its file with #428 and `114` was written once that bundle was confirmed serving. `list_migrations`
+  against both refs is the check. **`113` then `114` is a required order on the PROD promotion and
+  must not be collapsed** — `114` refuses a NULL country, so applied ahead of the bundle that
+  writes one it strands every new signup in a wizard with no skip. Promote `113`, deploy, confirm
+  `READY` with `aliasError` null on `app.letsride.social`, then `114`.
   `docs/reference/migrations.md` §Applied state has the per-file log and that gate.
 - **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
   #434 touched `supabase/functions/resolve-ride-location/` (comments only), so
@@ -59,8 +60,9 @@ history.
   (organizer may say Maybe) — waiting on the next firing, with both slots now open.
 - **Two stories stayed open on purpose.** **PD-385**: 9 DEV rides still carry a coordinate and no
   tile, and only each ride's own organizer can repair one — three are `pedro889`'s, and the repair
-  is opening each on DEV and pressing Save. **PD-428**: it still owes `114` (above) and a way to
-  change the country after onboarding, which wants a decision rather than a branch.
+  is opening each on DEV and pressing Save. **PD-428**: `114` is written and applied to DEV, so
+  what it still owes is a way to change the country after onboarding, which wants a decision
+  rather than a branch.
 
 Re-derive rather than trust the list: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.

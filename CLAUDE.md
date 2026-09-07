@@ -309,14 +309,15 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 113 files. DEV is at `113` and PROD at `112` — measured 2026-09-07.** DEV-ahead
+**Applied state: 114 files. DEV is at `114` and PROD at `112` — measured 2026-09-07.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
 against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV records THREE rows with
-no file and PROD none** — the long-standing hand-applied ones. **`113`'s partner `114` is
-deliberately unwritten**: it refuses a NULL country, so it must not exist until the bundle that
-writes one is *serving*. `docs/reference/migrations.md` §Applied state has that gate.
+no file and PROD none** — the long-standing hand-applied ones. **`113` then `114` is a required
+order on the PROD promotion and must not be collapsed**: `114` refuses a NULL country, so applied
+ahead of the bundle that writes one it strands every new signup in a wizard with no skip.
+`docs/reference/migrations.md` §Applied state has that gate.
 
 **The sequencing rule: additive first, deploy, destructive last — and "additive, so the order does
 not matter" is wrong in both directions.** Ask which side fails safe:
@@ -338,7 +339,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **3700** assertions — re-derive rather than trust it:
+Suite **3724** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 

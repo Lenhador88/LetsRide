@@ -156,22 +156,32 @@ Per `openspec/config.yaml`: a policy or constraint change with no new assertion 
 
 ## 5. `114` — arm the refusal, after the bundle is serving
 
-- [ ] 5.1 **Gate:** confirm the merge sha is `READY` with `aliasError` null on `development`'s
+- [x] 5.1 **Gate:** confirm the merge sha is `READY` with `aliasError` null on `development`'s
       Vercel deployment. Merged is not serving.
-- [ ] 5.2 `create or replace function public.complete_onboarding(p_location text)` — **the
+- [x] 5.2 `create or replace function public.complete_onboarding(p_location text)` — **the
       signature is unchanged.** Whole body verbatim again, adding one guard beside the consent and
       username arms, **above** `058`'s welcome-club block and outside its `when others`: raise
       `check_violation` when the stored `home_country` is NULL. Select it in the same `for update`
       read that already fetches the username and the consent stamp — no second round trip.
-- [ ] 5.3 Header: state that this file is the requirement, that it is separate from `113` because
-      one file cannot be both sides of a deploy, and that a re-run by an already-onboarded rider is
-      never refused because the guard reads the stored column, which they already have.
-- [ ] 5.4 Apply to DEV, object-diff `prosrc`, re-run `get_advisors(security)`. Zero new advisors
+- [x] 5.3 Header: state that this file is the requirement, and that it is separate from `113`
+      because one file cannot be both sides of a deploy. **The third clause of this item was WRONG
+      and the file says so at the guard.** It read: "a re-run by an already-onboarded rider is
+      never refused because the guard reads the stored column, which they already have." They do
+      not — every rider onboarded before `113` holds NULL, permanently and by decision — and
+      `complete_onboarding` has no idempotency short-circuit, so an already-stamped caller reaches
+      every arm. Both measured on DEV in rolled-back transactions, 2026-09-07. The guard is
+      therefore gated on `not v_was_complete` rather than placed beside the consent and username
+      arms; `114.3` is the assertion that fails for the placement this item asked for.
+- [x] 5.4 Apply to DEV, object-diff `prosrc`, re-run `get_advisors(security)`. Zero new advisors
       expected, same reasoning as 1.11.
-- [ ] 5.5 Assertions: a completion with no country raises `check_violation` and leaves
+- [x] 5.5 Assertions: a completion with no country raises `check_violation` and leaves
       `onboarding_completed_at` NULL; a re-run by a rider who already has a country succeeds and
       returns the original stamp; a rider with no consent stamp is still refused by the consent arm
-      first.
+      first. **Plus the case this list did not think through**: a re-run by a rider
+      who onboarded BEFORE `113` and has NO country succeeds and returns the original stamp
+      (`114.3`). Landed as `114.0`–`114.8`, 26 assertions; the suite moved 3700 -> 3724 and its
+      label-set delta is in `docs/reference/running-locally.md`. Seven fixtures that reach
+      completion gained a `home_country`, and the `023` walkthrough gained a real country step.
 
 ## 6. Documentation
 
@@ -179,10 +189,15 @@ Per `openspec/config.yaml`: a policy or constraint change with no new assertion 
       its CHECKs, its coercion rule and the permanent-NULL contract.
 - [ ] 6.2 `CLAUDE.md` — the applied-migration counts, and the sentence describing the wizard as one
       step. Both are claims about state; write each beside the command that checks it.
-- [ ] 6.3 `docs/reference/migrations.md` §Applied state — the per-file ordering for `113` and
+- [x] 6.3 `docs/reference/migrations.md` §Applied state — the per-file ordering for `113` and
       `114`, recorded as it is applied, on each project.
-- [ ] 6.4 `npm run docs:check` — the full sweep locally, not just CI's `--cheap` step.
-- [ ] 6.5 `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs` — this proposal cites
+- [ ] 6.4 `npm run docs:check` — the full sweep locally, not just CI's `--cheap` step. **42/44
+      after `114`; the two open failures are both `CLAUDE.md`'s and are the MAIN THREAD's to make,
+      because agents do not write that file (`CLAUDE.md` §Delegating): "Applied state: 113 files …
+      DEV is at `113`" becomes 114 / `114`, and "Suite **3700** assertions" becomes **3724**. The
+      sentence beginning "**`113`'s partner `114` is deliberately unwritten**" is now false and has
+      to go with them, as does the same claim in `docs/HANDOFF.md`.
+- [x] 6.5 `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs` — this proposal cites
       section pointers into other documents, and `openspec/` is inside that sweep.
       (Do **not** write the pointer syntax out as an example here: the sweep parses this file
       too, reads the example as a real citation, and fails on a document that does not exist.
