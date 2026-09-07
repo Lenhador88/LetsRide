@@ -270,10 +270,11 @@ npx vitest run src/components/ui/__tests__/FloatingAction.test.tsx   # 6/6
 `grep -vE` idiom this repo uses everywhere strips a comment line that *starts* with `*`, `//` or
 `/*` — and a comment **continuation** starts with whatever word it happens to start with. Three of
 those ten begin with a backtick or a word (`clubs/detail/page.tsx:422` and `:445`,
-`globals.css:252`), so the filter passes them through as if they were code. The count is still
-useful; *"every one a live pointer"* was not, and an earlier revision of this block said exactly
-that. **Read the lines, do not just count them** — and when a filtered count is the claim, check it
-against the unfiltered one, which is 10 files here.
+`globals.css:252`), so the filter passes them through as if they were code. **Unfiltered the same
+grep is 16 hits across 10 files, so the filter removed 6 of 16 and still let 3 through** — that
+comparison is the useful one, and stating it as *"10 hits"* beside *"10 files"* reads as though the
+filter removed nothing. The count is still worth having; *"every one a live pointer"* was not, and
+an earlier revision of this block said exactly that. **Read the lines, do not just count them.**
 
 ## The Geoapify credit is gone, and the cold load announces once — 2026-09-06
 
