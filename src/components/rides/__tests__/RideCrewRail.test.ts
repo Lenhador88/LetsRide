@@ -150,10 +150,27 @@ describe('the rail reads the crew page’s own source', () => {
    * the strip honest — a filter that has quietly stopped matching passes for ever
    * and looks exactly like a clean file.
    */
-  const code = source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+  /**
+   * **A TRAILING `//` comment defeated the first version of this**, and the
+   * fixed strip is why every scan below is applied through a function rather
+   * than to one precomputed string.
+   *
+   * The line strip was `/^\s*\/\/.*$/gm` — anchored, so it removed a comment
+   * only when it owned the whole line. A reviewer defeated the host-ring guard
+   * with `index === 0 && // … member.is_host && …`: the real defect back in the
+   * code, the forbidden token satisfied by the comment beside it, and all
+   * assertions green. That is CLAUDE.md's comment trap arriving through the
+   * *fix* for the comment trap.
+   *
+   * `//` to end of line ANYWHERE now, with `[^:]` keeping `https://` whole.
+   */
+  const strip = (text: string) =>
+    text
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1')
+
+  const code = strip(source)
 
   it('fetches through queryKeys.rides.crew and getRideCrew', () => {
     expect(code).toContain('queryKeys.rides.crew(rideId)')
@@ -194,12 +211,38 @@ describe('the rail reads the crew page’s own source', () => {
    */
   it('rings the host by is_host, never by list position', () => {
     expect(code).toContain('member.is_host &&')
-    expect(code).not.toMatch(/i === 0/)
-    // The strip left the executable half behind, and the filter still matches a
-    // real regression — verified both ways, per CLAUDE.md's comment trap.
+    expect(code).not.toMatch(/\b\w+ === 0 &&/)
+    // The strip left the executable half behind rather than eating the file.
     expect(code).toContain('ring-accent')
-    const reverted = code.replace('member.is_host &&', 'i === 0 &&')
-    expect(reverted).toMatch(/i === 0/)
+  })
+
+  /**
+   * **The both-ways half, and it mutates the SOURCE rather than the stripped
+   * copy.** The first version asserted `code.replace(a, b)` contained `b`,
+   * which is a tautology: it re-checks a string the line above just inserted
+   * and cannot fail once the positive assertion passes. A guard that cannot
+   * fail is indistinguishable from one that has quietly stopped matching, which
+   * is the whole thing this file's strip exists to avoid.
+   *
+   * Both mutations run through `strip` exactly as the real file does, so the
+   * comment-stripping is on trial here too.
+   */
+  it('would catch a positional rewrite, including one hidden behind a comment', () => {
+    const plain = strip(source.replace('member.is_host &&', 'i === 0 &&'))
+    expect(plain).not.toContain('member.is_host &&')
+    expect(plain).toMatch(/\b\w+ === 0 &&/)
+
+    // The exploit that defeated the first version of this guard: the defect
+    // back in the code under a different index name, with the forbidden token
+    // parked in a trailing comment to satisfy the positive assertion.
+    const disguised = strip(
+      source.replace(
+        'member.is_host &&',
+        'index === 0 && // restored from member.is_host && — PD-429'
+      )
+    )
+    expect(disguised).not.toContain('member.is_host &&')
+    expect(disguised).toMatch(/\b\w+ === 0 &&/)
   })
 
   it('gives the maybe rows the same host props as the going rows', () => {

@@ -808,7 +808,24 @@ export type ClubInviteLinkClaim = { club_id: string }
 export type RideCrewMember = {
   user_id: string
   profile: PublicProfile | null
-  /** The organizer, who leads the Going list whether or not they RSVP'd. */
+  /**
+   * The organizer — on their own ride by construction, whether or not they ever
+   * pressed `Yes!`.
+   *
+   * **It says WHO, never WHERE, and reading it as a position is a live bug that
+   * has already shipped once.** Until PD-429 this said the host *"leads the
+   * Going list"*, which `withOrganizer` guaranteed by prepending them to `going`
+   * unconditionally. It no longer does: an organizer may answer Maybe, and they
+   * then lead `maybe` instead. So `going[0]` is an ordinary crew member on any
+   * ride whose host is wavering, and the one place that inferred the host from
+   * index — `RideCrewRail`'s accent ring — knighted that rider on the organizer's
+   * own screen. **Mark the host from this flag.**
+   *
+   * `RideCard` is the deliberate exception and is not a counter-example:
+   * `toRideListItem` builds its avatar row as `[organizer, ...others]` itself,
+   * so index 0 is the organizer by that function's own construction rather than
+   * by anything `withOrganizer` promises.
+   */
   is_host?: boolean
 }
 
