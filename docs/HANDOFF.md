@@ -46,14 +46,18 @@ history.
 
 - **Open PR:** [#428](https://github.com/Lenhador88/LetsRide/pull/428) — onboarding asks for a
   home country (PD-428) and one "near" label (PD-427), `slot-1`.
-- **`Development (AI)`:** PD-421 (the log digest's HTTP call has never succeeded), plus the two
-  above. PD-264 merged as [#430](https://github.com/Lenhador88/LetsRide/pull/430) and freed
-  `slot-2`; it filed PD-436, which blocks archiving `enforce-ride-capacity` — relevant to §Next
-  action, since that change is one of the 45 open.
+- **`Development (AI)`:** PD-385 (`slot-2`, this branch) and PD-421 (the log digest's HTTP call
+  has never succeeded), plus the two above. PD-264 merged as
+  [#430](https://github.com/Lenhador88/LetsRide/pull/430); it filed PD-436, which blocks archiving
+  `enforce-ride-capacity` — relevant to §Next action, since that change is one of the 45 open.
 - **`Queued (AI)`:** PD-431 (ride reminders), PD-430 (a shared ride link before sign-up), PD-429
-  (organizer may say Maybe), PD-385 (rides with a coordinate render no tile).
-- **This branch** (`claude/app-build-process-review-q65i72`): the process review — this file, the
-  rulebook, the journal, the reviewer trace, the OpenSpec wrap-up hook.
+  (organizer may say Maybe). All three collide with `slot-1`'s declared territory, which is why
+  the 14:42Z firing took one story rather than a bundle.
+- **This branch** (`claude/sweet-goodall-yhir4j`): PD-385 — `resolve-ride-location` is verified
+  rendering on DEV again, and `updateRide` now re-asks for a map when a ride carries a coordinate
+  with a tile missing. **PD-385 stays open**: 9 DEV rides are still blind and only their own
+  organizer can repair one. Three of those are `pedro889`'s, and after this merges the repair is
+  opening each on DEV and pressing Save.
 
 Re-derive rather than trust the list: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.

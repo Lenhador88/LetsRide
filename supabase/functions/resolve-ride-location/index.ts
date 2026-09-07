@@ -3,39 +3,45 @@
  * map tiles, and stores them against the ride.
  *
  * ===========================================================================
- * DEPLOYED, AND THE DEPLOYED BUILD IS BEHIND THIS FILE. Read the state.
+ * IS THE DEPLOYED BUILD CURRENT? Run the commands. Do not read a number here.
  * ===========================================================================
- * Measured 2026-08-19 — `ACTIVE` on both projects, `verify_jwt` true, v1,
- * `ezbr_sha256` `d5932de9…` on each. Re-take it rather than trusting the line;
- * the deploy moves without this file moving, and so does this file without the
- * deploy moving:
+ * **No version, sha or date is transcribed into this block, deliberately.**
+ * `deploy-functions.yml` redeploys on any push to `development` touching
+ * `supabase/functions/**` — comments included — so a commit that writes today's
+ * reading here is a commit that changes it. The last transcribed reading sat
+ * ten days out of date and asserted the exact opposite of the truth.
+ *
+ * Two different questions, and only the second is currency:
  *
  *   mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
  *   mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
+ *   # equal `ezbr_sha256` says the two projects AGREE — never that either is current
  *
  *   TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- \
  *     supabase/functions/resolve-ride-location/
- *   # newer than the deploy's updated_at means the deployed build is stale
+ *   # newer than the deploy's `updated_at` means the deployed build is stale
  *
- * **It IS stale right now, behaviourally rather than in comments.** PD-114's
- * picked-ride branch is merged in this file and deployed nowhere: a ride
- * carrying `start_place_id` should skip the geocode and render from the stored
- * coordinate, and the deployed build geocodes unconditionally instead. `PD-267`
- * is the owner action that closes it, and it must land together with removing
- * the `if (!location)` guard in `src/lib/actions/rides.ts` — deploying one half
- * alone leaves picked rides with no map at all, silently. Deploying is an OWNER
- * action: no `supabase` CLI in the build container, and `deploy_edge_function`
- * is on `.claude/settings.json`'s deny list. Same blocker as `delete-account`
+ * **The second command reads "stale" for a while after every merge that touches
+ * this directory, and that is the check working rather than failing** — the
+ * deploy job runs after the merge, so the commit lands first. Read the `deploy`
+ * JOB's conclusion, never the run's: without the token the job skips and the
+ * run is still green, which is the shape that produced the ten-day outage.
+ * PD-437 is the missing tripwire. Deploying by hand is an OWNER action: no
+ * `supabase` CLI in the build container, and `deploy_edge_function` is on
+ * `.claude/settings.json`'s deny list — same blocker as `delete-account`
  * and PD-86.
  *
  * **`*.geoapify.com` is still egress-blocked from the build container**, so no
  * session can issue a request from here — `WebFetch` returns `EGRESS_BLOCKED`
- * and so does a bare `curl` through the agent proxy. What has changed is that
- * the DEPLOYED function has now called the vendor: DEV's
- * `ride_map_render_attempts` holds 2 rows (2026-08-17), PROD's holds none. One
- * of `gates.ts`'s three assumed constants is measured off that traffic —
- * `scaleFactor` is real (`PD-236`) — and the map `style` value and the
- * `result_type` vocabulary are still assumptions. **Do not read "the tests
+ * and so does a bare `curl` through the agent proxy. The DEPLOYED function can,
+ * and that is the only route a session has to the vendor. **The repeatable
+ * exercise, which needs no secret** (PD-385): create a ride on DEV as a walk
+ * fixture (`docs/HANDOFF.md` §Test accounts), POST `{"rideId":…}` to
+ * `/functions/v1/resolve-ride-location` with that rider's own access token, read
+ * the path columns back, delete the ride. Run it for a typed meeting point AND
+ * for one carrying `start_place_id`; they take different branches at step 6 and
+ * only the second covers PD-114. `scaleFactor` is measured (`PD-236`); the
+ * `result_type` vocabulary is still an assumption. **Do not read "the tests
  * pass" as "the vendor agrees."**
  *
  * Task 8.4 is still open on the parts a ledger row cannot answer: that an edit
@@ -405,7 +411,16 @@ Deno.serve(async (req: Request) => {
     //
     // The cost is accepted and stated: one flaky render now costs both tiles
     // rather than one, and the ride keeps its coordinate and draws the fallback
-    // until its next address edit.
+    // until it is asked for again.
+    //
+    // **"Until its next ADDRESS edit" is what that used to say, and it was the
+    // whole of PD-385's damage.** `updateRide` re-requested a render only when
+    // the location moved, so a ride whose tiles failed had no route back short
+    // of editing the meeting point into something genuinely different —
+    // re-saving the same address did nothing. It now re-requests on ANY save of
+    // a ride carrying a coordinate with a tile missing, which is exactly this
+    // end state. If that branch is ever narrowed back, this sentence becomes
+    // true again and every vendor blip is permanent.
     const bothRendered = !!cardTile && !!detailTile
 
     const [storedCardPath, storedDetailPath] = bothRendered

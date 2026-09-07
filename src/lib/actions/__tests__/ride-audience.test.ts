@@ -123,6 +123,14 @@ const stored = (club_id: string | null, is_public: boolean) => ({
   start_place_id: null,
   map_card_path: null,
   map_detail_path: null,
+  // **NULL, and it is load-bearing here rather than filler** — PD-385.
+  // `updateRide` now re-renders a ride carrying a coordinate whose tiles are
+  // missing, so a fixture with a latitude would reach `removeRideMapTiles` and
+  // `requestRideMapRender` on every case in this file and throw a `TypeError`
+  // against a mock exposing no `.storage` and no `.functions`. The header note
+  // above says to change the fixture and stub those two before adding a case
+  // that trips the block; `ride-map-repair.test.ts` is where that was done.
+  latitude: null,
   timezone: 'Europe/Amsterdam',
   club_id,
   is_public,
