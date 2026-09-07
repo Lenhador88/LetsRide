@@ -12,7 +12,7 @@ app between the two round trips leaves:
 - a **ride whose `organizer_id` holds no `ride_members` row**.
 
 That state went from *reachable only on a Supabase error* to **reachable on demand**, and it is
-logged as the first entry in `docs/HANDOFF.md` §Known issues.
+logged as the first entry in `docs/reference/journal.md` §Known issues.
 
 **The real gap is not the missing transaction — it is that nothing asserts the invariant.** No
 CHECK, trigger or constraint anywhere says "a club has an owner-membership row". PostgREST has no

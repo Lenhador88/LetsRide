@@ -136,7 +136,7 @@ is how the next session re-derives the gap.
       an open gap. **This file was locked by another session at proposal time and was deliberately
       not edited**; do it in the apply phase, or hand it to the main thread if it is still locked.
       **Still open at merge**: PR #252 was open across that file for the whole build, so the three
-      stale claims (lines 250, 664, 731) are logged in `docs/HANDOFF.md` §Known issues with their
+      stale claims (lines 250, 664, 731) are logged in `docs/reference/journal.md` §Known issues with their
       line numbers instead. The next branch that opens that file fixes them.
 
 ## 6. OpenSpec coordination — do not skip, this is the one that outlives the change
