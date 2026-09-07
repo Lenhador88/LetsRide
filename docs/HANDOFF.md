@@ -191,6 +191,71 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The profile has one location control, and the twin check compares sets — 2026-09-07
+
+**PD-269 + PD-425 + PD-336, one branch, taken into `slot-2`.** PD-269 and PD-336 are a real
+collision — PD-269 edits the `tools:` lines that PD-336's assertion in
+`src/__tests__/agent-briefs.test.ts` gates, so two sessions would have fought over that file.
+PD-425 travelled as the third under `queue-run.md` STEP 4's ceiling. No migration.
+
+**PD-425 shipped a DELETION where the issue proposed a swap, and the reason is on the screen
+rather than in the code.** The issue reads "swap one `<Input>` for `PlaceSearchField` in
+`EditProfileForm`". But PD-419 had already added `LocationSetting`, a picker-backed control, and
+`profile/page.tsx` renders it **directly below that form under the same heading** — *Where you ride
+from*. So the screen already carried two controls for one column: the form's text box stored `asdf`
+happily, and the section beneath it then told the rider `asdf` could not be placed. The swap would
+have made that **two pickers under one heading**. Deleting the free-text door reaches the issue's
+own stated goal — *"the two writers must not diverge further"* — more completely, and by removing
+code: divergence is impossible with one writer.
+
+**Four things a later session should not re-derive:**
+
+- **`location` had to leave `profileEditSchema`, not merely stop being rendered.** `optionalText`
+  is a `ZodString` pipeline whose type gate runs **before** its transform, so an absent field parses
+  `null` and every profile save would be refused. The repair that suggests itself — tolerate the
+  absence — is worse: it writes NULL over the town the picker two sections down just stored. The
+  bound now lives in a standalone `locationSchema` that `setRiderTown` parses.
+- **`locationSchema` stays permissive and must.** Rows written through the old field exist, and
+  `describeRiderLocation` is what tells a rider their stored town cannot be placed — it needs the
+  value to survive being read back. Tightening it to pick-only makes every legacy row *unreadable*
+  rather than merely unplaceable.
+- **The obituaries in `EditProfileForm`'s docstring are load-bearing** — three `location` hits, all
+  prose, saying why a field must not come back. §Technology Decisions' comment trap: check the
+  filter both ways rather than reading the count as survivals.
+- **Both of the issue's negative cases are answered better by the deletion than the swap would
+  have answered them.** The stored town is shown by `LocationSetting`'s own heading and detail
+  (including when it does not resolve), and clearing still works through `Remove`.
+
+**PD-336 — the fix is in the COMPARISON, and that is the whole point.** The assertion compared two
+cardinalities while its message said *"correspond one to one"*; `declared` is not deduplicated, so
+one repeated friendly entry masked exactly one orphaned twin. Three previous rewrites each changed
+how `twins` is *derived* and left the comparison alone. Duplicates now fail a **separate**
+assertion, so an orphan (the agent lost a tool) and a repeat (the guard is being disarmed) name
+different causes.
+
+**Verified three ways against the real `test.md` line, not a synthetic one** — orphan + duplicate
+(the case that defeated the old check: 3 twins, 3 friendly, so it passed) fails the set compare;
+duplicate alone fails the duplicate assertion; **orphan alone still fails**, so the direction that
+already worked is not weakened.
+
+**`git checkout <file>` on uncommitted work is the `git stash` hazard by another door.** Reverting a
+mutation-test with it discarded this session's own unpushed edits to the same file, silently and
+with no conflict — the shape §Delegating while the owner is at the keyboard already records for
+`stash`. **Commit before mutating**, then revert with confidence.
+
+**Any new `§Working Principles` citation trips the crossrefs ceiling.** `resolveAll` accepts a
+one-word leading match and `CLAUDE.md` has both *Working Principles* and *Working With the Product
+Owner*, so every such citation is `ambiguous` — the ceiling sits at exactly 35 and one more is red.
+`.claude/agents/reviewer.md:415` holds one already. Cite a different section or name the rule
+without the `§`.
+
+```bash
+git grep -n "name=\"location\"\|retained.location" -- src/          # 0 — the field is gone
+git grep -c "location" -- src/components/profile/EditProfileForm.tsx  # 3, all prose
+npx vitest run src/__tests__/agent-briefs.test.ts src/lib/validation/__tests__/profile.test.ts
+npm run docs:check                              # 39 passed, 0 failed, 3 skipped (no Postgres)
+```
+
 ## Joining stopped demanding an introduction, and the app asks where the rider is — 2026-09-07
 
 **PD-418 + PD-419, one branch, taken into `slot-1`.** Not a path collision — grouped as the two
