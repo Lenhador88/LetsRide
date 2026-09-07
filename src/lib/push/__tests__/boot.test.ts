@@ -69,9 +69,13 @@ describe('registerOnBoot', () => {
 
   it('never prompts — it reads the permission and never requests it', async () => {
     // The one-shot iOS dialog. A boot path that could raise it would spend the
-    // single ask on app launch, which is the worst possible moment for it. The
-    // doorway's `requestPushPermission` is deliberately absent from this
-    // module's imports, and this asserts the module graph agrees.
+    // single ask on app launch, which is the worst possible moment for it.
+    //
+    // **This is a text scan of one file, not a module-graph proof**, and the
+    // difference is worth stating: it catches the named regression — somebody
+    // adding `requestPushPermission` to this module's imports — and it does not
+    // catch a boot path that reaches the plugin some other way. The doorway
+    // test is what bounds that, by keeping the import in one file.
     await registerOnBoot()
 
     // **Comment-stripped, and the first version of this test was not.**

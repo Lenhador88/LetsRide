@@ -145,9 +145,14 @@ filter both ways — that it reads 0 now *and* still catches a real instance.
 advisory, because a rider can simply not run your validation.
 
 **`lib/data/` and `lib/actions/` are where reads and writes live, and both resolve their client
-through `src/lib/supabase/resolve.ts`.** One name, one doorway. **Two modules outside them call
-an RPC and are not exceptions to make more of**: `lib/location/rider-location.ts` and
-`lib/push/registration.ts`, each a device concern with no row to read.
+through `src/lib/supabase/resolve.ts`.** One name, one doorway. **A handful of modules outside
+them call an own-row RPC that reads no table** — the guard cache, password recovery and push
+registration today. Count rather than trust that list, and note the pathspec: the natural
+`-- src/lib/` prints the two doorways too.
+
+```bash
+grep -rn "\.rpc(" src/lib/ --include=*.ts | grep -vE "^src/lib/(data|actions)/" | grep -v __tests__
+```
 
 **Do not reach for a "just check at runtime" fix to a bundling problem.** Next refuses to bundle
 `next/headers` into a client graph whether or not the branch can be taken, and a `typeof document`

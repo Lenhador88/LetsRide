@@ -135,9 +135,18 @@ export function PushPrimingRow({ className }: { className?: string }) {
   if (state === 'stalled') {
     return (
       <div className={cn('px-4 py-2', className)}>
+        {/* **The copy does not name a cause, and that is deliberate.** An
+            earlier version said "a problem with the app rather than with your
+            settings", which is right for a misprovisioned build and wrong for
+            the far more common case this state also covers: the registration
+            write failing because the rider is in a tunnel. Both leave the
+            device unregistered, nothing here can tell them apart, and telling
+            a rider on a bad connection that the app is broken is the worse
+            error. What is true of both is that it is not their settings and
+            it retries by itself. */}
         <p className="text-sm font-medium text-muted">
-          Notifications are allowed, but this device has not been able to register for them. This
-          is a problem with the app rather than with your settings.
+          Notifications are allowed, but this device is not registered for them yet. Nothing to fix
+          on your side — it will try again next time you open the app.
         </p>
       </div>
     )

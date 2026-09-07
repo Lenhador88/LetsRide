@@ -311,9 +311,11 @@ an error, worth knowing before anyone raises that setting. And the plugin resolv
 `@aparajita/capacitor-secure-storage@8.0.0` ships its `ios/Sources/SecureStoragePlugin` in the npm
 tarball, and its `from: "8.0.0"` on `capacitor-swift-pm` is satisfied by CapApp-SPM's `exact:
 "8.5.0"`. **The first open resolves more than one remote package** — the secure-storage plugin also pulls
-`keychain-swift from: "21.0.0"` — so Xcode needs network on that first build. **Count them off
-`Package.resolved` rather than from here**: PD-431 added `@capacitor/push-notifications`, and a
-plugin count written down goes stale the next time one is added.
+`keychain-swift from: "21.0.0"` — so Xcode needs network on that first build. **Read the list off `ios/App/CapApp-SPM/Package.swift`'s `dependencies:` array rather than from
+here**: PD-431 added `@capacitor/push-notifications`, and a plugin count written down goes stale
+the next time one is added. **Not `Package.resolved`** — Xcode writes that on the Mac at first
+resolve and it is not in this repo, so it cannot answer the question for the session being told
+to ask it.
 
 What a session CAN now do, all of it exercised on 2026-08-25:
 
