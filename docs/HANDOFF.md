@@ -191,6 +191,76 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## Onboarding asks for a country, and the Explore sentence has one home — 2026-09-07
+
+**PD-428 + PD-427, one branch, taken into `slot-1`.** A real collision and PD-428's own body
+names it: PD-427 "gains a fourth label state and it needs different words". Same
+`near-label.ts`, same four Explore surfaces, so PD-428 was built first and the copy written once.
+**PD-428 is delivered in PART and stays open** — see below.
+
+**`113` is applied to DEV. `114` does not exist yet, and writing it early is the outage.** The
+column is migration-first (a bundle writing a column the database lacks gets `PGRST204`); the
+refusal that requires it is a narrowing and must not exist until this bundle is *serving* on DEV
+— applied early, the currently-serving bundle's `complete_onboarding(null)` is refused on every
+signup and every new rider is stuck in the wizard. `108`/`109` is the same shape.
+`openspec/changes/require-a-home-country-at-onboarding/tasks.md` §5 is the checklist, gated on
+`READY` with `aliasError` null.
+
+**Six things a later session should not re-derive:**
+
+- **The country cannot arrive as an argument to `complete_onboarding`, and the issue said it
+  would.** `create or replace` cannot add a parameter, so a second argument is an *overload* and
+  the one-argument call every signup makes then answers `PGRST203`. It arrives as an ordinary
+  column UPDATE; the requirement still lives in the function, reading the stored column.
+- **`my_onboarding_state()` did not change shape, and that is the safety argument.** The country
+  step is the one that stamps completion, so "username, no stamp" already means "owes a country"
+  and `has_username` alone picks the resume step. Adding a fourth field is the dangerous edit: a
+  newer bundle destructuring a field an older function does not return reads `undefined`, which
+  is falsy, which sends **every rider on the app** into the wizard, invisibly to `tsc`, from the
+  root layout.
+- **The guard lets a rider stand on a step they have already finished**, which is what makes the
+  country screen's `Back` live rather than a bounce. `075` §3 gave `username_exists` its own-row
+  predicate for exactly this rider. Expect "send every non-resume path forward" as the tidy-up to
+  refuse.
+- **`grant select, insert, update (col)` binds the column list to the LAST privilege only.**
+  Measured: that one-liner grants SELECT and INSERT *table-wide*, handing back the four
+  server-owned columns `025`/`030`/`096` revoked. Three separate statements is the only correct
+  form, and `113.10` asserts both table-wide reads read false.
+- **`020`'s "two error identities" rationale is false, for `020` as much as for `113`.**
+  Membership is a strict subset of shape and Postgres reports CHECKs in constraint-NAME order, so
+  every malformed value is reported by `…_is_assigned`. Do not "fix" it by renaming — the shape
+  check would then report for `ZZ`, which is a valid shape.
+- **Two tripwires did not cover what they claimed**, both measured before being fixed:
+  `writers-invalidate.test.ts` was file-granular, so with three writers in `onboarding.ts`
+  deleting any one invalidation still passed (30/30 green with `setHomeCountry`'s removed);
+  `columns.test.ts` read `025` alone, so the first column ever added to that allowlist could
+  never pass — it now walks the chain and RESETS at a table-level SELECT revoke, because a plain
+  union resurrects `024`'s `avatar_url`, whose re-grant is an apply-time `42703`.
+
+**PD-427 deliberately did NOT gain the country label state**, and this is the part most likely to
+be "fixed" back. PD-428 proposes `Explore rides in the Netherlands`. That is a **scoping claim**
+and no query in this app is scoped to a country: `getExploreRides` filters on `is_public` and
+orders by `departure_at`, and neither `lib/data/rides.ts` nor `clubs.ts` mentions a country at
+all. The clause is owed the day the query earns it; `explore-label.ts` has a test pinning the
+absence so adding it has to come with the query.
+
+**What PD-428 still owes, and why it is not filed as a new row:** `114`, and a way to change the
+country after onboarding. The second is proposal-added scope rather than the issue's — the issue
+asks for a country *at onboarding* — and `EditProfileForm` is an uncontrolled `defaultValue` form
+with PD-199's retain-on-error mechanism, where `CountrySelect` is controlled. Both belong to
+PD-428, which stays open.
+
+```bash
+git grep -c "invalidateOnboardingState()" -- src/lib/actions/   # 4, across 2 files
+npx vitest run src/lib/auth src/lib/actions src/app/onboarding src/components/ui/__tests__/CountrySelect.test.tsx
+PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"       # 3700
+npm run docs:check                              # 42 passed, 0 failed, 0 skipped (Postgres up)
+```
+
+**Postgres is running in this container** — a cluster was initialised at
+`/var/lib/postgresql/letsride-test-data` (16; CI uses 17) and left up, which is why
+`docs:check` reports 0 skipped rather than the usual 3.
+
 ## The profile has one location control, and the twin check compares sets — 2026-09-07
 
 **PD-269 + PD-425 + PD-336, one branch, taken into `slot-2`.** PD-269 and PD-336 are a real
