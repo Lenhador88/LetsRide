@@ -46,8 +46,10 @@ Three states, and only the first is who the store listing is for:
 2. **Already has a crew, organises badly.** Rides get planned in a WhatsApp thread where the
    meeting point scrolls away. They arrive through an invite link, never through the store —
    `/rides/join?token=…` and `/clubs/join?token=…`, the first public paths that are **not an
-   auth screen or static copy**. Drop that second clause and the claim is simply false: `/`
-   and `/legal/*` are public, non-auth and older.
+   auth screen or static copy**, which is `guard.ts`'s own wording and worth quoting exactly:
+   drop the second clause and `/legal/*` alone falsifies it. (`/` is public and older still, and
+   is neither — it is a resolver that renders nothing, which is why no phrasing of this claim
+   should lean on it.)
 
    **Neither landing is a pitch surface, and neither may be turned into one.** They are public
    so they can *hold a credential* through the auth round trip, never so they can show
@@ -72,9 +74,14 @@ this list against the code before writing any listing — `docs/reference/produc
 **Measured against `development` on 2026-09-07 — which is not what a rider installs.** A
 listing describes the *promoted* build, and `main` runs five migrations behind. One row differs
 today and it is one this file leans on: **a ride has titled threads on `development` and a chat
-on `main`**, because `108`/`109` are DEV-only. So the claim below and the do-not-say row about
-"chat" are both right for `development` and both wrong for production until that promotion
-lands. Re-derive the gap rather than trusting this paragraph —
+on `main`**, because `108`/`109` are DEV-only.
+
+**Exactly one word flips, and reading the caveat wider than that is how it becomes the defect it
+warns about.** On `main`, "chat" is *accurate* for a ride. **"message a rider" and "DMs" are
+wrong on both branches and always have been** — the Inbox epic's remaining half is DMs, unbuilt
+everywhere. Treating the whole do-not-say row as suspended on production puts two phrases into a
+listing for an app that has no direct messages, which is Guideline 2.3. Re-derive the gap rather
+than trusting this paragraph —
 `docs/reference/migrations.md` §Applied state, and `list_migrations` against both refs.
 
 **Claimable today:**
@@ -170,26 +177,52 @@ Three consequences, and the second is the one that is easy to get wrong:
 - **Dutch becomes worth doing the day the app is Dutch**, which is the i18n decision
   `CLAUDE.md` holds open. Do not localise the listing ahead of the app to buy search terms.
 
-**Localise the LISTING before localising the APP.** Both stores let the name, subtitle,
-keywords and description differ per storefront, and the app itself does not have to change for
-that to work — this is the largest ASO lever available and it costs nothing but the words.
-Three mechanics worth knowing before anyone writes them:
+**A store listing localises by LANGUAGE, not by country — and getting that backwards is how a
+launch plan misses the people it was written for.** Verified against both vendors' own docs
+2026-09-07, not asserted from memory:
 
-- **`pt-PT` and `pt-BR` are separate storefront locales**, and Portugal is not Brazil. The
-  everyday word for the machine is `mota` in Portugal and `moto` in Brazil. Writing the listing
-  in Brazilian Portuguese for a Portuguese launch is the most likely single mistake here.
-- **Dutch: `motor` means motorcycle**, not engine, in ordinary speech — so the searched terms
-  are `motor`, `motorrijden`, `motorrijders`, `motorclub`.
-- **Do not let a model write the final localised strings.** These are the words riders type,
-  and a plausible translation that no rider uses is invisible until the listing underperforms
-  with no way to tell why. The mechanism above is a store fact; every specific word in it is
-  **[unvalidated]** and wants one native rider's eye before it ships.
+- **App Store Connect localisations are per language/locale.** `Dutch`, `Portuguese (Portugal)`
+  and `Portuguese (Brazil)` are three separate listing languages; there is no way to write
+  different copy for the Netherlands storefront than for Belgium's. Which one a customer sees
+  depends on their device language, the App Store language for their region, the languages you
+  added and your primary language — **and when nothing matches, they get the primary language**.
+- **Play is the same for translations, and has a separate feature for the other axis.** Store
+  listing translations are per language; *custom store listings* are the country/region tool,
+  they are not auto-translated, and they are not what "localise the listing" usually means.
+
+**Which is why English-first and the expat wedge agree with each other rather than trading off.**
+A Dutch localisation reaches devices set to Dutch, wherever they are — Belgium included — and
+never reaches an English-set phone in Amsterdam. The state-1 expat this launch targets would
+have got the **primary-language** listing either way. So the English listing is not the fallback
+here; it is the one that has to be good.
+
+Two things to carry into any later localisation:
+
+- **`pt-PT` is not `pt-BR`.** The everyday word for the machine is `mota` in Portugal and `moto`
+  in Brazil, and a `pt-BR` listing serves Brazilian-Portuguese devices anywhere rather than
+  staying inside Brazil. Writing Brazilian Portuguese for a Portuguese launch is the most likely
+  single mistake here.
+- **Dutch `motor` means motorcycle**, not engine, in ordinary speech — so the searched terms are
+  `motor`, `motorrijden`, `motorrijders`, `motorclub`. **Do not let a model write the final
+  strings**: a plausible translation no rider types is invisible until the listing underperforms
+  with no way to tell why. The mechanism above is verified; every specific word in this bullet is
+  **[unvalidated]** and wants one native rider's eye.
 
 **This raises i18n, which `CLAUDE.md` lists as deliberately undecided.** A localised listing
 that lands a Dutch rider in an English-only app is a conversion question rather than a bug, and
-the app is more English than it looks: `grep -n "en-US" src/lib/utils.ts` finds the locale
-hardcoded at four `Intl` call sites. That is a decision to take deliberately before a launch,
-not a task to slip into a copy change.
+the app is more English than it looks. **Do not measure that with a grep for `en-US`** — it
+returns four call sites, three of which are `formatToParts` calls extracting numeric date
+components under a locale that cannot show, and it misses every formatter a rider actually
+reads. Ask for the constructions instead:
+
+```bash
+grep -o "Intl\.[A-Za-z]*('[a-z-]*'" src/lib/utils.ts | sort | uniq -c
+#   1 Intl.DateTimeFormat('en-CA'   ·   5 …('en-GB')   ·   3+1 …('en-US')
+```
+
+Three hardcoded locales, not one. That is a decision to take deliberately before a launch, not a
+task to slip into a copy change — and a session that "fixes i18n" by editing the four `en-US`
+literals ships with every visible date still hard-formatted `en-GB`, with the grep green.
 
 ## The name, and the slogan
 
@@ -219,10 +252,10 @@ printf '%s' "Share your story—ride together" | wc -m                  # 32 —
 
 `wc -m` counts *characters* only under a UTF-8 locale. This container has `LANG` and `LC_ALL`
 unset, so it falls back to counting bytes and an em-dash reads as three. `wc -c` is always
-bytes. A pure-ASCII candidate is unaffected — which is the trap, because every count in the
-tables below was ASCII and right, and the first candidate with a typographic character in it
-was silently over by two. **`LC_ALL=C.UTF-8 wc -m`, or `python3 -c "print(len(…))"`.** The
-characters that trigger it are exactly the ones a copy pass introduces: `—`, `–`, `’`, `…`.
+bytes. **A pure-ASCII candidate is unaffected, which is the trap**: a table of ASCII candidates
+measures correctly, and the first line carrying `—`, `–`, `’` or `…` is silently over while
+everything around it is right. Those are exactly the characters a copy pass introduces.
+**`LC_ALL=C.UTF-8 wc -m`, or `python3 -c "print(len(…))"`.**
 
 | Field | Cap | Notes |
 |---|---|---|

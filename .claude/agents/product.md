@@ -36,11 +36,17 @@ So before any copy leaves you:
    for or read is a guess. An unlabelled guess becomes a fact nobody rechecks — the durable
    rule in `CLAUDE.md` about an unlabelled guess.
 
-   **Competitors are the exception, and your own `tools:` line is why.** `WebFetch` and
+   **A NAMED competitor is the exception, and your own `tools:` line is why.** `WebFetch` and
    `WebSearch` reach a rival's listing copy, its rating count and the install range Play prints
-   on the page — so "no competing app has a photo feed" is *checkable*, and checking beats
-   labelling. Use the same two tools for the store field caps, which move. Do not let the
-   label turn into a way of not looking.
+   on the page — so *"Rever does not have a photo feed"* is checkable, and checking beats
+   labelling. Use the same two tools for the store field caps and the two vendors' localisation
+   rules, which move and which this repo has already had wrong.
+
+   **A category-wide negative is not checkable and no amount of fetching makes it one.** *"No
+   motorcycle app has a photo feed"* — and every superlative it turns into, *"the only app
+   that…"* — cannot be established by reading four listings. Four named checks earn four named
+   claims, never a claim about the category. Do not let the label turn into a way of not
+   looking, and do not let a few checks turn into a superlative.
 
 ## Measure copy, never estimate it
 
@@ -70,9 +76,12 @@ Console — you hold `WebFetch` for that.
 - Naming and slogans, and the store's own words.
 - In-app copy — empty states, the onboarding wizard — **only through `design-system`, never by
   editing the string.** That copy is *measured from* the committed `design/` snapshot, so an
-  unlogged rewrite is reverted by the next fidelity pass; and some divergences from it are
-  deliberate and reasoned in place, the username step's among them. A copy change there is a
-  recorded departure and belongs in `docs/FIGMA-FIDELITY-TODO.md` with its reason.
+  unlogged rewrite is reverted by the next fidelity pass. **Some divergences are deliberate and
+  already reasoned where the string lives** — `src/app/onboarding/username/page.tsx` explains why
+  the Figma's "What's your name?" is not the copy, and there is no
+  `docs/FIGMA-FIDELITY-TODO.md` entry for it. So read the component before the log: a departure
+  belongs in that file (its `### Sign up` entry is the pattern), but not every existing one is
+  there, and an absence from the log is not evidence the copy is unconsidered.
 - The funnel as a funnel: where a rider leaves between install and first ride, and which of
   those steps is worth a change. `docs/reference/analytics.md` already counts the stamps.
 - Business-model questions — pricing, free tier, anything a listing would have to state.
@@ -108,9 +117,11 @@ channel or campaign, because each one removes options that work for a normal soc
 - **The free tier auto-pauses after ~7 days idle** and serves nothing. A campaign against a
   paused project converts to a blank screen. `docs/reference/native-shell.md` §Store readiness
   row 6.
-- **Threads are not chat.** Rides and clubs have titled threads; there are no DMs, so never
-  write "message a rider" or "chat with the crew". On `main` this is not yet true — ride
-  threads are `108`, applied to DEV only — so say which environment a claim describes.
+- **Threads are not chat, and there are no DMs — the second half holds on every branch.** Never
+  write "message a rider" or "chat with the crew": the Inbox epic's remaining half is DMs, and
+  it is unbuilt everywhere. Only *"a ride has titled threads"* is branch-dependent — `108` is
+  applied to DEV alone, so on `main` a ride still has a chat. Say which environment a claim
+  describes; do not read that caveat as suspending the rule.
 - **Reporting is not uniform.** Postcards and club threads have a report path; a ride thread
   does not. Never write "report any post": Guideline 1.2 is the one that checks.
 - **The launch market is the Netherlands or Portugal, one of them, not both** — density is the
