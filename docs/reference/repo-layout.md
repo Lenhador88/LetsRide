@@ -31,6 +31,7 @@ src/
 │   ├── postcards/          # CommentForm, CommentItem, CommentList, CommentsLink, CreatePostcardForm, LikeButton, MarkFeedSeen, PostcardAction, PostcardCard, PostcardDeck, PostcardFilterBar, PostcardMenu, PostcardViewer, ShareButton, SwipeCoach, coachMark, deck, locationCopy, viewerContext
 │   ├── notifications/      # MarkNotificationsRead, NotificationsHeaderControl, NotificationsListItem, NotificationsPanel
 │   ├── observability/      # Observability — mounts error reporting (module scope) and analytics (an effect). Draws nothing (PD-315, PD-353)
+│   ├── push/               # PushBoot (draws nothing — cold-start re-registration, in (app)/layout.tsx), PushPrimingRow (the ONLY control that can reach the notification permission, /notifications only), PushPrimingSheet (PD-431)
 │   └── profile/            # CountryFlags, DeleteAccountSheet, EditProfileForm, FeedbackSheet, PrivacySheet, ProfileCountries, ProfileDetailMenu, ProfileImageUpload, ProfileMenu
 ├── lib/
 │   ├── supabase/
@@ -47,6 +48,7 @@ src/
 │   ├── query/              # useQuery, invalidate, keys.ts — the cache contract
 │   ├── observability/      # THE doorway to Sentry. scrub.ts is what may leave the app (PD-315)
 │   ├── analytics/          # THE doorway to PostHog. events.ts is the closed union of all five (PD-353)
+│   ├── push/               # registration.ts is THE doorway to @capacitor/push-notifications, and the only file that may raise the OS dialog — iOS grants one per install. installation.ts (the id 078 keys on), priming.ts (hidden/ask/blocked/stalled), boot.ts (PD-431)
 │   ├── routes.ts           # every href that names a resource id — /rides/detail?id= and its nine siblings (PD-142)
 │   ├── back-navigation.ts  # where a back control goes on a screen with several entry points — /notifications carries its origin in ?from= (PD-209)
 │   ├── realtime/           # useRideMessageStream, useClubThreadStream — the app's two Supabase Realtime subscriptions (081)

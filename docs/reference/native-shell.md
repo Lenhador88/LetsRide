@@ -310,8 +310,18 @@ is `5.0`, so the template's `@UIApplicationMain` is a deprecation **warning** �
 an error, worth knowing before anyone raises that setting. And the plugin resolves:
 `@aparajita/capacitor-secure-storage@8.0.0` ships its `ios/Sources/SecureStoragePlugin` in the npm
 tarball, and its `from: "8.0.0"` on `capacitor-swift-pm` is satisfied by CapApp-SPM's `exact:
-"8.5.0"`. **The first open resolves two remote packages, not one** — the plugin also pulls
-`keychain-swift from: "21.0.0"` — so Xcode needs network on that first build.
+"8.5.0"`. **The first open resolves more than one remote package** — the secure-storage plugin also pulls
+`keychain-swift from: "21.0.0"` — so Xcode needs network on that first build. **Read the list off `package.json`'s `@capacitor/*` and `@aparajita/*` entries rather than from
+here**: PD-431 added `@capacitor/push-notifications`, and a plugin count written down goes stale
+the next time one is added.
+
+**Neither `Package.resolved` nor `Package.swift` can answer it from this container**, and the
+second is the trap. `Package.resolved` is not in the repo at all — Xcode writes it on the Mac at
+first resolve. `Package.swift` IS committed, which makes it look authoritative, but `cap sync`
+rewrites it and the committed copy is **pre-sync**: its `dependencies:` array still lists only
+`capacitor-swift-pm` and the secure-storage plugin, so a session reading it today concludes the
+push plugin is not wired when it is. `package.json` is what a Linux session can actually read,
+and the `cap sync ios` owed above is what makes the two agree.
 
 What a session CAN now do, all of it exercised on 2026-08-25:
 
@@ -335,7 +345,10 @@ and archive to TestFlight.
 
 **All three were re-run from a clean tree on 2026-08-25 and all three pass here**, so a failure on
 the Mac is a Mac-side difference rather than a repo one — which is the whole reason to run them in
-this container first. `cap sync ios` reports `Found 1 Capacitor plugin for ios` and writes both
+this container first. `cap sync ios` reported `Found 1 Capacitor plugin for ios` when that was measured and reports
+one more per plugin added since — PD-431 added `@capacitor/push-notifications`, and
+**`ios/App/CapApp-SPM/Package.swift` is CLI-managed and still lists only the secure-storage
+plugin, so a `cap sync ios` is owed before anyone opens the project**. It writes both
 gitignored inputs; confirm by their absence from `git status`, not by their presence on disk.
 **`cap sync` logs only `capacitor.config.json` and silently writes `config.xml` too**, so read the
 directory rather than the log — deleting all three and re-syncing restores all three:

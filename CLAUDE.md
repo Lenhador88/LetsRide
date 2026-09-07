@@ -67,7 +67,7 @@ necessary, or if I ask for them."*). A flag defaulting off makes the thing behin
 a build-time `NEXT_PUBLIC_*` flag is an undeclared DEV/PROD separator. Say in the same comment what
 has to become true for the flag to be deleted.
 
-**Dependencies are added deliberately.** **Twelve** runtime dependencies today, and that is a
+**Dependencies are added deliberately.** **Thirteen** runtime dependencies today, and that is a
 feature. Count rather than trust it:
 `node -p "Object.keys(require('./package.json').dependencies).length"`. Before adding one, ask
 whether a thirty-line helper does the job. No UI component libraries — extend `src/components/ui/*`.
@@ -75,10 +75,13 @@ whether a thirty-line helper does the job. No UI component libraries — extend 
 - **Three are observability** — `@sentry/capacitor` + `@sentry/react` (a pinned pair) and
   `posthog-js`. Each is a doorway module in `src/lib/` that nothing else imports the package
   through, enforced by a test. `docs/reference/observability.md` §The dependencies.
-- **Two are the native shell's** — `@capacitor/core` and `@aparajita/capacitor-secure-storage` (the
-  keychain behind `window.__letsrideSecureStore`). Native plugins count: each is a permission
-  prompt, a review question and a supply-chain surface, and each needs a one-sentence
-  justification (`.claude/agents/native.md`).
+- **Three are the native shell's** — `@capacitor/core`, `@aparajita/capacitor-secure-storage` (the
+  keychain behind `window.__letsrideSecureStore`) and `@capacitor/push-notifications` (the only
+  route to an APNs or FCM token, since the providers hand one to native code alone). Native plugins
+  count: each is a permission prompt, a review question and a supply-chain surface, and each needs a
+  one-sentence justification (`.claude/agents/native.md`). The last is a doorway too —
+  `src/lib/push/registration.ts`, enforced by `src/lib/push/__tests__/doorway.test.ts`, which also
+  pins that **only that file may raise the OS notification dialog**: iOS grants one per install.
 
 **Reads go through `src/lib/data/`. Components never call Supabase directly.** Named, typed
 functions — `getRide(id)`, `getClubMembers(clubId)` — that own their query shape.
@@ -141,8 +144,19 @@ filter both ways — that it reads 0 now *and* still catches a real instance.
 **No new integrity rule may live only in a Zod schema.** Anything not a CHECK, trigger or policy is
 advisory, because a rider can simply not run your validation.
 
-**`lib/data/` and `lib/actions/` are the only places that touch Supabase, and both resolve their
-client through `src/lib/supabase/resolve.ts`.** One name, one doorway.
+**`lib/data/` and `lib/actions/` are where reads and writes live, and both resolve their client
+through `src/lib/supabase/resolve.ts`.** One name, one doorway. **A handful of modules outside
+them reach Supabase's TABLES only through an own-row `security definer` RPC, never `.from()`** —
+the guard cache, password recovery and push registration today. Those functions do read and write
+tables; what makes them safe outside the doorways is that each resolves its subject from the
+caller's own verified claims — `auth.uid()`, or for the recovery grant the `session_id` in
+`auth.jwt()`, which is what keeps one link to one reset — and carries its own gate, so there is no
+query shape for a caller to get wrong. Count rather than trust that list, and note the pathspec: the natural
+`-- src/lib/` prints the two doorways too.
+
+```bash
+grep -rn "\.rpc(" src/lib/ --include=*.ts | grep -vE "^src/lib/(data|actions)/" | grep -v __tests__
+```
 
 **Do not reach for a "just check at runtime" fix to a bundling problem.** Next refuses to bundle
 `next/headers` into a client graph whether or not the branch can be taken, and a `typeof document`

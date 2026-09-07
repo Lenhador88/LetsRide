@@ -55,9 +55,14 @@ history.
   group into slot-1 and released on the merge.
 - **`Development (AI)`:** PD-421 only (the log digest's HTTP call has never succeeded), carrying
   no slot label — so it occupies no slot, which is deliberate rather than a gap.
-- **`Queued (AI)`:** PD-431 (ride reminders) only. It is an `L` that needs **APNs/FCM credentials
-  no session can obtain**, so a firing that takes it will reach the sender and park; the
-  registration half is buildable now.
+- **`Queued (AI)`:** empty. PD-431 was taken 2026-09-07 and its **registration half is built** —
+  child B of `openspec/changes/deliver-push-notifications`, every non-`[device]` box ticked. It
+  stays open: what its title names is a rider getting a reminder, and the sender is child C,
+  blocked on the APNs `.p8` and the FCM service account (task 0.4, owner-only).
+- **PD-431 duplicates PD-302, PD-303 and PD-124**, which are `Todo AI` sub-issues of the PD-291
+  epic that already owns the written proposal. Which row should carry the remaining work is a
+  three-option table on PD-431 and is the owner's call — until it is made, a firing reading
+  `Queued (AI)` cannot tell which row it would be building.
 - **Three stories are open on purpose, and one of them is the next decision.** **PD-430** is
   parked in `Needs help`: its proposal is merged and validates clean, and it stops on one question
   — the owner's five fields include *the town*, and **no ride carries one**. `rides` has no
@@ -89,6 +94,10 @@ Everything else in those columns is store readiness, email, or a product decisio
 body carries its own steps.
 
 ## Next action
+
+**Decide who owns the rest of push (the table on PD-431), then archive the OpenSpec changes whose
+code is in production.** The first is one screen and it blocks the queue from picking the work up
+cleanly; the second is the standing backlog below.
 
 **Archive the OpenSpec changes whose code is in production.** 46 are open against 4 archived, so
 `openspec/specs/` no longer describes the app and the next proposal is written against specs that

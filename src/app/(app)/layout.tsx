@@ -1,5 +1,6 @@
 import { Navbar } from '@/components/layout/Navbar'
 import { PostcardViewerProvider } from '@/components/postcards/PostcardViewer'
+import { PushBoot } from '@/components/push/PushBoot'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { BannerProvider } from '@/components/ui/Banner'
 
@@ -29,6 +30,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <BannerProvider>
       <PostcardViewerProvider>
         <AppBackground className="flex flex-col">
+          {/* Renders nothing. This subtree only exists for a rider with a
+              session, which is what `register_push_device` needs — see the
+              component's own header for why `/` is the wrong place. */}
+          <PushBoot />
           <Navbar />
           {/* Both bars are fixed. The header is now per-screen (the design gives each
               one its own title, back affordance and variant), so pages render their

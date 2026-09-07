@@ -102,12 +102,23 @@ vi.mock('@/lib/supabase/session-store', async (importOriginal) => ({
   clearSessionStore: vi.fn(async () => {}),
 }))
 
+// PD-431. Mocked rather than exercised because the real one reaches the
+// Capacitor bridge; what this file pins is that `signOut` CALLS it and where in
+// the order, which is the half that can regress silently.
+vi.mock('@/lib/push/registration', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/push/registration')>()),
+  releaseCurrentDevice: vi.fn(async () => {
+    timeline.push('releaseCurrentDevice')
+  }),
+}))
+
 // Imported after the mocks are declared — `vi.mock` is hoisted, but keeping
 // the order visible is what makes the file readable.
 import { setRideAttendance } from '@/lib/actions/rides'
 import { leaveClub } from '@/lib/actions/clubs'
 import { acceptTerms, setHomeCountry, setUsername } from '@/lib/actions/onboarding'
 import { signOut } from '@/lib/actions/auth'
+import { releaseCurrentDevice } from '@/lib/push/registration'
 import { invalidate, clearQueryCache } from '@/lib/query'
 import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
 
@@ -150,6 +161,7 @@ beforeEach(() => {
   vi.mocked(clearQueryCache).mockClear()
   vi.mocked(invalidateOnboardingState).mockClear()
   vi.mocked(clearGuardCache).mockClear()
+  vi.mocked(releaseCurrentDevice).mockClear()
   timeline.length = 0
   getUser.mockResolvedValue({ data: { user: USER } })
 })
@@ -532,6 +544,50 @@ describe('signOut', () => {
 
     expect(authSignOut).toHaveBeenCalledTimes(2)
     expect(authSignOut).toHaveBeenLastCalledWith({ scope: 'local' })
+    expect(clearQueryCache).toHaveBeenCalledTimes(1)
+    expect(clearGuardCache).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases this device BEFORE the session is revoked — PD-431', async () => {
+    // The ordering is not a preference: `release_push_device` is a server write
+    // and `auth.uid()` is its whole subject, so after the revocation there is
+    // no session to resolve it against and the row survives naming the
+    // departing rider. On a shared phone that is their notifications on
+    // somebody else's lock screen.
+    //
+    // Pinned on the timeline rather than on a call count, because a count
+    // passes with the call in the wrong place — which is the only way this
+    // regresses.
+    authSignOut.mockResolvedValue({ error: null })
+
+    await signOut()
+
+    // The release leads, and the two clears follow the revocation as before.
+    expect(timeline).toEqual(['releaseCurrentDevice', 'clearQueryCache', 'clearGuardCache'])
+
+    // **The claim that matters is against `auth.signOut()`, which is not on the
+    // timeline** — so it is read off the invocation order rather than inferred
+    // from the two clears, which sit on the far side of the revocation anyway
+    // and would pass with the release moved after it.
+    expect(releaseCurrentDevice).toHaveBeenCalledTimes(1)
+    expect(releaseCurrentDevice).toHaveBeenCalledWith()
+    expect(vi.mocked(releaseCurrentDevice).mock.invocationCallOrder[0]).toBeLessThan(
+      authSignOut.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('signs the rider out even when the device release rejects', async () => {
+    // The offline case, one step earlier than the existing fallback above. A
+    // rider who pressed Sign out and is still signed in because a push RPC
+    // could not reach the network is the worst available outcome, so the
+    // failure is swallowed and the window is closed at the next boot instead.
+    vi.mocked(releaseCurrentDevice).mockRejectedValueOnce(new Error('fetch failed'))
+    authSignOut.mockResolvedValue({ error: null })
+
+    const state = await signOut()
+
+    expect(state).toEqual({ error: null, redirectTo: '/auth/login' })
+    expect(authSignOut).toHaveBeenCalledTimes(1)
     expect(clearQueryCache).toHaveBeenCalledTimes(1)
     expect(clearGuardCache).toHaveBeenCalledTimes(1)
   })
