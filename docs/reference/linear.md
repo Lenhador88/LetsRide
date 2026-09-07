@@ -284,10 +284,12 @@ prompt says little more than *read that file*, for the same reason the queue's d
 the product owner on 2026-09-07.
 
 **It builds nothing and moves nothing** — no branch, no PR, no status change, no slot label, and
-above all nothing into `Queued (AI)`, which stays the owner's start signal. Its single write is one
-Linear document, `Morning brief log`, which is how the next morning knows what the last one already
-proposed: no session can read another's transcript, so a brief that lives only in its own session
-cannot avoid repeating itself.
+above all nothing into `Queued (AI)`, which stays the owner's start signal. It writes two things and
+neither is the repository: the brief as an artifact **republished to one stable URL**, so the owner
+bookmarks a page rather than hunting for a session, and one Linear document, `Morning brief log`,
+which holds that URL and the last fourteen briefs. The document is how the next morning knows what
+the last one proposed and where the page lives — no session can read another's transcript, so a
+brief that lives only in its own session can neither find its page nor avoid repeating itself.
 
 **Being read-only is what makes it safe to fire beside a live build**, rather than the hour it
 fires at. The queue's collisions are resources — one test database, two fixed ports, one working

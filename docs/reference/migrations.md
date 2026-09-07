@@ -4,7 +4,7 @@
 
 # Migrations — the recording artefacts, and what reads as drift
 
-`041`–`048` reached PROD on 2026-08-10 and that apply is finished — `docs/HANDOFF.md` §Migrations
+`041`–`048` reached PROD on 2026-08-10 and that apply is finished — `docs/reference/journal.md` §Migrations
 carries the parity claim beside the command that checks it. What is here is what a completed apply
 does *not* consume: the ordering chain, the rollback SQL, and the hand reconciliation for every
 recorded statement that disagrees with its file.
@@ -211,7 +211,7 @@ predict, so it is worth a line. None of it is drift.
   take `103` from the file rather than from DEV's ledger.
 
   **`049` needs no entry of its own beyond DEV's reduced form**, already noted in
-  `docs/HANDOFF.md` §Migrations: same reduction, same class, and its body was verified by the same
+  `docs/reference/journal.md` §Migrations: same reduction, same class, and its body was verified by the same
   digest.
 - **`047` and `048` match their files on NEITHER project, and both are comment edits rather than
   drift.** DEV ran each file verbatim and the recorded statement was byte-identical at apply time;
@@ -329,19 +329,20 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 116 rows on DEV and 107 on PROD against 113 files, measured
-2026-09-07. The DEV surplus is not a gap, and the PROD shortfall is the ordinary one.** `101`
-through `107` **promoted to PROD on 2026-09-06** between 08:26:24Z and 08:40:28Z, closing the gap
-this heading described for a week; `108` and `110` (PD-402) opened a new one the same day.
+**113 files. DEV is at `113` and PROD at `112` — measured 2026-09-07, after #428 merged.** `113`
+was applied to DEV migration-first, ahead of that PR; the merge is what landed its file, so the
+row that read as file-less until now is an ordinary applied migration. DEV's row count reads
+**three** high — the three long-standing hand-applied rows — and **PROD's is exact**, which is the
+direction that matters: nothing is applied there without a file behind it. Neither is a gap.
 
-**What is open is the ordinary promotion gap: `108`–`113`, all six applied to DEV** — `108`–`110`
-from PD-402, `111` from PD-361, `112` from PD-399/PD-408, and `113` from PD-428.
+**The open promotion gap is `113` alone**, and it carries a partner that does not exist yet — see
+its entry below before promoting it.
 
 **`113_home_country` (PD-428), applied to DEV 2026-09-07T10:10:07Z as `20260907101007`.** Adds
 nullable `profiles.home_country` (ISO 3166-1 alpha-2), two VALIDATED CHECKs, three column grants
 and one coercion arm on `enforce_onboarding_completion`. **MIGRATION-FIRST**: the bundle that
-writes the column must not reach a database without it (`PGRST204`), and every edit here strictly
-widens what is accepted, so it is a no-op against the bundle currently serving.
+writes the column must not reach a database without it (`PGRST204`), and every edit strictly
+widens what is accepted, so it is a no-op against the bundle that was serving.
 
 **Its partner `114` is deliberately unwritten.** It arms `complete_onboarding` to refuse a NULL
 country, which is a NARROWING: applied before the new bundle serves, the old bundle's
@@ -350,8 +351,8 @@ So it must not exist until the merge sha is `READY` with `aliasError` null on `d
 file cannot be both sides of a deploy — `108`/`109`'s shape, and the same split is owed on the
 PROD promotion rather than collapsed.
 
-**Three things `113` measured that were previously stated wrong**, recorded here because two of
-them are about files older than this one:
+**Three things `113` measured that were previously stated wrong**, recorded here because two are
+about files older than it:
 
 - **`grant select, insert, update (home_country) on … to authenticated` is not the statement to
   write.** The column list binds to the LAST privilege only, so that one-liner grants SELECT and
@@ -364,22 +365,44 @@ them are about files older than this one:
 - **The "two error identities" rationale is aspirational, in `020` as well as here.** Membership
   is a strict subset of shape, so no value passes one and fails the other, and Postgres reports
   CHECKs in constraint-NAME order where `…_is_assigned` sorts first. Measured: `''`, `'nl'`,
-  `'NLD'`, `' NL '` and `'1'` are all reported by the membership constraint on `profiles`, and
-  `'nl'` likewise by `profile_countries_code_is_assigned` rather than `014`'s shape check. Do not
+  `'NLD'`, `' NL '` and `'1'` are all reported by the membership constraint on `profiles`. Do not
   "fix" it by renaming — that would make the shape check report for `ZZ`, which IS a valid shape.
-- **`113` describes a profile-editor country field that does not exist, in exactly two places:
-  the column comment (`:174`) and one paragraph inside `enforce_onboarding_completion`
-  (`:347`–`:356`). Not the header** — a reader sent there finds nothing and has to re-derive
-  where the claim lives, which defeats the point of recording it. PD-428 shipped the onboarding write only; `EditProfileForm` offers
-  no country control, so *"the profile editor's field stays OPTIONAL"* is a statement of intent
-  rather than of fact. It is left as written because `113` is applied and this repo does not edit
-  an applied migration — but a database column comment is the one doc no `CLAUDE.md` edit can
-  reach, so it is recorded here instead. If the editor is built, the claim becomes true and
-  nothing needs changing; if it is decided against, a later migration owes a `comment on column`.
+  The pair stays as defence in depth.
 - **`020`'s and `113`'s footer verification query for the code list is broken and returns NULL.**
   It matches `\{(.*)\}` while `pg_get_constraintdef` renders `ARRAY['AD'::text, …]`, so it reads
   as "no answer" rather than "wrong". The working form is `\[(.*)\]` → 249, pinned in the RLS
   suite at `113.1a` for both constraints. `113` is applied, so its footer is not edited.
+
+**`113` describes a profile-editor country field that does not exist**, in exactly two places: the
+column comment (`:174`) and one paragraph inside `enforce_onboarding_completion` (`:347`–`:356`) —
+not the header, so a reader sent to the header finds nothing. PD-428 shipped the onboarding write
+only; `EditProfileForm` offers no country control, so *"the profile editor's field stays
+OPTIONAL"* is intent rather than fact. Left as written because `113` is applied and this repo does
+not edit an applied migration — but a column comment is the one doc no `CLAUDE.md` edit can reach,
+so it is recorded here. If the editor is built the claim becomes true; if it is decided against, a
+later migration owes a `comment on column`.
+
+**`108`–`112` promoted to PROD on 2026-09-07 with #431**, in the split the files asked for: `108`,
+`110`, `111` and `112` between 13:58:29Z and 14:00:14Z, **before** the promotion merge (14:05:57Z),
+and `109` — the destructive half, `retire_ride_chat` — at 14:07:52Z, **after** it. `list_migrations`
+is the source for those times.
+
+**The `READY` reading that gated `109`, recorded here because that is the whole point of the
+gate:** deployment `dpl_AK1A4JmFCWLorqreBh4BQRr83Rgd`, `githubCommitSha`
+`0dc0264bda3bab875250a5646446940849f72ee2` — the merge sha — `target: production`, `state: READY`
+at 14:06:49Z, `aliasError: null`, aliased to `app.letsride.social`. The deployment record is the
+gate `CLAUDE.md` §Supabase Rules defines, and it was confirmed by a real request rather than left
+at the record: `https://app.letsride.social/auth/login` answered **200** with the app's own HTML.
+**That request cannot be made with `curl` from a session container** — the agent proxy answers the
+CONNECT with `403` for both app hosts, so `curl` reports `000` and a session reading that as an
+outage is measuring the proxy. The Vercel MCP's `web_fetch_vercel_url` goes around it.
+
+**`108` was applied REDUCED and proved by object diff** (§Applying a large file — 77,731 bytes
+against 19,232 of executable statements), so its recorded text does not equal `md5sum` of the file
+on PROD either. Ten `md5` hashes compared against DEV, which already held all four: `pg_get_functiondef`
+over nine functions, the policies, columns, indexes, triggers, table grants, column grants,
+function ACLs, and both the function and table comment sets. **All ten identical.** `109`–`112`
+were applied reduced too and are covered by the same hashes.
 
 **`112_the_reaper_watches_every_child` (PD-399 + PD-408), applied to DEV 2026-09-06T15:5xZ.**
 Additive and **nothing to sequence against**: it touches no file under `src/`, adds no column,
@@ -1535,11 +1558,9 @@ projects, and it reads exactly like drift. Compare the OBJECT, never the recorde
 
 ## Security advisors
 
-**Security advisors: thirty-nine on BOTH projects since the 2026-09-06 promotion, and only one is
-outstanding on each.** The two-advisor difference that stood before it was `105`+`106` awaiting
-promotion — `106` adds none of its own, being a drop and a create of the same `security definer`
-name — which is the ordinary shape of a gap: a one- or two-advisor difference between the projects
-is almost always a pending promotion, never a finding on its own. Re-derive
+**Security advisors: forty-two on BOTH projects since the `108`–`112` promotion of 2026-09-07, and only one
+is outstanding on each.** A one- or two-advisor difference between the projects is the ordinary
+shape of a pending promotion, never a finding on its own. Re-derive
 rather than trust the number — `get_advisors(security)`, or, without the payload,
 
 ```sql
@@ -1553,9 +1574,10 @@ cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 36 on DEV, 34 on PROD | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), and the two moderation-reversal accessors (`105`, DEV only until it promotes; `106` REPLACES one of them and is net zero here, because the drop and the create cancel). Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
-| 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design: `026` and `078` revoke everything on their table from the client roles, so a policy would be the thing that granted reach |
+| 38 on both | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), the moderation-reversal accessors (`105`/`106`) and `108`'s two ride-thread RPCs. Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
+| 3 | `rls_enabled_no_policy` on `password_reset_grants`, `push_devices` and `club_removals` (INFO) | Correct by design: `026`, `078` and `111` revoke everything on their table from the client roles, so a policy would be the thing that granted reach. **`club_removals` and `password_reset_grants` still hold Supabase's default `service_role` grant, and should not** — PD-413; `docs/reference/schema.md` §`service_role` grants has the reasoning |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
 An unexpected advisor is one **not** in that table. A one-advisor difference between the projects
 is almost always a pending promotion.
+

@@ -277,7 +277,7 @@ export const claims = [
 
   {
     id: 'jsdom-component-tests-claude',
-    file: 'CLAUDE.md',
+    file: 'docs/reference/running-locally.md',
     // The entry above gates the TOTAL and left this one ungated, which is the
     // failure its own comment predicts: *"the reader most likely to be misled
     // by a stale count is exactly the one adding a component test that does
@@ -296,12 +296,12 @@ export const claims = [
     // `git grep -l`, matching the command CLAUDE.md tells the reader to run,
     // so the claim and its stated verification cannot drift apart.
     cmd: `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx' | wc -l`,
-    about: '§Technology Decisions, Tests table: the jsdom component-test count',
+    about: '§Component tests — which ones need jsdom: the count',
   },
 
   {
     id: 'jsdom-component-tests-enumerated-claude',
-    file: 'CLAUDE.md',
+    file: 'docs/reference/running-locally.md',
     // **The same number, stated twice in one sentence, and gating the first
     // occurrence alone is not enough.** The entry above was added on PD-428
     // and the very next delta review found the sentence self-contradicting:
@@ -319,7 +319,7 @@ export const claims = [
     extractStated: extractWord(),
     kind: 'shell',
     cmd: `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx' | wc -l`,
-    about: '§Technology Decisions, Tests table: the same jsdom count, restated before the list',
+    about: '§Component tests — which ones need jsdom: the same count, restated before the list',
   },
 
   // ---- Migration file count ----------------------------------------------

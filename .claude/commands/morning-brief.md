@@ -43,8 +43,9 @@ Forbidden here, whatever the brief concludes:
 - **No Routine created, fired, edited or deleted**, including this one — `CLAUDE.md` §What Not To
   Do. Reading Routines and sessions by id is pre-authorized and is all this needs.
 
-**Exactly one write is allowed**, and only at the end: the brief log document (§The log is what
-stops the brief repeating itself). If a read fails and there is no brief, there is no write either.
+**Exactly two writes are allowed**, both at the end and both outside the repository: the brief log
+document, and the brief's own page republished to its one URL (§Delivery). Nothing else — and if
+the read pass fails so completely that there is no brief, neither write happens either.
 
 ---
 
@@ -169,7 +170,8 @@ Four things come out of these and only the last two are usually worth a line:
 mcp__Linear__list_documents  query="Morning brief log" fields=["id","title","content","url"]
 ```
 
-Read the top entry. It is what stops today's brief repeating yesterday's, and it is where the
+Read the header line and the top entry. The header carries `page: <url>`, the address today's
+brief republishes to; the entries are what stop today repeating yesterday, and where the
 outside-the-box rotation is recorded. §The log is what stops the brief repeating itself has the
 rules.
 
@@ -177,8 +179,12 @@ rules.
 
 ## The shape of the brief
 
-**Four sections, in the owner's order, and nothing else.** No preamble, no "here is your morning
-brief", no closing summary. Around seventy rendered lines total, of which the rating blocks are
+**Four sections, in the owner's order, preceded by the page's URL on a line of its own and
+followed by nothing.** No preamble, no "here is your morning brief", no closing summary. The URL is
+the one line above section 1 because the page is what the owner is meant to bookmark, and a page
+whose address appears only in a Linear document is a page nobody opens. **Where there is no page**
+— the tool was absent, or publishing failed — that line says so instead, in a clause, which is
+where §Delivery's *no page is a line in the brief* lands. Around seventy rendered lines total, of which the rating blocks are
 about half — this is a phone read before coffee, and the discipline is the one `CLAUDE.md`
 already states: if a paragraph has no action in it, delete it.
 
@@ -242,9 +248,17 @@ ceiling; otherwise it is two or three sentences and an explicit *not proposing t
 session is invisible to tomorrow's. One Linear document is the memory.
 
 - **Title `Morning brief log`.** Create it on the first firing if `list_documents` does not find
-  it; afterwards **prepend** today's entry with `save_document`.
+  it.
+- **`save_document` writes the whole document, so compose it in one piece, in this order**: the
+  header line `page: <url>`, then today's entry, then the previous thirteen. Nothing about this is
+  a prepend, and reading it as one is the defect: new-content-then-old-content puts today's entry
+  above the header, and rebuilding from "the last fourteen entries" drops the header altogether
+  because the header is not an entry. Either way tomorrow's firing finds no `page:` line and forks
+  a second page, leaving the owner's bookmark on a brief that has silently stopped updating. **Emit
+  the header on every write, from the URL read at the start of the firing.**
 - **The entry is the brief itself**, plus a first line of `YYYY-MM-DD · lens: <weekday lens>`.
-- **Trim to the last fourteen entries** on every write. It is a working memory, not an archive.
+- **Fourteen entries is the cap** — a working memory, not an archive. The header is not one of
+  them and is never counted or trimmed.
 - **Read the previous entries before writing sections 3 and 4.** An option proposed and not acted
   on gets **one** repeat, on the third day, in a single clause under *Where we stand* — "still
   open from Monday: the leaked-password toggle" — and then it is dropped. Nagging daily is how a
@@ -259,18 +273,59 @@ write failed. The brief is the deliverable; the log is how tomorrow's is better.
 
 ## Delivery
 
-**The brief is this session's final message.** That always works and needs no tool.
+**The brief is this session's final message, always.** That needs no tool and cannot fail, and
+everything below is layered on top of it rather than in place of it. A firing that publishes
+nothing but writes a good final message has done its job.
 
-Then, best-effort and in this order, each failing soft:
+### The page, at one address
 
-1. **`PushNotification`**, one line, in the form `Morning brief — <the single most important
-   thing>`. Not "your brief is ready": the notification is read on a lock screen and should carry
-   the headline. If the tool is absent, skip it silently — the Routine's own completion
-   notification still fires.
-2. **The log document**, as above.
+**Publish the brief as an artifact, and republish it to the SAME URL every morning.** The point is
+a single link the owner bookmarks once — the alternative is hunting for today's session in a list,
+which is the actual problem this solves. Owner, 2026-09-07: *"So I could check that session every
+morning to open that html?"* The answer is one page, not one session:
 
-**Do not email, comment on an issue, or open a document per day.** One durable log and one message
-is the whole surface, and every extra channel is a place the brief goes unread.
+**Write the log entry BEFORE publishing**, because republishing destroys yesterday's page and the
+log is the only durable copy of its text. Losing both to one failed write is free to avoid and the
+ordering costs nothing.
+
+- **The URL lives in the log document's header**, on a line reading `page: <url>`. Read it in
+  §Yesterday's brief, before anything else.
+- **With a URL**: read that artifact first, then publish to it. Title `LetsRide Morning Brief`,
+  unchanged for ever; no favicon on a republish. **Yesterday's page is replaced**, which is why the
+  log keeps the text.
+- **Without one** — the first firing, or a header that went missing — **look for the page before
+  making a second one.** List the account's artifacts and adopt one titled `LetsRide Morning
+  Brief`; only publish new if there is none. This is the recovery path for the one gap the ordering
+  cannot close: a firing that dies between publishing a new page and writing the header strands
+  that page, and a stranded page is indistinguishable from no page the next morning. Whichever
+  branch runs, **write `page: <url>` into the log header in the same firing.**
+- **`artifact-design` is harness-provided, not a repo skill** — `.claude/skills/` holds only the
+  OpenSpec ones. Load it if this firing has it, and if it does not, **write the page anyway**: one
+  column, generous type, theme-aware tokens, no external fonts or scripts. It is a phone read at
+  08:00, and its absence is not a reason to skip the page.
+
+**Whether a Routine-minted session holds the artifact tool at all is UNMEASURED**, and so are the
+three mechanics above — that a publish to a page this session has not read is refused, that the
+title must stay stable, that a favicon is omitted on a redeploy. They are written from the tool's
+own documentation and nothing in this repo has exercised them. It is the same class of unknown as
+`create_session`, which the queue assumed for three weeks and did not have. **The first firing that
+publishes records what it actually observed in the log header's line, and this file is corrected
+from that** rather than from the documentation. Until then it fails soft in both directions: **no
+page is a line in the brief, never a missing brief**, and the final message and the log are what
+the owner reads that morning.
+
+### Then
+
+1. **The log document**, first, as above — the page's URL in its header, the brief itself as the
+   entry.
+2. **The page**, republished to its one URL.
+3. **`PushNotification`**, last and one line, in the form `Morning brief — <the single most
+   important thing>` followed by the page's URL if it fits in 200 characters. Not "your brief is
+   ready": the notification is read on a lock screen and should carry the headline. If the tool is
+   absent, skip it silently — the Routine's own completion notification still fires.
+
+**Do not email, comment on an issue, or open a second page per day.** One address, one log and one
+message is the whole surface, and every extra channel is a place the brief goes unread.
 
 ---
 
