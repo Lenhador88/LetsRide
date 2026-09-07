@@ -115,7 +115,7 @@ export function RideCrewRail({
             rail. The names are not lost: the panel this opens lists them as
             rows, which is where a screen reader should meet them. */}
         <span aria-hidden="true" className="flex shrink-0 -space-x-2">
-          {shown.map((member, i) => (
+          {shown.map((member) => (
             <Avatar
               key={member.user_id}
               src={member.profile?.avatar_url}
@@ -128,7 +128,17 @@ export function RideCrewRail({
                 'h-8 w-8 border-background text-2xs',
                 // The host's ring is drawn outside the photo, so it has to sit
                 // above the avatar overlapping it — `RideCard` does the same.
-                i === 0 && 'relative z-10 ring-2 ring-accent ring-offset-2 ring-offset-background'
+                //
+                // **`is_host`, never `i === 0`.** This read the index until
+                // PD-429, which was correct only while `withOrganizer` prepended
+                // the host to `going` unconditionally. Now that they lead
+                // whichever section their own RSVP names, `going[0]` is an
+                // ordinary crew member the moment the organizer answers Maybe —
+                // and the ring would knight them as the host on a screen the
+                // organizer is looking at. Every other host-marking site in this
+                // repo reads the flag; this one no longer infers it from order.
+                member.is_host &&
+                  'relative z-10 ring-2 ring-accent ring-offset-2 ring-offset-background'
               )}
             />
           ))}
@@ -168,11 +178,19 @@ export function RideCrewRail({
               <p className="px-4 pt-2 text-2xs font-semibold tracking-wider text-muted uppercase">
                 May be going
               </p>
+              {/* **The same two host props the `going` rows carry**, and they
+                  became reachable here with PD-429: the organizer can answer
+                  Maybe, so `withOrganizer` can place the host in this section.
+                  Without them the rail drops the `Ride host` label for a rider
+                  the crew page one tap away still labels — two adjacent screens
+                  disagreeing about who is hosting the ride. */}
               {crew.maybe.map((member) => (
                 <ListUser
                   key={member.user_id}
                   name={member.profile?.username ?? 'Rider'}
                   avatarUrl={member.profile?.avatar_url}
+                  isHost={member.is_host}
+                  note={member.is_host ? 'Ride host' : undefined}
                 />
               ))}
             </>
@@ -202,6 +220,15 @@ export function RideCrewRail({
  * `going` only, and `going` is post-`withOrganizer`, so the host is inside the
  * number rather than beside it. See the component's header for why any other
  * derivation is a bug rather than a preference.
+ *
+ * **`0 going` with no avatars became reachable with PD-429, and it is the right
+ * answer rather than a state to special-case.** A host riding alone who answers
+ * Maybe empties `going`, and the rail says so; the panel below still lists them
+ * under *May be going* with their host label. Adding the maybes to this number
+ * to avoid the zero is exactly the arithmetic that got the count removed from
+ * this screen the first time — a rail reading `1 going` over a roster that says
+ * nobody is. The test suite pins the degenerate state so a later tidy-up has to
+ * argue with an assertion rather than with a comment.
  */
 export function crewRailSummary(crew: RideCrew, isUpcoming: boolean) {
   const shown = crew.going.slice(0, RIDE_AVATAR_LIMIT)
