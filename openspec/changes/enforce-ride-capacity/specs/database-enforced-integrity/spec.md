@@ -35,11 +35,17 @@ the subject rather than the name:
 
 **ALL THREE deltas therefore fail to archive TODAY, and the deletion below does not fix that.**
 `openspec archive` refuses a MODIFIED block missing a scenario the current spec has
-(`specs-apply.js`), and none of the three carries `No capacity rule is claimed for
-ride_members`. That is a loud throw rather than a silent reinstatement — so the danger this
-banner was written about is smaller than it claims, and the refresh in §6.1 is what actually
-clears it. **`grep -rn "^### Requirement:" openspec/changes/*/specs/` returns 791 lines**; the
-form scoped to this requirement returns 3.
+(`specs-apply.js`), and none of the three carries
+``#### Scenario: No capacity rule is claimed for `ride_members` ``. That is a loud throw rather
+than a silent reinstatement — so **the reinstatement danger THIS banner describes is smaller
+than it claims**, and §6.4's refresh is what clears it (§6.1 covers this change alone).
+
+**That protection does not extend to PD-436**, below: it guards the MODIFIED
+`database-enforced-integrity` block only, and says nothing about this change's ADDED
+`ride-capacity` capability, which nothing refuses at all.
+
+**`grep -rn "^### Requirement:" openspec/changes/*/specs/` returns 791 lines**; the form scoped
+to this requirement returns 3.
 
 Two things followed, and both are tasks (see tasks.md §6):
 
@@ -54,7 +60,9 @@ Two things followed, and both are tasks (see tasks.md §6):
      beside the standing spec's accurate `No capacity rule is claimed for ride_members`.
 
   4. **NEW — §6.4, and it is the one that actually unblocks archiving.** All three deltas need
-     the §6.1 refresh, not just this one; the siblings' own task files say nothing about it.
+     the §6.1 refresh, not just this one. `add-account-deletion`'s tasks do not mention it;
+     `add-ride-map-tiles` §7.2 does, but names only "whichever of the two" and is ticked `[x]`
+     while still owing it. §6.4 also carries the scenario name to copy, backticks included.
 
 The two ADDED requirements below have no other claimant.
 
@@ -63,9 +71,12 @@ change specifies, and `specs/ride-capacity/spec.md` in this directory is an ADDE
 **fifteen** requirements describing a cap the database no longer has — re-derive with
 `grep -c "^### Requirement:" specs/ride-capacity/spec.md` rather than trusting that number.
 Archiving would create `openspec/specs/ride-capacity/spec.md` as a standing contract for a
-dropped feature, and nothing refuses it: `readableOverview` only declines to create a new spec
-when the Purpose contains an HTML comment, and that file's does not. What to do with this change
-directory is that issue's question, and it is not answered here.
+dropped feature, and **nothing refuses it**: archive builds the file from `buildSpecSkeleton` and
+applies the ADDED requirements regardless. `readableOverview` decides only whether the delta's
+own Purpose is carried over or replaced by the TBD placeholder — it warns, it does not stop the
+archive — **so adding an HTML comment to that Purpose would NOT block this**, which is the
+plausible wrong fix. What to do with this change directory is that issue's question, and it is
+not answered here.
 -->
 
 ## MODIFIED Requirements

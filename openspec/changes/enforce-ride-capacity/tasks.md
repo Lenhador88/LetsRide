@@ -169,15 +169,32 @@ dispatched under. Filed as its own issue so it is not lost with this change dire
       what actually blocks archiving today.** `openspec archive` refuses a MODIFIED block that
       lacks a scenario the current spec has (`specs-apply.js`: *"current spec contains
       scenario(s) not present in the modified block"*). The standing
-      `openspec/specs/database-enforced-integrity/spec.md` carries
-      `#### Scenario: No capacity rule is claimed for ride_members` — which is **already correct
-      and current**, citing `077` and the drop — and none of `add-account-deletion`,
+      `openspec/specs/database-enforced-integrity/spec.md:420` carries it — **already correct and
+      current**, citing `077` and the drop — and none of `add-account-deletion`,
       `add-ride-map-tiles` or this change carries it. So all three throw on archive right now.
 
-      **§6.1 covers this change only; the siblings' own task files say nothing about it**, which
-      is why this task exists and is filed here rather than there. Keep the standing scenario
-      when refreshing — do not "fix" it, and do not reinstate the deleted
-      `Unenforced capacity is recorded, not silently assumed` beside it.
+      **COPY THE NAME EXACTLY, BACKTICKS INCLUDED. It is:**
+
+      ```
+      #### Scenario: No capacity rule is claimed for `ride_members`
+      ```
+
+      `parseScenarioBlocks` captures `/^####\s*Scenario:\s*(.+)\s*$/` and
+      `findMissingCurrentScenarios` compares those strings **raw** — unlike requirement names,
+      which go through `normalizeRequirementName`. So pasting it without the backticks around
+      `ride_members` adds a near-identical second name, archive still throws naming the real one
+      as missing, and the requirement ends up carrying **two** capacity scenarios — which is the
+      exact outcome §6.2 exists to prevent, reached by following this task.
+
+      **Why this is filed here rather than in each sibling.** `add-account-deletion`'s tasks say
+      nothing about the refresh at all (its §7.7 re-reads for drift, which is a different job).
+      `add-ride-map-tiles` §7.2 **does** state the obligation — but it says *"whichever of the
+      **two**"*, so it predates and does not know about the third claimant, **and it is ticked
+      `[x]` while the obligation is still outstanding.** One task naming all three is the only
+      form that is true.
+
+      Keep the standing scenario when refreshing — do not "fix" it, and do not reinstate the
+      deleted `Unenforced capacity is recorded, not silently assumed` beside it.
 
       Measured 2026-09-07 (PD-264): missing from all three deltas.
 

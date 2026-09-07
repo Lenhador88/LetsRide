@@ -213,11 +213,10 @@ trigger. Since 2026-08-24 it is **void** rather than false: `077` (PD-293) dropp
 outright — the column, `018`'s `rides_max_riders_range` CHECK and
 `private.enforce_ride_capacity()` — so the scenario's WHEN names a column that does not exist.
 
-**The standing spec ALREADY said so, under a different scenario name, and the first draft of this
-branch claimed the opposite** — caught by the pre-merge review, which is the finding worth carrying.
-`openspec/specs/database-enforced-integrity/spec.md` files
-`#### Scenario: No capacity rule is claimed for ride_members`, citing `077` and the drop. Grepping
-`Unenforced capacity` there returns nothing and reads as *"the standing spec is silent on
+**The standing spec ALREADY said so, under a different scenario name.**
+`openspec/specs/database-enforced-integrity/spec.md:420` files
+``#### Scenario: No capacity rule is claimed for `ride_members` ``, citing `077` and the drop.
+Grepping `Unenforced capacity` there returns nothing and reads as *"the standing spec is silent on
 capacity"*. **Archive compares scenario NAMES; a spec means what it SAYS** — so search the subject:
 
 ```bash
@@ -227,11 +226,21 @@ grep -n "max_riders" openspec/specs/database-enforced-integrity/spec.md      # t
 **So the reinstatement was never silent, and all three deltas fail to archive TODAY.**
 `openspec archive` refuses a MODIFIED block missing a scenario the current spec has
 (`specs-apply.js`: *"current spec contains scenario(s) not present in the modified block"*), and
-none of the three carries `No capacity rule is claimed for ride_members`. That is a loud throw, not
-a silent overwrite — **the danger PD-264 and three coordination banners describe is real but
-smaller than they claim**, and what actually unblocks archiving is refreshing each delta against the
-standing spec. Task 6.1 covered only `enforce-ride-capacity`; **§6.4 is new and covers all three**,
-because the siblings' own task files say nothing about it.
+none of the three carries that scenario. That is a loud throw, not a silent overwrite — **the
+danger PD-264 and three coordination banners describe is real but smaller than they claim**, and
+what actually unblocks archiving is refreshing each delta against the standing spec. Task 6.1
+covered only `enforce-ride-capacity`; **§6.4 is new and covers all three.**
+
+**Copy that scenario name with its backticks.** `findMissingCurrentScenarios` compares scenario
+names **raw**, where requirement names go through `normalizeRequirementName` — so pasting it
+without the backticks around `ride_members` adds a second near-identical name, archive still throws
+naming the real one, and the requirement ends up with two capacity scenarios. That is the exact
+outcome this branch exists to prevent, reached by following its own instruction.
+
+**`add-ride-map-tiles` §7.2 already stated the refresh obligation and is ticked `[x]` while still
+owing it** — and it says *"whichever of the **two**"*, so it predates the third claimant.
+`add-account-deletion` says nothing at all (its §7.7 re-reads for drift, a different job). That is
+the real justification for §6.4, not "the siblings say nothing".
 
 **Four things a later session should not re-derive:**
 
@@ -251,17 +260,23 @@ because the siblings' own task files say nothing about it.
 - **Task 6.1 stays open on purpose, and §6.4 was added beside it.** 6.1 is an archive-time task by
   construction ("re-read the standing spec as the previous archive left it") and covers this change
   only; 6.4 extends the same refresh to both siblings. 6.2 and 6.3 are the ones this branch closed.
-- **`npx openspec validate --all --strict` is the only gate that parses these files, and it is not
-  in the standard list.** It passes here; the 5 failures it reports are in untouched changes. On an
-  openspec-only diff, run it and name it.
+- **`npx openspec validate --all --strict` is the only gate that parses these files AS SPECS, and
+  it is not in the standard list.** It passes here; the 5 failures it reports are in untouched
+  changes and fail identically on the base commit. On an openspec-only diff, run it and name it.
+  (`crossrefs` also reads them — it resolves `§` pointers inside `changes/<c>/specs/<cap>/spec.md`
+  — which is why `openspec/` is one of `ci.yml`'s five carve-outs. It does not parse requirements.)
 
 **Filed rather than folded in: PD-436, and it is the larger landmine.**
 `openspec/changes/enforce-ride-capacity/specs/ride-capacity/spec.md` is an **ADDED** capability of
 fifteen requirements for the feature `077` reversed, so archiving that change would create
 `openspec/specs/ride-capacity/spec.md` as a standing contract for a cap the database does not have —
 a whole file with no existing text to contradict it, where PD-264's defect was one scenario inside a
-requirement. **Nothing refuses it**: `readableOverview` declines to create a new standing spec only
-when the Purpose carries an HTML comment, and that file's does not. It is separate work because its
+requirement. **Nothing refuses it**: archive builds the file from `buildSpecSkeleton` and applies
+the ADDED requirements regardless — `readableOverview` decides only whether the delta's own Purpose
+is carried over or replaced by the TBD placeholder, and it warns rather than stopping. So **adding
+an HTML comment to that Purpose would not block it**, which is the plausible wrong fix. And the
+archive-throw above does not cover this either: that guards the MODIFIED requirement, not an ADDED
+capability. It is separate work because its
 resolution is a decision about the change directory's fate (delete it, archive it as superseded if
 the tooling allows, or keep the banner). **A `⚠ DO NOT ARCHIVE` block naming PD-436 is in the delta
 and at the top of `tasks.md`** — that is option 3 as a holding measure, not the answer.

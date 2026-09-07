@@ -435,28 +435,20 @@ REMOVED — `Unenforced capacity is recorded, not silently assumed` (PD-264, 202
 It read: WHEN `rides.max_riders` is set, THEN nothing SHALL claim it is enforced — no policy,
 trigger or constraint limits `ride_members` by it.
 
-It was true when this delta was written and it is now VOID rather than merely false: `063`
-(PD-174) made it false by adding the trigger, and `077` (PD-293, 2026-08-24) then dropped
-`max_riders` — the column, `018`'s `rides_max_riders_range` CHECK and
-`private.enforce_ride_capacity()` — in full. Its WHEN names a column that does not exist.
+It is VOID rather than merely false: `063` (PD-174) made it false by adding the trigger, and
+`077` (PD-293, 2026-08-24) then dropped `max_riders` — the column, `018`'s
+`rides_max_riders_range` CHECK and `private.enforce_ride_capacity()` — in full, so its WHEN
+names a column that does not exist.
 
-**The standing spec already says this correctly, under a DIFFERENT SCENARIO NAME.**
-`openspec/specs/database-enforced-integrity/spec.md` files
-`No capacity rule is claimed for ride_members`, which cites `077` and the drop. So carrying the
-stale text forward would not overwrite that scenario — archiving replaces the requirement
-wholesale, so it would land a SECOND capacity scenario contradicting the accurate one. Do not
-restore it.
+**The standing spec already says so, under a different scenario name** — the heading
+``#### Scenario: No capacity rule is claimed for `ride_members` `` in
+`openspec/specs/database-enforced-integrity/spec.md`, which cites `077` and the drop. Restoring
+the text above would not overwrite it: archiving replaces the requirement wholesale, so it would
+land a SECOND capacity scenario contradicting the accurate one. Do not restore it.
 
-**Searching for the scenario NAME is what hides that.** The string `Unenforced capacity` appears
-nowhere in the standing spec; the claim does, in other words. Archive compares names; a spec
-means what it says. Search the subject:
-
-    grep -n "max_riders" openspec/specs/database-enforced-integrity/spec.md
-
-**Separately, this delta cannot archive until it is refreshed, and that is not what the deletion
-fixes.** `openspec archive` refuses a MODIFIED block missing a scenario the current spec has
-(`specs-apply.js`), and this one lacks `No capacity rule is claimed for ride_members`. See
-`openspec/changes/enforce-ride-capacity/tasks.md` §6.4.
+**Separately, this delta cannot archive until it is refreshed against that scenario — which the
+deletion does not fix.** See `openspec/changes/enforce-ride-capacity/tasks.md` §6.4, which owns
+the mechanism and the exact name to copy.
 -->
 
 #### Scenario: An ownership transfer leaves no path pointing at a departed rider
