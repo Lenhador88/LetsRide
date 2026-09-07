@@ -84,6 +84,7 @@ docs/
 │   ├── repo-layout.md      #   this file
 │   ├── product-scope.md    #   what is built per domain, against the Figma
 │   ├── analytics.md        #   the product questions, and which are already SQL
+│   ├── positioning.md      #   the rider before they install — claimable list, store listing
 │   ├── observability.md    #   what we see when it breaks, and the 24h expiry on it
 │   ├── native-shell.md     #   the Capacitor shell's position and the store-readiness table
 │   ├── running-locally.md  #   the per-command table, the relay, the walk and its fixtures
