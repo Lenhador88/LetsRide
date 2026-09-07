@@ -264,12 +264,12 @@ a town under it (the chain prefers the device) and must still be able to remove 
 `Remove` returned a raw Zod message for ever. A green `tsc`, 3444 green tests, a green build and a
 green walk were all true at once, because `safeParse` takes `unknown`.
 
-**The location question HAS a measured source, and this entry first claimed it did not.**
-`Add your location` (`2074:5185`) and `- City focus` (`2077:5320`) draw *"Where are you located?"*
-over an `Input / Text` labelled `City`; `docs/specs/login-onboarding.md` had both by node id all
-along. `TownQuestionSheet` takes both strings verbatim now. **The container stays ours** — those are
-the onboarding step `075` deleted, so their pagination, `Back` and `Skip`/`Next` do not transfer to a
-sheet. `docs/FIGMA-FIDELITY-TODO.md` carries the split.
+**The location question HAS a measured source** — `Add your location` (`2074:5185`) and
+`- City focus` (`2077:5320`) draw *"Where are you located?"*, recorded by node id in
+`docs/specs/login-onboarding.md` all along. `TownQuestionSheet` takes that heading verbatim; its
+field says `Town` rather than the frame's `City`, because the frame predates the town rung. **The
+container stays ours** — those are the onboarding step `075` deleted, so pagination, `Back` and
+`Skip`/`Next` do not transfer to a sheet. `docs/FIGMA-FIDELITY-TODO.md` carries the split.
 
 **The walk was run against DEV — 26/26 screens, 79/79 checks**, the join phase reporting *"join took
 the sheet path"*, which is PD-418's flow end to end against the real database. **Re-run after the

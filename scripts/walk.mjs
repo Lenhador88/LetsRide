@@ -3033,6 +3033,12 @@ async function checkCommentOnPostcard() {
  * screens reachable, the same way it already dismisses a member-mode
  * introduction sheet it did not ask for.
  */
+// **These are `ContextMenu` `label` props, not visible headings, and the two
+// deliberately differ on the town sheet** — its `aria-label` is `Where you ride
+// from` while its `<h2>` reads `Where are you located?` (measured from
+// `2074:5185`). Match the labels. Changing one of these strings without changing
+// its component leaves this helper silently returning false — it asserts
+// nothing — and the failure surfaces as a red JOIN phase on a screen that works.
 const LOCATION_SHEETS = ['Find rides near you', 'Location is switched off', 'Where you ride from']
 
 async function dismissLocationSheet() {

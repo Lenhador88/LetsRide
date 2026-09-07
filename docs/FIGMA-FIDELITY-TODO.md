@@ -1854,17 +1854,17 @@ item.
       open"* and *"we never show other riders where you are"* must both stay true of the code —
       nothing in `src/` uses `watchPosition`, and a device fix leaves the device only as a
       ~1 km-rounded proximity bias. A designer rewording this needs to keep both.
-- [ ] **PD-419 (2026-09-07) — the QUESTION has a measured source and the CONTAINER does not,
-      and an earlier revision of this bullet got that backwards.** It claimed
-      `npm run figma -- ls` returned no location-question frame; it returns two —
+- [ ] **PD-419 (2026-09-07) — the QUESTION has a measured source and the CONTAINER does not.**
+      `npm run figma -- ls` returns two location-question frames —
       **`Add your location` (`2074:5185`)** and **`Add your location - City focus`
       (`2077:5320`)**, drawing *"Where are you located?"* (Poppins/32/Semibold), one
       `v2 / Component / Input / Text` labelled `City`, and a `Skip`/`Next` footer.
-      `docs/specs/login-onboarding.md` had both recorded by node id the whole time. **A claim
-      that names its own verification command and is refuted by it is the worst shape available
-      here** — it sends the next designer past the closest measured source in the snapshot.
+      `docs/specs/login-onboarding.md` records both by node id.
 
-      `TownQuestionSheet` now takes the heading and the field label from those frames verbatim.
+      `TownQuestionSheet` takes the heading STRING from those frames verbatim — not its type
+      token, which is the container's `text-lg` rather than the frame's Poppins/32/Semibold. **Its
+      field label is `Town` rather than the frame's `City`, deliberately**: the frame predates the
+      town rung, and `town` is the word the action, the row label and the body copy all use.
       **What is still ours, and is what a designer would actually be picking up:**
       - **The container.** Those frames are the onboarding wizard step `075` (PD-286) deleted,
         so they carry pagination dots, a `Back` link and `Skip`/`Next` — none of which belongs

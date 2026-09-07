@@ -53,18 +53,20 @@ import { LOCATION_MAX_LENGTH } from '@/lib/validation/profile'
  * ## The QUESTION is measured; the container is not
  *
  * **`Add your location` (`2074:5185`) and `Add your location - City focus`
- * (`2077:5320`) draw this question**, and an earlier revision of this file
- * asserted they did not — the claim named `npm run figma -- ls` as its evidence
- * and that command returns both frames. `docs/specs/login-onboarding.md` had
- * them recorded by node id the whole time.
+ * (`2077:5320`) draw this question** — `npm run figma -- ls` returns both, and
+ * `docs/specs/login-onboarding.md` records them by node id.
  *
- * So the heading and the field label are **measured and taken verbatim**:
- * *"Where are you located?"* and `City`. What does not transfer is the
- * container and its chrome — those frames are the onboarding wizard step `075`
- * (PD-286) deleted, so they carry pagination dots, a `Back` link and
- * `Skip`/`Next`, none of which belongs on a sheet opened from Explore. The
- * bottom-sheet composition is `ContextMenu`'s measured geometry with our own
- * explanatory paragraph and button labels.
+ * **The heading STRING is measured and taken verbatim** — *"Where are you
+ * located?"*. Its type token is not: the frame is Poppins/32/Semibold and this
+ * renders at `text-lg`, which is the container's scale (`LocationPrimingSheet`
+ * uses the same). Saying "measured" without that qualifier would invite a
+ * designer to assume the scale transferred.
+ *
+ * **The field label deliberately does NOT follow the frame** — see its own
+ * comment. What else does not transfer is the container and its chrome: those
+ * frames are the onboarding wizard step `075` (PD-286) deleted, so they carry
+ * pagination dots, a `Back` link and `Skip`/`Next`, none of which belongs on a
+ * sheet opened from Explore.
  *
  * **The divergences are logged** in `docs/FIGMA-FIDELITY-TODO.md`, which is the
  * only reason it is acceptable to keep them.
@@ -100,6 +102,13 @@ export function TownQuestionSheet({
     })
   }
 
+  // **`label` below is matched by `scripts/walk.mjs`'s `LOCATION_SHEETS` —
+  // change the two together, or the walk goes red on a screen that works.**
+  // That helper dismisses this sheet so the next click on Explore is
+  // actionable; it asserts nothing, so a stale selector fails silently there
+  // and surfaces as a red JOIN phase pointing at the wrong thing (PD-410's
+  // shape). It deliberately does NOT track the visible heading, which is
+  // measured from `2074:5185` and says something different.
   return (
     <ContextMenu open={open} onClose={pending ? () => {} : onClose} label="Where you ride from">
       <div className="flex flex-col gap-4 pb-2">
@@ -115,8 +124,15 @@ export function TownQuestionSheet({
         </p>
 
         <PlaceSearchField
-          // `City`, verbatim from `2074:5185` — see the header.
-          label="City"
+          // **`Town`, NOT the frame's `City`, and this is a deliberate logged
+          // divergence rather than an oversight.** The frame predates the town
+          // rung entirely — it is the onboarding step `075` deleted, built when
+          // there was no `setRiderTown` — so it is not evidence about which
+          // word this app uses. `town` is: the action, the row's own label, the
+          // `Near {town}` string and the paragraph directly above this field.
+          // Taking `City` here would put a fifth noun for one concept two lines
+          // under body copy that says "town".
+          label="Town"
           placeholder="Search for your town or city"
           value={place}
           onChange={setPlace}
