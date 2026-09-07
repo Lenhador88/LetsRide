@@ -52,12 +52,21 @@ import { describe, expect, it } from 'vitest'
  * went the same way on the presence-test sanction, and
  * `return { lat: c.latitude }` on the `return` sanction.
  *
- * So the unit of classification is **the individual read, at its offset**, and a
- * read is sanctioned only by a fact about *itself*: it is compared to
- * null/undefined, or it sits inside the still-open parentheses of a sanctioned
- * call. Line-level sanctions survive only for mentions of the binding that read
- * **no coordinate at all** (`return { path, capture }`, a type annotation), where
- * there is no coordinate to leak and the holder assertion bounds the flow.
+ * So the unit of classification is **the individual mention, at its offset** —
+ * for the coordinate *and* for the whole object, which took a second review round
+ * to get right. A coordinate read is sanctioned only by a fact about itself: it
+ * is compared to null/undefined, or it is an argument to a sanctioned call. An
+ * object mention is sanctioned by **who receives it** — the innermost call whose
+ * parentheses are still open — falling back to the shape of the statement only
+ * when it sits in no call at all.
+ *
+ * The second round is worth stating, because the fix that suggests itself is the
+ * one that failed: making pass 2 line-level again, on the argument that a line
+ * carrying no coordinate has nothing to leak. A line can carry both, and
+ * `if (c.latitude !== null) sendToVendor(c)` is the counter-example — a
+ * *sanctioned* coordinate read clearing the line for the object. So is
+ * `return sendToVendor(capture)`, where `return` looks like the bare
+ * whole-object return that assertion 1 genuinely bounds and is not one.
  *
  * ## What it cannot see, stated rather than implied
  *
@@ -151,6 +160,15 @@ const NON_COORDINATE_FIELDS = ['takenAt', 'takenAtOffsetMinutes']
 
 const SKIP_DIRS = new Set(['node_modules', '.next', 'dist', 'coverage', '__tests__'])
 
+/**
+ * How far back to look for the callee of a multi-line call.
+ * `resolvePhotoLocation(mode, capture ?? {…})` spans three lines in the composer.
+ * Six is slack over that: because `enclosingCall` tracks real paren depth rather
+ * than matching a name, a wider window is strictly more accurate — it only ever
+ * recovers context the truncation would have lost.
+ */
+const LOOKBACK_LINES = 6
+
 function walk(dir: string, out: string[] = []): string[] {
   if (!existsSync(dir)) return out
   for (const entry of readdirSync(dir)) {
@@ -195,34 +213,72 @@ function isPresenceRead(line: string, start: number, length: number): boolean {
   return false
 }
 
+/** Control-flow words that take parentheses but are not calls and sink nothing. */
+const NOT_A_CALL = new Set([
+  'if',
+  'for',
+  'while',
+  'switch',
+  'catch',
+  'return',
+  'typeof',
+  'await',
+  'void',
+  'do',
+  'else',
+])
+
 /**
- * Does `prefix` end inside the still-open parentheses of a sanctioned call?
+ * The name of the **innermost** call whose parentheses are still open at the end
+ * of `prefix` — i.e. the call this mention is an argument to. `undefined` when
+ * the mention sits in no call at all; `null` for an anonymous group.
  *
- * Walking the depth is what makes this directional. Testing only that a sink name
- * appears in the window — the first draft — waved through anything written within
- * three lines *below* a completed call, so
- * `void resolvePhotoLocation(a, b, c)` followed by `analytics.emit(c.latitude)`
- * passed. Here the walk from `resolvePhotoLocation(` returns to depth 0 at its
- * own `)`, so it no longer covers what follows.
+ * **Innermost is what makes this sound, and two review rounds turned on it.**
+ * Asking merely whether a sanctioned sink appears somewhere unclosed lets an
+ * outer sanctioned call launder an inner unsanctioned one —
+ * `setForm({ lat: sendToVendor(capture) })` — and lets a stray `(` inside a
+ * trailing comment cover the next several lines. Taking the top of the stack
+ * asks the only question that matters: *who receives this value*.
+ *
+ * String literals are skipped, so a `)` inside one no longer closes the walk
+ * early. That was a false positive rather than a leak, and this file's own header
+ * records why that still matters: a detector that fails closed on correct code
+ * invites loosening, which is how the earlier holes would come back.
  */
-function insideSanctionedCall(prefix: string): boolean {
-  for (const sink of SANCTIONED_SINKS) {
-    for (let at = prefix.indexOf(`${sink}(`); at !== -1; at = prefix.indexOf(`${sink}(`, at + 1)) {
-      let depth = 0
-      let closed = false
-      for (let i = at + sink.length; i < prefix.length; i++) {
-        if (prefix[i] === '(') depth++
-        else if (prefix[i] === ')') depth--
-        if (depth === 0) {
-          closed = true
-          break
-        }
+function enclosingCall(prefix: string): string | null | undefined {
+  const stack: (string | null)[] = []
+
+  for (let i = 0; i < prefix.length; i++) {
+    const ch = prefix[i]
+
+    if (ch === "'" || ch === '"' || ch === '`') {
+      const quote = ch
+      i++
+      while (i < prefix.length && prefix[i] !== quote) {
+        if (prefix[i] === '\\') i++
+        i++
       }
-      // Never closed before the read, so the read is one of its arguments.
-      if (!closed) return true
+      continue
+    }
+
+    if (ch === '(') {
+      const callee = prefix.slice(0, i).match(/([A-Za-z_$][\w$]*)\s*$/)?.[1]
+      stack.push(callee && !NOT_A_CALL.has(callee) ? callee : null)
+    } else if (ch === ')') {
+      stack.pop()
     }
   }
-  return false
+
+  return stack.length ? stack[stack.length - 1] : undefined
+}
+
+/** May a value handed to this call carry a capture, or a coordinate off one? */
+function isSanctionedCallee(callee: string): boolean {
+  // A `setX({...})` call stores the object in the holder's own state, which is
+  // not a new sink. It is scoped to the callee here rather than matched against
+  // the whole line, so a leak NESTED inside the state literal is still the
+  // innermost call and is still caught.
+  return SANCTIONED_SINKS.includes(callee) || /^set[A-Z]/.test(callee)
 }
 
 /**
@@ -249,47 +305,67 @@ function classify(source: string, bindings: string[]): string[] {
   const lines = stripCommentLines(source).split('\n')
 
   lines.forEach((line, index) => {
-    const lookback = [lines[index - 3], lines[index - 2], lines[index - 1]]
-      .filter((l) => l && l.trim() !== '')
-      .join(' ')
+    const lookback = lines.slice(Math.max(0, index - LOOKBACK_LINES), index).join(' ')
+    const flag = () => violations.push(`${index + 1}: ${line.trim()}`)
 
     for (const binding of bindings) {
       if (!new RegExp(String.raw`\b${binding}\b`).test(line)) continue
 
       // ---- Pass 1: every coordinate read, judged at its own offset.
-      const reads = new RegExp(
-        String.raw`\b${binding}(?:\?)?\.(?:latitude|longitude)\b`,
-        'g',
-      )
+      const reads = new RegExp(String.raw`\b${binding}(?:\?)?\.(?:latitude|longitude)\b`, 'g')
+      const readSpans: Array<[number, number]> = []
       let read: RegExpExecArray | null
-      let sawRead = false
       while ((read = reads.exec(line)) !== null) {
-        sawRead = true
+        readSpans.push([read.index, read.index + read[0].length])
         if (isPresenceRead(line, read.index, read[0].length)) continue
-        if (insideSanctionedCall(`${lookback} ${line.slice(0, read.index)}`)) continue
-        violations.push(`${index + 1}: ${line.trim()}`)
+        const callee = enclosingCall(`${lookback} ${line.slice(0, read.index)}`)
+        if (typeof callee === 'string' && SANCTIONED_SINKS.includes(callee)) continue
+        flag()
       }
-      if (sawRead) continue
 
-      // ---- Pass 2: a mention carrying no coordinate.
-      if (new RegExp(String.raw`\b${binding}\s*:\s*ExifCapture`).test(line)) continue
-      if (new RegExp(String.raw`(?:const|let|var)\s+[^=]*\b${binding}\b[^=]*=`).test(line)) continue
-      if (new RegExp(String.raw`!\s*${binding}\b`).test(line)) continue
-      if (
-        NON_COORDINATE_FIELDS.some((f) =>
-          new RegExp(String.raw`${binding}(?:\?)?\.${f}\b`).test(line),
-        )
-      )
-        continue
-      if (insideSanctionedCall(`${lookback} ${line}`)) continue
-      if (new RegExp(String.raw`set[A-Z]\w*\(\{[^}]*\b${binding}\b`).test(line)) continue
-      // Returning it hands it to a caller, and every caller is a file that
-      // imports the type — so assertion (1) is what bounds this flow. It reaches
-      // only whole-object returns: a `return` carrying a coordinate was already
-      // judged in pass 1.
-      if (new RegExp(String.raw`^\s*return\b.*\b${binding}\b`).test(line)) continue
+      // ---- Pass 2: every OTHER mention of the binding — the whole object.
+      //
+      // Also per mention rather than per line. Skipping this pass whenever pass 1
+      // found anything was itself the F5 defect one level up: a *sanctioned*
+      // coordinate read then cleared the line for the object, so
+      // `if (c.latitude !== null) sendToVendor(c)` passed.
+      const mentions = new RegExp(String.raw`\b${binding}\b`, 'g')
+      let mention: RegExpExecArray | null
+      while ((mention = mentions.exec(line)) !== null) {
+        const at = mention.index
+        if (readSpans.some(([from, to]) => at >= from && at < to)) continue
 
-      violations.push(`${index + 1}: ${line.trim()}`)
+        const after = line.slice(at + binding.length)
+        const before = line.slice(0, at)
+
+        if (new RegExp(String.raw`^(?:\?)?\.(?:${NON_COORDINATE_FIELDS.join('|')})\b`).test(after))
+          continue
+        if (/^\s*:\s*ExifCapture\b/.test(after)) continue
+        if (/!\s*$/.test(before)) continue
+        // `capture !== null` — a presence test on the object itself, which
+        // discloses nothing, exactly as it does for a coordinate. The composer
+        // opens its `hasPhotoFix` guard with one.
+        if (isPresenceRead(line, at, binding.length)) continue
+
+        // Who receives the object? The innermost open call is the only honest
+        // answer, and an unsanctioned one is a leak whatever else the line says.
+        const callee = enclosingCall(`${lookback} ${before}`)
+        if (typeof callee === 'string') {
+          if (!isSanctionedCallee(callee)) flag()
+          continue
+        }
+
+        // In no call at all: binding it to a local name, or returning it whole.
+        // Both are bounded by assertion (1), since a caller that holds it is a
+        // file that imports the type. `return sendToVendor(capture)` never
+        // reaches here — its innermost call is unsanctioned, which is the review
+        // finding that moved this check behind the one above.
+        if (new RegExp(String.raw`(?:const|let|var)\s+[^=]*\b${binding}\b[^=]*=`).test(line))
+          continue
+        if (/^\s*return\b/.test(line)) continue
+
+        flag()
+      }
     }
   })
 
@@ -431,6 +507,70 @@ describe('the detectors still catch a real violation', () => {
       .toHaveLength(2)
     expect(classify('  return <Map lat={capture.latitude} />', ['capture'])).toHaveLength(1)
     expect(classify('  return { path, capture }', ['capture'])).toEqual([])
+  })
+
+  it('catches a whole object returned THROUGH a call — the review’s F11', () => {
+    // `return ` used to clear the line, on the argument that a return hands the
+    // object to a caller and every caller imports the type. That holds for a bare
+    // return and not when the return expression is itself a call: the object goes
+    // to that function's parameter, which need not be typed `ExifCapture` at all,
+    // so assertion 1 never sees it. `return <fn>(args)` is idiomatic in
+    // `upload.ts`, so this is reachable rather than theoretical.
+    expect(classify('  return sendToVendor(capture)', ['capture'])).toHaveLength(1)
+    expect(classify('  return fetch(url, { body: JSON.stringify(capture) })', ['capture']))
+      .toHaveLength(1)
+    expect(classify('  return analytics.emit({ raw: capture })', ['capture'])).toHaveLength(1)
+  })
+
+  it('does not let a sanctioned coordinate read clear the object beside it — F12', () => {
+    // F5 one level up: pass 2 used to be skipped entirely whenever pass 1 found
+    // any read, so a presence test cleared the whole-object leak on the same line.
+    expect(
+      classify('if (capture.latitude !== null) sendToVendor(capture)', ['capture']),
+    ).toHaveLength(1)
+  })
+
+  it('catches a leak nested inside a state literal, or beside a safe field — F13', () => {
+    expect(classify('log(capture.takenAt); sendToVendor(capture)', ['capture'])).toHaveLength(1)
+    expect(classify('setForm({ lat: sendToVendor(capture) })', ['capture'])).toHaveLength(1)
+    expect(
+      classify('setUpload({ ...prev, capture }); void sendToVendor(capture)', ['capture']),
+    ).toHaveLength(1)
+  })
+
+  it('reads the INNERMOST open call, so nothing launders through an outer one — F14', () => {
+    // A sink opening AFTER the mention must not cover it...
+    expect(classify('logRaw(capture); resolvePhotoLocation(x', ['capture'])).toHaveLength(1)
+    // ...and a stray paren inside a trailing comment must not either. Trailing
+    // comments are deliberately kept (see the strip), so this is reachable in
+    // files whose prose discusses `roundToCoarseGrid` at length — which is both
+    // of them.
+    expect(
+      classify(
+        [
+          'void resolvePhotoLocation(a, b) // TODO roundToCoarseGrid(',
+          'analytics.emit(capture.latitude)',
+        ].join('\n'),
+        ['capture'],
+      ),
+    ).toHaveLength(1)
+  })
+
+  it('does not fail closed on a paren inside a string — the review’s F16', () => {
+    // A false positive rather than a leak, and it still matters: a detector that
+    // rejects correct code invites loosening, which is how the earlier holes
+    // would come back.
+    expect(
+      classify("void resolvePhotoLocation(a, ')', capture.latitude)", ['capture']),
+    ).toEqual([])
+  })
+
+  it('catches a destructured coordinate', () => {
+    expect(classify('const { latitude } = capture', ['capture'])).toHaveLength(1)
+    expect(classify('const { latitude: exactLat, longitude } = capture', ['capture'])).toHaveLength(
+      1,
+    )
+    expect(classify("const lat = capture['latitude']", ['capture'])).toHaveLength(1)
   })
 
   it('catches a raw coordinate put into state — the review’s F4', () => {

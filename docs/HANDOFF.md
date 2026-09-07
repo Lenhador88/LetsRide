@@ -230,35 +230,51 @@ console.info('[dbg]', exactLat)          // §D7's own "not a log", 12/12 passin
 because line one *declares something* and the sanction was `(?:const|let|var)\s.*<binding>`. Four
 more had the same shape — a presence test followed by a real read, a coordinate in a `return`, one
 put into state, one written three lines below a *completed* sanctioned call. **A line-level sanction
-is the reversal to expect**, because it reads as a simplification. The unit is the individual read
-at its offset, sanctioned only by a fact about itself: compared to null/undefined, or inside the
-still-open parens of a sanctioned call. Line-level sanctions survive only for mentions carrying no
-coordinate, where there is nothing to leak.
+is the reversal to expect**, because it reads as a simplification.
+
+**It took two review rounds, and the second is the one worth carrying**, because the obvious fix is
+the one that failed. Making only *coordinate reads* per-offset and leaving the whole object
+line-level looks safe — a line carrying no coordinate has nothing to leak — and a line can carry
+both:
+
+```ts
+if (capture.latitude !== null) sendToVendor(capture)   // a SANCTIONED read clearing the object
+return sendToVendor(capture)                           // not the bare return it resembles
+```
+
+So both are per-mention now. A coordinate read is sanctioned by a fact about itself; an object
+mention by **who receives it** — the innermost call whose parens are still open — falling back to
+the statement's shape only when it sits in no call at all.
 
 **Three more a later session should not re-derive:**
 
-- **`return { path, capture }` in `upload.ts` is classified SAFE, and the argument is the holder
-  assertion rather than the classification.** Returning it hands it to a caller, and every caller is
-  a file that imports the type — so the flow is bounded by assertion 1. Reading that as a hole and
-  "tightening" it would fail the producer for doing its job. It reaches only *whole-object* returns;
-  a `return` carrying a coordinate is judged as a read.
-- **The sink check walks paren depth, and the direction is the point.** Testing that a sink name
-  merely appears in the lookback covers the three lines *below* a completed call. The lookback is
-  three lines because `resolvePhotoLocation(mode, capture ?? …)` spans three in the composer.
-- **The suite gained +21 over `development`, and only 19 of those are this file's.** The other two
+- **`return { path, capture }` in `upload.ts` is SAFE, and the argument is the holder assertion
+  rather than the classification.** A bare return hands the object to a caller, and every caller is
+  a file that imports the type, so assertion 1 bounds it. **That argument does not extend to
+  `return <fn>(capture)`** — there the object goes to that function's parameter, which need not be
+  typed `ExifCapture`, so assertion 1 never sees it. `return <fn>(args)` is idiomatic in `upload.ts`,
+  which is what makes the distinction load-bearing rather than pedantic.
+- **The enclosing-call check takes the INNERMOST open call, and that is what makes it sound.**
+  Asking merely whether a sanctioned sink is open somewhere lets an outer sanctioned call launder an
+  inner unsanctioned one (`setForm({ lat: sendToVendor(capture) })`), and lets a stray `(` in a
+  trailing comment cover the following lines. String literals are skipped so a `)` inside one does
+  not close the walk early — a false positive, and this file's own header says why those matter:
+  a detector that rejects correct code invites loosening.
+- **The suite gained +27 over `development`, and only 25 of those are this file's.** The other two
   come from `no-service-role-key.test.ts` and `no-geoapify-key.test.ts`, which emit a case per file
   walked — the *"+2, not +3"* rule `running-locally.md`'s Unit tests row already states. **The count
   claims were NOT stale beforehand**: measured 3442/139 on a clean `development` by removing the
   file and re-running, rather than inferred by subtraction.
 
 **Verified by mutating real source, after committing** (the handoff's own `git checkout` hazard).
-Every shape below was a silent pass against the first draft and is now a named regression test:
-aliasing the coordinate into a local then logging it → 1F, an emit three lines under a completed
-sanctioned call → 1F, a coordinate in a JSX `return` → 1F, an unsanctioned read → 1F, the rounding
-removed from `places.ts` → 2F, a new file importing `ExifCapture` → 1F, clean tree → 19P.
+Every shape below was a silent pass against some draft and is now a named regression test: aliasing
+the coordinate into a local then logging it → 1F, the object returned through a call → 1F, a
+presence test beside a whole-object leak → 1F, a leak nested in a state literal → 1F, an emit below
+a completed sanctioned call → 1F, a coordinate in a JSX `return` → 1F, the rounding removed from
+`places.ts` → 2F, a new file importing `ExifCapture` → 1F, clean tree → 25P.
 
 ```bash
-npx vitest run src/__tests__/no-unrounded-photo-coordinate.test.ts   # 19/19
+npx vitest run src/__tests__/no-unrounded-photo-coordinate.test.ts   # 25/25
 npm run docs:check                              # 39 passed, 0 failed, 3 skipped (no Postgres)
 ```
 
