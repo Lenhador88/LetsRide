@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ChevronRightIcon, LocationFilledIcon } from '@/components/icons/generated'
+import { exploreLabel } from '@/lib/location/explore-label'
 import type { NearLabel } from '@/lib/location/near-label'
 
 /**
@@ -92,8 +93,7 @@ export function ExploreClubsStrip({
   /** What to call where the distances were measured from — see `nearLabel`. */
   near?: NearLabel
 }) {
-  const sayNear = !!near && nearCount !== undefined && nearCount > 0
-  const label = sayNear ? `Explore clubs near ${near!.name}` : 'Explore clubs'
+  const label = exploreLabel('clubs', near, nearCount)
 
   return (
     <Link

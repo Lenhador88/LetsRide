@@ -2,6 +2,7 @@
 
 import { ClubCard } from '@/components/clubs/ClubCard'
 import { isNearby } from '@/lib/location/distance'
+import { nearSectionHeading } from '@/lib/location/explore-label'
 import type { NearLabel } from '@/lib/location/near-label'
 import type { ClubListItem } from '@/types'
 
@@ -61,7 +62,7 @@ export function ExploreClubsList({
   return (
     <div className="flex flex-col gap-4">
       <section className="flex flex-col gap-2">
-        <h3 className="px-2 text-sm font-semibold text-foreground">Near {near!.name}</h3>
+        <h3 className="px-2 text-sm font-semibold text-foreground">{nearSectionHeading(near)}</h3>
         <ClubList clubs={nearby} onIntroduce={onIntroduce} />
       </section>
 
