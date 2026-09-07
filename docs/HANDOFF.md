@@ -218,33 +218,47 @@ own entry* — which is why that is a separate, third assertion rather than a de
   two stay green while the raw fix goes to the vendor. That is the same one-level-up defect the
   issue warns about for the detector itself.
 
-**Four things a later session should not re-derive:**
+**A SANCTION CLEARS ONE READ, NEVER A LINE — and this is the whole of what makes the test real.**
+The first draft tested each sanction against the whole line, so a partial match waved through
+everything else on it, and the ordinary form of the leak shipped green:
+
+```ts
+const exactLat = upload.status === 'done' ? upload.capture.latitude : null
+console.info('[dbg]', exactLat)          // §D7's own "not a log", 12/12 passing
+```
+
+because line one *declares something* and the sanction was `(?:const|let|var)\s.*<binding>`. Four
+more had the same shape — a presence test followed by a real read, a coordinate in a `return`, one
+put into state, one written three lines below a *completed* sanctioned call. **A line-level sanction
+is the reversal to expect**, because it reads as a simplification. The unit is the individual read
+at its offset, sanctioned only by a fact about itself: compared to null/undefined, or inside the
+still-open parens of a sanctioned call. Line-level sanctions survive only for mentions carrying no
+coordinate, where there is nothing to leak.
+
+**Three more a later session should not re-derive:**
 
 - **`return { path, capture }` in `upload.ts` is classified SAFE, and the argument is the holder
   assertion rather than the classification.** Returning it hands it to a caller, and every caller is
   a file that imports the type — so the flow is bounded by assertion 1. Reading that as a hole and
-  "tightening" it would fail the producer for doing its job.
-- **Mutating found two detector bugs, both mine, and one was a false positive that reads exactly
-  like a real finding.** `source.slice(start + 1)` dropped the leading `e` of `export`, leaving the
-  signature unmatchable by the strip — so `latitude: number` in the parameter list counted as a raw
-  use. A detector that fails *closed* on correct code is as dangerous as one that fails open,
-  because the fix under time pressure is to loosen it.
-- **The sink window is three lines, and it has a reason.** `resolvePhotoLocation(mode, capture ?? …)`
-  is written across three lines in the composer, so the argument line carries no callee. Three is
-  the smallest window spanning the calls actually written; widening it starts swallowing unrelated
-  statements.
-- **The suite gained 14, not 12.** Twelve own cases plus two from `no-service-role-key.test.ts` and
-  `no-geoapify-key.test.ts`, which emit a case per file walked — exactly the *"+2, not +3"* rule
-  `running-locally.md`'s Unit tests row already states. **The two count claims were NOT stale
-  beforehand**: measured 3442/139 on a clean `development` by removing the file and re-running, not
-  inferred by subtraction, which is what the first pass got wrong.
+  "tightening" it would fail the producer for doing its job. It reaches only *whole-object* returns;
+  a `return` carrying a coordinate is judged as a read.
+- **The sink check walks paren depth, and the direction is the point.** Testing that a sink name
+  merely appears in the lookback covers the three lines *below* a completed call. The lookback is
+  three lines because `resolvePhotoLocation(mode, capture ?? …)` spans three in the composer.
+- **The suite gained +21 over `development`, and only 19 of those are this file's.** The other two
+  come from `no-service-role-key.test.ts` and `no-geoapify-key.test.ts`, which emit a case per file
+  walked — the *"+2, not +3"* rule `running-locally.md`'s Unit tests row already states. **The count
+  claims were NOT stale beforehand**: measured 3442/139 on a clean `development` by removing the
+  file and re-running, rather than inferred by subtraction.
 
-**Verified by mutating real source, after committing** (the handoff's own `git checkout` hazard):
-an unsanctioned read in the composer → 1F, the rounding removed from `places.ts` → 2F, a new file
-importing `ExifCapture` → 1F, clean tree → 12P.
+**Verified by mutating real source, after committing** (the handoff's own `git checkout` hazard).
+Every shape below was a silent pass against the first draft and is now a named regression test:
+aliasing the coordinate into a local then logging it → 1F, an emit three lines under a completed
+sanctioned call → 1F, a coordinate in a JSX `return` → 1F, an unsanctioned read → 1F, the rounding
+removed from `places.ts` → 2F, a new file importing `ExifCapture` → 1F, clean tree → 19P.
 
 ```bash
-npx vitest run src/__tests__/no-unrounded-photo-coordinate.test.ts   # 12/12
+npx vitest run src/__tests__/no-unrounded-photo-coordinate.test.ts   # 19/19
 npm run docs:check                              # 39 passed, 0 failed, 3 skipped (no Postgres)
 ```
 
