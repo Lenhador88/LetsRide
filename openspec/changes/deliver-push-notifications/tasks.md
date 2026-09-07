@@ -127,53 +127,54 @@ migration in this epic behind a native change nothing here can exercise.
 capability, and an FCM project with `google-services.json`. **The pure half is testable here; the
 rest is not, and every box that is not carries `[device]`.**
 
-- [ ] 2.1 `@capacitor/push-notifications`, **pinned exact** like every other Capacitor package —
+- [x] 2.1 `@capacitor/push-notifications`, **pinned exact** like every other Capacitor package —
   they must move together, so a caret on one is a version skew waiting for whichever `npm install`
-  runs first. Ten runtime dependencies after this; re-derive with
-  `node -p "Object.keys(require('./package.json').dependencies).length"` rather than trusting that.
-- [ ] 2.2 The one-sentence justification, in `package.json`'s vicinity and in the PR body, per
+  runs first. **Thirteen** runtime dependencies after this, not the ten this line said when it was written —
+  re-derive with `node -p "Object.keys(require('./package.json').dependencies).length"` rather than
+  trusting either number. Landed as `8.1.2`, the `latest` dist-tag for the Capacitor 8 line.
+- [x] 2.2 The one-sentence justification, in `package.json`'s vicinity and in the PR body, per
   `.claude/agents/native.md`: *Apple and Google hand a device token only to native code, so there
   is no route from the webview to APNs or FCM at all; this plugin is that route and nothing in the
   dependency tree substitutes for it.* Name what it pulls in: the iOS Push Notifications
   capability and `aps-environment` entitlement, and Android 13+'s `POST_NOTIFICATIONS` runtime
   permission.
-- [ ] 2.3 `src/lib/push/priming.ts` — the pure `pushPrimingState`, modelled on
+- [x] 2.3 `src/lib/push/priming.ts` — the pure `pushPrimingState`, modelled on
   `src/lib/location/priming.ts` and carrying the same kind of header: each rule with the trap it
   avoids. States: `hidden`, `ask`, `blocked`, and **`stalled`** — granted, registered, no token.
-- [ ] 2.4 `src/lib/push/__tests__/priming.test.ts` — every state, including the two the location
+- [x] 2.4 `src/lib/push/__tests__/priming.test.ts` — every state, including the two the location
   precedent has no analogue for: non-native platform (always `hidden`, before any permission
   read), and `stalled`.
-- [ ] 2.5 `src/lib/push/installation.ts` — `installationId()`: read the id from the existing
+- [x] 2.5 `src/lib/push/installation.ts` — `installationId()`: read the id from the existing
   secure store, generating one with `crypto.randomUUID()` on first call. **No new plugin** (D3);
   `@aparajita/capacitor-secure-storage` already holds the refresh token, so the value's lifetime is
   exactly *this install on this device*. A unit test that a second call returns the first value.
-- [ ] 2.6 `src/lib/push/registration.ts` — `checkPushPermission()`, `requestPushPermission()`
+- [x] 2.6 `src/lib/push/registration.ts` — `checkPushPermission()`, `requestPushPermission()`
   (the **only** function that may prompt), the `registration` / `registrationError` listeners,
   `registerCurrentDevice()` and `releaseCurrentDevice()`. Both RPC calls pass the installation id.
   Non-native platforms return early before touching the plugin, the way `secure-store.ts` does
   through `Capacitor.isNativePlatform()`.
-- [ ] 2.7 **Cold-start registration.** `registerCurrentDevice()` runs unconditionally on every cold
+- [x] 2.7 **Cold-start registration.** `registerCurrentDevice()` runs unconditionally on every cold
   start while a session exists and the permission is granted — not only on first grant. This is
   the other end of D8's window and the thing that re-homes a shared device. Because the row is
   keyed on the installation, the re-home is **total**; under a token-keyed table it would move one
   token and leave any other row for the same device behind.
-- [ ] 2.8 `src/components/push/PushPrimingSheet.tsx` — `ContextMenu`-based, `ask` / `blocked`
+- [x] 2.8 `src/components/push/PushPrimingSheet.tsx` — `ContextMenu`-based, `ask` / `blocked`
   modes, only `Continue` reaching the API. Copy claims listed in the header as
   `LocationPrimingSheet` lists its two, since Apple reads the in-app rationale.
-- [ ] 2.9 `src/components/push/PushPrimingRow.tsx` — geometry borrowed from `UseMyLocationRow` /
+- [x] 2.9 `src/components/push/PushPrimingRow.tsx` — geometry borrowed from `UseMyLocationRow` /
   `ExploreClubsStrip`, a `<button>` with `aria-haspopup="dialog"`. Draws at the top of
   `/notifications` and nowhere else (Q3's default).
-- [ ] 2.10 Wire the row into `src/app/(app)/notifications/page.tsx`. One call site.
-- [ ] 2.11 `signOut()` in `src/lib/actions/auth.ts` gains `releaseCurrentDevice()` **before**
+- [x] 2.10 Wire the row into `src/app/(app)/notifications/page.tsx`. One call site.
+- [x] 2.11 `signOut()` in `src/lib/actions/auth.ts` gains `releaseCurrentDevice()` **before**
   `supabase.auth.signOut()`, failing silently. Extend the function's header, which already
   explains the ordering of the other four clears, with why this one is first and why its failure
   does not block sign-out.
-- [ ] 2.12 Revoked-permission detection: on the next permission read after a rider disables
+- [x] 2.12 Revoked-permission detection: on the next permission read after a rider disables
   notifications in OS settings, call `releaseCurrentDevice()` — **this installation only**, not
   every row for the rider, which would unsubscribe their other phone. Providers keep accepting
   sends for a token whose app permission was revoked and silently drop them, so nothing else would
   notice.
-- [ ] 2.13 `src/lib/query/keys.ts` — a key for the push registration state, spelled there rather
+- [x] 2.13 `src/lib/query/keys.ts` — a key for the push registration state, spelled there rather
   than inline, with the same header note the file's other entries carry.
 - [ ] 2.14 Permission strings and native project config — **[device]**, on a Mac.
   `NSUserNotificationsUsageDescription` is not a thing; what Apple reads is the in-app rationale

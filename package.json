@@ -32,6 +32,7 @@
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "8.0.0",
     "@capacitor/core": "8.5.0",
+    "@capacitor/push-notifications": "8.1.2",
     "@sentry/capacitor": "4.3.0",
     "@sentry/react": "10.69.0",
     "@supabase/supabase-js": "2.111.0",

@@ -5,6 +5,7 @@ import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cac
 import { clearRiderLocation } from '@/lib/location/rider-location'
 import { clearAllStashedInviteTokens, takeAnyStashedInviteToken } from '@/lib/invites/pending-token'
 import { clearIntroductionDismissals } from '@/lib/clubs/introduction-dismissal'
+import { releaseCurrentDevice } from '@/lib/push/registration'
 import { routes } from '@/lib/routes'
 import { clearSessionStore } from '@/lib/supabase/session-store'
 import { edgeFunctionErrorCode } from '@/lib/supabase/functions'
@@ -245,6 +246,11 @@ export async function updatePassword(
 /**
  * Signing out, and destroying everything the session left behind (task 4.5).
  *
+ * **`releaseCurrentDevice()` runs FIRST and is the only server write here** —
+ * PD-431. Everything else below is local state; that one needs a live session,
+ * so it cannot be reordered down with the rest. Its own comment at the call
+ * site carries why its failure is swallowed and what window that leaves.
+ *
  * **`clearQueryCache()` rather than `invalidate(EVERYTHING)`, and the
  * difference is the whole point.** Invalidating refetches, which is right for a
  * block and catastrophic here: the next rider on a shared device would watch
@@ -296,6 +302,22 @@ export async function updatePassword(
  */
 export async function signOut(): Promise<ActionState> {
   const supabase = await resolveSupabase()
+
+  // **First, and before the revocation** — `release_push_device` is a server
+  // write and needs a live session, so it cannot be moved down beside the other
+  // five clears. It is also the only one of the six whose failure harms the
+  // NEXT rider rather than the last one: an unreleased row keeps naming the
+  // departing rider, and on a shared phone their notifications render on
+  // somebody else's lock screen.
+  //
+  // Its failure must not block sign-out — the offline case above applies here
+  // too, and a rider who pressed Sign out and is still signed in is the worse
+  // outcome by far. The residual is stated rather than claimed closed: the
+  // window lasts **until the app is next opened with a session**, which is when
+  // `registerOnBoot()` re-homes the installation. That bound holds only because
+  // `push_devices` is keyed on the installation (`078` §1); a token-keyed table
+  // makes the same sentence false.
+  await releaseCurrentDevice().catch(() => {})
 
   const { error } = await supabase.auth.signOut()
   if (error) await supabase.auth.signOut({ scope: 'local' })
