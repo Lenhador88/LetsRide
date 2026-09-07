@@ -274,6 +274,30 @@ with a free slot, no halted queue, and nothing new in `Development (AI)` across 
 boundaries. Then open the last run's session and read its transcript, which the owner can and a
 session cannot.
 
+### The morning brief is a SECOND Routine, and it is read-only
+
+**A daily 08:00 firing reads the board, the PRs, the deploys and the two databases and writes the
+owner a two-to-five-minute brief — where we stand, what needs them, what to consider now and
+later, and one idea from outside the box.** The procedure is
+[`.claude/commands/morning-brief.md`](../../.claude/commands/morning-brief.md); the Routine's
+prompt says little more than *read that file*, for the same reason the queue's does. Requested by
+the product owner on 2026-09-07.
+
+**It builds nothing and moves nothing** — no branch, no PR, no status change, no slot label, and
+above all nothing into `Queued (AI)`, which stays the owner's start signal. Its single write is one
+Linear document, `Morning brief log`, which is how the next morning knows what the last one already
+proposed: no session can read another's transcript, so a brief that lives only in its own session
+cannot avoid repeating itself.
+
+**Being read-only is what makes it safe to fire beside a live build**, rather than the hour it
+fires at. The queue's collisions are resources — one test database, two fixed ports, one working
+tree — and a session that only reads touches none of them.
+
+**Its clock is the one maintenance item, and it is not the queue's problem.** Cron is UTC with no
+daylight-saving handling, so `0 6 * * *` is 08:00 in Amsterdam until 2026-10-25 and 07:00 after it;
+`0 7 * * *` restores it for the winter. A *daily* cron is stored verbatim — only an hourly one is
+re-anchored server-side to the minute it was submitted.
+
 ### Do not ask permission to touch Linear
 
 Standing grant from the product owner, 2026-08-07, in their words: *"I dont want you to ask for
