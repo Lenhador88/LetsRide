@@ -293,10 +293,10 @@ cannot avoid repeating itself.
 fires at. The queue's collisions are resources — one test database, two fixed ports, one working
 tree — and a session that only reads touches none of them.
 
-**Its clock is the one maintenance item, and it is not the queue's problem.** Cron is UTC with no
-daylight-saving handling, so `0 6 * * *` is 08:00 in Amsterdam until 2026-10-25 and 07:00 after it;
-`0 7 * * *` restores it for the winter. A *daily* cron is stored verbatim — only an hourly one is
-re-anchored server-side to the minute it was submitted.
+**Its clock is the one maintenance item, and it is not the queue's problem** — cron is UTC with no
+daylight-saving handling, so the expression has to be edited twice a year. The dates and the two
+expressions are in the procedure's own §What the owner sets up, once, and are deliberately not
+copied here: a fact that must be edited on a known morning wants one home, not three.
 
 ### Do not ask permission to touch Linear
 

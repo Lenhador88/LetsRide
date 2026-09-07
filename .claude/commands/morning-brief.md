@@ -18,11 +18,9 @@ Read `CLAUDE.md` fully first — it is auto-loaded and it is the contract. Works
 team **Pedro & Dave** (`PD`), project **Let's ride (AI)**
 (`88f3f224-ecf0-46f0-a032-c86b7a12f81c`); note the curly apostrophe in that name and pass the id.
 
-**No section of this file is numbered `STEP n`, deliberately.** `queue-run.md` and
-`queue-pickup.md` own that namespace, `src/__tests__/agent-briefs.test.ts` resolves every
-`STEP n` citation against *their* headings only, and a third file minting steps into the same
-space is how a citation resolves to the wrong procedure with nothing red. Cite the sections here
-by name.
+**No section here is numbered `STEP n`** — `queue-run.md` and `queue-pickup.md` own that
+namespace and `src/__tests__/agent-briefs.test.ts` resolves every citation against their headings
+alone. Cite the sections here by name.
 
 ---
 
@@ -53,9 +51,16 @@ stops the brief repeating itself). If a read fails and there is no brief, there 
 ## The read pass
 
 **Every line of the brief traces to one of these calls.** A claim with no call behind it does not
-go in the brief — `CLAUDE.md` §Working Principles, *a claim about state needs the command that
-checks it*. Where a call is unavailable, say so in the brief in one clause and carry on: **a
+go in the brief: a claim about state needs the command that checks it. Where a call is unavailable, say so in the brief in one clause and carry on: **a
 missing connector is a line in the brief, never a reason to send nothing.**
+
+**Find each tool by what it does, not by the name written here.** MCP connector ids are not
+stable — on 2026-08-08 every server re-registered under a UUID prefix and `mcp__Linear__*` stopped
+resolving with no error, which for an unattended firing is the difference between a brief and
+silence. If an exact name does not resolve, search for it by keyword (`ToolSearch`, e.g. `+linear
+issues`, `+github pull request`) and call whatever is providing that capability this morning. Both
+sibling procedures open the same way. If a capability is genuinely absent, that is a line in the
+brief, not the end of it.
 
 Read in this order. It is roughly cheapest-first, and the board answers most of the brief.
 
@@ -63,13 +68,34 @@ Read in this order. It is roughly cheapest-first, and the board answers most of 
 
 ```
 mcp__Linear__list_issues  project=88f3f224-ecf0-46f0-a032-c86b7a12f81c limit=100
-                          fields=["identifier","title","status","labels","updatedAt","url"]
+                          fields=["id","title","status","labels","updatedAt","url"]
 ```
 
-One call, then read it locally. The statuses are exact strings and **must not be typed from
-memory** in any later call — `mcp__Linear__list_issue_statuses team=Pedro & Dave` is the list, and
-a `save_issue` naming a status that no longer exists returns a successful-looking payload with the
-field silently dropped. What to pull out:
+**`id` is the field that returns `PD-434`. There is no `identifier` field** — passing one is not a
+missing column, it is `Invalid arguments for tool list_issues` and the brief's largest read fails
+outright, at 08:00, with nobody there to correct it. Measured 2026-09-07.
+
+**That call answers the moving half of the board and cannot answer the still half.** The default
+order is `updatedAt` descending, so `limit=100` is a *recency window* — about thirty hours on a
+busy day — and the rows that matter most to the owner are the ones that have not moved in weeks.
+Measured on 2026-09-07: 54 issues carry `Owner only` and 20 of them fell inside the top 100, and
+four `Needs decision` issues had sat untouched since August. **A short window is not an error; it
+is a silently shorter brief**, which is the worst shape for something nobody is watching.
+
+So the two owner-facing rows get their own filtered calls, where the window cannot reach them:
+
+```
+mcp__Linear__list_issues  project=<id> label="Owner only" limit=250
+mcp__Linear__list_issues  project=<id> state="Needs decision" limit=250
+mcp__Linear__list_issues  project=<id> state="Needs help"     limit=250
+```
+
+**Check `hasNextPage` on every one of them.** It is the only signal that a list was cut short, and
+a truncated `Owner only` list reads exactly like a shorter to-do list.
+
+The statuses above are exact strings and **must not be typed from memory** —
+`mcp__Linear__list_issue_statuses team=Pedro & Dave` is the list, and a status name that no longer
+exists filters to nothing rather than erroring. What to pull out:
 
 | For the brief | Where |
 |---|---|
@@ -99,7 +125,8 @@ is building it; otherwise it is the session that owns it and belongs under *Wher
 **Read the jobs, not the run** — a run whose real jobs all `skipped` tested nothing
 (`docs/reference/ci.md`).
 
-**`development` ahead of `main` is the steady state, not drift** (`docs/HANDOFF.md` §Branching).
+**`development` ahead of `main` is the steady state, not drift** — `main` moves only by
+promotion, and the two are level only in the minutes after one.
 It earns a line only when the gap has grown for several days, or when it carries something the
 brief is otherwise recommending.
 
@@ -127,10 +154,10 @@ Four things come out of these and only the last two are usually worth a line:
   never a bare number typed from a doc.
 - **Drift the other way** — a migration applied to a project with *no file behind it*. That one is
   always a line: it cannot be fixed by applying anything and the next author silently takes the
-  same number (`CLAUDE.md` §Working Principles).
+  same number.
 - **A paused project.** The free tier auto-pauses after about seven days idle and a paused project
-  serves nothing with no alert. If `get_project` reports anything but active, that is the first
-  line of *Needs you*.
+  serves nothing with no alert. If `get_project` reports anything but active, it leads *Needs you*
+  — second only to a failed production deploy, per the order in §2 — Needs you.
 - **A security advisor that is not in the accounting** — `docs/reference/migrations.md`
   §Security advisors carries the per-migration table. An unexpected advisor is one not in it; a
   one-advisor difference between the two projects is almost always a pending promotion and is not
@@ -152,8 +179,8 @@ rules.
 
 **Four sections, in the owner's order, and nothing else.** No preamble, no "here is your morning
 brief", no closing summary. Around seventy rendered lines total, of which the rating blocks are
-about half — this is a phone read before coffee, and the discipline is `CLAUDE.md` §Working
-Principles: *if a paragraph has no action in it, delete it.*
+about half — this is a phone read before coffee, and the discipline is the one `CLAUDE.md`
+already states: if a paragraph has no action in it, delete it.
 
 ### 1 — Where we stand
 
@@ -168,12 +195,11 @@ production down, then a paused project, then a decision blocking a build, then t
 
 Each is at most two lines: *what is stuck* and *what you do about it*, with the issue's short
 title in front of any id — **never a bare `PD-nnn`**, which means something to whoever wrote it
-and nothing to whoever reads it on a phone (`CLAUDE.md` §Working Principles).
+and nothing to whoever reads it on a phone.
 
 **"Nothing needed" is a valid and preferred answer, and must be written as one line rather than
 padded out.** A brief that manufactures an owner action to look useful spends the credibility the
-real ones need — the same rule as `CLAUDE.md` §Working With the Product Owner on manufactured
-objections.
+real ones need, which is the rule `CLAUDE.md` already gives for manufactured objections.
 
 **Re-measure before quoting an `Owner only` item.** Two in a row have been found already-fixed,
 and that is the shape rather than a coincidence: a dashboard setting has no file to change, so
@@ -185,7 +211,8 @@ carries the credential-free probes.
 **Now, then later, as lettered options — at most three across both**, ordered by
 `Recommendation` descending, each with its title on its own line, a short practical explanation in
 its own paragraph, and the five-rating block in its own blockquote. The format is `CLAUDE.md`
-§Working Principles and the worked example there is the one to copy, line breaks included.
+§The debrief shape — Points, Proposals, Question, and the worked example there is the one to
+copy, line breaks included.
 
 Three is a ceiling that exists because the ratings are what make an option decidable and they cost
 about ten lines each. Fewer is better. **An option that was proposed in a previous brief and not
