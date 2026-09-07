@@ -23,13 +23,23 @@ schema's contract.
 next reader must treat it.** This change (`063`, PD-174) made it false by adding the trigger.
 `077` (PD-293) then dropped `max_riders` in full — the column, `018`'s
 `rides_max_riders_range` CHECK and `private.enforce_ride_capacity()` — so the scenario's WHEN
-can no longer be satisfied by any row.
+names a column that does not exist.
 
-**That is why "check whether the cap is enforced" is the wrong check.** A reader who greps
-`enforce_ride_capacity`, finds `077` dropping it, and concludes the scenario is true again would
-restore a claim about a column that does not exist:
+**The standing spec already says so, under a DIFFERENT scenario name** —
+`No capacity rule is claimed for ride_members`, which cites `077` and the drop. Searching for
+`Unenforced capacity` finds nothing there and reads as "the standing spec is silent on
+capacity"; it is not. Archive compares scenario NAMES, but a spec means what it says, so search
+the subject rather than the name:
 
-    git grep -n "max_riders" -- src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'    # 0 — all four are obituaries
+    grep -n "max_riders" openspec/specs/database-enforced-integrity/spec.md
+
+**ALL THREE deltas therefore fail to archive TODAY, and the deletion below does not fix that.**
+`openspec archive` refuses a MODIFIED block missing a scenario the current spec has
+(`specs-apply.js`), and none of the three carries `No capacity rule is claimed for
+ride_members`. That is a loud throw rather than a silent reinstatement — so the danger this
+banner was written about is smaller than it claims, and the refresh in §6.1 is what actually
+clears it. **`grep -rn "^### Requirement:" openspec/changes/*/specs/` returns 791 lines**; the
+form scoped to this requirement returns 3.
 
 Two things followed, and both are tasks (see tasks.md §6):
 
@@ -40,18 +50,22 @@ Two things followed, and both are tasks (see tasks.md §6):
      capacity one. **Still open — it is an archive-time task by construction.**
   2. **DONE — PD-264, 2026-09-07.** The capacity scenario is deleted from both sibling deltas
      and each now carries a comment where it stood saying why it must not be restored, plus a
-     pointer to this change in its coordination banner. The reinstatement can no longer happen
-     from either file, whichever order the three archive in.
+     pointer to this change in its coordination banner. So no delta can land the stale text
+     beside the standing spec's accurate `No capacity rule is claimed for ride_members`.
+
+  4. **NEW — §6.4, and it is the one that actually unblocks archiving.** All three deltas need
+     the §6.1 refresh, not just this one; the siblings' own task files say nothing about it.
 
 The two ADDED requirements below have no other claimant.
 
 ⚠ **DO NOT ARCHIVE THIS CHANGE WITHOUT READING PD-436 FIRST.** `077` reversed the feature this
 change specifies, and `specs/ride-capacity/spec.md` in this directory is an ADDED capability of
-fourteen requirements describing a cap the database no longer has. Archiving would create
-`openspec/specs/ride-capacity/spec.md` as a standing contract for a dropped feature — a strictly
-larger version of the defect this banner already exists to prevent, and one the banner did not
-name until PD-264's build found it. What to do with this change directory is that issue's
-question, and it is not answered here.
+**fifteen** requirements describing a cap the database no longer has — re-derive with
+`grep -c "^### Requirement:" specs/ride-capacity/spec.md` rather than trusting that number.
+Archiving would create `openspec/specs/ride-capacity/spec.md` as a standing contract for a
+dropped feature, and nothing refuses it: `readableOverview` only declines to create a new spec
+when the Purpose contains an HTML comment, and that file's does not. What to do with this change
+directory is that issue's question, and it is not answered here.
 -->
 
 ## MODIFIED Requirements
@@ -88,6 +102,14 @@ select cmd, count(*) from pg_policies
 
 <!--
 REMOVED FROM THIS REQUIREMENT, deliberately and by this change:
+
+⚠ THE TWO SPACES INDENTING THE HEADING BELOW ARE LOAD-BEARING. Do not de-indent it and do not
+let a formatter do so. `SCENARIO_HEADER = /^####\s+/` in the installed parser
+(`dist/core/parsers/requirement-text.js`) is anchored, so the indentation is the only thing
+hiding it — and being inside `<!-- -->` does NOT help: `maskHtmlComments` is applied only in
+`extractPurposeSection`, while `parseDeltaSpec` and `extractRequirementsSection` mask code
+fences alone. A flush `####` here would re-create PD-264's defect in this very file, with
+nothing to catch it. The two sibling deltas write the name in prose for the same reason.
 
   #### Scenario: Unenforced capacity is recorded, not silently assumed
   - **WHEN** `rides.max_riders` is set

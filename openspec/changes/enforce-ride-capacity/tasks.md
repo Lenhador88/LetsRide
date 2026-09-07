@@ -3,10 +3,11 @@
 > ⚠ **THE FEATURE THIS CHANGE SPECIFIES WAS REMOVED — do not archive without reading PD-436.**
 > `063` shipped the cap; `077` (PD-293, 2026-08-24) then dropped `max_riders` in full — the
 > column, `018`'s `rides_max_riders_range` CHECK and `private.enforce_ride_capacity()`. So
-> `specs/ride-capacity/spec.md` below is fourteen requirements describing a rule the database no
-> longer has, and archiving this change would fold them into `openspec/specs/` as a standing
-> contract. **§6.2 and §6.3 are done (PD-264) and are the only tasks here that still apply.**
-> What happens to this directory is PD-436's question.
+> `specs/ride-capacity/spec.md` below is **fifteen** requirements describing a rule the database
+> no longer has (`grep -c "^### Requirement:" specs/ride-capacity/spec.md`), and archiving this
+> change would fold them into `openspec/specs/` as a standing contract. **§6.2 and §6.3 are done
+> (PD-264); §6.1 and §6.4 are the only tasks here that still apply, and §6.4 is what blocks
+> archiving today.** What happens to this directory is PD-436's question.
 
 Specs: `specs/ride-capacity/spec.md`, `specs/database-enforced-integrity/spec.md`.
 Mechanism and the rejected alternatives: `design.md`.
@@ -164,6 +165,21 @@ dispatched under. Filed as its own issue so it is not lost with this change dire
 - [x] 6.3 **DONE — PD-264, 2026-09-07.** Both siblings' coordination banners now name this
       change as the third claimant, carry the re-derivation command, and say that this change
       *removes* where the other two *extend*.
+- [ ] 6.4 **Refresh ALL THREE deltas against the standing spec, not just this one — and this is
+      what actually blocks archiving today.** `openspec archive` refuses a MODIFIED block that
+      lacks a scenario the current spec has (`specs-apply.js`: *"current spec contains
+      scenario(s) not present in the modified block"*). The standing
+      `openspec/specs/database-enforced-integrity/spec.md` carries
+      `#### Scenario: No capacity rule is claimed for ride_members` — which is **already correct
+      and current**, citing `077` and the drop — and none of `add-account-deletion`,
+      `add-ride-map-tiles` or this change carries it. So all three throw on archive right now.
+
+      **§6.1 covers this change only; the siblings' own task files say nothing about it**, which
+      is why this task exists and is filed here rather than there. Keep the standing scenario
+      when refreshing — do not "fix" it, and do not reinstate the deleted
+      `Unenforced capacity is recorded, not silently assumed` beside it.
+
+      Measured 2026-09-07 (PD-264): missing from all three deltas.
 
 ## 7. Apply and verify
 

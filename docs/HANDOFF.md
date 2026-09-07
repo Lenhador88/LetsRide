@@ -213,36 +213,58 @@ trigger. Since 2026-08-24 it is **void** rather than false: `077` (PD-293) dropp
 outright — the column, `018`'s `rides_max_riders_range` CHECK and
 `private.enforce_ride_capacity()` — so the scenario's WHEN names a column that does not exist.
 
-**That correction is kept because a careful reader re-derives the wrong answer from the same
-evidence.** The natural check is to grep `enforce_ride_capacity`; it finds `077` removing it, which
-reads as *"no trigger limits `ride_members` by `max_riders` — so the scenario is true again, put it
-back"*. Every one of the three edited files now says why that is wrong at the point it would be
-read.
+**The standing spec ALREADY said so, under a different scenario name, and the first draft of this
+branch claimed the opposite** — caught by the pre-merge review, which is the finding worth carrying.
+`openspec/specs/database-enforced-integrity/spec.md` files
+`#### Scenario: No capacity rule is claimed for ride_members`, citing `077` and the drop. Grepping
+`Unenforced capacity` there returns nothing and reads as *"the standing spec is silent on
+capacity"*. **Archive compares scenario NAMES; a spec means what it SAYS** — so search the subject:
 
-**Three things a later session should not re-derive:**
+```bash
+grep -n "max_riders" openspec/specs/database-enforced-integrity/spec.md      # the claim, under another name
+```
 
-- **The deletion is a comment, not an absence.** Each sibling keeps an HTML comment where the
-  scenario stood. `openspec archive` compares scenario NAMES, so a `####` heading inside a comment
-  would still count — the removal notes deliberately write the name in prose. The pre-existing
-  indented `#### Scenario:` inside `enforce-ride-capacity`'s own comment block is the established
-  pattern and is safe for the same reason `^####` does not match it.
+**So the reinstatement was never silent, and all three deltas fail to archive TODAY.**
+`openspec archive` refuses a MODIFIED block missing a scenario the current spec has
+(`specs-apply.js`: *"current spec contains scenario(s) not present in the modified block"*), and
+none of the three carries `No capacity rule is claimed for ride_members`. That is a loud throw, not
+a silent overwrite — **the danger PD-264 and three coordination banners describe is real but
+smaller than they claim**, and what actually unblocks archiving is refreshing each delta against the
+standing spec. Task 6.1 covered only `enforce-ride-capacity`; **§6.4 is new and covers all three**,
+because the siblings' own task files say nothing about it.
+
+**Four things a later session should not re-derive:**
+
+- **The deletion is a comment, not an absence — and an HTML comment does NOT hide a heading.**
+  Each sibling keeps a comment where the scenario stood, writing the name in **prose**, and that
+  is required rather than stylistic: `maskHtmlComments` (`specs-apply.js`) is applied only in
+  `extractPurposeSection`, while `parseDeltaSpec` and `extractRequirementsSection` mask code
+  fences alone. So a flush `#### Scenario:` inside `<!-- -->` still parses as a scenario. The
+  pre-existing indented one in `enforce-ride-capacity`'s comment block survives on its **two
+  leading spaces** alone — `SCENARIO_HEADER = /^####\s+/` is anchored — and that file now carries
+  a warning saying the indentation is load-bearing, because a formatter would re-create the defect
+  with nothing to catch it.
 - **The banners now name three claimants, and neither sibling knew about the third.** Both carried
   the capacity scenario forward verbatim because it was true when they were drafted, and both
   *extend* the requirement where `enforce-ride-capacity` *removes* from it — that asymmetry is why
   the reinstatement was silent, and it is now written in both banners.
-- **Task 6.1 stays open on purpose.** It is an archive-time task by construction ("re-read the
-  standing spec as the previous archive left it"), and neither sibling has archived. 6.2 and 6.3
-  are the ones this branch closed.
+- **Task 6.1 stays open on purpose, and §6.4 was added beside it.** 6.1 is an archive-time task by
+  construction ("re-read the standing spec as the previous archive left it") and covers this change
+  only; 6.4 extends the same refresh to both siblings. 6.2 and 6.3 are the ones this branch closed.
+- **`npx openspec validate --all --strict` is the only gate that parses these files, and it is not
+  in the standard list.** It passes here; the 5 failures it reports are in untouched changes. On an
+  openspec-only diff, run it and name it.
 
 **Filed rather than folded in: PD-436, and it is the larger landmine.**
 `openspec/changes/enforce-ride-capacity/specs/ride-capacity/spec.md` is an **ADDED** capability of
-fourteen requirements for the feature `077` reversed, so archiving that change would create
+fifteen requirements for the feature `077` reversed, so archiving that change would create
 `openspec/specs/ride-capacity/spec.md` as a standing contract for a cap the database does not have —
 a whole file with no existing text to contradict it, where PD-264's defect was one scenario inside a
-requirement. It is separate work because its resolution is a decision about the change directory's
-fate (delete it, archive it as superseded if the tooling allows, or keep the banner). **A
-`⚠ DO NOT ARCHIVE` block naming PD-436 is in the delta and at the top of `tasks.md`** — that is
-option 3 as a holding measure, not the answer.
+requirement. **Nothing refuses it**: `readableOverview` declines to create a new standing spec only
+when the Purpose carries an HTML comment, and that file's does not. It is separate work because its
+resolution is a decision about the change directory's fate (delete it, archive it as superseded if
+the tooling allows, or keep the banner). **A `⚠ DO NOT ARCHIVE` block naming PD-436 is in the delta
+and at the top of `tasks.md`** — that is option 3 as a holding measure, not the answer.
 
 ```bash
 grep -rn "^#### Scenario: Unenforced capacity" openspec/changes/ | grep -v archive   # 0
