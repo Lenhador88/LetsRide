@@ -367,7 +367,16 @@ html {
    `--shadow-floating` is untouched and needed no change. Its two offsets are
    both downward (`0 2px 6px`, `0 1px 2px`), so with no gap it fell entirely on
    the tab bar — the "shadow bleeds onto it" half of the report. Give the control
-   somewhere to cast and the same shadow lands on content. */
+   somewhere to cast and the same shadow lands on content.
+
+   **Both offsets assume the 88px navigation variant, and `.bottom-navbar` has
+   always made the same assumption.** `Navbar` renders TALLER by
+   `--navbar-action` whenever `STICKY_ACTIONS[pathname]` is set — `/postcards`,
+   `/rides`, `/clubs`, `/clubs/explore` — and neither class accounts for it.
+   Nothing is wrong today because every caller of either is a detail screen and
+   none of those four is in the map. A floating action or a sticky bar placed on
+   one of them would sit 64px too low, so **check the map before adding a
+   caller**; it is not a defect to fix here, because no page can reach it. */
 .bottom-floating-action {
   bottom: calc(
     var(--safe-bottom) + var(--navbar-tabs) + 1px + var(--floating-action-gap)

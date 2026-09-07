@@ -976,8 +976,9 @@ measurement as current.
         Symmetry needs a migration and a change to `private.is_ride_crew`; the owner declined it.
 
         **The club detail is converted too, as of 2026-09-06** — the owner answered Q1 the same
-        way. It is a **different class of departure** and it is logged separately, under
-        §Club detail below; do not read this entry as covering it.
+        way. It is a **different class of departure** and it is logged separately, in
+        **§Club detail, which is ABOVE this section** in this file; do not read this entry as
+        covering it.
   - [ ] **The stream does not page, and the club's does.** Both sources are read whole at their
         own bounds; a ride that overruns them is cut at the horizon and says so, handing off to
         the crew list. See `src/lib/data/ride-timeline.ts` for why a bounded event does not

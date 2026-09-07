@@ -256,10 +256,13 @@ reserves 64px for an action `STICKY_ACTIONS` does not hold *at all*, so its fix 
 where this was a **swap**, in a file the diff never opened.
 
 ```bash
+# 10 hits across 6 files, every one a live pointer to the new name.
 git grep -n "bottom-floating-action\|ClubCreateAction" -- src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'
-# 2 files, both deliberate history: ClubCreateAction.tsx says what it was, RideCreateSheet.tsx
-# names it as the source of an argument that outlived the name. Both are obituaries, not pointers.
+
+# 2 files, and BOTH are obituaries rather than pointers: ClubCreateAction.tsx says what it was,
+# RideCreateSheet.tsx names it as the source of an argument that outlived the name.
 git grep -c "ClubCreateBar" -- src/
+
 npx vitest run src/components/ui/__tests__/FloatingAction.test.tsx   # 6/6
 ```
 
@@ -473,7 +476,8 @@ the create affordance are **never both present**, because answering collapses th
 chip on the first content line and hands the corner to a floating action. `ClubCreateBar` was
 untouched at that point — `2043:10604` instances a variant **26 other frames** use, and that half
 (Q1) was unanswered. **Q1 was answered the same day and the club half has since shipped** — see
-§The floating action stopped sitting on the tab bar below.
+§The floating action stopped sitting on the tab bar, and the club got one too, which is **above**
+this entry, since this file runs newest-first and that one is newer.
 
 **Five things a later session should not re-derive:**
 
