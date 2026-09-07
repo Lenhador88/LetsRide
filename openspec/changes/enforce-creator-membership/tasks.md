@@ -243,7 +243,7 @@ second insert against a database without the trigger is the original defect, del
 Each of these is a claim that reads as verified and is not. Fix them in the same PR, per the
 documentation-claims audit `reviewer` runs.
 
-- [x] 5.1 `docs/HANDOFF.md` §Known issues, first entry: the fix it names is a `security definer`
+- [x] 5.1 `docs/reference/journal.md` §Known issues, first entry: the fix it names is a `security definer`
   function called by both actions. It is a trigger, for the reasons in `design.md` §D1. Rewrite
   rather than tick — and note that it describes the orphan as "a UI orphan rather than a hidden
   row", which is true only for a **public** club. A private orphan is reachable from no screen at

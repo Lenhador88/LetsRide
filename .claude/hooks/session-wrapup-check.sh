@@ -174,9 +174,47 @@ ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) || exit 0
 [[ "$ahead" -gt 0 ]] || exit 0
 printf '%s' "$key" >"$marker" 2>/dev/null
 
-jq -cn --arg b "$branch" --arg base "${base#origin/}" --arg n "$ahead" '
+# OPENSPEC CHANGES THIS BRANCH BUILT AND DID NOT ARCHIVE — CLAUDE.md §Feature
+# Workflow, added 2026-09-07. The archive step is the half of the OpenSpec loop
+# that gets dropped: on that date `openspec/changes/` held 45 open changes and
+# `archive/` held 4, so the specs no longer described the app. Nothing else can
+# see it — `openspec/` is on CI's denylist and the reviewer runs before the PR.
+#
+# "BUILT" is two signals, and "touched" is deliberately not one of them: a
+# branch that rewrites a pointer across a dozen old change files touches them
+# all and built none, and a wrong reminder is the failure this file's own
+# header warns about. A change is named when the branch also shipped code
+# (`src/` or `supabase/`) AND either
+#   - it ADDED the change's proposal.md — the ordinary one-session flow,
+#     openspec → … → PR, where the proposal is new on the branch; or
+#   - its tasks.md GAINED a ticked box — a pickup of an earlier proposal.
+# A proposal-only branch (no code) is not named; a change never ticked and
+# never proposed here is missed, which fails safe. The directory must still
+# sit under openspec/changes/ rather than archive/ at HEAD.
+#
+# One diff and two greps against the merge base. The header above says the
+# shallow clone makes ancestry COUNTS untrustworthy; this reads a file LIST,
+# and a truncated merge base can only widen it — and a widened list still has
+# to carry an added proposal or a ticked task to name anything. Failure is
+# silent by design, like everything else here.
+unarchived=""
+changed=$(git diff --name-only "$mergebase" HEAD 2>/dev/null || true)
+if printf '%s\n' "$changed" | grep -qE '^(src|supabase)/'; then
+  while IFS= read -r d; do
+    [[ -n "$d" && -d "openspec/changes/$d" ]] || continue
+    if git diff --diff-filter=A --name-only "$mergebase" HEAD -- "openspec/changes/$d/proposal.md" 2>/dev/null | grep -q . \
+       || git diff "$mergebase" HEAD -- "openspec/changes/$d/tasks.md" 2>/dev/null | grep -qE '^\+.*- \[x\]'; then
+      unarchived+="${unarchived:+, }$d"
+    fi
+  done < <(printf '%s\n' "$changed" | grep -E '^openspec/changes/[^/]+/' \
+             | grep -v '^openspec/changes/archive/' | cut -d/ -f3 | sort -u)
+fi
+
+jq -cn --arg b "$branch" --arg base "${base#origin/}" --arg n "$ahead" --arg os "$unarchived" '
 {
   decision: "block",
-  reason: ("Wrap-up check — \($b) is pushed, clean, and \($n) commit(s) ahead of \($base).\n\nTwo standing instructions from the product owner apply before this session ends:\n\n1. Open a PR against `\($base)` (NOT main) and drive it to merged. Committed and pushed is not shipped. If it genuinely cannot merge, say so plainly as the last thing in the session, with the reason.\n2. Send the push notification `Done ; ) <name of the session>` — the name being what the session was about, so it identifies itself when read on a phone hours later. One at the end, not per milestone.\n\nIf both are already done, or this is not the wrap-up, say which in one line and stop. This fires ONCE for the whole unit of work on this branch — not once per commit — so a later commit will NOT re-arm it. Declining now means nothing asks again before the session ends."),
-  systemMessage: ("Wrap-up check on \($b): \($n) commit(s) ahead of \($base), pushed and clean. Reminding the session to open the PR and send the done notification.")
+  reason: ("Wrap-up check — \($b) is pushed, clean, and \($n) commit(s) ahead of \($base).\n\nTwo standing instructions from the product owner apply before this session ends:\n\n1. Open a PR against `\($base)` (NOT main) and drive it to merged. Committed and pushed is not shipped. If it genuinely cannot merge, say so plainly as the last thing in the session, with the reason.\n2. Send the push notification `Done ; ) <name of the session>` — the name being what the session was about, so it identifies itself when read on a phone hours later. One at the end, not per milestone."
+    + (if $os == "" then "" else "\n3. This branch built the OpenSpec change(s) `" + $os + "` — it added the proposal or ticked tasks, and shipped code — and they are still under openspec/changes/ rather than archive/. Archive them (`/opsx:archive`) before the PR, or say in the PR body why one stays open — CLAUDE.md §Feature Workflow." end)
+    + "\n\nIf these are already done, or this is not the wrap-up, say which in one line and stop. This fires ONCE for the whole unit of work on this branch — not once per commit — so a later commit will NOT re-arm it. Declining now means nothing asks again before the session ends."),
+  systemMessage: ("Wrap-up check on \($b): \($n) commit(s) ahead of \($base), pushed and clean. Reminding the session to open the PR and send the done notification" + (if $os == "" then "." else ", and to archive: " + $os + "." end))
 }'

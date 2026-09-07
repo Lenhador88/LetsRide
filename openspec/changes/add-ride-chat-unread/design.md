@@ -88,7 +88,7 @@ forecloses it, which is `015`'s own argument for why choosing the watermark did 
 `015` has two arms and the third is not symmetry. `034` §1 establishes that the organizer **may hold
 no `ride_members` row at all**: `createRide` inserts it as a second round trip with no transaction,
 so the state is reachable on demand rather than only on error, it is the first entry in
-`docs/HANDOFF.md` §Known issues, and `enforce-creator-membership` is unshipped.
+`docs/reference/journal.md` §Known issues, and `enforce-creator-membership` is unshipped.
 
 With two arms, that rider's `since` is NULL, every `created_at > NULL` is NULL, `exists` is false, and
 **the host is the one member of the crew whose dot never lights** — silently, for ever, on their own
