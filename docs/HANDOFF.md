@@ -46,8 +46,10 @@ history.
 
 - **Open PR:** [#428](https://github.com/Lenhador88/LetsRide/pull/428) — onboarding asks for a
   home country (PD-428) and one "near" label (PD-427), `slot-1`.
-- **`Development (AI)`:** PD-264 (three OpenSpec changes claiming one requirement, `slot-2`),
-  PD-421 (the log digest's HTTP call has never succeeded), plus the two above.
+- **`Development (AI)`:** PD-421 (the log digest's HTTP call has never succeeded), plus the two
+  above. PD-264 merged as [#430](https://github.com/Lenhador88/LetsRide/pull/430) and freed
+  `slot-2`; it filed PD-436, which blocks archiving `enforce-ride-capacity` — relevant to §Next
+  action, since that change is one of the 45 open.
 - **`Queued (AI)`:** PD-431 (ride reminders), PD-430 (a shared ride link before sign-up), PD-429
   (organizer may say Maybe), PD-385 (rides with a coordinate render no tile).
 - **This branch** (`claude/app-build-process-review-q65i72`): the process review — this file, the

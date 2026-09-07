@@ -18,6 +18,89 @@ per-project migration log. A pointer written against the handoff resolves here n
 
 ---
 
+## The capacity scenario cannot be reinstated, and the reason it is wrong has changed — 2026-09-07
+
+**PD-264, one branch, taken into `slot-2`. A group of one, and the four candidates left behind were
+dropped on COLLISION measured against slot-1's FILE LIST rather than its territory comment** —
+[PR #428](https://github.com/Lenhador88/LetsRide/pull/428) was open and unmerged, so its 46 files
+were final and knowable. PD-429 collides on `src/lib/data/rides.ts` and `src/types/index.ts`,
+PD-430 on `guard.ts` + `supabase/migrations/` + `rls_test.sql` + `walk.mjs`, PD-431 on `Info.plist`
++ migrations, PD-385 on `walk.mjs`. No migration here, and nothing under `src/` changed.
+
+**Reading the file list rather than the territory is what made this firing non-idle.** slot-1
+declares `openspec/` wholesale; its PR touches only
+`openspec/changes/require-a-home-country-at-onboarding/`. PD-264 touches three entirely different
+change directories, so the declared collision was not a real one. **A finished-but-unmerged slot is
+the one case where this substitution is sound** — the session has ended, so the file list cannot
+grow. Do not generalise it to a live build.
+
+**The issue's premise held; its stated REASON did not.** Both the issue and
+`enforce-ride-capacity`'s own banner say the scenario is false because `063` added the trigger.
+Since 2026-08-24 it is **void** rather than false: `077` (PD-293) dropped `max_riders` outright —
+the column, `018`'s `rides_max_riders_range` CHECK and `private.enforce_ride_capacity()` — so its
+WHEN names a column that does not exist. Measured on DEV: zero columns, zero functions, zero
+constraints.
+
+**The standing spec ALREADY said so, under a different scenario name** —
+`openspec/specs/database-enforced-integrity/spec.md:420` files
+``#### Scenario: No capacity rule is claimed for `ride_members` ``, citing `077` and the drop.
+Grepping `Unenforced capacity` there returns nothing and reads as *"the standing spec is silent on
+capacity"*. **Archive compares scenario NAMES; a spec means what it SAYS** — so search the subject
+(`grep -n "max_riders" openspec/specs/database-enforced-integrity/spec.md`).
+
+**So the reinstatement was never silent, and all three deltas fail to archive TODAY.**
+`openspec archive` refuses a MODIFIED block missing a scenario the current spec has
+(`specs-apply.js`: *"current spec contains scenario(s) not present in the modified block"*). That is
+a loud throw, not a silent overwrite — **the danger PD-264 and three coordination banners describe
+is real but smaller than they claim.** What unblocks archiving is refreshing each delta; task 6.1
+covered only `enforce-ride-capacity`, so **§6.4 is new and covers all three**.
+
+**Five things a later session should not re-derive:**
+
+- **Copy that scenario name with its backticks.** `findMissingCurrentScenarios` compares scenario
+  names **raw**, where requirement names go through `normalizeRequirementName`. Paste it without
+  them and archive throws again naming the real one — and the trap is what you do next: the same
+  function only checks current ⊆ incoming, so an **extra** scenario is never refused. Adding the
+  correct name *beside* the mistyped one clears the throw and archives both, leaving two capacity
+  scenarios. That is the outcome this branch exists to prevent, reached by fixing its own error.
+- **An HTML comment does NOT hide a `####` heading.** `maskHtmlComments` is applied only in
+  `extractPurposeSection`; `parseDeltaSpec` and `extractRequirementsSection` mask code fences
+  alone. So both removal notes write the scenario name in **prose**. The pre-existing indented one
+  in `enforce-ride-capacity`'s comment block survives on its **two leading spaces** alone
+  (`SCENARIO_HEADER = /^####\s+/` is anchored), and now carries a warning saying so — a formatter
+  would otherwise re-create the defect with nothing to catch it.
+- **`add-ride-map-tiles` §7.2 already stated the refresh obligation and is ticked `[x]` while still
+  owing it**, and it names only *"whichever of the **two**"*, so it predates the third claimant.
+  `add-account-deletion` says nothing (its §7.7 re-reads for drift, a different job). That is the
+  justification for §6.4 — not "the siblings say nothing", which is false.
+- **`npx openspec validate --all --strict` is the only gate that parses these files AS SPECS**, and
+  it is not in the standard list. It passes; its 5 failures are untouched changes and identical on
+  the base commit. (`crossrefs` also reads them — it resolves `§` pointers inside
+  `changes/<c>/specs/<cap>/spec.md`, which is why `openspec/` is a `ci.yml` carve-out — but it does
+  not parse requirements.)
+- **Three `reviewer` passes, and the first two each found a factual error in prose I had copied
+  rather than measured.** On a diff whose entire content is claims, the delta re-review is not
+  ceremony: round 1 caught the standing-spec claim, round 2 the backticks and `readableOverview`.
+
+**Filed rather than folded in: PD-436, and it is the larger landmine.**
+`openspec/changes/enforce-ride-capacity/specs/ride-capacity/spec.md` is an **ADDED** capability of
+fifteen requirements for the feature `077` reversed, so archiving that change would create
+`openspec/specs/ride-capacity/spec.md` as a standing contract for a cap the database does not have.
+**Nothing refuses it**: archive builds the file from `buildSpecSkeleton` and applies the ADDED
+requirements regardless — `readableOverview` decides only whether the delta's Purpose is carried
+over or replaced by the TBD placeholder, and warns rather than stopping, so **adding an HTML comment
+to that Purpose would not block it**. The archive-throw above does not cover it either: that guards
+the MODIFIED requirement, not an ADDED capability. A `⚠ DO NOT ARCHIVE` block naming PD-436 is the
+holding measure, not the answer.
+
+```bash
+grep -rn "^#### Scenario: Unenforced capacity" openspec/changes/ | grep -v archive   # 0
+grep -rln "^### Requirement: Storage object ownership SHALL remain database-enforced" \
+  openspec/changes/*/specs/ | grep -v archive                                        # 3, unchanged
+git grep -n "max_riders" -- src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'                 # 0 — 4 obituaries
+npx openspec validate --all --strict            # the three touched changes PASS; 5 pre-existing failures
+```
+
 ## §D7 has a tripwire, and the rounding it rests on is pinned where it actually lives — 2026-09-07
 
 **PD-278, one branch, taken into `slot-2`. A group of one, and the four stories left behind were
