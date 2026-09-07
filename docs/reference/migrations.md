@@ -4,7 +4,7 @@
 
 # Migrations — the recording artefacts, and what reads as drift
 
-`041`–`048` reached PROD on 2026-08-10 and that apply is finished — `docs/HANDOFF.md` §Migrations
+`041`–`048` reached PROD on 2026-08-10 and that apply is finished — `docs/reference/journal.md` §Migrations
 carries the parity claim beside the command that checks it. What is here is what a completed apply
 does *not* consume: the ordering chain, the rollback SQL, and the hand reconciliation for every
 recorded statement that disagrees with its file.
@@ -211,7 +211,7 @@ predict, so it is worth a line. None of it is drift.
   take `103` from the file rather than from DEV's ledger.
 
   **`049` needs no entry of its own beyond DEV's reduced form**, already noted in
-  `docs/HANDOFF.md` §Migrations: same reduction, same class, and its body was verified by the same
+  `docs/reference/journal.md` §Migrations: same reduction, same class, and its body was verified by the same
   digest.
 - **`047` and `048` match their files on NEITHER project, and both are comment edits rather than
   drift.** DEV ran each file verbatim and the recorded statement was byte-identical at apply time;
@@ -1515,3 +1515,33 @@ cannot tell a session whether a new WARN is expected:
 
 An unexpected advisor is one **not** in that table. A one-advisor difference between the projects
 is almost always a pending promotion.
+
+### The count after `108`–`112` — measured 2026-09-06
+
+Moved here from `CLAUDE.md` §Supabase Rules on 2026-09-07. It supersedes the thirty-nine-on-both reading above for as long as the `108`–`112` promotion is pending.
+
+**Security advisors: forty-two on DEV and thirty-nine on PROD, and only one is outstanding** —
+`auth_leaked_password_protection`, a dashboard click. **The three-advisor difference IS `108` and
+`111`, both applied to DEV and neither promoted** — the ordinary shape this section's last line
+describes rather than drift. **`111` (PD-361) adds exactly one INFO** and no WARN:
+`rls_enabled_no_policy` on `club_removals`, a third table in the position `password_reset_grants`
+and `push_devices` already hold. It adds no WARN because it creates no function in `public` —
+it creates exactly ONE function and that one lives in `private`
+(`clear_club_removal_on_join`); its other two — `club_invite_link_reachable_by` and
+`remove_club_member` — are `create or replace` of `093`'s and `088`'s and were already there. Both projects read **39** before it, measured 2026-09-06 after the `101`–`107`
+promotion, so the older two-advisor gap this line used to attribute to `105` is closed and this is
+a new one with the same shape. `108` adds exactly two, one per `security definer` RPC it publishes
+in `public` — `delete_own_ride_thread_message` and `moderate_ride_thread`; its third function,
+`ride_thread_unread`, is `security invoker` and adds none, which is measured against
+`public.club_thread_unread` (`prosecdef = false`) rather than assumed. **`109` removes none**:
+`public.ride_has_unread` is `prosecdef = false` and `public.stamp_ride_read` holds no
+`authenticated` EXECUTE. The rest are things this repo chose: one
+`authenticated_security_definer_function_executable` WARN per `security definer` RPC in
+`public` (each narrow by design — takes a row id or nothing at all, never a rider id, one raise
+site), and three `rls_enabled_no_policy` INFOs on tables whose grants were revoked outright —
+client-role grants; the `service_role` half is a separate question, below. **A migration adding
+two such functions adds two**, and one whose functions live in `private` adds none. Re-derive with
+`get_advisors(security)`; `docs/reference/migrations.md` §Security advisors has the per-migration
+accounting and the count query. An unexpected advisor is one not in that table; a one-advisor
+difference between the projects is almost always a pending promotion.
+

@@ -571,6 +571,34 @@ For a diff confined to the denylist, the equivalent is the last paragraph of §c
 - **Next.js 16 specifics** — a `middleware.ts` or `proxy.ts` appearing (routing decisions belong in `src/lib/auth/guard.ts`; the app deliberately ships no middleware at all), a re-added `@supabase/ssr`, or a non-async export from a `'use server'` module (legal TypeScript that takes the whole route down at runtime — no module is `'use server'` today, and `src/__tests__/use-server-exports.test.ts` is the tripwire if one returns).
 - **Dead weight** — commented-out code, unused imports, a comment restating what the line already says.
 
+## Your report lands on the PR
+
+**Your final message opens with a paste-ready block, and the caller puts it on the PR verbatim** —
+in the PR body under `## Review` when the PR is opened after you run (the ordinary order), or as a
+PR comment when it was opened first. `CLAUDE.md` §The Agent Squad makes that the rule: a PR
+carrying no review block was not reviewed, whatever the session says. `ReportFindings` stays the
+structured channel; this block is the *record*, and it exists because a review whose only trace is
+the author's memory is indistinguishable from one that never ran.
+
+The block is short and names what did NOT run as plainly as what did:
+
+```markdown
+## Review
+
+**Reviewer** — base `<sha>` (`...` or `..` — say which) · passes run: <list from §classify> ·
+passes NOT run: <list, or "none"> · findings: <n>
+
+| # | Severity | Where | Finding |
+|---|---|---|---|
+| 1 | high | `src/lib/data/rides.ts:42` | one line: what breaks and the input that triggers it |
+
+<one line per finding the author declined, with their reason, filled in by the caller>
+```
+
+**Passes NOT run is never omitted**, because that line is the whole point — §First already says a
+degraded review reads like a clean one, and this is where a reader of the PR would find out. A
+clean review is `findings: 0` with the passes listed, not an empty block.
+
 ## Calibration
 
 Rank by what actually breaks for a user. A leaked private club beats a naming nit, and if the only findings you have are nits, say the change looks good rather than manufacturing severity. Equally, don't soften a real problem to be agreeable — if it ships a bug, say so plainly.

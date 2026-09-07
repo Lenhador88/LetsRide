@@ -442,7 +442,7 @@ Fix these in the same PR, and say so in the PR body — each is a claim someone 
   so do not edit `015`. Record the correction in `061`'s own comment (1.6) where it is load-bearing,
   and in `docs/reference/schema.md`'s `feed_reads` row if that file repeats it.
 - [x] 8.2 **`feed_reads.last_seen_at` is written from the device clock** (Q4). Not fixed here; it
-  belongs in `docs/HANDOFF.md` §Known issues with the one-line reason, so it is findable.
+  belongs in `docs/reference/journal.md` §Known issues with the one-line reason, so it is findable.
 - [x] 8.3 **`club_unread_counts()` does not exclude the reader's own postcards**, and a postcard is
   authored from `/postcards/new` rather than from inside a club, so it can badge a club for the
   reader's own post. Candidate defect, recorded in `specs/ride-chat-unread/spec.md`; file it, do not

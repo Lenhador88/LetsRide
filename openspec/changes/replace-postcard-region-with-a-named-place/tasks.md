@@ -235,7 +235,7 @@ a shipped write path. Do not copy `063`'s §3.
 - [ ] 7.5 `npm run db:drift` — the repo, DEV and PROD agree on the chain. **NOT RUN, and not
       runnable from a session**: it needs `PROD_DATABASE_URL` and `DEV_DATABASE_URL`, which are
       passwords no session holds. What was checked instead is the weaker thing that IS available —
-      `list_migrations` against `ls supabase/migrations/`, recorded in `docs/HANDOFF.md` §Migrations
+      `list_migrations` against `ls supabase/migrations/`, recorded in `docs/reference/journal.md` §Migrations
       as repo 73 / DEV 75 rows / PROD 70, one chain. Do not read the tick above this line as
       drift having been ruled out the way `db:drift` rules it out.
 - [ ] 7.6 Promote to PROD in filename order with everything else in the gap, per

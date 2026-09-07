@@ -458,3 +458,30 @@ timeout:**
 | `api.github.com` | 403 on `/repos/...` | Effectively refused. Use the GitHub MCP tools |
 
 ---
+
+## Component tests — which ones need jsdom, and why
+
+**All but eight render through `renderToStaticMarkup` under `environment: 'node'`**, and jsdom is
+the answer only when something needs a **mounted effect, a layout, an event or a portal**. Check a
+new one's reason against that list rather than against the count — each of the eight is there for
+a different one. Count them with `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'`.
+
+- `ClubTimeline.test.tsx` — a fetch failure and an anchor-hunt latch that only exist inside a
+  mounted `useEffect`.
+- `PostcardMenu.test.tsx` — a real click through `ContextMenu`'s portal and `useTransition`'s
+  async flow.
+- `EditRideForm.dom.test.tsx` — the form seeds its controlled state FROM its row, so the
+  refused-transition state is unreachable on first paint and a static render cannot tell a
+  working guard from `disabled={false}`.
+- `IntroductionPrompt.dom.test.tsx` — the sheet's dismissal lock has to hold against
+  `ContextMenu`'s scrim and Escape, which a static render cannot dispatch.
+- `PrivacySheet.dom.test.tsx` — the sheet IS a `ContextMenu` and portals to `document.body`, so a
+  static render returns nothing to assert against.
+- `RideAttendanceBar.dom.test.tsx` (PD-404) — a sequence across an async transition: tap, await
+  the action, branch on the result. A static render cannot tell *fires on success only* from
+  *fires always*.
+- `RideStatusChip.dom.test.tsx` (PD-404) — a mounted effect: the chip catches focus when the RSVP
+  bar unmounts, and focus is not in markup at all.
+- `UseMyLocationRow.dom.test.tsx` (PD-419) — a timer inside a mounted effect; under
+  `environment: 'node'` the component renders `null` for ever and every assertion would pass
+  against one that does nothing.
