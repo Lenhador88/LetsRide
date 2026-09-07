@@ -19,7 +19,8 @@ import { formatRelativeTime } from '@/lib/utils'
  * whole screen was rebuilt to stop.
  *
  * So: the thread glyph on its own tinted tile at the left, the title at the
- * weight `ClubThreadRow` gives it on the Threads list, the faces of whoever is
+ * weight the deleted `ClubThreadRow` gave it on the deleted Threads list, the
+ * faces of whoever is
  * talking, and how many replies there are.
  *
  * ## The count is a floor when the window filled, and says so

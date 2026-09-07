@@ -122,7 +122,7 @@ export const REDIRECTED = [
   [`/rides/${SAMPLE_ID}`, `/rides/detail?id=${SAMPLE_ID}`],
   [`/rides/${SAMPLE_ID}/crew`, `/rides/detail/crew?id=${SAMPLE_ID}`],
   // `108`, PD-402: the chat is gone, so both of its shapes land on the ride's
-  // ride itself. Their destination is no longer `${base}/detail${tail}`, which
+  // the ride itself. Their destination is no longer `${base}/detail${tail}`, which
   // is why `next.config.ts` lifts them out of `LEGACY_DETAIL_REDIRECTS`.
   [`/rides/${SAMPLE_ID}/chat`, `/rides/detail?id=${SAMPLE_ID}`],
   // **The `?id=` shape is the one a rider actually has**, and it needs its own

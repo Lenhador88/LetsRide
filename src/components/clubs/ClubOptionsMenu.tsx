@@ -161,7 +161,6 @@ export function ClubOptionsMenu({
   const showBanner = useBanner()
   const router = useRouter()
 
-
   function onLeave() {
     setOpen(false)
     startTransition(async () => {

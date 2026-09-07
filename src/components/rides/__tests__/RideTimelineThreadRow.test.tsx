@@ -25,12 +25,8 @@ import { RideTimelineThreadRow } from '@/components/rides/RideTimelineThreadRow'
  * Verified both ways per `CLAUDE.md` §Working Principles, by mutation rather
  * than by reading: dropping `{unread && <NotificationDot …>}` fails the first
  * test only; dropping `unread ? 'unread messages' : null` from the label fails
- * the second only. So neither passes under the other's cover.
- *
- * **That verification earned its place immediately.** The first test's original
- * form — the two markups differ, and the unread one is longer — passed with the
- * dot removed, because the label alone accounts for both. A test of the dot that
- * is really a test of the label is worse than none: it reads as coverage.
+ * the second only. So neither passes under the other's cover. The first test's
+ * comment carries why that check was not a formality.
  */
 const baseProps = {
   threadId: '11111111-2222-4333-8444-555555555555',

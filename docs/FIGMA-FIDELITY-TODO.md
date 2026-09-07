@@ -1751,7 +1751,8 @@ absent from the mock or a product decision this pass had to make without one:
       control to reach it. A plain secondary `Button` labelled "Load more" is invented rather
       than an infinite-scroll trigger — a deliberate choice, not the only shape this app builds:
       the club timeline auto-loads on scroll since PD-375 (`ScrollSentinel`), and
-      `/clubs/detail/threads` keeps this same button. Re-derive rather than trust which screens
+      `/notifications` keeps this same button. (`/clubs/detail/threads` was the other example
+      until PD-426 deleted it.) Re-derive rather than trust which screens
       currently auto-load: `git grep -n ScrollSentinel -- 'src/app/**/*.tsx' 'src/components/**/*.tsx'`.
 - [ ] **Opening the screen marks everything read, and nothing in the design draws that
       either.** `Inbox - Notifications` has no per-row dismiss and no "mark all read" control

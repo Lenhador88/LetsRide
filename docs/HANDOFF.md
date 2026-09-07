@@ -234,11 +234,8 @@ had to move in the same commit or the two would disagree.
   timelines instead. `firstDetailId` matches the pathname EXACTLY (`u.pathname === p`), so the
   surviving `/detail/threads/new` cannot be mistaken for a thread id — worth knowing before
   anyone "tidies" that comparison into a prefix match.
-- **`RideTimelineThreadRow.test.tsx`'s first draft was worthless and the mutation check caught
-  it.** It asserted the unread and read markups DIFFER and that the unread one is longer — both
-  true with the dot deleted, because the `aria-label` differs on its own. It now matches
-  `bg-danger`, the one token nothing else in that row carries. **Measured, not reasoned**: the
-  original passed against a row drawing no dot at all.
+- **Mutate a new test before trusting it.** `RideTimelineThreadRow.test.tsx`'s first draft passed
+  against a row drawing no dot at all; the file's own comment carries how and why.
 
 **PD-385 — the deployed function works; the backfill is the part that does not fit in a session.**
 `resolve-ride-location` was ten days stale and returning `nothing_to_write`; the 2026-09-06

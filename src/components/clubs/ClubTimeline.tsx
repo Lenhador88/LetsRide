@@ -136,8 +136,11 @@ function useFirstWindowRemovalGuard<T>(
  * starts, and then we show chronologically what's been going on. For eg. a new
  * discussion created, someone created a postcard, rider joining the club."*
  * The Postcards carousel and the Threads section were dissolved into it in the
- * same change — they are entries here now, and `ClubCreateAction` carries the creates and
- * `ClubThreadsRow` the entrance they used to own.
+ * same change — they are entries here now, and `ClubCreateAction` carries the
+ * creates. **The entrance they used to own is this stream itself as of PD-426**,
+ * which deleted `/clubs/detail/threads` and the `ClubOptionsMenu` row that
+ * pointed at it; the row named here (`ClubThreadsRow`) had already gone in
+ * 2026-08-31's merge.
  *
  * ## The non-member branch is the one rule that is not cosmetic
  *
@@ -695,7 +698,6 @@ export function ClubTimeline({
     // No `threads` entry: PD-426 deleted the index it named, and the foot link
     // exists to say where CUT rows live — a thread the stream cut is on the
     // stream, so there is nowhere else to send the rider.
-
     { label: 'members', href: routes.clubMembers(clubId) },
   ].filter((link): link is { label: string; href: string } => !!link)
 
