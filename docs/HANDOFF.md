@@ -246,7 +246,14 @@ So both are per-mention now. A coordinate read is sanctioned by a fact about its
 mention by **who receives it** — the innermost call whose parens are still open — falling back to
 the statement's shape only when it sits in no call at all.
 
-**Three more a later session should not re-derive:**
+**Four more a later session should not re-derive:**
+
+- **The sanctioned state setters are a NAMED list, and `/^set[A-Z]/` is the shorthand to refuse.**
+  That pattern sanctioned `setRequestHeader` — written three times in `upload.ts`, itself a declared
+  holder — plus `localStorage.setItem`, `Sentry.setContext` and `posthog.setPersonProperties`, every
+  one a live doorway here. It sanctioned precisely the sinks §D7 names: a lookup, a bias, a log. One
+  setter is actually needed (`setUpload`), so the allowlist costs nothing and makes adding one the
+  same deliberate act as adding a `HOLDERS` row.
 
 - **`return { path, capture }` in `upload.ts` is SAFE, and the argument is the holder assertion
   rather than the classification.** A bare return hands the object to a caller, and every caller is
@@ -256,11 +263,13 @@ the statement's shape only when it sits in no call at all.
   which is what makes the distinction load-bearing rather than pedantic.
 - **The enclosing-call check takes the INNERMOST open call, and that is what makes it sound.**
   Asking merely whether a sanctioned sink is open somewhere lets an outer sanctioned call launder an
-  inner unsanctioned one (`setForm({ lat: sendToVendor(capture) })`), and lets a stray `(` in a
-  trailing comment cover the following lines. String literals are skipped so a `)` inside one does
-  not close the walk early — a false positive, and this file's own header says why those matter:
-  a detector that rejects correct code invites loosening.
-- **The suite gained +27 over `development`, and only 25 of those are this file's.** The other two
+  inner unsanctioned one (`setForm({ lat: sendToVendor(capture) })`). **It skips strings AND line
+  comments, and the second is not tidiness**: trailing comments are deliberately kept by the strip,
+  so an ordinary English possessive — *"the rider's choice"*, which the composer's own call already
+  contains — opened an unterminated string that swallowed the call's closing paren and held a
+  sanctioned frame open over everything below it. That is why the lookback is joined with newlines
+  rather than spaces: skipping a `//` needs a line to end at.
+- **The suite gained +29 over `development`, and only 27 of those are this file's.** The other two
   come from `no-service-role-key.test.ts` and `no-geoapify-key.test.ts`, which emit a case per file
   walked — the *"+2, not +3"* rule `running-locally.md`'s Unit tests row already states. **The count
   claims were NOT stale beforehand**: measured 3442/139 on a clean `development` by removing the
@@ -270,11 +279,12 @@ the statement's shape only when it sits in no call at all.
 Every shape below was a silent pass against some draft and is now a named regression test: aliasing
 the coordinate into a local then logging it → 1F, the object returned through a call → 1F, a
 presence test beside a whole-object leak → 1F, a leak nested in a state literal → 1F, an emit below
-a completed sanctioned call → 1F, a coordinate in a JSX `return` → 1F, the rounding removed from
-`places.ts` → 2F, a new file importing `ExifCapture` → 1F, clean tree → 25P.
+a completed sanctioned call → 1F, a coordinate in a JSX `return` → 1F, a whole object handed to
+`setRequestHeader` → 1F, an apostrophe in a trailing comment → 1F, the rounding removed from
+`places.ts` → 2F, a new file importing `ExifCapture` → 1F, clean tree → 27P.
 
 ```bash
-npx vitest run src/__tests__/no-unrounded-photo-coordinate.test.ts   # 25/25
+npx vitest run src/__tests__/no-unrounded-photo-coordinate.test.ts   # 27/27
 npm run docs:check                              # 39 passed, 0 failed, 3 skipped (no Postgres)
 ```
 

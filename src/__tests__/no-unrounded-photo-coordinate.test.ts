@@ -251,6 +251,20 @@ function enclosingCall(prefix: string): string | null | undefined {
   for (let i = 0; i < prefix.length; i++) {
     const ch = prefix[i]
 
+    // A trailing comment, skipped to end of line. `stripCommentLines` keeps these
+    // deliberately (so a read cannot hide behind one), which left two holes here:
+    // an apostrophe in ordinary English — "the rider's choice" — opened a string
+    // that swallowed the call's closing paren and held a sanctioned frame open
+    // over the lines below; and a bare `(` in a comment stayed the innermost
+    // frame. Both need real line boundaries, which is why the lookback is joined
+    // with newlines rather than spaces.
+    if (ch === '/' && prefix[i + 1] === '/') {
+      const nl = prefix.indexOf('\n', i)
+      if (nl === -1) break
+      i = nl
+      continue
+    }
+
     if (ch === "'" || ch === '"' || ch === '`') {
       const quote = ch
       i++
@@ -272,13 +286,25 @@ function enclosingCall(prefix: string): string | null | undefined {
   return stack.length ? stack[stack.length - 1] : undefined
 }
 
+/**
+ * State setters that may hold the capture object, named rather than matched.
+ *
+ * **`/^set[A-Z]/` was the first spelling and it is far too broad** — it sanctions
+ * `setRequestHeader`, which `upload.ts` (a declared holder) already calls three
+ * times, plus `localStorage.setItem`, `Sentry.setContext` and
+ * `posthog.setPersonProperties`, all live doorways in this repo. Those are §D7's
+ * named prohibitions — a lookup, a bias, a log — so the pattern sanctioned
+ * exactly the sinks the rule exists to refuse. An allowlist makes adding one the
+ * same deliberate act as adding a `HOLDERS` row.
+ */
+const STATE_SETTERS = ['setUpload']
+
 /** May a value handed to this call carry a capture, or a coordinate off one? */
 function isSanctionedCallee(callee: string): boolean {
-  // A `setX({...})` call stores the object in the holder's own state, which is
-  // not a new sink. It is scoped to the callee here rather than matched against
-  // the whole line, so a leak NESTED inside the state literal is still the
+  // Storing the object in the holder's own state is not a new sink. Scoped to the
+  // callee rather than the line, so a leak NESTED inside the state literal is the
   // innermost call and is still caught.
-  return SANCTIONED_SINKS.includes(callee) || /^set[A-Z]/.test(callee)
+  return SANCTIONED_SINKS.includes(callee) || STATE_SETTERS.includes(callee)
 }
 
 /**
@@ -290,22 +316,27 @@ function isSanctionedCallee(callee: string): boolean {
  * test, or an argument to a sanctioned call. Nothing else about the line can
  * excuse it.
  *
- * **A mention that reads no coordinate** — `return { path, capture }`, a type
- * annotation, storing the object in state — is judged per line, which is safe
- * because there is no coordinate on that line to leak and assertion (1) bounds
- * where the object itself can travel.
+ * **A mention of the whole object** is judged the same way, at its own offset,
+ * by **who receives it** — the innermost call whose parentheses are still open.
+ * An unsanctioned callee is a leak whatever else the line says. Only when the
+ * mention sits in no call at all does the statement's shape decide it: binding it
+ * to a local name, or returning it bare, both of which assertion (1) bounds
+ * because whoever holds it next is a file that imports the type.
  *
- * The lookback is three non-empty lines, because
- * `resolvePhotoLocation(mode, capture ?? {…})` is written across three lines in
- * the composer and the argument line carries no callee. Three is the smallest
- * window spanning the calls actually written here.
+ * **Do not make this pass line-level again.** The argument for it is seductive —
+ * *a line carrying no coordinate has nothing to leak* — and false, because a line
+ * can carry both, and because `return` is not always the bare return it looks
+ * like. `if (c.latitude !== null) sendToVendor(c)` and `return sendToVendor(c)`
+ * are the counter-examples, and both are regression tests below.
+ *
+ * `LOOKBACK_LINES` sets the window; its own docstring carries why six.
  */
 function classify(source: string, bindings: string[]): string[] {
   const violations: string[] = []
   const lines = stripCommentLines(source).split('\n')
 
   lines.forEach((line, index) => {
-    const lookback = lines.slice(Math.max(0, index - LOOKBACK_LINES), index).join(' ')
+    const lookback = lines.slice(Math.max(0, index - LOOKBACK_LINES), index).join('\n')
     const flag = () => violations.push(`${index + 1}: ${line.trim()}`)
 
     for (const binding of bindings) {
@@ -318,7 +349,7 @@ function classify(source: string, bindings: string[]): string[] {
       while ((read = reads.exec(line)) !== null) {
         readSpans.push([read.index, read.index + read[0].length])
         if (isPresenceRead(line, read.index, read[0].length)) continue
-        const callee = enclosingCall(`${lookback} ${line.slice(0, read.index)}`)
+        const callee = enclosingCall(`${lookback}\n${line.slice(0, read.index)}`)
         if (typeof callee === 'string' && SANCTIONED_SINKS.includes(callee)) continue
         flag()
       }
@@ -349,7 +380,7 @@ function classify(source: string, bindings: string[]): string[] {
 
         // Who receives the object? The innermost open call is the only honest
         // answer, and an unsanctioned one is a leak whatever else the line says.
-        const callee = enclosingCall(`${lookback} ${before}`)
+        const callee = enclosingCall(`${lookback}\n${before}`)
         if (typeof callee === 'string') {
           if (!isSanctionedCallee(callee)) flag()
           continue
@@ -563,6 +594,48 @@ describe('the detectors still catch a real violation', () => {
     expect(
       classify("void resolvePhotoLocation(a, ')', capture.latitude)", ['capture']),
     ).toEqual([])
+  })
+
+  it('does not sanction every setX callee — the review’s C1', () => {
+    // `/^set[A-Z]/` sanctioned exactly the sinks §D7 refuses. `setRequestHeader`
+    // is written three times in `upload.ts`, a DECLARED holder, and the other
+    // three are live doorway modules in this repo.
+    expect(classify("xhr.setRequestHeader('x-exif', capture)", ['capture'])).toHaveLength(1)
+    expect(classify("localStorage.setItem('c', capture)", ['capture'])).toHaveLength(1)
+    expect(classify("Sentry.setContext('photo', capture)", ['capture'])).toHaveLength(1)
+    expect(classify('posthog.setPersonProperties({ capture })', ['capture'])).toHaveLength(1)
+    // The one setter the composer actually needs stays sanctioned.
+    expect(classify("setUpload({ status: 'done', path, capture })", ['capture'])).toEqual([])
+  })
+
+  it('is not fooled by an apostrophe or a paren in a trailing comment — C2', () => {
+    // An ordinary English possessive used to open a "string" that swallowed the
+    // call's closing paren, holding a sanctioned frame open over the lines below.
+    // This is the composer's real multi-line call shape.
+    expect(
+      classify(
+        [
+          '  const location = resolvePhotoLocation(',
+          "    activeMode,          // the rider's choice",
+          '    capture ?? { latitude: null },',
+          '  )',
+          '  logRaw(capture)',
+        ].join('\n'),
+        ['capture'],
+      ),
+    ).toHaveLength(1)
+
+    // And a bare `(` in a comment must not stay the innermost frame for a
+    // mention that sits in no call at all.
+    expect(
+      classify(
+        [
+          'void resolvePhotoLocation(a, b) // see roundToCoarseGrid(',
+          'globalThis.leak = capture',
+        ].join('\n'),
+        ['capture'],
+      ),
+    ).toHaveLength(1)
   })
 
   it('catches a destructured coordinate', () => {
