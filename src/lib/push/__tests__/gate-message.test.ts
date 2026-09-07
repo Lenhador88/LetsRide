@@ -39,9 +39,10 @@ const ROOT = path.resolve(__dirname, '../../../..')
  * reads the migration off disk and checks the two ends still agree.
  *
  * **It resolves which migration to read rather than naming `078`**, and that is
- * the whole of its reach: because `078` is frozen, the only legal way the
- * wording changes is a LATER migration `create or replace`-ing the function, and
- * a test pinned to `078` is blind to exactly that. See `currentGateMigration()`.
+ * the whole of its reach: because `078` is frozen, the wording can only change
+ * in a LATER migration that redefines the function, and a test pinned to `078`
+ * is blind to exactly that. See `DEFINES_THE_GATE`, which is deliberately not
+ * fussy about how that redefinition is spelled.
  *
  * A migration that rewords or moves that RAISE turns an ordinary mid-onboarding
  * rider into a thrown error, which `PushPrimingRow` then draws as `stalled`.
@@ -57,29 +58,41 @@ function read(rel: string): string {
 }
 
 /**
+ * **`or replace` is OPTIONAL here, and the match is anchored to a line start.**
+ * Two traps, both found by review rather than by me:
+ *
+ * - **Postgres refuses `create or replace` when an input parameter's NAME
+ *   changes**, so a redefinition that touches the argument list has to arrive as
+ *   `drop function` + `create function`. A matcher requiring `or replace` misses
+ *   it, falls back to `078`, and stays green in exactly the case this file
+ *   exists to catch.
+ * - **Unanchored, it matches the signature quoted in a COMMENT.** This repo
+ *   pastes SQL into migration headers routinely — `026` does — so an unanchored
+ *   scan would pick a merely *narrating* migration as the last match. That is
+ *   the comment trap `CLAUDE.md` calls this repo's most-repeated measurement
+ *   error, and it is a false red at best and a false green at worst.
+ */
+const DEFINES_THE_GATE =
+  /^[ \t]*create\s+(or\s+replace\s+)?function\s+public\.register_push_device/im
+
+/**
  * **The LAST migration that defines `register_push_device`, resolved rather
  * than hard-coded.**
  *
  * The first version of this test named `078_push_devices.sql` directly, which
- * makes it blind to the only legal way that RAISE can ever change. `078` is
- * immutable, so nobody edits it — a reword arrives as a later migration
- * `create or replace`-ing the function. Against a hard-coded `078` the suite
- * would stay green while `registration.ts`'s `/onboarding/i` silently stopped
- * matching, which is the exact failure this file claims to turn red.
+ * makes it blind to the one thing that can actually change the wording: a later
+ * migration redefining the function. Against a hard-coded `078` the suite stays
+ * green while `registration.ts`'s `/onboarding/i` silently stops matching.
  *
- * Filename order is apply order (`CLAUDE.md` §Supabase Rules), so the last
- * match wins — the same rule Postgres itself follows through `run.sh`.
+ * Filename order is apply order (`CLAUDE.md` §Supabase Rules), so the last match
+ * wins — the same order `supabase/tests/run.sh` applies them in.
  */
 function currentGateMigration(): { rel: string; sql: string } {
   const dir = path.join(ROOT, 'supabase', 'migrations')
   const defining = readdirSync(dir)
     .filter((f) => f.endsWith('.sql'))
     .sort()
-    .filter((f) =>
-      /create\s+or\s+replace\s+function\s+public\.register_push_device/i.test(
-        readFileSync(path.join(dir, f), 'utf8'),
-      ),
-    )
+    .filter((f) => DEFINES_THE_GATE.test(readFileSync(path.join(dir, f), 'utf8')))
 
   expect(defining, 'no migration defines register_push_device any more').not.toEqual([])
 

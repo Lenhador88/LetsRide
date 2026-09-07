@@ -146,10 +146,12 @@ advisory, because a rider can simply not run your validation.
 
 **`lib/data/` and `lib/actions/` are where reads and writes live, and both resolve their client
 through `src/lib/supabase/resolve.ts`.** One name, one doorway. **A handful of modules outside
-them reach Supabase only through an own-row `security definer` RPC and never `.from()`** — the
-guard cache, password recovery and push registration today. Those functions do read and write
-tables; what makes them safe outside the doorways is that each resolves its subject from
-`auth.uid()` and carries its own gate, so there is no query shape for a caller to get wrong. Count rather than trust that list, and note the pathspec: the natural
+them reach Supabase's TABLES only through an own-row `security definer` RPC, never `.from()`** —
+the guard cache, password recovery and push registration today. Those functions do read and write
+tables; what makes them safe outside the doorways is that each resolves its subject from the
+caller's own verified claims — `auth.uid()`, or for the recovery grant the `session_id` in
+`auth.jwt()`, which is what keeps one link to one reset — and carries its own gate, so there is no
+query shape for a caller to get wrong. Count rather than trust that list, and note the pathspec: the natural
 `-- src/lib/` prints the two doorways too.
 
 ```bash
