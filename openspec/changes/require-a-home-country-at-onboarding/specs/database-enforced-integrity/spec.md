@@ -129,8 +129,13 @@ neither barrier exists) and ship nothing.
 
 #### Scenario: A new raise SHALL NOT reach the welcome-club block
 - **WHEN** the completion guard is added to `complete_onboarding`
-- **THEN** it SHALL sit beside the existing consent and username guards, **above** `058`'s
+- **THEN** it SHALL sit **below** the existing consent and username guards, **above** `058`'s
   `club_members` insert and outside its `when others` handler
+- **AND** unlike those two it SHALL be gated on `not v_was_complete` — the transition into
+  completion — because `complete_onboarding` has no idempotency short-circuit (`003` §6b is a
+  `coalesce` inside the UPDATE, not an early return), so an ungated arm refuses a re-run by every
+  rider who onboarded before `113` and holds a NULL country permanently. That is the population
+  the scenario above promises is never re-prompted; measured on DEV, 24 of 25 profiles
 - **AND** no new raise SHALL be introduced inside that block, because a raise there rolls the
   completion stamp back and decision #5 leaves a rider with a NULL stamp no way out of the wizard
 

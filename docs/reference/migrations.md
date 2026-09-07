@@ -329,14 +329,15 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**113 files. DEV is at `113` and PROD at `112` — measured 2026-09-07, after #428 merged.** `113`
-was applied to DEV migration-first, ahead of that PR; the merge is what landed its file, so the
-row that read as file-less until now is an ordinary applied migration. DEV's row count reads
+**114 files. DEV is at `114` and PROD at `112` — measured 2026-09-07, after `114` applied.** `113`
+was applied to DEV migration-first, ahead of #428; the merge is what landed its file, so the
+row that read as file-less until then is an ordinary applied migration. DEV's row count reads
 **three** high — the three long-standing hand-applied rows — and **PROD's is exact**, which is the
 direction that matters: nothing is applied there without a file behind it. Neither is a gap.
 
-**The open promotion gap is `113` alone**, and it carries a partner that does not exist yet — see
-its entry below before promoting it.
+**The open promotion gap is `113` and `114`, in that order and NOT collapsed.** `114` is the
+narrowing half and must not reach PROD until the same bundle is serving there — see its entry
+below before promoting either.
 
 **`113_home_country` (PD-428), applied to DEV 2026-09-07T10:10:07Z as `20260907101007`.** Adds
 nullable `profiles.home_country` (ISO 3166-1 alpha-2), two VALIDATED CHECKs, three column grants
@@ -344,12 +345,52 @@ and one coercion arm on `enforce_onboarding_completion`. **MIGRATION-FIRST**: th
 writes the column must not reach a database without it (`PGRST204`), and every edit strictly
 widens what is accepted, so it is a no-op against the bundle that was serving.
 
-**Its partner `114` is deliberately unwritten.** It arms `complete_onboarding` to refuse a NULL
-country, which is a NARROWING: applied before the new bundle serves, the old bundle's
-`complete_onboarding(null)` is refused on every signup and every new rider is stuck in the wizard.
-So it must not exist until the merge sha is `READY` with `aliasError` null on `development`. One
-file cannot be both sides of a deploy — `108`/`109`'s shape, and the same split is owed on the
-PROD promotion rather than collapsed.
+**`114_a_completion_carries_a_country` (PD-428), applied to DEV 2026-09-07T21:58Z.** Its partner
+`113` was written first and left unwritten deliberately until the gate cleared; the gate cleared
+and it is now applied. It arms `complete_onboarding` to raise `check_violation` when the caller's
+stored `home_country` is NULL, and it changes nothing else — no table, no policy, no grant, and
+the signature stays `complete_onboarding(p_location text)`.
+
+**Gate, measured before applying**: Vercel `dpl_F1kKDd1xAun2qWZzGoLBAwZ8QrnL`, sha
+`c3df294fd46a0d1532bf615c9c20c0587c4c8fad` on `development`, `READY` at 21:17:09Z, `aliasError`
+null, aliased to `app-dev.letsride.social`; `origin/development` still at that sha when the
+migration applied. Applied before the bundle serves, the old bundle's `complete_onboarding(null)`
+is refused on every signup and every new rider is stuck in the wizard with no skip. **The same
+split is owed on the PROD promotion rather than collapsed**: promote `113`, deploy, confirm
+`READY` with `aliasError` null on `app.letsride.social`, then `114`. `108`/`109`'s shape.
+
+**The guard is NOT beside the consent and username arms, and the plan that said it should be was
+wrong.** `openspec/…/require-a-home-country-at-onboarding/tasks.md` §5.3 justified that placement
+by claiming an already-onboarded rider is never refused, "because the guard reads the stored
+column, which they already have". Two measurements on DEV, in rolled-back transactions, killed it:
+
+- **`complete_onboarding` has no idempotency short-circuit.** `003` §6b makes completion one-way
+  with a `coalesce` inside the UPDATE, not an early return, so an already-stamped caller reaches
+  every arm. Proved by nulling a stamped rider's username as the owner and re-running the RPC as
+  them: `23514 onboarding cannot be completed before a username is set`.
+  `enforce_onboarding_completion` DOES return early on `old.onboarding_completed_at`; the two
+  functions carry the same invariants and not the same control flow, which is how the plan erred.
+- **Every rider onboarded before `113` holds a NULL country, permanently and by decision.** DEV:
+  25 profiles, 24 completed, 24 of those NULL. On PROD it is the whole completed population.
+
+So the arm is gated on `not v_was_complete` — the transition into completion, the predicate `058`
+already uses. Beside the other two it would have refused a re-run for exactly the population
+PD-428 promised never to re-prompt. Assertions `114.3` and `114.6` pin both halves; an ungated
+version was built and run, and it turns the suite red at `075`'s own re-run assertion (rider
+`…0012`, already stamped with no country) before it ever reaches `114.3`.
+
+**Object diff after applying**: `md5(prosrc)` `ca084566ec8e85adfab3f8859af42a34`, 12282 bytes —
+equal to the body extracted from the file, so the applied statement and the committed file define
+the same object. One candidate, `p_location text`, `prosecdef` true, `proconfig`
+`{search_path=""}`; `anon` and `public` hold no EXECUTE and `authenticated` does, unchanged
+(`create or replace` preserves the ACL, so `021`'s grant is asserted rather than re-issued).
+`enforce_onboarding_completion` still hashes to `283245b644a1ab4ebcd879a18a6998e7`, which is
+`113`'s value — **not** the `af228c43e105973fe46f02d7df8b8cd8` `113`'s own header quotes, that
+being the PRE-`113` body and the obvious wrong answer to copy forward.
+
+**Security advisors after `114`: 42, unchanged** — 38 `authenticated_security_definer_function_executable`
+WARNs (`complete_onboarding` was already one), 3 `rls_enabled_no_policy` INFO and
+`auth_leaked_password_protection`. The file creates no object that did not already exist.
 
 **Three things `113` measured that were previously stated wrong**, recorded here because two are
 about files older than it:
@@ -1439,7 +1480,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 113 — DEV at 113, PROD at 112 (only 113 awaits promotion)
+ls supabase/migrations/*.sql | wc -l     # 114 — DEV at 114, PROD at 112 (113 then 114 await promotion, in that order)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
