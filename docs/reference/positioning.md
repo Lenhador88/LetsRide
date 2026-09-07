@@ -13,9 +13,15 @@ supports, the naming and slogan decisions, and the listing copy with its real ch
 `.claude/agents/product.md` is the agent that maintains it.
 
 **Everything here about the market is a stance, not a measurement.** Nothing in this container
-can survey riders or read a competitor's install base, so every claim of the form *"riders
-want X"* is flagged **[unvalidated]** and stays flagged until someone talks to riders. A guess
-that loses its label becomes a fact nobody rechecks — `CLAUDE.md` §Working Principles.
+can survey riders, so every claim of the form *"riders want X"* — or search for X, or read X —
+is flagged **[unvalidated]** and stays flagged until someone talks to riders. A guess that
+loses its label becomes a fact nobody rechecks, which is `CLAUDE.md`'s rule about an
+unlabelled guess.
+
+**A competitor is NOT in that class, and treating it as one is how the label becomes an excuse
+not to look.** A rival listing is a public web page, and `product` holds `WebFetch` and
+`WebSearch`, so what another app claims to do is *checkable*. A comparison below that carries
+the label carries it because nobody has looked yet — never because nobody could.
 
 ---
 
@@ -32,9 +38,18 @@ Three states, and only the first is who the store listing is for:
    page cold. What they need to believe in one sentence: *there are people near me to ride
    with, and I can find them without joining a Facebook group full of strangers.*
 2. **Already has a crew, organises badly.** Rides get planned in a WhatsApp thread where the
-   meeting point scrolls away. They arrive through the first rider's invite link, never
-   through the store. The listing is not aimed at them, but the **invite link landing**
-   is — `/rides/join?token=…` is the app's first public non-auth route.
+   meeting point scrolls away. They arrive through an invite link, never through the store —
+   `/rides/join?token=…` and `/clubs/join?token=…`, the first public paths that are **not an
+   auth screen or static copy**. Drop that second clause and the claim is simply false: `/`
+   and `/legal/*` are public, non-auth and older.
+
+   **Neither landing is a pitch surface, and neither may be turned into one.** They are public
+   so they can *hold a credential* through the auth round trip, never so they can show
+   anything — a visitor with no session gets a generic sentence and two buttons, because the
+   preview RPC needs `auth.uid()` for its block and participation checks. `src/lib/auth/guard.ts`
+   says so in as many words, and decision #1 is what makes it non-negotiable. What can be
+   improved is the **hand-off**: what the sharing rider's message says, and how few taps sit
+   between the tap and the ride once there is a session.
 3. **Runs a club.** The highest-value rider and the smallest group: one of them brings ten.
    Nothing in the listing speaks to them yet, and that is a gap rather than a decision.
 
@@ -48,25 +63,40 @@ Marketing copy is a claim about the build, and the build is smaller than the des
 this list against the code before writing any listing — `docs/reference/product-scope.md`
 §Product Scope is the per-domain state, and it moves faster than this section.
 
+**Measured against `development` on 2026-09-07 — which is not what a rider installs.** A
+listing describes the *promoted* build, and `main` runs five migrations behind. One row differs
+today and it is one this file leans on: **a ride has titled threads on `development` and a chat
+on `main`**, because `108`/`109` are DEV-only. So the claim below and the do-not-say row about
+"chat" are both right for `development` and both wrong for production until that promotion
+lands. Re-derive the gap rather than trusting this paragraph —
+`docs/reference/migrations.md` §Applied state, and `list_migrations` against both refs.
+
 **Claimable today:**
 
 - **A photo feed of rides, as the home screen.** Postcards — a card deck you swipe, with
-  likes, comments and a link share. This is the app's actual centre of gravity and the thing
-  most competing apps do not have.
+  likes, comments and a link share. This is the app's actual centre of gravity — a claim about
+  the build, and safe. That **most competing apps do not have it** is a different claim,
+  **[unvalidated]**, and it must not be laundered into a listing as "the only motorcycle app
+  with a photo feed": nothing here has read a competitor's listing, and `product` can.
 - **Clubs.** Join, browse, a timeline of everything the club did, titled threads, member
   invites and invite links.
 - **Rides.** Plan one with a meeting point, a date and a club; a static map thumbnail and a
   hand-off to Google Maps; a crew list; Going / Maybe / No; titled threads; shareable invite
   links with an expiry and a revoke.
 - **Notifications** for the things other riders do.
-- **Safety and control.** Block a rider, report a postcard or a thread, hide a postcard,
-  and delete the account outright — all four are built and reachable.
+- **Safety and control.** Block a rider, hide a postcard, report a postcard or a **club**
+  thread, and delete the account outright. **Reporting is not uniform, and a listing must not
+  imply it is: a RIDE thread has no report affordance.** That is a deferral rather than a
+  decision — `094` gave `club_thread_reports` no ride counterpart — and it is the gap App Store
+  Review Guideline 1.2 asks about. Check rather than trust it:
+  `grep -rn "export async function report" src/lib/actions/` names two.
 
 **Not claimable — do not write these words:**
 
 | Do not say | Because |
 |---|---|
-| "chat", "message a rider", "DMs" | There are no direct messages. Rides and clubs have **threads**, which is deliberately not chat — `docs/reference/product-scope.md` says so in the Clubs row |
+| "chat", "message a rider", "DMs" | There are no direct messages — `docs/reference/product-scope.md` establishes that in its **Inbox** row. Rides and clubs have **threads** instead. Do not cite the Clubs row for this: its version of the sentence argues a thread is not a chat *because the ride has a Chat*, which PD-402 retired on `development` |
+| "report any post", "report anything" | Reporting covers postcards and club threads only. See the safety bullet above — over-claiming here is this table's worst failure, because Guideline 1.2 is the one that checks |
 | "track your rides", "record your route", "GPS" | Nothing records a route. Decision #3 is a static thumbnail plus a deeplink, and background location is roadmap, not build |
 | "navigation", "turn-by-turn" | Google Maps does that; we hand off to it |
 | "your garage", "log your bike", "gear", "badges" | The Garage domain is not built |
@@ -87,10 +117,12 @@ These are constraints, not to-dos. Each one changes what marketing is even possi
    carry the whole pitch itself**; the app cannot help. This is the single biggest difference
    between marketing this app and marketing a normal social product.
 2. **Onboarding is required and not skippable.** Decision #5. Between the install and the
-   first screenshot-worthy moment sit terms, a username with live availability checking, and
-   a location step. Every one is a place a rider leaves. This is the funnel worth
-   instrumenting before any spend — `docs/reference/analytics.md` §What each number is for
-   already counts the four stamps.
+   first screenshot-worthy moment sit **two** screens — terms, and a username with live
+   availability checking. Both are places a rider leaves. **Two, not three: `075` (PD-286)
+   deleted the location step, and `complete_onboarding(p_location text)` kept the argument, so
+   the RPC signature reads as corroboration for a screen that is gone.** The check is
+   `ls src/app/onboarding/`. This is the funnel worth instrumenting before any spend —
+   `docs/reference/analytics.md` §What each number is for already counts the four stamps.
 3. **A new rider lands in a club rather than an empty app.** `complete_onboarding` joins them
    to the club carrying `clubs.is_default`. That is the answer to the cold-start problem and
    it is already built, so the listing may honestly promise company on day one — provided
@@ -127,11 +159,11 @@ printf '%s' "Ride together, share the story" | wc -m    # 30
 
 | Field | Cap | Notes |
 |---|---|---|
-| App Store — app name | 30 | Highest keyword weight of any field |
-| App Store — subtitle | 30 | Second highest. Shown under the name in search results |
+| App Store — app name | 30 | Highest keyword weight of any field **[unvalidated]** |
+| App Store — subtitle | 30 | Second highest **[unvalidated]**. Shown under the name in search results |
 | App Store — keywords | 100 | Comma-separated, **no spaces after commas**; never repeat a word already in the name or subtitle |
-| App Store — promotional text | 170 | Editable without a review — the only field that is |
-| App Store — description | 4000 | Almost nobody expands it; the first ~3 lines are what is read |
+| App Store — promotional text | 170 | Editable without a new version — the only *marketing copy* field that is. The three URL fields are editable any time too |
+| App Store — description | 4000 | Almost nobody expands it **[unvalidated]**; write for the first ~3 lines |
 | Play — title | 30 | |
 | Play — short description | 80 | The one that appears above the fold |
 | Play — full description | 4000 | Indexed for search, unlike Apple's |
@@ -161,9 +193,12 @@ The product owner's line is **"Share your story, ride together"**. Two findings:
 | Play short description | `Plan motorcycle rides, join a club, and share the photos from the road.` | 71 |
 
 The reason the name changes shape: **the word "motorcycle" appears nowhere in "LetsRide" or
-"Ride Together"**, and it is the word a rider types into a store search. The name field is
-where a keyword is worth the most, so spending 18 of its 30 characters on the category is the
-highest-value edit available in the whole listing.
+"Ride Together"**. That absence is a fact about two strings. **Everything drawn from it is
+[unvalidated] ASO reasoning** — that a rider types the category into store search, that the
+name field weighs a keyword most, and therefore that spending 18 of its 30 characters on the
+category is the highest-value edit in the listing. It is this file's headline recommendation
+and it rests on no measurement taken here; the first real test is the store's own search
+results after a submission.
 
 Alternatives, all within cap, if the owner prefers a different emphasis:
 
@@ -176,7 +211,8 @@ Alternatives, all within cap, if the owner prefers a different emphasis:
 
 ### Description — the first three lines
 
-Everything below the third line is read by almost nobody, so the whole pitch lives there:
+Everything below the third line is read by almost nobody (**[unvalidated]** — rider behaviour,
+the class this file cannot measure), so write as though the whole pitch lives in those three:
 
 > Find riders near you, plan a ride together, and keep the photos.
 >
@@ -209,10 +245,14 @@ The binding constraint is #1: nothing is visible without an account, so channels
 a link being interesting on its own are weak, and channels where a **person** does the
 vouching are strong.
 
-1. **The invite link.** Already built, already the strongest thing available: it arrives from
-   someone the rider knows, with a specific ride attached. Every improvement to
-   `/rides/join?token=…` is an acquisition improvement.
-2. **Club organisers.** One organiser brings a group. Nothing in the product courts them yet.
+1. **The invite links — both of them.** Already built, already the strongest thing available:
+   each arrives from someone the rider knows, with something specific attached. `/rides/join`
+   carries a ride; `/clubs/join` carries a club (`093`, PD-360, built on the ride link's
+   reasoning) and aims squarely at state 3, the rider this file calls the highest-value. What
+   improves is the **hand-off**, never the landing screen — see the rider states above for why
+   that route shows nothing by design.
+2. **Club organisers.** One organiser brings a group. Nothing in the product courts them yet,
+   and the club invite link is the one piece that already does half the job.
 3. **Local meets and dealer noticeboards.** Geography is the whole product — a club with three
    members in the wrong country is worth nothing.
 4. **Motorcycle communities online.** Cheap, and the place where "no anonymous browsing" hurts
