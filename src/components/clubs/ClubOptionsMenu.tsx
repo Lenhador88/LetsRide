@@ -60,7 +60,7 @@ const CLUB_ONLY_RIDER_LEAVE_REASON = 'You are the only rider here — leaving de
  *   (2026-08-31). The timeline's foot link is not a substitute: it renders only
  *   when the stream is cut, so a club whose whole timeline fits on screen would
  *   have no entrance at all — PD-125's defect, which the deleted row existed to
- *   close. A member-only row for the same reason `ClubCreateBar` is
+ *   close. A member-only row for the same reason `ClubCreateAction` is
  *   member-only: `081` admits nobody else to a club's threads.
  * - **Owner or admin** → `Manage riders` (`088`, PD-326), into
  *   `routes.clubManage`. **This is the only entrance to that screen**, which is

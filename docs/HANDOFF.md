@@ -190,6 +190,92 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## The floating action stopped sitting on the tab bar, and the club got one too — 2026-09-07
+
+**PD-423 + PD-404, one branch, taken into `slot-2`.** A real collision and both issues said so:
+they edit the same primitive, `src/components/ui/FloatingAction.tsx`. PD-404's Q1 comment is
+explicit — *"Build them as one group, or PD-423 first"* — so PD-423 was committed before the club
+conversion started.
+
+**PD-423 — the fix is a third cause, and the issue's two candidates were both wrong as stated.**
+The issue said to measure against the running app rather than reason from the CSS, and that was the
+right instruction: measured in Chromium at 390×844 against the real compiled stylesheet, the tab row
+is **56px exactly**, matching `--navbar-tabs` — which refutes candidate 2, a nav rendering taller
+than the variable. What that variable misses is the bar's own **`border-t`**: it measures the tab
+ROW, the same exclusion `--header-height` makes for the header's `border-b` and which
+`scroll-padding-top` already adds back as `+ 1px`. So `.bottom-navbar` lands any element 1px
+*inside* the nav. Gap **−1px** before, **+16px** after.
+
+**Four things a later session should not re-derive:**
+
+- **`.bottom-navbar` is not wrong — it is right for a bar and wrong for a circle**, and that is why
+  there are now two classes rather than a corrected one. A bar is meant to read as continuous with
+  the chrome and shares the nav's background, so the 1px overlap is invisible on one; a circle's
+  lower arc is clipped by `z-50` over `z-40`. **`RideAttendanceBar` keeps `.bottom-navbar`** and
+  must. "Simplify these back into one" is the reversal to expect.
+- **Raising `z-40` would hide the overlap rather than fix it**, and costs the tabs their
+  reachability. Same for shrinking the control to buy a gap: 56px is above the 44×44 floor and 40px
+  is not.
+- **`--shadow-floating` needed no change and was not touched.** Both its offsets are downward, so
+  with no gap it fell entirely on the tab bar — the "shadow bleeds onto it" half of the report was
+  the *offset's* symptom, not the shadow's. Give it somewhere to cast and the same value is right.
+- **The clearance is derived, not restated** — `calc(1px + var(--floating-action-gap) + 3.5rem +
+  0.5rem)`, 80px → 81px. The `3.5rem` is the CONTROL's height and only coincidentally equals
+  `--navbar-tabs`; de-duplicating them couples two numbers nothing keeps equal.
+
+**PD-404 — the club half, and the issue is now CLOSED.** Q1 answered 2026-09-06: *"It should become
+the same floating yes."* `ClubCreateBar` → `ClubCreateAction`, keeping its three-row sheet
+**unchanged** — only the trigger moved — and the member gate carried across byte-for-byte as the
+screen's own `isMember`.
+
+- **The reserved clearance had to move with the bar, and neither obvious option was right.**
+  Keeping `.pb-navbar-action-extra` under-reserves (its 64px is a 40px button's geometry), which is
+  tight rather than buried and so invisible to every gate; removing it outright leaves a 64px dead
+  strip under a paging timeline, which is PD-407 on a second screen. It becomes
+  `.pb-floating-action-extra`, still gated on `isMember`.
+- **The departure is the largest in `docs/FIGMA-FIDELITY-TODO.md` and is a different CLASS from the
+  ride's three.** `2375:8771` draws the ride no create control, so that half was purely *additive*.
+  `2043:10604` draws `Button Container 358×56` as a child of a navigation variant **26 other frames
+  instance**, so this **deletes** something the design draws, on a shared component. Logged under a
+  new §Club detail heading with the count in it, because a note on one screen is invisible to 26.
+- **`opsx:update` found the spec needed no requirement rewritten**, and that is the reusable lesson:
+  `specs/create-affordance/spec.md` was written about *a create affordance* rather than a floating
+  one, with the club scenarios phrased as behaviour a later conversion must preserve. They became
+  the club half's acceptance criteria unchanged. A requirement naming the *bar* would have had to be
+  rewritten.
+- **The rename was the point, not tidiness.** `ClubCreateBar`'s whole docstring argued about a bar —
+  the `STICKY_ACTIONS` approximation, the 358×40 primary, the absent `border-t` *"so the two read as
+  one bar"*. Left in place it would have been the comment trap created deliberately. What survives
+  is the argument that still holds: `STICKY_ACTIONS` is pathname-keyed and cannot answer *is this
+  rider a member*, so the control stays screen-owned.
+- **Seven stale `ClubCreateBar` pointers** across `src/` and `docs/`, one of them written earlier on
+  the same branch. A rename in this repo is never one file.
+
+**PD-407 was checked and deliberately did not travel** — Q1's comment asked. `/rides/explore`
+reserves 64px for an action `STICKY_ACTIONS` does not hold *at all*, so its fix is a **deletion**
+where this was a **swap**, in a file the diff never opened.
+
+```bash
+# 10 hits across 5 files — of which 7 are live pointers and 3 are still comment text.
+git grep -n "bottom-floating-action\|ClubCreateAction" -- src/ | grep -vE ':[0-9]+:\s*(\*|//|/\*)'
+
+# 2 files, and BOTH are obituaries rather than pointers: ClubCreateAction.tsx says what it was,
+# RideCreateSheet.tsx names it as the source of an argument that outlived the name.
+git grep -c "ClubCreateBar" -- src/
+
+npx vitest run src/components/ui/__tests__/FloatingAction.test.tsx   # 6/6
+```
+
+**That first line is the comment trap's own limit, measured here rather than argued.** The
+`grep -vE` idiom this repo uses everywhere strips a comment line that *starts* with `*`, `//` or
+`/*` — and a comment **continuation** starts with whatever word it happens to start with. Three of
+those ten begin with a backtick or a word (`clubs/detail/page.tsx:422` and `:445`,
+`globals.css:252`), so the filter passes them through as if they were code. **Unfiltered the same
+grep is 16 hits across 10 files, so the filter removed 6 of 16 and still let 3 through** — that
+comparison is the useful one, and stating it as *"10 hits"* beside *"10 files"* reads as though the
+filter removed nothing. The count is still worth having; *"every one a live pointer"* was not, and
+an earlier revision of this block said exactly that. **Read the lines, do not just count them.**
+
 ## The Geoapify credit is gone, and the cold load announces once — 2026-09-06
 
 **PD-415 + PD-220, one branch, taken into `slot-1`.** The only two candidates in `Queued (AI)`.
@@ -397,9 +483,11 @@ conflict. Both would reinstate the blanket freeze through the door that feels mo
 **PD-404 — the RIDE half only, and the issue stays open for the club.** The owner answered the
 frame question on 2026-09-06 with a shape none of PD-401's four options offered: the RSVP bar and
 the create affordance are **never both present**, because answering collapses the bar into a status
-chip on the first content line and hands the corner to a floating action. `ClubCreateBar` is
-untouched — `2043:10604` instances a variant **26 other frames** use, and that half (Q1) is
-unanswered.
+chip on the first content line and hands the corner to a floating action. `ClubCreateBar` was
+untouched at that point — `2043:10604` instances a variant **26 other frames** use, and that half
+(Q1) was unanswered. **Q1 was answered the same day and the club half has since shipped** — see
+§The floating action stopped sitting on the tab bar, and the club got one too, which is **above**
+this entry, since this file runs newest-first and that one is newer.
 
 **Five things a later session should not re-derive:**
 

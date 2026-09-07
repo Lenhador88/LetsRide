@@ -136,7 +136,7 @@ function useFirstWindowRemovalGuard<T>(
  * starts, and then we show chronologically what's been going on. For eg. a new
  * discussion created, someone created a postcard, rider joining the club."*
  * The Postcards carousel and the Threads section were dissolved into it in the
- * same change — they are entries here now, and `ClubCreateBar` carries the creates and
+ * same change — they are entries here now, and `ClubCreateAction` carries the creates and
  * `ClubThreadsRow` the entrance they used to own.
  *
  * ## The non-member branch is the one rule that is not cosmetic

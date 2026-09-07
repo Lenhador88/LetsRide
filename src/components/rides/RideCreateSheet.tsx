@@ -14,11 +14,13 @@ import type { RideCreateOption } from '@/types'
  * with the same `options` array, read off the same decision, so they cannot
  * drift into offering different things.
  *
- * `ClubCreateBar`'s sheet is the model and the argument is its: **one primary
- * and a sheet, rather than two buttons in a row** — two primaries side by side
- * is no primary at all, and it would be the only place in the app where that
- * slot holds more than one control. This costs a tap and keeps the geometry the
- * design specifies.
+ * `ClubCreateAction`'s sheet is the model and the argument is its: **one
+ * trigger and a sheet, rather than two buttons in a row** — two primaries side
+ * by side is no primary at all, and it would be the only place in the app where
+ * that slot holds more than one control. This costs a tap and keeps the
+ * geometry the design specifies. (It was `ClubCreateBar` when that argument was
+ * written; PD-404 moved both screens' triggers to `FloatingAction` and left
+ * both sheets alone, which is the argument surviving rather than lapsing.)
  *
  * **The icon is chosen here rather than carried on the option**, because it is a
  * rendering concern and `RideCreateOption` is data: putting a component on the

@@ -3,7 +3,7 @@
 import { Suspense, useState, useSyncExternalStore } from 'react'
 import { notFound, useSearchParams } from 'next/navigation'
 import { Globe2Icon, LocationOutlineIcon, Lock2Icon } from '@/components/icons/generated'
-import { ClubCreateBar } from '@/components/clubs/ClubCreateBar'
+import { ClubCreateAction } from '@/components/clubs/ClubCreateAction'
 import { ClubDetailHeader } from '@/components/clubs/ClubDetailHeader'
 import { ClubPreviewScreen } from '@/components/clubs/ClubPreviewScreen'
 import { ClubMembershipButton } from '@/components/clubs/ClubMembershipButton'
@@ -295,12 +295,27 @@ function ClubScreen() {
       <div
         className={cn(
           'flex flex-col gap-4 pt-4 motion-safe:animate-fade-in',
-          // The create bar is fixed, so the column has to make room or the last
-          // timeline entry sits behind it. `--navbar-action` is exactly this
-          // bar's geometry — 16 pad + 40 button + 8 — because it is the same
-          // control the nav bar's own action slot draws, just owned by this
-          // screen so it can be member-gated. Only when the bar renders.
-          isMember && 'pb-navbar-action-extra'
+          // The create affordance is fixed, so the column has to make room or
+          // the last timeline entry sits behind it — and a paging timeline is
+          // exactly the case where that matters, since there is always another
+          // last row.
+          //
+          // **`.pb-navbar-action-extra` is the wrong one since PD-404**: its
+          // 64px is `--navbar-action`, the geometry of the 40px button in the
+          // full-width bar this screen no longer draws. Against the 56px
+          // floating control it under-reserves, which is tight rather than
+          // buried and so is invisible to every gate. Leaving it behind
+          // entirely would be worse — a 64px dead strip under the timeline,
+          // which is PD-407's defect arriving on a second screen.
+          //
+          // **The floating action opts INTO clearance and does not reserve it
+          // by default**; the club opts in for the same reason the ride detail
+          // does. The clearance costs more vertical room than the bar did
+          // (81px against 64px) — the gain of this pattern is horizontal.
+          //
+          // Still gated on `isMember`, so nothing is reserved for a control
+          // that is not drawn.
+          isMember && 'pb-floating-action-extra'
         )}
       >
         {/* The future. Past rides are on the timeline now, on the day they were
@@ -403,9 +418,10 @@ function ClubScreen() {
         </div>
 
         {/* Join is the non-member's one action and stays on the page. A member
-            gets no button here at all — every create moved to `ClubCreateBar`,
-            which is fixed above the tabs rather than in the scroll. An owner is
-            always a member and never sees this either way. */}
+            gets no button here at all — every create moved to
+            `ClubCreateAction`, which floats above the tabs rather than sitting
+            in the scroll. An owner is always a member and never sees this
+            either way. */}
         {!isMember && (
           <div className="px-4">
             {/* `is_default` is READ, never assumed from this screen's position
@@ -426,8 +442,8 @@ function ClubScreen() {
 
       {/* Outside the scrolling column: it is fixed above the navigation bar.
           Member-only, because all three of its destinations refuse a
-          non-member — see `ClubCreateBar`. */}
-      {isMember && <ClubCreateBar clubId={id} />}
+          non-member — see `ClubCreateAction`. */}
+      {isMember && <ClubCreateAction clubId={id} />}
 
       {/* `097`, PD-365 — and PD-392's second opener.
 

@@ -1,12 +1,26 @@
 # The create affordance becomes a floating action instead of a full-width bar
 
-> **The ride detail is DECIDED and buildable. The club detail is not, and is out of scope here.**
-> The product owner answered the composition question on 2026-09-06 with a **fourth shape they
-> designed themselves** — answering the RSVP *replaces* the bar with a status chip, and the floating
-> action takes the bottom corner. That answer supersedes this proposal's earlier options A/B/C,
-> which are gone rather than annotated. **Q1 — the club detail — is still unanswered**, so
-> `src/components/clubs/ClubCreateBar.tsx` is **not touched** by this change and PD-404 stays open
-> after the ride half ships.
+> **BOTH screens are DECIDED and in scope. Q1 was answered on 2026-09-06 and this proposal was
+> widened to match** (PD-404, `opsx:update`).
+>
+> The product owner answered the ride's composition question with a **fourth shape they designed
+> themselves** — answering the RSVP *replaces* the bar with a status chip, and the floating action
+> takes the bottom corner. That answer supersedes this proposal's earlier options A/B/C, which are
+> gone rather than annotated. **The ride half shipped on 2026-09-06** (`d4fd70b`, PR #417).
+>
+> **Q1 — the club detail — is now answered the same way**: *"It should become the same floating yes.
+> However you see best to achieve that, please queue it."* So `ClubCreateBar` becomes the same
+> primitive, keeping its existing three-row sheet, and PD-404 **closes when the club half merges**.
+> The route is option 2, a **recorded departure**, because option 1 needs a Figma *write* and
+> `CLAUDE.md` §Design System requires an explicit ask for one — *"however you see best"* delegates
+> the route and does not grant that write.
+>
+> **The club's departure is the largest this change makes**, and larger than the ride's in kind
+> rather than in degree: frame `2375:8771` draws the ride detail no create control at all, so that
+> half was purely *additive*, while `2043:10604` draws `Button Container 358×56` as a child of a
+> navigation variant **26 other frames instance** — so the club half *deletes* an element the design
+> explicitly draws. Logged under §Club detail in `docs/FIGMA-FIDELITY-TODO.md` with that count, so
+> whoever updates the Figma knows the blast radius before they start.
 
 ## Why
 
@@ -17,7 +31,11 @@ action. Two screens own such a bar today:
 | Component | Screen | Actions | Gate | Frame | In this change |
 |---|---|---|---|---|---|
 | `src/components/rides/RideCreateBar.tsx` | ride detail | 2 — Postcard, Thread, via `RideCreateSheet` | crew (`private.is_ride_crew`) | `Ride - Ride plan (Details)` `2375:8771` | **yes** |
-| `src/components/clubs/ClubCreateBar.tsx` | club detail | 3 — Postcard, Ride, Thread, via `ContextMenu` | member (`private.is_club_member`) | `Private club - Timeline` `2043:10604` | **no — Q1 is open** |
+| `src/components/clubs/ClubCreateBar.tsx` | club detail | 3 — Postcard, Ride, Thread, via `ContextMenu` | member (`private.is_club_member`) | `Private club - Timeline` `2043:10604` | **yes — Q1 answered 2026-09-06** |
+
+**The club is the better fit of the two for this pattern**, which is worth stating because the ride
+shipped first and reads as the reference: three actions behind one `+` is the *expands into its
+actions* reference this story opened with. The ride has two.
 
 The ride detail's own obstacle was never the component; it was that `RideAttendanceBar` already owns
 the bottom edge for most riders on most rides. The owner's decision removes that collision instead
@@ -70,7 +88,7 @@ a rider who is crew.
 
 ## What changes
 
-### Scope — the ride detail, one new primitive, no schema
+### Scope — both details, one new primitive, no schema
 
 - **`src/components/ui/FloatingAction.tsx`** — new, and the app's first *persistent* floating
   control. Presentational: it takes its gate, label, icon and action as props and decides nothing.
@@ -84,6 +102,16 @@ a rider who is crew.
   **removed**; the finding that makes it dead is stated and measured below.
 - **One geometry token and one clearance class** in `globals.css` for the floating control.
   `--ride-rsvp-bar` is untouched — see *What happens to `--ride-rsvp-bar`*.
+- **`ClubCreateBar`** becomes the same floating action, keeping its existing three-row
+  *Create in this club* `ContextMenu` unchanged — **only the trigger moves**. Its member gate is
+  carried across verbatim, and the club detail's reserved `.pb-navbar-action-extra` goes with the
+  bar: the bar's 64px is the wrong number for a floating control and leaving it behind would give
+  the club timeline a 64px dead strip, which is PD-407's defect on a second screen.
+- **`FloatingAction`'s offset is `.bottom-floating-action`, not `.bottom-navbar`** — PD-423. The
+  primitive shipped inheriting the bar's offset, which gave it a **−1px** gap against the navigation
+  bar (measured, 390×844). Both halves of this change use the corrected one, which is why PD-423 is
+  built first: converting the club onto a known-wrong offset would ship the reported defect onto a
+  second screen and then fix it twice.
 
 ### What `resolveRideDetailActions` becomes
 
@@ -187,8 +215,14 @@ no longer exists in the tree.**
 
 ## What does not change
 
-- **`ClubCreateBar` and the club detail.** Q1 is open. Nothing under `src/components/clubs/` or
-  `src/app/(app)/clubs/` is touched, and `.pb-navbar-action-extra` stays correct there.
+- **The club's create SHEET.** Only the trigger moves. The three rows — Postcard, Ride, Thread —
+  their order, their icons, the `Create in this club` label and the club-scoped routes each carries
+  are unchanged, so `backFromCreateScreen` and `CREATE_CLUB_PARAM` keep working untouched.
+- **Who may create in a club.** The floating action is drawn on exactly the condition
+  `ClubCreateBar` was drawn on — the club detail's own `isMember`, which is
+  `!!club.data.viewer_role`. No `role` read, no owner branch, no new predicate.
+- **The club detail's other create affordances.** The empty-section tiles and the section `(+)`
+  (PD-312, PD-318, PD-342) are untouched; this replaces the bar, not those decisions.
 - **`Navbar`'s `STICKY_ACTIONS`** and its four pathnames — `/postcards`, `/rides`, `/clubs`,
   `/clubs/explore` keep the full-width primary drawn inside the navigation bar.
 - **`RideAttendanceBar`'s own markup, geometry and copy.** It gains one thing only: a way to tell
@@ -354,13 +388,13 @@ would refuse, and that where the control's test and the policy's differ it errs 
 
 ## Open questions
 
-**Q1 blocks the club half only and nothing in this change waits on it. Q3–Q8 all have defaults a
-build proceeds on.** Each is phrased as the rider's state: the screen, what the rider did, and what
-they did not do.
+**Q1 is ANSWERED (2026-09-06) and nothing in this change is open. Q3–Q8 all have defaults a build
+proceeds on.** Each is phrased as the rider's state: the screen, what the rider did, and what they
+did not do.
 
 ---
 
-### Q1 — BLOCKING on the club detail · product owner only · still open
+### Q1 — ANSWERED 2026-09-06 · the club detail becomes the same floating action, route B
 
 > A rider opens a **private club they are a member of** and scrolls to the bottom of its timeline.
 > They have not tapped anything. Today the navigation bar is 152px tall and carries a full-width
@@ -373,14 +407,28 @@ detail's 88px navigation variant into Figma; the next `figma:pull` bakes them in
 
 **B — A recorded departure**, frame updated afterwards.
 
-**Recommended: A**, and the reason is specific rather than a preference for process: the club's
+**Recommended: A**, and the reason was specific rather than a preference for process: the club's
 departure is not a screen's. `2043:10604` instances `v2 / Component / Navigation / Bar` at 390×152
 with `Button Container 358×56` as a child *inside* that instance, and **27 frames instance that
 component at 152** — so converting this screen changes a variant **26 other frames** share (nearer
 23 if the club's own sub-pages convert with it), and a note recorded on one screen is invisible to
 the rest. The ride detail had no such problem, which is why it could ship first.
 
-**Nothing in this change is blocked on this.** The ride half ships and PD-404 stays open.
+**ANSWERED: B, the recorded departure** — product owner, 2026-09-06: *"It should become the same
+floating yes. However you see best to achieve that, please queue it."*
+
+**A was recommended and is not available**, which is why the answer is B rather than a reversal of
+the recommendation above. A needs a Figma *write*, and `CLAUDE.md` §Design System requires the owner
+to ask for one explicitly; *"however you see best"* delegates the **route** and does not grant that
+write. Reading it as one would be exactly the over-reach that rule exists to stop.
+
+**So the blast radius above is not waived, it is deferred and written down.** The 26-frame count is
+logged in `docs/FIGMA-FIDELITY-TODO.md` under §Club detail, which is where the ride's three
+departures already live, so the person who eventually updates the Figma reads the count before they
+start rather than discovering it. **Consistency between the two screens was the deciding factor**:
+the ride detail has carried the pattern since `d4fd70b`, and a club that keeps a full-width bar
+while the ride floats teaches two different things on two screens one tap apart — which is what Q5
+below is about.
 
 ---
 
@@ -418,10 +466,12 @@ control's own geometry. This costs the vertical saving (measurement 1) and keeps
 > A rider on **`/rides`** taps a ride and lands on its detail. **Does the create affordance change
 > shape between those two screens?**
 
-Under this change's scope: **yes** — `/rides` keeps its full-width `Create ride` inside the
-navigation bar, the ride detail gets a floating action, and the **club** detail keeps its full-width
-bar until Q1 is answered. **Default: accept it and record it.** Converting the four `STICKY_ACTIONS`
-screens means changing the shared navigation component and its frames, which is a separate story.
+Under this change's scope: **yes, and Q1's answer narrows it to one boundary rather than two.** Both
+*detail* screens now float; the four `STICKY_ACTIONS` **list** screens — `/postcards`, `/rides`,
+`/clubs`, `/clubs/explore` — keep the full-width primary inside the navigation bar. So the shape
+changes exactly once, on the list → detail step, and no longer changes again between a ride detail
+and a club detail. **Default: accept it and record it.** Converting the `STICKY_ACTIONS` screens
+means changing the shared navigation component and its frames, which is a separate story.
 
 ---
 

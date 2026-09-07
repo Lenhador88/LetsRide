@@ -34,15 +34,27 @@ type FloatingActionProps = {
  * sheet it needs (see `RideCreateSheet` for the shape this replaces on the
  * ride detail), so this stays a primitive rather than a screen.
  *
- * ## Geometry, inherited from the bar this replaces
+ * ## Geometry — its OWN offset, not the bar's (PD-423)
  *
- * `.bottom-navbar` puts the bottom edge exactly on the navigation bar's top
- * edge (`globals.css`) — the same offset `RideCreateBar` and `ClubCreateBar`
- * use for the sticky bars this control can replace. `z-40` sits under the
- * navigation bar's `z-50`, so the tabs stay reachable if the two ever overlap.
- * **No `border-t`**: irrelevant to a circle, and the navigation bar already
- * draws its own hairline — `RideCreateBar`'s docstring names the doubled-line
- * defect that a second one here would repeat.
+ * `.bottom-floating-action` (`globals.css`), which is `.bottom-navbar` plus the
+ * navigation bar's own `border-t` and a 16px gap. **It shipped inheriting
+ * `.bottom-navbar` and that was the defect**, reported on DEV the same day: that
+ * class puts an element's bottom edge on the nav's top edge, which is what a
+ * full-width bar wants — a bar reads as continuous with the chrome — and the
+ * opposite of what a circle wants. Measured before the fix, at 390×844: nav top
+ * y775 against control bottom y776, so the lower arc sat *inside* the bar and
+ * `--shadow-floating`'s two downward offsets fell entirely on it.
+ *
+ * **Do not "simplify" this back to `.bottom-navbar`.** The two classes exist
+ * because one number cannot serve a bar and a circle. `RideAttendanceBar` is
+ * the remaining caller of the bar's offset and keeps it for that reason — it
+ * is a bar, and it is meant to read as continuous with the chrome.
+ *
+ * `z-40` sits under the navigation bar's `z-50`, so the tabs stay reachable if
+ * the two ever overlap — and raising it was never the fix for the overlap
+ * above, only a way to hide it. **No `border-t`**: irrelevant to a circle, and
+ * the navigation bar already draws its own hairline — `RideCreateBar`'s
+ * docstring names the doubled-line defect that a second one here would repeat.
  *
  * ## Elevation is a new token, not `shadow-lg`
  *
@@ -71,9 +83,10 @@ type FloatingActionProps = {
  * ## It does not reserve its own clearance
  *
  * `globals.css`'s own comment carries the arithmetic: a 56px control needs
- * 16 pad + 56 control + 8 = 80px if a page reserves space for it, against
- * `--navbar-action`'s 64px — nothing breaks even, so reserving clearance for
- * this costs MORE vertical room than the sticky bar it replaces, not less.
+ * 1 navbar border + 16 gap + 56 control + 8 = 81px if a page reserves space for
+ * it (80px before PD-423 gave it a real gap), against `--navbar-action`'s
+ * 64px — nothing breaks even, so reserving clearance for this costs MORE
+ * vertical room than the sticky bar it replaces, not less.
  * This component therefore assumes it sits on top of the last row of content
  * by default, which is what "floating" means; a page that wants clearance
  * instead opts in with `.pb-floating-action-extra`. The gain of this pattern
@@ -88,7 +101,7 @@ export function FloatingAction({ label, icon, onClick, className, ...props }: Fl
       onClick={onClick}
       aria-label={label}
       className={cn(
-        'bottom-navbar fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-foreground text-white shadow-floating transition-colors hover:bg-foreground/90 active:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        'bottom-floating-action fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-foreground text-white shadow-floating transition-colors hover:bg-foreground/90 active:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         className
       )}
       {...props}

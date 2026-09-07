@@ -33,7 +33,7 @@ import { CLUB_THREAD_TITLE_MAX } from '@/lib/validation/clubs'
  * **There is no prefilled title any more.** "Say welcome" (`092`, PD-356) used
  * to seed this field through `routes.newClubThread`'s second parameter; `097`,
  * PD-365 deletes that overflow and its `JoinOverflow`/`ContextMenu` trigger, so
- * every entrance to this screen (`ClubCreateBar`) now opens on the same empty
+ * every entrance to this screen (`ClubCreateAction`) now opens on the same empty
  * field, and `routes.newClubThread` takes one argument.
  */
 export function CreateThreadForm({ clubId }: { clubId: string }) {
