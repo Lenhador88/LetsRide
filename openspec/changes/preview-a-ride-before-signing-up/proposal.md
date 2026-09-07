@@ -328,6 +328,17 @@ a stranger can never be shown a ride that has already left.
   states the opposite of the code is worse than none. **No behaviour in `guard.ts` changes**:
   `/rides/join` is already in `PUBLIC_PATHS` and already in `needsOnboardingState()`'s set, and
   both stay.
+- **`src/components/rides/RideInviteJoin.tsx`'s header — the bigger of the two, and the file this
+  change actually edits.** It carries the same claims at length and argues *against* what this
+  change does, so leaving it is worse than leaving `guard.ts`'s one line. Four passages go or turn:
+  *"with no session it renders a generic sentence naming neither the ride nor its organizer, and
+  **calls neither RPC**"*; *"Decision #1 is untouched and no `anon` grant is added to make this
+  screen richer"*; the **seven-state** list, which gains one; and the paragraph refusing the
+  temptation — *"an invite page naming the ride would convert better… Anyone can hold a URL, and
+  the ride may be a private club's."* That last one is the decision being reversed, so it is
+  **rewritten rather than deleted**: it should say what the owner decided on 2026-09-05, that a
+  club-private ride *is* previewed, and why the class stays unobservable. A reader who finds only
+  the new behaviour learns nothing about why the old argument was abandoned.
 
 ### Explicitly NOT in this change
 

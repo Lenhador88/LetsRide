@@ -83,6 +83,21 @@ describe('crewRailSummary', () => {
     expect(crewRailSummary(composed, true).shown).toHaveLength(1)
   })
 
+  it('reads 0 going with no avatars when the host rides alone and says Maybe', () => {
+    // Reachable only since PD-429, and it is the honest answer rather than a
+    // state to paper over: adding the maybes in to avoid the zero is the exact
+    // arithmetic that got this count removed from the screen the first time.
+    // Pinned so a later "fix" for the empty rail has to argue with a test.
+    const alone = withOrganizer(crew([], ['pl']), 'pl', rider('pl').profile)
+
+    expect(crewRailSummary(alone, true).label).toBe('0 going')
+    expect(crewRailSummary(alone, true).shown).toHaveLength(0)
+    expect(crewRailSummary(alone, true).overflow).toBe(0)
+    // The host is not lost — the panel still lists them, with their label.
+    expect(alone.maybe.map((m) => m.user_id)).toEqual(['pl'])
+    expect(alone.maybe[0].is_host).toBe(true)
+  })
+
   it('drops an organizer who answered Maybe out of the going count (PD-429)', () => {
     // The organizer may now answer Maybe, and the count is the first place that
     // shows: before PD-429 `withOrganizer` promoted them into `going` whatever
@@ -159,5 +174,39 @@ describe('the rail reads the crew page’s own source', () => {
     const rewritten = code.replace('crew.going.length', 'ride.riders_count')
     expect(rewritten).toContain('riders_count')
     expect(rewritten).not.toBe(code)
+  })
+
+  /**
+   * **The host is marked by the FLAG, never by the position** — PD-429, and it
+   * was a live bug for the length of one review.
+   *
+   * The ring read `i === 0`, which was correct only while `withOrganizer`
+   * prepended the host to `going` unconditionally. Now that they lead whichever
+   * section their own RSVP names, `going[0]` is an ordinary crew member as soon
+   * as the organizer answers Maybe — so the rail drew an accent ring around a
+   * rider who does not host the ride, on the screen the organizer was looking
+   * at. Nothing else could catch it: the markup is valid, `tsc` is happy, and
+   * `crewRailSummary`'s assertions are all about the count.
+   *
+   * Scanned rather than rendered because the avatar row is inside the collapsed
+   * button and its class list is what carries the claim — the same reasoning the
+   * `riders_count` scan above uses.
+   */
+  it('rings the host by is_host, never by list position', () => {
+    expect(code).toContain('member.is_host &&')
+    expect(code).not.toMatch(/i === 0/)
+    // The strip left the executable half behind, and the filter still matches a
+    // real regression — verified both ways, per CLAUDE.md's comment trap.
+    expect(code).toContain('ring-accent')
+    const reverted = code.replace('member.is_host &&', 'i === 0 &&')
+    expect(reverted).toMatch(/i === 0/)
+  })
+
+  it('gives the maybe rows the same host props as the going rows', () => {
+    // `withOrganizer` can place the host under `May be going` since PD-429, and
+    // a row rendered without these drops the `Ride host` label that
+    // `crew/page.tsx` still shows for the same rider from the same array.
+    expect(code.match(/isHost=\{member\.is_host\}/g) ?? []).toHaveLength(2)
+    expect(code.match(/note=\{member\.is_host \? 'Ride host' : undefined\}/g) ?? []).toHaveLength(2)
   })
 })

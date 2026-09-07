@@ -30,7 +30,7 @@ npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 10 pre-existing warnings, 0 errors
                                       #   9 <img>, plus one unused 'joined' in ClubCard.tsx
-npm run test:unit                     # 3579/3579 across 146 files
+npm run test:unit                     # 3582/3582 across 146 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 43 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle
@@ -77,11 +77,17 @@ npm run release:check                 # only before a store submission — see �
 
 - **`npm install` is not `npm ci`, and the difference fails as two red tests that are not
   yours.** `@fission-ai/openspec` is `^1.7.0` and the lock pins `1.7.0`; an `install` resolves
-  `1.10.0`, whose templates differ, and `openspec-artifacts.test.ts` — the byte-compare against
+  whatever is newest — `1.10.0` on 2026-08-24, **`1.12.0` on 2026-09-07** — whose templates
+  differ, and `openspec-artifacts.test.ts` — the byte-compare against
   the CLI that generated `.claude/skills/` and `.claude/commands/opsx/` — fails on two files a
   session touching neither has never opened. It reads exactly like drift someone introduced.
-  Measured 2026-08-24 in a container that arrived that way. `npm ci` is the fix, and CI never
-  sees it because CI runs `npm ci`:
+  **`git stash` does not clear it**, which is what sells the wrong diagnosis: the cause is not in
+  the tree, so a stashed working copy fails identically and reads as *broken on `development`*.
+  **A subagent is a way to get it without typing it** — one that installs the CLI to run
+  `openspec validate` rewrites the whole tree under a session that never ran `install` itself
+  (2026-09-07). **Never "fix" it by regenerating the committed `.claude/` surfaces**: CI installs
+  the locked version, so that is the one edit that turns a green CI red. `npm ci` is the fix, and
+  CI never sees it because CI runs `npm ci`:
 
   ```bash
   node -p "require('./node_modules/@fission-ai/openspec/package.json').version"   # 1.7.0
