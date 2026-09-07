@@ -275,6 +275,30 @@ export const claims = [
     about: '§Technology Decisions, Tests table: "One component test exists"',
   },
 
+  {
+    id: 'jsdom-component-tests-claude',
+    file: 'CLAUDE.md',
+    // The entry above gates the TOTAL and left this one ungated, which is the
+    // failure its own comment predicts: *"the reader most likely to be misled
+    // by a stale count is exactly the one adding a component test that does
+    // need jsdom"*. That is what happened on PD-428 — the total was carried to
+    // 43 and the jsdom count was left at eight while the diff added a ninth,
+    // and `docs:check` reported 42/42 because nothing measured it.
+    //
+    // It matters more than the total does. The sentence next to it instructs
+    // the reader to check their reason against an enumerated list, so a stale
+    // count means a list that no longer contains its newest member — and the
+    // rule it teaches (jsdom only for a mounted effect, a layout, an event or
+    // a portal) is exactly the one a session decides by copying a neighbour.
+    pattern: /all but \*\*([\w-]+)\*\* render through `renderToStaticMarkup`/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    // `git grep -l`, matching the command CLAUDE.md tells the reader to run,
+    // so the claim and its stated verification cannot drift apart.
+    cmd: `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx' | wc -l`,
+    about: '§Technology Decisions, Tests table: the jsdom component-test count',
+  },
+
   // ---- Migration file count ----------------------------------------------
   {
     id: 'migrations-count-claude',

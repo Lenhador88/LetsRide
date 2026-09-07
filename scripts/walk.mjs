@@ -160,11 +160,11 @@ let EMAIL = process.env.WALK_EMAIL ?? `walk-${MINT_SUFFIX}@letsride.dev`
 // minting rather than asking for a password to remember.
 let PASSWORD = process.env.WALK_PASSWORD ?? `Walk-mint-${MINT_SUFFIX}-Aa1`
 const MINT_USERNAME = `walk_${MINT_SUFFIX}`.slice(0, 25)
-// Real, not a placeholder — `checkEditProfileRetention`'s first assertion
-// (the `??` fallback to the *stored* profile value) needs a genuine saved
-// location to load, and this is the value the walk's own docs already use
-// for the long-lived account.
-const MINT_LOCATION = 'Amsterdam'
+// The country the minted rider picks at onboarding (PD-428). Its EXACT name,
+// because the picker is filtered by substring and matched exactly — see
+// `finishOnboarding`, where clicking the first filtered row silently chose
+// `Caribbean Netherlands` instead.
+const MINT_COUNTRY = 'Netherlands'
 
 /**
  * Every authenticated route. Detail routes are discovered at run time rather
@@ -601,10 +601,17 @@ async function runRefusedSignup() {
  *
  * The country control is a combobox over a listbox rather than a native
  * `<select>` (`src/components/ui/CountrySelect.tsx`), so it cannot be driven
- * with `selectOption`: type to filter, then click the option. `Netherlands` is
- * picked because DEV's fixtures are Dutch and because it is unambiguous under
- * the filter — the match is on name and ISO code, so a two-letter query would
- * hit both `NL` and every name containing it.
+ * with `selectOption`: type to filter, then click the row whose name matches
+ * EXACTLY. `Netherlands` is picked because DEV's fixtures are Dutch.
+ *
+ * **It is not unambiguous under the filter, and an earlier version of this
+ * comment claimed it was.** The reasoning ran: the match is on name and ISO
+ * code, so a two-letter query would hit both `NL` and every name containing
+ * those letters — therefore type the full name. That half is right and it does
+ * not finish the job: the full name is itself a substring of `Caribbean
+ * Netherlands`, which sorts first, so clicking the first filtered row stored
+ * `BQ`. The exact-name match below is the fix; the ambiguity is why it cannot
+ * go back to clicking `[role="option"]`.
  */
 async function finishOnboarding(page) {
   await page.fill('input[name="username"]', MINT_USERNAME)
@@ -626,9 +633,35 @@ async function finishOnboarding(page) {
     return
   }
 
-  await page.fill('input[role="combobox"]', 'Netherlands')
+  await page.fill('input[role="combobox"]', MINT_COUNTRY)
   await page.waitForTimeout(300)
-  await page.click('[role="option"]', { timeout: 10_000 })
+
+  // **The EXACT row, never the first one.** `filterCountryOptions` matches on
+  // name substring and the list is sorted by `localeCompare`, so filtering for
+  // `Netherlands` returns TWO rows and `Caribbean Netherlands` (`BQ`) sorts
+  // ahead of `Netherlands` (`NL`). Clicking `[role="option"]` took `BQ`, and
+  // **the walk went green doing it** — `BQ` is an assigned code, so the CHECK
+  // passes and `complete_onboarding` stamps. Nothing here would ever have said
+  // so; it breaks later, wherever something expects the minted rider to be
+  // Dutch. Found in review rather than by running this.
+  //
+  // The flag span is `aria-hidden`, so the name is the second span's text.
+  const rows = await page.$$('[role="option"]')
+  let picked = null
+  for (const row of rows) {
+    const name = await row.evaluate(
+      (el) => el.querySelector('span:nth-of-type(2)')?.textContent?.trim() ?? ''
+    )
+    if (name === MINT_COUNTRY) {
+      picked = row
+      break
+    }
+  }
+  if (!picked) {
+    console.error(`  ! no country option named exactly "${MINT_COUNTRY}" — onboarding cannot finish`)
+    return
+  }
+  await picked.click()
   await Promise.all([
     page
       .waitForURL((u) => u.pathname !== '/onboarding/country', { timeout: 20_000 })
@@ -838,52 +871,21 @@ async function mintWalkAccount() {
 
   console.log(`  minted ${EMAIL} — username ${MINT_USERNAME}, onboarding complete`)
 
-  // **Follow-up to the mint itself, not a second feature.** PD-286 dropped
-  // `location` from onboarding on purpose — it is a profile field now, not a
-  // gate — so a freshly-minted rider legitimately has none, and
-  // `checkEditProfileRetention`'s first assertion ("location loads from the
-  // stored profile") has nothing to load. Leaving that failing is not a
-  // shrug: CLAUDE.md is explicit that a shrunken `N/N` is a skip rather than
-  // a pass, and an assertion that is known to fail on every minted run is
-  // the same defect wearing a green light — the next session learns it is
-  // "expected" and stops reading the other seventeen. So the mint sets one
-  // for real, through `/profile`'s own edit form — the one screen the walk
-  // otherwise only ever RENDERS and never writes to — which keeps this a
-  // walk rather than a seed script, the same reasoning as signup and
-  // onboarding above.
-  await page.goto(`${BASE}/profile`, { waitUntil: 'networkidle' })
-  await page.waitForSelector('input[name="location"]', { timeout: 20_000 })
-  await page.fill('input[name="location"]', MINT_LOCATION)
-  await Promise.all([
-    page
-      .waitForFunction(
-        () => document.querySelector('form [role="status"]')?.textContent?.trim() === 'Saved',
-        null,
-        { timeout: 20_000 }
-      )
-      .catch(() => {}),
-    page.click('button[type="submit"]'),
-  ])
-  await page.waitForTimeout(500)
-
-  const savedLocation = await page.inputValue('input[name="location"]').catch(() => null)
-  if (savedLocation !== MINT_LOCATION) {
-    // Fully onboarded — reachable exactly like the /postcards case above.
-    console.error(
-      `\nMinting failed: could not set the minted rider's location through /profile — ` +
-        `read back ${JSON.stringify(savedLocation)}.`
-    )
-    console.error(`${EMAIL} is fully onboarded; deleting it before aborting.`)
-    const cleanup = await attemptDeleteAccount(PASSWORD)
-    if (cleanup.ok) {
-      console.error(`${EMAIL} deleted.`)
-    } else {
-      console.error(`Could not clean up ${EMAIL} — ${cleanup.why}. Remove it by hand.`)
-    }
-    await browser.close()
-    process.exit(1)
-  }
-  console.log(`  set location to "${MINT_LOCATION}" through /profile`)
+  // **The mint no longer writes a location, because there is no longer a field
+  // to write it in.** This block existed for one reason: to give the account a
+  // stored `location` so `checkEditProfileRetention`'s first assertion had
+  // something to load. PD-425 deleted the free-text location input from
+  // `EditProfileForm` outright — the screen was carrying two writers for one
+  // column, and the picker-backed `LocationSetting` below the form is the
+  // survivor — so both the write and the assertion it fed are gone.
+  //
+  // **This is what broke the walk on `development`**: PD-425 removed the field
+  // and left `waitForSelector('input[name="location"]')` here, which times out
+  // after 20s and takes the whole run with it. Nothing caught it because the
+  // `Smoke walk` job is skipped until the repository variable `WALK_CI=1`
+  // exists, and the walk is not a required check. Measured 2026-09-07 against
+  // `origin/development`: the form has zero `name="location"` occurrences and
+  // this line was still waiting for one.
 }
 // Full walks only, matching the guard cases below: a subset invocation is
 // someone debugging one screen, and this one costs a whole extra sign-in.
@@ -2584,40 +2586,45 @@ async function checkEditProfileRetention() {
   const field = (name) => `form [name="${name}"]`
 
   await page.goto(`${BASE}/profile`, { waitUntil: 'networkidle' })
-  await page.waitForSelector(field('location'), { timeout: 20_000 })
+  await page.waitForSelector(field('bike_model'), { timeout: 20_000 })
 
-  const initialLocation = await page.inputValue(field('location')).catch(() => null)
-  report(
-    Boolean(initialLocation && initialLocation.trim().length > 0),
-    'location loads from the stored profile (the `??` fallback)',
-    `read ${JSON.stringify(initialLocation)}`
-  )
-
+  // **This phase used to drive `location` and PD-425 deleted that field.** The
+  // subject was never the location itself — it is PD-199's retain-on-error
+  // rule, that an uncontrolled `defaultValue` form must not revert what the
+  // rider typed when the action returns a refusal. `retaining(updateProfile,
+  // ['bike_model', 'bio'])` names the two fields that carry it, so the phase
+  // now drives those and asserts the same property.
+  //
+  // The first assertion is gone with the field rather than replaced: it read
+  // "location loads from the stored profile (the `??` fallback)", and there is
+  // no longer a stored free-text location to load. The mint's location write
+  // existed only to feed it and is gone too.
   const bikeModel = `Walk probe bike ${Date.now()}`
-  const tooLongLocation = 'A'.repeat(101)
+  const tooLongBio = 'A'.repeat(501)
+
   // `page.fill()` CANNOT deliver this, and finding that out cost a red run:
-  // every field on this form carries `maxLength`, and fill() honours it — so
-  // the 101 characters arrived as 100, the action accepted them, and the phase
-  // failed while ALSO writing a 100-character location over the walk account's
-  // stored one. Since PD-286 made all three fields optional, there is no value
-  // this form's own DOM will let a typist submit that the action refuses.
+  // every field on this form carries `maxLength`, and fill() honours it — so an
+  // over-long value arrives truncated, the action ACCEPTS it, and the phase
+  // fails while also writing the truncated value over the account's stored one.
+  // Since PD-286 made these fields optional, there is no value this form's own
+  // DOM will let a typist submit that the action refuses.
   //
   // So the refusal is driven the way a patched client would drive it: the
   // native value setter past `maxLength`, plus the `input` event React listens
   // for. That is not a contrivance — it is the case the action's parse exists
   // for, since `maxLength` is an editing constraint and not a guarantee, and
-  // `018`'s `profiles_location_length` is what actually holds the line.
+  // `018`'s `profiles_bio_length` is what actually holds the line.
   await page.$eval(
-    field('location'),
+    field('bio'),
     (el, value) => {
       const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
+        window.HTMLTextAreaElement.prototype,
         'value'
       ).set
       setter.call(el, value)
       el.dispatchEvent(new Event('input', { bubbles: true }))
     },
-    tooLongLocation
+    tooLongBio
   )
   await page.fill(field('bike_model'), bikeModel)
 
@@ -2640,11 +2647,11 @@ async function checkEditProfileRetention() {
   ).join(' | ')
   report(Boolean(refusal), 'the refusal is reported', 'no alert text on screen')
 
-  const locationAfter = await page.inputValue(field('location')).catch(() => null)
+  const bioAfter = await page.inputValue(field('bio')).catch(() => null)
   report(
-    locationAfter === tooLongLocation,
-    'location survives it',
-    `read ${JSON.stringify(locationAfter)}`
+    bioAfter === tooLongBio,
+    'bio survives it',
+    `read ${JSON.stringify(bioAfter?.slice(0, 40))}… (${bioAfter?.length} chars)`
   )
 
   const bikeAfter = await page.inputValue(field('bike_model')).catch(() => null)

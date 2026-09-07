@@ -367,6 +367,13 @@ them are about files older than this one:
   `'NLD'`, `' NL '` and `'1'` are all reported by the membership constraint on `profiles`, and
   `'nl'` likewise by `profile_countries_code_is_assigned` rather than `014`'s shape check. Do not
   "fix" it by renaming — that would make the shape check report for `ZZ`, which IS a valid shape.
+- **`113`'s column comment and two of its header paragraphs describe a profile-editor country
+  field that does not exist.** PD-428 shipped the onboarding write only; `EditProfileForm` offers
+  no country control, so *"the profile editor's field stays OPTIONAL"* is a statement of intent
+  rather than of fact. It is left as written because `113` is applied and this repo does not edit
+  an applied migration — but a database column comment is the one doc no `CLAUDE.md` edit can
+  reach, so it is recorded here instead. If the editor is built, the claim becomes true and
+  nothing needs changing; if it is decided against, a later migration owes a `comment on column`.
 - **`020`'s and `113`'s footer verification query for the code list is broken and returns NULL.**
   It matches `\{(.*)\}` while `pg_get_constraintdef` renders `ARRAY['AD'::text, …]`, so it reads
   as "no answer" rather than "wrong". The working form is `\[(.*)\]` → 249, pinned in the RLS

@@ -34940,9 +34940,12 @@ select assert_eq(
 select assert_eq(
   (select home_country from profiles where id = '00000000-0000-0000-0000-000001130001'),
   'NL', '113.5: ** and the STORED VALUE is unchanged ** — enforce_onboarding_completion coerced the NULL back, exactly as 038 does for username. This is the assertion; the one above only proves it was silent');
--- The other half of the same statement still lands, which is what makes the
--- profile editor's optional country field safe (design.md §D5): a rider blanking
--- the control does not lose the edit they actually came to make.
+-- The other half of the same statement still lands. That is what would make an
+-- optional country field on the profile editor safe (design.md §D5) — a rider
+-- blanking the control would not lose the edit they actually came to make.
+-- **That screen does not exist yet**: PD-428 shipped the onboarding write only,
+-- and `EditProfileForm` offers no country field, so this asserts the property a
+-- future editor depends on rather than describing one that is there.
 update profiles set home_country = null, bio = 'edited alongside a blanked country'
  where id = '00000000-0000-0000-0000-000001130001';
 select assert_eq(
@@ -35093,7 +35096,7 @@ select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'home_
 select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'home_country', 'INSERT'),
   true, '113.10: ... INSERT');
 select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'home_country', 'UPDATE'),
-  true, '113.10: ... and UPDATE, which is the one the country step and the profile editor both need');
+  true, '113.10: ... and UPDATE, which is the one the onboarding country step needs (and a profile editor would, if one is ever built — PD-428 shipped no country field on EditProfileForm)');
 -- ** THE ASSERTION THAT CATCHES THE ONE-LINE GRANT. ** `grant select, insert,
 -- update (home_country) on ... ` attaches the column list to the LAST privilege
 -- only, so it grants SELECT and INSERT TABLE-WIDE and hands back everything 025

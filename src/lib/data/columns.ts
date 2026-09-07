@@ -78,7 +78,16 @@ export const PUBLIC_PROFILE_COLUMNS = 'id, username, avatar_path, bike_model'
  * like any other column, and `113` grants `authenticated` SELECT on it — but no
  * screen draws another rider's country, and a column added to a projection
  * "because it is allowed" is how `PUBLIC_PROFILE_COLUMNS` grew the first time.
- * The own-profile read needs it because the profile edit form offers it.
+ *
+ * **It is here because `Profile` declares it, not because a screen renders it
+ * yet.** This is the one read that types a rider's own row, so leaving the
+ * column out would make `home_country: string | null` a field that is
+ * `undefined` on every path — the exact shape `021`'s header refuses for the
+ * two stamps. No screen draws it today: the country is written at onboarding
+ * and `EditProfileForm` does not offer it (PD-428 stays open for that). So
+ * this is forward-looking by one screen, stated rather than dressed up as a
+ * need — and if that screen is never built, the honest fix is to drop the
+ * field from `Profile` and this list together, not to leave a dead projection.
  */
 export const OWN_PROFILE_COLUMNS =
   'id, username, bio, bike_model, created_at, location, home_country, avatar_path, cover_image_path'
