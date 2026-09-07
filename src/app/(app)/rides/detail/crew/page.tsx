@@ -71,11 +71,9 @@ function RideCrewScreen() {
       ? withOrganizer(roster.data, ride.data.organizer_id, ride.data.organizer)
       : null
 
-  // Every ride sub-page's header carries the chat entry points, so every one of
-  // them owes this — read from `getRide` rather than re-derived here. See the
-  // ride plan page.
-  const isCrew = ride.data?.is_crew
-
+  // No `isCrew` here any more: it existed only to feed `RideHeader`'s chat
+  // button, and PD-426 deleted that button. The ride plan still derives its own
+  // for the create affordance — this screen has none.
   const gate = combineQueries(ride, roster)
 
   return (
