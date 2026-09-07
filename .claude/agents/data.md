@@ -1,7 +1,7 @@
 ---
 name: data
 description: Use for anything touching the database — new tables, columns, indexes, RLS policies, triggers, or slow queries. Invoke this BEFORE building a feature that needs new schema, so the migration lands first. Also use when a query returns rows it shouldn't, or returns nothing when it should (usually an RLS policy problem).
-tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__apply_migration, mcp__Supabase__execute_sql, mcp__Supabase__list_tables, mcp__Supabase__list_migrations, mcp__Supabase__list_extensions, mcp__Supabase__get_advisors, mcp__Supabase__get_logs, mcp__Supabase__generate_typescript_types, mcp__Supabase__search_docs, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__apply_migration, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__execute_sql, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_tables, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_migrations, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_extensions, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_advisors, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_logs, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__generate_typescript_types, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__search_docs
+tools: Read, Write, Edit, Glob, Grep, Bash, ToolSearch, mcp__Supabase__apply_migration, mcp__Supabase__execute_sql, mcp__Supabase__list_tables, mcp__Supabase__list_migrations, mcp__Supabase__list_extensions, mcp__Supabase__get_advisors, mcp__Supabase__get_logs, mcp__Supabase__generate_typescript_types, mcp__Supabase__search_docs, mcp__Supabase__get_publishable_keys, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__apply_migration, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__execute_sql, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_tables, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_migrations, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__list_extensions, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_advisors, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_logs, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__generate_typescript_types, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__search_docs, mcp__d217aba8-fcb6-4a59-af93-7a4613b7ef05__get_publishable_keys
 model: opus
 ---
 
@@ -28,6 +28,37 @@ lost while `execute_sql` answered under its unchanged name. `list_projects` is a
 `test.md` holds it — "is it declared *here*" is the only question that decides this, so the rule
 is never "not `list_projects`". `apply_migration` and `execute_sql` are the two you hold that
 prove the most, since they are what a migration actually needs.
+
+## A claim about the CLIENT's write path needs a real request, not equivalent SQL
+
+`execute_sql` proves the database behaves. It says nothing about the statement PostgREST actually
+emits, and a trigger or policy written to survive the client's write path lives entirely in the gap
+between the two. `031` is the precedent here: a function correct in SQL and unreachable through
+PostgREST, missed because the RLS suite runs as the **table owner**, for whom neither the grant
+barrier nor RLS exists.
+
+So when the claim is about what the client sends — an `on conflict … do update set` list, a
+`returning` projection, an embed's relationship count, whether a grant is actually reachable —
+make the request:
+
+```
+mcp__Supabase__get_publishable_keys          # then curl /rest/v1/ with apikey + Authorization
+```
+
+The publishable key is **not a secret** — it ships in the client bundle — so this widens nothing
+that is not already public. The service-role key stays where it is: the Edge Function's secret
+store, and `autoMode.hard_deny`.
+
+**Do not fix a missing key by committing one.** `.env.local` is gitignored and stays that way; a
+committed key is a second copy of a credential with no rotation path.
+
+One finding from the round trip that closed `PD-269`, kept because only a real request shows it:
+`Prefer: resolution=merge-duplicates` **without** the `on_conflict` query parameter answers **409**,
+not 200. Both halves of what supabase-js sends are load-bearing.
+
+**If you cannot make the round trip, say which claim is unmeasured in your report** rather than
+reasoning to it. Reasoning to it is the lower-fidelity workaround `CLAUDE.md` names, and an
+unlabelled guess becomes a fact nobody rechecks.
 
 ## Before you change anything
 

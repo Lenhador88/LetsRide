@@ -16,11 +16,20 @@ import type { Profile } from '@/types'
 // The edit forms fail differently from the create ones: their `defaultValue` is
 // the *stored* value, so the reset does not blank the form, it silently rolls
 // every edit back to what was already saved — which looks like the save worked.
-const retainProfile = retaining(updateProfile, ['location', 'bike_model', 'bio'])
+const retainProfile = retaining(updateProfile, ['bike_model', 'bio'])
 const initialState = seedRetained(emptyActionState)
 
 /**
- * Editing the three fields a rider owns on their own profile.
+ * Editing the two free-text fields a rider owns on their own profile.
+ *
+ * **`location` is NOT one of them, since PD-425, and adding it back is the
+ * reversal to expect.** It was a plain `<Input>` that accepted any string, and
+ * it sat directly above `LocationSetting` — PD-419's picker-backed control —
+ * under the *same* heading, "Where you ride from". So one screen carried two
+ * controls for one column: the top one stored `asdf` happily and the bottom one
+ * then told the rider `asdf` could not be placed. `setRiderTown` is the column's
+ * only writer now, and `profileEditSchema` carries no `location` member, so a
+ * field re-added here would submit nothing the action reads.
  *
  * The v1 version of this called `supabase.from('profiles').update()` from the
  * browser and then `router.refresh()`, validating nothing. It is now
@@ -46,8 +55,8 @@ const initialState = seedRetained(emptyActionState)
  * with what the rider typed". They do not** — measured 2026-08-06: React resets
  * an uncontrolled field to its `defaultValue` once a `useActionState` action
  * settles, on an error return as much as on success, because nothing was
- * thrown. Typing into `bike_model` and then failing validation on `location`
- * wipes the typed `bike_model` back to the saved value.
+ * thrown. Typing into `bike_model` and then failing validation on `bio` wipes
+ * the typed `bike_model` back to the saved value.
  *
  * Two consequences, both now handled. The focus effect below reads a `FormData`
  * snapshot captured in `onSubmit` rather than re-reading the DOM, which by then
@@ -94,9 +103,11 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
   const submittedData = useRef<FormData | null>(null)
 
   // Same reasoning as `CreateRideForm`: a disabled Save read as the resting
-  // state of a form nobody had touched yet (worse here, since `location`
-  // almost always arrives pre-filled — the disable only ever fired on a rider
-  // who *cleared* it), and it left the tab order early for AT. `noValidate`
+  // state of a form nobody had touched yet, and it left the tab order early for
+  // AT. (The sharper version of that argument was about `location`, which
+  // arrived pre-filled so the disable only ever fired on a rider who cleared it;
+  // PD-425 moved that field out, and the plain reason still stands for the two
+  // optional fields left.) `noValidate`
   // below turns off the browser's own bubble, so this moves focus to the
   // schema-rejected field instead, off the same `profileEditSchema` the action
   // parses.
@@ -106,7 +117,6 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
     const form = formRef.current
     if (!data || !form) return
     const parsed = profileEditSchema.safeParse({
-      location: data.get('location'),
       bio: data.get('bio'),
       bike_model: data.get('bike_model'),
     })
@@ -128,12 +138,6 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
       noValidate
       className="flex flex-col gap-4 px-6"
     >
-      <Input
-        name="location"
-        label="Where you ride from"
-        defaultValue={state.retained.location ?? profile.location ?? ''}
-        maxLength={100}
-      />
       <Input
         name="bike_model"
         label="Your bike"

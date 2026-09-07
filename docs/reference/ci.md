@@ -29,7 +29,7 @@ why the runs alone are not evidence. If it returns it is an **owner action**:
 npm ci
 npx tsc --noEmit                      # exit 0
 npm run lint                          # exit 0 — 9 pre-existing <img> warnings, 0 errors
-npm run test:unit                     # 3438/3438 across 139 files
+npm run test:unit                     # 3442/3442 across 139 files
 NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder npm run build   # exit 0, 43 static routes
 node scripts/native/assert-web-build.mjs   # that build was the web app, not the bundle

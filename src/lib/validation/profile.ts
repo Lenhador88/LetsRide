@@ -133,6 +133,33 @@ export const bikeModelSchema = optionalText(
 )
 
 /**
+ * `profiles.location`, and **`setRiderTown` is now its only writer** (PD-425).
+ *
+ * It used to be a member of `profileEditSchema`, reached as
+ * `profileEditSchema.shape.location`. It is a standalone export because the
+ * profile form no longer carries a location field at all: PD-419 added
+ * `LocationSetting`, a picker-backed control, directly beneath that form — and
+ * the two sat on one screen under the *same* heading, "Where you ride from",
+ * one of them accepting `asdf` while the other told the rider `asdf` could not
+ * be placed. Deleting the free-text door is what makes the column single-writer;
+ * a second picker in the form would have made it two pickers.
+ *
+ * **Still permissive, deliberately.** The rows written through the old free-text
+ * field exist and must keep parsing — `describeRiderLocation` is what tells a
+ * rider their stored town cannot be placed, and it needs the value to survive
+ * being read back. This bounds length; it has never asserted the town resolves,
+ * and it must not start, or every legacy row becomes unreadable.
+ *
+ * `018`'s `profiles_location_length` is the CHECK behind it. The two must agree:
+ * a client that accepts more than the column does turns a field message into a
+ * raw `23514`.
+ */
+export const locationSchema = optionalText(
+  LOCATION_MAX_LENGTH,
+  'Must be 100 characters or fewer.'
+)
+
+/**
  * The editable surface of a profile, and deliberately not all of it.
  *
  * `username` is absent: it is unique, reserved-word checked, and rendered as
@@ -142,11 +169,18 @@ export const bikeModelSchema = optionalText(
  * belongs with the `media` agent. Both are logged in
  * docs/FIGMA-FIDELITY-TODO.md §Profile rather than half-built.
  *
- * `location` is inlined here rather than its own export — this is its only
- * caller since onboarding stopped collecting one (PD-286).
+ * **`location` is NOT here, since PD-425** — see `locationSchema` above. The
+ * profile screen carried two controls that both wrote this column: this form's
+ * free-text box and PD-419's `LocationSetting`, which requires a pick. Only the
+ * second survives, so `updateProfile` no longer reads or writes `location` at
+ * all and `setRiderTown` is the column's single writer.
+ *
+ * **Do not add it back to keep the form "complete".** A `location` member here
+ * means `updateProfile` writes the column again, and a form that does not render
+ * the field would then send `null` on every save — silently erasing a town the
+ * rider set with the picker two sections down.
  */
 export const profileEditSchema = z.object({
-  location: optionalText(LOCATION_MAX_LENGTH, 'Must be 100 characters or fewer.'),
   bio: bioSchema,
   bike_model: bikeModelSchema,
 })

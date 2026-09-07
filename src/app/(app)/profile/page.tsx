@@ -188,11 +188,12 @@ function ProfileScreen({ profile }: { profile: Profile }) {
 
       <EditProfileForm profile={profile} />
 
-      {/* PD-419. Below the editor deliberately: the editor's `location` field
-          says what the rider TYPED, and this says what the app is actually
-          measuring from, which are different whenever a device fix outranks the
-          town. Reading them the other way round would suggest the field is the
-          setting. */}
+      {/* PD-419, and since PD-425 the ONLY location control on this screen. The
+          editor above carried a free-text `location` field under this section's
+          own heading — two controls, one column, and the field accepted towns
+          this section then reported as unplaceable. Deleting the field is what
+          made `setRiderTown` the single writer; a second picker up there would
+          have been two pickers. */}
       <LocationSetting />
 
       <section className="flex flex-col gap-2">
