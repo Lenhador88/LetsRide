@@ -412,21 +412,24 @@ to reject `Clubs` in an English name — which is how an earlier draft of this f
 The 100-character keyword field is indexed too, and both stores build phrases across the fields,
 so **a word already in the name or subtitle is wasted if repeated there** — asserted from
 knowledge and worth confirming in App Store Connect, unlike the localisation rules above which
-were checked. With `LetsRide: Motorcycle Clubs` and `Tell your story, ride together`, the name
-and subtitle own `motorcycle`, `clubs`, `ride`, `story`, `together`. The keyword field spends its
-100 characters on what they do not:
+were checked. With `LetsRide: Motorcycle Clubs` and `Join rides, tell your story`, the two fields
+already own `motorcycle`, `clubs`, `join`, `rides`, `tell`, `story`. The keyword field spends its
+100 characters on what they do not (86 of them):
 
 ```
-group,rides,riders,near,me,community,social,meetup,biker,motorbike,crew,tour,bike,trip
+group,riders,near,me,community,social,meetup,biker,motorbike,crew,tour,bike,trip,share
 ```
 
 So `community` and `group rides` are still bid for — just not in the 30 characters where they
 would cost the uncontested word. **Not `friends`**: the app has no such concept (see the
-do-not-say table), and a keyword is a claim like any other.
+do-not-say table), and a keyword is a claim like any other — which is also why `route` is out.
+It is a high-volume word in this category and it would bid for riders looking for route
+planning, which is the one thing decision #3 says this app will never do.
 
-**Regenerate that line if the name changes.** It is derived from the recommended name, and a
-keyword field computed for a different title wastes a slot on a word the name already owns while
-giving away the one it does not.
+**Regenerate that line whenever the name OR the subtitle changes** — it is derived from both, and
+this file has already got it wrong twice by editing one field and not the line below it. The
+symptom is silent: a keyword field computed for an older title wastes a slot on a word the fields
+already own while giving away the one they do not.
 
 ### Blocked, and needed from the owner
 
