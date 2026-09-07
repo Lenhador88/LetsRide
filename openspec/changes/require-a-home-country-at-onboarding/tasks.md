@@ -187,16 +187,17 @@ Per `openspec/config.yaml`: a policy or constraint change with no new assertion 
 
 - [ ] 6.1 `docs/reference/schema.md` — the `profiles` contract gains `home_country`: its grants,
       its CHECKs, its coercion rule and the permanent-NULL contract.
-- [ ] 6.2 `CLAUDE.md` — the applied-migration counts, and the sentence describing the wizard as one
+- [x] 6.2 `CLAUDE.md` — the applied-migration counts, and the sentence describing the wizard as one
       step. Both are claims about state; write each beside the command that checks it.
 - [x] 6.3 `docs/reference/migrations.md` §Applied state — the per-file ordering for `113` and
       `114`, recorded as it is applied, on each project.
-- [ ] 6.4 `npm run docs:check` — the full sweep locally, not just CI's `--cheap` step. **42/44
-      after `114`; the two open failures are both `CLAUDE.md`'s and are the MAIN THREAD's to make,
-      because agents do not write that file (`CLAUDE.md` §Delegating): "Applied state: 113 files …
-      DEV is at `113`" becomes 114 / `114`, and "Suite **3700** assertions" becomes **3724**. The
-      sentence beginning "**`113`'s partner `114` is deliberately unwritten**" is now false and has
-      to go with them, as does the same claim in `docs/HANDOFF.md`.
+- [x] 6.4 `npm run docs:check` — the full sweep locally, not just CI's `--cheap` step. **44/44.**
+      It read 42/44 while `CLAUDE.md`'s two counts were still the main thread's to make (agents do
+      not write that file — `CLAUDE.md` §Delegating); the main thread made them in the same commit:
+      "Applied state: 113 files … DEV is at `113`" → 114 / `114`, "Suite **3700** assertions" →
+      **3724**, and the now-false "**`113`'s partner `114` is deliberately unwritten**" replaced in
+      both `CLAUDE.md` and `docs/HANDOFF.md` by the un-collapsible `113` → deploy → `114`
+      promotion order.
 - [x] 6.5 `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs` — this proposal cites
       section pointers into other documents, and `openspec/` is inside that sweep.
       (Do **not** write the pointer syntax out as an example here: the sweep parses this file

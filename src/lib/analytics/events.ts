@@ -75,7 +75,8 @@ export type AnalyticsEvent =
         /**
          * Only on `rejected`, and only ever one of these — never the value.
          * `incomplete` is the country step being refused by
-         * `complete_onboarding`'s own guards (consent or username missing),
+         * `complete_onboarding`'s own guards (consent, username or — since
+         * `114` — a stored country missing),
          * which is distinct from `invalid` — a code the CHECK constraints
          * refused — because they turn a rider away for different reasons and
          * the funnel question is *which*.
