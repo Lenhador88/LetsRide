@@ -292,6 +292,36 @@ everything around it is right. Those are exactly the characters a copy pass intr
 **These caps move.** Check them against App Store Connect and the Play Console before a
 submission rather than against this table.
 
+### Three fields, three jobs — and the tagline is not one of them
+
+Four separate name proposals have now been trimmed against the 30-character cap, and the trims
+keep losing the thing that made each one good. The reason is structural rather than a wording
+problem, and naming it stops the loop:
+
+| | Cap | Its job | The test |
+|---|---|---|---|
+| **Name** | 30 | To be **found** | Does a stranger searching the category, and a rider told "get LetsRide" by a mate, both land on it? |
+| **Subtitle** | 30 | To be **understood** | Does someone who has never heard of it know what happens when they open it? |
+| **Tagline** | **none** | To be **felt** | Does it say why any of this matters? |
+
+**The tagline has no field with a cap, which is why it keeps failing the cap.** Its homes are the
+marketing site's headline (`letsride.social`, `PD-34`, no limit at all), the description's first
+line, the App Store's promotional text — 170 characters and **editable without a new version**,
+the only marketing field that is — and the screenshot captions. All four are places where the
+line can be its full length and where a rider actually reads prose.
+
+So a phrase that will not fit in 30 characters is not a failed name. It is a tagline that was
+being asked to do the name's job, and it keeps almost working because it is good.
+
+**The product owner's tagline, 2026-09-07: "Share your motorcycle story, ride together"** — 42
+characters. Adopt it for the four surfaces above rather than trimming it further.
+
+**As a NAME it has two problems and only one is the length.** The second is decisive: **it
+contains no brand at all.** A rider told "get LetsRide" by the mate who invited them would search
+`letsride` and not find it — and brand search is the highest-converting term any app has, because
+the searcher has already decided. A name that omits the brand gives that away to buy a phrase
+nobody searches. Every name proposal must contain `LetsRide`.
+
 ### The subtitle, measured
 
 **"Share your story" names the home screen, and that instinct is the right one.** The app opens
