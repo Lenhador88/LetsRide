@@ -105,7 +105,7 @@ npx vitest run src/lib/data/__tests__/embed-hints.test.ts
 
 ## `service_role` grants — when a table's are revoked
 
-Moved here from `CLAUDE.md` §Supabase Rules on 2026-09-07; the rule there is one paragraph and this is its reasoning.
+The rule is one paragraph in `CLAUDE.md` §Supabase Rules; this is its reasoning.
 
 **A new table KEEPS Supabase's default `service_role` grants. Revoking is the exception, and
 `076` §3 is the rule** — surfaced here by PD-409 because it was stated only in that migration's

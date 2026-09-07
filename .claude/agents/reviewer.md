@@ -592,6 +592,10 @@ passes NOT run: <list, or "none"> · findings: <n>
 |---|---|---|---|
 | 1 | high | `src/lib/data/rides.ts:42` | one line: what breaks and the input that triggers it |
 
+<!-- Severity is one of exactly three words: high = ships a bug, a leak or a wrong gate;
+     medium = a false claim a session would act on, or a gate that fires wrongly;
+     low = latent, cosmetic, or a preference stated as one. -->
+
 <one line per finding the author declined, with their reason, filled in by the caller>
 ```
 

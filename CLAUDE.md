@@ -295,7 +295,7 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 112 files. DEV is at `112` and PROD at `107` — measured 2026-09-06.** DEV-ahead
+**Applied state: 112 files. DEV is at `112` and PROD at `112` — measured 2026-09-07.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
@@ -729,9 +729,11 @@ Proposals must state the **negative** cases: who must *not* see or do this. Rule
 `openspec/config.yaml`.
 
 **A change is archived at the wrap-up of the session that ships it, and the Stop hook names the
-ones that were not.** `session-wrapup-check.sh` lists every change under `openspec/changes/` this
-branch touched while also touching `src/` or `supabase/`; archive them (`/opsx:archive`) before the
-PR, or say in the PR body why one stays open. An unarchived shipped change means the specs no
+ones that were not.** `session-wrapup-check.sh` lists every change under `openspec/changes/` whose
+`proposal.md` this branch added or whose `tasks.md` gained a ticked box, when the branch also
+touched `src/` or `supabase/` — the two signals that the branch built it, so a pointer rewrite
+across old changes names nothing. Archive them (`/opsx:archive`) before the PR, or say in the PR
+body why one stays open. An unarchived shipped change means the specs no
 longer describe the app — `ls openspec/changes | wc -l` against `ls openspec/changes/archive | wc -l`
 is the backlog, and it is not this hook's to clear.
 

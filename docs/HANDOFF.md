@@ -25,12 +25,12 @@ history.
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 112 files. DEV is at `112`, PROD at `107`** — `list_migrations` against both refs
-  is the check. The open promotion is `108`–`112`, all applied to DEV, and it is not one step:
-  `108` goes **migration-first**, `109` goes **after the build is confirmed serving** (`READY` on
-  the merge sha with `aliasError` null), `110`–`112` are additive with nothing to sequence
-  against, and `112` owes the hand-exercise gate because it hangs triggers on three shipped write
-  paths. `docs/reference/migrations.md` §Applied state has the per-file log and the recipe.
+- **Migrations: 112 files on `development`. DEV and PROD are both at `112`** — `108`–`112`
+  promoted 2026-09-07 with [#431](https://github.com/Lenhador88/LetsRide/pull/431), so `main` and
+  `development` are level and nothing is waiting on a promotion. `list_migrations` against both
+  refs is the check. **DEV also carries `113`**, applied migration-first ahead of its own PR
+  (#428, below); that PR's `114` is deliberately unwritten until the bundle is serving.
+  `docs/reference/migrations.md` §Applied state has the per-file log.
 - **Edge Functions: all three at `771f650` on both projects** (dispatched 2026-09-06). A merge
   touching `supabase/functions/**` deploys them; read the `deploy` job's conclusion, never the run's.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
@@ -38,9 +38,9 @@ history.
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
 - **The last process pass (2026-09-07) cut `CLAUDE.md` to ~12k tokens and this file to five
   sections**, moved the dated record to `docs/reference/journal.md`, made the reviewer's findings
-  part of the PR, and made the Stop hook name unarchived OpenSpec changes. **OpenSpec has 46 open
-  changes and 4 archived** — a backlog no hook clears; archive the ones you ship, and archive an old
-  one when you touch its area.
+  part of the PR, and made the Stop hook name unarchived OpenSpec changes. **OpenSpec has 45 open
+  changes and 4 archived** (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`)
+  — a backlog no hook clears; see §Next action.
 
 ## In flight
 
@@ -75,10 +75,13 @@ body carries its own steps.
 
 ## Next action
 
-**Promote `108`–`112` to PROD**, in the split order above, once #428 has landed — and record each
-file's ordering in `docs/reference/migrations.md` §Applied state. It is the only thing in this
-file that gets more expensive the longer it waits: `Deployed to DEV` holds 28 stories, and every
-new migration widens the gap that has to be sequenced.
+**Archive the OpenSpec changes whose code is in production.** 45 are open against 4 archived, so
+`openspec/specs/` no longer describes the app and the next proposal is written against specs that
+are missing what shipped. One docs-only PR, in `npm run openspec -- list` order, archiving only
+changes whose migrations and screens are on `main`; a change with an open decision inside it
+(`add-account-deletion`, and the `enforce-creator-membership` / `add-account-deletion` collision —
+`docs/reference/journal.md` §The open OpenSpec changes) stays open with a one-line note. The Stop
+hook keeps the backlog from growing; nothing else shrinks it.
 
 ## Test accounts
 

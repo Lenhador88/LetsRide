@@ -17,14 +17,14 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
  * Nothing measured it, so nothing stopped it. The 2026-09-07 pass cut them
  * again, moved the journal to `docs/reference/journal.md`, and added this.
  *
- * The budgets sit a little above the size each file landed at, so ordinary
- * edits pass and a session that starts appending history goes red on its own
- * PR. Raising a budget is a deliberate act in this file, with a reason in the
+ * CLAUDE.md's budget sits a little above the size it landed at; the handoff's
+ * is a ceiling one journal entry would breach. Ordinary edits pass and a
+ * session that starts appending history goes red on its own PR. Raising a budget is a deliberate act in this file, with a reason in the
  * commit — not a side effect of an edit somewhere else.
  */
 export const BUDGETS = {
   'CLAUDE.md': 56_000,
-  'docs/HANDOFF.md': 12_000,
+  'docs/HANDOFF.md': 10_000,
 }
 
 /** The handoff's shape: these five H2s, in this order, and no others. */
@@ -65,15 +65,14 @@ describe('the context budget', () => {
     expect(datedHeadings(text)).toEqual([])
   })
 
-  // The budgets are not slack: each sits within a fifth of the size the file
-  // landed at, so a session that pastes one journal entry trips it. If a real
-  // rule pushes a file over, the fix is to cut something else, and only then
-  // to raise the number here with a reason.
-  it('the budgets are pinned near the live sizes rather than left slack', () => {
-    for (const [file, budget] of Object.entries(BUDGETS)) {
-      const size = Buffer.byteLength(readFileSync(join(repoRoot, file), 'utf8'))
-      expect(size, `${file} sits far below its budget — re-pin the budget so growth is measured`).toBeGreaterThan(budget * 0.6)
-    }
+  // CLAUDE.md's budget is pinned within a quarter of the size it landed at, so
+  // a session that pastes one journal entry trips it; when a real rule pushes
+  // it over, cut something else first and only then raise the number here, with
+  // a reason. The handoff has a CEILING only: its own header tells a session to
+  // prune lines that are no longer true, and a floor would punish exactly that.
+  it("CLAUDE.md's budget is pinned near its live size rather than left slack", () => {
+    const size = Buffer.byteLength(readFileSync(join(repoRoot, 'CLAUDE.md'), 'utf8'))
+    expect(size, 'CLAUDE.md sits far below its budget — re-pin the budget so growth is measured').toBeGreaterThan(BUDGETS['CLAUDE.md'] * 0.8)
   })
 })
 
