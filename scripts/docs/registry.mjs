@@ -276,7 +276,7 @@ export const claims = [
   },
 
   {
-    id: 'jsdom-component-tests-claude',
+    id: 'jsdom-component-tests-table',
     file: 'docs/reference/running-locally.md',
     // The entry above gates the TOTAL and left this one ungated, which is the
     // failure its own comment predicts: *"the reader most likely to be misled
@@ -300,7 +300,7 @@ export const claims = [
   },
 
   {
-    id: 'jsdom-component-tests-enumerated-claude',
+    id: 'jsdom-component-tests-enumerated-table',
     file: 'docs/reference/running-locally.md',
     // **The same number, stated twice in one sentence, and gating the first
     // occurrence alone is not enough.** The entry above was added on PD-428

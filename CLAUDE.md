@@ -223,6 +223,14 @@ places, split so the decision can be tested:
 **Any new writer of a stamp the decision reads must invalidate the cache.** There are four
 (`signUp`, `acceptTerms`, `setUsername`, `setHomeCountry`), each calling
 `invalidateOnboardingState()`; `signOut` calls `clearGuardCache()`.
+Count them rather than trust the number — scope the pathspec, or the natural
+`-- src/lib/actions/` prints four *lines* summing to **7** (the comment trap, two of them tests):
+
+```bash
+git grep -c "invalidateOnboardingState()" -- 'src/lib/actions/*.ts' \
+  | grep -v __tests__ | awk -F: '{n += $2} END {print n}'   # 4
+```
+
 `src/lib/actions/__tests__/writers-invalidate.test.ts` refuses a new writer that does not, and
 **that check is per EXPORTED FUNCTION, not per file** — `onboarding.ts` holds three of the four,
 so a file-granular check passes while any one of them keeps its call (measured: with

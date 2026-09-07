@@ -32,22 +32,27 @@ history.
   country and must not exist until the merged bundle is *serving* on DEV (`READY` on the merge sha
   with `aliasError` null), or every new signup is stuck in the wizard.
   `docs/reference/migrations.md` §Applied state has the per-file log and that gate.
-- **Edge Functions: all three at `771f650` on both projects** (dispatched 2026-09-06). A merge
-  touching `supabase/functions/**` deploys them; read the `deploy` job's conclusion, never the run's.
+- **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
+  #434 touched `supabase/functions/resolve-ride-location/` (comments only), so
+  `deploy-functions.yml` redeployed all three to **DEV at 2026-09-07T20:42Z**; **PROD is still on
+  the 2026-09-06T22:20Z dispatch**. `resolve-ride-location` is DEV `v8` / PROD `v6`, and the
+  `ezbr_sha256` differs. The next promotion to `main` levels them. Read the `deploy` job's
+  conclusion, never the run's — without the token the job skips and the run is still green.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
 - **The last process pass (2026-09-07) cut `CLAUDE.md` to ~12k tokens and this file to five
   sections**, moved the dated record to `docs/reference/journal.md`, made the reviewer's findings
-  part of the PR, and made the Stop hook name unarchived OpenSpec changes. **OpenSpec has 45 open
+  part of the PR, and made the Stop hook name unarchived OpenSpec changes. **OpenSpec has 46 open
   changes and 4 archived** (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`)
   — a backlog no hook clears; see §Next action.
 
 ## In flight
 
-- **No open PR, and both queue slots are free.** #434 (PD-385) and #428 (PD-428, PD-427) both
-  merged on 2026-09-07 after sitting finished-but-unmerged for hours — the queue reads free slots
-  off the two `slot-*` labels, so an unmerged PR stops it entirely.
+- **Both queue slots are free again.** #434 (PD-385) merged 2026-09-07 as `9b69253`, and #428
+  (PD-428, PD-427) merged the same day. Both had sat finished-but-unmerged for hours first, which
+  is worth knowing rather than tidying away: the queue counts free slots off the two `slot-*`
+  labels, so a PR nobody merges stops the queue entirely while every gate stays green.
 - **`Development (AI)`:** PD-421 only (the log digest's HTTP call has never succeeded), carrying
   no slot label.
 - **`Queued (AI)`:** PD-431 (ride reminders), PD-430 (a shared ride link before sign-up), PD-429
@@ -79,13 +84,14 @@ body carries its own steps.
 
 ## Next action
 
-**Archive the OpenSpec changes whose code is in production.** 45 are open against 4 archived, so
+**Archive the OpenSpec changes whose code is in production.** 46 are open against 4 archived, so
 `openspec/specs/` no longer describes the app and the next proposal is written against specs that
 are missing what shipped. One docs-only PR, in `npm run openspec -- list` order, archiving only
 changes whose migrations and screens are on `main`; a change with an open decision inside it
 (`add-account-deletion`, and the `enforce-creator-membership` / `add-account-deletion` collision —
-`docs/reference/journal.md` §The open OpenSpec changes) stays open with a one-line note. The Stop
-hook keeps the backlog from growing; nothing else shrinks it.
+`docs/reference/journal.md` §The open OpenSpec changes) stays open with a one-line note. **PD-436
+blocks archiving `enforce-ride-capacity`** specifically, so that one stays open too. The Stop hook
+keeps the backlog from growing; nothing else shrinks it.
 
 ## Test accounts
 
