@@ -367,8 +367,10 @@ them are about files older than this one:
   `'NLD'`, `' NL '` and `'1'` are all reported by the membership constraint on `profiles`, and
   `'nl'` likewise by `profile_countries_code_is_assigned` rather than `014`'s shape check. Do not
   "fix" it by renaming — that would make the shape check report for `ZZ`, which IS a valid shape.
-- **`113`'s column comment and two of its header paragraphs describe a profile-editor country
-  field that does not exist.** PD-428 shipped the onboarding write only; `EditProfileForm` offers
+- **`113` describes a profile-editor country field that does not exist, in exactly two places:
+  the column comment (`:174`) and one paragraph inside `enforce_onboarding_completion`
+  (`:347`–`:356`). Not the header** — a reader sent there finds nothing and has to re-derive
+  where the claim lives, which defeats the point of recording it. PD-428 shipped the onboarding write only; `EditProfileForm` offers
   no country control, so *"the profile editor's field stays OPTIONAL"* is a statement of intent
   rather than of fact. It is left as written because `113` is applied and this repo does not edit
   an applied migration — but a database column comment is the one doc no `CLAUDE.md` edit can

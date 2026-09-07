@@ -299,6 +299,29 @@ export const claims = [
     about: '§Technology Decisions, Tests table: the jsdom component-test count',
   },
 
+  {
+    id: 'jsdom-component-tests-enumerated-claude',
+    file: 'CLAUDE.md',
+    // **The same number, stated twice in one sentence, and gating the first
+    // occurrence alone is not enough.** The entry above was added on PD-428
+    // and the very next delta review found the sentence self-contradicting:
+    // *"all but **nine** … because each of the eight below is there for a
+    // different one"*, with nine entries enumerated after it. The first claim
+    // read `nine` and passed, so `docs:check` was green against a sentence
+    // that disagreed with itself.
+    //
+    // The second number is the one that costs something to be wrong. It
+    // introduces the enumerated list, and the list is what a session adding a
+    // component test actually reads to decide whether jsdom is warranted — a
+    // count that disagrees with the entries below it leaves them guessing
+    // which half is stale.
+    pattern: /because each of the ([\w-]+) below is there for a different one/,
+    extractStated: extractWord(),
+    kind: 'shell',
+    cmd: `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx' | wc -l`,
+    about: '§Technology Decisions, Tests table: the same jsdom count, restated before the list',
+  },
+
   // ---- Migration file count ----------------------------------------------
   {
     id: 'migrations-count-claude',

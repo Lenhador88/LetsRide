@@ -604,14 +604,9 @@ async function runRefusedSignup() {
  * with `selectOption`: type to filter, then click the row whose name matches
  * EXACTLY. `Netherlands` is picked because DEV's fixtures are Dutch.
  *
- * **It is not unambiguous under the filter, and an earlier version of this
- * comment claimed it was.** The reasoning ran: the match is on name and ISO
- * code, so a two-letter query would hit both `NL` and every name containing
- * those letters — therefore type the full name. That half is right and it does
- * not finish the job: the full name is itself a substring of `Caribbean
- * Netherlands`, which sorts first, so clicking the first filtered row stored
- * `BQ`. The exact-name match below is the fix; the ambiguity is why it cannot
- * go back to clicking `[role="option"]`.
+ * **The full name is not unambiguous under the filter** — see the block at the
+ * pick site for why, and for why this cannot go back to clicking the first
+ * `[role="option"]`.
  */
 async function finishOnboarding(page) {
   await page.fill('input[name="username"]', MINT_USERNAME)
@@ -646,6 +641,10 @@ async function finishOnboarding(page) {
   // Dutch. Found in review rather than by running this.
   //
   // The flag span is `aria-hidden`, so the name is the second span's text.
+  // `$$` takes a snapshot and does NOT wait, where the `click` this replaced
+  // auto-waited for 10s. Without this the failure prints "no country option
+  // named exactly …", which misdiagnoses a timing problem as a naming one.
+  await page.waitForSelector('[role="option"]', { timeout: 10_000 })
   const rows = await page.$$('[role="option"]')
   let picked = null
   for (const row of rows) {

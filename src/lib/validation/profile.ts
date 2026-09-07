@@ -98,14 +98,19 @@ export const LOCATION_MAX_LENGTH = 100
  * a rider who cleared a field indistinguishable from one who never filled it
  * in only by inspection, and every render site already branches on null.
  *
- * **No CHECK constraint stands behind `bio` or `bike_model`** — `001`
- * declares both columns as bare `text`. The length limits are an application
- * rule: enforced on the server because the action parses `FormData`, but not
- * by the database, so a direct PostgREST call with a 10 MB bio would be
- * accepted. Worth a constraint if it ever matters; stated rather than
- * silently assumed. `location` does carry one — `018`'s
- * `profiles_location_length` bounds its length and refuses a trimmed-empty
- * string, which is exactly what `|| null` here avoids ever sending.
+ * **A CHECK constraint stands behind all three** — `018` adds
+ * `profiles_bio_length` (≤ 500), `profiles_bike_model_length` (≤ 60) and
+ * `profiles_location_length`, the last of which also refuses a trimmed-empty
+ * string, which is exactly what `|| null` here avoids ever sending. So these
+ * bounds are database guarantees and Zod owns only the message, which is the
+ * rule `CLAUDE.md` states for every integrity rule in this app.
+ *
+ * **This paragraph said the opposite until 2026-09-07** — *"No CHECK
+ * constraint stands behind `bio` or `bike_model`… a direct PostgREST call with
+ * a 10 MB bio would be accepted"* — naming `001`'s bare `text` declarations
+ * and missing that `018` bounded them afterwards. It is corrected rather than
+ * deleted because it invited exactly one action: adding a constraint that is
+ * already there, in a migration that would then be a no-op or a duplicate.
  *
  * **`location` used to be mandatory on this form**, because `003`'s
  * completion trigger refused the onboarding stamp while `location` was

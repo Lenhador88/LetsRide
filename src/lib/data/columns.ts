@@ -79,15 +79,27 @@ export const PUBLIC_PROFILE_COLUMNS = 'id, username, avatar_path, bike_model'
  * screen draws another rider's country, and a column added to a projection
  * "because it is allowed" is how `PUBLIC_PROFILE_COLUMNS` grew the first time.
  *
- * **It is here because `Profile` declares it, not because a screen renders it
- * yet.** This is the one read that types a rider's own row, so leaving the
- * column out would make `home_country: string | null` a field that is
- * `undefined` on every path — the exact shape `021`'s header refuses for the
- * two stamps. No screen draws it today: the country is written at onboarding
- * and `EditProfileForm` does not offer it (PD-428 stays open for that). So
- * this is forward-looking by one screen, stated rather than dressed up as a
- * need — and if that screen is never built, the honest fix is to drop the
- * field from `Profile` and this list together, not to leave a dead projection.
+ * **What actually forces it here is `columns.test.ts`, not the type.** That
+ * suite asserts this list equals the union of every migration's `grant select
+ * (...) on public.profiles` exactly, and `113` grants SELECT on
+ * `home_country` — so omitting it fails today, whatever `Profile` says. The
+ * type is the second reason and the weaker one: this is the one read that
+ * types a rider's own row, so leaving the column out would make
+ * `home_country: string | null` a field that is `undefined` on every path,
+ * which is the shape `021`'s header refuses for the two stamps.
+ *
+ * **No screen draws it yet**, and that is worth saying plainly rather than
+ * dressing the projection up as a need: the country is written at onboarding
+ * and `EditProfileForm` offers no country field (PD-428 stays open for that).
+ * It is forward-looking by one screen.
+ *
+ * **Removing it is a THREE-part change, and doing two parts reddens the
+ * suite.** Dropping the field from `Profile` and from this list leaves
+ * `granted` still holding `home_country` and `constant` not — the dead-grant
+ * half of the same assertion. It needs a migration revoking the column grant
+ * as well, and `columns.test.ts`'s own header flags that as unprecedented: no
+ * column-level REVOKE exists in this chain, and the union it builds would have
+ * to learn to subtract.
  */
 export const OWN_PROFILE_COLUMNS =
   'id, username, bio, bike_model, created_at, location, home_country, avatar_path, cover_image_path'
