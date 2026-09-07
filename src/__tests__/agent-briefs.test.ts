@@ -422,36 +422,57 @@ describe('agent briefs do not describe a world that has moved on', () => {
        * `twins.length === friendly.length` held by construction and no input
        * could fail.
        *
-       * **KNOWN LIMITATION, and the comparison rather than the derivation is
-       * where it lives (PD-336).** This compares two CARDINALITIES; the prose
-       * says "correspond one to one" and the code has never asserted
-       * correspondence. `declared` is not deduplicated, so one repeated
-       * friendly entry masks exactly one orphaned twin — the counts still
-       * match. Measured against the real `test.md` line: delete
-       * `mcp__Supabase__list_projects`, leave its twin, and it fails; add a
-       * duplicate of any friendly entry as well and it passes. No brief carries
-       * a duplicate today (all 8 are `friendly === twins`), so this is latent,
-       * and a duplicate is inert at runtime, which is why nothing would ever
-       * prompt someone to remove one.
+       * **It asserts the SETS, not their sizes (PD-336).** It used to compare
+       * two CARDINALITIES while the prose said "correspond one to one", and
+       * `declared` is not deduplicated — so one repeated friendly entry masked
+       * exactly one orphaned twin, the counts still matching. Measured against
+       * the real `test.md` line at the time: delete `mcp__Supabase__list_projects`
+       * and leave its twin, and it failed; add a duplicate of any friendly entry
+       * as well, and it passed. A duplicate is inert at runtime — an allowlist
+       * is semantically a set — so nothing else in the repo would ever have
+       * prompted someone to remove one, and it disarmed this check by one for
+       * free.
        *
-       * The fix is to assert the SETS — the declared known-UUID entries against
-       * the expected twin set — rather than their sizes. Deliberately not
-       * attempted here: three successive rewrites of this block each changed
-       * the derivation and left the comparison alone, and a fourth pass from
-       * the same session is how that becomes a fourth reshaping.
+       * Comparing sorted unique sets is failure-equivalent under no duplicates
+       * and correct under them, which is why the fix is here rather than in how
+       * `twins` is derived: three successive rewrites each changed the
+       * derivation and left the comparison alone.
        *
-       * Nor against *every* `mcp__<uuid>__` entry, which is the other ditch:
-       * that would fail a brief the first time someone correctly adds a github
-       * twin under a UUID this table does not list. Keyed to the known
-       * prefixes, both hold — an unknown connector's twin is ignored, and an
-       * orphaned Supabase/Linear/Figma twin still fails.
+       * Keyed to the three KNOWN prefixes, which is the narrow path between two
+       * ditches. Derived from `friendly` instead, the assertion is tautological —
+       * it could only count what the forward loop above has already proven
+       * present. Widened to *every* `mcp__<uuid>__` entry, it fails a brief the
+       * first time someone correctly adds a github twin under a UUID this table
+       * does not list. Keyed as it is, both hold: an unknown connector's twin is
+       * ignored, and an orphaned Supabase/Linear/Figma twin still fails.
+       *
+       * Duplicates are asserted separately below rather than folded in here, so
+       * the two failures name different causes.
        */
       const known = Object.values(UUID)
       const twins = declared.filter((t) => known.some((u) => t.startsWith(`mcp__${u}__`)))
+      const expectedTwins = friendly.map((t) => {
+        const [, server, method] = /^mcp__(Supabase|Linear|Figma)__(.+)$/.exec(t)!
+        return `mcp__${UUID[server as keyof typeof UUID]}__${method}`
+      })
       expect(
-        twins.length,
-        `${name} has ${twins.length} UUID entries for ${friendly.length} friendly ones — they must correspond one to one, so a twin left behind by a deleted tool is caught rather than reading as coverage`,
-      ).toBe(friendly.length)
+        [...new Set(twins)].sort(),
+        `${name}'s UUID entries do not correspond one to one with its friendly ones — a twin left behind by a deleted tool reads as coverage while the agent has lost the tool`,
+      ).toEqual([...new Set(expectedTwins)].sort())
+
+      /*
+       * A duplicate is inert at runtime, so this is not a correctness rule about
+       * the agent — it is what keeps the set comparison above from being
+       * weakened by an edit nothing would otherwise flag. Asserted on the whole
+       * `tools:` line rather than on the twins alone: a repeated FRIENDLY entry
+       * is what masked an orphan under the old cardinality check, and it is
+       * equally invisible.
+       */
+      const duplicates = [...new Set(declared.filter((t, i) => declared.indexOf(t) !== i))]
+      expect(
+        duplicates,
+        `${name} repeats ${duplicates.join(', ')} on its \`tools:\` line — harmless at runtime, but an allowlist is a set and a repeat is how a parity check gets silently disarmed`,
+      ).toEqual([])
     }
 
     // Same both-ways guard as the tests around it: a `tools:` line this can no
