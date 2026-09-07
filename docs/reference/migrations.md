@@ -329,10 +329,58 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**Both projects are at `112` against 112 files, measured 2026-09-07; DEV also carries `113`,
-applied migration-first ahead of PR #428.** DEV's row count therefore reads **four** high — three
-hand-applied rows with no file, plus `113` — and **PROD's is exact**, which is the direction that
-matters: nothing is applied there without a file behind it. Neither is a gap.
+**113 files. DEV is at `113` and PROD at `112` — measured 2026-09-07, after #428 merged.** `113`
+was applied to DEV migration-first, ahead of that PR; the merge is what landed its file, so the
+row that read as file-less until now is an ordinary applied migration. DEV's row count reads
+**three** high — the three long-standing hand-applied rows — and **PROD's is exact**, which is the
+direction that matters: nothing is applied there without a file behind it. Neither is a gap.
+
+**The open promotion gap is `113` alone**, and it carries a partner that does not exist yet — see
+its entry below before promoting it.
+
+**`113_home_country` (PD-428), applied to DEV 2026-09-07T10:10:07Z as `20260907101007`.** Adds
+nullable `profiles.home_country` (ISO 3166-1 alpha-2), two VALIDATED CHECKs, three column grants
+and one coercion arm on `enforce_onboarding_completion`. **MIGRATION-FIRST**: the bundle that
+writes the column must not reach a database without it (`PGRST204`), and every edit strictly
+widens what is accepted, so it is a no-op against the bundle that was serving.
+
+**Its partner `114` is deliberately unwritten.** It arms `complete_onboarding` to refuse a NULL
+country, which is a NARROWING: applied before the new bundle serves, the old bundle's
+`complete_onboarding(null)` is refused on every signup and every new rider is stuck in the wizard.
+So it must not exist until the merge sha is `READY` with `aliasError` null on `development`. One
+file cannot be both sides of a deploy — `108`/`109`'s shape, and the same split is owed on the
+PROD promotion rather than collapsed.
+
+**Three things `113` measured that were previously stated wrong**, recorded here because two are
+about files older than it:
+
+- **`grant select, insert, update (home_country) on … to authenticated` is not the statement to
+  write.** The column list binds to the LAST privilege only, so that one-liner grants SELECT and
+  INSERT **table-wide** — handing back exactly what `025`, `030` and `096` revoked
+  (`terms_accepted_at`, `onboarding_completed_at`, `terms_version`, `analytics_opt_out_at`, all
+  reachable by `select=*`). Measured on DEV in a rolled-back transaction:
+  `has_table_privilege('authenticated','public.profiles','select')` reads **true** after the
+  one-liner and **false** after three separate statements. `113` issues three, and asserts both
+  table-wide reads.
+- **The "two error identities" rationale is aspirational, in `020` as well as here.** Membership
+  is a strict subset of shape, so no value passes one and fails the other, and Postgres reports
+  CHECKs in constraint-NAME order where `…_is_assigned` sorts first. Measured: `''`, `'nl'`,
+  `'NLD'`, `' NL '` and `'1'` are all reported by the membership constraint on `profiles`. Do not
+  "fix" it by renaming — that would make the shape check report for `ZZ`, which IS a valid shape.
+  The pair stays as defence in depth.
+- **`020`'s and `113`'s footer verification query for the code list is broken and returns NULL.**
+  It matches `\{(.*)\}` while `pg_get_constraintdef` renders `ARRAY['AD'::text, …]`, so it reads
+  as "no answer" rather than "wrong". The working form is `\[(.*)\]` → 249, pinned in the RLS
+  suite at `113.1a` for both constraints. `113` is applied, so its footer is not edited.
+
+**`113` describes a profile-editor country field that does not exist**, in exactly two places: the
+column comment (`:174`) and one paragraph inside `enforce_onboarding_completion` (`:347`–`:356`) —
+not the header, so a reader sent to the header finds nothing. PD-428 shipped the onboarding write
+only; `EditProfileForm` offers no country control, so *"the profile editor's field stays
+OPTIONAL"* is intent rather than fact. Left as written because `113` is applied and this repo does
+not edit an applied migration — but a column comment is the one doc no `CLAUDE.md` edit can reach,
+so it is recorded here. If the editor is built the claim becomes true; if it is decided against, a
+later migration owes a `comment on column`.
 
 **`108`–`112` promoted to PROD on 2026-09-07 with #431**, in the split the files asked for: `108`,
 `110`, `111` and `112` between 13:58:29Z and 14:00:14Z, **before** the promotion merge (14:05:57Z),
@@ -710,7 +758,7 @@ and re-derive both rather than trusting the numbers in this heading — they hav
 before, in the direction of reading one row too few.
 
 ```bash
-ls supabase/migrations/*.sql | wc -l    # 112
+ls supabase/migrations/*.sql | wc -l    # 113
 ```
 
 *(The `docs:check` anchor for this count is the copy further down, in the promotion log's code
@@ -1391,7 +1439,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 112 — DEV at 112, PROD at 107 (108-112 await promotion)
+ls supabase/migrations/*.sql | wc -l     # 113 — DEV at 113, PROD at 112 (only 113 awaits promotion)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```

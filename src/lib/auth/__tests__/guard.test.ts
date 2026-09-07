@@ -194,27 +194,55 @@ describe('consent comes before the wizard', () => {
 })
 
 describe('an un-onboarded rider resumes where they left off', () => {
-  // PD-286 dropped the location step. `setUsername` now stamps completion
-  // itself, right after the username write, so `has_username: true` with no
-  // completion stamp is the two-round-trip window design.md §D3 describes —
-  // the completion RPC failed after the username landed — rather than a
-  // second step to move on to. Both states resume at the same place.
+  // The wizard is TWO steps again since PD-428: username, then home country.
+  // `075` had left it at one, so `has_username: true` with no completion stamp
+  // used to be the two-round-trip window design.md §D3 describes — the
+  // completion RPC failing after the username landed — and both states resumed
+  // at the same place. It is a genuine second step now, and the pair below is
+  // the whole of the resume table.
+  //
+  // **The country is deliberately not a fourth field on `OnboardingState`.**
+  // `has_username` alone decides, because the country step is the one that
+  // stamps completion — so "username, no stamp" already means "owes a
+  // country". See `guard.ts` for why adding a field here is the dangerous
+  // change: an older accessor returns `undefined`, which is falsy, which sends
+  // every rider on the app into the wizard with nothing red.
   const noUsername = rider({ onboarding_completed_at: null, has_username: false })
   const hasUsername = rider({ onboarding_completed_at: null, has_username: true })
 
-  it('resumes at /onboarding/username whether or not a username is already set', () => {
+  it('resumes at /onboarding/username when there is no username yet', () => {
     expect(resolveDestination('/postcards', noUsername)).toBe('/onboarding/username')
-    expect(resolveDestination('/postcards', hasUsername)).toBe('/onboarding/username')
+  })
+
+  it('resumes at /onboarding/country once the username is set', () => {
+    expect(resolveDestination('/postcards', hasUsername)).toBe('/onboarding/country')
   })
 
   it('stays on the resume step itself, for either state', () => {
     expect(resolveDestination('/onboarding/username', noUsername)).toBeNull()
-    expect(resolveDestination('/onboarding/username', hasUsername)).toBeNull()
+    expect(resolveDestination('/onboarding/country', hasUsername)).toBeNull()
   })
 
   it('is moved on from the consent prompt, which is behind them', () => {
     expect(resolveDestination('/onboarding/terms', noUsername)).toBe('/onboarding/username')
-    expect(resolveDestination('/onboarding/terms', hasUsername)).toBe('/onboarding/username')
+    expect(resolveDestination('/onboarding/terms', hasUsername)).toBe('/onboarding/country')
+  })
+
+  it('does not let a rider skip forward to the country step without a username', () => {
+    // The step order is a rule, not a suggestion: `114` refuses to stamp
+    // completion without a username, so a rider who reached the country screen
+    // early would fill it in and be refused by the database with nothing on
+    // screen explaining why.
+    expect(resolveDestination('/onboarding/country', noUsername)).toBe('/onboarding/username')
+  })
+
+  it('lets a rider stand on the earlier step they have already done — the Back link', () => {
+    // The country screen draws `Back` to the username step. If the guard sent
+    // that path forward, Back would bounce straight back and be a control that
+    // looks live and does nothing. `075` §3 gave `username_exists` its
+    // own-row predicate for exactly this rider, so the screen works on a
+    // return visit rather than calling their own name taken.
+    expect(resolveDestination('/onboarding/username', hasUsername)).toBeNull()
   })
 
   it('redirects a deleted step’s surviving URL rather than leaving the rider on a 404 the guard insists is correct', () => {
@@ -223,7 +251,7 @@ describe('an un-onboarded rider resumes where they left off', () => {
     // without the catch-all below `resolveDestination` used to answer `null`
     // — "stay here" — for exactly this path when `has_username` was true.
     expect(resolveDestination('/onboarding/location', noUsername)).toBe('/onboarding/username')
-    expect(resolveDestination('/onboarding/location', hasUsername)).toBe('/onboarding/username')
+    expect(resolveDestination('/onboarding/location', hasUsername)).toBe('/onboarding/country')
   })
 
   it('resolves any other unknown path under /onboarding to the resume step — the catch-all', () => {
@@ -231,7 +259,7 @@ describe('an un-onboarded rider resumes where they left off', () => {
       '/onboarding/username'
     )
     expect(resolveDestination('/onboarding/whatever-comes-next', hasUsername)).toBe(
-      '/onboarding/username'
+      '/onboarding/country'
     )
   })
 })
@@ -321,8 +349,12 @@ describe('the invite link landing route', () => {
     // hand `resolveDestination` a bare `{ kind: 'session' }`, and this would be
     // null.
     expect(needsOnboardingState(RIDE_JOIN_PATH)).toBe(true)
+    // `rider()` defaults to `has_username: true`, so since PD-428 the resume
+    // step for this fixture is the country one. What the case pins is that the
+    // join path is gated at all — the particular step is the resume table's
+    // business, asserted above.
     expect(resolveDestination(RIDE_JOIN_PATH, rider({ onboarding_completed_at: null }))).toBe(
-      '/onboarding/username'
+      '/onboarding/country'
     )
     // Consent first, per 023: a rider with neither stamp goes to the prompt,
     // not to the wizard's last step.
@@ -354,8 +386,10 @@ describe('the club invite link landing route', () => {
 
   it('sends a signed-in rider mid-wizard to their resume step', () => {
     expect(needsOnboardingState(CLUB_JOIN_PATH)).toBe(true)
+    // Same as the ride case above: `rider()` carries a username, so the resume
+    // step is the country one since PD-428.
     expect(resolveDestination(CLUB_JOIN_PATH, rider({ onboarding_completed_at: null }))).toBe(
-      '/onboarding/username'
+      '/onboarding/country'
     )
     expect(
       resolveDestination(

@@ -25,39 +25,42 @@ history.
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 112 files on `development`. DEV and PROD are both at `112`** — `108`–`112`
-  promoted 2026-09-07 with [#431](https://github.com/Lenhador88/LetsRide/pull/431), so `main` and
-  `development` are level and nothing is waiting on a promotion. `list_migrations` against both
-  refs is the check. **DEV also carries `113`**, applied migration-first ahead of its own PR
-  (#428, below); that PR's `114` is deliberately unwritten until the bundle is serving.
-  `docs/reference/migrations.md` §Applied state has the per-file log.
-- **Edge Functions: all three at `771f650` on both projects** (dispatched 2026-09-06). A merge
-  touching `supabase/functions/**` deploys them; read the `deploy` job's conclusion, never the run's.
+- **Migrations: 113 files on `development`. DEV is at `113`, PROD at `112`** — `108`–`112`
+  promoted 2026-09-07 with [#431](https://github.com/Lenhador88/LetsRide/pull/431); `113` landed
+  its file with #428 and is the one thing waiting on a promotion. `list_migrations` against both
+  refs is the check. **`113`'s partner `114` is still deliberately unwritten** — it refuses a NULL
+  country and must not exist until the merged bundle is *serving* on DEV (`READY` on the merge sha
+  with `aliasError` null), or every new signup is stuck in the wizard.
+  `docs/reference/migrations.md` §Applied state has the per-file log and that gate.
+- **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
+  #434 touched `supabase/functions/resolve-ride-location/` (comments only), so
+  `deploy-functions.yml` redeployed all three to **DEV at 2026-09-07T20:42Z**; **PROD is still on
+  the 2026-09-06T22:20Z dispatch**. `resolve-ride-location` is DEV `v8` / PROD `v6`, and the
+  `ezbr_sha256` differs. The next promotion to `main` levels them. Read the `deploy` job's
+  conclusion, never the run's — without the token the job skips and the run is still green.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
 - **The last process pass (2026-09-07) cut `CLAUDE.md` to ~12k tokens and this file to five
   sections**, moved the dated record to `docs/reference/journal.md`, made the reviewer's findings
-  part of the PR, and made the Stop hook name unarchived OpenSpec changes. **OpenSpec has 45 open
+  part of the PR, and made the Stop hook name unarchived OpenSpec changes. **OpenSpec has 46 open
   changes and 4 archived** (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`)
   — a backlog no hook clears; see §Next action.
 
 ## In flight
 
-- **Open PR:** [#428](https://github.com/Lenhador88/LetsRide/pull/428) — onboarding asks for a
-  home country (PD-428) and one "near" label (PD-427), `slot-1`.
-- **`Development (AI)`:** PD-385 (`slot-2`, this branch) and PD-421 (the log digest's HTTP call
-  has never succeeded), plus the two above. PD-264 merged as
-  [#430](https://github.com/Lenhador88/LetsRide/pull/430); it filed PD-436, which blocks archiving
-  `enforce-ride-capacity` — relevant to §Next action, since that change is one of the 45 open.
+- **Both queue slots are free again.** #434 (PD-385) merged 2026-09-07 as `9b69253`, and #428
+  (PD-428, PD-427) merged the same day. Both had sat finished-but-unmerged for hours first, which
+  is worth knowing rather than tidying away: the queue counts free slots off the two `slot-*`
+  labels, so a PR nobody merges stops the queue entirely while every gate stays green.
+- **`Development (AI)`:** PD-421 only (the log digest's HTTP call has never succeeded), carrying
+  no slot label.
 - **`Queued (AI)`:** PD-431 (ride reminders), PD-430 (a shared ride link before sign-up), PD-429
-  (organizer may say Maybe). All three collide with `slot-1`'s declared territory, which is why
-  the 14:42Z firing took one story rather than a bundle.
-- **This branch** (`claude/sweet-goodall-yhir4j`): PD-385 — `resolve-ride-location` is verified
-  rendering on DEV again, and `updateRide` now re-asks for a map when a ride carries a coordinate
-  with a tile missing. **PD-385 stays open**: 9 DEV rides are still blind and only their own
-  organizer can repair one. Three of those are `pedro889`'s, and after this merges the repair is
-  opening each on DEV and pressing Save.
+  (organizer may say Maybe) — waiting on the next firing, with both slots now open.
+- **Two stories stayed open on purpose.** **PD-385**: 9 DEV rides still carry a coordinate and no
+  tile, and only each ride's own organizer can repair one — three are `pedro889`'s, and the repair
+  is opening each on DEV and pressing Save. **PD-428**: it still owes `114` (above) and a way to
+  change the country after onboarding, which wants a decision rather than a branch.
 
 Re-derive rather than trust the list: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
@@ -81,13 +84,14 @@ body carries its own steps.
 
 ## Next action
 
-**Archive the OpenSpec changes whose code is in production.** 45 are open against 4 archived, so
+**Archive the OpenSpec changes whose code is in production.** 46 are open against 4 archived, so
 `openspec/specs/` no longer describes the app and the next proposal is written against specs that
 are missing what shipped. One docs-only PR, in `npm run openspec -- list` order, archiving only
 changes whose migrations and screens are on `main`; a change with an open decision inside it
 (`add-account-deletion`, and the `enforce-creator-membership` / `add-account-deletion` collision —
-`docs/reference/journal.md` §The open OpenSpec changes) stays open with a one-line note. The Stop
-hook keeps the backlog from growing; nothing else shrinks it.
+`docs/reference/journal.md` §The open OpenSpec changes) stays open with a one-line note. **PD-436
+blocks archiving `enforce-ride-capacity`** specifically, so that one stays open too. The Stop hook
+keeps the backlog from growing; nothing else shrinks it.
 
 ## Test accounts
 

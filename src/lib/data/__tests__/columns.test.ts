@@ -112,23 +112,97 @@ describe('the column allowlists', () => {
  * a guard. This is — it reads the migration and compares.
  */
 describe('OWN_PROFILE_COLUMNS matches 025 grant list', () => {
-  const migration = readFileSync(
-    path.join(SRC, '..', 'supabase', 'migrations', '025_profile_column_privileges.sql'),
-    'utf8'
-  )
+  /**
+   * **Every migration, not just `025`** — PD-428.
+   *
+   * This read `025` alone until `113` added `home_country`, and `025` is only
+   * where the allowlist *starts*. Its own header says how it is meant to grow:
+   * *"Widen with a bare additive `grant` naming only the new column"* — so a
+   * later file legitimately issues a second `grant select (...) on
+   * public.profiles to authenticated`, and a check that reads one file cannot
+   * see it. Left as it was, the first column added this way fails here for
+   * ever and the only available fix reads like "delete the assertion".
+   *
+   * `113` is the first to hit it, and only because `096` had sidestepped the
+   * question: it put `analytics_opt_out_at` behind an RPC precisely to avoid
+   * touching `025`'s lists, so no column had been added to the allowlist since
+   * it was written.
+   *
+   * A column-level REVOKE would break this union and none exists — `025`'s
+   * whole point is that a column-level revoke against a table-level grant is a
+   * documented no-op, so the shape is revoke-table-then-grant-columns and the
+   * grants only ever accumulate. If one is ever added, this has to subtract.
+   */
+  const migrationsDir = path.join(SRC, '..', 'supabase', 'migrations')
+  const GRANT_SELECT_ON_PROFILES =
+    /grant\s+select\s*\(([^)]*)\)\s*\n?\s*on\s+public\.profiles\s+to\s+authenticated/gi
 
-  /** The first `grant select (...) on public.profiles to authenticated`. */
+  // **A table-level revoke RESETS the allowlist, and a plain union is wrong
+  // without it.** `024` also grants a column list on `profiles` — including
+  // `avatar_url`, which `025` deliberately drops and whose re-grant is an
+  // apply-time `42703` against any database that has had `024`. Unioning from
+  // the beginning of the chain would resurrect it here and assert the app may
+  // select a column that does not exist. So: walk in filename order, clear the
+  // set whenever a file revokes the table-level privilege, then add that
+  // file's own column grants. That is what the SQL actually does.
+  // Narrow on purpose: it must revoke **SELECT**, and the privilege list must
+  // carry no `(` — a column-scoped revoke against a table-level grant is the
+  // documented no-op `025`'s header exists to explain, so it resets nothing.
+  // `047` is why this is not simply "a revoke on profiles": it revokes
+  // TRUNCATE, REFERENCES and TRIGGER, which clears no part of the allowlist,
+  // and a broader pattern reads it as a reset and throws away `025` entirely.
+  const REVOKE_ON_PROFILES =
+    /revoke\s+(?![^;]*\()[^;]*\bselect\b[^;]*\bon\s+public\.profiles\s+from\s+[^;]*\bauthenticated/i
+  const IDENTIFIER = /^[a-z_][a-z0-9_]*$/
+
+  const grantingFiles: string[] = []
+  let resetBy = ''
   const granted = (() => {
-    const match = migration.match(
-      /grant\s+select\s*\(([^)]*)\)\s*\n?\s*on\s+public\.profiles\s+to\s+authenticated/i
-    )
-    if (!match) throw new Error('no `grant select (...) on public.profiles` found in 025')
-    return match[1]
-      .split(',')
-      .map((c) => c.replace(/--.*$/gm, '').trim())
-      .filter(Boolean)
-      .sort()
+    let columns = new Set<string>()
+    for (const file of readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort()) {
+      // Comment-stripped, per CLAUDE.md's comment trap: `113`'s header quotes
+      // the grant shape it deliberately did NOT use, and a scan that reads
+      // obituaries as statements grants whatever the prose was warning about.
+      const sql = readFileSync(path.join(migrationsDir, file), 'utf8').replace(/^\s*--.*$/gm, '')
+
+      if (REVOKE_ON_PROFILES.test(sql)) {
+        columns = new Set<string>()
+        resetBy = file
+      }
+
+      let match: RegExpExecArray | null
+      GRANT_SELECT_ON_PROFILES.lastIndex = 0
+      while ((match = GRANT_SELECT_ON_PROFILES.exec(sql))) {
+        if (!grantingFiles.includes(file)) grantingFiles.push(file)
+        for (const column of match[1].split(',')) {
+          const name = column.trim()
+          if (IDENTIFIER.test(name)) columns.add(name)
+        }
+      }
+    }
+    if (columns.size === 0) {
+      throw new Error('no `grant select (...) on public.profiles` found after the last revoke')
+    }
+    return [...columns].sort()
   })()
+
+  it('resets the allowlist at the table-level revoke, so 024 cannot leak back in', () => {
+    // The failure this models: `024` grants `avatar_url` and `025` revokes the
+    // table-level privilege and re-grants without it. A union from the start of
+    // the chain would put a dropped column back in the expected set — and
+    // `025`'s header is explicit that naming `avatar_url` in a grant is an
+    // apply-time abort, not a stale comment.
+    expect(resetBy).toBe('025_profile_column_privileges.sql')
+    expect(granted).not.toContain('avatar_url')
+  })
+
+  it('still finds 025, which is where the allowlist starts', () => {
+    // The both-ways half. A regex that quietly stopped matching would leave
+    // `granted` empty-ish and this suite would compare two wrong things; and a
+    // union that silently lost its origin file is the same failure one step
+    // later. `025` must always be in the list.
+    expect(grantingFiles).toContain('025_profile_column_privileges.sql')
+  })
 
   const constant = OWN_PROFILE_COLUMNS.split(',')
     .map((c) => c.trim())

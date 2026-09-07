@@ -93,8 +93,7 @@ export function LocationPrimingSheet({
         {mode === 'ask' ? (
           <div className="flex flex-col gap-3 text-sm font-medium text-muted">
             <p>
-              LetsRide uses your location to show which rides and clubs are happening around you,
-              and to start a meeting-point search where you are.
+              LetsRide uses your location to sort rides and clubs by how far they are from you.
             </p>
             <p>
               Only while the app is open — we never track you in the background, and we never show
@@ -105,8 +104,8 @@ export function LocationPrimingSheet({
         ) : (
           <div className="flex flex-col gap-3 text-sm font-medium text-muted">
             <p>
-              Without it we cannot tell you which rides and clubs are near you, or start a
-              meeting-point search where you are. Everything else works as normal.
+              Without it we cannot sort rides and clubs by how far they are from you. Everything
+              else works as normal.
             </p>
             {/* Deliberately not a link or a button: no web API opens a browser's
                 site settings, and the Capacitor plugin that opens the OS

@@ -203,22 +203,44 @@ export function resolveDestination(pathname: string, state: GuardState): string 
   }
 
   if (!state.onboarding_completed_at) {
-    // Username is now the only step (PD-286 dropped location) — completion is
-    // stamped by `setUsername` itself, so there is no further field to resume
-    // into. Completion is stored, so editing your profile later never
-    // re-gates you.
-    const resume = '/onboarding/username'
+    // The wizard is two steps again since PD-428: username, then home country.
+    // `075` had left it at one, and this re-adds a step it removed — see `113`'s
+    // header for why that is a reversal with a reason rather than a loop.
+    //
+    // **The resume step is derived from `has_username` alone, and that is why
+    // `my_onboarding_state()` did not have to change shape.** The country is
+    // the step that *completes* onboarding now, so "has a username but no
+    // completion stamp" already means "owes a country" — there is no fourth
+    // field to read. That is not a saving, it is the whole safety argument: a
+    // newer bundle destructuring a field an older function does not return
+    // reads `undefined`, which is falsy, which on a branch like this one sends
+    // EVERY rider into the wizard, invisibly to `tsc`, from the root layout.
+    // Do not add one here without changing the accessor in a migration that
+    // lands first.
+    const resume = state.has_username ? '/onboarding/country' : '/onboarding/username'
 
     if (isOnboarding) {
-      // /onboarding/terms is past for this rider, so it redirects on to the
-      // resume step; the resume path itself stays put. Everything else under
-      // /onboarding — including a deleted step's URL surviving in a bookmark,
-      // a stale tab, or a native shell restoring its last path — resolves to
-      // the resume step rather than rendering a 404 with the guard insisting
-      // the rider belongs there. `isOnboarding` is a prefix test, so this
-      // catch-all also covers whatever step this wizard gains or loses next.
-      if (pathname === '/onboarding/terms') return resume
+      // **A rider may stand on any step up to and including their resume step,
+      // and that is what makes the country screen's `Back` link work.** Sending
+      // every non-resume path forward would make Back a control that bounces
+      // straight back — worse than not drawing one, because it looks live.
+      //
+      // Going back is already supported by the schema rather than merely
+      // tolerated: `075` §3 gave `username_exists` its `profiles.id <>
+      // auth.uid()` predicate for exactly this rider, so returning to the
+      // username step no longer tells them their own name is taken. Before
+      // `075` removed the location step the guard permitted the same
+      // navigation, so this restores a behaviour rather than inventing one.
+      //
+      // Anything the rider has NOT reached yet resolves forward to the resume
+      // step — a step they cannot complete (the country screen with no
+      // username) would be refused by `114` with nothing on screen saying why.
+      // The same branch catches a deleted step's URL surviving in a bookmark, a
+      // stale tab, or a native shell restoring its last path, rather than
+      // rendering a 404 the guard insists is correct. `isOnboarding` is a
+      // prefix test, so it also covers whatever step this wizard gains next.
       if (pathname === resume) return null
+      if (pathname === '/onboarding/username' && state.has_username) return null
       return resume
     }
     return resume

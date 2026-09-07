@@ -72,8 +72,37 @@ export const PUBLIC_PROFILE_COLUMNS = 'id, username, avatar_path, bike_model'
  * screen is the one screen that draws a cover, and this is the query it draws it
  * from.
  */
+/**
+ * `home_country` (`113`, PD-428) is here and is deliberately NOT in either of
+ * the other two sets. It is readable — the `profiles` SELECT policy admits it
+ * like any other column, and `113` grants `authenticated` SELECT on it — but no
+ * screen draws another rider's country, and a column added to a projection
+ * "because it is allowed" is how `PUBLIC_PROFILE_COLUMNS` grew the first time.
+ *
+ * **What actually forces it here is `columns.test.ts`, not the type.** That
+ * suite asserts this list equals the union of every migration's `grant select
+ * (...) on public.profiles` exactly, and `113` grants SELECT on
+ * `home_country` — so omitting it fails today, whatever `Profile` says. The
+ * type is the second reason and the weaker one: this is the one read that
+ * types a rider's own row, so leaving the column out would make
+ * `home_country: string | null` a field that is `undefined` on every path,
+ * which is the shape `021`'s header refuses for the two stamps.
+ *
+ * **No screen draws it yet**, and that is worth saying plainly rather than
+ * dressing the projection up as a need: the country is written at onboarding
+ * and `EditProfileForm` offers no country field (PD-428 stays open for that).
+ * It is forward-looking by one screen.
+ *
+ * **Removing it is a THREE-part change, and doing two parts reddens the
+ * suite.** Dropping the field from `Profile` and from this list leaves
+ * `granted` still holding `home_country` and `constant` not — the dead-grant
+ * half of the same assertion. It needs a migration revoking the column grant
+ * as well, and `columns.test.ts`'s own header flags that as unprecedented: no
+ * column-level REVOKE exists in this chain, and the union it builds would have
+ * to learn to subtract.
+ */
 export const OWN_PROFILE_COLUMNS =
-  'id, username, bio, bike_model, created_at, location, avatar_path, cover_image_path'
+  'id, username, bio, bike_model, created_at, location, home_country, avatar_path, cover_image_path'
 
 /**
  * The columns of *another* rider's profile that `/profile/detail` — and only

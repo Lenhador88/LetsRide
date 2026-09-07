@@ -26809,23 +26809,41 @@ select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'locat
 select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'username', 'update'),
   true, '096.1: ... and username is still writable, so 096 did not narrow the UPDATE list either');
 -- The widths, which the four above cannot see: a list can keep every column it
--- had and still have GAINED one. 8/7/6 is 025's shape, measured on DEV
--- 2026-09-01 and unchanged by this file.
+-- had and still have GAINED one. 8/7/6 was 025's shape, measured on DEV
+-- 2026-09-01 and unchanged by 096.
+--
+-- ** 9/8/7 SINCE 113. ** This assertion did its job: adding `home_country` to
+-- profiles turned it red, and the widening is the intended, reviewed one —
+-- `113` §4 grants SELECT, INSERT and UPDATE on exactly that one column, so each
+-- list grew by exactly one and no other number moved. The delta is the whole
+-- content of the change, which is why the numbers are bumped rather than the
+-- assertion being loosened into a `>=` or scoped away: a `>=` here would stop
+-- catching the next accidental widening, which is the only thing it exists for.
+--
+-- The columns behind each number, so the next author can see at a glance which
+-- one they added:
+--   SELECT 9  id, username, bio, bike_model, created_at, location, avatar_path,
+--             cover_image_path, home_country
+--   INSERT 8  the same minus created_at
+--   UPDATE 7  the same minus created_at and id
+-- The four server-owned columns — terms_accepted_at, onboarding_completed_at,
+-- terms_version, analytics_opt_out_at — are in none of them, which is what the
+-- four `false` assertions above and 113.10 both pin by name.
 select assert_eq(
   (select count(*)::int from pg_attribute
     where attrelid = 'public.profiles'::regclass and attnum > 0 and not attisdropped
       and has_column_privilege('authenticated', 'public.profiles', attname, 'select')),
-  8, '096.1: 025''s SELECT list is still EIGHT columns wide — the assertion that catches a widening rather than a narrowing, which is the direction this file could actually have got wrong');
+  9, '096.1: 025''s SELECT list is NINE columns wide — eight from 025 plus home_country from 113 — the assertion that catches a widening rather than a narrowing, which is the direction this file could actually have got wrong');
 select assert_eq(
   (select count(*)::int from pg_attribute
     where attrelid = 'public.profiles'::regclass and attnum > 0 and not attisdropped
       and has_column_privilege('authenticated', 'public.profiles', attname, 'insert')),
-  7, '096.1: ... the INSERT list still seven ...');
+  8, '096.1: ... the INSERT list eight (seven from 025 plus home_country) ...');
 select assert_eq(
   (select count(*)::int from pg_attribute
     where attrelid = 'public.profiles'::regclass and attnum > 0 and not attisdropped
       and has_column_privilege('authenticated', 'public.profiles', attname, 'update')),
-  6, '096.1: ... and the UPDATE list still six');
+  7, '096.1: ... and the UPDATE list seven (six from 025 plus home_country) — 113 widened each list by exactly one, named column, and moved nothing else');
 select assert_eq(has_table_privilege('authenticated', 'public.profiles', 'select'),
   false, '096.1: and no TABLE-level SELECT grant was restored while adding a column — 025''s shape survives, and a column-level revoke against a table grant would have been a documented no-op');
 
@@ -34670,6 +34688,526 @@ rollback to savepoint delete_club_111;
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint club_removals_111;
+
+
+\echo ''
+\echo '# 113 — a rider states a home country, the additive half (PD-428)'
+
+-- The cast, and what each rider is FOR:
+--
+--   1130001 hcowner    owns c1 (private). home_country NL. The subject of most
+--                      of the write assertions
+--   1130002 hcadmin    ADMIN of c1, home_country BE
+--   1130003 hcmember   ordinary member of c1, home_country DE
+--   1130004 hcout      NOT a member of c1, and home_country IS NULL. ** THE
+--                      PERMANENT POPULATION. ** 113's column comment says NULL is
+--                      never backfilled and never re-prompted, so a fixture
+--                      carrying NULL for ever is what makes every read assertion
+--                      below a test of the state riders actually sit in. Without
+--                      it the suite only ever proves the filled-in case
+--   1130005 hcblocker  blocks hcblocked. home_country FR
+--   1130006 hcblocked  home_country ES — the other side, so 113.7 can run in
+--                      BOTH directions rather than assuming symmetry
+--   1130007 hcmid      username and consent, NO completion stamp, home_country
+--                      NULL — the rider 113.11 completes, which is the assertion
+--                      114 has to FLIP
+--
+-- Club: c1 private, holding owner + admin + member, with hcout outside it. The
+-- roles exist so 113.8 can show that a club role confers NOTHING on a profile
+-- read — the audience is the profiles SELECT policy alone.
+savepoint home_country_113;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000001130001', 'hcowner@example.com'),
+  ('00000000-0000-0000-0000-000001130002', 'hcadmin@example.com'),
+  ('00000000-0000-0000-0000-000001130003', 'hcmember@example.com'),
+  ('00000000-0000-0000-0000-000001130004', 'hcout@example.com'),
+  ('00000000-0000-0000-0000-000001130005', 'hcblocker@example.com'),
+  ('00000000-0000-0000-0000-000001130006', 'hcblocked@example.com'),
+  ('00000000-0000-0000-0000-000001130007', 'hcmid@example.com');
+reset role;
+
+-- Six onboarded riders, and hcout deliberately keeps home_country NULL.
+update profiles p
+   set username = v.uname, location = 'Utrecht',
+       home_country = v.hc,
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000001130001', 'hcowner',   'NL'),
+      ('00000000-0000-0000-0000-000001130002', 'hcadmin',   'BE'),
+      ('00000000-0000-0000-0000-000001130003', 'hcmember',  'DE'),
+      ('00000000-0000-0000-0000-000001130004', 'hcout',     null),
+      ('00000000-0000-0000-0000-000001130005', 'hcblocker', 'FR'),
+      ('00000000-0000-0000-0000-000001130006', 'hcblocked', 'ES')
+    ) as v(id, uname, hc)
+ where p.id = v.id::uuid;
+
+-- The mid-wizard rider: consent and a username, no completion stamp, no country.
+update profiles set username = 'hcmid',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+ where id = '00000000-0000-0000-0000-000001130007';
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000011300c1', 'Home Country MC', false,
+   '00000000-0000-0000-0000-000001130001');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000011300c1', '00000000-0000-0000-0000-000001130002', 'admin'),
+  ('00000000-0000-0000-0000-0000011300c1', '00000000-0000-0000-0000-000001130003', 'member');
+
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000001130005', '00000000-0000-0000-0000-000001130006');
+
+-- ---------------------------------------------------------------------------
+-- 113.0  The fixture is real before anything is refused
+-- ---------------------------------------------------------------------------
+-- Without this every refusal below could be a column that never accepted
+-- anything, which is the shape of pass-for-the-wrong-reason this suite has
+-- already paid for once.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001130001', false);
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130001'),
+  'NL', '113.0: the column stores and returns an assigned code — the control that stops every refusal below being a column nothing can write');
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130004'),
+  null, '113.0: ... and hcout''s home_country is NULL, the permanent population 113''s column comment says is never backfilled and never re-prompted');
+
+-- ---------------------------------------------------------------------------
+-- 113.1  An UNASSIGNED code is refused, and BY THE MEMBERSHIP CONSTRAINT
+-- ---------------------------------------------------------------------------
+select assert_rejected(
+  $$update profiles set home_country = 'ZZ'
+     where id = '00000000-0000-0000-0000-000001130001'$$,
+  '23514', '113.1: ZZ is refused — it is two uppercase letters, so only the membership check can catch it');
+select assert_eq(
+  error_of($$update profiles set home_country = 'ZZ'
+              where id = '00000000-0000-0000-0000-000001130001'$$)
+    like '%profiles_home_country_is_assigned%',
+  true, '113.1: ... and the constraint that REPORTS is profiles_home_country_is_assigned — a bare 23514 cannot tell "not a country" from "not a code", which is the whole reason 113 carries two constraints');
+
+-- ---------------------------------------------------------------------------
+-- 113.1a ** THE SHAPE CONSTRAINT CAN NEVER BE THE REPORTED ONE, AND THAT IS
+--        MEASURED RATHER THAN ASSUMED **
+-- ---------------------------------------------------------------------------
+-- `113`'s header, `020`'s header and this change's `design.md` §D3 all claim the
+-- pair gives "two error identities". **It does not, and a reader who trusts that
+-- sentence writes an assertion that fails.** Two facts compose:
+--
+--   1. The membership set is a strict SUBSET of the shape set — every one of the
+--      249 codes is two uppercase letters — so NO value exists that passes
+--      membership and fails shape. The shape check is redundant by construction.
+--   2. Postgres evaluates a relation's CHECKs in CONSTRAINT-NAME order and
+--      reports the FIRST failure. `profiles_home_country_is_assigned` sorts
+--      before `profiles_home_country_shape`, so the membership check reports for
+--      every malformed value too.
+--
+-- So the shape constraint is belt-and-braces that can never be observed. Kept,
+-- because dropping it is a removal and it still HOLDS (nothing invalid stores),
+-- but the "two identities" rationale is aspirational. **Do not try to fix this by
+-- renaming the constraints** — that would only swap which one reports, and the
+-- shape check would then report for `ZZ`, which is worse: `ZZ` IS a valid shape.
+-- This assertion pins the order so a rename goes red here with the reason
+-- attached.
+select assert_eq(
+  (select string_agg(conname, '|' order by conname) from pg_constraint
+    where conrelid = 'public.profiles'::regclass and contype = 'c'
+      and conname like 'profiles_home_country%'),
+  'profiles_home_country_is_assigned|profiles_home_country_shape',
+  '113.1a: both CHECKs exist and is_assigned sorts FIRST by name, which is the order Postgres reports them in — renaming either changes which constraint a client sees for a malformed code');
+select assert_eq(
+  (select count(*)::int from pg_constraint
+    where conrelid = 'public.profiles'::regclass
+      and conname like 'profiles_home_country%' and not convalidated),
+  0, '113.1a: ... and both are VALIDATED rather than NOT VALID — there were no rows to violate them when 113 created the column');
+-- The list did not lose an entry to a stray comma. ** THE BRACKET CLASS MATTERS
+-- AND IS THE REASON THIS LIVES HERE. ** `113`'s footer and `020`'s before it
+-- both write this query with `\{(.*)\}`, which matches NOTHING: an array
+-- constant inside a CHECK is rendered by pg_get_constraintdef as
+-- `ARRAY['AD'::text, ...]`, never as a `{...}` literal, so both footers return
+-- NULL rather than a count and read as "no answer" rather than "wrong". Measured
+-- on DEV 2026-09-07: `\{(.*)\}` -> NULL, `\[(.*)\]` -> 249, for 113's constraint
+-- AND for 020's. A migration footer is a comment nothing runs; an assertion is
+-- not, which is why the working form is pinned in the suite instead.
+select assert_eq(
+  (select cardinality(string_to_array(
+            substring(pg_get_constraintdef(oid) from '\[(.*)\]'), ','))
+     from pg_constraint where conname = 'profiles_home_country_is_assigned'),
+  249, '113.1a: the membership list holds exactly 249 codes — the count that catches a stray comma or a dropped line when the literal is regenerated from src/lib/countries.ts');
+select assert_eq(
+  (select cardinality(string_to_array(
+            substring(pg_get_constraintdef(oid) from '\[(.*)\]'), ','))
+     from pg_constraint where conname = 'profile_countries_code_is_assigned'),
+  249, '113.1a: ... and 020''s copy of the same list still holds 249 too — the two are hand-kept and nothing else reconciles them, so a drift between them is only ever caught by comparing the counts');
+-- NL is in the list and ZZ is not, which is what stops the two counts above
+-- passing against 249 of the WRONG codes.
+select assert_eq(
+  (select pg_get_constraintdef(oid) like '%''NL''::text%'
+     from pg_constraint where conname = 'profiles_home_country_is_assigned'),
+  true, '113.1a: NL is in the membership list ...');
+select assert_eq(
+  (select pg_get_constraintdef(oid) like '%''ZZ''::text%'
+     from pg_constraint where conname = 'profiles_home_country_is_assigned'),
+  false, '113.1a: ... and ZZ is not — a cardinality check alone would pass against 249 codes generated from the wrong source');
+-- 020's pair behaves identically on profile_countries, so this is a property of
+-- the repo's chosen naming rather than something 113 introduced.
+select assert_eq(
+  error_of($$insert into profile_countries (user_id, country_code)
+              values ('00000000-0000-0000-0000-000001130001', 'nl')$$)
+    like '%profile_countries_code_is_assigned%',
+  true, '113.1a: 020''s pair reports the same way — `nl` on profile_countries is reported by code_is_assigned, not by 014''s shape check, so this is the repo''s standing behaviour and not a 113 regression');
+
+-- ---------------------------------------------------------------------------
+-- 113.2  Every MALFORMED value is refused — five shapes, one SQLSTATE
+-- ---------------------------------------------------------------------------
+-- `tasks.md` §2.2 asks for these to be refused "by the shape constraint". They
+-- are not, for 113.1a's reason, and the assertions say what is TRUE rather than
+-- what was hoped: the refusal is real, it is 23514, and it is reported by
+-- is_assigned. Empty string, wrong case, three letters, padded, and a digit.
+select assert_rejected(
+  $$update profiles set home_country = ''
+     where id = '00000000-0000-0000-0000-000001130001'$$,
+  '23514', '113.2: the empty string is refused');
+select assert_rejected(
+  $$update profiles set home_country = 'nl'
+     where id = '00000000-0000-0000-0000-000001130001'$$,
+  '23514', '113.2: a lowercase code is refused — case is part of the rule, not cosmetic');
+select assert_rejected(
+  $$update profiles set home_country = 'NLD'
+     where id = '00000000-0000-0000-0000-000001130001'$$,
+  '23514', '113.2: a three-letter alpha-3 code is refused — the column is alpha-2');
+select assert_rejected(
+  $$update profiles set home_country = ' NL '
+     where id = '00000000-0000-0000-0000-000001130001'$$,
+  '23514', '113.2: a padded code is refused — nothing trims on the way in, so a client that sends whitespace is told rather than silently storing a value no filter matches');
+select assert_rejected(
+  $$update profiles set home_country = '1'
+     where id = '00000000-0000-0000-0000-000001130001'$$,
+  '23514', '113.2: a digit is refused');
+-- The control. Without it every line above passes against a column that refuses
+-- EVERYTHING, which is 113.0's point restated where the refusals are.
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130001'),
+  'NL', '113.2: ... and after five refusals the stored value is untouched — the refusals rolled back nothing else');
+
+-- ---------------------------------------------------------------------------
+-- 113.3  A rider sets home_country from NULL on their OWN row — permitted
+-- ---------------------------------------------------------------------------
+savepoint hc_set_113;
+select set_config('test.uid', '00000000-0000-0000-0000-000001130004', false);
+update profiles set home_country = 'PT'
+ where id = '00000000-0000-0000-0000-000001130004';
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130004'),
+  'PT', '113.3: a rider whose home_country is NULL sets one on their own row — this is the country step''s whole write path (design.md §D9), a column UPDATE and not an RPC parameter');
+rollback to savepoint hc_set_113;
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130004'),
+  null, '113.3: ... and the savepoint put hcout back to NULL, so the permanent-NULL fixture survives for the reads below');
+
+-- ---------------------------------------------------------------------------
+-- 113.4  A rider changes it to ANOTHER assigned code — permitted
+-- ---------------------------------------------------------------------------
+-- A correction, not a removal. 113's coercion arm keys on `old.home_country`
+-- being non-NULL, so this is precisely the case that must still get through it.
+savepoint hc_change_113;
+select set_config('test.uid', '00000000-0000-0000-0000-000001130001', false);
+update profiles set home_country = 'IT'
+ where id = '00000000-0000-0000-0000-000001130001';
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130001'),
+  'IT', '113.4: a rider changes a stored country to another assigned code — the coercion arm refuses REMOVAL only, so a correction must pass straight through it');
+rollback to savepoint hc_change_113;
+
+-- ---------------------------------------------------------------------------
+-- 113.5  ** CLEARING A SET COUNTRY IS A COERCION: assert the STORED VALUE **
+-- ---------------------------------------------------------------------------
+-- `038`'s rule and `113`'s reason for copying it. The write is NOT refused — it
+-- returns 200 and looks like it worked — so an assertion written as
+-- assert_rejected(..., '23514', ...) would FAIL against a correct implementation
+-- and, worse, a `raises` assertion that happened to pass would be passing for a
+-- rule this change deliberately did not implement.
+savepoint hc_clear_113;
+select set_config('test.uid', '00000000-0000-0000-0000-000001130001', false);
+select assert_eq(
+  error_of($$update profiles set home_country = null
+              where id = '00000000-0000-0000-0000-000001130001'$$),
+  '<no error>', '113.5: clearing a set home_country RAISES NOTHING — it is a coercion, so a rejection assertion here would fail against a correct database');
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130001'),
+  'NL', '113.5: ** and the STORED VALUE is unchanged ** — enforce_onboarding_completion coerced the NULL back, exactly as 038 does for username. This is the assertion; the one above only proves it was silent');
+-- The other half of the same statement still lands. That is what would make an
+-- optional country field on the profile editor safe (design.md §D5) — a rider
+-- blanking the control would not lose the edit they actually came to make.
+-- **That screen does not exist yet**: PD-428 shipped the onboarding write only,
+-- and `EditProfileForm` offers no country field, so this asserts the property a
+-- future editor depends on rather than describing one that is there.
+update profiles set home_country = null, bio = 'edited alongside a blanked country'
+ where id = '00000000-0000-0000-0000-000001130001';
+select assert_eq(
+  (select home_country || '/' || bio from profiles
+    where id = '00000000-0000-0000-0000-000001130001'),
+  'NL/edited alongside a blanked country',
+  '113.5: a multi-column edit that blanks the country keeps its OTHER changes — the coercion degrades to a no-op rather than taking the write down, which is why 113 hangs a coalesce off an already-shipped path and not a raise');
+rollback to savepoint hc_clear_113;
+
+-- ---------------------------------------------------------------------------
+-- 113.5a NULL -> NULL is not a removal — the permanent population is untouched
+-- ---------------------------------------------------------------------------
+-- The arm is keyed on `old.home_country is not null`, so it never fires for a
+-- rider who was never asked. If it were keyed on the NEW value instead, every
+-- profile edit by that population would behave differently, and they are the
+-- whole population on the day 113 applies.
+savepoint hc_nullnull_113;
+select set_config('test.uid', '00000000-0000-0000-0000-000001130004', false);
+select assert_eq(
+  error_of($$update profiles set home_country = null, bio = 'still no country'
+              where id = '00000000-0000-0000-0000-000001130004'$$),
+  '<no error>', '113.5a: a rider with NULL home_country writes NULL again and nothing raises — NULL -> NULL is not a removal');
+select assert_eq(
+  (select coalesce(home_country, '<NULL>') || '/' || bio from profiles
+    where id = '00000000-0000-0000-0000-000001130004'),
+  '<NULL>/still no country',
+  '113.5a: ... and the row keeps its NULL and takes the rest of the edit — the never-asked population edits their profile exactly as before 113');
+rollback to savepoint hc_nullnull_113;
+
+-- ---------------------------------------------------------------------------
+-- 113.6  Another signed-in rider updating someone else's country: ZERO ROWS
+-- ---------------------------------------------------------------------------
+-- Counted rather than inferred from an absent error. An UPDATE the policy
+-- forbids is FILTERED by its USING clause rather than raised, so it returns
+-- without error and looks identical to a success — the exact reason
+-- `assert_allowed` refuses to be handed an UPDATE.
+savepoint hc_other_113;
+select set_config('test.uid', '00000000-0000-0000-0000-000001130003', false);
+with upd as (
+  update profiles set home_country = 'PT'
+   where id = '00000000-0000-0000-0000-000001130001'
+  returning 1
+)
+select set_config('test.hcrows', (select count(*)::text from upd), false);
+select assert_eq(
+  current_setting('test.hcrows')::int,
+  0, '113.6: a club MEMBER updating the club OWNER''s home_country affects zero rows — the UPDATE policy is auth.uid() = id and a club role buys nothing');
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130001'),
+  'NL', '113.6: ... and the owner''s stored country is untouched — the row count and the value are separate claims and this suite has passed on one without the other before');
+rollback to savepoint hc_other_113;
+
+-- ---------------------------------------------------------------------------
+-- 113.7  A BLOCK hides the whole row, in BOTH directions
+-- ---------------------------------------------------------------------------
+-- Read as a count of ROWS, not as a NULL column: the profiles SELECT policy
+-- removes the row entirely, so a blocked rider cannot tell "no country" from
+-- "no rider". Both directions, because the block row is directional and the
+-- effect is symmetric — asserting one direction proves half of that.
+select set_config('test.uid', '00000000-0000-0000-0000-000001130005', false);
+select assert_eq(
+  (select count(*)::int from profiles
+    where id = '00000000-0000-0000-0000-000001130006' and home_country is not null),
+  0, '113.7: the BLOCKER reads zero rows for the blocked rider''s profile, so the home_country column goes with the row rather than being blanked');
+select set_config('test.uid', '00000000-0000-0000-0000-000001130006', false);
+select assert_eq(
+  (select count(*)::int from profiles
+    where id = '00000000-0000-0000-0000-000001130005' and home_country is not null),
+  0, '113.7: and the BLOCKED rider reads zero rows for the blocker''s — symmetric in effect though the blocks row is directional');
+-- The control: the same read by an unrelated rider returns both, so 113.7 is
+-- about the block and not about the column being unreadable.
+select set_config('test.uid', '00000000-0000-0000-0000-000001130004', false);
+select assert_eq(
+  (select count(*)::int from profiles
+    where id in ('00000000-0000-0000-0000-000001130005',
+                 '00000000-0000-0000-0000-000001130006')
+      and home_country is not null),
+  2, '113.7: an unrelated rider reads BOTH of them — without this the two assertions above pass against a column nobody can read');
+
+-- ---------------------------------------------------------------------------
+-- 113.8  Owner, admin, member and non-member read it EXACTLY alike
+-- ---------------------------------------------------------------------------
+-- ** The point is that a club role confers NOTHING here. ** The audience for a
+-- profile is the profiles SELECT policy alone — any signed-in rider with a
+-- username who is not blocked — so the correct expected value for all four is
+-- the same, and an assertion set that gave the outsider a different answer would
+-- be encoding a rule this schema does not have.
+select set_config('test.uid', '00000000-0000-0000-0000-000001130001', false);
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130003'),
+  'DE', '113.8: the club OWNER reads a member''s home_country');
+select set_config('test.uid', '00000000-0000-0000-0000-000001130002', false);
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130003'),
+  'DE', '113.8: the club ADMIN reads it');
+select set_config('test.uid', '00000000-0000-0000-0000-000001130003', false);
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130001'),
+  'NL', '113.8: a club MEMBER reads the owner''s');
+select set_config('test.uid', '00000000-0000-0000-0000-000001130004', false);
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130003'),
+  'DE', '113.8: ** and a NON-MEMBER reads it identically ** — home_country is not club-scoped, so a private club''s membership is not a gate on its members'' profiles');
+-- ...and none of the four writes anything. The outsider is the interesting one:
+-- being outside the club is not what stops them, the UPDATE policy is.
+savepoint hc_roles_113;
+with upd as (
+  update profiles set home_country = 'PT'
+   where id = '00000000-0000-0000-0000-000001130003'
+  returning 1
+)
+select set_config('test.hcrows', (select count(*)::text from upd), false);
+select assert_eq(
+  current_setting('test.hcrows')::int,
+  0, '113.8: a non-member writing a member''s home_country affects zero rows');
+select set_config('test.uid', '00000000-0000-0000-0000-000001130002', false);
+with upd as (
+  update profiles set home_country = 'PT'
+   where id = '00000000-0000-0000-0000-000001130003'
+  returning 1
+)
+select set_config('test.hcrows', (select count(*)::text from upd), false);
+select assert_eq(
+  current_setting('test.hcrows')::int,
+  0, '113.8: and a club ADMIN writing a member''s home_country affects zero rows too — 088''s admin powers are over MEMBERSHIP, never over a rider''s own profile row');
+rollback to savepoint hc_roles_113;
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 113.9  `anon` holds NOTHING on the new column — scoped to the GRANTEE
+-- ---------------------------------------------------------------------------
+-- Decision #1: no policy and no grant anywhere reaches `anon`. Named by role
+-- rather than counted, per 015's recorded footer bug — `postgres` and
+-- `service_role` hold everything by Supabase default, so a table-wide count
+-- reads wrong against a CORRECT database.
+select assert_eq(has_column_privilege('anon', 'public.profiles', 'home_country', 'SELECT'),
+  false, '113.9: anon holds no SELECT on profiles.home_country');
+select assert_eq(has_column_privilege('anon', 'public.profiles', 'home_country', 'INSERT'),
+  false, '113.9: anon holds no INSERT on profiles.home_country');
+select assert_eq(has_column_privilege('anon', 'public.profiles', 'home_country', 'UPDATE'),
+  false, '113.9: anon holds no UPDATE on profiles.home_country');
+
+-- ---------------------------------------------------------------------------
+-- 113.10 `authenticated` holds SELECT, INSERT and UPDATE — and NOTHING wider
+-- ---------------------------------------------------------------------------
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'home_country', 'SELECT'),
+  true, '113.10: authenticated holds SELECT on home_country — 025''s allowlist means a column with no grant silently does not exist for the app');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'home_country', 'INSERT'),
+  true, '113.10: ... INSERT');
+select assert_eq(has_column_privilege('authenticated', 'public.profiles', 'home_country', 'UPDATE'),
+  true, '113.10: ... and UPDATE, which is the one the onboarding country step needs (and a profile editor would, if one is ever built — PD-428 shipped no country field on EditProfileForm)');
+-- ** THE ASSERTION THAT CATCHES THE ONE-LINE GRANT. ** `grant select, insert,
+-- update (home_country) on ... ` attaches the column list to the LAST privilege
+-- only, so it grants SELECT and INSERT TABLE-WIDE and hands back everything 025
+-- revoked. Measured on DEV 2026-09-07 inside a rolled-back transaction: after
+-- the one-line form, has_table_privilege(...,'select') reads TRUE. These two are
+-- what go red if anyone ever tidies 113 §4's three statements into one.
+select assert_eq(has_table_privilege('authenticated', 'public.profiles', 'SELECT'),
+  false, '113.10: ** nothing on profiles is readable TABLE-WIDE ** — 025''s revoke still stands, and this is what fails if 113''s three column grants are collapsed into one statement');
+select assert_eq(has_table_privilege('authenticated', 'public.profiles', 'INSERT'),
+  false, '113.10: ... and nothing is insertable table-wide either');
+-- The four server-owned columns are the ones that would be re-exposed by that
+-- mistake, so they are named rather than left to the table-wide check.
+select assert_eq(
+  (select bool_or(has_column_privilege('authenticated', 'public.profiles', c, 'SELECT'))
+     from unnest(array['terms_accepted_at','onboarding_completed_at',
+                       'terms_version','analytics_opt_out_at']) as c),
+  false, '113.10: and the four server-owned columns are STILL closed to authenticated — 113 widened the allowlist by exactly one column, named');
+
+-- ---------------------------------------------------------------------------
+-- 113.11 ** complete_onboarding STILL STAMPS WITH A NULL home_country **
+-- ---------------------------------------------------------------------------
+-- This is the pre-114 behaviour, asserted so that 114 has something to FLIP.
+-- Under 113 the country is collectable but not yet required: the split exists
+-- because one file cannot be both sides of a deploy (design.md §D8), and until
+-- the new bundle serves, the OLD bundle's `complete_onboarding({p_location:
+-- null})` — the call every signup makes — has to keep working. If this assertion
+-- ever goes red without 114 landing, every new rider is stuck on the username
+-- step.
+savepoint hc_complete_113;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001130007', false);
+select set_config('test.hcstamp',
+  (select complete_onboarding(null))::text, false);
+reset role;
+select assert_eq(
+  current_setting('test.hcstamp') <> '',
+  true, '113.11: complete_onboarding returns a stamp for a rider whose home_country is NULL — under 113 the country is COLLECTED but not yet REQUIRED, and 114 is the file that changes this line''s answer');
+select assert_eq(
+  (select onboarding_completed_at is not null from profiles
+    where id = '00000000-0000-0000-0000-000001130007'),
+  true, '113.11: ... and the completion stamp actually landed on the row');
+select assert_eq(
+  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130007'),
+  null, '113.11: ... with home_country still NULL — 113 adds no arm to the RPC and no backfill, so this rider joins the permanent NULL population the column comment describes');
+rollback to savepoint hc_complete_113;
+
+-- ---------------------------------------------------------------------------
+-- 113.12 The participation gate is UNCHANGED — by count and by name
+-- ---------------------------------------------------------------------------
+-- Via the counting query rather than an enumeration, per tasks.md §2.12. The
+-- second line is separate because a count cannot tell a gate added here from one
+-- removed elsewhere.
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgname = 'enforce_participation_gate' and not tgisinternal),
+  22, '113.12: TWENTY-TWO participation-gate triggers, unchanged — 113 adds no table and gates no new write path');
+select assert_eq(
+  (select count(*)::int from pg_trigger t join pg_class c on c.oid = t.tgrelid
+    where t.tgname = 'enforce_participation_gate' and c.relname = 'profiles'),
+  0, '113.12: ... and profiles is still NOT gated — an account that never called accept_terms() must still be able to set a username and now a country, which is the wizard itself');
+
+-- ---------------------------------------------------------------------------
+-- 113.13 The trigger's SHAPE, read from the CATALOGUE
+-- ---------------------------------------------------------------------------
+-- ** Never inferred from a write that behaved. ** 113.5 is the behavioural half;
+-- this is the half that holds when somebody rewrites that fixture, and it is the
+-- half that catches the two ways this arm dies silently.
+select assert_eq(
+  (select prosrc like '%coalesce(new.home_country, old.home_country)%'
+     from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  true, '113.13: the home_country coercion is in the deployed body');
+select assert_eq(
+  (select strpos(prosrc, 'coalesce(new.home_country, old.home_country)')
+        < strpos(prosrc, 'new.onboarding_completed_at := old.onboarding_completed_at')
+     from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  true, '113.13: ** and it sits ABOVE the onboarding_completed_at early return ** — a POSITION check, not a presence one, because below that return the arm is dead code for every onboarded rider, which is the only population that can have a country to lose (038''s documented trap)');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  false, '113.13: the function is still SECURITY INVOKER (033) — as definer its `current_user <> ''authenticated''` gate would be false on every call and no arm would ever fire, which is 022''s defect in reverse');
+select assert_eq(
+  (select proconfig from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  array['search_path=""'],
+  '113.13: ... with its search_path still pinned empty');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid = 'public.profiles'::regclass and not tgisinternal and tgattr <> ''),
+  0, '113.13: neither trigger on profiles is COLUMN-SCOPED — one scoped `OF username` would still read as BEFORE UPDATE at a glance and would never fire for a country-only PATCH, making this whole arm silently dead');
+
+-- ---------------------------------------------------------------------------
+-- 113.14 complete_onboarding was NOT touched, and there is exactly ONE of it
+-- ---------------------------------------------------------------------------
+-- design.md §D9: `create or replace` cannot add a parameter, so the obvious
+-- `p_country` would create an OVERLOAD, and two candidates is PGRST203 on the
+-- one call every signup makes. Asserted here rather than trusted because the
+-- next author will reach for it — 113's header says so in as many words.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'public'::regnamespace and proname = 'complete_onboarding'),
+  1, '113.14: exactly ONE complete_onboarding — a second signature is PGRST203 on every signup, not a compile error, so nothing else in this repo would catch it');
+select assert_eq(
+  (select pg_get_function_identity_arguments(oid) from pg_proc
+    where pronamespace = 'public'::regnamespace and proname = 'complete_onboarding'),
+  'p_location text', '113.14: ... and its signature is unchanged — 021''s revoke/grant pair and 025''s footer both name this exact identity');
+select assert_eq(
+  (select prosrc like '%home_country%' from pg_proc
+    where pronamespace = 'public'::regnamespace and proname = 'complete_onboarding'),
+  false, '113.14: ** and its body does not mention home_country at all ** — the refusal is 114''s and 113 must not carry it, or the old bundle''s every-signup call starts raising for a column it has no screen to fill in');
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint home_country_113;
 
 
 rollback;

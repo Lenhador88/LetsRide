@@ -345,9 +345,13 @@ export function mergeMine(rows: RideRow[], window: RideWindow, limit: number): R
  * exact drift 009 warns about; the only correct place for it is the policy.
  *
  * **`getExploreRides` is the one read that DOES carry `is_public`, and it is
- * not a counter-example.** There the word is the product's own — the strip says
- * *Explore public rides* — so the predicate is what the screen promises rather
- * than a restatement of a policy. It also only ever narrows what RLS already
+ * not a counter-example.** There the predicate is the product's own: the screen
+ * is a directory of rides open to anyone, which is what `/rides/explore` offers
+ * and what separates it from the rider's own `/rides`. PD-427 took the word
+ * *public* out of the strip's label — it said `Explore public rides` while the
+ * screen it opened titled itself `Explore rides` — so the justification no
+ * longer quotes a string. The predicate is unchanged and still correct: it is
+ * what the screen promises rather than a restatement of a policy. It also only ever narrows what RLS already
  * returned, which is the property that keeps every filter in this file unable
  * to disclose a row.
  *

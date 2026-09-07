@@ -170,7 +170,7 @@ never the **guarantee**. **Forms are hand-rolled** — controlled inputs plus `u
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | Gates every PR touching `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (54 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Forty-one** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
+| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (57 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Forty-three** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
 | Edge Functions | `deno check`, CI's `functions` job | Type-checks every `index.ts` under Deno when `supabase/functions/**` changes. `tsconfig.json` excludes the directory, so `tsc` never sees the entrypoints |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything**: signs in, walks every screen including discovered detail routes, checks the guard's redirects and sign-out. `WALK_FIXTURES=1` creates the rows the detail routes need; a shrunken `N/N` is a skip, not a pass. In CI as the `walk` job, minting its own rider, **skipped until the repository variable `WALK_CI=1` is set** because the Actions secrets name PROD. Not a required check yet (PD-370) |
 | End-to-end | Playwright | Deferred as a full suite. The walk asks one question per route — did this render — and asserts behaviour only in named phases, each covering a defect no other gate can see |
@@ -211,7 +211,7 @@ for d in src/components/*/; do echo "$d: $(ls "$d" | sed 's/\.tsx\?$//' | tr '\n
 places, split so the decision can be tested:
 
 - **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
-  `null` means stay; a string is where to go. 54 cases in `__tests__/guard.test.ts`.
+  `null` means stay; a string is where to go. 57 cases in `__tests__/guard.test.ts`.
 - **`src/lib/auth/guard-cache.ts`** — what the decision reads: the session and the onboarding
   stamps, **held for the page load rather than fetched per route**, with `onAuthStateChange` as
   the single writer for the session half.
@@ -220,12 +220,26 @@ places, split so the decision can be tested:
   layout. **The splash overlays the page once booted; it replaces it only before the first
   decision** — replacing it on every navigation unmounts `(app)/layout.tsx`.
 
-**Any new writer of a stamp the decision reads must invalidate the cache.** There are three
-(`signUp`, `setUsername`, `acceptTerms`), each calling `invalidateOnboardingState()`; `signOut`
-calls `clearGuardCache()`. `src/lib/actions/__tests__/writers-invalidate.test.ts` refuses a new
-stamp writer that does not. **Necessary, never sufficient**: `guard-cache.ts` carries a generation
-counter so a read discards its own answer if the stamps moved underneath it — a new writer owes
-the invalidation and nothing more.
+**Any new writer of a stamp the decision reads must invalidate the cache.** There are four
+(`signUp`, `acceptTerms`, `setUsername`, `setHomeCountry`), each calling
+`invalidateOnboardingState()`; `signOut` calls `clearGuardCache()`.
+Count them rather than trust the number — scope the pathspec, or the natural
+`-- src/lib/actions/` prints four *lines* summing to **7** (the comment trap, two of them tests):
+
+```bash
+git grep -c "invalidateOnboardingState()" -- 'src/lib/actions/*.ts' \
+  | grep -v __tests__ | awk -F: '{n += $2} END {print n}'   # 4
+```
+
+`src/lib/actions/__tests__/writers-invalidate.test.ts` refuses a new writer that does not, and
+**that check is per EXPORTED FUNCTION, not per file** — `onboarding.ts` holds three of the four,
+so a file-granular check passes while any one of them keeps its call (measured: with
+`setHomeCountry`'s invalidation deleted, the per-file version reported 30/30 green). **The
+decision reads three fields and only two are stamps** — `terms_accepted_at`,
+`onboarding_completed_at` and `has_username` — so `setUsername`, which writes no stamp since
+PD-428, still owes the invalidation. **Necessary, never sufficient**: `guard-cache.ts` carries a
+generation counter so a read discards its own answer if the stamps moved underneath it — a new
+writer owes the invalidation and nothing more.
 
 **It is not a security boundary.** RLS is. Every rule the guard enforces has a database
 counterpart (`003`, `012`, `023`, `025`).
@@ -295,13 +309,14 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 112 files. DEV is at `112` and PROD at `112` — measured 2026-09-07.** DEV-ahead
+**Applied state: 113 files. DEV is at `113` and PROD at `112` — measured 2026-09-07.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
-against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV records FOUR rows with no
-file and PROD none** — three long-standing hand-applied ones, plus `home_country` (`113`, PD-428),
-which is in flight on an open PR rather than drift: the file lands with that merge.
+against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV records THREE rows with
+no file and PROD none** — the long-standing hand-applied ones. **`113`'s partner `114` is
+deliberately unwritten**: it refuses a NULL country, so it must not exist until the bundle that
+writes one is *serving*. `docs/reference/migrations.md` §Applied state has that gate.
 
 **The sequencing rule: additive first, deploy, destructive last — and "additive, so the order does
 not matter" is wrong in both directions.** Ask which side fails safe:
@@ -323,7 +338,7 @@ before it applies** — every affected path exercised on DEV, in a rolled-back t
 recorded statement that does not equal `md5sum` of its file is the NORM; compare the OBJECT
 (`docs/reference/migrations.md` §Applying a large file, §What reads as drift).
 
-Suite **3642** assertions — re-derive rather than trust it:
+Suite **3700** assertions — re-derive rather than trust it:
 `PGPASSWORD=postgres npm test 2>&1 | grep -c "NOTICE:  ok"`. **Compare label sets rather than
 counts** when reconciling two runs.
 

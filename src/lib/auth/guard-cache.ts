@@ -55,11 +55,15 @@ import type { OnboardingState } from '@/types'
  * sign-out, token refresh and user change all arrive there, so no caller has to
  * remember to keep it in step. The **stamps** have three more, and they are
  * writes rather than events, so nothing could deliver them here: `signUp`,
- * `setUsername` and `acceptTerms` each change a field the decision reads and
- * each calls `invalidateOnboardingState`. `setUsername` is the terminal one
- * since PD-286 dropped the location step — it commits the completion stamp
- * itself, immediately after the username write, so its invalidation is the
- * one that fires last in the wizard. `signOut` calls `clearGuardCache`. That
+ * `setUsername`, `setHomeCountry` and `acceptTerms` each change a field the
+ * decision reads and each calls `invalidateOnboardingState`. **`setHomeCountry`
+ * is the terminal one since PD-428 added the home-country step** — it commits
+ * the completion stamp, so its invalidation is the one that fires last in the
+ * wizard. `setUsername` keeps its own and still needs it: it writes
+ * `has_username`, which is precisely what the resume branch now reads to choose
+ * between the two steps, so a missing invalidation there sends a rider who just
+ * picked a name straight back to pick it again. `signOut` calls
+ * `clearGuardCache`. That
  * is the whole list, and it is worth stating in full because the safety
  * property above — nothing writes during render — is a property of *every*
  * writer, not just the two in this file.
@@ -704,12 +708,13 @@ export function attachGuardAuthListener(): void {
 }
 
 /**
- * Drop the stamps, keeping the session. For the two remaining onboarding
- * writes — `setUsername` and `acceptTerms` — each of which changes a field the
- * decision reads. `setUsername` now carries the terminal call: since PD-286
- * dropped the location step it commits the completion stamp itself, in the
- * same submit as the username write, so this fires once after both rather
- * than at a separate final step.
+ * Drop the stamps, keeping the session. For the three onboarding writes —
+ * `acceptTerms`, `setUsername` and `setHomeCountry` — each of which changes a
+ * field the decision reads. **`setHomeCountry` carries the terminal call since
+ * PD-428 re-added a second wizard step**: it writes the country and then
+ * commits the completion stamp, so this fires once after both of its writes
+ * rather than between them. `setUsername` calls it too, for `has_username`,
+ * which is what the resume branch reads to pick between the two steps.
  *
  * Invalidation rather than a patch, even though each of those knows what it just
  * made true: the stamps are timestamps this side never sees, so a patch would

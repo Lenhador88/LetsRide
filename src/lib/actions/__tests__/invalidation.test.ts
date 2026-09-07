@@ -106,7 +106,7 @@ vi.mock('@/lib/supabase/session-store', async (importOriginal) => ({
 // the order visible is what makes the file readable.
 import { setRideAttendance } from '@/lib/actions/rides'
 import { leaveClub } from '@/lib/actions/clubs'
-import { acceptTerms, setUsername } from '@/lib/actions/onboarding'
+import { acceptTerms, setHomeCountry, setUsername } from '@/lib/actions/onboarding'
 import { signOut } from '@/lib/actions/auth'
 import { invalidate, clearQueryCache } from '@/lib/query'
 import { clearGuardCache, invalidateOnboardingState } from '@/lib/auth/guard-cache'
@@ -349,23 +349,26 @@ describe('acceptTerms', () => {
 })
 
 describe('setUsername', () => {
-  it('writes the username FIRST, stamps completion SECOND, invalidates ONCE after both', async () => {
+  it('writes the username, invalidates, and does NOT stamp completion', async () => {
+    // PD-428 moved the completion stamp to `setHomeCountry`. Leaving the RPC
+    // here would be refused for every new rider once `114` applies — it
+    // refuses to stamp while `home_country` is NULL — so the username step
+    // would fail with a message about a country nobody has asked for yet.
+    //
+    // The invalidation stays and is asserted on its own, because its reason
+    // changed rather than went away: it now publishes `has_username`, which is
+    // what the guard's resume branch reads to pick between the two steps.
     const { builder, calls } = chain({ data: { id: USER.id }, error: null })
     from.mockReturnValue(builder)
-    rpc.mockResolvedValue({ data: true, error: null })
 
     const state = await setUsername(emptyActionState, form({ username: 'dawnrider' }))
 
-    expect(state.error).toBeNull()
+    expect(state).toEqual({ error: null, redirectTo: '/onboarding/country' })
     expect(from).toHaveBeenCalledWith('profiles')
     expect(calls[0]).toEqual({ method: 'update', args: [{ username: 'dawnrider' }] })
     expect(calls[1]).toEqual({ method: 'eq', args: ['id', USER.id] })
-    expect(rpc).toHaveBeenCalledWith('complete_onboarding', { p_location: null })
-    expect(timeline).toEqual([
-      'from:profiles',
-      'rpc:complete_onboarding',
-      'invalidateOnboardingState',
-    ])
+    expect(rpc).not.toHaveBeenCalled()
+    expect(timeline).toEqual(['from:profiles', 'invalidateOnboardingState'])
     expect(invalidateOnboardingState).toHaveBeenCalledTimes(1)
   })
 
@@ -393,15 +396,17 @@ describe('setUsername', () => {
     expect(invalidateOnboardingState).not.toHaveBeenCalled()
   })
 
-  it('does not invalidate when the completion RPC refuses (consent still missing)', async () => {
+  it('hands the rider to the country step rather than to /postcards', async () => {
+    // The wizard's exit moved with the stamp. A redirect straight to
+    // `/postcards` would be undone by the guard — `onboarding_completed_at` is
+    // still NULL at this point — so the rider would see the home screen flash
+    // and then land back in the wizard.
     const { builder } = chain({ data: { id: USER.id }, error: null })
     from.mockReturnValue(builder)
-    rpc.mockResolvedValue({ data: null, error: { code: '23514' } })
 
     const state = await setUsername(emptyActionState, form({ username: 'dawnrider' }))
 
-    expect(state.error).toBe('Finish the earlier steps first.')
-    expect(invalidateOnboardingState).not.toHaveBeenCalled()
+    expect(state.redirectTo).toBe('/onboarding/country')
   })
 
   it('refuses an invalid username before reaching the database', async () => {
@@ -410,6 +415,97 @@ describe('setUsername', () => {
     expect(state.error).toBeTruthy()
     expect(from).not.toHaveBeenCalled()
     expect(rpc).not.toHaveBeenCalled()
+  })
+})
+
+describe('setHomeCountry', () => {
+  // The wizard's terminal writer since PD-428, and it inherited the ordering
+  // contract `setUsername` used to carry: the column write FIRST, the
+  // completion RPC SECOND, one invalidation after both. `114` refuses to stamp
+  // while `home_country` is NULL, so the reverse order is refused every time.
+
+  it('writes the country FIRST, stamps completion SECOND, invalidates ONCE after both', async () => {
+    const { builder, calls } = chain({ data: { id: USER.id }, error: null })
+    from.mockReturnValue(builder)
+    rpc.mockResolvedValue({ data: true, error: null })
+
+    const state = await setHomeCountry(emptyActionState, form({ country: 'NL' }))
+
+    expect(state).toEqual({ error: null, redirectTo: '/postcards' })
+    expect(from).toHaveBeenCalledWith('profiles')
+    expect(calls[0]).toEqual({ method: 'update', args: [{ home_country: 'NL' }] })
+    expect(calls[1]).toEqual({ method: 'eq', args: ['id', USER.id] })
+    expect(rpc).toHaveBeenCalledWith('complete_onboarding', { p_location: null })
+    expect(timeline).toEqual([
+      'from:profiles',
+      'rpc:complete_onboarding',
+      'invalidateOnboardingState',
+    ])
+    expect(invalidateOnboardingState).toHaveBeenCalledTimes(1)
+  })
+
+  it('normalises the code rather than refusing it on case', async () => {
+    // `countryCodeSchema` uppercases, because the column stores `NL` and
+    // nothing else. A rider whose client sends `nl` gets their country.
+    const { builder, calls } = chain({ data: { id: USER.id }, error: null })
+    from.mockReturnValue(builder)
+    rpc.mockResolvedValue({ data: true, error: null })
+
+    await setHomeCountry(emptyActionState, form({ country: ' nl ' }))
+
+    expect(calls[0]).toEqual({ method: 'update', args: [{ home_country: 'NL' }] })
+  })
+
+  it('refuses an unassigned code before reaching the database', async () => {
+    // `ZZ` matches the shape and is not a country. Zod owns this message;
+    // `113`'s membership CHECK owns the guarantee.
+    const state = await setHomeCountry(emptyActionState, form({ country: 'ZZ' }))
+
+    expect(state.error).toBeTruthy()
+    expect(from).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
+    expect(invalidateOnboardingState).not.toHaveBeenCalled()
+  })
+
+  it('refuses an empty submission before reaching the database', async () => {
+    const state = await setHomeCountry(emptyActionState, form({ country: '' }))
+
+    expect(state.error).toBeTruthy()
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('never stamps completion, and never invalidates, when the UPDATE matched no row', async () => {
+    // PostgREST reports no error for a zero-row update; `.select().maybeSingle()`
+    // is what makes it distinguishable. Stamping completion for a rider whose
+    // row does not exist is the trap `setUsername` documents.
+    const { builder } = chain({ data: null, error: null })
+    from.mockReturnValue(builder)
+
+    const state = await setHomeCountry(emptyActionState, form({ country: 'NL' }))
+
+    expect(state.error).toBe('Your profile could not be found. Sign in again.')
+    expect(rpc).not.toHaveBeenCalled()
+    expect(invalidateOnboardingState).not.toHaveBeenCalled()
+  })
+
+  it('does not invalidate when the completion RPC refuses (an earlier step is missing)', async () => {
+    const { builder } = chain({ data: { id: USER.id }, error: null })
+    from.mockReturnValue(builder)
+    rpc.mockResolvedValue({ data: null, error: { code: '23514' } })
+
+    const state = await setHomeCountry(emptyActionState, form({ country: 'NL' }))
+
+    expect(state.error).toBe('Finish the earlier steps first.')
+    expect(invalidateOnboardingState).not.toHaveBeenCalled()
+  })
+
+  it('refuses a signed-out caller before touching the table', async () => {
+    getUser.mockResolvedValue({ data: { user: null } })
+
+    const state = await setHomeCountry(emptyActionState, form({ country: 'NL' }))
+
+    expect(state).toEqual({ error: null, redirectTo: '/auth/login' })
+    expect(from).not.toHaveBeenCalled()
   })
 })
 

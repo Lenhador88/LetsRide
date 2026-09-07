@@ -33,6 +33,20 @@ export type Profile = {
   bio: string | null
   bike_model: string | null
   location: string | null
+  /**
+   * The rider's home country, ISO 3166-1 alpha-2 (`113`, PD-428). Required at
+   * onboarding since PD-428 and **permanently nullable** — every rider who
+   * completed onboarding before that keeps NULL, is never re-prompted, and
+   * every read has to tolerate it for ever. `location` is the *town* and stays
+   * optional; the two are different fields and neither substitutes for the
+   * other.
+   *
+   * **It is not a position.** It has no centroid, it is not a
+   * `RiderLocationSource`, and nothing may render a proximity claim from it —
+   * `near <country>` is wrong, because a country is a filter and not a
+   * distance. See `lib/location/explore-label.ts` for where that line is held.
+   */
+  home_country: string | null
   created_at: string
 }
 

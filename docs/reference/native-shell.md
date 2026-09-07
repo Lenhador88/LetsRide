@@ -57,8 +57,8 @@ stays load-bearing permanently**, and `resolve.browser.ts`'s tripwire keeps earn
   ```
   <!-- ios/App/App/Info.plist -->
   <key>NSLocationWhenInUseUsageDescription</key>
-  <string>LetsRide uses your location to show which rides and clubs are happening around you,
-  and to start a meeting-point search where you are. It is only used while the app is open.</string>
+  <string>LetsRide uses your location to sort rides and clubs by how far they are from you.
+  It is only used while the app is open.</string>
   ```
   ```xml
   <!-- android/app/src/main/AndroidManifest.xml -->
