@@ -93,8 +93,23 @@ export async function updateProfile(
  * substitutes for the other.
  */
 export async function setRiderTown(town: string | null): Promise<ActionState> {
-  const parsed = profileEditSchema.shape.location.safeParse(town)
-  if (!parsed.success) return { error: parsed.error.issues[0].message }
+  // **`null` never reaches the schema, and that is not a shortcut.**
+  // `profileEditSchema.shape.location` is `optionalText(…)`, a **`ZodString`**
+  // pipeline — `z.string().trim().max(100).transform(v => v || null)`. Its
+  // string type gate runs BEFORE the transform, so `safeParse(null)` fails with
+  // the raw `"Invalid input: expected string, received null"`, which the
+  // profile setting's live region would then render at a rider who tapped
+  // `Remove`. Measured, not reasoned: the empty string parses to `null`
+  // cleanly, and `null` — the one value `LocationSetting.clear()` ever passes —
+  // is the only input that cannot get through.
+  //
+  // Clearing is the obligation PD-419's decision names in as many words
+  // ("clearing back to none must work"), so it is a branch here rather than a
+  // schema change: widening the shared schema to accept `null` would change
+  // what the profile FORM accepts too, for a value its `FormData` cannot
+  // produce.
+  const parsed = town === null ? null : profileEditSchema.shape.location.safeParse(town)
+  if (parsed && !parsed.success) return { error: parsed.error.issues[0].message }
 
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
@@ -102,7 +117,10 @@ export async function setRiderTown(town: string | null): Promise<ActionState> {
 
   const { data: updated, error } = await supabase
     .from('profiles')
-    .update({ location: parsed.data ?? null })
+    // SQL NULL for both routes into "nothing stored" — an explicit clear, and a
+    // string the schema reduced to nothing. A stored `''` would make
+    // `getMyLocationText` answer truthy-empty and read as a town nobody typed.
+    .update({ location: parsed?.success ? parsed.data : null })
     .eq('id', user.id)
     .select('id')
     .maybeSingle()

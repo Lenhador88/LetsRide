@@ -203,6 +203,41 @@ describe('IntroductionPrompt — the prefill and the optional introduction (PD-4
     expect(onPosted).not.toHaveBeenCalled()
   })
 
+  it('keeps the starter in the field after its own join lands, on the one path that stays open', async () => {
+    // **The prefill's derivation, which the pre-merge review found nothing
+    // pinned.** `IntroductionPrompt` computes the default from the `mode` PROP,
+    // never from the `membershipExists` latch, and its header states that as a
+    // requirement — but both spellings behave identically everywhere except
+    // here, so the whole suite passed against the one the docstring names as
+    // the defect.
+    //
+    // `introduction-failed` is the only outcome that leaves the sheet open
+    // after the join commits. Keyed off the latch, the field would blank at
+    // that instant and the rider would read the partial-failure message over an
+    // empty textarea — having typed nothing and lost the text they were about
+    // to retry.
+    joinAndIntroduceToClub.mockResolvedValue({ outcome: 'introduction-failed', error: 'nope' })
+    render(
+      <IntroductionPrompt
+        clubId="club-1"
+        mode="pre-join"
+        open
+        onDismiss={vi.fn()}
+        onPosted={vi.fn()}
+      />
+    )
+
+    await act(async () => {
+      button('Join club').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    // The latch HAS flipped — the sheet is in member mode now, which is what
+    // makes this a real distinction rather than a restatement of the test
+    // above.
+    expect(document.body.textContent).toContain(CLUB_INTRODUCTION_PARTIAL_FAILURE)
+    expect(document.querySelector('textarea')!.value).toBe(CLUB_INTRODUCTION_STARTER)
+  })
+
   it('sends the untouched starter when the rider just presses Join club', async () => {
     joinAndIntroduceToClub.mockResolvedValue({ outcome: 'joined-and-introduced' })
     const onPosted = vi.fn()

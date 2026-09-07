@@ -198,6 +198,38 @@ describe('the town rung', () => {
     expect(document.querySelector('[data-testid="town-sheet"]')).not.toBeNull()
   })
 
+  it('the automatic timer does not open a second sheet over one the rider opened', async () => {
+    // **Found by the pre-merge review.** The timer is armed when the row first
+    // renders and its deps are `[auto, state]`, neither of which changes when a
+    // sheet opens — so a rider who taps inside the 700ms beat would get the
+    // automatic open landing on top of their own. Two `ContextMenu`s stack two
+    // scrims, and each restores `document.body.style.overflow` to what it
+    // captured on mount: close them in the wrong order and the screen is left
+    // unscrollable until a reload, with nothing on it to explain why.
+    deviceLocationPermission.mockResolvedValue('denied')
+    await render(<UseMyLocationRow position={null} auto />)
+
+    // Inside the beat: the rider taps the row, then its `Set your town`.
+    const row = container.querySelector('button')!
+    await act(async () => {
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    const askTown = [...document.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === 'Set your town'
+    )!
+    await act(async () => {
+      askTown.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(document.querySelector('[data-testid="town-sheet"]')).not.toBeNull()
+
+    // Now the timer fires. It must not reopen the priming sheet behind the town
+    // sheet the rider is looking at.
+    await beat()
+
+    expect(sheet()).toBeNull()
+    expect(document.querySelector('[data-testid="town-sheet"]')).not.toBeNull()
+  })
+
   it('never leaves both sheets open at once', async () => {
     // Both are `ContextMenu`s, and each locks body scroll on mount and restores
     // it on unmount. Two open together would leave the lower one's cleanup to

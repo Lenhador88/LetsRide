@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRightIcon, LocationFilledIcon } from '@/components/icons/generated'
 import { LocationPrimingSheet } from '@/components/location/LocationPrimingSheet'
 import { TownQuestionSheet } from '@/components/location/TownQuestionSheet'
@@ -161,6 +161,17 @@ export function UseMyLocationRow({
 
   const state = locationPrimingState({ permission, position })
 
+  // Read by the automatic ask's timer, which cannot see `open`/`askingTown`
+  // through its own closure: adding them to that effect's deps would re-arm the
+  // timer every time a sheet opened or closed, which is the opposite of a
+  // once-ever ask. A ref carries the current value into a callback that fires
+  // later, which is exactly what refs are for.
+  const sheetOpen = open || askingTown
+  const sheetOpenRef = useRef(sheetOpen)
+  useEffect(() => {
+    sheetOpenRef.current = sheetOpen
+  }, [sheetOpen])
+
   // **The automatic ask — see the header.** Gated on the resolved state rather
   // than on the raw inputs, so it fires for exactly the states a tap would open
   // something for, and never in `hidden` (where both inputs may simply not have
@@ -186,6 +197,23 @@ export function UseMyLocationRow({
     if (hasAskedForLocation()) return
 
     const timer = setTimeout(() => {
+      // **Never open a second sheet over one the rider already opened.** The
+      // timer is armed when the row first renders and its deps are `[auto,
+      // state]`, neither of which changes when a sheet opens — so a rider who
+      // taps the row inside the beat would otherwise get the automatic open
+      // landing on top of their own. Two `ContextMenu`s stack two scrims, and
+      // each restores `document.body.style.overflow` to whatever it captured on
+      // mount: close them in the wrong order and the screen is left
+      // unscrollable until a reload, with nothing on it to explain why.
+      //
+      // The flag is still spent, and that is right rather than a concession —
+      // the automatic ask exists to put this sheet in front of the rider once,
+      // and it is in front of them.
+      if (sheetOpenRef.current) {
+        markAskedForLocation()
+        return
+      }
+
       // Spent on the sheet OPENING, not on the rider answering — the header
       // says why that direction is the safe one.
       markAskedForLocation()
@@ -220,6 +248,14 @@ export function UseMyLocationRow({
       // copy, so the explanation of what was just lost lands in the same
       // breath as the refusal rather than on some later screen — and that copy
       // now carries the town question, which is the second rung of the ladder.
+      //
+      // **That holds for a rider who had NO position, and not for a `refine`
+      // one.** A refine rider is `profile`-sourced with `permission: 'prompt'`;
+      // once the denial lands, `locationPrimingState` answers `hidden`, the row
+      // unmounts and takes the open sheet with it, so the `blocked` copy is
+      // never read. Benign rather than a defect — that rider keeps a working
+      // position and lost nothing — but the sentence above is not true of them,
+      // and this comment is what the next session will trust.
       if (next !== 'denied') setOpen(false)
     } finally {
       setPending(false)

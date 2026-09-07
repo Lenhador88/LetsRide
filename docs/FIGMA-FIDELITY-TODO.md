@@ -1854,6 +1854,18 @@ item.
       open"* and *"we never show other riders where you are"* must both stay true of the code —
       nothing in `src/` uses `watchPosition`, and a device fix leaves the device only as a
       ~1 km-rounded proximity bias. A designer rewording this needs to keep both.
+- [ ] **PD-419 (2026-09-07) made this four inferred surfaces, not one, and the new ones are
+      bigger than the sheet they hang off** — `npm run figma -- ls` still returns no frame for a
+      location question of any kind, so all of it is written rather than measured:
+      **`TownQuestionSheet`** (*"Where do you ride from?"*, a `PlaceSearchField`, two buttons);
+      **`LocationPrimingSheet`'s rewritten `blocked` branch**, which now hands off to that sheet
+      instead of linking to `/profile`; **`UseMyLocationRow`'s two new labels**
+      (`Set where you ride from`, and `Near {town} · Use my location`, the only line in the app
+      that says where a distance was measured from); and **`LocationSetting` on `/profile`**,
+      which the design has no equivalent of at all. A designer picking this up is designing a
+      flow rather than restyling a sheet. **The blocked branch carries a THIRD store-review
+      claim** to keep true beside the two above — *"Tell us the town you ride from and we will
+      measure from there instead"* is a promise about what the app does with a refusal.
 
 ### Private clubs in Explore, and the ride marker on a stamp — built 2026-08-28 (PD-325, PD-328)
 

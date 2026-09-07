@@ -196,31 +196,27 @@ See `docs/reference/running-locally.md` §The walk.
 buildable candidates under `queue-run.md` STEP 4's ceiling (one `L`, PD-419, plus one), both in the
 clubs route tree and both moving `npm run walk`. Neither carries a migration.
 
-**PD-418 — the sheet's pre-join mode stopped being a wall, and three changes had to move together.**
-The field opens carrying `CLUB_INTRODUCTION_STARTER` as its **value**, the primary is live from that
-instant whatever the field holds, and it reads `Join club`. Any one alone is broken: a prefill
-without an always-live primary is the old wall with a shortcut, and an always-live primary still
-called `Post` posts nothing when the field is empty.
+**PD-418 — three changes had to move together**: the field opens carrying
+`CLUB_INTRODUCTION_STARTER` as its **value**, the primary is live whatever the field holds, and it
+reads `Join club`. A prefill without an always-live primary is the old wall with a shortcut; an
+always-live primary still called `Post` posts nothing when the field is empty.
 
 - **The `097` Q1/Q3 invariants are now MEMBER-mode invariants, and the asymmetry is load-bearing.**
-  PD-392 needed *inert until non-whitespace* and *placeholder, never `defaultValue`* in both modes
-  because `Post` was the only door to a **membership**. The membership is no longer behind the text,
-  so the argument is spent rather than overruled. Member mode keeps both — there the text is the only
-  product. **A `describe.each` unifying the two modes is the tidy-up to refuse**; it can only pass by
-  making one wrong, so the tests pin them separately.
+  PD-392 needed *inert until non-whitespace* and *placeholder, never `defaultValue`* because `Post`
+  was the only door to a **membership**. It no longer is, so the argument is spent rather than
+  overruled — and member mode keeps both, since there the text is the only product. **A
+  `describe.each` unifying the modes is the tidy-up to refuse**: it can only pass by making one
+  wrong.
 - **An empty body is not attempted, rather than attempted and caught.**
-  `club_threads_introduction_length` refuses whitespace-only text, so an attempt returns
-  `introduction-failed` and tells a rider something went wrong on the one path where everything went
-  as asked. `joinAndIntroduceToClub` gained `joined-without-introduction` for it; the pre-join parse
-  guard stays for **over-length** bodies, which is what still must be refused ahead of the join.
+  `club_threads_introduction_length` refuses whitespace-only text, so an attempt would return
+  `introduction-failed` on the one path where everything went as asked. The pre-join parse guard
+  stays for **over-length** bodies, which still must be refused ahead of the join.
 - **That path reports through `onDismiss(true)`, and it has to.** The rider is a member, so the
-  existing dismissal iff records the session dismissal exactly as a `Not now` would — without it they
-  land on club detail and its state-driven sheet reopens asking for the introduction they just
-  declined. `onPosted` would close the sheet too and would be claiming a thread that was never
-  written.
-- **`Join later` is gone and must not come back under that name.** It was the issue's named defect:
-  it reads as *join now, introduce later* and joined nothing. The control is `Cancel`. A control
-  called `Join later` has to join.
+  dismissal iff records the session dismissal as a `Not now` would — without it they land on club
+  detail and its state-driven sheet reopens asking for what they just declined. `onPosted` closes
+  the sheet too, and would claim a thread that was never written.
+- **`Join later` must not come back under that name.** It read as *join now, introduce later* and
+  joined nothing. A control called `Join later` has to join.
 
 **PD-419 — the ladder, and the hole `075` left.** PD-286 removed the location step from onboarding,
 so `profiles.location` is NULL for every rider since — and with no device grant either, the ordinary
@@ -271,23 +267,15 @@ for `locationPrimingState`'s reason: six reachable states, of which one is a ren
 carries PD-418's three moved strings plus the prefill, and there is no frame for a location question
 of any kind — `TownQuestionSheet` is ours on `ContextMenu`'s measured geometry.
 
-**The walk was RUN against DEV and is green — 26/26 screens, 79/79 checks**, with the join phase
-reporting *"join took the sheet path — introduction posted and deleted again"*, which is PD-418's new
-flow exercised end to end against the real database rather than against a mock.
-
-**Running it was not optional here, and the reason generalises.** PD-419 adds a sheet that opens **by
-itself** on `/rides/explore` and `/clubs/explore` — `aria-modal` over a scrim — which is exactly the
-shape that reddened the join phase under PD-404: the next click on that screen fails its
-actionability check and times out at 20s. **No other gate can see it.** `dismissLocationSheet()` is
-the fix, scoped by the sheet's own `aria-label` rather than by a bare `[role="dialog"]`, because the
-introduction sheet is also a `ContextMenu` on those screens and closing *that* by accident would
-silently delete the join phase's coverage instead of failing.
-
-**Two details worth keeping.** The 800ms settle after each Explore `goto` is longer than the sheet's
-own 700ms beat, so the sheet is reliably up rather than racing — a shorter settle would make this
-intermittent. And the walk's join phase still `fill`s the textarea despite the field now arriving
-prefilled: the PD-411 cleanup identifies the thread by the text it wrote, so a run posting the app's
-own canned starter would be indistinguishable from a rider's introduction and therefore uncleanable.
+**The walk was run against DEV — 26/26 screens, 79/79 checks**, the join phase reporting *"join took
+the sheet path"*, which is PD-418's flow end to end against the real database. **It had to be run**:
+PD-419's sheet opens by itself on both Explore screens, `aria-modal` over a scrim, which is what
+reddened the join phase under PD-404, and no other gate can see it. `dismissLocationSheet()` is
+scoped by the sheet's own `aria-label`, never a bare `[role="dialog"]` — the introduction sheet is
+also a `ContextMenu` there, and closing *that* would delete the join phase's coverage silently
+rather than fail. Two things keep it deterministic: the 800ms settle after each Explore `goto`
+outlasts the sheet's own 700ms beat, and the join phase still `fill`s the textarea despite the
+prefill, because PD-411's cleanup finds its thread by the text it wrote.
 
 **The `Join later` grep is a worked example of the comment trap's own limit, so it is written as the
 property rather than as a count.** The usual `grep -vE` idiom strips a comment line that *starts*
