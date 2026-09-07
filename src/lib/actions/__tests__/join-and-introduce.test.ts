@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * `joinAndIntroduceToClub` — PD-392's `Post`, in the sheet's pre-join mode.
+ * `joinAndIntroduceToClub` — the sheet's pre-join primary (PD-392, PD-418).
+ *
+ * **The fourth thing under test is PD-418's inversion.** An empty body used to
+ * refuse the join outright, which made writing an introduction the price of
+ * membership; it now joins and writes no thread. Both directions are asserted,
+ * because the two differ only in an outcome string and a call that did not
+ * happen — nothing about the rendered result tells them apart.
  *
  * **The ordering is the thing under test, and it is not a preference.**
  * `introduce_to_club` (`097`) refuses a caller who is not a member, so the
@@ -18,7 +24,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * **The third is that `introduction-failed` stays its own outcome.** Collapsing
  * it into a plain error is the tempting simplification and it is what makes the
  * sheet lie: the membership exists, so the second control must stop saying
- * `Join later` and the rider must be told they joined. `design.md` §D1.
+ * `Cancel` and the rider must be told they joined. `design.md` §D1.
  *
  * Both writers are mocked, because each already owns its own enforcement and
  * its own cache claims and neither is this function's business — what belongs
@@ -96,7 +102,7 @@ describe('joinAndIntroduceToClub — it reports the membership landing mid-fligh
     // The sheet cannot observe the intermediate state any other way: from the
     // outside this is one awaited call, so without the callback there is one
     // pending window spanning both writes. Two rules ride on the boundary — the
-    // second control must stop saying `Join later` the instant the join
+    // second control must stop saying `Cancel` the instant the join
     // commits, and the dismissal lock must release there rather than holding
     // shut for the introduction's flight.
     await joinAndIntroduceToClub(CLUB, 'Hi, I ride a Ténéré.', () =>
@@ -114,7 +120,7 @@ describe('joinAndIntroduceToClub — it reports the membership landing mid-fligh
 
     await joinAndIntroduceToClub(CLUB, 'Hi.', () => calls.push('membership-reported'))
 
-    // No membership exists, so nothing may relabel `Join later` or release the
+    // No membership exists, so nothing may relabel `Cancel` or release the
     // lock — both would be claiming a join that did not happen.
     expect(calls).toEqual(['join'])
   })
@@ -136,15 +142,63 @@ describe('joinAndIntroduceToClub — the join fails', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('refuses an empty body before writing anything at all', async () => {
+  it('refuses a body the database would reject before writing anything at all', async () => {
     // The membership must not be a side effect of a body the database would
     // have refused anyway. `introduceToClub` parses it too — that is the
     // enforcement; this is the ordering guard, and only this one runs first.
-    const result = await joinAndIntroduceToClub(CLUB, '   ', noop)
+    //
+    // **This case is now a too-LONG body, not an empty one** — PD-418 made
+    // emptiness a decision rather than an error (see the suite below), so
+    // over-length text is what still has to be refused ahead of the join. The
+    // guard did not go away; the set of things reaching it shrank.
+    const result = await joinAndIntroduceToClub(CLUB, 'x'.repeat(1001), noop)
 
     expect(result.outcome).toBe('join-failed')
     expect(calls).toEqual([])
     expect(joinClub).not.toHaveBeenCalled()
+  })
+})
+
+describe('joinAndIntroduceToClub — an empty body joins and writes no thread (PD-418)', () => {
+  it.each([
+    ['empty', ''],
+    ['whitespace only', '   \n\t '],
+  ])('joins on a %s body and never attempts the introduction', async (_label, body) => {
+    const result = await joinAndIntroduceToClub(CLUB, body, noop)
+
+    // The membership is what the rider asked for; the introduction is what they
+    // declined. Under PD-392 this same input returned `join-failed` and wrote
+    // nothing at all — that inversion IS the story.
+    expect(result).toEqual({ outcome: 'joined-without-introduction' })
+    expect(calls).toEqual(['join'])
+
+    // **Not attempted, rather than attempted and caught.**
+    // `club_threads_introduction_length` refuses whitespace-only text, so an
+    // attempt would come back as `introduction-failed` and tell the rider
+    // something went wrong on the one path where everything went as asked.
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('still reports the membership landing, so the sheet can relabel', async () => {
+    await joinAndIntroduceToClub(CLUB, '', () => calls.push('membership-reported'))
+
+    // The callback is not skipped just because there is no second write behind
+    // it — the sheet's latch and its dismissal lock both key off this, and the
+    // caller closes on it.
+    expect(calls).toEqual(['join', 'membership-reported'])
+  })
+
+  it('reports the join failing rather than a phantom membership', async () => {
+    joinClub.mockImplementation(async () => {
+      calls.push('join')
+      return { error: 'That club could not be joined.' }
+    })
+
+    const result = await joinAndIntroduceToClub(CLUB, '', noop)
+
+    // The empty-body path must not swallow a failed join into a success just
+    // because it has no introduction to report on.
+    expect(result).toEqual({ outcome: 'join-failed', error: 'That club could not be joined.' })
   })
 })
 

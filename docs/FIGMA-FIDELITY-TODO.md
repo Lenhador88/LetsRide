@@ -644,13 +644,20 @@ It borrows `ContextMenu`'s scrim and geometry so it is at least consistent with 
 were measured. **Nothing here has been rendered against DEV**; `npm run walk` has not run over
 it, which is the gate that would catch a sheet that throws on open.
 
-**It has a SECOND mode since PD-392 (2026-09-05), and that one is ours too.** The sheet now opens
-before a rider joins, offering `Join later` where a member sees `Not now`, and `Post` is what
+**It has a SECOND mode since PD-392 (2026-09-05), and that one is ours too.** The sheet opens
+before a rider joins, offering `Cancel` where a member sees `Not now`, and `Join club` is what
 writes the membership. Its heading, its body line and both control labels are
 `CLUB_INTRODUCTION_COPY` in `src/lib/validation/clubs.ts` — no frame, no measurement, same
 standing as the first mode. Re-run the command above rather than trusting this: the search terms
 that found nothing for the member sheet find nothing for this one either, and a frame appearing
 later is exactly what would make both entries stale.
+
+**PD-418 (2026-09-07) moved three of pre-join's four strings and one piece of its behaviour**, and
+all of it is still inferred: the primary reads `Join club` rather than `Post`, the second control
+reads `Cancel` rather than `Join later`, the body line no longer says posting is what joins, and
+the field opens **prefilled** with `CLUB_INTRODUCTION_STARTER` rather than showing it as a
+placeholder. No frame draws a prefilled introduction field, so the prefill is ours in the same
+sense the sheet is.
 
 Member mode's wording is **unchanged**, so what is inferred here is only the new half:
 

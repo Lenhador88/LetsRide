@@ -3351,11 +3351,19 @@ async function leaveClubIfJoined(clubId) {
  * by PD-410, and the reversal is forced rather than preferred. Until PD-392
  * this phase's tap wrote the membership and the sheet was decoration
  * afterwards, so `Not now` cost nothing. Since PD-392 the sheet **is** the
- * join on this path: `Post` joins and then introduces, and `Join later`
- * deliberately writes nothing and joins nothing. Dismissing therefore asserts
- * that a button opens a sheet and nothing more — it deletes the only automated
- * coverage of a rider joining a club at all, which is the write this phase
- * exists for.
+ * join on this path: its primary joins and then introduces, and its second
+ * control deliberately writes nothing and joins nothing. Dismissing therefore
+ * asserts that a button opens a sheet and nothing more — it deletes the only
+ * automated coverage of a rider joining a club at all, which is the write this
+ * phase exists for.
+ *
+ * **PD-418 did not soften that, and the tempting shortcut is now available.**
+ * The primary is `Join club`, it is live the instant the sheet opens, and the
+ * field arrives prefilled — so a run could join by tapping it immediately and
+ * skip the `fill` below. It must not: the introduction is what this phase's
+ * cleanup identifies by text (PD-411), and a run that posted the app's own
+ * canned starter would be indistinguishable from a real rider's introduction
+ * and so uncleanable. The second control is `Cancel` and still joins nothing.
  *
  * **What posting leaves behind, and why it is acceptable on one path and not
  * the other** — the same accounting as the `club_joined` notification above,
@@ -3461,10 +3469,16 @@ async function checkJoinClub() {
       .catch(() => false)
 
     if (introducing) {
-      // Filled in and POSTED, never dismissed — see this function's header.
-      // `Post` is inert until the field holds non-whitespace text (`097`'s
-      // invariant, deliberately preserved through PD-392), so the fill is what
-      // makes the control clickable rather than decoration.
+      // Filled in and SENT, never dismissed — see this function's header.
+      //
+      // **Since PD-418 the fill no longer makes the control clickable; it
+      // decides what gets posted.** The primary (`Join club`) is live from the
+      // instant the sheet opens whatever the field holds, and the field arrives
+      // carrying `CLUB_INTRODUCTION_STARTER`. So this `fill` REPLACES that
+      // default rather than satisfying a guard — and it must stay, because the
+      // walk's own cleanup (PD-411) identifies the thread it wrote by the text
+      // it wrote, and a run posting the app's canned starter would be
+      // indistinguishable from a real rider's introduction.
       await page.fill(`${sheet} textarea`, WALK_INTRODUCTION)
 
       // ARMED BEFORE THE CLICK, like `membershipWrite` above. This is the only
@@ -3472,8 +3486,8 @@ async function checkJoinClub() {
       // `watchForRpcId` for why the UI cannot identify the row afterwards.
       //
       // **The SAME 45s the membership watcher gets, and for the same reason.**
-      // `Post` is two sequential writes and this is the second, but the clock
-      // starts HERE — before the click — so this budget spans BOTH of them.
+      // The primary is two sequential writes and this is the second, but the
+      // clock starts HERE — before the click — so this budget spans BOTH.
       // Giving it the default 20s would make a slow-but-successful membership
       // write eat the whole budget, and the failure is doubly wrong: the id is
       // never captured, so the thread is not deleted AND the check reports
@@ -3481,12 +3495,19 @@ async function checkJoinClub() {
       // PD-410 exists to remove, arriving from the far side.
       introductionThread = watchForRpcId('introduce_to_club', 45_000)
 
+      // **Either label, and that is not defensiveness.** The sheet's primary is
+      // `Join club` in pre-join mode and `Post` in member mode (PD-418), and
+      // both are genuinely reachable here: the ordinary path opens pre-join,
+      // while a stale Explore row for a rider who is already a member opens the
+      // member-mode sheet instead. Matching one label alone would leave the
+      // click silently doing nothing on the other — `$$eval`'s `?.` swallows a
+      // miss — and the run would then fail further down naming a symptom.
       await page.$$eval(`${sheet} button`, (buttons) =>
-        buttons.find((b) => b.textContent?.trim() === 'Post')?.click()
+        buttons.find((b) => ['Join club', 'Post'].includes(b.textContent?.trim()))?.click()
       )
 
       // WAIT FOR THE SHEET TO CLOSE ITSELF, and do not navigate before it does.
-      // `Post` is TWO writes with no transaction across them (`097`, PD-392):
+      // The primary is TWO writes with no transaction across them (`097`, PD-392):
       // the membership lands first and the introduction second, and the sheet
       // closes on the second through `onPosted`. Navigating on the membership
       // alone cancels the introduction in flight — it shares the tab — which

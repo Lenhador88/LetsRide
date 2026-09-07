@@ -56,7 +56,7 @@ export function useIntroductionQueue() {
    * **`recordDismissal` is the whole of the rule and dropping it is the single
    * easiest thing here to get wrong.** This call was unconditional, which was
    * correct when the sheet only ever opened *after* a join. It no longer does:
-   * a rider who taps `Join later` never joined, so recording a dismissal for
+   * a rider who taps `Cancel` never joined, so recording a dismissal for
    * that club would silence the members-only prompt if they are admitted by
    * another door later in the same session — an introduction suppressed on a
    * fact the rider never asserted. Their answer was *"I am not joining"*, not

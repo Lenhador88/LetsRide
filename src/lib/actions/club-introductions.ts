@@ -62,23 +62,34 @@ export async function introduceToClub(clubId: string, body: string): Promise<Act
 }
 
 /**
- * What `joinAndIntroduceToClub` did — three outcomes, and the third is the
+ * What `joinAndIntroduceToClub` did — four outcomes, and two of them are the
  * reason this is not an `ActionState`.
  *
  * `introduction-failed` is a **success and a failure at once**: the membership
  * is there and the words are not. Collapsing it into `{ error }` would make the
- * sheet tell a rider nothing happened on the one path where something did, and
- * it is also what decides the sheet's second control — `Join later` is a lie
- * the moment the join lands.
+ * sheet tell a rider nothing happened on the one path where something did.
+ *
+ * `joined-without-introduction` is PD-418's: an empty body is no longer a
+ * refusal but a decision — *join me, I have nothing to say yet* — and it is a
+ * distinct outcome rather than a flavour of `joined-and-introduced` because the
+ * caller must not report a thread that was never written. Both leave a
+ * membership, which is what the sheet's dismissal iff reads.
  */
 export type JoinAndIntroduceResult =
   | { outcome: 'joined-and-introduced' }
+  | { outcome: 'joined-without-introduction' }
   | { outcome: 'join-failed'; error: string }
   | { outcome: 'introduction-failed'; error: string }
 
 /**
- * `Post`, in the sheet's pre-join mode — joins the club, then introduces the
- * rider to it (PD-392).
+ * `Join club`, in the sheet's pre-join mode — joins the club, then introduces
+ * the rider to it if they left any text (PD-392, PD-418).
+ *
+ * **The join no longer depends on the introduction, and that inversion is
+ * PD-418's whole content.** Under PD-392 an empty body refused the join
+ * outright, which made writing an introduction the price of membership. It is
+ * now the other way round: the membership is what the rider asked for and the
+ * introduction is what they may also send.
  *
  * ## The order is forced, and it is not a preference
  *
@@ -137,7 +148,7 @@ export async function joinAndIntroduceToClub(
    * function's own header.
    *
    * **The caller cannot observe that moment any other way, and two rules depend
-   * on it.** The sheet's second control must stop saying `Join later` as soon
+   * on it.** The sheet's second control must stop saying `Cancel` as soon
    * as the join lands — it is a lie from that instant — and its dismissal lock
    * covers the membership write and *no longer*, because once a membership
    * exists `097`'s "always dismissible, pending or not" applies again. Without
@@ -146,7 +157,7 @@ export async function joinAndIntroduceToClub(
    *
    * **Required, not optional, and that is this change's own lesson applied to
    * itself.** A second caller omitting it would get exactly the defect this
-   * parameter was added to fix — `Join later` on screen over a committed join
+   * parameter was added to fix — `Cancel` on screen over a committed join
    * and the lock held past the membership write — with **no type error**. That
    * is the same argument `ClubMembershipButton`'s opener carries, one file over
    * and one review earlier. A caller with nothing to do here passes a no-op and
@@ -154,12 +165,31 @@ export async function joinAndIntroduceToClub(
    */
   onMembershipExists: () => void
 ): Promise<JoinAndIntroduceResult> {
+  // **An empty body is a decision, not an error — PD-418.** The rider cleared
+  // the prefilled starter and pressed `Join club`, which means join me and I
+  // will introduce myself later. `club_threads_introduction_length` refuses
+  // whitespace-only text, so the introduction must never be ATTEMPTED here
+  // rather than attempted and caught: a caught refusal would surface as
+  // `introduction-failed`, telling a rider something went wrong on the one path
+  // where everything went exactly as they asked.
+  //
+  // Checked on the RAW body against the same `\S` rule the database uses (which
+  // `.trim()` agrees with, per `clubIntroductionSchema`'s own comment) rather
+  // than on the parsed value, because parsing an empty body fails and there
+  // would be nothing left to branch on.
+  const wantsIntroduction = body.trim().length > 0
+
   // Parsed BEFORE the join, so a body the database would refuse never costs a
   // membership the rider did not ask for on its own. `introduceToClub` parses
   // it again — that is the enforcement and this is the ordering guard; the two
   // are not redundant, because only this one runs before the first write.
-  const parsed = clubIntroductionSchema.safeParse(body)
-  if (!parsed.success) {
+  //
+  // **Still reached for a too-long body**, which is the case this guard now
+  // exists for: emptiness is handled above, so anything failing here is text
+  // the rider wrote and the database would reject, and refusing before the join
+  // is what stops them paying a membership for it.
+  const parsed = wantsIntroduction ? clubIntroductionSchema.safeParse(body) : null
+  if (parsed && !parsed.success) {
     return {
       outcome: 'join-failed',
       error: parsed.error.issues[0]?.message ?? 'Write something first.',
@@ -170,6 +200,8 @@ export async function joinAndIntroduceToClub(
   if (joined.error) return { outcome: 'join-failed', error: joined.error }
 
   onMembershipExists()
+
+  if (!parsed) return { outcome: 'joined-without-introduction' }
 
   const introduced = await introduceToClub(clubId, parsed.data)
   if (introduced.error) return { outcome: 'introduction-failed', error: introduced.error }

@@ -44,14 +44,36 @@ export type IntroductionPromptMode = 'pre-join' | 'member'
  * | | `pre-join` | `member` |
  * |---|---|---|
  * | Opened by | a tap on a Join control, for a club owing an introduction | `showIntroductionPrompt` — a membership with no introduction |
- * | `Post` | joins, **then** introduces | introduces |
- * | Second control | `Join later` — writes nothing, joins nothing | `Not now` — unchanged since `097` |
+ * | Primary | `Join club` — joins, **then** introduces if there is text | `Post` — introduces |
+ * | Primary inert when empty | **no** (PD-418) | yes (`097` Q1) |
+ * | Field starts | carrying `CLUB_INTRODUCTION_STARTER` (PD-418) | empty, with it as a placeholder |
+ * | Second control | `Cancel` — writes nothing, joins nothing | `Not now` — unchanged since `097` |
+ *
+ * ## PD-418 — the introduction stopped being the price of membership
+ *
+ * Product owner, 2026-09-06: *"we should lift the mandatory rule that the user
+ * needs to fill an introduction. Instead, there is a default text, that the user
+ * can just press join, and it fill that intro with a default text."*
+ *
+ * Three things move together and none of them works alone: the field opens
+ * **prefilled** so one tap sends something rather than nothing, the primary is
+ * **never inert** so a rider who clears it can still join, and the primary says
+ * **`Join club`** so it names the thing that always happens. A prefill without
+ * the second is the old wall with a shortcut; the second without the third is a
+ * control called `Post` that posts nothing.
+ *
+ * **The single-identical-sentence failure is real and is priced.** A club
+ * timeline of one repeated line reads as spam, which is the opposite of what an
+ * introduction is for. What holds it back is that the default is an *editable
+ * value* rather than a silent server-side fill: the rider sees it, the cursor is
+ * in it, and sending it is a deliberate act. If it ever does flood a club, the
+ * lever is the copy, not the mechanism.
  *
  * **Member mode is byte-for-byte what it was**, because `097`'s sheet is
  * correct for a rider who is already a member however they got there: an
  * approved join request (`085`), a claimed invite link (`093`), `058`'s welcome
  * club, an invite acceptance, or creating the club. For every one of those,
- * `Join later` would be a lie — the membership is somebody else's action.
+ * `Cancel` would be a lie — the membership is somebody else's action.
  *
  * ## The state lives HERE, not in the body, and that is `ContextMenu`'s doing
  *
@@ -71,7 +93,7 @@ export type IntroductionPromptMode = 'pre-join' | 'member'
  * never goes back. It is not read from the cache: `joinClub` calls
  * `invalidateClubMembership` and the refetch resolves on its own schedule, so
  * between the join returning and the club query landing a cache-reading sheet
- * still says `Join later` about a membership that exists. The sheet issued the
+ * still offers `Cancel` about a membership that exists. The sheet issued the
  * write; it does not need to be told.
  *
  * **It must not be hoisted to the page.** A sheet instance is one club —
@@ -91,15 +113,22 @@ export type IntroductionPromptMode = 'pre-join' | 'member'
  * dismissal rather than being re-derived from a cache the page would have to
  * race. `design.md` §D2 and §D3.
  *
- * ## Q1 and Q3 — both `097` invariants hold in BOTH modes
+ * ## Q1 and Q3 — `097`'s invariants now hold in MEMBER MODE, and that is the
+ * change, not a weakening
  *
- * **Post is inert until the field holds non-whitespace text**, and **the
- * starter is a `placeholder`, never a `defaultValue`.** The second matters more
- * in pre-join mode than it did before: a prefilled value is never empty, so
- * `Post` would be live the instant the sheet opened, and one tap would now both
- * ship the canned sentence and **join a club**. Both spellings screenshot
- * identically; `IntroductionPrompt.test.tsx` is what a refactor swapping them
- * fails.
+ * Until PD-418 both modes held *`Post` is inert until the field holds
+ * non-whitespace text* and *the starter is a `placeholder`, never a
+ * `defaultValue`*. Pre-join mode now holds neither, deliberately, and the
+ * argument that made them right there has been spent rather than overruled:
+ * PD-392 needed them because `Post` was the only door to a **membership**, so a
+ * prefilled value plus a live control meant one tap could join a club and ship a
+ * canned sentence into it. The membership is no longer behind the text, so all
+ * one tap can now do is send a sentence the rider is looking at.
+ *
+ * **Member mode keeps both, unchanged and asserted separately**, because there
+ * the text is the only thing the sheet produces. `IntroductionPrompt.test.tsx`
+ * pins the two modes independently — a refactor that "unifies" them fails it,
+ * which is the point: the asymmetry is load-bearing.
  */
 export function IntroductionPrompt({
   clubId,
@@ -127,7 +156,13 @@ export function IntroductionPrompt({
    *  sheet on it; this component does not decide that for itself. */
   onPosted: () => void
 }) {
-  const [body, setBody] = useState('')
+  /**
+   * **`null` is "the rider has not touched the field", not "empty".** That
+   * distinction is the whole prefill mechanism — see `body` below — and it is
+   * the same `null`-versus-`undefined` discipline the rest of this app applies
+   * to a decided answer against a missing one.
+   */
+  const [draft, setDraft] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -137,16 +172,41 @@ export function IntroductionPrompt({
   const [joined, setJoined] = useState(false)
   const membershipExists = mode === 'member' || joined
 
+  /**
+   * The field's value — the rider's draft once they have touched it, and the
+   * mode's own default until then (PD-418).
+   *
+   * **Derived from the `mode` PROP, never from `membershipExists`.** The prop is
+   * stable for the life of one open sheet; the latch flips mid-flight the
+   * instant a pre-join `Join club` lands. Keying the default off the latch would
+   * blank an untouched field the moment the join succeeded — visible on the
+   * `introduction-failed` path, which is the one path that keeps the sheet open
+   * afterwards.
+   *
+   * **Computed rather than seeded into state in an effect**, which is what the
+   * obvious implementation does. The club detail screen mounts ONE sheet element
+   * and flips its `mode` from `member` to `pre-join` when the join control is
+   * tapped (`clubs/detail/page.tsx`, `key={id}`), so a `useState` initialiser
+   * would capture `member` at mount and the prefill would never appear on the
+   * screen it matters most on. A derived value re-reads the prop every render
+   * and has no such window.
+   */
+  const body = draft ?? (mode === 'pre-join' ? CLUB_INTRODUCTION_STARTER : '')
+
   // Inert from `Post` until the MEMBERSHIP write resolves, and no longer. Once
   // the membership exists the sheet is in member mode, where `097`'s standing
   // rule is "always present and always closes the sheet, pending or not" —
   // holding it shut for the introduction's flight would contradict that. The
-  // window this covers is the one where a dismissal labelled `Join later` could
+  // window this covers is the one where a dismissal labelled `Cancel` could
   // land over a join that has already committed.
   const dismissLocked = !membershipExists && pending
 
   function dismiss() {
     if (dismissLocked) return
+    // The draft is released with the sheet, so reopening it starts from the
+    // mode's default again rather than from whatever the rider left behind. The
+    // latch is deliberately NOT reset — it is one-way, per the header.
+    setDraft(null)
     onDismiss(membershipExists)
   }
 
@@ -159,22 +219,23 @@ export function IntroductionPrompt({
           setError(result.error)
           return
         }
+        setDraft(null)
         onPosted()
         return
       }
 
       // The latch flips from the callback, NOT from the resolved result — the
-      // join lands first and the introduction is still in flight after it, and
-      // both the control's label and the dismissal lock have to move at that
+      // join lands first and the introduction may still be in flight after it,
+      // and both the control's label and the dismissal lock have to move at that
       // instant rather than at the end. Reading it off the result would collapse
-      // one pending window over both writes, which keeps `Join later` on screen
-      // over a committed join and holds the sheet shut past the rule that
+      // one pending window over both writes, which keeps the pre-join labels on
+      // screen over a committed join and holds the sheet shut past the rule that
       // releases it.
       const result = await joinAndIntroduceToClub(clubId, body, () => setJoined(true))
       if (result.outcome === 'join-failed') {
         // Nothing was written and the rider is still not a member, so the sheet
-        // stays exactly as it was — `Join later` still means what it says and
-        // `Post` may be pressed again.
+        // stays exactly as it was — `Cancel` still cancels and `Join club` may be
+        // pressed again.
         setError(result.error)
         return
       }
@@ -186,20 +247,38 @@ export function IntroductionPrompt({
       // It is NOT a fallback for a caller that passes no callback, and reading
       // it as one is how the fix above gets undone: without the callback the
       // latch would flip only after BOTH writes resolve, which leaves the end
-      // state correct and the TIMING wrong — `Join later` on screen over a
-      // committed join, and the dismissal lock held past the membership write.
+      // state correct and the TIMING wrong — the pre-join labels on screen over
+      // a committed join, and the dismissal lock held past the membership write.
       // The timing is the whole point, which is why the callback is required
       // rather than optional.
       setJoined(true)
 
+      // **PD-418 — joined, and the rider chose to say nothing.** They are a
+      // member, so the dismissal iff's predicate is satisfied and the caller
+      // records the session dismissal exactly as it would for a `Not now`. That
+      // is what stops the club detail's state-driven sheet reopening on arrival
+      // and asking again for the thing they just declined — `097`'s
+      // "joined, owes an introduction" is a first-class state, and this is now
+      // the ORDINARY way into it rather than a failure path.
+      //
+      // `onDismiss` rather than `onPosted` because nothing was posted, and
+      // `onPosted`'s callers record the dismissal unconditionally — which would
+      // be right here by luck and wrong in what it claims.
+      if (result.outcome === 'joined-without-introduction') {
+        setDraft(null)
+        onDismiss(true)
+        return
+      }
+
       if (result.outcome === 'introduction-failed') {
-        // The one string that says half of a `Post` succeeded. The bare
-        // introduction error here would tell the rider nothing happened under a
-        // control labelled `Join later`, when in fact they joined.
+        // The one string that says half of a `Join club` succeeded. The bare
+        // introduction error here would tell the rider nothing happened, when in
+        // fact they are now a member.
         setError(CLUB_INTRODUCTION_PARTIAL_FAILURE)
         return
       }
 
+      setDraft(null)
       onPosted()
     })
   }
@@ -209,7 +288,7 @@ export function IntroductionPrompt({
       <IntroductionPromptBody
         mode={membershipExists ? 'member' : 'pre-join'}
         value={body}
-        onValueChange={setBody}
+        onValueChange={setDraft}
         error={error}
         pending={pending}
         dismissDisabled={dismissLocked}
@@ -230,12 +309,14 @@ export function IntroductionPrompt({
  * **Presentational and fully controlled** — every piece of state is the
  * wrapper's, for the reason its header gives: the dismissal lock has to be
  * visible to `ContextMenu`'s scrim and Escape handlers, which live up there,
- * and one flag in one place beats two that can disagree.
+ * and one flag in one place beats two that can disagree. **The prefill is the
+ * wrapper's too**, and this component must never grow a default of its own:
+ * `value` is whatever it is handed, including the starter.
  *
- * The two `097` invariants this file is pinned on are both here and both hold
- * in either mode: `Post` is disabled on non-whitespace-empty text, and
- * `CLUB_INTRODUCTION_STARTER` is a `placeholder` while `value` starts and stays
- * whatever the wrapper says.
+ * The two `097` invariants this file is pinned on are both here and both are now
+ * scoped to **member mode** — `Post` disabled on non-whitespace-empty text, and
+ * `CLUB_INTRODUCTION_STARTER` as a `placeholder`. See the wrapper's Q1/Q3
+ * section for why pre-join holds neither.
  */
 export function IntroductionPromptBody({
   mode,
@@ -270,9 +351,12 @@ export function IntroductionPromptBody({
         maxLength={CLUB_INTRODUCTION_MAX_LENGTH}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
-        // The starter, as a PLACEHOLDER — see this file's header. `value` above
-        // is the wrapper's and starts `''` until the rider types.
-        placeholder={CLUB_INTRODUCTION_STARTER}
+        // The starter as a PLACEHOLDER in member mode only. In pre-join mode the
+        // wrapper hands the same string down as the `value`, so a placeholder
+        // there would be dead markup that only ever shows on a field the rider
+        // has deliberately cleared — where the hint to write something is
+        // exactly what they just refused. See `CLUB_INTRODUCTION_STARTER`.
+        placeholder={mode === 'member' ? CLUB_INTRODUCTION_STARTER : undefined}
         error={error ?? undefined}
         disabled={pending}
         // No `autoFocus`, deliberately. In member mode the sheet is driven by
@@ -299,10 +383,18 @@ export function IntroductionPromptBody({
           type="button"
           className="flex-1"
           loading={pending}
-          disabled={value.trim().length === 0}
+          // **Pre-join is never disabled by the text — PD-418.** The control
+          // joins whether or not there is anything to say, so gating it on the
+          // field is the mandatory-introduction wall this story removes; a rider
+          // who clears the field and taps it joins and writes no thread.
+          //
+          // **Member mode keeps `097`'s Q1 rule**, and it is not an inconsistency
+          // to reconcile: there the text is the only product, so an enabled
+          // control over an empty field would promise a post that cannot happen.
+          disabled={mode === 'member' && value.trim().length === 0}
           onClick={onSubmit}
         >
-          Post
+          {copy.submit}
         </Button>
       </div>
     </>
