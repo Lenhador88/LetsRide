@@ -2,7 +2,7 @@ import { capture } from '@/lib/analytics/client'
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { isUsernameTaken } from '@/lib/data/profile'
-import { USERNAME_TAKEN_MESSAGE, checkUsername } from '@/lib/validation/profile'
+import { USERNAME_TAKEN_MESSAGE, checkUsername, countryCodeSchema } from '@/lib/validation/profile'
 import { consentSchema } from '@/lib/validation/auth'
 import { takeAnyStashedInviteToken } from '@/lib/invites/pending-token'
 import { routes } from '@/lib/routes'
@@ -119,50 +119,167 @@ export async function setUsername(
   }
   if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
-  // Username is now the last step, and this is the write that commits the
-  // stamp — 075 relaxed complete_onboarding's location requirement, so it takes
-  // `p_location: null` explicitly rather than a value this screen never
-  // collects. The order is contract: username first, RPC second, because a
-  // refused username must never leave a rider stamped complete with no
-  // username. `p_location: null` is a no-op against a rider's stored location
-  // (075's `coalesce`), never a clear.
-  const { data: completed, error: completionError } = await supabase.rpc('complete_onboarding', {
-    p_location: null,
-  })
-
-  if (completionError) {
-    // 23514 is the function's own guard — consent still missing. Reachable by
-    // deep-linking past the terms prompt, which the route guard also covers,
-    // so this is the second line rather than the first.
-    if (completionError.code === '23514') return { error: 'Finish the earlier steps first.' }
-    return { error: 'Could not save that. Try again.' }
-  }
-  if (!completed) return { error: 'Your profile could not be found. Sign in again.' }
-
-  // Invalidated once, after both writes — not between them. Between the
-  // username UPDATE and the RPC the rider has a username and no stamp, and
-  // that window is benign: the resume target for that state is this same
-  // screen, and resubmitting the same name updates their own row rather than
-  // raising a unique violation against itself.
+  // **The completion RPC is NOT called here any more — PD-428 gave the wizard a
+  // second step and completion belongs to the last one.** `setHomeCountry`
+  // makes that call now. Moving it was mandatory rather than tidy: `114`
+  // refuses to stamp completion while `home_country` is NULL, so a
+  // `complete_onboarding` here would be refused for every new rider and the
+  // username step would fail with a message about a country they have not been
+  // asked for yet.
+  //
+  // **The invalidation stays, and it is now load-bearing for a different
+  // reason.** It used to be "we just wrote the completion stamp"; it is now
+  // "we just wrote the username", and `has_username` is exactly what the
+  // guard's resume branch reads to decide between this step and the country
+  // one. Without it the cached state still says `has_username: false` and the
+  // guard sends the rider straight back here, which is the finish-a-step-and-
+  // bounce-into-it failure `writers-invalidate.test.ts` exists to refuse.
   invalidateOnboardingState()
 
-  // The wizard's terminal step since PD-286 dropped the location one, so this
-  // is both "username accepted" and "onboarding finished". Only one event:
-  // `profiles.onboarding_completed_at` already answers "did they finish" in
-  // SQL, and PD-353 is explicit that what is worth instrumenting is the step
-  // that turns a rider AWAY, not the one they got through.
+  // "Username accepted", and since PD-428 that is no longer the same event as
+  // "onboarding finished" — the country step owns the second one.
+  // `profiles.onboarding_completed_at` still answers "did they finish" in SQL,
+  // and PD-353 is explicit that what is worth instrumenting is the step that
+  // turns a rider AWAY, not the one they got through.
   capture({
     name: 'onboarding_step',
     properties: { step: 'username', status: 'completed' },
   })
 
+  // **The invite stash is NOT consumed here — it moved to `setHomeCountry`
+  // with the completion stamp** (PD-428). It has to travel with the terminal
+  // step and not merely with "the step that used to be terminal": `023`
+  // refuses the claim's write until BOTH stamps are set, so consuming the token
+  // here would clear it one screen before the rider is allowed to use it, and
+  // `takeAnyStashedInviteToken` clears as it reads. The rider would land on
+  // `/postcards` with the invite silently gone — the same dead end the stash
+  // exists to prevent, moved one screen earlier and made quieter.
+  return { error: null, redirectTo: '/onboarding/country' }
+}
+
+/**
+ * The wizard's terminal step since PD-428: the rider's home country, and the
+ * write that commits the completion stamp.
+ *
+ * ## Why a country is required at all, and a town is not
+ *
+ * PD-419 shipped device-or-town and both are refusable, so a rider could finish
+ * onboarding with no position whatsoever. That is survivable in one market —
+ * `nearby` barely discriminates when everything is in the Netherlands — and it
+ * is the app failing at its job in ten, where a rider with no position gets an
+ * undifferentiated global list. A country is always answerable, impossible to
+ * get subtly wrong, and exactly the discriminator that matters at ten markets.
+ *
+ * **Neither this nor the town is a permission, which is what makes a mandatory
+ * one legitimate.** A form field answered is consent; an OS prompt with no
+ * escape is not. This must never become an argument for forcing the device
+ * prompt — PD-419's decline rule stands, including no IP lookup at any point.
+ *
+ * ## The order of the two writes is contract
+ *
+ * The column UPDATE first, the RPC second, mirroring `setUsername`'s own
+ * ordering and for the same reason: `114` refuses to stamp completion while
+ * `home_country` is NULL, so the reverse order is refused every time. The
+ * window between them — country stored, not yet stamped — is benign, because
+ * the guard's resume target for that state is this same screen and re-submitting
+ * writes the same value to the rider's own row.
+ *
+ * **The country does NOT arrive as an argument to `complete_onboarding`**, and
+ * the issue that asked for this proposed that it should. It cannot: `create or
+ * replace` cannot add a parameter, so `complete_onboarding(p_location, p_country)`
+ * is an *overload*, and the one-argument call every existing signup makes then
+ * matches both candidates and answers `PGRST203`. The requirement still lives
+ * inside the function, which reads the stored column — only the value's path is
+ * different.
+ */
+export async function setHomeCountry(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  // `String(... ?? '')` rather than handing the raw entry to Zod, exactly as
+  // `setUsername` does: a missing field would otherwise surface Zod's own
+  // "expected string, received null" at a rider.
+  const parsed = countryCodeSchema.safeParse(String(formData.get('country') ?? ''))
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+
+  const supabase = await resolveSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: null, redirectTo: '/auth/login' }
+
+  // `.select().maybeSingle()` so a zero-row update is distinguishable from a
+  // successful one. PostgREST reports no error when an update matches nothing,
+  // and the guard reads a missing profile row as "not onboarded" — so without
+  // this the rider is bounced back to step 1 for ever while every screen
+  // reports success. Same trap `setUsername` documents.
+  const { data: updated, error } = await supabase
+    .from('profiles')
+    .update({ home_country: parsed.data })
+    .eq('id', user.id)
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    // 23514 is `113`'s pair of CHECK constraints — the shape one or the
+    // membership one. Only reachable if something bypassed the schema above,
+    // since the picker offers `COUNTRY_CODES` and nothing else.
+    if (error.code === '23514') {
+      capture({
+        name: 'onboarding_step',
+        properties: { step: 'country', status: 'rejected', reason: 'invalid' },
+      })
+      return { error: 'That is not a country we know.' }
+    }
+    capture({
+      name: 'onboarding_step',
+      properties: { step: 'country', status: 'rejected', reason: 'failed' },
+    })
+    return { error: 'Could not save that. Try again.' }
+  }
+  if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
+
+  // `p_location: null` is a no-op against a rider's stored town (`075`'s
+  // `coalesce`), never a clear — this screen does not collect one, and PD-419's
+  // town rung is a separate, optional path.
+  const { data: completed, error: completionError } = await supabase.rpc('complete_onboarding', {
+    p_location: null,
+  })
+
+  if (completionError) {
+    // 23514 here is the function's own guard — consent or username still
+    // missing, or (once `114` applies) a country that did not land. All three
+    // are reachable only by deep-linking past a step, which the route guard
+    // also covers, so this is the second line rather than the first.
+    if (completionError.code === '23514') {
+      capture({
+        name: 'onboarding_step',
+        properties: { step: 'country', status: 'rejected', reason: 'incomplete' },
+      })
+      return { error: 'Finish the earlier steps first.' }
+    }
+    capture({
+      name: 'onboarding_step',
+      properties: { step: 'country', status: 'rejected', reason: 'failed' },
+    })
+    return { error: 'Could not save that. Try again.' }
+  }
+  if (!completed) return { error: 'Your profile could not be found. Sign in again.' }
+
+  // Once, after both writes rather than between them — the stamp the guard
+  // cached is what sent the rider here, and it is now stale in two fields.
+  invalidateOnboardingState()
+
+  capture({
+    name: 'onboarding_step',
+    properties: { step: 'country', status: 'completed' },
+  })
+
   // **The stash is consumed HERE, at the end of the wizard** (`091`, PD-330;
-  // both kinds since `093`, PD-360). A rider who arrived on an invite link with
-  // no account is sent to `/onboarding/terms` and then here by the route guard,
-  // because `023` refuses the claim's write until both stamps are set. Without
-  // this line the detour ends at `/postcards` with a live token still in
-  // `sessionStorage` and nothing reading it — the same dead end one screen
-  // later, and quieter, because nothing errors.
+  // both kinds since `093`, PD-360; moved from `setUsername` by PD-428 when
+  // that stopped being the last step). A rider who arrived on an invite link
+  // with no account is walked through consent, username and this screen by the
+  // route guard, because `023` refuses the claim's write until both stamps are
+  // set. Without this line the detour ends at `/postcards` with a live token
+  // still in `sessionStorage` and nothing reading it.
   //
   // **This is not a claim and must never become one.** It returns the rider to
   // the preview, where they tap; see `claimRideInviteLink` and

@@ -310,11 +310,26 @@ Routing decisions live in **three** places, split so the decision can be tested:
 **The splash overlays the page once booted; it replaces it only before the first decision.**
 Replacing it on every navigation unmounts `(app)/layout.tsx` and makes a tab tap read as a reload.
 
-**Any new writer of a stamp the decision reads must invalidate the cache.** There are three
-(`signUp`, `setUsername`, `acceptTerms`), and each calls `invalidateOnboardingState()`;
-`signOut` calls `clearGuardCache()`. Miss one and the rider finishes a step and is sent straight
-back into it. `src/lib/actions/__tests__/writers-invalidate.test.ts` refuses a new stamp writer
-that does not, and `npm run walk` has a phase that measures it.
+**Any new writer of a stamp the decision reads must invalidate the cache.** There are four
+(`signUp`, `acceptTerms`, `setUsername`, `setHomeCountry`), and each calls
+`invalidateOnboardingState()`; `signOut` calls `clearGuardCache()`. Count them rather than trust
+that number — the detector is `GUARD_FIELD_WRITER` in the test named below:
+
+```bash
+git grep -c "invalidateOnboardingState()" -- src/lib/actions/   # 4, across 2 files
+```
+
+Miss one and the rider finishes a step and is sent straight back into it.
+`src/lib/actions/__tests__/writers-invalidate.test.ts` refuses a new writer that does not, and
+`npm run walk` has a phase that measures it. **That check is per EXPORTED FUNCTION, and it was
+per FILE until PD-428** — which is the shape to keep, because `onboarding.ts` now holds three of
+the four and a file-granular check passes while any one of them keeps its call. Measured: with
+`setHomeCountry`'s invalidation deleted, the old check reported 30/30 green.
+
+**The decision reads three fields and only two are stamps** — `terms_accepted_at`,
+`onboarding_completed_at` and `has_username` — so a writer of the *username* owes the
+invalidation exactly as a stamp writer does. `setUsername` writes no stamp at all since PD-428
+and still must invalidate, because `has_username` is what picks between the two wizard steps.
 
 **Necessary, and never sufficient — an invalidation cannot reach a round trip that has already
 left.** `signUp` establishes the session, the guard's effect asks `my_onboarding_state()`,

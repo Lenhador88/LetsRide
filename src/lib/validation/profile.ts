@@ -216,6 +216,18 @@ export const profileIdSchema = z.uuid()
  * consistent with it and a caller that sends `nl` gets their country rather
  * than an error.
  *
+ * **It serves two different columns and they are not the same concept.**
+ * `profile_countries.country_code` is the travel log — countries a rider says
+ * they have *ridden in* (`014`'s own comment) — and `profiles.home_country` is
+ * where the rider lives (`113`, PD-428). One is a set, the other is a single
+ * value; overloading either to mean the other corrupts both and is very hard
+ * to unpick later. What they legitimately share is the *shape* rule, which is
+ * this schema and nothing more, and `113` gives `home_country` its own pair of
+ * CHECK constraints rather than borrowing `020`'s.
+ *
+ * As everywhere in this repo, Zod owns the **message** and the database owns
+ * the **guarantee**: a rider can simply not run this.
+ *
  * **`usernameSchema` no longer works this way and the two are not a pair**, which
  * this comment used to claim. A country code has one correct spelling and the
  * column enforces it; a username's case is the rider's and `056` stores it.

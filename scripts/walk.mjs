@@ -589,6 +589,54 @@ async function runRefusedSignup() {
  * throws, because both callers treat a failure as informational — an outage
  * on `delete-account` must never fail the walk itself (see the header).
  */
+
+/**
+ * Walk the minted rider through the whole wizard: username, then home country.
+ *
+ * **Two screens since PD-428**, and both callers need both of them. The
+ * country step is the one that stamps `onboarding_completed_at` now, so a run
+ * that stops after the username has a rider the route guard refuses every app
+ * route to — which would fail every later phase AND strand the account, since
+ * `attemptDeleteAccount` has to reach `/profile`.
+ *
+ * The country control is a combobox over a listbox rather than a native
+ * `<select>` (`src/components/ui/CountrySelect.tsx`), so it cannot be driven
+ * with `selectOption`: type to filter, then click the option. `Netherlands` is
+ * picked because DEV's fixtures are Dutch and because it is unambiguous under
+ * the filter — the match is on name and ISO code, so a two-letter query would
+ * hit both `NL` and every name containing it.
+ */
+async function finishOnboarding(page) {
+  await page.fill('input[name="username"]', MINT_USERNAME)
+  await Promise.all([
+    page
+      .waitForURL((u) => u.pathname !== '/onboarding/username', { timeout: 20_000 })
+      .catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1000)
+
+  if (new URL(page.url()).pathname !== '/onboarding/country') {
+    // Not fatal here — the caller checks where it ended up and owns the
+    // cleanup. Saying it is what turns "every later phase failed" into one
+    // legible line naming the step that did not open.
+    console.error(
+      `  ! expected /onboarding/country after the username step, got ${page.url()}`
+    )
+    return
+  }
+
+  await page.fill('input[role="combobox"]', 'Netherlands')
+  await page.waitForTimeout(300)
+  await page.click('[role="option"]', { timeout: 10_000 })
+  await Promise.all([
+    page
+      .waitForURL((u) => u.pathname !== '/onboarding/country', { timeout: 20_000 })
+      .catch(() => {}),
+    page.click('button[type="submit"]'),
+  ])
+  await page.waitForTimeout(1000)
+}
 async function attemptDeleteAccount(password) {
   try {
     await page.goto(`${BASE}/profile`, { waitUntil: 'networkidle' })
@@ -751,8 +799,12 @@ async function mintWalkAccount() {
   if (!permit.ok) {
     console.error(`\nMinting refused after the fact — ${permit.why}.`)
     console.error('Finishing onboarding, deleting the account just created, then aborting.')
-    await page.fill('input[name="username"]', MINT_USERNAME)
-    await page.click('button[type="submit"]')
+    // BOTH steps, not just the username one: `attemptDeleteAccount` reaches
+    // `/profile`, and the guard refuses every app route until onboarding is
+    // COMPLETE — which since PD-428 means the country step has been answered.
+    // Stopping after the username here would leave the wrongly-minted account
+    // undeletable, on the path whose whole purpose is deleting it.
+    await finishOnboarding(page)
     await page.waitForTimeout(1500)
     const cleanup = await attemptDeleteAccount(PASSWORD)
     if (cleanup.ok) {
@@ -764,18 +816,11 @@ async function mintWalkAccount() {
     process.exit(1)
   }
 
-  await page.fill('input[name="username"]', MINT_USERNAME)
-  await Promise.all([
-    page
-      .waitForURL((u) => u.pathname !== '/onboarding/username', { timeout: 20_000 })
-      .catch(() => {}),
-    page.click('button[type="submit"]'),
-  ])
-  await page.waitForTimeout(1000)
+  await finishOnboarding(page)
 
   if (new URL(page.url()).pathname !== '/postcards') {
-    // `setUsername` commits `username` and `onboarding_completed_at` in the
-    // same call (see its own header), so a submit that reached this point is
+    // `setHomeCountry` commits `home_country` and `onboarding_completed_at` in
+    // the same submit (see its own header), so a run that reached this point is
     // fully onboarded regardless of where the browser actually landed —
     // `/profile` is reachable and `attemptDeleteAccount` is exactly what
     // `permit.ok === false` above already does for the wrong-project case.
@@ -1689,6 +1734,13 @@ const GUARD_CASES_SIGNED_IN = [
   ['/auth/signup', '/postcards'],
   ['/onboarding/username', '/postcards'],
   ['/onboarding/terms', '/postcards'],
+  // PD-428's new step. For a fully onboarded rider it must behave exactly as
+  // the other two do — the country requirement gates the WIZARD, never a rider
+  // who has already finished it, and a rider who completed onboarding before
+  // PD-428 has `home_country` NULL for ever and must never be sent back here.
+  // That is the whole of the "existing riders are never re-prompted" decision,
+  // measured against a live session rather than asserted.
+  ['/onboarding/country', '/postcards'],
   // PD-286 (`075`) deleted this route. For a fully onboarded rider it is just
   // another path under `/onboarding`, so `resolveDestination`'s existing
   // `isOnboarding` branch sends it to /postcards with no code of its own —

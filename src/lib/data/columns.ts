@@ -72,8 +72,16 @@ export const PUBLIC_PROFILE_COLUMNS = 'id, username, avatar_path, bike_model'
  * screen is the one screen that draws a cover, and this is the query it draws it
  * from.
  */
+/**
+ * `home_country` (`113`, PD-428) is here and is deliberately NOT in either of
+ * the other two sets. It is readable — the `profiles` SELECT policy admits it
+ * like any other column, and `113` grants `authenticated` SELECT on it — but no
+ * screen draws another rider's country, and a column added to a projection
+ * "because it is allowed" is how `PUBLIC_PROFILE_COLUMNS` grew the first time.
+ * The own-profile read needs it because the profile edit form offers it.
+ */
 export const OWN_PROFILE_COLUMNS =
-  'id, username, bio, bike_model, created_at, location, avatar_path, cover_image_path'
+  'id, username, bio, bike_model, created_at, location, home_country, avatar_path, cover_image_path'
 
 /**
  * The columns of *another* rider's profile that `/profile/detail` — and only

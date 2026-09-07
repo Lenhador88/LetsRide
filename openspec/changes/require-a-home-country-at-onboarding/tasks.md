@@ -183,7 +183,10 @@ Per `openspec/config.yaml`: a policy or constraint change with no new assertion 
       `114`, recorded as it is applied, on each project.
 - [ ] 6.4 `npm run docs:check` — the full sweep locally, not just CI's `--cheap` step.
 - [ ] 6.5 `npx vitest run scripts/docs/__tests__/crossrefs.test.mjs` — this proposal cites
-      `file.md §Section` pointers and `openspec/` is inside that sweep.
+      section pointers into other documents, and `openspec/` is inside that sweep.
+      (Do **not** write the pointer syntax out as an example here: the sweep parses this file
+      too, reads the example as a real citation, and fails on a document that does not exist.
+      It did, on the first draft.)
 
 ## 7. Review
 
