@@ -82,6 +82,40 @@ describe('crewRailSummary', () => {
     expect(crewRailSummary(composed, true).label).toBe('1 going')
     expect(crewRailSummary(composed, true).shown).toHaveLength(1)
   })
+
+  it('reads 0 going with no avatars when the host rides alone and says Maybe', () => {
+    // Reachable only since PD-429, and it is the honest answer rather than a
+    // state to paper over: adding the maybes in to avoid the zero is the exact
+    // arithmetic that got this count removed from the screen the first time.
+    // Pinned so a later "fix" for the empty rail has to argue with a test.
+    const alone = withOrganizer(crew([], ['pl']), 'pl', rider('pl').profile)
+
+    expect(crewRailSummary(alone, true).label).toBe('0 going')
+    expect(crewRailSummary(alone, true).shown).toHaveLength(0)
+    expect(crewRailSummary(alone, true).overflow).toBe(0)
+    // The host is not lost — the panel still lists them, with their label.
+    expect(alone.maybe.map((m) => m.user_id)).toEqual(['pl'])
+    expect(alone.maybe[0].is_host).toBe(true)
+  })
+
+  it('drops an organizer who answered Maybe out of the going count (PD-429)', () => {
+    // The organizer may now answer Maybe, and the count is the first place that
+    // shows: before PD-429 `withOrganizer` promoted them into `going` whatever
+    // the roster said, so this rail would have said `2 going` about a ride whose
+    // host had just said they might not come — the same "count disagrees with
+    // the roster one tap away" defect that got the count removed the first time,
+    // arriving through the host instead of through the maybes.
+    const composed = withOrganizer(crew(['mk'], ['pl']), 'pl', rider('pl').profile)
+
+    expect(crewRailSummary(composed, true).label).toBe('1 going')
+    expect(composed.maybe.map((m) => m.user_id)).toEqual(['pl'])
+    expect(composed.maybe[0].is_host).toBe(true)
+    // And the host is not silently dropped from the rail's avatars into nowhere:
+    // they are in the section they answered, exactly once across both.
+    expect(
+      composed.going.concat(composed.maybe).filter((m) => m.user_id === 'pl')
+    ).toHaveLength(1)
+  })
 })
 
 /**
@@ -116,10 +150,27 @@ describe('the rail reads the crew page’s own source', () => {
    * the strip honest — a filter that has quietly stopped matching passes for ever
    * and looks exactly like a clean file.
    */
-  const code = source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+  /**
+   * **A TRAILING `//` comment defeated the first version of this**, and the
+   * fixed strip is why every scan below is applied through a function rather
+   * than to one precomputed string.
+   *
+   * The line strip was `/^\s*\/\/.*$/gm` — anchored, so it removed a comment
+   * only when it owned the whole line. A reviewer defeated the host-ring guard
+   * with `index === 0 && // … member.is_host && …`: the real defect back in the
+   * code, the forbidden token satisfied by the comment beside it, and all
+   * assertions green. That is CLAUDE.md's comment trap arriving through the
+   * *fix* for the comment trap.
+   *
+   * `//` to end of line ANYWHERE now, with `[^:]` keeping `https://` whole.
+   */
+  const strip = (text: string) =>
+    text
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1')
+
+  const code = strip(source)
 
   it('fetches through queryKeys.rides.crew and getRideCrew', () => {
     expect(code).toContain('queryKeys.rides.crew(rideId)')
@@ -140,5 +191,65 @@ describe('the rail reads the crew page’s own source', () => {
     const rewritten = code.replace('crew.going.length', 'ride.riders_count')
     expect(rewritten).toContain('riders_count')
     expect(rewritten).not.toBe(code)
+  })
+
+  /**
+   * **The host is marked by the FLAG, never by the position** — PD-429, and it
+   * was a live bug for the length of one review.
+   *
+   * The ring read `i === 0`, which was correct only while `withOrganizer`
+   * prepended the host to `going` unconditionally. Now that they lead whichever
+   * section their own RSVP names, `going[0]` is an ordinary crew member as soon
+   * as the organizer answers Maybe — so the rail drew an accent ring around a
+   * rider who does not host the ride, on the screen the organizer was looking
+   * at. Nothing else could catch it: the markup is valid, `tsc` is happy, and
+   * `crewRailSummary`'s assertions are all about the count.
+   *
+   * Scanned rather than rendered because the avatar row is inside the collapsed
+   * button and its class list is what carries the claim — the same reasoning the
+   * `riders_count` scan above uses.
+   */
+  it('rings the host by is_host, never by list position', () => {
+    expect(code).toContain('member.is_host &&')
+    expect(code).not.toMatch(/\b\w+ === 0 &&/)
+    // The strip left the executable half behind rather than eating the file.
+    expect(code).toContain('ring-accent')
+  })
+
+  /**
+   * **The both-ways half, and it mutates the SOURCE rather than the stripped
+   * copy.** The first version asserted `code.replace(a, b)` contained `b`,
+   * which is a tautology: it re-checks a string the line above just inserted
+   * and cannot fail once the positive assertion passes. A guard that cannot
+   * fail is indistinguishable from one that has quietly stopped matching, which
+   * is the whole thing this file's strip exists to avoid.
+   *
+   * Both mutations run through `strip` exactly as the real file does, so the
+   * comment-stripping is on trial here too.
+   */
+  it('would catch a positional rewrite, including one hidden behind a comment', () => {
+    const plain = strip(source.replace('member.is_host &&', 'i === 0 &&'))
+    expect(plain).not.toContain('member.is_host &&')
+    expect(plain).toMatch(/\b\w+ === 0 &&/)
+
+    // The exploit that defeated the first version of this guard: the defect
+    // back in the code under a different index name, with the forbidden token
+    // parked in a trailing comment to satisfy the positive assertion.
+    const disguised = strip(
+      source.replace(
+        'member.is_host &&',
+        'index === 0 && // restored from member.is_host && — PD-429'
+      )
+    )
+    expect(disguised).not.toContain('member.is_host &&')
+    expect(disguised).toMatch(/\b\w+ === 0 &&/)
+  })
+
+  it('gives the maybe rows the same host props as the going rows', () => {
+    // `withOrganizer` can place the host under `May be going` since PD-429, and
+    // a row rendered without these drops the `Ride host` label that
+    // `crew/page.tsx` still shows for the same rider from the same array.
+    expect(code.match(/isHost=\{member\.is_host\}/g) ?? []).toHaveLength(2)
+    expect(code.match(/note=\{member\.is_host \? 'Ride host' : undefined\}/g) ?? []).toHaveLength(2)
   })
 })

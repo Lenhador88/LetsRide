@@ -180,21 +180,30 @@ function RideScreen() {
   if (ride.data === null) notFound()
 
   /**
-   * Two cases the design does not draw, and neither can be "show it anyway":
+   * One case the design does not draw, and it cannot be "show it anyway":
+   * **past rides**. "Are you going?" about a ride that has already happened is
+   * nonsense, and answering it would silently edit history.
    *
-   * - **Past rides.** "Are you going?" about a ride that has already happened is
-   *   nonsense, and answering it would silently edit history.
-   * - **The organizer.** They cannot decline their own ride coherently: `No`
-   *   deletes the `ride_members` row, but `withOrganizer` puts the host in
-   *   `going` unconditionally, so the crew page would still list them as
-   *   going. The control would be lying about what it did. The v1 page hid the
-   *   join button from the organizer for the same reason.
+   * ## The organizer used to be the second case, and PD-429 removed them
+   *
+   * They were excluded because they *cannot decline* — `No` deletes the
+   * `ride_members` row, `103`'s `protect_ride_organizer_membership` refuses that
+   * delete, and `withOrganizer` used to draw them `going` whatever was stored.
+   * All three facts are still true of `No`, and none of them was ever true of
+   * `Maybe`: `103` is a `BEFORE DELETE` guard whose own comment says an
+   * organizer may still move to `'maybe'`, which is the 2026-08-11 decision.
+   *
+   * So the exclusion was one option wide and it was applied to the whole
+   * control. **`No` is withheld instead** — `RideAttendanceBar`'s `canDecline`,
+   * which is the narrowest thing that can be withheld — and `withOrganizer` now
+   * respects the stored status, so the crew page agrees with whatever the
+   * organizer answers here.
    *
    * False until the ride arrives, which is the one layout shift this screen
    * has: the bottom padding that clears the RSVP bar is owed only once we know
    * the bar is there, and guessing either way would be wrong half the time.
    */
-  const rsvpApplies = !!ride.data && ride.data.is_upcoming && !ride.data.is_organizer
+  const rsvpApplies = !!ride.data && ride.data.is_upcoming
 
   /**
    * The rider tapped their status chip to change an answer they have already
@@ -258,7 +267,14 @@ function RideScreen() {
   // change: it stores nothing, so the bar stays and `choice` survives with it.)
   // The cost is still small — it takes an external write to `ride_members` to
   // become visible at all — and every fresh mount reads the truth.
-  const answer = pendingAnswer !== undefined ? pendingAnswer : (ride.data?.attendance ?? null)
+  // **`own_rsvp`, not `attendance`, and PD-429 is what makes the difference
+  // observable.** `attendance` folds the organizer to `going` without a row, and
+  // the organizer now reaches both the bar and the chip: read the folded field
+  // and a pre-`103` organizer holding no row is shown a `Going` chip over a bar
+  // with nothing selected — an answer they never gave. `bottom-slot.ts` asked
+  // for exactly this substitution in the same commit as the change that makes
+  // the fold reachable.
+  const answer = pendingAnswer !== undefined ? pendingAnswer : (ride.data?.own_rsvp ?? null)
 
   /**
    * What gates the header's chat button, the labelled chat row and the create
@@ -289,17 +305,16 @@ function RideScreen() {
    * values taken from one row. **So the two arguments move together or not at
    * all.**
    *
-   * **`answer` is the FOLDED value, which `isRideCrew`'s own docstring tells
-   * callers not to pass, and this is the exception with its condition
-   * attached.** It is safe only because `isOrganizer ||` short-circuits before
-   * the folded arm is read, so the two never both matter. **The day that stops
-   * being true, this diverges silently**: drop the organizer arm from
-   * `isRideCrew` — which its docstring names as a live possibility, going with
-   * `enforce-creator-membership` — and `getRide` would compute `is_crew` from
-   * the raw `null` while this computes from the folded `'going'`. One rule, two
-   * answers, `tsc` green, and an organizer offered a create action `041`
-   * refuses. **If that arm ever moves, pass the unfolded status here in the
-   * same commit.**
+   * **`answer` is the UNFOLDED status, which is what `isRideCrew`'s docstring
+   * asks for — PD-429 closed the exception that used to live here.** It was the
+   * folded `attendance`, safe only because `isOrganizer ||` short-circuits
+   * before the folded arm is read, and it carried a standing instruction to pass
+   * the raw status the day anything made the fold reachable. That day is this
+   * commit, so the substitution is done: `getRide` computes `is_crew` from
+   * `ownRow?.status ?? null` and this computes from the same value, which is
+   * what makes the two agree if the organizer arm is ever dropped from
+   * `isRideCrew` (its docstring names that as live, going with
+   * `enforce-creator-membership`).
    */
   const isCrew = ride.data ? isRideCrew(ride.data.is_organizer, answer) : undefined
 
@@ -429,6 +444,10 @@ function RideScreen() {
           // reading `Maybe` for any rider who reopens inside the round trip,
           // and `choice` is state, so nothing re-seeds it when the read lands.
           attendance={answer}
+          // The organizer is offered Yes and Maybe only — `103` refuses the
+          // delete that `No` performs, and a button the database refuses is
+          // worse than no button. `ORGANIZER_OPTIONS` carries the reasoning.
+          canDecline={!ride.data.is_organizer}
           // Collapses the bar back into the chip once a new answer has landed.
           // Only ever meaningful when the chip is what opened it; a rider
           // answering for the first time has no flag set, and the collapse there

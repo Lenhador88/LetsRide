@@ -372,8 +372,31 @@ export type RideDetail = {
    */
   latitude: number | null
   longitude: number | null
-  /** This viewer's own RSVP. The organizer reads as `going` without a row. */
+  /**
+   * This viewer's own RSVP, **folded**: the organizer reads as `going` without a
+   * row.
+   *
+   * **Not the field the RSVP controls read — that is `own_rsvp`.** The fold is
+   * right for anything answering *is this rider on the ride*, and wrong for
+   * anything answering *what did they choose*, because a pre-`103` organizer
+   * holds no row and this reads `going` for them anyway.
+   */
   attendance: RideAttendance
+  /**
+   * This viewer's raw `ride_members.status`, unfolded — `null` means *no row*,
+   * for an organizer exactly as for anyone else.
+   *
+   * **Added by PD-429, and the fold above is what made it necessary.** An
+   * organizer may now answer Yes or Maybe (`103`'s guard is `BEFORE DELETE`, so
+   * it protects their *presence* and never their *status*), which makes the
+   * RSVP bar and its status chip reachable for them for the first time. Read
+   * `attendance` there and a pre-`103` organizer — one who holds no row at all —
+   * gets a chip saying `Going` over a bar with nothing selected, asserting an
+   * answer they never gave. `src/lib/rides/bottom-slot.ts` predicted this
+   * exact defect and asked for this field in the same commit as the change that
+   * reaches it.
+   */
+  own_rsvp: RideAttendance
   /**
    * The 358×160 panel's static map tile — a signed URL minted for **this**
    * viewer, or null when the ride has no tile. Same rules as
@@ -785,7 +808,24 @@ export type ClubInviteLinkClaim = { club_id: string }
 export type RideCrewMember = {
   user_id: string
   profile: PublicProfile | null
-  /** The organizer, who leads the Going list whether or not they RSVP'd. */
+  /**
+   * The organizer — on their own ride by construction, whether or not they ever
+   * pressed `Yes!`.
+   *
+   * **It says WHO, never WHERE, and reading it as a position is a live bug that
+   * has already shipped once.** Until PD-429 this said the host *"leads the
+   * Going list"*, which `withOrganizer` guaranteed by prepending them to `going`
+   * unconditionally. It no longer does: an organizer may answer Maybe, and they
+   * then lead `maybe` instead. So `going[0]` is an ordinary crew member on any
+   * ride whose host is wavering, and the one place that inferred the host from
+   * index — `RideCrewRail`'s accent ring — knighted that rider on the organizer's
+   * own screen. **Mark the host from this flag.**
+   *
+   * `RideCard` is the deliberate exception and is not a counter-example:
+   * `toRideListItem` builds its avatar row as `[organizer, ...others]` itself,
+   * so index 0 is the organizer by that function's own construction rather than
+   * by anything `withOrganizer` promises.
+   */
   is_host?: boolean
 }
 
