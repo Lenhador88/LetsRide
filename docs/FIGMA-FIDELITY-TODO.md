@@ -509,21 +509,25 @@ is a drawn value this repo no longer builds:
 
       - **The identity band** — the type/started line, the member rail and the description, at
         the top. The frame draws none of it; the product owner asked for it on 2026-08-31.
-      - **The create bar** — `ClubCreateBar`, which moved TOWARDS the frame on 2026-08-31 and
-        does not reach it. The first pass drew a three-tile action band in the scroll and called
-        the frame's own arrangement a deviation; the product owner then asked for *"a bottom bar
-        like the one create club on the club list"*, which is the `Button Container` the frame
-        draws. So the slot, the 358×40 primary and the geometry are now the frame's.
+      - **The create bar is GONE as of 2026-09-06 — see the §Club detail departure below**, which
+        is a larger deviation than anything in this list and is logged as its own entry. What
+        follows is the history, kept because it is what the departure departs *from*.
 
-        **What is still ours is that it is a SIBLING of the navigation bar rather than part of
+        `ClubCreateBar` moved TOWARDS the frame on 2026-08-31 and did not reach it. The first
+        pass drew a three-tile action band in the scroll and called the frame's own arrangement a
+        deviation; the product owner then asked for *"a bottom bar like the one create club on
+        the club list"*, which is the `Button Container` the frame draws. So the slot, the 358×40
+        primary and the geometry became the frame's.
+
+        **What was still ours is that it was a SIBLING of the navigation bar rather than part of
         it.** The frame's `v2 / Component / Navigation / Bar` is one 390×152 component with the
         button container inside it, under a single `Grey/10%` top stroke — the `STICKY_ACTIONS`
-        construction. This bar cannot be that, because `STICKY_ACTIONS` is keyed on pathname and
-        this one is member-gated, so it is positioned against the nav bar instead and **draws no
-        border of its own** so the two still read as one. If that action slot ever learns a
-        predicate, this belongs inside it. It also holds one primary opening a sheet rather than
-        the frame's `Create postcard`, because the screen has three things to create and the
-        frame predates two of them.
+        construction. That bar could not be that, because `STICKY_ACTIONS` is keyed on pathname
+        and this one is member-gated, so it was positioned against the nav bar instead and drew
+        **no border of its own** so the two still read as one. It also held one primary opening a
+        sheet rather than the frame's `Create postcard`, because the screen has three things to
+        create and the frame predates two of them. **That sheet survives the conversion
+        unchanged**; only the trigger moved.
       - **The thread event.** The frame predates `081` (PD-307) entirely, so a club had no
         threads when it was drawn.
 
@@ -534,6 +538,38 @@ is a drawn value this repo no longer builds:
       uses `SectionHeader` rather than the frame's `Poppins/14/Medium` `Grey/80` title —
       deviating from every other section heading in the app inside one screen is the worse of
       the two inconsistencies.
+- [ ] **§Club detail — the create bar becomes a floating action, and this DELETES A CHILD OF A
+      SHARED VARIANT. PD-404 Q1, product owner 2026-09-06.** *"It should become the same floating
+      yes."* Shipped as a **recorded departure** (route 2) rather than Figma-first, because route 1
+      needs a Figma *write* and `CLAUDE.md` §Design System requires an explicit ask for one;
+      *"however you see best"* delegates the route and does not grant the write.
+
+      **Read the blast radius before opening Figma, because it is the whole point of this entry.**
+      `2043:10604` instances `v2 / Component / Navigation / Bar` at **390×152** with
+      `Button Container 358×56` as a **child of that instance**, and **27 frames instance the
+      component at 152 — so 26 others share the variant this screen now contradicts** (nearer 23
+      if the club's own sub-pages convert with it). Whoever updates the design is not editing one
+      frame; they are deciding what happens to a component twenty-six frames draw.
+
+      **This is a different CLASS from §Ride detail's three departures, and answering both
+      questions the same way is what makes that easy to stop noticing.** `2375:8771` draws the
+      ride's nav bar at 390×88 with **no create control at all**, so every ride departure was
+      *additive* — it contradicted nothing drawn. This one **removes an element the design
+      explicitly draws**, on a shared component. It is the largest departure in this file.
+
+      What is unchanged, so the entry is not read as wider than it is: the three-row
+      *Create in this club* sheet — Postcard, Ride, Thread — with its order, icons, label and
+      club-scoped routes; the member gate, which is the screen's existing `isMember` and reads no
+      `role`; and the `z-40`-under-`z-50` stacking and absent `border-t` the bar already carried.
+
+      **The hit area falls about 6×** — a 358×40 bar target becomes a 56×56 circle. It clears the
+      44×44 glove floor, which is not the same as being unchanged, and the frame draws the wide
+      target. Recorded here because *"clears the floor"* does not describe the loss.
+
+      **The vertical space is not a saving here either** — the same arithmetic as §Ride detail:
+      `.pb-floating-action-extra` is 81px against the bar's `--navbar-action` 64px. The page still
+      opts into it, because the thing underneath is a paging timeline whose last entry would
+      otherwise sit permanently under the button. **The gain is horizontal.**
 
 - [ ] **The stream pages on scroll since PD-375, and none of the affordances that make that
       visible are drawn anywhere — the frame is a static twenty-entry list.** `npm run figma --
@@ -565,7 +601,8 @@ is a drawn value this repo no longer builds:
       Postcards, Members, the `Private club · Started …` line, then the description — Upcoming
       rides moved to lead the screen (with a `Plan a ride` create affordance, `ClubCreateRideRow`,
       when the club has none and the viewer can create one — both that component and the
-      affordance are gone as of 2026-08-31; every create is in `ClubCreateBar`), and Members and Postcards swapped
+      affordance are gone as of 2026-08-31; every create is in the club's own create affordance —
+      `ClubCreateBar` then, `ClubCreateAction` since PD-404), and Members and Postcards swapped
       from what an earlier revision of this same conversation had settled. **Postcards is a
       horizontally-scrolling strip of stamps** (`ClubPostcardCarousel`), not the stacked
       `PostcardCard` list `AI / Club detail merged / 2026-08-17` draws and this section drew
@@ -938,9 +975,9 @@ measurement as current.
         deletes the row for `No`, so a rider who declined is identical to one who never answered.
         Symmetry needs a migration and a change to `private.is_ride_crew`; the owner declined it.
 
-        **The club detail is NOT converted** — `ClubCreateBar` still draws the full-width bar,
-        because `2043:10604` instances a variant **26 other frames** use. That half of PD-404 is
-        still the owner's and the issue stays open for it.
+        **The club detail is converted too, as of 2026-09-06** — the owner answered Q1 the same
+        way. It is a **different class of departure** and it is logged separately, under
+        §Club detail below; do not read this entry as covering it.
   - [ ] **The stream does not page, and the club's does.** Both sources are read whole at their
         own bounds; a ride that overruns them is cut at the horizon and says so, handing off to
         the crew list. See `src/lib/data/ride-timeline.ts` for why a bounded event does not

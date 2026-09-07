@@ -46,8 +46,9 @@ type FloatingActionProps = {
  * `--shadow-floating`'s two downward offsets fell entirely on it.
  *
  * **Do not "simplify" this back to `.bottom-navbar`.** The two classes exist
- * because one number cannot serve a bar and a circle; `RideAttendanceBar` and
- * `ClubCreateBar` keep the bar's offset for the same reason.
+ * because one number cannot serve a bar and a circle. `RideAttendanceBar` is
+ * the remaining caller of the bar's offset and keeps it for that reason — it
+ * is a bar, and it is meant to read as continuous with the chrome.
  *
  * `z-40` sits under the navigation bar's `z-50`, so the tabs stay reachable if
  * the two ever overlap — and raising it was never the fix for the overlap

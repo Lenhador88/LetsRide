@@ -166,7 +166,7 @@ export function resolveRideDetailActions({
   if (!canCreate) return { bottomSlot: null, statusChip, createOptions: [] }
 
   // Postcard first: it is the older affordance, the one the frame names in this
-  // slot on the club, and the one a rider reaches for most. `ClubCreateBar`
+  // slot on the club, and the one a rider reaches for most. `ClubCreateAction`
   // orders its own sheet the same way.
   return {
     bottomSlot: 'create',

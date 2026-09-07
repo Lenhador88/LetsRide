@@ -301,9 +301,13 @@ grep -n "STICKY_ACTIONS" -A 10 src/components/layout/Navbar.tsx
 the tabs and beneath the bar's single top border — it *is* the 152px variant the frames draw, and the
 bar owns it because *"a page cannot supply it as a sibling without breaking that border"*.
 
-`ClubCreateBar` and `RideCreateBar` exist as separate components for one reason, recorded in
+`ClubCreateBar` and `RideCreateBar` existed as separate components for one reason, recorded in
 `ClubCreateBar`'s docstring: the map is **keyed on pathname alone** and cannot answer *is this rider
 a member of this club* or *on this ride*. And *"a control that always fails RLS is worse than none"*.
+**That reason survives both conversions and is why the successors are still screen-owned** —
+`ClubCreateAction` and `RideCreateAction` each take their gate from the screen that knows it, which
+is the spec's *the primitive decides nothing*. The two component names above are the pre-conversion
+ones; the argument is unchanged.
 
 Converting those four means changing the shared navigation component, four frames and the
 `--navbar-action` geometry `.pb-navbar`, `.pb-navbar-action` and `.pb-navbar-action-extra` all derive
