@@ -131,6 +131,40 @@ These are constraints, not to-dos. Each one changes what marketing is even possi
    nothing, with no alert. **Any campaign against a paused project converts to a blank
    screen.** `docs/reference/native-shell.md` §Store readiness has this as row 6, owner-only.
 
+## Launch market — one country, not two
+
+The owner's initial vision names **the Netherlands or Portugal**, scaling from there. Two
+things follow, and the first is the more important.
+
+**Pick one.** Geography is the whole product: a rider opens the app to find *people near them*,
+and a club with three members in the wrong country is worth nothing. Splitting a launch across
+two countries halves the density in each and doubles the localisation work, and density is the
+thing being tested. Which one is the owner's call and is not a question this file can answer
+**[unvalidated]** — nothing here has rider counts for either market. The one piece of evidence
+in the repo points at the Netherlands: `APP_TIME_ZONE` in `src/lib/utils.ts` is already
+`Europe/Amsterdam`.
+
+**Localise the LISTING before localising the APP.** Both stores let the name, subtitle,
+keywords and description differ per storefront, and the app itself does not have to change for
+that to work — this is the largest ASO lever available and it costs nothing but the words.
+Three mechanics worth knowing before anyone writes them:
+
+- **`pt-PT` and `pt-BR` are separate storefront locales**, and Portugal is not Brazil. The
+  everyday word for the machine is `mota` in Portugal and `moto` in Brazil. Writing the listing
+  in Brazilian Portuguese for a Portuguese launch is the most likely single mistake here.
+- **Dutch: `motor` means motorcycle**, not engine, in ordinary speech — so the searched terms
+  are `motor`, `motorrijden`, `motorrijders`, `motorclub`.
+- **Do not let a model write the final localised strings.** These are the words riders type,
+  and a plausible translation that no rider uses is invisible until the listing underperforms
+  with no way to tell why. The mechanism above is a store fact; every specific word in it is
+  **[unvalidated]** and wants one native rider's eye before it ships.
+
+**This raises i18n, which `CLAUDE.md` lists as deliberately undecided.** A localised listing
+that lands a Dutch rider in an English-only app is a conversion question rather than a bug, and
+the app is more English than it looks: `grep -n "en-US" src/lib/utils.ts` finds the locale
+hardcoded at four `Intl` call sites. That is a decision to take deliberately before a launch,
+not a task to slip into a copy change.
+
 ## The name, and the slogan
 
 **The product is `LetsRide`, one word.** Already fixed by things that are expensive to move:
@@ -150,12 +184,19 @@ are the same app.
 ### The character caps are the whole design problem
 
 The store fields are short in a way that is not obvious until copy is measured against them.
-**Measure, do not estimate** — `wc -m` counts characters, `wc -c` counts bytes and will lie
-the moment an apostrophe becomes a typographic one:
+**Measure, do not estimate — and set the locale, because the obvious command is wrong here:**
 
 ```bash
-printf '%s' "Ride together, share the story" | wc -m    # 30
+printf '%s' "Share your story—ride together" | LC_ALL=C.UTF-8 wc -m   # 30 — correct
+printf '%s' "Share your story—ride together" | wc -m                  # 32 — wrong
 ```
+
+`wc -m` counts *characters* only under a UTF-8 locale. This container has `LANG` and `LC_ALL`
+unset, so it falls back to counting bytes and an em-dash reads as three. `wc -c` is always
+bytes. A pure-ASCII candidate is unaffected — which is the trap, because every count in the
+tables below was ASCII and right, and the first candidate with a typographic character in it
+was silently over by two. **`LC_ALL=C.UTF-8 wc -m`, or `python3 -c "print(len(…))"`.** The
+characters that trigger it are exactly the ones a copy pass introduces: `—`, `–`, `’`, `…`.
 
 | Field | Cap | Notes |
 |---|---|---|
@@ -188,9 +229,20 @@ The product owner's line is **"Share your story, ride together"**. Two findings:
 
 | Field | Proposed | Chars |
 |---|---|---|
-| Name | `LetsRide: Motorcycle Rides` | 26 |
-| Subtitle | `Ride together, share the story` | 30 |
+| Name | `LetsRide: Motorcycle Community` | 30 |
+| Subtitle | `Share your story—ride together` | 30 |
 | Play short description | `Plan motorcycle rides, join a club, and share the photos from the road.` | 71 |
+
+**On `Community` rather than `Clubs`.** `LetsRide: Motorcycle Clubs` is 26 and describes the
+product more exactly — there is a Clubs tab and clubs are the social graph. It is still the
+second choice, because in English *"motorcycle club"* carries the outlaw-MC association, which
+is not the product and not the audience. **[unvalidated]** as a measured effect on installs;
+the connotation itself is not in doubt, and `Community` costs nothing to prefer. It does spend
+all 30 characters, so it leaves no room for a later word.
+
+**On the apostrophe.** `Let's Ride: Motorcycle Community` is 32 and over the cap either way,
+but the real reason not to use it is that the brand is already `LetsRide` in the places that are
+expensive to change — the domain, the OG `siteName`, the icon. Two spellings is two brands.
 
 The reason the name changes shape: **the word "motorcycle" appears nowhere in "LetsRide" or
 "Ride Together"**. That absence is a fact about two strings. **Everything drawn from it is
@@ -202,12 +254,16 @@ results after a submission.
 
 Alternatives, all within cap, if the owner prefers a different emphasis:
 
-| Subtitle | Chars | Leads with |
+| Subtitle | Chars | Note |
 |---|---|---|
-| `Ride together, share the story` | 30 | Both — the recommendation |
-| `Find your crew. Ride together.` | 30 | The lonely rider (state 1) |
-| `Plan rides, join clubs, share` | 29 | The mechanics |
+| `Share your story—ride together` | 30 | **The recommendation.** Every word the owner chose, kept. The comma-and-space becomes an em-dash with no spaces, and that punctuation swap is the whole of where the missing character comes from |
+| `Share the story, ride together` | 30 | Keeps the comma; `the` for `your` |
+| `Ride together, share the story` | 30 | Leads with the promise rather than the loop |
+| `Find your crew. Ride together.` | 30 | Aimed squarely at state 1 |
 | `Where riders find their crew` | 28 | The place, not the action |
+
+`Share your story, ride together` as written is **31** — one over — and reversing it does not
+help, because `Ride together, share your story` is also 31.
 
 ### Description — the first three lines
 

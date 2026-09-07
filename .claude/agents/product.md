@@ -48,13 +48,17 @@ Store fields are short and the caps are unforgiving — a subtitle one character
 rejected at upload, not at review. **Count every candidate:**
 
 ```bash
-printf '%s' "Ride together, share the story" | wc -m    # 30 — exactly the App Store cap
+printf '%s' "Share your story—ride together" | LC_ALL=C.UTF-8 wc -m   # 30 — on the cap
+printf '%s' "Share your story—ride together" | wc -m                  # 32 — wrong
 ```
 
-`wc -m` counts characters. `wc -c` counts bytes and will be wrong the moment a straight
-apostrophe becomes a typographic one, or an em-dash appears — which is exactly the edit a
-copy pass makes. The caps themselves are in `docs/reference/positioning.md`; they move, so
-verify against App Store Connect and the Play Console before a submission.
+**Set the locale.** `wc -m` counts characters only under a UTF-8 one, and this container has
+`LANG` and `LC_ALL` unset, so it falls back to bytes and an em-dash reads as three. `wc -c` is
+always bytes. Pure ASCII is unaffected, which is what makes it dangerous: a table of ASCII
+candidates measures correctly and the first line carrying `—`, `–`, `’` or `…` is silently
+over. Those are exactly the characters a copy pass introduces. The caps themselves are in
+`docs/reference/positioning.md`; they move, so verify against App Store Connect and the Play
+Console — you hold `WebFetch` for that.
 
 ## What you own, and what you hand off
 
@@ -109,6 +113,10 @@ channel or campaign, because each one removes options that work for a normal soc
   threads are `108`, applied to DEV only — so say which environment a claim describes.
 - **Reporting is not uniform.** Postcards and club threads have a report path; a ride thread
   does not. Never write "report any post": Guideline 1.2 is the one that checks.
+- **The launch market is the Netherlands or Portugal, one of them, not both** — density is the
+  product. Localise the *listing* per storefront before localising the app, mind that `pt-PT`
+  is not `pt-BR`, and never ship a localised string a model wrote without a native rider
+  reading it. `docs/reference/positioning.md` §Launch market has the mechanics.
 
 ## How to hand work back
 
