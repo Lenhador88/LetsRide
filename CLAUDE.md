@@ -299,8 +299,9 @@ rather than claiming it**: `npm run db:drift` compares migration *names*.
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
-against both refs, against `ls supabase/migrations/*.sql | wc -l`; DEV also records three
-hand-applied rows with no file.
+against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV records FOUR rows with no
+file and PROD none** — three long-standing hand-applied ones, plus `home_country` (`113`, PD-428),
+which is in flight on an open PR rather than drift: the file lands with that merge.
 
 **The sequencing rule: additive first, deploy, destructive last — and "additive, so the order does
 not matter" is wrong in both directions.** Ask which side fails safe:

@@ -330,14 +330,31 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 ## Applied state — the per-project log
 
 **Both projects are at `112` against 112 files, measured 2026-09-07; DEV also carries `113`,
-applied migration-first ahead of PR #428.** DEV's row count reads three high (hand-applied rows with
-no file), which is not a gap.
+applied migration-first ahead of PR #428.** DEV's row count therefore reads **four** high — three
+hand-applied rows with no file, plus `113` — and **PROD's is exact**, which is the direction that
+matters: nothing is applied there without a file behind it. Neither is a gap.
 
 **`108`–`112` promoted to PROD on 2026-09-07 with #431**, in the split the files asked for: `108`,
 `110`, `111` and `112` between 13:58:29Z and 14:00:14Z, **before** the promotion merge (14:05:57Z),
-and `109` — the destructive half, `retire_ride_chat` — at 14:07:52Z, **after** it. The `READY`
-reading that gated `109` is not recorded in the repo by the session that ran it; `list_migrations`
-is the source for the times above.
+and `109` — the destructive half, `retire_ride_chat` — at 14:07:52Z, **after** it. `list_migrations`
+is the source for those times.
+
+**The `READY` reading that gated `109`, recorded here because that is the whole point of the
+gate:** deployment `dpl_AK1A4JmFCWLorqreBh4BQRr83Rgd`, `githubCommitSha`
+`0dc0264bda3bab875250a5646446940849f72ee2` — the merge sha — `target: production`, `state: READY`
+at 14:06:49Z, `aliasError: null`, aliased to `app.letsride.social`. The deployment record is the
+gate `CLAUDE.md` §Supabase Rules defines, and it was confirmed by a real request rather than left
+at the record: `https://app.letsride.social/auth/login` answered **200** with the app's own HTML.
+**That request cannot be made with `curl` from a session container** — the agent proxy answers the
+CONNECT with `403` for both app hosts, so `curl` reports `000` and a session reading that as an
+outage is measuring the proxy. The Vercel MCP's `web_fetch_vercel_url` goes around it.
+
+**`108` was applied REDUCED and proved by object diff** (§Applying a large file — 77,731 bytes
+against 19,232 of executable statements), so its recorded text does not equal `md5sum` of the file
+on PROD either. Ten `md5` hashes compared against DEV, which already held all four: `pg_get_functiondef`
+over nine functions, the policies, columns, indexes, triggers, table grants, column grants,
+function ACLs, and both the function and table comment sets. **All ten identical.** `109`–`112`
+were applied reduced too and are covered by the same hashes.
 
 **`112_the_reaper_watches_every_child` (PD-399 + PD-408), applied to DEV 2026-09-06T15:5xZ.**
 Additive and **nothing to sequence against**: it touches no file under `src/`, adds no column,
