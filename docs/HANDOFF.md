@@ -191,6 +191,100 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## A thread has one entrance now, and the map tiles render again — 2026-09-07
+
+**PD-426 + PD-385, one branch, taken into `slot-1`.** Grouped as the two buildable High
+candidates: both live in the rides surface and both wanted the same relay + dev-server + Chromium
+setup. Neither carries a migration. **PD-385 is delivered in PART and stays open** — see below.
+
+**Four other queued stories read as already delivered and were NOT taken** — PD-410, PD-390,
+PD-344 and PD-376 were all moved back into `Queued (AI)` by hand on the morning of 2026-09-07
+having previously reached `Deployed to DEV`. PD-410's premise was checked against the code and is
+spent (`checkJoinClub` already presses `Join club`/`Post`, PD-418-aware). They were left in the
+queue rather than moved, because a re-queue by hand is a signal from the owner and a session
+guessing at its meaning is worse than one asking.
+
+**PD-426 — the index route was a DESTINATION, which is the half the ask does not name.** Deleting
+`clubs/detail/threads` and `rides/detail/threads` meant repointing every back-href, both
+post-delete redirects, `clubThreadReturnTo`'s unanchored fallback and the retired-chat redirects.
+That last one is the trap worth carrying: `next.config.ts` sent `/rides/detail/chat` to
+`/rides/detail/threads`, and that entry had *already* been lifted out of `LEGACY_DETAIL_REDIRECTS`
+once because its destination got deleted underneath it. It would have happened again with nothing
+red — and `scripts/native/export-guards.mjs` mirrors those redirects for the static export, so it
+had to move in the same commit or the two would disagree.
+
+**Five things a later session should not re-derive:**
+
+- **The unread dot moved rather than going with the button, and that was mandatory.** It lived
+  ONLY on `RideThreadsButton` and `RideThreadsRow`; deleting both would have taken ride-thread
+  unread indication out of the app entirely. It is now on `RideTimelineThreadRow`, per thread,
+  fed by the same `rides.threadsUnread` key. **The club needed nothing** — `ClubTimeline` already
+  reads that key and its row already draws the dot, which is why removing `ClubOptionsMenu`'s
+  aggregate mark loses nothing.
+- **PD-125 is not reopened, and both docstrings that argued from it now say so.** It measured that
+  an entrance BURIED under a growing stream cannot be found. The threads are rows *in* the stream
+  now rather than a link out of it, so there is no entrance left to bury. Expect "restore the
+  Threads row, PD-125 says so" as the reversal; it would add a third route to what the screen
+  already shows.
+- **`RideHeader` lost `current: 'threads'`, `isCrew` and `ridersCount` together.** The deleted
+  index was the only passer of `current="threads"`, which made the sub-row branch, the crew count
+  and the `action` slot all unreachable. `ridersCount` had *already* had no passer before this
+  change — dead code the deletion merely made visible.
+- **The walk discovered thread ids by scraping the two index pages.** It reads them off the detail
+  timelines instead. `firstDetailId` matches the pathname EXACTLY (`u.pathname === p`), so the
+  surviving `/detail/threads/new` cannot be mistaken for a thread id — worth knowing before
+  anyone "tidies" that comparison into a prefix match.
+- **`RideTimelineThreadRow.test.tsx`'s first draft was worthless and the mutation check caught
+  it.** It asserted the unread and read markups DIFFER and that the unread one is longer — both
+  true with the dot deleted, because the `aria-label` differs on its own. It now matches
+  `bg-danger`, the one token nothing else in that row carries. **Measured, not reasoned**: the
+  original passed against a row drawing no dot at all.
+
+**PD-385 — the deployed function works; the backfill is the part that does not fit in a session.**
+`resolve-ride-location` was ten days stale and returning `nothing_to_write`; the 2026-09-06
+catch-up dispatch fixed that, and this session VERIFIED it rather than assuming: invoked against
+two blind rides with a real rider's JWT, both answered `{"rendered":true}` and both path columns
+filled. Blind-in-window went **7 → 5** (11 → 9 overall).
+
+**The remaining five cannot be re-rendered by any session, and the reason is structural rather
+than a missing credential.** `index.ts` step 2 answers **404 unless `ride.organizer_id ===
+subject.id`** — the function renders a ride only for its own organizer. Three of the five are the
+owner's own rides (`pedro889`); two belong to test riders whose passwords were generated at mint
+time and never recorded. **The ledger is not the obstacle** and reading it as one wastes a
+session: `ride_map_render_attempts` allows **10 renders per window** (`private.ride_map_renders_in_window(ride_id) < 10`)
+and each of these has spent **1**.
+
+```sql
+-- the story's own query; 5 in-window, 9 overall as of 2026-09-07
+select count(*) filter (where created_at >= '2026-08-27 14:41:00+00') as blind_in_window,
+       count(*) as blind_all
+  from public.rides where latitude is not null and map_card_path is null;
+```
+
+**What the owner can do in two minutes**: open each of their three rides' edit form on DEV and
+save — `requestRideMapRender` fires on `updateRide` (`src/lib/actions/rides.ts:688`) as well as on
+create (`:279`), so a save with no change re-renders the tile. **The four rides that predate
+2026-08-27T14:41 are a different end state** ("geocoded, render failed", 0 attempts) and the story
+says explicitly not to sweep them in.
+
+**The creation path itself is READ rather than measured, and is labelled as such.**
+`requestRideMapRender` is called from `createRide` and `updateRide`, and the function is proven to
+render when invoked — but no ride was created through the app this session (the walk reused the
+owned fixture rather than provisioning one), so *creation invokes it* rests on the two call sites
+rather than on a run.
+
+```bash
+git grep -n "requestRideMapRender(" -- src/lib/actions/rides.ts     # 3 — the definition and both callers
+git grep -n "clubThreads\|rideThreads\|RideThreadsRow\|RideThreadsButton" -- src/ scripts/ \
+  | grep -vE ':[0-9]+:\s*(\*|//|/\*)'                                # 1, and it is a comment continuation
+npx vitest run src/components/rides/__tests__/RideTimelineThreadRow.test.tsx   # 3/3
+```
+
+**A `Walk fixture thread` was left on `Walk fixture ride` (DEV) deliberately.** `ride_threads` was
+EMPTY across the whole project, so `/rides/detail/thread` had never once been walked — the skip
+notice was honest and permanent. With one row there the route walks, which is what proved the new
+discovery works. Do not clean it up; it is a fixture like the club's.
+
 ## Joining stopped demanding an introduction, and the app asks where the rider is — 2026-09-07
 
 **PD-418 + PD-419, one branch, taken into `slot-1`.** Not a path collision — grouped as the two

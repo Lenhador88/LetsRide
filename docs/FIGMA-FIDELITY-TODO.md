@@ -986,6 +986,35 @@ measurement as current.
         way. It is a **different class of departure** and it is logged separately, in
         **§Club detail, which is ABOVE this section** in this file; do not read this entry as
         covering it.
+  - [ ] **The header's chat icon is DELETED and `2375:9114` still draws it — PD-426, 2026-09-06.**
+        That frame puts a chat glyph, with a 16×16 `Warning/100` notification dot, in the ride
+        header's `action` slot (x342). It is not built. Owner: *"I still see a chat icon on the
+        header of ride detail page, we are moving to threads, so that can be dropped."*
+
+        **This is a SUBTRACTION from a drawn frame, which is the class the two bullets above are
+        not** — those add a control the frames do not draw. It is nonetheless the least
+        contentious deletion in this section, because the app's own measurement already said the
+        icon lost: `RideHeader`'s docstring recorded *"in practice nobody found the icon"*, which
+        is why a labelled `Threads` row was added to the ride plan beside it (PD-254, from
+        PD-125's finding).
+
+        **The labelled row goes too, and for the opposite reason.** It was not undiscoverable —
+        it pointed at `/rides/detail/threads`, the thread INDEX, which this change deletes on both
+        rides and clubs so that a conversation has one entrance and it is the timeline. So the
+        frame loses one control that failed and one that worked; what replaces both is the thread
+        rows the timeline already renders.
+
+        **PD-125 is not reopened, and this is the check worth making before restoring anything
+        here.** Its finding was that an entrance BURIED under a growing stream cannot be found.
+        The threads are now rows *in* that stream rather than a link out of it, so there is no
+        entrance left to bury. Restoring the icon would put back a third route to what the screen
+        already shows.
+
+        **The unread dot the frame draws on that icon survives, moved rather than dropped** — it
+        is on `RideTimelineThreadRow` now, per thread instead of aggregate, matching
+        `ClubTimelineThreadRow`. A designer reading `2375:9114` should treat the dot as
+        **relocated**, not deleted: the app still marks unread ride threads, at finer grain than
+        the frame asks for.
   - [ ] **The stream does not page, and the club's does.** Both sources are read whole at their
         own bounds; a ride that overruns them is cut at the horizon and says so, handing off to
         the crew list. See `src/lib/data/ride-timeline.ts` for why a bounded event does not
