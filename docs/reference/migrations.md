@@ -331,7 +331,7 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 **`list_migrations` prints 116 rows on DEV and 112 on PROD against 112 files, measured
 2026-09-07. PROD is now EXACTLY the file set, and the DEV surplus is not a gap.** `108`
-through `112` **promoted to PROD on 2026-09-07** between 13:58:29Z and 14:08:1xZ, closing the gap
+through `112` **promoted to PROD on 2026-09-07** between 13:58:29Z and 14:07:52Z, closing the gap
 this heading described for a day. **There is no open promotion gap.**
 
 **The three-way check is what says so, and it runs in both directions** — files against each

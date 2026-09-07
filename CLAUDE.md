@@ -468,10 +468,12 @@ decision; that gate is in its own §Verification.
 **The per-file ordering for both promotions is in `docs/reference/migrations.md` §Applied state**,
 not here — a finished promotion is a log entry rather than a rule. What generalises from it is the paragraph below.
 Count rather than trust it: `list_migrations` against both refs,
-against `ls supabase/migrations/*.sql | wc -l`. DEV also records three hand-applied rows with no
-file, so its row count reads high; every file IS applied, which is the direction that matters.
-**`109` was the one file deliberately applied nowhere for the length of a deploy** — it is applied
-now; the paragraph above has the gate it waited on.
+against `ls supabase/migrations/*.sql | wc -l`. **DEV records FOUR rows with no file and PROD
+none**, so DEV's row count reads high and PROD's is exact; every file IS applied to both, which is
+the direction that matters. Three of the four are long-standing hand-applied rows; the fourth is
+`home_country` (`113`, PD-428), which is **in flight on an open PR** rather than drift — the file
+lands with that merge. `docs/reference/migrations.md` §Applied state names all four and carries the
+three-way check.
 
 **A gap's files rarely agree about which side of the deploy they want**, and `101`–`107` is the
 worked example: `105`/`106` had to be migration-first (the promoted bundle CALLS their two
@@ -543,9 +545,8 @@ section's last line describes rather than drift. **`111` (PD-361) adds exactly o
 and `push_devices` already hold. It adds no WARN because it creates no function in `public` —
 it creates exactly ONE function and that one lives in `private`
 (`clear_club_removal_on_join`); its other two — `club_invite_link_reachable_by` and
-`remove_club_member` — are `create or replace` of `093`'s and `088`'s and were already there. Both projects read **39** before it, measured 2026-09-06 after the `101`–`107`
-promotion, so the older two-advisor gap this line used to attribute to `105` is closed and this is
-a new one with the same shape. `108` adds exactly two, one per `security definer` RPC it publishes
+`remove_club_member` — are `create or replace` of `093`'s and `088`'s and were already there.
+`108` adds exactly two, one per `security definer` RPC it publishes
 in `public` — `delete_own_ride_thread_message` and `moderate_ride_thread`; its third function,
 `ride_thread_unread`, is `security invoker` and adds none, which is measured against
 `public.club_thread_unread` (`prosecdef = false`) rather than assumed. **`109` removes none**:
