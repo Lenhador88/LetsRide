@@ -547,11 +547,24 @@ export async function updateRide(
   // recover on its own, and the same outage on PROD would have been permanent.
   //
   // **A COORDINATE with a tile missing is exactly "the render failed", never
-  // "we correctly declined to draw".** Every declining branch — blank meeting
-  // point, `geocode_unavailable`, the granularity gate — returns `noTile`
-  // *before* the coordinate is written, so a vague meeting point keeps a NULL
-  // coordinate and is not retried here. That is what keeps this from spending a
-  // geocode on every save of a ride the gates have already judged.
+  // "we correctly declined to draw" — and that needs TWO arguments, because a
+  // geocoded ride and a picked one get their coordinate from different
+  // places.** Seven of the nine blind DEV rides are picked, so an argument
+  // covering only the geocoded half would leave the majority unjustified:
+  //
+  //   * **Geocoded.** Every declining branch returns `noTile` *before* the
+  //     coordinate write — `blank_meeting_point`, `left_the_club`,
+  //     `render_ceiling`, `geocode_unavailable`, and the granularity verdict.
+  //     So a vague meeting point keeps a NULL latitude and is never retried.
+  //   * **Picked.** The coordinate was written by `createRide`/`updateRide`
+  //     from the rider's own pick and never by the function, so the branch
+  //     above says nothing about it. What holds instead is that a picked ride
+  //     SKIPS the gates entirely (`resolvePickedCoordinate`, step 6) — it has
+  //     no "correctly declined to draw" end state to be confused with.
+  //
+  // Keep both. A future declining branch added to the picked path would look
+  // safe under the first argument alone, and would then be retried on every
+  // save for ever.
   //
   // **EITHER path, not both — `051`'s constraint permits the half state and
   // says so.** `rides_map_paths_need_a_coordinate` deliberately "permits one
@@ -725,16 +738,34 @@ export async function updateRide(
   // paths, so gating the re-render on the text alone left the ride with no map
   // and no route back to one short of editing the address into something
   // different.
-  // `tilesIncomplete` joins the three location triggers rather than getting its
-  // own arm, because the work is identical: sweep whatever objects the row still
-  // names — `removeRideMapTiles` takes nulls, and in the repair case there is
-  // usually nothing to sweep — then ask for a fresh pair. The one difference is
-  // invisible from here: `clear_ride_map_tiles` has not fired on this path, so
-  // the coordinate the render draws from is the one already stored.
-  if (addressChanged || pickCleared || pickChanged || tilesIncomplete) {
+  if (addressChanged || pickCleared || pickChanged) {
     await removeRideMapTiles(supabase, [previous!.map_card_path, previous!.map_detail_path])
     // Unconditional, for `createRide`'s reason and with the same warning
     // against reintroducing a pick guard. See the note there.
+    requestRideMapRender(supabase, rideId)
+  } else if (tilesIncomplete) {
+    // **A separate arm, and NO sweep — which is the whole difference and is not
+    // an omission.** Folding this into the block above reads as tidier and is
+    // wrong: on a location change `clear_ride_map_tiles` has already NULLed both
+    // path columns, so the objects are unreachable and deleting them is the only
+    // way they ever get collected. Here nothing has NULLed anything. The row
+    // still NAMES whatever tile it has, that tile is on screen right now, and a
+    // sweep would delete it — after which the render is free to not store
+    // (`render_ceiling`, a vendor blip, `nothing_to_write`) and leave the
+    // columns pointing at objects that no longer exist, permanently.
+    //
+    // `resolve-ride-location` makes the same call at its own step 8: it deletes
+    // the superseded pair only `bothStored ? … : []`, never before it knows the
+    // replacement landed. This action cannot make that test — the render is
+    // fire-and-forget by design — so it must not delete at all.
+    //
+    // **The accepted cost is one orphaned object**, in the half state only:
+    // a successful re-render writes two fresh names over the surviving one, and
+    // nothing then knows the old name. That is a storage leak nobody sees, set
+    // against a rider losing a tile they already had. Since PD-202 the function
+    // produces no half states — measured on DEV 2026-09-07, 0 of 28 rides have
+    // one path set and the other NULL — so the leak needs a pre-PD-202 row to
+    // become reachable at all.
     requestRideMapRender(supabase, rideId)
   }
 

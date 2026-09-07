@@ -3,49 +3,46 @@
  * map tiles, and stores them against the ride.
  *
  * ===========================================================================
- * THE DEPLOYED BUILD IS CURRENT. Re-measure before trusting that.
+ * IS THE DEPLOYED BUILD CURRENT? Run the commands. Do not read a number here.
  * ===========================================================================
- * Measured 2026-09-07 (PD-385) — `ACTIVE` on both projects, `verify_jwt` true,
- * v7 on DEV and v6 on PROD, `ezbr_sha256` `3a88a35e…` on each. Equality across
- * the two says they AGREE; it does not say either is current. Currency is the
- * deploy's `updated_at` against this directory's last commit, and both numbers
- * move without the other:
+ * **No version, sha or date is transcribed into this block, deliberately.**
+ * `deploy-functions.yml` redeploys on any push to `development` touching
+ * `supabase/functions/**` — comments included — so a commit that writes today's
+ * reading here is a commit that changes it. The last transcribed reading sat
+ * ten days out of date and asserted the exact opposite of the truth.
+ *
+ * Two different questions, and only the second is currency:
  *
  *   mcp__Supabase__list_edge_functions zwprydcyryvudhurbnye   # PROD
  *   mcp__Supabase__list_edge_functions fpmrimzxadewsaiwpsel   # DEV
+ *   # equal `ezbr_sha256` says the two projects AGREE — never that either is current
  *
  *   TZ=UTC git log -1 --format=%cd --date=iso-strict-local -- \
  *     supabase/functions/resolve-ride-location/
- *   # newer than the deploy's updated_at means the deployed build is stale
+ *   # newer than the deploy's `updated_at` means the deployed build is stale
  *
- * Today that reads `2026-08-27T15:36Z` (`b343d6d`) against a deploy of
- * `2026-09-06T22:19Z` — the deploy is the newer of the two, so PD-114's
- * picked-ride branch and PD-236's lowercase-hex `MARKER_STYLE` are both live.
- * **This block asserted the opposite until 2026-09-07 and was ten days out of
- * date when PD-385 measured it.**
- *
- * **What ten days of staleness cost, because it is the argument for re-taking
- * the reading rather than trusting this line.** `b343d6d` fixed
- * `MARKER_STYLE` to lowercase hex on 2026-08-27; uppercase hex is a hard 400
- * at the tile vendor, and step 7's both-or-neither rule turns that into
- * `nothing_to_write`. Until the 09-06 catch-up deploy every render on DEV
- * failed silently — 5 rides left carrying a coordinate and no tile, with no
- * error, no red gate and, until PD-385, no route back. Deploying is an OWNER
- * action: no `supabase` CLI in the build container, and `deploy_edge_function`
- * is on `.claude/settings.json`'s deny list. Same blocker as `delete-account`
+ * **The second command reads "stale" for a while after every merge that touches
+ * this directory, and that is the check working rather than failing** — the
+ * deploy job runs after the merge, so the commit lands first. Read the `deploy`
+ * JOB's conclusion, never the run's: without the token the job skips and the
+ * run is still green, which is the shape that produced the ten-day outage.
+ * PD-437 is the missing tripwire. Deploying by hand is an OWNER action: no
+ * `supabase` CLI in the build container, and `deploy_edge_function` is on
+ * `.claude/settings.json`'s deny list — same blocker as `delete-account`
  * and PD-86.
  *
  * **`*.geoapify.com` is still egress-blocked from the build container**, so no
  * session can issue a request from here — `WebFetch` returns `EGRESS_BLOCKED`
  * and so does a bare `curl` through the agent proxy. The DEPLOYED function can,
- * and that is the only route a session has to the vendor: PD-385 exercised it
- * by creating a ride on DEV as a walk fixture and invoking this function with
- * that rider's own JWT, which is repeatable and needs no secret. Both branches
- * answered `{"rendered":true}` and filled both path columns — a typed
- * meeting point (geocoded, coordinate and `Europe/Amsterdam` written back) and
- * a picked one (rendered from the stored coordinate). `scaleFactor` is measured
- * (`PD-236`); the `result_type` vocabulary is still an assumption. **Do not
- * read "the tests pass" as "the vendor agrees."**
+ * and that is the only route a session has to the vendor. **The repeatable
+ * exercise, which needs no secret** (PD-385): create a ride on DEV as a walk
+ * fixture (`docs/HANDOFF.md` §Test accounts), POST `{"rideId":…}` to
+ * `/functions/v1/resolve-ride-location` with that rider's own access token, read
+ * the path columns back, delete the ride. Run it for a typed meeting point AND
+ * for one carrying `start_place_id`; they take different branches at step 6 and
+ * only the second covers PD-114. `scaleFactor` is measured (`PD-236`); the
+ * `result_type` vocabulary is still an assumption. **Do not read "the tests
+ * pass" as "the vendor agrees."**
  *
  * Task 8.4 is still open on the parts a ledger row cannot answer: that an edit
  * clears then replaces the tiles, that a non-organizer's call is refused, and

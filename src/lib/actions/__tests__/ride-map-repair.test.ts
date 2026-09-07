@@ -157,15 +157,26 @@ describe('a failed render gets asked for again', () => {
     expect(rendered()).toBe(1)
   })
 
-  it('sweeps the surviving object before re-rendering the pair', async () => {
-    // The half state's other half. A fresh render writes two new names, so the
-    // survivor is orphaned unless it is removed here — nothing else ever knows
-    // its name again once the columns are overwritten.
+  it('does NOT sweep the surviving object, and that is the point of the separate arm', async () => {
+    // **The tempting simplification is to fold this into the location-change
+    // block, and it deletes a live tile.** There, `clear_ride_map_tiles` has
+    // already NULLed both columns, so the objects are unreachable and the sweep
+    // is the only thing that collects them. Here nothing has NULLed anything:
+    // the row still names its surviving tile, that tile is on screen, and the
+    // re-render is fire-and-forget — so a sweep followed by a render that does
+    // not store (`render_ceiling`, a vendor blip, `nothing_to_write`) leaves the
+    // columns pointing at deleted objects, permanently.
+    //
+    // `resolve-ride-location`'s own step 8 deletes the superseded pair only
+    // `bothStored ? … : []`. This action cannot make that test, so it must not
+    // delete. The accepted cost is one orphan in the half state; the cost of the
+    // other choice is a rider losing a tile they already had.
     withStoredShape(stored({ latitude: 52.3731162, map_card_path: CARD }))
 
     await updateRide(RIDE_ID, emptyActionState, payload())
 
-    expect(remove).toHaveBeenCalledWith([CARD])
+    expect(remove).not.toHaveBeenCalled()
+    expect(rendered()).toBe(1)
   })
 })
 
