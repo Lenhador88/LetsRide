@@ -40,14 +40,26 @@ import { cn } from '@/lib/utils'
  * That is what makes it safe to merge ahead of the sender — `registration.ts`'s
  * header has the full ordering argument.
  *
- * ## `stalled` is a diagnosis, not an offer
+ * ## `stalled` is a diagnosis, not an offer — and it does not name a cause
  *
- * Permission granted, registration requested, no token. It means the build is
- * misprovisioned — no `aps-environment` entitlement, a bundle id that does not
- * match the profile, a missing `google-services.json` — and it is the state
- * that would otherwise be invisible, because the rider granted permission and
- * everything looks correct. The row says so plainly rather than offering a
- * button, since nothing a rider can do fixes it.
+ * Permission granted, and no usable registration. **Two different things reach
+ * it**, which is why the copy says what is true of both rather than what is
+ * true of one:
+ *
+ * - the build is misprovisioned — no `aps-environment` entitlement, a bundle id
+ *   that does not match the profile, a missing `google-services.json` — so the
+ *   provider never answers at all;
+ * - or the provider answered and `register_push_device` refused the write, most
+ *   often because the rider is on a bad connection.
+ *
+ * Nothing here can tell them apart, and the second is far more common, so copy
+ * blaming the app would be wrong most of the times it is shown. What they share
+ * is that it is not the rider's settings and that it retries by itself. The row
+ * offers no button because nothing a rider can do fixes either one.
+ *
+ * The state earns its place because it is otherwise invisible: the rider
+ * granted permission, every screen looks correct, and no notification will ever
+ * arrive.
  */
 export function PushPrimingRow({ className }: { className?: string }) {
   const [permission, setPermission] = useState<PushPermission | undefined>(undefined)
@@ -135,15 +147,7 @@ export function PushPrimingRow({ className }: { className?: string }) {
   if (state === 'stalled') {
     return (
       <div className={cn('px-4 py-2', className)}>
-        {/* **The copy does not name a cause, and that is deliberate.** An
-            earlier version said "a problem with the app rather than with your
-            settings", which is right for a misprovisioned build and wrong for
-            the far more common case this state also covers: the registration
-            write failing because the rider is in a tunnel. Both leave the
-            device unregistered, nothing here can tell them apart, and telling
-            a rider on a bad connection that the app is broken is the worse
-            error. What is true of both is that it is not their settings and
-            it retries by itself. */}
+        {/* Names no cause — see the header's `stalled` section for why. */}
         <p className="text-sm font-medium text-muted">
           Notifications are allowed, but this device is not registered for them yet. Nothing to fix
           on your side — it will try again next time you open the app.

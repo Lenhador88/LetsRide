@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -38,34 +38,70 @@ const ROOT = path.resolve(__dirname, '../../../..')
  * the RAISE lives here instead, as an assertion rather than a comment. It
  * reads the migration off disk and checks the two ends still agree.
  *
- * A future migration that rewords or moves that RAISE turns an ordinary
- * mid-onboarding rider into a thrown error. **This test is what makes that a
- * red suite rather than a silent behaviour change**, and the fix when it goes
- * red is to update `registration.ts`'s pattern to match the new wording — not
- * to relax this assertion.
+ * **It resolves which migration to read rather than naming `078`**, and that is
+ * the whole of its reach: because `078` is frozen, the only legal way the
+ * wording changes is a LATER migration `create or replace`-ing the function, and
+ * a test pinned to `078` is blind to exactly that. See `currentGateMigration()`.
+ *
+ * A migration that rewords or moves that RAISE turns an ordinary mid-onboarding
+ * rider into a thrown error, which `PushPrimingRow` then draws as `stalled`.
+ * **This test is what makes that a red suite rather than a silent behaviour
+ * change**, and the fix when it goes red is to update `registration.ts`'s
+ * pattern to match the new wording — not to relax this assertion.
  */
 
-const MIGRATION = path.join('supabase', 'migrations', '078_push_devices.sql')
 const CLIENT = path.join('src', 'lib', 'push', 'registration.ts')
 
 function read(rel: string): string {
   return readFileSync(path.join(ROOT, rel), 'utf8')
 }
 
+/**
+ * **The LAST migration that defines `register_push_device`, resolved rather
+ * than hard-coded.**
+ *
+ * The first version of this test named `078_push_devices.sql` directly, which
+ * makes it blind to the only legal way that RAISE can ever change. `078` is
+ * immutable, so nobody edits it — a reword arrives as a later migration
+ * `create or replace`-ing the function. Against a hard-coded `078` the suite
+ * would stay green while `registration.ts`'s `/onboarding/i` silently stopped
+ * matching, which is the exact failure this file claims to turn red.
+ *
+ * Filename order is apply order (`CLAUDE.md` §Supabase Rules), so the last
+ * match wins — the same rule Postgres itself follows through `run.sh`.
+ */
+function currentGateMigration(): { rel: string; sql: string } {
+  const dir = path.join(ROOT, 'supabase', 'migrations')
+  const defining = readdirSync(dir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .filter((f) =>
+      /create\s+or\s+replace\s+function\s+public\.register_push_device/i.test(
+        readFileSync(path.join(dir, f), 'utf8'),
+      ),
+    )
+
+  expect(defining, 'no migration defines register_push_device any more').not.toEqual([])
+
+  const rel = path.join('supabase', 'migrations', defining[defining.length - 1])
+  return { rel, sql: read(rel) }
+}
+
 /** The discriminator, kept in one place so both assertions below use the same one. */
 const DISCRIMINATOR = /onboarding/i
 
 describe("the gate's message and the client's discriminator agree", () => {
-  it('078 still raises a check_violation whose message the client would match', () => {
-    const sql = read(MIGRATION)
+  it('the live definition still raises a check_violation the client would match', () => {
+    const { rel, sql } = currentGateMigration()
 
     const raise = sql.match(
       /raise exception\s*\n?\s*'([^']+)'\s*\n?\s*using errcode = 'check_violation'/i,
     )
 
-    expect(raise, 'the participation-gate RAISE is no longer in 078 in a recognisable form').not.toBe(
-      null,
-    )
+    expect(
+      raise,
+      `the participation-gate RAISE is no longer recognisable in ${rel} — if the wording moved, move registration.ts's pattern with it rather than relaxing this`,
+    ).not.toBe(null)
     expect(DISCRIMINATOR.test(raise![1])).toBe(true)
   })
 
@@ -93,9 +129,10 @@ describe("the gate's message and the client's discriminator agree", () => {
     ]) {
       const message = `new row for relation "push_devices" violates check constraint "${constraint}"`
       expect(DISCRIMINATOR.test(message)).toBe(false)
-      // And the constraint really is in the migration, so this is not three
-      // assertions about names nothing uses.
-      expect(read(MIGRATION)).toContain(constraint)
+      // And the constraint really exists, so this is not three assertions about
+      // names nothing uses. Read off `078`, which is where the TABLE is defined
+      // — that file genuinely is immutable, unlike the function above.
+      expect(read(path.join('supabase', 'migrations', '078_push_devices.sql'))).toContain(constraint)
     }
   })
 })
