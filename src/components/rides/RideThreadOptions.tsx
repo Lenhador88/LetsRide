@@ -122,7 +122,7 @@ export function RideThreadOptions({
       showBanner('Thread deleted')
       // `replace`, not `push`: the thread this was invoked from no longer
       // exists, so Back must not return to a screen that now 404s.
-      router.replace(routes.rideThreads(rideId))
+      router.replace(routes.ride(rideId))
     })
   }
 

@@ -255,7 +255,7 @@ export async function moderateRideThread(
   invalidate(queryKeys.rides.threads(rideId))
   invalidate(queryKeys.rides.thread(threadId))
   invalidate(queryKeys.rides.threadReplies(rideId))
-  return { error: null, redirectTo: routes.rideThreads(rideId) }
+  return { error: null, redirectTo: routes.ride(rideId) }
 }
 
 /**

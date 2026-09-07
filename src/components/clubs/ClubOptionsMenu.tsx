@@ -3,7 +3,6 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  ChatBubbleIcon,
   DeleteIcon,
   EditIcon,
   LogOutIcon,
@@ -12,7 +11,6 @@ import {
 } from '@/components/icons/generated'
 import { useBanner } from '@/components/ui/Banner'
 import { ContextMenu, ContextMenuItem } from '@/components/ui/ContextMenu'
-import { NotificationDot } from '@/components/ui/NotificationDot'
 import { DeleteClubSheet } from '@/components/clubs/DeleteClubControl'
 import { ClubShareOrInviteItem } from '@/components/clubs/ClubShareOrInviteItem'
 import {
@@ -20,9 +18,6 @@ import {
   leaveClub,
   leaveOwnedClub,
 } from '@/lib/actions/clubs'
-import { getClubThreadUnread } from '@/lib/data/club-threads'
-import { useQuery } from '@/lib/query'
-import { queryKeys } from '@/lib/query/keys'
 import { routes } from '@/lib/routes'
 import type { ClubDetail } from '@/types'
 
@@ -54,14 +49,17 @@ const CLUB_ONLY_RIDER_LEAVE_REASON = 'You are the only rider here — leaving de
  * - **Owner** → `Edit club`, into `routes.clubEdit`. What used to be the
  *   header's standalone pencil `Link`, now inside this sheet instead of beside
  *   it — plus `Delete club` below it.
- * - **Member** → `Threads`, into `routes.clubThreads`. **This is the club's
- *   only reliable entrance to its own thread list**, and it is here rather than
- *   on the page because the product owner removed the row that used to carry it
- *   (2026-08-31). The timeline's foot link is not a substitute: it renders only
- *   when the stream is cut, so a club whose whole timeline fits on screen would
- *   have no entrance at all — PD-125's defect, which the deleted row existed to
- *   close. A member-only row for the same reason `ClubCreateAction` is
- *   member-only: `081` admits nobody else to a club's threads.
+ * - **Member** → `Threads` is DELETED, PD-426, and with it this menu's
+ *   aggregate unread dot. It was the club's only reliable entrance to its
+ *   thread *list*, and the list is gone: threads are read on the club's own
+ *   timeline, which is on the screen this menu opens from. **The PD-125 defect
+ *   that argument turned on is not re-opened** — that was "a club whose whole
+ *   timeline fits on screen has no entrance at all", and it was about the
+ *   timeline's foot link, which renders only when the stream is cut. The
+ *   threads are now IN that timeline rather than behind a link out of it, so
+ *   there is nothing left to fail to reach. The per-thread unread dot moved
+ *   with them: `ClubTimelineThreadRow` has always carried one, fed by the same
+ *   `clubs.threadsUnread` key this menu used to read.
  * - **Owner or admin** → `Manage riders` (`088`, PD-326), into
  *   `routes.clubManage`. **This is the only entrance to that screen**, which is
  *   why the row is gated on the same disjunction the screen and
@@ -163,37 +161,6 @@ export function ClubOptionsMenu({
   const showBanner = useBanner()
   const router = useRouter()
 
-  /**
-   * The aggregate unread mark, read **only while the sheet is open**.
-   *
-   * This menu is in `ClubDetailHeader`, which every club sub-page mounts — so
-   * an always-on read would cost `/clubs/detail/rides`, `/members` and
-   * `/manage` a round trip apiece for a dot nobody is looking at. Gated on
-   * `open`, it is free on the club detail (`ClubTimeline` already holds this
-   * exact key, so the cache answers) and one read elsewhere, at the moment the
-   * rider asks.
-   *
-   * It fails to nothing: `getClubThreadUnread` resolves to `{}` on a failure,
-   * so the row is an entrance before it is a summary.
-   *
-   * **The expression below is unchanged by PD-372; its INPUT narrowed.** The
-   * map now answers only for threads the Threads list can show, so this dot
-   * clears by visiting where it points. This is the only aggregate unread dot
-   * left in the app, which is what made the narrowing that function's business
-   * rather than this one's.
-   *
-   * **The cost, stated because it is an open question rather than a solved
-   * one:** an unread comment on a club introduction is now marked NOWHERE — not
-   * here, and not on the announcement's join row, which carries no unread state
-   * and gains none in that change (`tasks.md` §8.3 excludes it; `proposal.md`
-   * Q2 is the owner's decision, recommended default *no*, on the grounds that
-   * the row's exact comment count is already the signal).
-   */
-  const unread = useQuery(open && isMember ? queryKeys.clubs.threadsUnread(clubId) : null, () =>
-    getClubThreadUnread(clubId)
-  )
-  const hasUnread = Object.values(unread.data ?? {}).some(Boolean)
-
   function onLeave() {
     setOpen(false)
     startTransition(async () => {
@@ -286,24 +253,6 @@ export function ClubOptionsMenu({
           isOwner={isOwner}
           onDone={() => setOpen(false)}
         />
-
-        {isMember && (
-          <ContextMenuItem
-            href={routes.clubThreads(clubId)}
-            icon={<ChatBubbleIcon className="h-6 w-6" />}
-            // The dot is `aria-hidden` by construction, so the unread state
-            // reaches a screen reader only if it is in words — the same rule
-            // the deleted `ClubThreadsRow` carried.
-            aria-label={hasUnread ? 'Threads, unread messages' : undefined}
-            onClick={() => setOpen(false)}
-          >
-            {/* No count. `getClubThreads` returns a PAGE of 20, so a club with
-                forty-five threads would render "Threads · 20" as a fact. The
-                list one tap away has the pagination to be honest about it. */}
-            Threads
-            {hasUnread && <NotificationDot className="ml-2 inline-block align-middle" />}
-          </ContextMenuItem>
-        )}
 
         {canManage && (
           <ContextMenuItem

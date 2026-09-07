@@ -96,11 +96,14 @@ const STICKY_ACTIONS: Record<string, { label: string; href: string }> = {
  *
  * **`rideChat` became `rideThread` here rather than being dropped — `108`,
  * PD-402.** The barless screen is the one with the pinned composer, and that
- * moved from the ride's single chat to one ride thread. `rideThreads` and
- * `newRideThread` are deliberately NOT on this list: a thread *list* and a
- * one-field create form both scroll under the nav bar the way every other ride
- * sub-page does, exactly as `clubThreads` and `newClubThread` are absent for
- * the club. Only `clubThread` and `rideThread` draw a composer.
+ * moved from the ride's single chat to one ride thread. `newRideThread` is
+ * deliberately NOT on this list: a one-field create form scrolls under the nav
+ * bar the way every other ride sub-page does, exactly as `newClubThread` is
+ * absent for the club. Only `clubThread` and `rideThread` draw a composer.
+ *
+ * **The two thread-INDEX keys this once also named are gone** — `rideThreads`
+ * and `clubThreads` were deleted with their routes (PD-426), so their absence
+ * from this list is no longer a decision anyone has to justify.
  */
 const BARLESS: string[] = [detailPaths.rideThread, detailPaths.clubThread]
 

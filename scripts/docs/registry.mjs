@@ -153,6 +153,37 @@ const NUMBER_WORDS = {
   'thirty-eight': 38,
   'thirty-nine': 39,
   forty: 40,
+  // Extended past forty on 2026-09-07 (PD-426) — **the same claim, the third
+  // time**, and the two comments above record the first two at twenty and
+  // twenty-one. One component test was added and `forty-one` SKIPPED, which is
+  // the outcome this table exists to prevent: a skip is not a pass, and the
+  // claim it silences is the one that just changed.
+  //
+  // **Extended to sixty rather than to forty-one**, because raising the ceiling
+  // by exactly one is what produced three identical incidents. The component
+  // count rises with roughly every second story and nothing else in this table
+  // is near its top, so the cost of the headroom is a few lines and the cost of
+  // not having it has now been paid three times.
+  'forty-one': 41,
+  'forty-two': 42,
+  'forty-three': 43,
+  'forty-four': 44,
+  'forty-five': 45,
+  'forty-six': 46,
+  'forty-seven': 47,
+  'forty-eight': 48,
+  'forty-nine': 49,
+  fifty: 50,
+  'fifty-one': 51,
+  'fifty-two': 52,
+  'fifty-three': 53,
+  'fifty-four': 54,
+  'fifty-five': 55,
+  'fifty-six': 56,
+  'fifty-seven': 57,
+  'fifty-eight': 58,
+  'fifty-nine': 59,
+  sixty: 60,
 }
 
 /**

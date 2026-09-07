@@ -70,11 +70,18 @@ import { cn, formatRideDateLong } from '@/lib/utils'
  *   (product owner, 2026-08-31: *"I would like to remove the section 'threads'
  *   under the members. And the club description goes above the members."*).
  *   The row was two days old and existed to close PD-125 on
- *   `/clubs/detail/threads`, so **its entrance had to go somewhere rather than
- *   nowhere**: it is a `Threads` row on `ClubOptionsMenu` now. The timeline's
- *   own foot link is NOT that entrance and cannot be — it renders only when the
- *   stream is cut, so a club whose whole timeline fits on screen would have
- *   none at all, which is the exact defect the row was written for.
+ *   `/clubs/detail/threads`, so its entrance moved to a `Threads` row on
+ *   `ClubOptionsMenu`.
+ *
+ *   **Both of those are now deleted too, and the argument they rested on is
+ *   spent rather than overruled — PD-426.** `/clubs/detail/threads` is gone, so
+ *   there is no thread list left to need an entrance: the threads are rows on
+ *   the timeline below. PD-125 measured that an entrance BURIED under a growing
+ *   stream cannot be found, and the foot-link objection recorded here (it
+ *   renders only when the stream is cut, so a short timeline would offer none
+ *   at all) was about reaching a separate LIST. Neither survives the list's
+ *   deletion. Restoring either control would add a third route to what this
+ *   screen already shows.
  *
  *   What did not survive the move is the row's **aggregate** unread dot. The
  *   timeline's thread and reply entries still carry per-thread marks, so a

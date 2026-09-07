@@ -142,10 +142,10 @@ const GOOD_MANIFEST = [
   // `/rides/detail/chat`, a route that no longer exists.
   entry(
     `/rides/:id(${UUID})/chat`,
-    '/rides/detail/threads?id=:id',
+    '/rides/detail?id=:id',
     `^(?!/_next)/rides(?:/(${UUID}))/chat(?:/)?$`
   ),
-  entry('/rides/detail/chat', '/rides/detail/threads', '^(?!/_next)/rides/detail/chat(?:/)?$'),
+  entry('/rides/detail/chat', '/rides/detail', '^(?!/_next)/rides/detail/chat(?:/)?$'),
 ]
 
 describe('the legacy redirect guard', () => {
@@ -160,14 +160,19 @@ describe('the legacy redirect guard', () => {
     expect(REDIRECTED).toHaveLength(11)
   })
 
-  it('sends the retired ride chat to the thread list rather than to a route that is gone', () => {
+  it('sends the retired ride chat to the ride rather than to a route that is gone', () => {
     // `108` deletes `/rides/detail/chat`. Both of the chat's live URL shapes
     // have to land somewhere real: the legacy path-segment form, and the
     // `?id=` form the app itself shipped until today and which a bookmark or a
     // notification may still name. A redirect onto a deleted route is the
     // failure this asserts against — it looks like a working redirect and 404s.
+    //
+    // **It pointed at `/rides/detail/threads` until PD-426 deleted THAT route
+    // too**, which is this assertion catching its own hazard a second time: the
+    // destination of a redirect is exactly as deletable as the route it
+    // replaced, and nothing else in the tree would have gone red.
     expect(resolveRedirect(GOOD_MANIFEST, '/rides/detail/chat')).toEqual({
-      destination: '/rides/detail/threads',
+      destination: '/rides/detail',
       statusCode: 307,
     })
     expect(checkRedirects(GOOD_MANIFEST)).toEqual([])

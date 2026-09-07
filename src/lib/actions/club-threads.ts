@@ -105,7 +105,7 @@ export async function deleteClubThread(
   if (error) return { error: 'That thread could not be deleted.' }
 
   invalidateThread(threadId, clubId)
-  return { error: null, redirectTo: routes.clubThreads(clubId) }
+  return { error: null, redirectTo: routes.club(clubId) }
 }
 
 /**
@@ -138,7 +138,7 @@ export async function moderateClubThread(
   if (error) return { error: 'That thread could not be deleted.' }
 
   invalidateThread(threadId, clubId)
-  return { error: null, redirectTo: routes.clubThreads(clubId) }
+  return { error: null, redirectTo: routes.club(clubId) }
 }
 
 /**
