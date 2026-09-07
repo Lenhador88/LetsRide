@@ -67,15 +67,19 @@ population**, and it stays the majority until new signups outnumber them.
   new.home_country := coalesce(new.home_country, old.home_country)`. **A coercion, not a raise** —
   `038`'s exact shape, one line above the `old.onboarding_completed_at` early return for `038`'s
   exact reason. Once set, a home country can be *changed* and cannot be *removed*.
-- **`complete_onboarding` gains `p_country text default null`** and *stores* it —
-  `home_country = coalesce(nullif(btrim(upper(p_country)), ''), p.home_country)`, `075`'s own
-  never-clear shape. **It does not yet refuse a call without one.** That is `114`.
+- **`complete_onboarding` is not touched by `113` at all**, and its signature never changes. The
+  country arrives as an ordinary column UPDATE on the rider's own row — the shape `setUsername`
+  already uses — so there is no new RPC parameter, no overload, no `drop function`, and no
+  `PGRST203`. `design.md` §D9 is the rejected alternative and why it is rejected.
 
 ### 2. The deploy — a third onboarding screen, `/onboarding/country`
 
 - **`/onboarding/country`** is the new terminal step. `setUsername` **stops** calling
-  `complete_onboarding`; the country screen's action calls
-  `complete_onboarding({ p_location: null, p_country })` and that call is what stamps completion.
+  `complete_onboarding`; the country screen's action writes `profiles.home_country` on the rider's
+  own row and *then* calls `complete_onboarding({ p_location: null })`, which is what stamps
+  completion. **The order is contract**, and it is `setUsername`'s: the column write is the one
+  that can be refused for a reason the rider must act on, and a rider refused there must never be
+  left stamped complete with no country.
 - **`resolveDestination` gains one branch and no new state.** The resume order becomes
   terms → username → country, and it is expressible from what `my_onboarding_state()` already
   returns: `!terms_accepted_at` → `/onboarding/terms`; `!onboarding_completed_at &&
@@ -91,15 +95,15 @@ population**, and it stays the majority until new signups outnumber them.
 
 ### 3. `114` — arm the refusal, applied only once the new bundle is confirmed serving
 
-One `create or replace` of `complete_onboarding`, adding a fourth guard beside the consent arm and
-the username arm, same `check_violation` errcode:
+One `create or replace` of `complete_onboarding` — **same signature, `p_location text`, unchanged**
+— adding a third guard beside the consent arm and the username arm, same `check_violation` errcode:
 
-> a completion with no home country — neither in the argument nor already stored — is refused.
+> a rider whose stored `profiles.home_country` is NULL cannot be stamped complete.
 
-**It reads the stored value as well as the argument**, so a re-run by an already-onboarded rider
-(the function is re-runnable by design, `003` §6b) is never refused for a country they already
-have. It is the arm that makes the requirement real, and it is a separate file because it is an
-outage against any bundle that does not pass a country. §Sequencing.
+It reads the **stored** column, which is the only place the value can be, so a re-run by an
+already-onboarded rider (the function is re-runnable by design, `003` §6b) is never refused for a
+country they already have. It is the arm that makes the requirement real, and it is a separate file
+because it is an outage against any bundle whose riders have not written the column. §Sequencing.
 
 ## Sequencing — migration-first, then deploy, then the arming file
 
@@ -111,9 +115,9 @@ The rule asks which side fails safe:
 
 | Order | What breaks |
 |---|---|
-| **`113` before the deploy** (chosen) | Nothing. The old bundle calls `complete_onboarding({p_location: null})`, PostgREST resolves it against the defaulted parameter, `p_country` is NULL, the coalesce leaves the column alone. New signups keep completing throughout the window. |
-| Deploy before `113` | The new country screen writes a column that does not exist (`PGRST204`) and calls a signature that does not exist (`PGRST202`). **Nobody can finish onboarding for the length of the window.** `096` is the precedent, verbatim: *a column a shipped client WRITES goes migration-first*. |
-| `114` before the deploy, or folded into `113` | The serving bundle's `setUsername` passes no country, so the new guard refuses **every completion by every rider mid-signup** until the deploy lands. An outage against the bundle that is serving — the side deploy-first exists to protect, and the reason this is two files. |
+| **`113` before the deploy** (chosen) | Nothing. It adds a column nothing reads, two CHECKs nothing violates, a grant nothing uses, and one trigger arm that is dead for every row with a NULL country — which is all of them. `complete_onboarding` is untouched, so the serving bundle's call is byte-identical before and after. |
+| Deploy before `113` | The new country screen writes a column that does not exist — `PGRST204`, and the rider cannot get past the step. **Nobody can finish onboarding for the length of the window.** `096` is the precedent, verbatim: *a column a shipped client WRITES goes migration-first*. |
+| `114` before the deploy, or folded into `113` | The serving bundle never writes `home_country`, so the new guard refuses **every completion by every rider mid-signup** until the deploy lands. An outage against the bundle that is serving — the side deploy-first exists to protect, and the reason this is two files. |
 | `114` before the bundle is confirmed **serving** | Not merged — *serving*. `READY` on the merge sha with `aliasError` null. DEV has already applied a file 102 seconds after a merge, out from under a Preview still calling what it dropped. |
 
 **PROD is five files behind (`108`–`112`) and the same split survives the promotion.** `113` and
@@ -155,8 +159,9 @@ assertion. The full scenarios are in `specs/`; this is the index.
    **member** and **non-member** all read the same columns they already do and write nothing.
    It follows the ordinary profile-column pattern and **not** `025`'s server-owned posture, and
    §D4 says why: it is a shown fact about a rider, not consent evidence.
-5. **Who may WRITE it, and when.** The rider, on their own row, for ever — through
-   `complete_onboarding` during the wizard and through the profile editor afterwards. **No other
+5. **Who may WRITE it, and when.** The rider, on their own row, for ever — as an ordinary column
+   UPDATE, from the country step during the wizard and from the profile editor afterwards, under
+   the same `auth.uid() = id` policy and the same CHECKs either way. **No other
    rider, in any club role, may set, change or clear it** (the UPDATE policy is `auth.uid() = id`).
    **Nobody, including the owner, may return a set country to NULL**: the trigger coerces the
    removal away, `038`'s shape, so a rider cannot walk out of the requirement one screen later.

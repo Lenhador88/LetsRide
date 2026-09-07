@@ -21,9 +21,9 @@ of the guard's cached state. The negative *"the guard is not the enforcement"* i
 country.
 
 The wizard's steps are terms → username → country, and the country adds no information the existing
-three do not already carry: the only client path that writes `home_country` during onboarding is
-`complete_onboarding`, which writes the country and the completion stamp in one statement, so
-*"has a username and no stamp"* means *"is at the country step"* by construction.
+three do not already carry: *"has a username and no stamp"* means *"is at the country step"*,
+whether or not the column write has already landed, because that screen is where both the write and
+its retry live.
 
 Widening the accessor is the expensive option and the failure is silent: a newer bundle
 destructuring a field an older function does not return reads `undefined`, which is falsy, which —
@@ -79,6 +79,8 @@ connection.
   skeleton and no empty state, because it is a client-side constant
 - **AND** the submit SHALL be disabled until a country is chosen, so there is no state in which
   tapping it can mean *"whatever was preselected"*
+- **AND** a rider who already stored a country on a previous attempt SHALL see it selected, so the
+  retry after a failed stamp is one tap rather than a second search through 249 rows
 
 #### Scenario: The submit is in flight
 - **WHEN** the rider submits

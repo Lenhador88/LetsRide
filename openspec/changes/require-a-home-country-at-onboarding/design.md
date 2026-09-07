@@ -41,10 +41,12 @@ The resume step is already fully determined by what the accessor returns today:
 | set | true | NULL | **`/onboarding/country`** |
 | set | true | set | the app |
 
-There is no reachable state where a rider has a country and no completion stamp, because the only
-client path that writes the country during the wizard is `complete_onboarding` itself, which writes
-both in one statement. So "has a country" adds no information the table above does not already
-carry.
+**"Has a country" adds no information the table above does not already carry.** A rider with a
+country and no completion stamp *is* reachable — §D9's two-statement window, where the column write
+lands and the RPC then fails — and their resume step is `/onboarding/country` either way, because
+that is the screen that retries. Branching on the country would send them to the same place for a
+second reason. The one thing the screen owes that state is to **preselect what is stored**, which
+is a render concern and not a routing one.
 
 What that buys, and it is the reason to insist on it:
 
@@ -193,6 +195,45 @@ cannot be both.
 
 `114` is small enough to look like tidiness that could ride along with `113`. It is the entire
 requirement.
+
+## D9. The country is a column write, not a new RPC parameter — and that is not a style choice
+
+**Decision: the country step writes `profiles.home_country` directly on the rider's own row, then
+calls `complete_onboarding({ p_location: null })`. `complete_onboarding`'s signature never
+changes.**
+
+The obvious shape — `complete_onboarding(p_location text, p_country text default null)` — was
+written first and is wrong for a mechanical reason worth recording, because it looks safe:
+
+- **`create or replace` cannot add a parameter.** Postgres identifies a function by its argument
+  types, so this *creates an overload* rather than replacing anything. `complete_onboarding(text)`
+  and `complete_onboarding(text, text)` would then both exist.
+- **Two candidates is `PGRST203`.** A call supplying only `p_location` matches the one-argument
+  function exactly *and* the two-argument one through its default, and PostgREST reports the
+  ambiguity rather than picking. That is the failure mode `075`'s proposal named when it refused to
+  add an overload, and it would land on the one call every signup makes.
+- **Avoiding it means `drop function public.complete_onboarding(text)` and creating the new one**,
+  which also drops `021`'s `revoke`/`grant` pair and `025`'s footer grant, so both have to be
+  reissued in the same file — and it puts a PostgREST schema-cache reload in front of the wizard's
+  terminal call. Recoverable, and entirely unnecessary.
+
+The column write costs none of that. `authenticated` already holds column-scoped UPDATE on this
+table (`username`, `location`, `bio`, `bike_model`, `avatar_path`, `cover_image_path`), the UPDATE
+policy is `auth.uid() = id`, and the two CHECKs enforce the value against **any** writer rather
+than against callers of one function. The action's two statements are `setUsername`'s two
+statements with a different column, including the ordering contract: **the column first, the RPC
+second**, so a refused value never leaves a rider stamped complete without one.
+
+**The window between the two writes is benign and is the same window `075` already accepted.** A
+rider whose column write lands and whose RPC then fails holds a country, a username and no stamp —
+and their resume step is the screen they are already on, where resubmitting updates their own row
+again. The screen SHALL preselect the stored country when it has one, so the retry is one tap.
+
+**This does not move the requirement out of the database or out of `complete_onboarding`.** The
+Queued comment's decision is unchanged and is the reason `114` exists: the refusal lives in the
+function body, because inside a `security definer` function `current_user` is the owner and the
+trigger's own guard never runs. What changed is only *how the value arrives*, not *what refuses its
+absence*.
 
 ---
 

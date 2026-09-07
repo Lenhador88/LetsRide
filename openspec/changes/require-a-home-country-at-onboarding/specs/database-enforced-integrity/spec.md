@@ -69,8 +69,15 @@ and rendered as a blank flag beside its own code for ever. Once the client owns 
 ### Requirement: A home country SHALL be required at completion, and SHALL be tolerated as NULL for ever
 
 `profiles.home_country` SHALL be **nullable** at the database level, and
-`public.complete_onboarding` SHALL refuse to stamp `onboarding_completed_at` for a rider who has
-neither passed a home country nor already stored one.
+`public.complete_onboarding` SHALL refuse to stamp `onboarding_completed_at` for a rider whose
+stored `home_country` is NULL.
+
+The country SHALL arrive as an ordinary column UPDATE on the rider's own row rather than as a new
+RPC parameter, and `complete_onboarding`'s signature SHALL NOT change: adding a parameter creates
+a PostgREST overload (`PGRST203`) on the one call every signup makes, and avoiding that means
+dropping and recreating the function together with `021`'s and `025`'s grants. The value is
+constrained against **every** writer by CHECK, so nothing is lost by not routing it through the
+function.
 
 A live table admits no NOT NULL here — every existing rider has no country, measured 2026-09-07 at
 25 profiles on DEV and 5 on PROD, all of them NULL by construction. Nullable is therefore the only
@@ -86,27 +93,25 @@ trigger would pass `tsc`, pass this repo's RLS suite (which runs as the table ow
 neither barrier exists) and ship nothing.
 
 #### Scenario: A completion with no country is refused
-- **WHEN** a rider calls `complete_onboarding` with a NULL, empty or whitespace-only country, and
-  `profiles.home_country` is NULL for them
+- **WHEN** a rider whose `profiles.home_country` is NULL calls `complete_onboarding`
 - **THEN** the call SHALL raise `check_violation`
 - **AND** `onboarding_completed_at` SHALL remain NULL
 - **AND** the rider SHALL remain unable to create content or join anything, because `023`'s
   participation gate reads that stamp
 
 #### Scenario: An already-onboarded rider re-running the function is not refused
-- **WHEN** a rider who already holds a `home_country` calls `complete_onboarding` again with no
-  country argument
+- **WHEN** a rider who already holds a `home_country` calls `complete_onboarding` again
 - **THEN** the call SHALL succeed and SHALL return the **original** stamp, per `003` §6b
-- **AND** the guard SHALL therefore read the **stored** value as well as the argument; a guard
-  reading the argument alone would refuse every legitimate re-run
 
-#### Scenario: A NULL argument leaves a stored country alone and never clears it
-- **WHEN** `complete_onboarding` is called with a NULL or whitespace-only country by a rider who
-  already has one
-- **THEN** the stored value SHALL be unchanged
-- **AND** the write SHALL use `coalesce(nullif(btrim(...), ''), p.home_country)`, never a bare
-  assignment — `075` records this as the single most dangerous line in that change, and the same
-  line is reachable here for the same reason
+#### Scenario: The country write and the stamp are two statements, in that order
+- **WHEN** the country step submits
+- **THEN** the column write SHALL be issued first and the RPC second, so a refused value never
+  leaves a rider stamped complete without one
+- **AND** the intermediate state — a country, a username and no stamp — SHALL resume to the same
+  screen, which SHALL preselect the stored country so the retry is one tap
+- **AND** `complete_onboarding` SHALL NOT write `home_country` at all, so there is no path by which
+  a re-run can clear it — the hazard `075` names as the single most dangerous line in that change
+  is unreachable here rather than handled
 
 #### Scenario: Existing riders keep NULL and are never re-prompted
 - **WHEN** a rider whose `onboarding_completed_at` is already set holds a NULL `home_country`
@@ -211,9 +216,10 @@ the shape.
 
 #### Scenario: The additive migration is safe against the serving bundle
 - **WHEN** `113` is applied while the current bundle is still serving
-- **THEN** `complete_onboarding` SHALL still resolve for a caller that supplies only
-  `p_location`, via a defaulted `p_country` parameter, and SHALL still stamp completion
-- **AND** the omitted country SHALL leave the column alone rather than clearing it
+- **THEN** `complete_onboarding` SHALL be byte-identical before and after, and SHALL still stamp
+  completion for a rider with no country
+- **AND** the only behaviour `113` changes for the serving bundle is a trigger arm that is dead for
+  every row whose `home_country` is NULL — which is every row
 
 #### Scenario: The arming migration waits for a serving bundle, not a merge
 - **WHEN** `114` is scheduled
