@@ -191,6 +191,103 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## §D7 has a tripwire, and the rounding it rests on is pinned where it actually lives — 2026-09-07
+
+**PD-278, one branch, taken into `slot-2`. A group of one, and the four stories left behind were
+dropped on COLLISION rather than on size** — slot-1 declared a very wide territory
+(`supabase/migrations/`, `supabase/tests/`, `openspec/`, `src/app/(app)/rides/`,
+`src/components/rides/`, `src/lib/auth/guard.ts`, `scripts/walk/`, `migration: Y`, `primitive: Y`),
+which is every path PD-430, PD-429, PD-431 and PD-264 need. No migration here.
+
+**The issue's own sentence about where the rounding sits is wrong, and a test written from it would
+have been written against nothing.** PD-278 says *"the rounding sits at `reverseGeocodePlace`'s one
+call site"*. It does not: it is **inside** `reverseGeocodePlace` (`src/lib/data/places.ts:429`), and
+the call site in `CreatePostcardForm` passes `capture.latitude` **raw**. So an assertion of the form
+*the call site rounds* fails against correct code, and the honest form is *the sink rounds at its
+own entry* — which is why that is a separate, third assertion rather than a detail of the first.
+
+**Three assertions, and the reason there are three is that no two cover each other:**
+
+- **The holder set is pinned** — every file importing `ExifCapture` or a parser. This is the
+  issue's own named trigger (*"a second reader of `ExifCapture`"*), and it is the only control that
+  catches a **whole-object** leak in a file that never writes `.latitude` at all.
+- **Inside a holder, every mention of the binding is classified**, not only coordinate reads — so a
+  new sink added to a file already on the list fails too.
+- **`reverseGeocodePlace` rounds both parameters.** Without this the sink list is a claim about a
+  function nothing checks: **delete the rounding and every call site is unchanged**, so the first
+  two stay green while the raw fix goes to the vendor. That is the same one-level-up defect the
+  issue warns about for the detector itself.
+
+**A SANCTION CLEARS ONE READ, NEVER A LINE — and this is the whole of what makes the test real.**
+The first draft tested each sanction against the whole line, so a partial match waved through
+everything else on it, and the ordinary form of the leak shipped green:
+
+```ts
+const exactLat = upload.status === 'done' ? upload.capture.latitude : null
+console.info('[dbg]', exactLat)          // §D7's own "not a log", 12/12 passing
+```
+
+because line one *declares something* and the sanction was `(?:const|let|var)\s.*<binding>`. Four
+more had the same shape — a presence test followed by a real read, a coordinate in a `return`, one
+put into state, one written three lines below a *completed* sanctioned call. **A line-level sanction
+is the reversal to expect**, because it reads as a simplification.
+
+**It took two review rounds, and the second is the one worth carrying**, because the obvious fix is
+the one that failed. Making only *coordinate reads* per-offset and leaving the whole object
+line-level looks safe — a line carrying no coordinate has nothing to leak — and a line can carry
+both:
+
+```ts
+if (capture.latitude !== null) sendToVendor(capture)   // a SANCTIONED read clearing the object
+return sendToVendor(capture)                           // not the bare return it resembles
+```
+
+So both are per-mention now. A coordinate read is sanctioned by a fact about itself; an object
+mention by **who receives it** — the innermost call whose parens are still open — falling back to
+the statement's shape only when it sits in no call at all.
+
+**Four more a later session should not re-derive:**
+
+- **The sanctioned state setters are a NAMED list, and `/^set[A-Z]/` is the shorthand to refuse.**
+  That pattern sanctioned `setRequestHeader` — written three times in `upload.ts`, itself a declared
+  holder — plus `localStorage.setItem`, `Sentry.setContext` and `posthog.setPersonProperties`, every
+  one a live doorway here. It sanctioned precisely the sinks §D7 names: a lookup, a bias, a log. One
+  setter is actually needed (`setUpload`), so the allowlist costs nothing and makes adding one the
+  same deliberate act as adding a `HOLDERS` row.
+
+- **`return { path, capture }` in `upload.ts` is SAFE, and the argument is the holder assertion
+  rather than the classification.** A bare return hands the object to a caller, and every caller is
+  a file that imports the type, so assertion 1 bounds it. **That argument does not extend to
+  `return <fn>(capture)`** — there the object goes to that function's parameter, which need not be
+  typed `ExifCapture`, so assertion 1 never sees it. `return <fn>(args)` is idiomatic in `upload.ts`,
+  which is what makes the distinction load-bearing rather than pedantic.
+- **The enclosing-call check takes the INNERMOST open call, and that is what makes it sound.**
+  Asking merely whether a sanctioned sink is open somewhere lets an outer sanctioned call launder an
+  inner unsanctioned one (`setForm({ lat: sendToVendor(capture) })`). **It skips strings AND line
+  comments, and the second is not tidiness**: trailing comments are deliberately kept by the strip,
+  so an ordinary English possessive — *"the rider's choice"*, which the composer's own call already
+  contains — opened an unterminated string that swallowed the call's closing paren and held a
+  sanctioned frame open over everything below it. That is why the lookback is joined with newlines
+  rather than spaces: skipping a `//` needs a line to end at.
+- **The suite gained +29 over `development`, and only 27 of those are this file's.** The other two
+  come from `no-service-role-key.test.ts` and `no-geoapify-key.test.ts`, which emit a case per file
+  walked — the *"+2, not +3"* rule `running-locally.md`'s Unit tests row already states. **The count
+  claims were NOT stale beforehand**: measured 3442/139 on a clean `development` by removing the
+  file and re-running, rather than inferred by subtraction.
+
+**Verified by mutating real source, after committing** (the handoff's own `git checkout` hazard).
+Every shape below was a silent pass against some draft and is now a named regression test: aliasing
+the coordinate into a local then logging it → 1F, the object returned through a call → 1F, a
+presence test beside a whole-object leak → 1F, a leak nested in a state literal → 1F, an emit below
+a completed sanctioned call → 1F, a coordinate in a JSX `return` → 1F, a whole object handed to
+`setRequestHeader` → 1F, an apostrophe in a trailing comment → 1F, the rounding removed from
+`places.ts` → 2F, a new file importing `ExifCapture` → 1F, clean tree → 27P.
+
+```bash
+npx vitest run src/__tests__/no-unrounded-photo-coordinate.test.ts   # 27/27
+npm run docs:check                              # 39 passed, 0 failed, 3 skipped (no Postgres)
+```
+
 ## The profile has one location control, and the twin check compares sets — 2026-09-07
 
 **PD-269 + PD-425 + PD-336, one branch, taken into `slot-2`.** PD-269 and PD-336 are a real
