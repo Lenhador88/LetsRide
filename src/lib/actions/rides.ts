@@ -558,13 +558,18 @@ export async function updateRide(
   //     So a vague meeting point keeps a NULL latitude and is never retried.
   //   * **Picked.** The coordinate was written by `createRide`/`updateRide`
   //     from the rider's own pick and never by the function, so the branch
-  //     above says nothing about it. What holds instead is that a picked ride
-  //     SKIPS the gates entirely (`resolvePickedCoordinate`, step 6) — it has
-  //     no "correctly declined to draw" end state to be confused with.
+  //     above says nothing about it — a picked ride can hold a coordinate and
+  //     have been declined. It skips the geocode and its three granularity
+  //     gates at step 6, but **not** `blank_meeting_point`, `left_the_club` or
+  //     `render_ceiling`, all of which precede it. What holds instead is that
+  //     each of those three refuses BEFORE the vendor call — `render_ceiling`
+  //     is the ledger insert itself — so retrying one costs a function
+  //     invocation and nothing at the meter, and `052`'s ten-per-24h ceiling
+  //     is what bounds even that.
   //
-  // Keep both. A future declining branch added to the picked path would look
-  // safe under the first argument alone, and would then be retried on every
-  // save for ever.
+  // Keep both. A future declining branch placed AFTER the vendor call on the
+  // picked path would be safe under neither argument as written, and would be
+  // billed on every save; that is the change to think twice about.
   //
   // **EITHER path, not both — `051`'s constraint permits the half state and
   // says so.** `rides_map_paths_need_a_coordinate` deliberately "permits one
@@ -759,13 +764,15 @@ export async function updateRide(
     // replacement landed. This action cannot make that test — the render is
     // fire-and-forget by design — so it must not delete at all.
     //
-    // **The accepted cost is one orphaned object**, in the half state only:
-    // a successful re-render writes two fresh names over the surviving one, and
-    // nothing then knows the old name. That is a storage leak nobody sees, set
-    // against a rider losing a tile they already had. Since PD-202 the function
-    // produces no half states — measured on DEV 2026-09-07, 0 of 28 rides have
-    // one path set and the other NULL — so the leak needs a pre-PD-202 row to
-    // become reachable at all.
+    // **And it does not have to, because that same step collects the survivor.**
+    // The function holds the OLD paths from its step-2 read for exactly this
+    // ("step 8's compensating delete is the only moment they are known"), so a
+    // repair render that stores deletes the surviving tile itself, and one that
+    // stores nothing writes no columns and leaves it named and live. **Neither
+    // terminal state orphans anything, so there is no leak here to sweep up
+    // later** — do not add a sweep or a collector for one. That was written as
+    // an accepted cost in the first draft of this comment and it was simply
+    // wrong; believing it is what argues for putting the delete back.
     requestRideMapRender(supabase, rideId)
   }
 

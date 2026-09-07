@@ -169,13 +169,40 @@ describe('a failed render gets asked for again', () => {
     //
     // `resolve-ride-location`'s own step 8 deletes the superseded pair only
     // `bothStored ? … : []`. This action cannot make that test, so it must not
-    // delete. The accepted cost is one orphan in the half state; the cost of the
-    // other choice is a rider losing a tile they already had.
+    // delete — and it does not need to: that same step collects the survivor
+    // from the paths it read at step 2, so neither terminal state orphans
+    // anything. Nothing is being traded away here.
     withStoredShape(stored({ latitude: 52.3731162, map_card_path: CARD }))
 
     await updateRide(RIDE_ID, emptyActionState, payload())
 
     expect(remove).not.toHaveBeenCalled()
+    expect(rendered()).toBe(1)
+  })
+})
+
+describe('the location-change arm still sweeps, and nothing else asserts it', () => {
+  it('removes both old tiles when the meeting point changes', async () => {
+    // **This case exists because the repair arm took the suite's only positive
+    // sweep assertion with it.** Without it, deleting `removeRideMapTiles` from
+    // the location-change block leaves all seven other cases green — and that
+    // deletion orphans two objects on EVERY address edit, permanently, because
+    // `clear_ride_map_tiles` has already NULLed the columns that named them by
+    // the time this action looks. Nothing else in the repo would notice.
+    //
+    // The trigger is the refactor this file is otherwise arguing for: someone
+    // making the two arms "consistent" by removing the sweep rather than by
+    // adding one.
+    withStoredShape(
+      stored({ latitude: 52.3731162, map_card_path: CARD, map_detail_path: DETAIL }),
+    )
+
+    const moved = payload()
+    moved.set('meeting_point', 'Vondelpark, Amsterdam')
+
+    await updateRide(RIDE_ID, emptyActionState, moved)
+
+    expect(remove).toHaveBeenCalledWith([CARD, DETAIL])
     expect(rendered()).toBe(1)
   })
 })
