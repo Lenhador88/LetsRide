@@ -1854,18 +1854,30 @@ item.
       open"* and *"we never show other riders where you are"* must both stay true of the code —
       nothing in `src/` uses `watchPosition`, and a device fix leaves the device only as a
       ~1 km-rounded proximity bias. A designer rewording this needs to keep both.
-- [ ] **PD-419 (2026-09-07) made this four inferred surfaces, not one, and the new ones are
-      bigger than the sheet they hang off** — `npm run figma -- ls` still returns no frame for a
-      location question of any kind, so all of it is written rather than measured:
-      **`TownQuestionSheet`** (*"Where do you ride from?"*, a `PlaceSearchField`, two buttons);
-      **`LocationPrimingSheet`'s rewritten `blocked` branch**, which now hands off to that sheet
-      instead of linking to `/profile`; **`UseMyLocationRow`'s two new labels**
-      (`Set where you ride from`, and `Near {town} · Use my location`, the only line in the app
-      that says where a distance was measured from); and **`LocationSetting` on `/profile`**,
-      which the design has no equivalent of at all. A designer picking this up is designing a
-      flow rather than restyling a sheet. **The blocked branch carries a THIRD store-review
-      claim** to keep true beside the two above — *"Tell us the town you ride from and we will
-      measure from there instead"* is a promise about what the app does with a refusal.
+- [ ] **PD-419 (2026-09-07) — the QUESTION has a measured source and the CONTAINER does not,
+      and an earlier revision of this bullet got that backwards.** It claimed
+      `npm run figma -- ls` returned no location-question frame; it returns two —
+      **`Add your location` (`2074:5185`)** and **`Add your location - City focus`
+      (`2077:5320`)**, drawing *"Where are you located?"* (Poppins/32/Semibold), one
+      `v2 / Component / Input / Text` labelled `City`, and a `Skip`/`Next` footer.
+      `docs/specs/login-onboarding.md` had both recorded by node id the whole time. **A claim
+      that names its own verification command and is refuted by it is the worst shape available
+      here** — it sends the next designer past the closest measured source in the snapshot.
+
+      `TownQuestionSheet` now takes the heading and the field label from those frames verbatim.
+      **What is still ours, and is what a designer would actually be picking up:**
+      - **The container.** Those frames are the onboarding wizard step `075` (PD-286) deleted,
+        so they carry pagination dots, a `Back` link and `Skip`/`Next` — none of which belongs
+        on a sheet opened from Explore. The bottom sheet is `ContextMenu`'s measured geometry
+        with our explanatory paragraph and our `Save`/`Not now`.
+      - **`LocationPrimingSheet`'s rewritten `blocked` branch**, which hands off to that sheet
+        instead of linking to `/profile`. **It carries a THIRD store-review claim** beside the
+        two above — *"Tell us the town you ride from and we will measure from there instead"* is
+        a promise about what the app does with a refusal.
+      - **`UseMyLocationRow`'s two new labels** — `Set where you ride from`, and
+        `Near {town} · Use my location`, the only line in the app that says where a distance was
+        measured from.
+      - **`LocationSetting` on `/profile`**, which the design has no equivalent of at all.
 
 ### Private clubs in Explore, and the ride marker on a stamp — built 2026-08-28 (PD-325, PD-328)
 

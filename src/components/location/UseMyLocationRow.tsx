@@ -161,16 +161,30 @@ export function UseMyLocationRow({
 
   const state = locationPrimingState({ permission, position })
 
-  // Read by the automatic ask's timer, which cannot see `open`/`askingTown`
-  // through its own closure: adding them to that effect's deps would re-arm the
-  // timer every time a sheet opened or closed, which is the opposite of a
-  // once-ever ask. A ref carries the current value into a callback that fires
-  // later, which is exactly what refs are for.
-  const sheetOpen = open || askingTown
-  const sheetOpenRef = useRef(sheetOpen)
-  useEffect(() => {
-    sheetOpenRef.current = sheetOpen
-  }, [sheetOpen])
+  /**
+   * **Has the rider opened a sheet themselves? One-way, and set synchronously.**
+   *
+   * Read by the automatic ask's timer, which cannot see `open`/`askingTown`
+   * through its own closure — adding them to that effect's deps would re-arm the
+   * timer on every open and close, which is the opposite of a once-ever ask.
+   *
+   * **It latches rather than mirroring `open || askingTown`, and the delta
+   * review is why.** A mirror reads the *instantaneous* state, so a rider who
+   * opened the sheet at 250ms and dismissed it at 600ms would have the timer
+   * fire at 700ms against a `false` and **reopen the sheet they had just
+   * closed** — an app that reopens a permission prompt 100ms after it is
+   * dismissed is precisely the shape this component's header calls out as how
+   * riders learn to dismiss prompts reflexively. Latched, the ask is spent by
+   * the rider having engaged at all, which is what it was for.
+   *
+   * **Written in the click handlers rather than in an effect**, so it is true
+   * before the timer can possibly see it. A passive effect is flushed after
+   * paint, so a tap landing in the same frame as the timer deadline could
+   * otherwise run the callback against a stale `false` and stack two sheets
+   * after all — a sub-frame window that `act()` in a test flushes away and so
+   * could never fail one.
+   */
+  const riderOpenedSheet = useRef(false)
 
   // **The automatic ask — see the header.** Gated on the resolved state rather
   // than on the raw inputs, so it fires for exactly the states a tap would open
@@ -209,7 +223,7 @@ export function UseMyLocationRow({
       // The flag is still spent, and that is right rather than a concession —
       // the automatic ask exists to put this sheet in front of the rider once,
       // and it is in front of them.
-      if (sheetOpenRef.current) {
+      if (riderOpenedSheet.current) {
         markAskedForLocation()
         return
       }
@@ -267,6 +281,7 @@ export function UseMyLocationRow({
   // `document.body`; two open at once would stack two scrims and leave the
   // lower one's cleanup to restore `overflow` after the upper one already did.
   const askTown = useCallback(() => {
+    riderOpenedSheet.current = true
     setOpen(false)
     setAskingTown(true)
   }, [])
@@ -292,7 +307,12 @@ export function UseMyLocationRow({
       <div className={cn('px-4 pt-2', className)}>
         <button
           type="button"
-          onClick={() => (state === 'town' ? setAskingTown(true) : setOpen(true))}
+          onClick={() => {
+            // Latched here, synchronously — see `riderOpenedSheet`.
+            riderOpenedSheet.current = true
+            if (state === 'town') setAskingTown(true)
+            else setOpen(true)
+          }}
           aria-haspopup="dialog"
           className="flex h-14 w-full items-center gap-3 rounded-lg bg-surface px-4 text-left transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none active:bg-background"
         >

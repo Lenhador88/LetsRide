@@ -230,6 +230,36 @@ describe('the town rung', () => {
     expect(document.querySelector('[data-testid="town-sheet"]')).not.toBeNull()
   })
 
+  it('does not REOPEN a sheet the rider opened and dismissed inside the beat', async () => {
+    // **Found by the delta re-review**, and it is the half a guard that mirrors
+    // `open || askingTown` misses: by the time the timer fires the rider has
+    // already closed the sheet, so the mirror reads `false` and the automatic
+    // open fires anyway. An app that reopens a permission prompt 100ms after it
+    // is dismissed is the reflexive-dismissal shape this component's own header
+    // is written against.
+    await render(<UseMyLocationRow position={null} auto />)
+
+    const row = container.querySelector('button')!
+    await act(async () => {
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(sheet()).not.toBeNull()
+
+    // Dismissed by the rider, still inside the beat.
+    const notNow = [...document.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === 'Not now'
+    )!
+    await act(async () => {
+      notNow.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(sheet()).toBeNull()
+
+    await beat()
+
+    // Still closed. The rider engaged; the automatic ask has nothing left to do.
+    expect(sheet()).toBeNull()
+  })
+
   it('never leaves both sheets open at once', async () => {
     // Both are `ContextMenu`s, and each locks body scroll on mount and restores
     // it on unmount. Two open together would leave the lower one's cleanup to

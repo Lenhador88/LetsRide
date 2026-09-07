@@ -228,28 +228,27 @@ point** — decided 2026-09-06, harder than the story proposed.
 **Six things a later session should not re-derive:**
 
 - **`locationPrimingState`'s "never nag a rider who has a position" rule was reopened on its own
-  terms.** That function carried the escape clause — *"reopen it if a feature ever needs a real fix
-  rather than a bias"* — and this is it. The new `refine` state is a line saying **where the
-  distances on screen are measured from**, for the rider whose profile says Utrecht and who is in
-  Maastricht: every distance was wrong and nothing on the screen said so. It stays narrow — a
-  device-sourced position draws nothing (already the best answer), and so does a profile-sourced one
+  terms** — it carried the escape clause *"reopen it if a feature ever needs a real fix rather than a
+  bias"*. `refine` says **where the distances on screen are measured from**, for the rider whose
+  profile says Utrecht and who is in Maastricht: every distance was wrong and nothing said so. It
+  stays narrow — a device position draws nothing (already the best answer), nor does a profile one
   whose permission is `denied` (no route to a better one, so the control would be a dead end).
 - **`unavailable` + no position went from `hidden` to `town`, and it was the worst state.** A rider
   on a WebView with no geolocation had no position, no device to ask, and no affordance anywhere
   saying so. The old assertions for both reversals are kept in `priming.test.ts`, inverted, so a
   revert cannot pass silently.
-- **The automatic ask is spent on the sheet OPENING, not on the rider answering** — marking it on the
-  answer re-opens the sheet on every cold start until someone taps `Continue`, which is how riders
-  learn to decline permanently. `ask-once.ts` is `localStorage` and **per device**, because what is
-  spent is the OS dialog, which on iOS is one-way per install. It **fails open**: an unreadable store
-  reads as *not yet asked*, so a private window costs one sheet per session; the other reading
-  removes the ask for that rider for ever with no signal anywhere.
-- **The beat before the sheet is doing three jobs, and one is correctness.** `PostcardDeck`'s swipe
-  coach is the same shape. It reads better (both Explore screens fade their list in, and a sheet
-  thrown up during that fade covers the reason it is asking); it keeps `setOpen` out of an effect
-  body, which `react-hooks/set-state-in-effect` rejects; and `markAskedForLocation()` is called
-  **inside the timer**, so a rider who taps through Explore inside the beat — or any of the remounts
-  these screens do routinely — does not spend their one automatic ask and get asked never again.
+- **The ask is spent on the sheet OPENING, not on the rider answering** — on the answer it reopens
+  every cold start until someone taps `Continue`, which is how riders learn to decline permanently.
+  `ask-once.ts` is `localStorage` and **per device**, because the OS dialog it spends is one-way per
+  install. It **fails open**: an unreadable store reads as *not yet asked*, costing one sheet per
+  private-window session, where the other reading removes the ask for ever with no signal.
+- **The beat before the sheet does three jobs, one of them correctness** — `PostcardDeck`'s swipe
+  coach is the same shape. It reads better (a sheet thrown up during the list's fade covers the
+  reason it is asking); it keeps `setOpen` out of an effect body, which
+  `react-hooks/set-state-in-effect` rejects; and `markAskedForLocation()` is called **inside the
+  timer**, so a rider tapping through inside the beat does not spend their one ask. **The guard
+  beside it latches on the rider OPENING a sheet and never clears** — mirroring `open` would let the
+  timer reopen a sheet they had just dismissed, 100ms later.
 - **`auto` is on the two Explore screens and nowhere else.** A tab root must not open a sheet by
   itself: the reason for asking is not on screen there. `/clubs/explore` also gained the row outright
   — it was the one Explore route with no way to supply a position, while splitting its list on one.
@@ -258,17 +257,25 @@ point** — decided 2026-09-06, harder than the story proposed.
   `queryKeys.riderLocation()` alone hands the refetch the cached promise built from the town the
   rider just replaced. `clearRiderLocation()` now has two callers for two reasons.
 
-**`canRemove` tracks the stored TOWN, not the position, and that is the state most easily got
-wrong**: a rider can have a device fix in use *and* a town stored underneath it — the chain prefers
-the device — and must still be able to remove the town. `describeRiderLocation` is a pure function
-for `locationPrimingState`'s reason: six reachable states, of which one is a rendering question.
+**`canRemove` tracks the stored TOWN, not the position** — a rider can have a device fix in use *and*
+a town under it (the chain prefers the device) and must still be able to remove the town.
+**`setRiderTown(null)` could not, until the pre-merge review found it**: `optionalText` is a
+`ZodString` pipeline, so its type gate rejects `null` before the `'' → null` transform runs, and
+`Remove` returned a raw Zod message for ever. A green `tsc`, 3444 green tests, a green build and a
+green walk were all true at once, because `safeParse` takes `unknown`.
 
-**Both stories are inferred against the design, and both are logged.** `docs/FIGMA-FIDELITY-TODO.md`
-carries PD-418's three moved strings plus the prefill, and there is no frame for a location question
-of any kind — `TownQuestionSheet` is ours on `ContextMenu`'s measured geometry.
+**The location question HAS a measured source, and this entry first claimed it did not.**
+`Add your location` (`2074:5185`) and `- City focus` (`2077:5320`) draw *"Where are you located?"*
+over an `Input / Text` labelled `City`; `docs/specs/login-onboarding.md` had both by node id all
+along. `TownQuestionSheet` takes both strings verbatim now. **The container stays ours** — those are
+the onboarding step `075` deleted, so their pagination, `Back` and `Skip`/`Next` do not transfer to a
+sheet. `docs/FIGMA-FIDELITY-TODO.md` carries the split.
 
 **The walk was run against DEV — 26/26 screens, 79/79 checks**, the join phase reporting *"join took
-the sheet path"*, which is PD-418's flow end to end against the real database. **It had to be run**:
+the sheet path"*, which is PD-418's flow end to end against the real database. **Re-run after the
+review fixes**, because `UseMyLocationRow` renders on both walked Explore screens and
+`dismissLocationSheet` exists solely for the sheet it opens there — a delta touching that
+component's behaviour is on a walked path however small it looks. **It had to be run at all**:
 PD-419's sheet opens by itself on both Explore screens, `aria-modal` over a scrim, which is what
 reddened the join phase under PD-404, and no other gate can see it. `dismissLocationSheet()` is
 scoped by the sheet's own `aria-label`, never a bare `[role="dialog"]` — the introduction sheet is
@@ -277,15 +284,12 @@ rather than fail. Two things keep it deterministic: the 800ms settle after each 
 outlasts the sheet's own 700ms beat, and the join phase still `fill`s the textarea despite the
 prefill, because PD-411's cleanup finds its thread by the text it wrote.
 
-**The `Join later` grep is a worked example of the comment trap's own limit, so it is written as the
-property rather than as a count.** The usual `grep -vE` idiom strips a comment line that *starts*
-with `*`, `//` or `/*`, and it passes through **4** lines here that are not live code: a JSX comment
-*continuation* beginning with a backtick (`clubs/detail/page.tsx:466`), and three test lines that
-exist to assert the string's **absence**. A count would read `4` and look like four survivals. What
-actually matters is that nothing renders it, which is one grep against the copy table:
+**Do not check `Join later` with the usual `grep -vE` idiom** — it strips a comment line that
+*starts* with `*`, `//` or `/*`, so it passes **4** non-code lines here (a JSX comment *continuation*
+starting with a backtick, plus three tests asserting the string's absence) and reads as four
+survivals. The labels live in one place, so check that instead:
 
 ```bash
-# The control's label lives in exactly one place, and this is that place.
 git grep -n "dismiss:" -- src/lib/validation/clubs.ts     # 'Not now' (member) · 'Cancel' (pre-join)
 git grep -n "submit:"  -- src/lib/validation/clubs.ts     # 'Post'    (member) · 'Join club' (pre-join)
 
