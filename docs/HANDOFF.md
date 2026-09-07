@@ -271,14 +271,23 @@ for `locationPrimingState`'s reason: six reachable states, of which one is a ren
 carries PD-418's three moved strings plus the prefill, and there is no frame for a location question
 of any kind — `TownQuestionSheet` is ours on `ContextMenu`'s measured geometry.
 
-**Not run: `npm run walk`.** Its join phase was updated for PD-418's new primary label (it accepts
-either, since a stale Explore row legitimately opens the member-mode sheet) and its `fill` is
-retained deliberately — the PD-411 cleanup identifies the thread by the text it wrote, and a run
-posting the app's own canned starter would be indistinguishable from a rider's. **PD-419 adds a sheet
-that can open by itself on `/rides/explore` and `/clubs/explore`, which is exactly the shape that
-broke the walk's join phase before** (an `aria-modal` sheet over a scrim fails the next click's
-actionability check). The walk needs the relay plus a dev server and is the only gate that renders
-anything, so this is the highest-value thing to run against DEV next.
+**The walk was RUN against DEV and is green — 26/26 screens, 79/79 checks**, with the join phase
+reporting *"join took the sheet path — introduction posted and deleted again"*, which is PD-418's new
+flow exercised end to end against the real database rather than against a mock.
+
+**Running it was not optional here, and the reason generalises.** PD-419 adds a sheet that opens **by
+itself** on `/rides/explore` and `/clubs/explore` — `aria-modal` over a scrim — which is exactly the
+shape that reddened the join phase under PD-404: the next click on that screen fails its
+actionability check and times out at 20s. **No other gate can see it.** `dismissLocationSheet()` is
+the fix, scoped by the sheet's own `aria-label` rather than by a bare `[role="dialog"]`, because the
+introduction sheet is also a `ContextMenu` on those screens and closing *that* by accident would
+silently delete the join phase's coverage instead of failing.
+
+**Two details worth keeping.** The 800ms settle after each Explore `goto` is longer than the sheet's
+own 700ms beat, so the sheet is reliably up rather than racing — a shorter settle would make this
+intermittent. And the walk's join phase still `fill`s the textarea despite the field now arriving
+prefilled: the PD-411 cleanup identifies the thread by the text it wrote, so a run posting the app's
+own canned starter would be indistinguishable from a rider's introduction and therefore uncleanable.
 
 **The `Join later` grep is a worked example of the comment trap's own limit, so it is written as the
 property rather than as a count.** The usual `grep -vE` idiom strips a comment line that *starts*
