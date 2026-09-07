@@ -37,6 +37,12 @@ Three states, and only the first is who the store listing is for:
    or never had a group. This is the acquisition target and the only one who reads a store
    page cold. What they need to believe in one sentence: *there are people near me to ride
    with, and I can find them without joining a Facebook group full of strangers.*
+
+   **In the launch market this state has a name: the expat.** Someone who moved to the
+   Netherlands, whose riding mates are in another country, and for whom the existing option is
+   a club that organises in Dutch. They are the sharpest available wedge — the state-1 rider
+   who is concentrated, reachable, and least served by what exists — and they are why the app
+   ships in English. See §Launch market.
 2. **Already has a crew, organises badly.** Rides get planned in a WhatsApp thread where the
    meeting point scrolls away. They arrive through an invite link, never through the store —
    `/rides/join?token=…` and `/clubs/join?token=…`, the first public paths that are **not an
@@ -136,13 +142,33 @@ These are constraints, not to-dos. Each one changes what marketing is even possi
 The owner's initial vision names **the Netherlands or Portugal**, scaling from there. Two
 things follow, and the first is the more important.
 
-**Pick one.** Geography is the whole product: a rider opens the app to find *people near them*,
-and a club with three members in the wrong country is worth nothing. Splitting a launch across
-two countries halves the density in each and doubles the localisation work, and density is the
-thing being tested. Which one is the owner's call and is not a question this file can answer
-**[unvalidated]** — nothing here has rider counts for either market. The one piece of evidence
-in the repo points at the Netherlands: `APP_TIME_ZONE` in `src/lib/utils.ts` is already
+**DECIDED 2026-09-07: the Netherlands, alone.** Geography is the whole product — a rider opens
+the app to find *people near them*, and a club with three members in the wrong country is worth
+nothing. Splitting the launch across two countries would have halved the density in each while
+doubling the localisation work, and density is the thing being tested. Portugal is a later
+market, not a parallel one. The repo already agreed: `APP_TIME_ZONE` in `src/lib/utils.ts` is
 `Europe/Amsterdam`.
+
+**DECIDED 2026-09-07: English first — app and listing both.** Not a compromise, and the reason
+is a targeting one rather than a budget one. **The expat rider in the Netherlands IS rider state
+1**, exactly: someone who moved country, whose riding mates are in another one, who has a bike
+and nobody to ride with. They are findable, they are concentrated in the Randstad, they are
+under-served by anything organised in Dutch — and they are the hardest segment for a
+Dutch-language product to reach. An English app is what serves them, and Dutch riders'
+English is not the obstacle it would be in most markets **[unvalidated]** as a claim about any
+individual rider.
+
+Three consequences, and the second is the one that is easy to get wrong:
+
+- **The listing stays English too, for now.** A Dutch listing over an English-only app is a
+  mismatch — it converts a Dutch-language searcher into a disappointed installer, and it is the
+  kind of inconsistency store review notices.
+- **What that costs is Dutch keyword MATCHING, not visibility.** An un-localised listing still
+  appears in the Dutch storefront under the app's primary language; what is given up is
+  matching on `motorrijden`, `motorclub`, `motorrijders`. Verify that in App Store Connect
+  before relying on it — this file's store mechanics are the class that moves.
+- **Dutch becomes worth doing the day the app is Dutch**, which is the i18n decision
+  `CLAUDE.md` holds open. Do not localise the listing ahead of the app to buy search terms.
 
 **Localise the LISTING before localising the APP.** Both stores let the name, subtitle,
 keywords and description differ per storefront, and the app itself does not have to change for
@@ -229,20 +255,38 @@ The product owner's line is **"Share your story, ride together"**. Two findings:
 
 | Field | Proposed | Chars |
 |---|---|---|
-| Name | `LetsRide: Motorcycle Community` | 30 |
-| Subtitle | `Share your story—ride together` | 30 |
+| Name | `LetsRide: Motorcycle Rides` | 26 |
+| Subtitle | `Tell your story, ride together` | 30 |
 | Play short description | `Plan motorcycle rides, join a club, and share the photos from the road.` | 71 |
 
-**On `Community` rather than `Clubs`.** `LetsRide: Motorcycle Clubs` is 26 and describes the
-product more exactly — there is a Clubs tab and clubs are the social graph. It is still the
-second choice, because in English *"motorcycle club"* carries the outlaw-MC association, which
-is not the product and not the audience. **[unvalidated]** as a measured effect on installs;
-the connotation itself is not in doubt, and `Community` costs nothing to prefer. It does spend
-all 30 characters, so it leaves no room for a later word.
+**The subtitle is the product owner's own wording, 2026-09-07, and it needs no edit** —
+`Tell your story, ride together` is exactly 30. (`Share your story, ride together` is 31, and so
+is its reversal; `Tell` for `Share` is what buys the character, with the comma intact.)
 
-**On the apostrophe.** `Let's Ride: Motorcycle Community` is 32 and over the cap either way,
-but the real reason not to use it is that the brand is already `LetsRide` in the places that are
-expensive to change — the domain, the OG `siteName`, the icon. Two spellings is two brands.
+**On the apostrophe.** `Let's Ride: …` is over the cap on every construction, but the real
+reason not to use it is that the brand is already `LetsRide` in the places that are expensive to
+change — the domain, the OG `siteName`, the icon. Two spellings is two brands.
+
+### Choosing the second half of the name
+
+The brand half is fixed, so the name is one decision: which ~18 characters follow `LetsRide:`.
+Measured candidates, and what each buys:
+
+| Name | Chars | Buys | Costs |
+|---|---|---|---|
+| `LetsRide: Motorcycle Rides` | 26 | **The recommendation.** The two highest-volume category words, both literally true of the product | `Rides` overlaps the brand and the subtitle, so it may earn less than it looks |
+| `LetsRide: Motorcycle Clubs` | 26 | The most product-exact — clubs *are* the social graph | In Dutch media `motorclub` is the ordinary word for an outlaw MC, which is a sharper cost in the launch market than in English |
+| `LetsRide: Motorcycle Community` | 30 | Says "social" outright, which is the pitch | Spends every character, and nobody searches the phrase |
+| `LetsRide: Motorcycle Meetups` | 28 | `meetup` is a social word people do search | Suggests events rather than rides; the app plans rides |
+| `LetsRide: Motorcycle Riders` | 27 | Names the person rather than the activity | `Riders` is close to the brand and adds little |
+| `LetsRide: Riders & Clubs` | 24 | Two product-true nouns | **Drops `Motorcycle`, which is disqualifying** — see below |
+
+**`Motorcycle` is not optional, and the strongest evidence is from this project.** `LetsRide`
+plus any word about riding reads as bicycles, horses or carpooling to someone who has never seen
+it — and the product owner, whose app it is, wrote *"this is a cycling app"* in the same message
+that proposed the name. If the word can slip for the person who built it, it will slip for a
+stranger reading 26 characters in a search result. Whatever else the name carries, it carries
+`Motorcycle`.
 
 The reason the name changes shape: **the word "motorcycle" appears nowhere in "LetsRide" or
 "Ride Together"**. That absence is a fact about two strings. **Everything drawn from it is
