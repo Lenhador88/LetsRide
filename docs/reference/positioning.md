@@ -149,16 +149,23 @@ These are constraints, not to-dos. Each one changes what marketing is even possi
 The owner's initial vision names **the Netherlands or Portugal**, scaling from there. Two
 things follow, and the first is the more important.
 
-**DECIDED 2026-09-07: the Netherlands, alone.** Geography is the whole product — a rider opens
-the app to find *people near them*, and a club with three members in the wrong country is worth
-nothing. Splitting the launch across two countries would have halved the density in each while
-doubling the localisation work, and density is the thing being tested. Portugal is a later
-market, not a parallel one. The repo already agreed: `APP_TIME_ZONE` in `src/lib/utils.ts` is
-`Europe/Amsterdam`.
+**DECIDED by the product owner, 2026-09-07 — the Netherlands, alone.** That is the whole of the
+decision; everything after this sentence is this file's reasoning and is reopenable on its own
+terms.
 
-**DECIDED 2026-09-07: English first — app and listing both.** Not a compromise, and the reason
-is a targeting one rather than a budget one. **The expat rider in the Netherlands IS rider state
-1**, exactly: someone who moved country, whose riding mates are in another one, who has a bike
+Geography is the whole product — a rider opens the app to find *people near them*, and a club
+with three members in the wrong country is worth nothing. Splitting the launch across two
+countries would have halved the density in each while doubling the localisation work, and density
+is the thing being tested. On that reading Portugal is a later market rather than a parallel one.
+The repo already agreed: `APP_TIME_ZONE` in `src/lib/utils.ts` is `Europe/Amsterdam`.
+
+**PROPOSED by the product owner and agreed here, 2026-09-07 — English first, app and listing
+both.** Their words were *"should we start with english? as there are a lot of expats in NL?"*,
+which is a question rather than a settled decision: **treat this as agreed-pending-confirmation,
+not as closed.** The argument below is this file's, not theirs.
+
+It is not a budget compromise; the reason is a targeting one. **The expat rider in the
+Netherlands IS rider state 1**, exactly: someone who moved country, whose riding mates are in another one, who has a bike
 and nobody to ride with. They are findable, they are concentrated in the Randstad, they are
 under-served by anything organised in Dutch — and they are the hardest segment for a
 Dutch-language product to reach. An English app is what serves them, and Dutch riders'
@@ -178,8 +185,12 @@ Three consequences, and the second is the one that is easy to get wrong:
   `CLAUDE.md` holds open. Do not localise the listing ahead of the app to buy search terms.
 
 **A store listing localises by LANGUAGE, not by country — and getting that backwards is how a
-launch plan misses the people it was written for.** Verified against both vendors' own docs
-2026-09-07, not asserted from memory:
+launch plan misses the people it was written for.** Checked 2026-09-07 rather than recalled, but
+**the two halves have different provenance and the weaker one is Google's**: Apple's help page is
+directly reachable from this container and was fetched; `support.google.com` is refused at the
+egress proxy, so the Play half comes from search results quoting those help pages rather than
+from the pages. Re-verify the Play half from a machine that can reach it before betting a launch
+on it.
 
 - **App Store Connect localisations are per language/locale.** `Dutch`, `Portuguese (Portugal)`
   and `Portuguese (Brazil)` are three separate listing languages; there is no way to write
@@ -190,11 +201,15 @@ launch plan misses the people it was written for.** Verified against both vendor
   listing translations are per language; *custom store listings* are the country/region tool,
   they are not auto-translated, and they are not what "localise the listing" usually means.
 
-**Which is why English-first and the expat wedge agree with each other rather than trading off.**
-A Dutch localisation reaches devices set to Dutch, wherever they are — Belgium included — and
-never reaches an English-set phone in Amsterdam. The state-1 expat this launch targets would
-have got the **primary-language** listing either way. So the English listing is not the fallback
-here; it is the one that has to be good.
+**What that establishes is that a Dutch listing is IRRELEVANT to the expat — neutrality, not
+support, and the distinction matters.** A Dutch localisation reaches devices set to Dutch
+wherever they are, Belgium included, and never reaches an English-set phone in Amsterdam, so the
+state-1 expat gets the **primary-language** listing either way. Two things follow, and only the
+first is an argument for the decision: the English listing is not a fallback here, it is the one
+that has to be good. The second cuts the other way — **since a Dutch localisation costs the wedge
+nothing, these mechanics are a reason it would be cheap, not a reason to skip it.** The reason to
+skip it is the first bullet above, that a Dutch listing over an English app is a mismatch. Do not
+let the vendor mechanics appear to vote on a product-consistency question.
 
 Two things to carry into any later localisation:
 
@@ -216,11 +231,17 @@ components under a locale that cannot show, and it misses every formatter a ride
 reads. Ask for the constructions instead:
 
 ```bash
-grep -o "Intl\.[A-Za-z]*('[a-z-]*'" src/lib/utils.ts | sort | uniq -c
-#   1 Intl.DateTimeFormat('en-CA'   ·   5 …('en-GB')   ·   3+1 …('en-US')
+grep -o "Intl\.[A-Za-z]*('[A-Za-z-]*'" src/lib/utils.ts | sort | uniq -c
+#   1 Intl.DateTimeFormat('en-CA'     5 Intl.DateTimeFormat('en-GB'
+#   3 Intl.DateTimeFormat('en-US'     1 Intl.RelativeTimeFormat('en-US'
 ```
 
-Three hardcoded locales, not one. That is a decision to take deliberately before a launch, not a
+**The character class has to admit uppercase.** `[a-z-]` matches nothing at all here — every
+locale in the file is uppercase-suffixed, so the pattern reaches `en-` and then fails on `G`,
+and the command returns zero lines with exit 0. A command that prints nothing reads exactly like
+a clean file.
+
+Ten constructions, three hardcoded locales, not one. That is a decision to take deliberately before a launch, not a
 task to slip into a copy change — and a session that "fixes i18n" by editing the four `en-US`
 literals ships with every visible date still hard-formatted `en-GB`, with the grep green.
 
@@ -271,30 +292,49 @@ everything around it is right. Those are exactly the characters a copy pass intr
 **These caps move.** Check them against App Store Connect and the Play Console before a
 submission rather than against this table.
 
-### The proposed slogan, measured
+### The subtitle, measured
 
-The product owner's line is **"Share your story, ride together"**. Two findings:
+**"Share your story" names the home screen, and that instinct is the right one.** The app opens
+on a photo deck, not a route planner — so selling it as a ride-planning tool would file it beside
+apps that also do navigation and route recording, which this one deliberately does not.
+**[unvalidated]** as a market claim; sound as a description of the build.
 
-- **It is 31 characters and the subtitle cap is 30.** One over. `"Share your story, ride
-  together" | wc -m` → 31. Reversing it does not help: "Ride together, share your story" is
-  also 31. Swapping `your` for `the` lands it exactly on 30.
-- **The instinct is right and worth keeping.** "Share your story" names the *home screen* —
-  the app opens on a photo deck, not on a route planner — and that is the honest
-  differentiator. Selling this as a ride-planning tool would put it next to apps that also do
-  navigation and route recording, which this one deliberately does not. **[unvalidated]** as a
-  market claim; sound as a description of the build.
+Three owner proposals, all measured:
 
-**The recommended split — the title carries the category, the subtitle carries the promise:**
+| Proposed | Chars | Verdict |
+|---|---|---|
+| `Share your story, ride together` | 31 | One over. Its reversal is 31 too |
+| `Tell your story, ride together` | 30 | Fits exactly — `Tell` for `Share` buys the character |
+| `Join Motorcycle rides and share your trips` | 42 | **Twelve over as a subtitle — but it is the best Play short description written so far**, and the style is right (see below) |
+
+**The third one changes the shape of the answer, and its style is better than a slogan's.**
+Apple's subtitle is meant to say what the app *does*; "Join motorcycle rides and share your
+trips" is verb-first and concrete where "Tell your story, ride together" is two imperatives with
+no object. **But it does not need the word `Motorcycle`** — by this file's own rule below, a word
+the name already owns is *wasted* in another field. Dropping it is what makes the line fit:
+
+| Subtitle | Chars | Adds to the index |
+|---|---|---|
+| `Join rides, tell your story` | 27 | **The recommendation.** `join`, `rides`, `tell`, `story` — and it is the owner's own wording from both messages |
+| `Join rides, share your trips` | 28 | `trips` instead of `story` |
+| `Tell your story, ride together` | 30 | `together`, but `ride` nearly duplicates the brand |
+| `Join group rides, share trips` | 29 | `group rides` as a phrase |
+
+**The recommended set — the name carries the category, the subtitle says what happens:**
 
 | Field | Proposed | Chars |
 |---|---|---|
-| Name | `LetsRide: Motorcycle Rides` | 26 |
-| Subtitle | `Tell your story, ride together` | 30 |
-| Play short description | `Plan motorcycle rides, join a club, and share the photos from the road.` | 71 |
+| Name | `LetsRide: Motorcycle Clubs` | 26 |
+| Subtitle | `Join rides, tell your story` | 27 |
+| Play short description | `Join motorcycle rides, find a club near you, and share your trips.` | 66 |
 
-**The subtitle is the product owner's own wording, 2026-09-07, and it needs no edit** —
-`Tell your story, ride together` is exactly 30. (`Share your story, ride together` is 31, and so
-is its reversal; `Tell` for `Share` is what buys the character, with the comma intact.)
+**`Lets ride: Tell your story.` (27) was proposed as the NAME and is the one thing here to push
+back on.** It fits, and it is distinctive. But it moves `Motorcycle` out of the name and into the
+subtitle, and the census says the category word in the name is table stakes while the name field
+carries the most search weight of any — so the trade spends the highest-weight slot on a phrase
+nobody searches. It is also a **third** spelling of the brand, after `LetsRide` (the domain, the
+OG `siteName`, the icon) and `Let's Ride`. The phrase is worth keeping; the name is the wrong
+field for it, and it survives intact in the subtitle above.
 
 **On the apostrophe.** `Let's Ride: …` is over the cap on every construction, but the real
 reason not to use it is that the brand is already `LetsRide` in the places that are expensive to
@@ -302,94 +342,104 @@ change — the domain, the OG `siteName`, the icon. Two spellings is two brands.
 
 ### Choosing the second half of the name
 
-The brand half is fixed, so the name is one decision: which ~18 characters follow `LetsRide:`.
-Measured candidates, and what each buys:
+The brand half is fixed, so the name is one decision: which nine characters follow
+`LetsRide: Motorcycle `. **`LetsRide: ` is 10 of the 30 and `Motorcycle ` is another 11**, so
+nothing longer than nine fits without dropping something — `Community` is exactly nine, `Clubs`
+is five.
 
-| Name | Chars | Buys | Costs |
+**The recommendation is `LetsRide: Motorcycle Clubs` (26)**, and the census below is the whole
+argument for it. Read that first: every alternative here is judged against it.
+
+| Name | Chars | For | Against |
 |---|---|---|---|
-| `LetsRide: Motorcycle Rides` | 26 | **The recommendation.** The two highest-volume category words, both literally true of the product | `Rides` overlaps the brand and the subtitle, so it may earn less than it looks |
-| `LetsRide: Motorcycle Clubs` | 26 | The most product-exact — clubs *are* the social graph | In Dutch media `motorclub` is the ordinary word for an outlaw MC, which is a sharper cost in the launch market than in English |
-| `LetsRide: Motorcycle Community` | 30 | Says "social" outright, which is the pitch | Spends every character, and nobody searches the phrase |
-| `LetsRide: Motorcycle Meetups` | 28 | `meetup` is a social word people do search | Suggests events rather than rides; the app plans rides |
-| `LetsRide: Motorcycle Riders` | 27 | Names the person rather than the activity | `Riders` is close to the brand and adds little |
-| `LetsRide: Riders & Clubs` | 24 | Two product-true nouns | **Drops `Motorcycle`, which is disqualifying** — see below |
+| `LetsRide: Motorcycle Clubs` | 26 | **The recommendation.** Exactly true of the product — clubs *are* the social graph — and the one second-slot word **no app in the census uses** | `motorclub` carries a connotation in Dutch it does not carry in English (below) |
+| `LetsRide: Motorcycle Rides` | 26 | Two plain category words, both true of the product | `Rides` is **3 of 7** in the census — as contested as `Community` — and it echoes both the brand and the subtitle |
+| `LetsRide: Motorcycle Community` | 30 | Says "social" outright, which is the pitch | **3 of 7**, and three incumbents have optimised for it. Spends every character, leaving no room for a later word |
+| `LetsRide: Motorcycle Meetups` | 28 | `meetup` is a social word | Suggests events; this app plans rides |
+| `LetsRide: Motorcycle Riders` | 27 | Names the person rather than the activity | Close to the brand, adds little |
+| `LetsRide: Riders & Clubs` | 24 | Two product-true nouns | **Drops `Motorcycle`, which is disqualifying** — see the census |
 
-**`Motorcycle` is not optional, and there are two independent reasons.** `LetsRide` plus any
-word about riding reads as bicycles, horses or carpooling to someone who has never seen it — and
-the product owner, whose app it is, wrote *"this is a cycling app"* in the same message that
-proposed the name. If the word can slip for the person who built it, it will slip for a stranger
-reading 26 characters in a search result. The second reason is the census below.
+**`Let's Ride: …` is over the cap on every construction**, but the real reason not to use it is
+that the brand is already `LetsRide` where it is expensive to change — the domain, the OG
+`siteName`, the icon. Two spellings is two brands.
 
 ### What the category actually named itself — read 2026-09-07
 
-The one honest proxy for search volume available without a paid ASO tool: **every competitor has
-already done this research, and their store names are the answer they bought.**
+Search volume sits behind a paid ASO tool. The one honest proxy available without one:
+**every competitor has already done this research, and their store names are the answer they
+bought.**
 
-| Store name | `Motorcycle` | Second slot |
+| Store name | Category word | Second slot |
 |---|---|---|
-| `REVER - Motorcycle GPS & Rides` | ✓ | GPS, Rides |
-| `MotoVerse - Motorcycle Community` | ✓ | Community |
-| `MOTOSPOT Motorcycle Social App` | ✓ | Social |
-| `TONIT Motorcycle App` | ✓ | — |
-| `EatSleepRIDE` — "the motorcycle community…" | ✓ | Community |
-| `MotoCommunity — Find Your Ride` | `Moto` | Community, Ride |
-| `MotoMate: Group Rides` | `Moto` | Group Rides |
+| `REVER - Motorcycle GPS & Rides` | Motorcycle | GPS, **Rides** |
+| `MotoVerse - Motorcycle Community` | Motorcycle | **Community** |
+| `MOTOSPOT Motorcycle Social App` | Motorcycle | Social |
+| `TONIT Motorcycle App` | Motorcycle | — |
+| `MotoCommunity — Find Your Ride` | Moto | **Community**, **Ride** |
+| `MotoMate: Group Rides` | Moto | Group **Rides** |
+| `EatSleepRIDE` | **none** | — (its tagline says "the motorcycle community") |
 
-**`Motorcycle` or `Moto` is in 7 of 7.** That settles the first slot: it is table stakes, not a
-differentiator, and an app without it is invisible.
+**Six of the seven NAMES carry `Motorcycle` or `Moto`.** The seventh is the interesting one and
+must not be counted as a confirmation: `EatSleepRIDE`'s name carries no category word at all. It
+is also a decade-old brand with an established community, which is the condition under which a
+name can be pure brand. **A new app with no ratings does not have that option**, so the rule
+stands as *table stakes for us* rather than as a law — stated that way because the exception is
+sitting in the same table.
 
-**The second slot splits, and `Community` is the crowded one — three of seven.** A new app with
-no ratings does not out-rank three incumbents on the phrase they have all optimised for; the ASO
-literature's own advice is that a narrower term with matching intent produces fewer impressions
-and more installs. **`Clubs` appears in none of the seven**, and it is the one word that is
-exactly true of this product — clubs *are* the social graph here.
+**The second slot is where the census earns its place.** `Community` is **3 of 7** (MotoVerse,
+MotoCommunity, EatSleepRIDE's tagline) and `Rides`/`Ride` is **3 of 7** (REVER, MotoCommunity,
+MotoMate) — **equally contested, which is why neither is recommended**. `Clubs` is **0 of 7**,
+and it is the one word exactly true of this product. A new app with no ratings does not out-rank
+three incumbents on a phrase they have all optimised for; a narrower term with matching intent
+is the standard answer, fewer impressions and more installs.
 
-**[unvalidated] and this is the honest limit of the method**: a census of names is a proxy for
-volume, not volume. It cannot tell whether *"motorcycle club"* is searched by riders looking for
-a club to join or by people interested in outlaw-MC culture, and that distinction decides whether
-`Clubs` is an opportunity or a trap. A free ASO tool tier (App Radar, AppTweak) settles it in an
-hour and nothing here can. **`apps.apple.com` is blocked by this container's egress proxy**, so
-even the listings above are read from search-result titles rather than from the pages.
+**The limit of the method, which is a real one.** A census of names is a proxy for volume, not
+volume — nothing here can measure volume, and no claim in this section should be read as one. In
+particular it cannot tell whether *"motorcycle clubs"* is searched by riders looking for a club
+to join or by people interested in outlaw-MC culture, and **that distinction decides whether the
+recommendation above is an opportunity or a trap**. See §Blocked, and needed from the owner.
+
+**On `motorclub`, precisely** — because the imprecise version was doing real work here.
+`motorclub` is the ordinary Dutch word for **any** motorcycle club, and it is a term Dutch
+riders search. Dutch media also carries a strong outlaw association the English word lacks,
+driven by a run of high-profile club bans — but that sense is normally *marked*
+(`verboden motorclub`, `criminele motorclub`, `OMG`). **[unvalidated]** as an effect on installs.
+So it is a reason to watch the Dutch listing's wording if one is ever written, **not** a reason
+to reject `Clubs` in an English name — which is how an earlier draft of this file used it.
 
 ### The name does not have to carry everything
 
-The 100-character keyword field is indexed too, and Apple builds phrases across name, subtitle
-and keywords — so a word already in the name or subtitle is **wasted** if repeated there. With
-`LetsRide: Motorcycle Clubs` and `Tell your story, ride together`, the name and subtitle already
-own `motorcycle`, `clubs`, `ride`, `story`, `together`. The keyword field then spends its 100
-characters on what they do not:
+The 100-character keyword field is indexed too, and both stores build phrases across the fields,
+so **a word already in the name or subtitle is wasted if repeated there** — asserted from
+knowledge and worth confirming in App Store Connect, unlike the localisation rules above which
+were checked. With `LetsRide: Motorcycle Clubs` and `Tell your story, ride together`, the name
+and subtitle own `motorcycle`, `clubs`, `ride`, `story`, `together`. The keyword field spends its
+100 characters on what they do not:
 
 ```
 group,rides,riders,near,me,community,social,meetup,biker,motorbike,crew,tour,bike,trip
 ```
 
-**Not `friends`.** The app has no such concept — see the do-not-say table — and a keyword is a
-claim like any other.
+So `community` and `group rides` are still bid for — just not in the 30 characters where they
+would cost the uncontested word. **Not `friends`**: the app has no such concept (see the
+do-not-say table), and a keyword is a claim like any other.
 
-**Arithmetic worth knowing before arguing about a word:** `LetsRide: ` is 10 of the 30 and
-`Motorcycle ` is another 11, so the second slot has **nine characters**. `Community` is exactly
-nine and `Clubs` is five; nothing longer than nine fits without dropping something.
+**Regenerate that line if the name changes.** It is derived from the recommended name, and a
+keyword field computed for a different title wastes a slot on a word the name already owns while
+giving away the one it does not.
 
-The reason the name changes shape: **the word "motorcycle" appears nowhere in "LetsRide" or
-"Ride Together"**. That absence is a fact about two strings. **Everything drawn from it is
-[unvalidated] ASO reasoning** — that a rider types the category into store search, that the
-name field weighs a keyword most, and therefore that spending 18 of its 30 characters on the
-category is the highest-value edit in the listing. It is this file's headline recommendation
-and it rests on no measurement taken here; the first real test is the store's own search
-results after a submission.
+### Blocked, and needed from the owner
 
-Alternatives, all within cap, if the owner prefers a different emphasis:
+Two capabilities would turn this section's central argument from a proxy into a measurement, and
+neither can be restored from inside a session:
 
-| Subtitle | Chars | Note |
-|---|---|---|
-| `Share your story—ride together` | 30 | **The recommendation.** Every word the owner chose, kept. The comma-and-space becomes an em-dash with no spaces, and that punctuation swap is the whole of where the missing character comes from |
-| `Share the story, ride together` | 30 | Keeps the comma; `the` for `your` |
-| `Ride together, share the story` | 30 | Leads with the promise rather than the loop |
-| `Find your crew. Ride together.` | 30 | Aimed squarely at state 1 |
-| `Where riders find their crew` | 28 | The place, not the action |
-
-`Share your story, ride together` as written is **31** — one over — and reversing it does not
-help, because `Ride together, share your story` is also 31.
+- **`apps.apple.com`, `itunes.apple.com` and `play.google.com` are refused at this container's
+  egress proxy** (`403` to `CONNECT`, logged in its own failure list). So the seven names above
+  are read from search-result titles rather than from the listings, and no subtitle, description
+  or rating count could be read at all.
+- **No ASO tool.** A free tier (App Radar, AppTweak) returns estimated volume and difficulty per
+  keyword per storefront, which settles `Clubs` vs `Community` in an hour and resolves the
+  outlaw-MC ambiguity above. It needs a login.
 
 ### Description — the first three lines
 

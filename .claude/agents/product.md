@@ -64,7 +64,10 @@ always bytes. Pure ASCII is unaffected, which is what makes it dangerous: a tabl
 candidates measures correctly and the first line carrying `—`, `–`, `’` or `…` is silently
 over. Those are exactly the characters a copy pass introduces. The caps themselves are in
 `docs/reference/positioning.md`; they move, so verify against App Store Connect and the Play
-Console — you hold `WebFetch` for that.
+Console — you hold `WebFetch` for that. **`apps.apple.com`, `play.google.com` and
+`support.google.com` are refused at this container's egress proxy**, so a listing you cannot
+fetch is a blocked capability: raise it with the owner as an ask, never as a footnote, and label
+whatever you inferred from search results instead.
 
 ## What you own, and what you hand off
 
@@ -117,11 +120,12 @@ channel or campaign, because each one removes options that work for a normal soc
 - **The free tier auto-pauses after ~7 days idle** and serves nothing. A campaign against a
   paused project converts to a blank screen. `docs/reference/native-shell.md` §Store readiness
   row 6.
-- **Threads are not chat, and there are no DMs — the second half holds on every branch.** Never
-  write "message a rider" or "chat with the crew": the Inbox epic's remaining half is DMs, and
-  it is unbuilt everywhere. Only *"a ride has titled threads"* is branch-dependent — `108` is
-  applied to DEV alone, so on `main` a ride still has a chat. Say which environment a claim
-  describes; do not read that caveat as suspending the rule.
+- **There are no DMs, on any branch.** Never write "message a rider" or "DMs": the Inbox epic's
+  remaining half is DMs and it is unbuilt everywhere. That half of the rule is not
+  branch-dependent and no environment caveat suspends it.
+- **"Chat" is the branch-dependent word.** `108` is applied to DEV alone, so a ride has titled
+  threads on `development` and still has a chat on `main` — which makes "chat with the crew"
+  wrong on one branch and accurate on the other. Say which environment a claim describes.
 - **Reporting is not uniform.** Postcards and club threads have a report path; a ride thread
   does not. Never write "report any post": Guideline 1.2 is the one that checks.
 - **The launch market is the Netherlands or Portugal, one of them, not both** — density is the
