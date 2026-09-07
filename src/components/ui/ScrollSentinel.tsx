@@ -10,11 +10,11 @@ import { useEffect, useRef } from 'react'
  * display-cap step (PD-393), which fetches nothing at all and only raises how
  * many already-held rows are drawn.
  *
- * `/clubs/detail/threads` and `/notifications` keeping their `Load more`
- * buttons is still a decision rather than an oversight — PD-375 scoped the
- * PAGING mechanism to the club timeline, and PD-393 borrowing the sentinel for
- * a free cap bump does not widen that scope to a screen that would have to
- * fetch.
+ * `/notifications` keeping its `Load more` button is still a decision rather
+ * than an oversight — PD-375 scoped the PAGING mechanism to the club timeline,
+ * and PD-393 borrowing the sentinel for a free cap bump does not widen that
+ * scope to a screen that would have to fetch. (`/clubs/detail/threads` was the
+ * other screen named here until PD-426 deleted it.)
  *
  * An empty `div`, observed by an `IntersectionObserver` created **in an
  * effect** and disconnected in its cleanup — never during render. The reason

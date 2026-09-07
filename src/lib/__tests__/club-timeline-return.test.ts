@@ -31,12 +31,12 @@ describe('clubThreadFromTimeline', () => {
 })
 
 describe('clubThreadReturnTo', () => {
-  it('returns the thread list when no anchor was carried', () => {
-    expect(clubThreadReturnTo(CLUB, null)).toBe(routes.clubThreads(CLUB))
+  it('returns the club when no anchor was carried', () => {
+    expect(clubThreadReturnTo(CLUB, null)).toBe(routes.club(CLUB))
   })
 
-  it('returns the thread list for an empty string', () => {
-    expect(clubThreadReturnTo(CLUB, '')).toBe(routes.clubThreads(CLUB))
+  it('returns the club for an empty string', () => {
+    expect(clubThreadReturnTo(CLUB, '')).toBe(routes.club(CLUB))
   })
 
   it('returns the club with a fragment for a well-formed anchor', () => {
@@ -54,13 +54,13 @@ describe('clubThreadReturnTo', () => {
   it('falls back rather than building a fragment from a malformed value', () => {
     // Never a URL and never an open redirect: an unknown prefix, a non-uuid
     // remainder, and a bare path all fall back identically.
-    expect(clubThreadReturnTo(CLUB, 'not-an-anchor')).toBe(routes.clubThreads(CLUB))
-    expect(clubThreadReturnTo(CLUB, 'ride:not-a-uuid')).toBe(routes.clubThreads(CLUB))
+    expect(clubThreadReturnTo(CLUB, 'not-an-anchor')).toBe(routes.club(CLUB))
+    expect(clubThreadReturnTo(CLUB, 'ride:not-a-uuid')).toBe(routes.club(CLUB))
     expect(clubThreadReturnTo(CLUB, 'seventh-kind:44444444-5555-4666-8777-888888888888')).toBe(
-      routes.clubThreads(CLUB)
+      routes.club(CLUB)
     )
-    expect(clubThreadReturnTo(CLUB, 'https://example.com')).toBe(routes.clubThreads(CLUB))
-    expect(clubThreadReturnTo(CLUB, '../../etc/passwd')).toBe(routes.clubThreads(CLUB))
+    expect(clubThreadReturnTo(CLUB, 'https://example.com')).toBe(routes.club(CLUB))
+    expect(clubThreadReturnTo(CLUB, '../../etc/passwd')).toBe(routes.club(CLUB))
   })
 
   it('round-trips through the parameter the thread page reads', () => {

@@ -10,6 +10,7 @@ import { ScrollSentinel } from '@/components/ui/ScrollSentinel'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { SkeletonList } from '@/components/ui/Skeleton'
 import { getRideJournal } from '@/lib/data/postcards'
+import { getRideThreadUnread } from '@/lib/data/ride-threads'
 import {
   getRideJoins,
   getRideThreadCreations,
@@ -98,6 +99,27 @@ export function RideTimeline({
   )
   const replies = useQuery(queryKeys.rides.threadReplies(rideId), () =>
     getRideThreadReplies(rideId)
+  )
+  /**
+   * Per-thread unread marks — PD-426, moved here from `RideThreadsButton` and
+   * `RideThreadsRow` when both were deleted. **Not an addition: without it,
+   * deleting those two took ride-thread unread indication out of the app
+   * entirely**, which is the removal-that-quietly-takes-something the story
+   * warned about.
+   *
+   * Per thread rather than the aggregate dot those two carried, because that is
+   * what the surface can now show — the club has always done it this way
+   * (`ClubTimelineThreadRow`), and an aggregate dot on a screen that lists the
+   * threads individually would say less than the rows beside it.
+   *
+   * Issued unconditionally, matching the two reads above and for the same
+   * reason: `108`'s policies answer `{}` for a non-crew viewer, so a client-side
+   * crew gate would be a second copy of the audience rule. `getRideThreadUnread`
+   * resolves a failure to `{}` rather than throwing, so a timeline that cannot
+   * read the marks still renders its rows.
+   */
+  const unread = useQuery(queryKeys.rides.threadsUnread(rideId), () =>
+    getRideThreadUnread(rideId)
   )
 
   // The display cap, in `RIDE_TIMELINE_LIMIT`-sized steps. No `windowsFetched`
@@ -244,6 +266,7 @@ export function RideTimeline({
                     title={event.thread.title}
                     lead={`${event.thread.author?.username ?? 'A rider'} started this`}
                     at={event.at}
+                    unread={unread.data?.[event.thread.id] === true}
                   />
                 ) : (
                   <RideTimelineThreadRow
@@ -252,6 +275,7 @@ export function RideTimeline({
                     title={event.reply.thread_title}
                     lead={`${event.reply.author ?? 'A rider'} replied`}
                     at={event.at}
+                    unread={unread.data?.[event.reply.thread_id] === true}
                   />
                 )}
               </div>

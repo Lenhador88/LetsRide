@@ -47,7 +47,7 @@ function NewRideThreadScreen() {
           to the tab root, matching `backFromCreateScreen`'s rule. */}
       <Header
         title="Start a thread"
-        backHref={id ? routes.rideThreads(id) : '/rides'}
+        backHref={id ? routes.ride(id) : '/rides'}
       />
 
       <div className="px-4 pt-4 pb-8">

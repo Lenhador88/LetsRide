@@ -43,7 +43,7 @@ function NewClubThreadScreen() {
           back to the tab root, matching `backFromCreateScreen`'s rule. */}
       <Header
         title="Start a thread"
-        backHref={id ? routes.clubThreads(id) : '/clubs'}
+        backHref={id ? routes.club(id) : '/clubs'}
       />
 
       <div className="px-4 pt-4 pb-8">

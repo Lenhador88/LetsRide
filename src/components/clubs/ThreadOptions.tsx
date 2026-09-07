@@ -141,7 +141,7 @@ export function ThreadOptions({
       showBanner('Thread deleted')
       // `replace`, not `push`: the thread this was invoked from no longer
       // exists, so Back must not return to a screen that now 404s.
-      router.replace(routes.clubThreads(clubId))
+      router.replace(routes.club(clubId))
     })
   }
 

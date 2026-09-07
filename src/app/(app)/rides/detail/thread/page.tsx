@@ -120,7 +120,7 @@ function RideThreadScreen() {
   // Read from the thread rather than the URL, because the URL names the thread
   // and not the ride. `/rides` while the thread is still arriving and after it
   // has failed — the same fallback the club's screen makes to `/clubs`.
-  const backHref = rideId ? routes.rideThreads(rideId) : '/rides'
+  const backHref = rideId ? routes.ride(rideId) : '/rides'
 
   // PD-341: the edge swipe is a second route to the arrow beside it, so it goes
   // to the same place by construction — one value, read twice. The composer is a

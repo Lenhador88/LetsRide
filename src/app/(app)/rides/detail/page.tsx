@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { CalendarIcon, LocationOutlineIcon } from '@/components/icons/generated'
 import { Avatar } from '@/components/ui/Avatar'
 import { RideAttendanceBar } from '@/components/rides/RideAttendanceBar'
-import { RideThreadsRow } from '@/components/rides/RideThreadsRow'
 import { RideCreateAction } from '@/components/rides/RideCreateAction'
 import { RideCrewRail } from '@/components/rides/RideCrewRail'
 import { RideStatusChip } from '@/components/rides/RideStatusChip'
@@ -61,12 +60,15 @@ import type { RideAttendance, RideDetail } from '@/types'
  *   perforated tile for PD-257's unbuilt journal route. That story owes a tile
  *   of its own now; `docs/FIGMA-FIDELITY-TODO.md` §The stamp as a franked
  *   postal stamp keeps the measurements a rebuild would need.
- * - **The crew rail and the labelled chat row stay, above the stream.** The
- *   rail answers *who is coming* and the stream answers *what has happened*;
- *   the club detail keeps its member rail above its timeline for the identical
- *   reason. The chat row stays above because PD-125's whole finding was that a
- *   rider could not find the chat, and putting it under a stream that grows
- *   re-opens that the moment a ride collects twenty entries.
+ * - **The crew rail stays above the stream.** The rail answers *who is coming*
+ *   and the stream answers *what has happened*; the club detail keeps its
+ *   member rail above its timeline for the identical reason.
+ *   **The labelled chat row stood beside it until PD-426 and is now gone**,
+ *   along with the header's chat icon and the thread index both pointed at.
+ *   PD-125's finding — that a rider could not find the chat — is not reopened
+ *   by that: it argued against burying an entrance under a growing stream, and
+ *   the threads are now rows *in* the stream rather than behind a link out of
+ *   it.
  *
  * ## What PD-401 changed — the rail moves up, and the `(+)` becomes a bar
  *
@@ -363,7 +365,6 @@ function RideScreen() {
         rideId={id}
         title={ride.data?.title}
         current="plan"
-        isCrew={isCrew}
         isOrganizer={ride.data?.is_organizer}
         // PD-378 — the club timeline row this ride was opened from, and the
         // club it belongs to. The anchor comes out of the URL so it is there on
@@ -408,7 +409,6 @@ function RideScreen() {
         ) : ride.data ? (
           <RidePlan
             ride={ride.data}
-            isCrew={isCrew === true}
             statusChip={statusChip}
             rsvpOpen={bottomSlot === 'rsvp'}
             onToggleRsvp={() => setRsvpReopened((open) => !open)}
@@ -451,7 +451,6 @@ function RideScreen() {
 
 function RidePlan({
   ride,
-  isCrew,
   statusChip,
   rsvpOpen,
   onToggleRsvp,
@@ -459,7 +458,6 @@ function RidePlan({
   near,
 }: {
   ride: RideDetail
-  isCrew: boolean
   /** The rider's own answer, drawn as a chip on the first content line, or
    *  `null` to draw none — `resolveRideDetailActions` decides which (PD-404).
    *  Not re-derived from `ride.attendance` here: the organizer reads `going`
@@ -648,15 +646,12 @@ function RidePlan({
 
       {blurb && <ExpandableText className="px-6">{blurb}</ExpandableText>}
 
-      {/* PD-254's whole point, and it stays above the timeline rather than
-          below it: a rider could not find the chat, and burying the labelled
-          row under a stream that grows would re-open that defect the moment a
-          ride collects twenty entries. `108` (PD-402) points it at the ride's
-          threads instead — the row survives the conversation model it was
-          written for, because what PD-125 measured was that nobody finds the
-          bare header bubble, which is still true. */}
-      {isCrew && <RideThreadsRow rideId={ride.id} />}
-
+      {/* `RideThreadsRow` was here — deleted with the index route it linked to,
+          PD-426. What PD-254 measured (nobody finds the bare header bubble) is
+          still true and is not what changed: the labelled row and the bubble
+          were two entrances to a LIST, and threads are read on the timeline
+          below now, so the row would be a third way to reach what the next
+          element already shows. The header bubble went in the same change. */}
       {/* What has happened, last — the club detail's shape, PD-393. Not
           crew-gated (PD-282): `ride_journal_postcard_ids` gates on
           `can_read_ride` and the postcard SELECT qual and never on crew, and

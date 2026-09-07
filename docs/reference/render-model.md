@@ -38,8 +38,8 @@ reclassifies the route to `●` without removing the segment. What the native ep
 version under-counts by one the day the first route is ever dynamic — it is right today only
 because `/` sorts first and is static.
 
-`next build` reports **45 static** and **0 dynamic**, and no `ƒ Proxy (Middleware)` line appears
-at all. Do not read the `Generating static pages (46/46)` line as the static route count — it is a
+`next build` reports **43 static** and **0 dynamic**, and no `ƒ Proxy (Middleware)` line appears
+at all. Do not read the `Generating static pages (44/44)` line as the static route count — it is a
 different quantity, and 35 against 34 is exactly the kind of near-miss that gets copied.
 
 **A route in that table is not the same thing as a page**, and `/icon.png` is the standing

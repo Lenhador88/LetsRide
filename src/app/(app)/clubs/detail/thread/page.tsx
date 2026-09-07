@@ -80,9 +80,11 @@ import { useSwipeBack } from '@/lib/actions/navigate'
  * `clubThreadReturnTo` is the one place that turns it into a destination —
  * both the header arrow and `useSwipeBack` read the SAME `backHref` below, so
  * they cannot disagree (the defect PD-341 already closed on this exact
- * screen once). Absent or unparseable both answer `routes.clubThreads`,
- * today's behaviour and what a notification tap, a shared URL and a reload
- * all still produce. See `design.md` §D9.
+ * screen once). Absent or unparseable both answer `routes.club` — they
+ * answered `routes.clubThreads` until PD-426 deleted that index, so the
+ * anchored and unanchored answers now differ only by the fragment. That is what
+ * a notification tap, a shared URL and a reload all produce. See `design.md`
+ * §D9.
  */
 export default function ClubThreadPage() {
   // The id is a query parameter, not a segment, so the static bundle needs one
@@ -135,9 +137,9 @@ function ClubThreadScreen() {
   // Read from the URL, so it is right while the thread is still arriving and
   // after it has failed — the same reason the arrow below takes it.
   // `clubThreadReturnTo` is what makes `rawAnchor` safe here: absent or
-  // unparseable both fall back to `routes.clubThreads`, which is this line's
-  // own previous behaviour and what a notification tap, a shared URL and a
-  // reload all still produce.
+  // unparseable both fall back to `routes.club` (PD-426; it was
+  // `routes.clubThreads` until that index was deleted), which is what a
+  // notification tap, a shared URL and a reload all produce.
   const backHref = clubId ? clubThreadReturnTo(clubId, rawAnchor) : '/clubs'
 
   // PD-341, folded in: without it this screen and the ride's thread screen —
