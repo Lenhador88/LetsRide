@@ -43,24 +43,27 @@ history.
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
 - **The last process pass (2026-09-07) cut `CLAUDE.md` to ~12k tokens and this file to five
   sections**, moved the dated record to `docs/reference/journal.md`, made the reviewer's findings
-  part of the PR, and made the Stop hook name unarchived OpenSpec changes. **OpenSpec has 46 open
+  part of the PR, and made the Stop hook name unarchived OpenSpec changes. **OpenSpec has 47 open
   changes and 4 archived** (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`)
-  — a backlog no hook clears; see §Next action.
+  — a backlog no hook clears; see §Next action. The 47th is
+  `preview-a-ride-before-signing-up`, which is **correctly** open: nothing in it is built.
 
 ## In flight
 
-- **Both queue slots are free again.** #434 (PD-385) merged 2026-09-07 as `9b69253`, and #428
-  (PD-428, PD-427) merged the same day. Both had sat finished-but-unmerged for hours first, which
-  is worth knowing rather than tidying away: the queue counts free slots off the two `slot-*`
-  labels, so a PR nobody merges stops the queue entirely while every gate stays green.
+- **Both queue slots are free.** #435 (PD-429, PD-430) merged 2026-09-07 as `ecae89a`, taken as a
+  group into slot-1 and released on the merge.
 - **`Development (AI)`:** PD-421 only (the log digest's HTTP call has never succeeded), carrying
-  no slot label.
-- **`Queued (AI)`:** PD-431 (ride reminders), PD-430 (a shared ride link before sign-up), PD-429
-  (organizer may say Maybe) — waiting on the next firing, with both slots now open.
-- **Two stories stayed open on purpose.** **PD-385**: 9 DEV rides still carry a coordinate and no
-  tile, and only each ride's own organizer can repair one — three are `pedro889`'s, and the repair
-  is opening each on DEV and pressing Save. **PD-428**: it still owes `114` (above) and a way to
-  change the country after onboarding, which wants a decision rather than a branch.
+  no slot label — so it occupies no slot, which is deliberate rather than a gap.
+- **`Queued (AI)`:** PD-431 (ride reminders) only. It is an `L` that needs **APNs/FCM credentials
+  no session can obtain**, so a firing that takes it will reach the sender and park; the
+  registration half is buildable now.
+- **Three stories are open on purpose, and one of them is the next decision.** **PD-430** is
+  parked in `Needs help`: its proposal is merged and validates clean, and it stops on one question
+  — the owner's five fields include *the town*, and **no ride carries one**. `rides` has no
+  locality column, `meeting_point` is the place name or free text, and the geocoder stores neither.
+  The comparison table is on the issue; the recommendation is to ship the other four fields now.
+  **PD-385**: 9 DEV rides carry a coordinate and no tile, repairable only by each ride's own
+  organizer. **PD-428**: still owes `114` (above) and a way to change the country after onboarding.
 
 Re-derive rather than trust the list: `list_issues project=88f3f224-ecf0-46f0-a032-c86b7a12f81c`
 filtered by status, and `list_pull_requests state=open`.
