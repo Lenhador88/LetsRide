@@ -329,13 +329,48 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 115 rows on DEV and 107 on PROD against 112 files, measured
-2026-09-06. The DEV surplus is not a gap, and the PROD shortfall is the ordinary one.** `101`
+**`list_migrations` prints 116 rows on DEV and 107 on PROD against 113 files, measured
+2026-09-07. The DEV surplus is not a gap, and the PROD shortfall is the ordinary one.** `101`
 through `107` **promoted to PROD on 2026-09-06** between 08:26:24Z and 08:40:28Z, closing the gap
 this heading described for a week; `108` and `110` (PD-402) opened a new one the same day.
 
-**What is open is the ordinary promotion gap: `108`–`112`, all five applied to DEV** — `108`–`110`
-from PD-402, `111` from PD-361, and `112` from PD-399/PD-408.
+**What is open is the ordinary promotion gap: `108`–`113`, all six applied to DEV** — `108`–`110`
+from PD-402, `111` from PD-361, `112` from PD-399/PD-408, and `113` from PD-428.
+
+**`113_home_country` (PD-428), applied to DEV 2026-09-07T10:10:07Z as `20260907101007`.** Adds
+nullable `profiles.home_country` (ISO 3166-1 alpha-2), two VALIDATED CHECKs, three column grants
+and one coercion arm on `enforce_onboarding_completion`. **MIGRATION-FIRST**: the bundle that
+writes the column must not reach a database without it (`PGRST204`), and every edit here strictly
+widens what is accepted, so it is a no-op against the bundle currently serving.
+
+**Its partner `114` is deliberately unwritten.** It arms `complete_onboarding` to refuse a NULL
+country, which is a NARROWING: applied before the new bundle serves, the old bundle's
+`complete_onboarding(null)` is refused on every signup and every new rider is stuck in the wizard.
+So it must not exist until the merge sha is `READY` with `aliasError` null on `development`. One
+file cannot be both sides of a deploy — `108`/`109`'s shape, and the same split is owed on the
+PROD promotion rather than collapsed.
+
+**Three things `113` measured that were previously stated wrong**, recorded here because two of
+them are about files older than this one:
+
+- **`grant select, insert, update (home_country) on … to authenticated` is not the statement to
+  write.** The column list binds to the LAST privilege only, so that one-liner grants SELECT and
+  INSERT **table-wide** — handing back exactly what `025`, `030` and `096` revoked
+  (`terms_accepted_at`, `onboarding_completed_at`, `terms_version`, `analytics_opt_out_at`, all
+  reachable by `select=*`). Measured on DEV in a rolled-back transaction:
+  `has_table_privilege('authenticated','public.profiles','select')` reads **true** after the
+  one-liner and **false** after three separate statements. `113` issues three, and asserts both
+  table-wide reads.
+- **The "two error identities" rationale is aspirational, in `020` as well as here.** Membership
+  is a strict subset of shape, so no value passes one and fails the other, and Postgres reports
+  CHECKs in constraint-NAME order where `…_is_assigned` sorts first. Measured: `''`, `'nl'`,
+  `'NLD'`, `' NL '` and `'1'` are all reported by the membership constraint on `profiles`, and
+  `'nl'` likewise by `profile_countries_code_is_assigned` rather than `014`'s shape check. Do not
+  "fix" it by renaming — that would make the shape check report for `ZZ`, which IS a valid shape.
+- **`020`'s and `113`'s footer verification query for the code list is broken and returns NULL.**
+  It matches `\{(.*)\}` while `pg_get_constraintdef` renders `ARRAY['AD'::text, …]`, so it reads
+  as "no answer" rather than "wrong". The working form is `\[(.*)\]` → 249, pinned in the RLS
+  suite at `113.1a` for both constraints. `113` is applied, so its footer is not edited.
 
 **`112_the_reaper_watches_every_child` (PD-399 + PD-408), applied to DEV 2026-09-06T15:5xZ.**
 Additive and **nothing to sequence against**: it touches no file under `src/`, adds no column,
@@ -691,7 +726,7 @@ and re-derive both rather than trusting the numbers in this heading — they hav
 before, in the direction of reading one row too few.
 
 ```bash
-ls supabase/migrations/*.sql | wc -l    # 112
+ls supabase/migrations/*.sql | wc -l    # 113
 ```
 
 *(The `docs:check` anchor for this count is the copy further down, in the promotion log's code
@@ -1372,7 +1407,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 112 — DEV at 112, PROD at 107 (108-112 await promotion)
+ls supabase/migrations/*.sql | wc -l     # 113 — DEV at 113, PROD at 107 (108-113 await promotion)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```

@@ -90,6 +90,33 @@ These came from the file and are already verified — do not re-derive or second
 Anything built from that list is correct by construction. The debt below is **composition**,
 not styling.
 
+## Onboarding — the home-country step (PD-428, 2026-09-07)
+
+**There is no frame for this screen and none for its control.** The step is required by
+decision #5 and by `114`, so it was built anyway; every departure below is deliberate and
+none of it can be verified against the snapshot until a frame exists.
+
+- **The container is traced from `Login / Onboarding › Add your location` (`2074:5185`)** —
+  the step `075` deleted. Title at Poppins/32/Semibold, the `Back` link, the 72px
+  label-above-value field shape, and `Pagination`. That frame's own field is a free-text
+  `City` input, so only the container transfers, not the control.
+- **`Skip` is NOT built**, here or anywhere. The frame draws it; decision #5 says onboarding
+  is required and not skippable, and `114` refuses to stamp completion without a country, so
+  a Skip would be a control that cannot work.
+- **`Pagination` reads `total={2}`**, not the frame's three dots: the consent prompt is
+  deliberately not a step in the wizard's pagination, so the wizard is username + country.
+  It was added to the username screen in the same change — dots on one step and not the
+  other is worse than none.
+- **`CountrySelect` is invented.** A single-select country picker has no frame. The 56px
+  option-row geometry (flag, label, trailing indicator) is borrowed from
+  `Component / Search Results / Country` (v1, `318:4732`) but **not its semantics** — that
+  component is a *checkbox multi-select* for `profile_countries`, the travel log. The
+  checkbox is replaced by a single check on the picked row. The combobox behaviour itself —
+  type to filter, arrow-key listbox — has nothing to check against.
+- **Emoji flags do not render on Windows**, which shows the two letters instead. Same trade
+  `src/lib/countries.ts` already documents and logged under §Profile; it costs nothing on
+  the iOS and Android screens that matter.
+
 ## TODO — verify against Figma
 
 Sections are filled in as screens are built. An unchecked box is a known unknown; where a

@@ -259,3 +259,46 @@ insert into profile_countries (user_id, country_code) values
   ('00000000-0000-0000-0000-00000000001a', 'NL'),
   ('00000000-0000-0000-0000-00000000001a', 'DE'),
   ('00000000-0000-0000-0000-00000000000a', 'PT');
+
+-- ---------------------------------------------------------------------------
+-- 113: profiles.home_country
+-- ---------------------------------------------------------------------------
+-- ** DO NOT CONFUSE THIS WITH profile_countries ABOVE. ** They are different
+-- facts on different tables and only one of them is a single value: the rows
+-- above are the travel log ("countries I have ridden in", many per rider, a
+-- multi-select), and the column below is the ONE country a rider says they are
+-- based in, collected at onboarding. A rider can perfectly well have a home
+-- country that is absent from their travel log, and 000a below is exactly that
+-- shape by accident rather than by design — which is the point: nothing joins
+-- the two and nothing should.
+--
+-- Set on four riders and DELIBERATELY LEFT NULL on three. Both halves are
+-- fixtures:
+--
+--   000a clubowner  NL      the ordinary filled-in case
+--   000b clubmember BE      a second value, so an assertion cannot pass by
+--                           reading whatever the first row happens to hold
+--   001a blocker    FR      the block pair carries values on BOTH sides, so a
+--   001b blocked    ES      "the block hides it" assertion is about the block
+--                           rather than about one side being empty anyway
+--
+--   000c outsider   NULL  ** THE PERMANENT POPULATION. ** 113's column comment
+--                         says NULL means the rider was never asked, is never
+--                         backfilled and is never re-prompted, so this is not a
+--                         gap in the fixtures — it is the state most rows on
+--                         both projects are in on the day 113 applies, and it
+--                         stays reachable for ever. An onboarded, visible,
+--                         unblocked rider with no country is the case every
+--                         read has to tolerate, and the outsider is the rider
+--                         the visibility assertions already reach for
+--   000d halfway    NULL  mid-wizard: the state a rider is in ON the country
+--                         step, before it is answered
+--   000e rookie     NULL  nothing chosen at all — still the ghost row
+--
+-- No value here is written through `authenticated`, so
+-- enforce_onboarding_completion's coercion arm is not exercised by this file;
+-- that is rls_test.sql's 113.5, as the role that actually binds.
+update profiles set home_country = 'NL' where id = '00000000-0000-0000-0000-00000000000a';
+update profiles set home_country = 'BE' where id = '00000000-0000-0000-0000-00000000000b';
+update profiles set home_country = 'FR' where id = '00000000-0000-0000-0000-00000000001a';
+update profiles set home_country = 'ES' where id = '00000000-0000-0000-0000-00000000001b';
