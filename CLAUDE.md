@@ -779,6 +779,7 @@ Specialist agents live in `.claude/agents/`. Delegate to them rather than doing 
 | Agent | Use for |
 |---|---|
 | `openspec` | Drives the OpenSpec workflow; enumerates every state and, above all, every **negative case** |
+| `product` | The outside-in view — who a rider is *before* they install, what we may honestly claim, store listing copy, naming and slogans, the funnel, pricing. Writes words, never `src/` |
 | `design-system` | v2 tokens, component library, icon set — **blocks most other work** |
 | `data` | Migrations, RLS policies, block lists, indexes, schema debugging |
 | `feature` | Complete vertical slice — route, page, components, types, wiring |
@@ -815,6 +816,12 @@ diff is the list. `.claude/agents/*.md` and `.claude/commands/*.md` are reviewed
 `.claude/skills/` each run the job for one tripwire; **`.claude/hooks/*.sh` and the rest of
 `.claude/` run zero jobs**, so a diff touching the permission or execution surface is a
 **security** review with, at best, a cardinality check behind it.
+
+**`product` is not in that order and does not join it** — it works inward from a rider who has
+not installed anything, so it is reached before a story exists (is this worth building, and what
+would we say about it) or after one ships (what goes in the listing). Its standing answers are
+[`docs/reference/positioning.md`](docs/reference/positioning.md); the boundary that matters is
+that `native` owns the store *submission* and the guideline reading, `product` only the words.
 
 Skip `openspec` when the change has no domain rules — copy, styling, a dependency bump.
 Requiring a proposal for everything is how process gets ignored. Skip `data` when there's no
@@ -1288,6 +1295,12 @@ mcp__Supabase__list_migrations <ref>          # against `ls supabase/migrations/
 **The per-domain build status — Postcards, Inbox, Garage, Trust & safety, Rides, Clubs — is
 [`docs/reference/product-scope.md`](docs/reference/product-scope.md).** It is a snapshot of what
 exists, so check the code first and Figma second.
+
+**How the app is described to someone who has never heard of it is
+[`docs/reference/positioning.md`](docs/reference/positioning.md)** — the rider states, the list
+of what we may honestly claim, the do-not-say table, and the store listing with its character
+caps. It exists because a listing is the one place an unstated assumption becomes a public
+promise, and because the design is roughly twice the app.
 
 Two decisions rather than status: **the nav is four tabs** (Home, Rides, Clubs, Profile — Inbox
 was removed by PD-100, not shipped as a stub), and **there is no "Friends" tab**, because `013`
