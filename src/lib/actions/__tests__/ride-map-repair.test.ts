@@ -79,9 +79,15 @@ function chain(result: Result) {
  * A payload that changes the TITLE and nothing about the location. Every
  * location trigger — `addressChanged`, `pickCleared`, `pickChanged` — is false
  * against every fixture below, so a render asked for here was asked for by the
- * repair branch and by nothing else. That is the whole isolation this file
- * rests on: a fixture whose meeting point drifted from this string would pass
+ * repair branch and by nothing else. That is the isolation the repair cases
+ * rest on: a fixture whose meeting point drifted from this string would pass
  * for the wrong reason.
+ *
+ * **One block below breaks that deliberately and is the only one allowed to** —
+ * `the location-change arm still sweeps`, which calls `.set('meeting_point', …)`
+ * on a copy precisely to reach the other branch. Adding a repair case? Do not
+ * copy that `.set`; a new case that changes the meeting point is testing the
+ * location-change arm whatever its name says.
  */
 function payload(): FormData {
   const data = new FormData()
@@ -202,8 +208,37 @@ describe('the location-change arm still sweeps, and nothing else asserts it', ()
 
     await updateRide(RIDE_ID, emptyActionState, moved)
 
+    // Both paths, not one — a partial regression that swept only the card
+    // would satisfy a looser assertion and orphan the detail tile.
     expect(remove).toHaveBeenCalledWith([CARD, DETAIL])
     expect(rendered()).toBe(1)
+  })
+
+  it('sweeps only AFTER the update is confirmed, and before the render is asked for', async () => {
+    // **The ordering is argued at length two places in `rides.ts` and asserted
+    // nowhere, so hoisting the sweep above the `.update()` leaves every other
+    // case in this file green.** Both halves matter and they fail differently:
+    //
+    //   * before the UPDATE — the write can still be refused (an organizer
+    //     ejected from the ride's club), and the tiles are then gone from a row
+    //     that kept its paths. Not recoverable: the row is the only place those
+    //     object names ever existed.
+    //   * after the render request — the delete and the render race over a path
+    //     the render may be about to reuse.
+    //
+    // `from` is called twice before this point (the `previous` read, then the
+    // UPDATE), so call 2 is the UPDATE.
+    withStoredShape(
+      stored({ latitude: 52.3731162, map_card_path: CARD, map_detail_path: DETAIL }),
+    )
+
+    const moved = payload()
+    moved.set('meeting_point', 'Vondelpark, Amsterdam')
+
+    await updateRide(RIDE_ID, emptyActionState, moved)
+
+    expect(from.mock.invocationCallOrder[1]).toBeLessThan(remove.mock.invocationCallOrder[0])
+    expect(remove.mock.invocationCallOrder[0]).toBeLessThan(invoke.mock.invocationCallOrder[0])
   })
 })
 
