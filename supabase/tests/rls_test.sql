@@ -3153,7 +3153,15 @@ update profiles set username = 'qualified', location = 'Aveiro',
                     onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
                     terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000000012';
-update profiles set username = 'midwizard', location = 'Evora'
+-- ** `home_country` since 114: 0013 is the fixture that actually REACHES
+-- completion below, and 114 refuses a completion without one. ** It is set here
+-- rather than beside that call because it is a property of the fixture — "a
+-- rider who has done everything but finish" — and 0013 is used by three
+-- refusal assertions above it that must keep failing for their OWN reason
+-- (consent, then username, then country: the country arm is last, so a fixture
+-- holding one cannot mask either older arm). The mid-wizard riders that never
+-- complete are deliberately left with NULL.
+update profiles set username = 'midwizard', location = 'Evora', home_country = 'PT'
   where id = '00000000-0000-0000-0000-000000000013';
 update profiles set terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000000014';
@@ -3519,13 +3527,38 @@ select assert_rejected($$
           'postcards/00000000-0000-0000-0000-00000000000e/eeeeeeee-0000-4000-8000-00000000ab02.jpg', 'hi')$$,
   '23514', 'mid-wizard: consent alone does not open the gate');
 
--- Step 3: location and completion, in one statement.
+-- ** Step 3 since 114 (PD-428): the home country, an ordinary UPDATE on the
+-- rider's own row. ** The wizard is three screens again and this is the third,
+-- so the walkthrough gains a step rather than a patched fixture — the whole
+-- value of this scenario is that it is the path a real rider takes, in order,
+-- as `authenticated`. The completion below is renumbered to step 4 for the same
+-- reason; a walkthrough whose step numbers no longer match the screens is how
+-- the next author concludes the country is optional.
+--
+-- A column write and NOT an RPC parameter (design.md §D9): `create or replace`
+-- cannot add a parameter to `complete_onboarding` without making an overload,
+-- and two candidates is PGRST203 on the one call every signup makes.
+update profiles set home_country = 'PT' where id = auth.uid();
+select assert_eq((select home_country from profiles where id = auth.uid()),
+  'PT', 'step 3: the home country is an ordinary UPDATE on the rider''s own row and still works');
+
+-- ** And the gate is STILL shut. ** A country is not a stamp: `023`'s
+-- participation gate reads consent and completion, and 114 deliberately did not
+-- add a third field for it to read (design.md §D2). Without this line, step 4
+-- opening the gate could be credited to the wrong write.
+select assert_rejected($$
+  insert into postcards (author_id, image_path, caption)
+  values ('00000000-0000-0000-0000-00000000000e',
+          'postcards/00000000-0000-0000-0000-00000000000e/eeeeeeee-0000-4000-8000-00000000ab04.jpg', 'hi')$$,
+  '23514', 'step 3: a stored country does not open the gate either — only completion does');
+
+-- Step 4: location and completion, in one statement.
 select assert_eq(public.complete_onboarding('Amsterdam') is not null,
-  true, 'step 3: complete_onboarding() returns the stamp it set');
+  true, 'step 4: complete_onboarding() returns the stamp it set');
 select assert_eq((select location from profiles where id = auth.uid()),
-  'Amsterdam', 'step 3: the location landed in the same statement');
+  'Amsterdam', 'step 4: the location landed in the same statement');
 select assert_eq((select onboarding_completed_at is not null from public.my_onboarding_state()),
-  true, 'step 3: and so did the completion stamp');
+  true, 'step 4: and so did the completion stamp');
 
 -- And the gate opens. This one assertion is what the whole path exists for: it
 -- is the statement that failed the day 023 and the revoke were first tried in
@@ -6365,7 +6398,11 @@ update profiles set username = 'u38other', location = 'Faro', bio = 'before',
                     onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
                     terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000038004';
+-- `home_country` since 114: 3805 is 038's "reaches completion" fixture and 114
+-- refuses a completion without one. 3806, below, must NOT get one — 038.5's
+-- second arm needs it refused for the USERNAME rule.
 update profiles set username = 'u38qualified', location = 'Aveiro',
+                    home_country = 'PT',
                     terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000038005';
 update profiles set terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
@@ -11154,16 +11191,23 @@ update profiles set username = 'pd058owner', location = 'Lisbon',
                     onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
                     terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000058001';
-update profiles set username = 'pd058joiner',
+-- ** `home_country` since 114 (PD-428). ** Every fixture below that REACHES
+-- completion needs one: 114 refuses a completion without a stored country,
+-- and these riders exercise the completion path rather than the country rule.
+-- The fixtures that must stay refused (no username, no consent) and the ones
+-- that are already stamped are deliberately left NULL — a country on those
+-- would change nothing, and NULL keeps them recognisable as the permanent
+-- population 113's column comment describes.
+update profiles set username = 'pd058joiner', home_country = 'PT',
                     terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000058002';
-update profiles set username = 'pd058leaver',
+update profiles set username = 'pd058leaver', home_country = 'PT',
                     terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000058003';
-update profiles set username = 'pd058failsafe',
+update profiles set username = 'pd058failsafe', home_country = 'PT',
                     terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000058004';
-update profiles set username = 'pd058ordinary',
+update profiles set username = 'pd058ordinary', home_country = 'PT',
                     terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000058005';
 
@@ -14569,10 +14613,17 @@ insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-000000075012', 'pd075nameless@example.com');
 reset role;
 
-update profiles set username = 'pd075first',
+-- ** `home_country` since 114 (PD-428). ** Every fixture below that REACHES
+-- completion needs one: 114 refuses a completion without a stored country,
+-- and these riders exercise the completion path rather than the country rule.
+-- The fixtures that must stay refused (no username, no consent) and the ones
+-- that are already stamped are deliberately left NULL — a country on those
+-- would change nothing, and NULL keeps them recognisable as the permanent
+-- population 113's column comment describes.
+update profiles set username = 'pd075first', home_country = 'PT',
                     terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000075001';
-update profiles set username = 'pd075blank',
+update profiles set username = 'pd075blank', home_country = 'PT',
                     terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000075002';
 update profiles set username = 'pd075stored', location = 'Groningen',
@@ -14595,7 +14646,7 @@ update profiles set username = 'pd075owner', location = 'Lisbon',
                     terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00',
                     onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000075009';
-update profiles set username = 'pd075joiner',
+update profiles set username = 'pd075joiner', home_country = 'PT',
                     terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
   where id = '00000000-0000-0000-0000-000000075010';
 update profiles set username = 'pd075trigger',
@@ -35116,32 +35167,20 @@ select assert_eq(
   false, '113.10: and the four server-owned columns are STILL closed to authenticated — 113 widened the allowlist by exactly one column, named');
 
 -- ---------------------------------------------------------------------------
--- 113.11 ** complete_onboarding STILL STAMPS WITH A NULL home_country **
+-- 113.11 ** RETIRED BY 114 — the three assertions moved, they did not vanish **
 -- ---------------------------------------------------------------------------
--- This is the pre-114 behaviour, asserted so that 114 has something to FLIP.
--- Under 113 the country is collectable but not yet required: the split exists
--- because one file cannot be both sides of a deploy (design.md §D8), and until
--- the new bundle serves, the OLD bundle's `complete_onboarding({p_location:
--- null})` — the call every signup makes — has to keep working. If this assertion
--- ever goes red without 114 landing, every new rider is stuck on the username
--- step.
-savepoint hc_complete_113;
-set role authenticated;
-select set_config('test.uid', '00000000-0000-0000-0000-000001130007', false);
-select set_config('test.hcstamp',
-  (select complete_onboarding(null))::text, false);
-reset role;
-select assert_eq(
-  current_setting('test.hcstamp') <> '',
-  true, '113.11: complete_onboarding returns a stamp for a rider whose home_country is NULL — under 113 the country is COLLECTED but not yet REQUIRED, and 114 is the file that changes this line''s answer');
-select assert_eq(
-  (select onboarding_completed_at is not null from profiles
-    where id = '00000000-0000-0000-0000-000001130007'),
-  true, '113.11: ... and the completion stamp actually landed on the row');
-select assert_eq(
-  (select home_country from profiles where id = '00000000-0000-0000-0000-000001130007'),
-  null, '113.11: ... with home_country still NULL — 113 adds no arm to the RPC and no backfill, so this rider joins the permanent NULL population the column comment describes');
-rollback to savepoint hc_complete_113;
+-- 113.11 asserted the PRE-114 behaviour: that `complete_onboarding` still
+-- stamped a rider whose `home_country` was NULL. It was written to give 114
+-- something to flip, and 114 flipped it — this suite runs the whole chain, so
+-- the pre-114 state is no longer reachable from here and the assertion could
+-- only ever pass by 114 being absent.
+--
+-- ** The coverage is not lost, and that is the point of saying so here rather
+-- than deleting the block silently. ** The mid-wizard rider it completed is now
+-- 114.1 and 114.2 (refused without a country, stamped with one), and the case
+-- 113.11's fixture could NOT express — an ALREADY-STAMPED rider with a NULL
+-- country, which is the permanent population — is 114.3. `hcmid` (…1130007)
+-- keeps its fixture row: 113.8's read assertions count it.
 
 -- ---------------------------------------------------------------------------
 -- 113.12 The participation gate is UNCHANGED — by count and by name
@@ -35200,14 +35239,272 @@ select assert_eq(
   (select pg_get_function_identity_arguments(oid) from pg_proc
     where pronamespace = 'public'::regnamespace and proname = 'complete_onboarding'),
   'p_location text', '113.14: ... and its signature is unchanged — 021''s revoke/grant pair and 025''s footer both name this exact identity');
-select assert_eq(
-  (select prosrc like '%home_country%' from pg_proc
-    where pronamespace = 'public'::regnamespace and proname = 'complete_onboarding'),
-  false, '113.14: ** and its body does not mention home_country at all ** — the refusal is 114''s and 113 must not carry it, or the old bundle''s every-signup call starts raising for a column it has no screen to fill in');
+-- ** The third assertion here was `prosrc like '%home_country%'` is FALSE, and
+-- 114 is exactly the file that makes it true. ** It said "113 must not carry the
+-- refusal, or the old bundle's every-signup call starts raising for a column it
+-- has no screen to fill in" — a claim about the state of the chain BETWEEN the
+-- two files, which this suite cannot hold once both are in it. Its successor is
+-- 114.6, which asserts the arm is present AND gated AND positioned; presence
+-- alone is the weakest of the three and was never the property that mattered.
 
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint home_country_113;
+
+
+\echo ''
+\echo '# 114 — a completion must carry a home country (PD-428)'
+
+-- 114 adds ONE arm to `complete_onboarding`, and the arm is not symmetric with
+-- the two beside it. The cast is built around that asymmetry, because a fixture
+-- set of mid-wizard riders alone would pass against the WRONG implementation —
+-- the one the task list drafted, which refuses the whole pre-113 population.
+--
+--   1140001 cnew   consent + username, NO stamp, NO country. Refused by 114.1,
+--                  then stamped by 114.2 once the country lands — the same rider
+--                  twice, which is the client's own two-statement order
+--                  (design.md §D9: the column UPDATE first, the RPC second)
+--   1140003 cold   consent + username, ** STAMPED, and home_country NULL. ** THE
+--                  PERMANENT POPULATION, and the fixture 113.11 could not build:
+--                  every rider who onboarded before 113 looks exactly like this,
+--                  and PD-428's Queued note says they are never re-prompted. If
+--                  the guard is placed beside the consent and username arms
+--                  instead of on the transition, 114.3 is the only assertion in
+--                  this suite that goes red
+--   1140004 cwith  consent + username, STAMPED, home_country NL — the other
+--                  already-onboarded shape, so 114.4 shows the pass is about
+--                  BEING STAMPED and not about happening to hold a country
+--   1140005 cnone  username, NO consent stamp, NO country — the ordering case:
+--                  two arms can both refuse this rider and only one of them may
+--
+-- No club, no blocks, no policy surface: 114 changes a `security definer`
+-- function body and nothing else, so every assertion below is about that body.
+savepoint a_country_is_required_114;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000001140001', 'cnew@example.com'),
+  ('00000000-0000-0000-0000-000001140003', 'cold@example.com'),
+  ('00000000-0000-0000-0000-000001140004', 'cwith@example.com'),
+  ('00000000-0000-0000-0000-000001140005', 'cnone@example.com');
+reset role;
+
+-- Written as the table owner, so `enforce_onboarding_completion`'s
+-- `current_user <> 'authenticated'` gate passes them straight through and none
+-- of these statements is testing the fixture setup. 113's own fixtures do the
+-- same.
+update profiles set username = 'cnew',
+                    terms_accepted_at = timestamptz '2026-01-01 00:00:00+00'
+ where id = '00000000-0000-0000-0000-000001140001';
+update profiles set username = 'cold',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+ where id = '00000000-0000-0000-0000-000001140003';
+update profiles set username = 'cwith', home_country = 'NL',
+                    terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00',
+                    onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00'
+ where id = '00000000-0000-0000-0000-000001140004';
+update profiles set username = 'cnone'
+ where id = '00000000-0000-0000-0000-000001140005';
+
+-- ---------------------------------------------------------------------------
+-- 114.0  The fixtures are the states they claim to be
+-- ---------------------------------------------------------------------------
+-- Without this, 114.3's pass is indistinguishable from a rider who was never
+-- stamped and 114.1's refusal from a rider who already held a country.
+select assert_eq(
+  (select onboarding_completed_at is null and home_country is null
+     from profiles where id = '00000000-0000-0000-0000-000001140001'),
+  true, '114.0: cnew has no completion stamp and no country');
+select assert_eq(
+  (select onboarding_completed_at is not null and home_country is null
+     from profiles where id = '00000000-0000-0000-0000-000001140003'),
+  true, '114.0: ** cold IS stamped and their country IS NULL ** — the pre-113 population, and the state the whole placement question turns on');
+
+-- ---------------------------------------------------------------------------
+-- 114.1  ** A NEW RIDER WITH NO COUNTRY IS REFUSED — the requirement **
+-- ---------------------------------------------------------------------------
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001140001', false);
+select assert_rejected(
+  $$select complete_onboarding(null)$$,
+  '23514', '114.1: a rider finishing the wizard with no home_country is refused — this is PD-428, and the refusal lives in the function because inside a security definer function current_user is the owner and the trigger''s gate never fires');
+-- ** The SQLSTATE is shared by all three arms, so it does not say WHICH refused.
+-- ** The message does, and a rider who is missing a country must not be told to
+-- go and accept the terms.
+select assert_eq(
+  error_of($$select complete_onboarding(null)$$) like '%home country%',
+  true, '114.1: ... and it is the COUNTRY arm that refused, not the consent or username one — all three raise 23514, so the SQLSTATE alone cannot tell them apart');
+reset role;
+select assert_eq(
+  (select onboarding_completed_at from profiles
+    where id = '00000000-0000-0000-0000-000001140001'),
+  null, '114.1: ... and onboarding_completed_at is still NULL, so a refused rider is not left stamped. NECESSARY, NOT SUFFICIENT: the raise unwinds its own subtransaction, so a guard misplaced BELOW the UPDATE would pass this too — 114.6 is the assertion that discriminates');
+
+-- ---------------------------------------------------------------------------
+-- 114.2  The same rider, once the country lands — the client's write order
+-- ---------------------------------------------------------------------------
+-- The country step writes the column on its own row and THEN calls the RPC
+-- (design.md §D9). Doing both here, as `authenticated`, is what proves the two
+-- halves compose: the column write goes through 113's grants and CHECKs, and the
+-- value the guard reads is the one that write left behind.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001140001', false);
+update profiles set home_country = 'PT'
+ where id = '00000000-0000-0000-0000-000001140001';
+select set_config('test.c114new',
+  (select complete_onboarding(null))::text, false);
+reset role;
+select assert_eq(
+  current_setting('test.c114new') <> '',
+  true, '114.2: the SAME rider is stamped the moment their country is stored — refused above, permitted here, and nothing changed but the column');
+select assert_eq(
+  (select onboarding_completed_at is not null and home_country = 'PT'
+     from profiles where id = '00000000-0000-0000-0000-000001140001'),
+  true, '114.2: ... and the row carries both the stamp and the country');
+
+-- ---------------------------------------------------------------------------
+-- 114.3  ** AN ALREADY-STAMPED RIDER WITH A NULL COUNTRY IS NEVER REFUSED **
+-- ---------------------------------------------------------------------------
+-- ** The assertion this file exists for. ** `tasks.md` §5.2 drafted the guard
+-- beside the consent and username arms, and §5.3 justified it by claiming a
+-- re-run is never refused because such a rider already holds a country. They do
+-- not: every rider who onboarded before 113 has NULL, permanently and by
+-- decision. And this function has no idempotency early return — completion is
+-- made one-way by a `coalesce` inside the UPDATE — so an already-stamped caller
+-- reaches every arm above. Measured on DEV before 114 was written, in a
+-- rolled-back transaction: an already-stamped rider whose username was nulled
+-- got `23514 ... before a username is set`.
+--
+-- So the guard is gated on `not v_was_complete`, and this is what that buys.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001140003', false);
+select assert_eq(
+  error_of($$select complete_onboarding(null)$$),
+  '<no error>', '114.3: ** a rider who onboarded before 113 re-runs complete_onboarding and is NOT refused ** — the guard is gated on the TRANSITION into completion, so it never fires for the permanent NULL population PD-428 promised not to re-prompt');
+select set_config('test.c114old',
+  (select complete_onboarding(null))::text, false);
+reset role;
+select assert_eq(
+  current_setting('test.c114old')::timestamptz,
+  timestamptz '2026-01-01 00:00:00+00',
+  '114.3: ... and it returns their ORIGINAL stamp rather than a new one — 003 §6b''s one-way door is untouched by the new arm');
+select assert_eq(
+  (select home_country from profiles
+    where id = '00000000-0000-0000-0000-000001140003'),
+  null, '114.3: ... with their country still NULL — 114 refuses a completion without one, it never invents one, and nothing here is a backfill');
+
+-- ---------------------------------------------------------------------------
+-- 114.4  An already-stamped rider WITH a country — same answer, other shape
+-- ---------------------------------------------------------------------------
+-- Without this, 114.3 alone leaves open that the pass came from holding no
+-- country rather than from being stamped.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001140004', false);
+select set_config('test.c114with',
+  (select complete_onboarding(null))::text, false);
+reset role;
+select assert_eq(
+  current_setting('test.c114with')::timestamptz,
+  timestamptz '2026-01-01 00:00:00+00',
+  '114.4: an onboarded rider who DOES hold a country also gets their original stamp back — the arm is skipped for being stamped, not for being answered');
+
+-- ---------------------------------------------------------------------------
+-- 114.5  The CONSENT arm still refuses first
+-- ---------------------------------------------------------------------------
+-- A rider missing both consent and a country can be refused by either arm, and
+-- only one of them is correct: 023 §1.13's is the rule they have to satisfy
+-- first, and the message is what the country step maps to a screen. The new arm
+-- is BELOW both older ones for this reason.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001140005', false);
+select assert_eq(
+  error_of($$select complete_onboarding(null)$$) like '%terms are accepted%',
+  true, '114.5: a rider with no consent stamp AND no country is refused by the CONSENT arm — 114''s arm sits below it, so the older refusal keeps its identity');
+select assert_eq(
+  error_of($$select complete_onboarding(null)$$) like '%home country%',
+  false, '114.5: ... and NOT by the country arm — the same 23514 from either, so only the message separates them');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 114.6  The arm's SHAPE, read from the CATALOGUE
+-- ---------------------------------------------------------------------------
+-- ** The assertions that discriminate placement. ** 114.1's row check cannot:
+-- the raise unwinds its own subtransaction, so an arm below the UPDATE leaves
+-- exactly the same row behind. Only position separates a correct arm from three
+-- wrong ones — ungated, above the consent arm, or below the write.
+select assert_eq(
+  (select prosrc like '%onboarding cannot be completed before a home country is set%'
+     from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  true, '114.6: the country arm is in the deployed body');
+select assert_eq(
+  (select prosrc like '%not v_was_complete and v_home_country is null%'
+     from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  true, '114.6: ** and it is GATED on the transition into completion ** — an ungated arm passes 114.1 and 114.2 and fails only 114.3, which is the assertion a hurried author deletes');
+select assert_eq(
+  (select strpos(prosrc, 'v_home_country is null')
+        > strpos(prosrc, 'before the terms are accepted')
+     from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  true, '114.6: ... it sits BELOW the consent arm, which is what 114.5 observes from the outside');
+select assert_eq(
+  (select strpos(prosrc, 'v_home_country is null')
+        < strpos(prosrc, 'update public.profiles p')
+     from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  true, '114.6: ... and ABOVE the UPDATE, so a refusal can never stamp — the one property no behavioural assertion in this suite can see');
+select assert_eq(
+  (select prosrc like '%p.home_country%'
+     from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  true, '114.6: the country is read from the STORED column in the function''s own `for update` read — never from an argument, which 114.7 is the other half of');
+
+-- ---------------------------------------------------------------------------
+-- 114.7  The signature and the grant did NOT move
+-- ---------------------------------------------------------------------------
+-- 113.14 asserts these under 113; they are re-asserted here because 114 is the
+-- file that rewrites this function, and `create or replace` is exactly the
+-- statement that would silently create an overload if a parameter were added.
+-- Scoped to the grantee: postgres and service_role hold EXECUTE by default, so
+-- an unscoped check reads true against a broken database.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'public'::regnamespace and proname = 'complete_onboarding'),
+  1, '114.7: still exactly ONE complete_onboarding after 114 replaced it — a second signature is PGRST203 on every signup and no other gate in this repo sees it');
+select assert_eq(
+  (select pg_get_function_identity_arguments(oid) from pg_proc
+    where pronamespace = 'public'::regnamespace and proname = 'complete_onboarding'),
+  'p_location text', '114.7: ... with its signature unchanged — the country arrives as a column write, not as a parameter (design.md §D9)');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  true, '114.7: ... still SECURITY DEFINER, which is why the requirement has to be restated in this body at all');
+select assert_eq(
+  (select proconfig from pg_proc where oid = 'public.complete_onboarding(text)'::regprocedure),
+  array['search_path=""'], '114.7: ... with its search_path still pinned empty');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.complete_onboarding(text)', 'execute'),
+  true, '114.7: authenticated still holds EXECUTE — create or replace preserves the ACL, so 021''s grant is asserted rather than re-issued');
+select assert_eq(
+  has_function_privilege('anon', 'public.complete_onboarding(text)', 'execute'),
+  false, '114.7: ... and anon holds none (decision #1)');
+
+-- ---------------------------------------------------------------------------
+-- 114.8  113's trigger arm is untouched
+-- ---------------------------------------------------------------------------
+-- 114 names neither the trigger nor the column. Asserted because the two
+-- functions carry the SAME invariants and it is the natural place for an author
+-- to "keep them in step" by editing both.
+select assert_eq(
+  (select prosrc like '%coalesce(new.home_country, old.home_country)%'
+     from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  true, '114.8: 113''s coercion arm is still in the trigger body after 114 replaced the RPC beside it');
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.enforce_onboarding_completion'::regproc),
+  false, '114.8: ... and the trigger function is still SECURITY INVOKER');
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint a_country_is_required_114;
 
 
 rollback;
