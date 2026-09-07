@@ -28,25 +28,55 @@ import { describe, expect, it } from 'vitest'
  *    `ExifCapture`"* — so a new holder fails here and has to be declared. This is
  *    the control that catches a whole-object leak (`log(capture)`) in a file that
  *    never writes `.latitude` at all.
- * 2. **Inside a holder, every mention of the capture is classified.** Not only
- *    coordinate reads: any new use of the binding must fall into a sanctioned
- *    category or fail. That is what stops a whole-object pass being added to a
- *    file already on the list above.
+ * 2. **Inside a holder, every coordinate read is classified individually.** Not
+ *    per line — see the box below, which is the correction that made this test
+ *    real rather than decorative.
  * 3. **`reverseGeocodePlace` rounds both parameters.** It is on the sanctioned
  *    sink list *because* it rounds at its own entry, so without this assertion
  *    the list is a claim about a function nothing checks — delete the rounding
  *    and every call site is unchanged, so (2) still passes. That is the same
  *    defect one level up that PD-278 warns about for the detector itself.
  *
+ * ---------------------------------------------------------------------------
+ * A sanction clears ONE READ, never a line — and the first draft got this wrong
+ * ---------------------------------------------------------------------------
+ * The pre-merge review found five separate holes with one shape: each sanction
+ * tested the whole line, so a partial match waved through everything else on it.
+ * The ordinary form of this leak shipped green —
+ *
+ *     const exactLat = upload.status === 'done' ? upload.capture.latitude : null
+ *     console.info('[dbg]', exactLat)
+ *
+ * — because line one *declares something* and the declaration sanction matched
+ * `(?:const|let|var)\s.*capture`. `if (c.latitude !== null) logRaw(c.latitude)`
+ * went the same way on the presence-test sanction, and
+ * `return { lat: c.latitude }` on the `return` sanction.
+ *
+ * So the unit of classification is **the individual read, at its offset**, and a
+ * read is sanctioned only by a fact about *itself*: it is compared to
+ * null/undefined, or it sits inside the still-open parentheses of a sanctioned
+ * call. Line-level sanctions survive only for mentions of the binding that read
+ * **no coordinate at all** (`return { path, capture }`, a type annotation), where
+ * there is no coordinate to leak and the holder assertion bounds the flow.
+ *
  * ## What it cannot see, stated rather than implied
  *
  * It is a source scan, like `no-service-role-key.test.ts` and with the same
- * honesty about its reach. It classifies by identifier and by line, not by types,
- * so it cannot follow a capture aliased through an untyped `any`, stored in a
- * module-level variable and read three files away, or reached by index
- * (`c['lat' + 'itude']`). It catches the ordinary case: somebody adds a reader,
- * or adds a use inside a file that already holds one. That is the case that
- * actually happens, and the one no reviewer catches twice.
+ * honesty about its reach:
+ *
+ * - **It does not follow aliases across lines.** It flags the read that creates
+ *   one (`const lat = capture.latitude`), which is the line an author writes; it
+ *   does not then track `lat`. A coordinate laundered through an `any`, a
+ *   module-level variable read three files away, or computed member access
+ *   (`c['lat' + 'itude']`) is outside it.
+ * - **`src/lib/media/location.ts` is exempt wholesale**, so a *new* function
+ *   added beside `resolvePhotoLocation` could emit the unrounded value with no
+ *   coverage here — and that is the likeliest place for one. `location.test.ts`
+ *   pins `resolvePhotoLocation`'s own five shapes, not its future siblings.
+ * - **A `HOLDERS` row with an empty binding list classifies nothing**, so a
+ *   binding added to `src/lib/media/index.ts` passes vacuously until it is listed.
+ * - **`__tests__` directories are skipped**, so a test file importing
+ *   `ExifCapture` never registers as a holder.
  *
  * ---------------------------------------------------------------------------
  * Comment lines are stripped first, and that is not a convenience
@@ -57,16 +87,14 @@ import { describe, expect, it } from 'vitest'
  * prose — `location.ts` and `places.ts` both explain the rounding at length. So
  * comment lines are stripped, and **the filter is verified both ways**: that it
  * reads clean now, and that it still catches a real instance. The second half is
- * the last `describe` in this file. Without it a detector that has quietly
- * stopped matching passes for ever and looks exactly like a clean repo.
+ * the last `describe` in this file, and it carries every shape the review used to
+ * break the first draft. Without it a detector that has quietly stopped matching
+ * passes for ever and looks exactly like a clean repo.
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..', '..')
 const srcRoot = path.resolve(repoRoot, 'src')
-
-/** This file legitimately contains every pattern it hunts for. */
-const SELF = path.resolve(here, 'no-unrounded-photo-coordinate.test.ts')
 
 /**
  * Where the coordinate is born and where it is decided — the two exemptions the
@@ -76,8 +104,8 @@ const SELF = path.resolve(here, 'no-unrounded-photo-coordinate.test.ts')
  * handle it unrounded. `location.ts` holds `resolvePhotoLocation`, which §D7
  * names as the boundary: it is the only function allowed to emit the unrounded
  * value, and only under the `precise` marker. That the five shapes it emits are
- * correct is `src/lib/media/__tests__/location.test.ts`'s job, not this file's —
- * this one asserts nothing else gets to make that decision.
+ * correct is `src/lib/media/__tests__/location.test.ts`'s job, not this file's.
+ * The cost of exempting it whole is written in the header.
  */
 const EXEMPT = new Set(['src/lib/media/exif.ts', 'src/lib/media/location.ts'])
 
@@ -87,7 +115,7 @@ const EXEMPT = new Set(['src/lib/media/exif.ts', 'src/lib/media/location.ts'])
  *
  * Adding a row here is the deliberate act this test exists to force. It is not a
  * rubber stamp: a new holder means a new path the unrounded fix can travel, and
- * the bindings listed are what section (2) then classifies every use of.
+ * the bindings listed are what section (2) then classifies every read off.
  */
 const HOLDERS: Record<string, string[]> = {
   // Barrel. Re-exports the type and its parsers; binds nothing.
@@ -152,69 +180,114 @@ function stripCommentLines(source: string): string {
 }
 
 /**
- * A presence test discloses nothing — it asks whether a fix exists, never what
- * it is. `!capture`, `capture.latitude === null` and `!== undefined` are all this
- * shape.
+ * Is this read compared against null/undefined, and therefore a presence test?
+ *
+ * A presence test discloses nothing — it asks whether a fix exists, never what it
+ * is. Judged at the read's own offset, in both directions, so
+ * `if (c.latitude !== null) logRaw(c.latitude)` sanctions the first read and
+ * leaves the second to be caught.
  */
-function isPresenceTest(line: string, binding: string): boolean {
-  const coordinate = String.raw`${binding}(?:\?)?\.(?:latitude|longitude)`
-  const nullish = String.raw`(?:===?|!==?)\s*(?:null|undefined)`
-  if (new RegExp(String.raw`${coordinate}\s*${nullish}`).test(line)) return true
-  if (new RegExp(String.raw`(?:null|undefined)\s*${nullish.replace('\\s*', '')}\s*${coordinate}`).test(line))
-    return true
+function isPresenceRead(line: string, start: number, length: number): boolean {
+  const after = line.slice(start + length)
+  if (/^\s*(?:===?|!==?)\s*(?:null|undefined)\b/.test(after)) return true
+  const before = line.slice(0, start)
+  if (/(?:null|undefined)\s*(?:===?|!==?)\s*$/.test(before)) return true
   return false
 }
 
 /**
- * Classify every mention of a capture binding inside one holder file.
+ * Does `prefix` end inside the still-open parentheses of a sanctioned call?
  *
- * The window matters: `resolvePhotoLocation(mode, capture ?? {...}, place)` is
- * written across three lines in the composer, so the argument line carries no
- * callee. Sink detection therefore looks at the matched line plus the three
- * non-empty lines above it. Widening it further would start swallowing unrelated
- * statements, so three is the smallest window that spans the calls actually
- * written here.
+ * Walking the depth is what makes this directional. Testing only that a sink name
+ * appears in the window — the first draft — waved through anything written within
+ * three lines *below* a completed call, so
+ * `void resolvePhotoLocation(a, b, c)` followed by `analytics.emit(c.latitude)`
+ * passed. Here the walk from `resolvePhotoLocation(` returns to depth 0 at its
+ * own `)`, so it no longer covers what follows.
+ */
+function insideSanctionedCall(prefix: string): boolean {
+  for (const sink of SANCTIONED_SINKS) {
+    for (let at = prefix.indexOf(`${sink}(`); at !== -1; at = prefix.indexOf(`${sink}(`, at + 1)) {
+      let depth = 0
+      let closed = false
+      for (let i = at + sink.length; i < prefix.length; i++) {
+        if (prefix[i] === '(') depth++
+        else if (prefix[i] === ')') depth--
+        if (depth === 0) {
+          closed = true
+          break
+        }
+      }
+      // Never closed before the read, so the read is one of its arguments.
+      if (!closed) return true
+    }
+  }
+  return false
+}
+
+/**
+ * Classify every use of a capture binding inside one holder file.
+ *
+ * Two passes with different units, because they answer different questions.
+ *
+ * **A coordinate read** is judged on its own: sanctioned only if it is a presence
+ * test, or an argument to a sanctioned call. Nothing else about the line can
+ * excuse it.
+ *
+ * **A mention that reads no coordinate** — `return { path, capture }`, a type
+ * annotation, storing the object in state — is judged per line, which is safe
+ * because there is no coordinate on that line to leak and assertion (1) bounds
+ * where the object itself can travel.
+ *
+ * The lookback is three non-empty lines, because
+ * `resolvePhotoLocation(mode, capture ?? {…})` is written across three lines in
+ * the composer and the argument line carries no callee. Three is the smallest
+ * window spanning the calls actually written here.
  */
 function classify(source: string, bindings: string[]): string[] {
   const violations: string[] = []
   const lines = stripCommentLines(source).split('\n')
 
   lines.forEach((line, index) => {
+    const lookback = [lines[index - 3], lines[index - 2], lines[index - 1]]
+      .filter((l) => l && l.trim() !== '')
+      .join(' ')
+
     for (const binding of bindings) {
-      const mentions = new RegExp(String.raw`\b${binding}\b`)
-      if (!mentions.test(line)) continue
+      if (!new RegExp(String.raw`\b${binding}\b`).test(line)) continue
 
-      // A type annotation or a re-declaration names the binding without reading
-      // anything off it.
-      if (new RegExp(String.raw`\b${binding}\s*:\s*ExifCapture`).test(line)) return
-      // The binding being established, including the destructure that creates it.
-      if (new RegExp(String.raw`(?:const|let|var)\s.*\b${binding}\b`).test(line)) return
-      if (isPresenceTest(line, binding)) return
-      // `!capture`, `capture &&`, `!upload.capture` — existence, not value.
-      if (new RegExp(String.raw`!\s*${binding}\b`).test(line)) return
+      // ---- Pass 1: every coordinate read, judged at its own offset.
+      const reads = new RegExp(
+        String.raw`\b${binding}(?:\?)?\.(?:latitude|longitude)\b`,
+        'g',
+      )
+      let read: RegExpExecArray | null
+      let sawRead = false
+      while ((read = reads.exec(line)) !== null) {
+        sawRead = true
+        if (isPresenceRead(line, read.index, read[0].length)) continue
+        if (insideSanctionedCall(`${lookback} ${line.slice(0, read.index)}`)) continue
+        violations.push(`${index + 1}: ${line.trim()}`)
+      }
+      if (sawRead) continue
 
-      // Fields that are not the fix.
+      // ---- Pass 2: a mention carrying no coordinate.
+      if (new RegExp(String.raw`\b${binding}\s*:\s*ExifCapture`).test(line)) continue
+      if (new RegExp(String.raw`(?:const|let|var)\s+[^=]*\b${binding}\b[^=]*=`).test(line)) continue
+      if (new RegExp(String.raw`!\s*${binding}\b`).test(line)) continue
       if (
         NON_COORDINATE_FIELDS.some((f) =>
           new RegExp(String.raw`${binding}(?:\?)?\.${f}\b`).test(line),
         )
       )
-        return
-
-      // A sanctioned sink, looked for across the call's own lines.
-      const window = [lines[index - 3], lines[index - 2], lines[index - 1], line]
-        .filter(Boolean)
-        .join(' ')
-      if (SANCTIONED_SINKS.some((sink) => window.includes(`${sink}(`))) return
-
-      // Storing the capture back into this file's own state is not a new sink.
-      if (new RegExp(String.raw`set[A-Z]\w*\(\{[^}]*\b${binding}\b`).test(line)) return
-
+        continue
+      if (insideSanctionedCall(`${lookback} ${line}`)) continue
+      if (new RegExp(String.raw`set[A-Z]\w*\(\{[^}]*\b${binding}\b`).test(line)) continue
       // Returning it hands it to a caller, and every caller is a file that
-      // imports the type — so the holder assertion above is what bounds this
-      // flow, not a classification here. `uploadPostcardImage` is the live case:
-      // it reads the fix off the file and returns it to the composer.
-      if (new RegExp(String.raw`^\s*return\b.*\b${binding}\b`).test(line)) return
+      // imports the type — so assertion (1) is what bounds this flow. It reaches
+      // only whole-object returns: a `return` carrying a coordinate was already
+      // judged in pass 1.
+      if (new RegExp(String.raw`^\s*return\b.*\b${binding}\b`).test(line)) continue
 
       violations.push(`${index + 1}: ${line.trim()}`)
     }
@@ -231,20 +304,25 @@ function classify(source: string, bindings: string[]): string[] {
  */
 function unroundedUsesInReverseGeocode(source: string): string[] {
   const start = source.indexOf('export async function reverseGeocodePlace(')
-  if (start === -1) return ['reverseGeocodePlace is gone — the sink list names a function that no longer exists']
+  if (start === -1)
+    return ['reverseGeocodePlace is gone — the sink list names a function that no longer exists']
 
-  // To the next top-level declaration, which is enough to cover the body. Slice
-  // from `start`, not `start + 1`: dropping the leading `e` leaves the signature
-  // unmatchable by the strip below, and its `latitude: number` parameter list
-  // then reads as a raw use — a false positive that looks exactly like a real
-  // finding.
+  // To the next top-level export, which bounds the body. Slice from `start`, not
+  // `start + 1`: dropping the leading `e` leaves the signature unmatchable by the
+  // strip below, and its `latitude: number` parameter list then reads as a raw
+  // use — a false positive that looks exactly like a real finding.
+  //
+  // The terminator is a bare `\nexport `, not a list of declaration keywords.
+  // `reverseGeocodePlace` is currently the LAST export in the file, so a narrower
+  // pattern finds nothing, runs to EOF and passes for a reason it does not
+  // intend — and `places.ts` already declares `export class` three times, so the
+  // spelling that would overrun is idiomatic here.
   const after = source.slice(start)
-  const end = after.search(/\nexport (?:async )?function |\nexport const /)
+  const end = after.indexOf('\nexport ')
   const body = stripCommentLines(after.slice(0, end === -1 ? undefined : end))
 
-  const rounded = ['latitude', 'longitude'].filter((p) => body.includes(`roundToCoarseGrid(${p})`))
   const missing = ['latitude', 'longitude']
-    .filter((p) => !rounded.includes(p))
+    .filter((p) => !body.includes(`roundToCoarseGrid(${p})`))
     .map((p) => `${p} is never passed to roundToCoarseGrid`)
 
   // Every remaining mention of the raw parameter must be the signature or the
@@ -262,7 +340,7 @@ function unroundedUsesInReverseGeocode(source: string): string[] {
 }
 
 describe('the unrounded photo coordinate does not leave resolvePhotoLocation', () => {
-  const files = walk(srcRoot).filter((f) => f !== SELF)
+  const files = walk(srcRoot)
 
   it('walks a non-trivial number of files, so a broken walk fails loudly', () => {
     // Without this, a bad path makes every assertion below pass over an empty
@@ -289,7 +367,8 @@ describe('the unrounded photo coordinate does not leave resolvePhotoLocation', (
       path.join(repoRoot, 'src/components/postcards/CreatePostcardForm.tsx'),
       'utf8',
     )
-    const reads = stripCommentLines(composer).match(/\bcapture(?:\?)?\.(latitude|longitude)\b/g) ?? []
+    const reads =
+      stripCommentLines(composer).match(/\bcapture(?:\?)?\.(latitude|longitude)\b/g) ?? []
     expect(reads.length).toBeGreaterThanOrEqual(4)
   })
 
@@ -310,28 +389,95 @@ describe('the unrounded photo coordinate does not leave resolvePhotoLocation', (
 
 /**
  * The other half of the filter check, per PD-278: a detector that has quietly
- * stopped matching anything passes every assertion above for ever. These are the
- * real shapes a regression would take, not approximations.
+ * stopped matching anything passes every assertion above for ever.
+ *
+ * **Every shape the pre-merge review used to defeat the first draft is here**,
+ * because each was a silent pass at the time and would be again under a
+ * "simplification" back to line-level sanctions.
  */
 describe('the detectors still catch a real violation', () => {
-  it('catches a coordinate read that is neither a presence test nor a sanctioned sink', () => {
+  it('catches the plain shapes', () => {
     expect(classify('console.log(capture.latitude)', ['capture'])).toHaveLength(1)
     expect(classify('void track({ lat: capture.latitude })', ['capture'])).toHaveLength(1)
     // The whole object handed somewhere new — the leak that writes no `.latitude`.
     expect(classify('await sendToVendor(capture)', ['capture'])).toHaveLength(1)
   })
 
+  it('catches a coordinate aliased into a declaration — the review’s F1', () => {
+    // The first draft cleared this because the line declares SOMETHING and
+    // mentions the binding. It is §D7's own named prohibition ("not a log").
+    expect(
+      classify("const exactLat = upload.status === 'done' ? capture.latitude : null", ['capture']),
+    ).toHaveLength(1)
+    expect(classify('let lat = capture.latitude', ['capture'])).toHaveLength(1)
+  })
+
+  it('does not let a sanctioned call cover the lines below it — the review’s F2', () => {
+    expect(
+      classify(
+        [
+          'void resolvePhotoLocation(a, b, c)',
+          'foo()',
+          'bar()',
+          'analytics.emit(capture.latitude)',
+        ].join('\n'),
+        ['capture'],
+      ),
+    ).toHaveLength(1)
+  })
+
+  it('catches a coordinate in a return, while a whole-object return stays safe — F3', () => {
+    expect(classify('  return { lat: capture.latitude, lon: capture.longitude }', ['capture']))
+      .toHaveLength(2)
+    expect(classify('  return <Map lat={capture.latitude} />', ['capture'])).toHaveLength(1)
+    expect(classify('  return { path, capture }', ['capture'])).toEqual([])
+  })
+
+  it('catches a raw coordinate put into state — the review’s F4', () => {
+    expect(classify('setForm({ exactLat: capture.latitude })', ['capture'])).toHaveLength(1)
+    expect(classify("setUpload({ status: 'done', path, capture })", ['capture'])).toEqual([])
+  })
+
+  it('sanctions one read without clearing the rest of the line — the review’s F5', () => {
+    expect(
+      classify('if (capture.latitude !== null) logRaw(capture.latitude)', ['capture']),
+    ).toHaveLength(1)
+    expect(
+      classify('<input value={capture.takenAt} data-lat={capture.latitude} />', ['capture']),
+    ).toHaveLength(1)
+    expect(classify('emit({ missing: !capture, lat: capture.latitude })', ['capture'])).toHaveLength(
+      1,
+    )
+  })
+
+  it('classifies every binding, not only the first to hit a sanction — the review’s F6', () => {
+    // `HOLDERS` is typed for several bindings per file. The first draft `return`ed
+    // out of the forEach callback, so a sanction on one binding ended the line for
+    // all of them — latent today, live the moment the second binding is used.
+    expect(classify('const capture = x; logRaw(fix.latitude)', ['capture', 'fix'])).toHaveLength(1)
+  })
+
   it('does not flag the shapes that are genuinely safe', () => {
     expect(classify('if (capture.latitude === null) return', ['capture'])).toEqual([])
     expect(classify('if (capture.longitude !== null) go()', ['capture'])).toEqual([])
     expect(classify('if (!capture) return', ['capture'])).toEqual([])
-    expect(classify('void reverseGeocodePlace(capture.latitude, capture.longitude)', ['capture'])).toEqual([])
+    expect(
+      classify('void reverseGeocodePlace(capture.latitude, capture.longitude)', ['capture']),
+    ).toEqual([])
     expect(classify('const capture = await readExifCapture(file)', ['capture'])).toEqual([])
+    expect(classify('const { path, capture } = await uploadPostcardImage(file)', ['capture'])).toEqual(
+      [],
+    )
     expect(classify('<input value={capture.takenAt} />', ['capture'])).toEqual([])
-    // The multi-line call the window exists for.
+    // The multi-line call the lookback exists for.
     expect(
       classify(
-        ['const location = resolvePhotoLocation(', '  activeMode,', '  capture ?? { latitude: null },', ')'].join('\n'),
+        [
+          'const location = resolvePhotoLocation(',
+          '  activeMode,',
+          '  capture ?? { latitude: null },',
+          ')',
+        ].join('\n'),
         ['capture'],
       ),
     ).toEqual([])
@@ -354,6 +500,20 @@ describe('the detectors still catch a real violation', () => {
     )
     expect(mutated).not.toBe(source)
     expect(unroundedUsesInReverseGeocode(mutated).length).toBeGreaterThan(0)
+  })
+
+  it('bounds the body at the next export of any kind — the review’s F8', () => {
+    // `reverseGeocodePlace` is the last export in `places.ts`, so a terminator
+    // listing only `function`/`const` runs to EOF and passes by accident.
+    const body = [
+      'export async function reverseGeocodePlace(latitude: number, longitude: number) {',
+      '  const at = { lat: roundToCoarseGrid(latitude), lon: roundToCoarseGrid(longitude) }',
+      '  return at',
+      '}',
+      '',
+      'export class Later { m() { return latitude } }',
+    ].join('\n')
+    expect(unroundedUsesInReverseGeocode(body)).toEqual([])
   })
 
   it('catches the function being renamed out from under the sink list', () => {
