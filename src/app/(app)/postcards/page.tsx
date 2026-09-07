@@ -7,7 +7,7 @@ import { NotificationsHeaderControl } from '@/components/notifications/Notificat
 import { PostcardDeck } from '@/components/postcards/PostcardDeck'
 import { PostcardFilterBar } from '@/components/postcards/PostcardFilterBar'
 import { ErrorState } from '@/components/ui/ErrorState'
-import { SkeletonDeck, SkeletonFilterBar } from '@/components/ui/Skeleton'
+import { LoadingRegion, SkeletonDeck, SkeletonFilterBar } from '@/components/ui/Skeleton'
 import { getFeed, getPostcardFilters, type FeedFilter } from '@/lib/data/postcards'
 import { combineQueries, useQuery } from '@/lib/query'
 import { filterSegment, queryKeys } from '@/lib/query/keys'
@@ -86,15 +86,21 @@ export default function PostcardsPage() {
  * same `min-h-0 flex-1 py-2` wrapper — because anything less is a second
  * boundary to get wrong. Used at **both** cold-load positions: the `<Suspense>`
  * fallback while `useSearchParams` resolves, and the `!filters.data` gate.
- * `SkeletonFilterBar` is `aria-hidden`, so it adds no second announcement
- * beside `SkeletonDeck`'s own `role="status"`.
+ *
+ * **It announces nothing, at either position — PD-220.** Being rendered twice
+ * is what makes the shape settle without moving; it is also what made this
+ * component the wrong place for a live region, since the two sit either side of
+ * a Suspense boundary and React mounts a fresh one rather than reconciling. The
+ * announcement is `PostcardsScreen`'s single `LoadingRegion` instead, so every
+ * skeleton here is `announce={false}` — including the one in the deck slot
+ * below, which is the third position and not part of this component at all.
  */
 function PostcardsLoading() {
   return (
     <>
       <SkeletonFilterBar />
       <div className="min-h-0 flex-1 py-2">
-        <SkeletonDeck />
+        <SkeletonDeck announce={false} />
       </div>
     </>
   )
@@ -131,14 +137,39 @@ function PostcardsScreen() {
   // The bar is gated on its own read on the error path too, for the reason
   // `/rides` gives at the same line: a failed feed read is not a failed filter
   // read, and swapping the bar out is the defect this change exists to remove.
-  if (filters.error) return <ErrorState onRetry={gate.refetch} />
+
+  // **`LoadingRegion` is child 0 of every branch below, and that is load-
+  // bearing — PD-220.** This screen draws a skeleton at three positions during
+  // one cold load (the `<Suspense>` fallback, the `!filters.data` gate, and the
+  // deck slot below while `feed` is still in flight), and no two of them
+  // reconcile, so a region inside any of them is inserted afresh and announces
+  // again. Every skeleton here is therefore silent and this one element carries
+  // the announcement, reconciled by position across all three branches so it
+  // mounts once and only its text changes. Keep it first in each; the index is
+  // what makes it the same element.
+  const loadingLabel = !filters.data || (!feed.error && !feed.data) ? 'Loading postcards' : null
+
+  if (filters.error)
+    return (
+      <>
+        <LoadingRegion label={null} />
+        <ErrorState onRetry={gate.refetch} />
+      </>
+    )
 
   // Gated on the data, not on `isLoading` — see `combineQueries` for the tick
   // where `isLoading` is false and there is still nothing to draw.
-  if (!filters.data) return <PostcardsLoading />
+  if (!filters.data)
+    return (
+      <>
+        <LoadingRegion label={loadingLabel} />
+        <PostcardsLoading />
+      </>
+    )
 
   return (
     <>
+      <LoadingRegion label={loadingLabel} />
       <PostcardFilterBar filters={filters.data} active={filter} />
       <div className="min-h-0 flex-1 py-2">
         {feed.error ? (
@@ -150,7 +181,10 @@ function PostcardsScreen() {
             className="motion-safe:animate-fade-in"
           />
         ) : (
-          <SkeletonDeck />
+          // Silent: the screen's own `LoadingRegion` above is the
+          // announcement, and this is the third of the three positions that
+          // would otherwise each insert one.
+          <SkeletonDeck announce={false} />
         )}
       </div>
     </>

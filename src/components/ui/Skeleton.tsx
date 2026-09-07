@@ -1,6 +1,63 @@
 import { cn } from '@/lib/utils'
 
 /**
+ * One live region for a whole screen, mounted for the screen's life — PD-220.
+ *
+ * **The insertion is the announcement, so the fix is to be inserted once.** A
+ * screen that draws a skeleton at several positions cannot get that from the
+ * skeletons: each position is a separate mount, so each is a separate region
+ * and a separate announcement. This element is rendered by the screen itself,
+ * at a fixed child index in every branch it can return, so React reconciles it
+ * across the gate → loaded transition and the DOM node is never replaced. It is
+ * inserted once, when the screen mounts, and after that only its text moves.
+ *
+ * **It therefore announces by two mechanisms, and which one fires depends on
+ * whether the wait had already started when the screen mounted.** Both give one
+ * announcement per wait; the distinction only matters to someone tempted to
+ * "simplify" this into mounting empty and filling it from an effect, which
+ * would break the first:
+ *
+ * - **A cold load, or a navigation in with nothing cached**, mounts the screen
+ *   with no data, so `label` is already set and the region enters the DOM
+ *   **with its text**. That insertion is the announcement — there is no earlier
+ *   empty state to change from — and it is the path PD-220 was filed about.
+ *   (A navigation onto a warm cache mounts *with* data and a `null` label, so
+ *   nothing announces, which is right: there is no wait.)
+ * - **A wait that begins later** changes the text of an already-mounted region
+ *   from empty to the label — the ordinary live-region update. Three paths
+ *   reach it: a filter tap, a retry after the *filters* read failed, and a
+ *   retry after the *list* read failed. The last is easy to miss and is a
+ *   consequence of `queryClient`'s `refetch` clearing `error` before the
+ *   outcome is known, which flips `label` from null the moment the rider taps.
+ *
+ * **The fixed index is the whole mechanism and it is easy to lose.** React
+ * matches the children of a fragment by position, so this has to be the same
+ * child number in the loading branch, the loaded branch and the error branch.
+ * Move it below a conditional — or wrap one branch and not another — and it
+ * reconciles against a different element, remounts, and announces again. That
+ * is the defect it exists to remove, reintroduced silently: the markup is
+ * identical either way and nothing but a screen reader can see the difference.
+ *
+ * **Text content, not `aria-label`.** Both mechanisms above need content: an
+ * insertion announces what the region contains, and an update announces what
+ * changed. A region carrying only a label has nothing in either place, and
+ * support for announcing one is inconsistent. `null` renders the empty string,
+ * which empties the region rather than filling it, so finishing a load is
+ * silent — announcing "" or "done" is noise the rider did not ask for.
+ *
+ * `sr-only` is `position: absolute`, so this is out of flow on both screens and
+ * reserves nothing. It must stay that way: these two layouts are the ones
+ * PD-217 and PD-218 pinned to the pixel.
+ */
+export function LoadingRegion({ label }: { label: string | null }) {
+  return (
+    <div role="status" aria-live="polite" className="sr-only">
+      {label ?? ''}
+    </div>
+  )
+}
+
+/**
  * The loading treatments the render migration needs (design D7 / task 5.2),
  * plus `SkeletonFilterBar`, which PD-217 added for a different reason — see
  * its own note. The committed Figma snapshot has zero loading, error or
@@ -53,15 +110,84 @@ export function Skeleton({ className }: { className?: string }) {
   )
 }
 
+/**
+ * The live region each announcing shape wraps itself in — and the opt-out that
+ * `/rides` and `/postcards` need, PD-220.
+ *
+ * **A polite live region announces when it is INSERTED, so a screen that draws
+ * a skeleton at more than one tree position announces once per position.** That
+ * is fine for the 35 call sites that draw one: the region is inserted when the
+ * wait starts and removed when it ends. It is wrong on the two list screens,
+ * which draw one at **three** positions during a single cold load:
+ *
+ * 1. the `<Suspense>` fallback, while `useSearchParams` resolves;
+ * 2. the `!filters.data` gate, once the screen has mounted;
+ * 3. the list/deck slot inside the loaded branch, while the second read is
+ *    still in flight.
+ *
+ * No two of those reconcile. 1 and 2 sit either side of a Suspense boundary; 2
+ * returns a component where 3 returns a fragment, so React tears the subtree
+ * down and mounts a fresh one there too. Three positions, three insertions, and
+ * the ordinary cold load hit two of them — the gate, then the slot — because
+ * `filters` and the list are independent `useQuery` calls and `filters` usually
+ * lands first.
+ *
+ * **So the announcement is not the skeleton's job on those screens.** Every
+ * shape they draw passes `announce={false}` and the screen renders one
+ * `LoadingRegion` at a fixed child index instead, which survives all three
+ * transitions. See that component for why the index is what matters.
+ *
+ * **Two shapes that look like fixes and are not**, both tried before this:
+ *
+ * - **Hoisting `role="status"` onto `RidesLoading`/`PostcardsLoading`** — the
+ *   shape PD-220's body proposes. Those components are themselves what is
+ *   rendered at positions 1 and 2, so it relocates the region without changing
+ *   the count, and costs the other 35 announcing call sites theirs. Count them
+ *   rather than trust that: `git grep -n "<SkeletonList\|<SkeletonDeck\|
+ *   <SkeletonDetail\|<SkeletonForm" -- src`, minus this file, the tests,
+ *   comment lines and the sites already passing `announce={false}`. (The glob
+ *   is spelled `-- src` rather than a `.tsx` pattern on purpose — the obvious
+ *   one contains the two characters that end this comment.)
+ * - **Silencing one position and announcing at another.** Any such split is a
+ *   guess about which read lands first: silence the gate and a load where the
+ *   list arrives before `filters` never announces at all, which is this issue's
+ *   own *"must not leave a screen with no announcement"*.
+ *
+ * **`aria-hidden` rather than a bare `<div>` on the silent path**, matching
+ * `SkeletonFilterBar`: the children are individually `aria-hidden` already, so
+ * this is what makes a silenced shape contribute nothing to the accessibility
+ * tree rather than an unlabelled group in it. The cost is that between first
+ * paint of the prerendered HTML and hydration there is nothing in the tree
+ * saying the screen is loading — a deliberate trade, because the alternative
+ * puts a region in the initial HTML and screen readers differ on whether they
+ * announce one that was there on arrival. A guaranteed single announcement is
+ * worth more here than discoverability in a window that ends at hydration.
+ *
+ * The prop is on `SkeletonDeck` and `SkeletonList` alone because those are the
+ * two shapes those two screens draw. Every other route's boundary is
+ * `fallback={null}`, so its skeleton has one position and its region is right
+ * as it stands — an opt-out on `SkeletonDetail` or `SkeletonForm` would be API
+ * nothing can reach.
+ */
 function SkeletonRegion({
   label,
+  announce = true,
   className,
   children,
 }: {
   label: string
+  announce?: boolean
   className?: string
   children: React.ReactNode
 }) {
+  if (!announce) {
+    return (
+      <div aria-hidden className={className}>
+        {children}
+      </div>
+    )
+  }
+
   return (
     <div role="status" aria-label={label} className={className}>
       {children}
@@ -75,10 +201,17 @@ function SkeletonRegion({
  * whatever is left after an `xs` (24px) avatar row, a capped caption and the
  * four-item action row — all reasoned in that component's own doc comment
  * rather than re-measured here.
+ *
+ * `announce={false}` at `/postcards`' `<Suspense>` fallback and nowhere else —
+ * see `SkeletonRegion` for why the region belongs at the gate below it.
  */
-export function SkeletonDeck() {
+export function SkeletonDeck({ announce = true }: { announce?: boolean } = {}) {
   return (
-    <SkeletonRegion label="Loading postcards" className="relative flex h-full items-center justify-center px-6">
+    <SkeletonRegion
+      label="Loading postcards"
+      announce={announce}
+      className="relative flex h-full items-center justify-center px-6"
+    >
       {/* **The OUTER box tracks `PostcardDeck` exactly, and that is the part
           that has to**: this stands in the deck's own slot, so a mismatch there
           moves the card at the moment the feed arrives. Since PD-343 that means
@@ -116,10 +249,20 @@ export function SkeletonDeck() {
  * self-stretch`, both cards' measured width) beside a title bar, a subtitle
  * bar and a 28px (`h-7 w-7`) overlapping avatar pair — both cards' own
  * measured avatar size.
+ *
+ * `announce={false}` at `/rides`' `<Suspense>` fallback and nowhere else — see
+ * `SkeletonRegion` for why the region belongs at the gate below it. The other
+ * ~20 call sites draw this at one position and keep their announcement.
  */
-export function SkeletonList({ rows = 5 }: { rows?: number }) {
+export function SkeletonList({
+  rows = 5,
+  announce = true,
+}: {
+  rows?: number
+  announce?: boolean
+}) {
   return (
-    <SkeletonRegion label="Loading list" className="flex flex-col gap-2 px-4">
+    <SkeletonRegion label="Loading list" announce={announce} className="flex flex-col gap-2 px-4">
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="flex gap-4 rounded-lg bg-surface p-1 pr-4">
           <Skeleton className="w-20 shrink-0 self-stretch rounded" />
@@ -203,8 +346,9 @@ function DetailRowSkeleton() {
  * already announces the load (`SkeletonList` on `/rides`, `SkeletonDeck` on
  * `/postcards`). A region here would add a second announcement beside that
  * one, which is what the base `Skeleton`'s own `aria-hidden` note exists to
- * avoid. It does **not** fix the separate double-announce those two screens
- * already have across their `<Suspense>` fallback and their gate — PD-220.
+ * avoid. It was never what caused the separate double-announce those two
+ * screens had across their `<Suspense>` fallback and their gate, and it is not
+ * what fixed it either — that is `SkeletonRegion`'s `announce`, PD-220.
  *
  * `shrink-0` is copied from the real `FilterBar` and is load-bearing: the
  * parent is `flex flex-col`, so without it the reservation compresses under
