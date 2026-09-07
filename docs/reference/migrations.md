@@ -329,13 +329,64 @@ printf '%s' "$(cat supabase/migrations/0NN_*.sql)" | md5sum         # stripped
 
 ## Applied state — the per-project log
 
-**`list_migrations` prints 115 rows on DEV and 107 on PROD against 112 files, measured
-2026-09-06. The DEV surplus is not a gap, and the PROD shortfall is the ordinary one.** `101`
-through `107` **promoted to PROD on 2026-09-06** between 08:26:24Z and 08:40:28Z, closing the gap
-this heading described for a week; `108` and `110` (PD-402) opened a new one the same day.
+**`list_migrations` prints 116 rows on DEV and 112 on PROD against 112 files, measured
+2026-09-07. PROD is now EXACTLY the file set, and the DEV surplus is not a gap.** `108`
+through `112` **promoted to PROD on 2026-09-07** between 13:58:29Z and 14:08:1xZ, closing the gap
+this heading described for a day. **There is no open promotion gap.**
 
-**What is open is the ordinary promotion gap: `108`–`112`, all five applied to DEV** — `108`–`110`
-from PD-402, `111` from PD-361, and `112` from PD-399/PD-408.
+**The three-way check is what says so, and it runs in both directions** — files against each
+project, and each project against the files. Measured 2026-09-07, normalising the numeric prefix
+the way `db:drift` does:
+
+| Direction | Answer |
+|---|---|
+| Files not applied to PROD | none |
+| Files not applied to DEV | none |
+| Applied to PROD with no file | **none** |
+| Applied to DEV with no file | `ride_capacity_is_enforced_exemptions`, `ride_capacity_moves_to_private`, `rides_zone_is_not_cleared_with_the_location_group` — the three long-standing hand-applied rows — plus `home_country`, which is `113` (PD-428) **in flight on an open PR** rather than drift: its file lands with that merge |
+
+The fourth row is the direction §Migration drift's reverse half warns about, and the distinction
+that makes it benign is an OPEN PR carrying the file. A file-less row with no PR behind it is the
+one that cannot be fixed by applying anything.
+
+**`108`–`112` promoted to PROD on 2026-09-07, and the promotion was a SPLIT that was carried
+through rather than collapsed.** `108` at 13:58:29Z, `110` at 13:58:52Z, `111` at 13:59:52Z and
+`112` at 14:00:14Z — all four ahead of the production build, in filename order. The merge landed at
+14:05:57Z as `0dc0264` (PR #431); the Production deployment `dpl_AK1A4JmFCWLorqreBh4BQRr83Rgd`
+reached `READY` at 14:06:49Z with `aliasError` null, aliased to `app.letsride.social`, and
+`https://app.letsride.social/auth/login` answered **200** with the app's own HTML. `109` applied
+only after that.
+
+**Why each file took the side it did.** `108` is purely additive AND the promoted bundle CALLS its
+three RPCs, so it is `105`/`106`'s case rather than `092`'s: serving ahead of it answers `PGRST202`
+on every ride thread screen, and it publishes no second PostgREST relationship that an older bundle
+could embed unhinted. `110` is not order-sensitive by its own header. `111` and `112` touch no file
+under `src/`, so neither `096`'s newer-bundle-against-older-database case nor `092`'s reverse
+exists. `109` is the destructive half and the only one with an unsafe side: it drops
+`ride_messages` and `ride_reads`, which the bundle serving PROD until 14:06 still used.
+**Unlike `101`–`107`, the five did NOT have to argue** — there was one deploy-first file and four
+migration-first ones, and the split into `108`/`109` is what removed the conflict at authoring time
+instead of at promotion time.
+
+**`108` was applied REDUCED and proved by object diff**, per §Applying a large file — 77,731 bytes
+against 19,232 of executable statements — so its recorded text will not equal `md5sum` of the file
+on PROD either, which is the norm rather than drift. The proof is TEN `md5` hashes compared against
+DEV, which already held all four: `pg_get_functiondef` over nine functions (the four `108`
+publishes, `111`'s three, `112`'s reaper and `enforce_participation_gate`, whose comment `108`
+rewrites), the seven policies, the sixteen columns, the ten indexes, the eleven triggers, the
+sixty-one table grants, the 131 column grants, the nine function ACLs, and both the function and
+table comment sets. **All ten identical.** `110`, `111`, `112` and `109` were applied reduced too
+and are covered by the same ten hashes.
+
+**Its verification passed on every point.** Migration rows 107 → 112. Participation-gate triggers
+21 → 23 → **22**, `108` adding two and `109` taking one back. Reaper triggers 1 → **4**. The
+realtime publication went `club_messages, ride_messages, ride_thread_messages` → **`club_messages,
+ride_thread_messages`**. `private.is_ride_crew` **still present** after `109`, as `041`, `051` and
+`108`'s own policies require. Public tables 33 on both projects. `service_role` SELECT revoked on
+the same three tables as DEV. Rows destroyed by `109`, counted immediately before the drop: **0
+`ride_messages`, 0 `ride_reads`** — so `103`'s already-loaded-tab argument was empty here for the
+same measured reason as last time (5 users, 0 sign-ins in seven days, most recent 2026-08-14), and
+**on a PROD with live riders it would not have been**.
 
 **`112_the_reaper_watches_every_child` (PD-399 + PD-408), applied to DEV 2026-09-06T15:5xZ.**
 Additive and **nothing to sequence against**: it touches no file under `src/`, adds no column,
@@ -1372,7 +1423,7 @@ at that point, and `049` adds none — it is `create or replace` on a function t
 #   candidate cap is guarding a loaded table there, not an empty one. That is
 #   still true of PROD and no longer of DEV: 070 dropped the table there, which
 #   makes 049/050 dead code on DEV and live code on PROD until the promotion.
-ls supabase/migrations/*.sql | wc -l     # 112 — DEV at 112, PROD at 107 (108-112 await promotion)
+ls supabase/migrations/*.sql | wc -l     # 112 — DEV at 112, PROD at 112 (level, 2026-09-07)
 # ** docs:check verifies the FILE COUNT ONLY. ** Its regex matches the two levels above and
 # compares neither, so a stale `DEV at N` passes 42/42 for ever. Read them off list_migrations.
 ```
@@ -1491,11 +1542,14 @@ projects, and it reads exactly like drift. Compare the OBJECT, never the recorde
 
 ## Security advisors
 
-**Security advisors: thirty-nine on BOTH projects since the 2026-09-06 promotion, and only one is
-outstanding on each.** The two-advisor difference that stood before it was `105`+`106` awaiting
-promotion — `106` adds none of its own, being a drop and a create of the same `security definer`
-name — which is the ordinary shape of a gap: a one- or two-advisor difference between the projects
-is almost always a pending promotion, never a finding on its own. Re-derive
+**Security advisors: forty-two on BOTH projects since the 2026-09-07 promotion, and only one is
+outstanding on each.** The three-advisor difference that stood before it was `108`+`111` awaiting
+promotion — `108` adds two, one per `security definer` RPC it publishes in `public`, and `111` adds
+one INFO and no WARN, because the only function it CREATES lives in `private` — which is the
+ordinary shape of a gap: a small difference between the projects is almost always a pending
+promotion, never a finding on its own. **`109` removes none**, measured rather than assumed:
+`public.ride_has_unread` was `prosecdef = false` and `public.stamp_ride_read` held no
+`authenticated` EXECUTE. Re-derive
 rather than trust the number — `get_advisors(security)`, or, without the payload,
 
 ```sql
@@ -1509,8 +1563,8 @@ cannot tell a session whether a new WARN is expected:
 
 | Count | Advisor | Why it is there |
 |---|---|---|
-| 36 on DEV, 34 on PROD | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), and the two moderation-reversal accessors (`105`, DEV only until it promotes; `106` REPLACES one of them and is net zero here, because the drop and the create cancel). Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
-| 2 | `rls_enabled_no_policy` on `password_reset_grants` and `push_devices` (INFO) | Correct by design: `026` and `078` revoke everything on their table from the client roles, so a policy would be the thing that granted reach |
+| 38 on both | `authenticated_security_definer_function_executable` (WARN) | Every `security definer` RPC in `public` — the onboarding accessors (`021`), the recovery-grant pair (`026`), the moderation and club-management RPCs, the push-device pair (`078`), the ride and club invite RPCs (`083`, `085`, `091`), `introduce_to_club` (`097`), the two moderation-reversal accessors (`105`/`106`, where `106` REPLACES one and is net zero because the drop and the create cancel), and `108`'s `delete_own_ride_thread_message` and `moderate_ride_thread`. `108`'s third function, `ride_thread_unread`, is `security invoker` and adds none — measured against `public.club_thread_unread` (`prosecdef = false`) rather than assumed. Every one is `security definer` **by design**, and each is narrow on purpose: takes a row id and never a rider id, writes or answers exactly one row for its caller, and has ONE raise site so it cannot be used as an oracle. **This advisor fires once per such function, so a migration adding two adds two**, and a migration whose functions live in `private` adds none, because PostgREST does not publish `private`. Count them off `get_advisors` rather than off this cell |
+| 3 | `rls_enabled_no_policy` on `password_reset_grants`, `push_devices` and `club_removals` (INFO) | Correct by design: `026`, `078` and `111` revoke everything on their table from the client roles, so a policy would be the thing that granted reach. **These are CLIENT-role revokes; `service_role` is a separate question** — only `push_devices` of the three also revokes that, and `CLAUDE.md` §Supabase Rules carries the criterion and PD-413 |
 | 1 | `auth_leaked_password_protection` (WARN) | **The only genuinely outstanding one.** A dashboard click, owner-only |
 
 An unexpected advisor is one **not** in that table. A one-advisor difference between the projects

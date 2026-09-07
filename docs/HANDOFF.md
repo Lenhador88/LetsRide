@@ -191,6 +191,42 @@ kept so existing pointers resolve.
 
 See `docs/reference/running-locally.md` §The walk.
 
+## `108`–`112` are promoted and both projects are level — 2026-09-07
+
+**`main` carries `0dc0264` (23 commits, PR #431) and PROD is at migration `112`.** Both projects
+now hold the same 112 files, 42 security advisors, 33 public tables, 22 participation-gate triggers
+and the same three `service_role` revokes. `development` was fast-forwarded to `main`, so the two
+branches are identical — and the fast-forward succeeding is itself the proof the promotion used a
+merge commit rather than a squash.
+
+**Riders get** ride threads in place of the ride chat, one entrance to a thread on both clubs and
+rides, joining a club without being made to introduce themselves, a profile with one location
+control instead of two that disagreed, a create action that no longer sits on the tab bar, map
+tiles that render, an invite link that cannot readmit a removed rider, and a club that is reaped
+whichever child empties last.
+
+**The `108`/`109` split was carried through the promotion rather than collapsed, which is the
+durable part.** Four files ahead of the production build, then `109` after it was confirmed
+*serving* — not merged, not "CI is green": `READY` on the merge sha with `aliasError` null, plus a
+200 from `https://app.letsride.social/auth/login` carrying the app's own HTML. Per-file reasoning
+and the ten-hash object diff are in
+[`docs/reference/migrations.md`](reference/migrations.md) §Applied state; do not copy either here.
+
+**PROD is now EXACTLY the file set — nothing applied that has no file behind it.** That is the
+direction §Migration drift calls the worse half, and it is the first time this repo has measured it
+clean on PROD. DEV carries four rows with no file: the three long-standing hand-applied ones, plus
+`home_country` (`113`, PD-428), which is **in flight on open PR #428** rather than drift — its file
+lands with that merge. Check it rather than trust this paragraph, in both directions:
+
+```bash
+ls supabase/migrations/*.sql | wc -l    # 112 — against list_migrations on both refs
+```
+
+**Nothing about the live hosts can be checked from inside a session container.** `curl` to
+`app.letsride.social` and `app-dev.letsride.social` returns 000 — the agent proxy answers the
+CONNECT with 403 for both. The Vercel MCP's `web_fetch_vercel_url` goes around it and is how the
+200 above was measured; a bare `curl` reporting the app down from in here is measuring the proxy.
+
 ## §D7 has a tripwire, and the rounding it rests on is pinned where it actually lives — 2026-09-07
 
 **PD-278, one branch, taken into `slot-2`. A group of one, and the four stories left behind were

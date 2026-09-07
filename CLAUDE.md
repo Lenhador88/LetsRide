@@ -130,8 +130,8 @@ never be dissolved back into components, because:
    writes safe in the first place.
 
    **The participation gate is narrower than "every write"** — `enforce_participation_gate` sits on
-   twenty-two tables on DEV and twenty-one on PROD — `101`/PD-373's drop promoted 2026-09-06, then
-   `108` added two on DEV and `109` took one back — and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
+   twenty-two tables on BOTH projects since the 2026-09-07 promotion — `108` adds two and `109`
+   takes one back, which returns the count to where `101`/PD-373's drop left it — and NOT on `profiles` UPDATE, `profile_countries`, `blocks`, `postcard_hides`,
    `feed_reads`, `club_thread_reads`, `ride_thread_reads`, `push_devices` or any `storage.objects` policy, so an account that never called
    `accept_terms()` can still set a username and upload an avatar. `docs/reference/schema.md`
    §The participation gate has the list, the `push_devices` exception and the count query.
@@ -454,21 +454,19 @@ that are dashboard-only and therefore drift. Two consequences worth carrying her
   versions, because the recorded version is an apply-time timestamp and PROD's are not in
   filename order.
 
-**Applied state: 112 files. DEV is at `112` and PROD at `107` — measured 2026-09-06.** `101`–`107`
-**promoted to PROD on 2026-09-06**, so the long-standing seven-file gap this line used to describe
-is closed. What is open is the ordinary five-file promotion gap, `108`–`110` (PD-402), `111`
-(PD-361) and `112` (PD-399/PD-408), all applied to DEV. **`111` and `112` are additive with nothing
-to sequence against** — neither touches a file under `src/`, so the PROD promotion needs no separate
-ordering decision for either. **`112` hangs triggers on three already-shipped write paths**, so it
-owes the hand-exercise gate rather than an ordering decision; that gate is in its own §Verification.
-**`109` was held back until the merged bundle was confirmed *serving*** — `READY` on merge sha
-`923541c` with `aliasError` null, which is not the same as merged — and applied at 10:09Z once it
-was. **`108` went MIGRATION-FIRST and `109` LAST**, the sequencing rule with its two halves pulling
-in opposite directions: one file cannot be both sides of a deploy, which is why there are two.
-**The same split is owed on the PROD promotion** and must not be collapsed.
-**The per-file ordering for `101`–`107` is in `docs/reference/migrations.md` §Applied state**, not
-here — that promotion is finished, so which of its files went before the deploy and which after is a
-log entry rather than a rule. What generalises from it is the paragraph below.
+**Applied state: 112 files. DEV is at `112` and PROD at `112` — measured 2026-09-07.** `108`–`112`
+**promoted to PROD on 2026-09-07**, so the five-file gap this line used to describe is closed and
+the two projects are level. **`108` went MIGRATION-FIRST and `109` LAST, on BOTH projects**, the
+sequencing rule with its two halves pulling in opposite directions: one file cannot be both sides of
+a deploy, which is why there are two — and the promotion carried that split through rather than
+collapsing it. `108`, `110`, `111` and `112` went ahead of the production build; `109` waited until
+that build was confirmed *serving*, which is `READY` on the merge sha with `aliasError` null and is
+not the same as merged. **`110` is not order-sensitive, and `111` and `112` are additive with
+nothing to sequence against** — neither touches a file under `src/`. **`112` hangs triggers on three
+already-shipped write paths**, so what it owed was the hand-exercise gate rather than an ordering
+decision; that gate is in its own §Verification.
+**The per-file ordering for both promotions is in `docs/reference/migrations.md` §Applied state**,
+not here — a finished promotion is a log entry rather than a rule. What generalises from it is the paragraph below.
 Count rather than trust it: `list_migrations` against both refs,
 against `ls supabase/migrations/*.sql | wc -l`. DEV also records three hand-applied rows with no
 file, so its row count reads high; every file IS applied, which is the direction that matters.
@@ -537,10 +535,10 @@ never run. `complete_onboarding` also joins the caller to the club carrying `clu
 (`058`), inside a `when others` block, because a raise there would roll the completion stamp back
 and decision #5 gives a rider with a NULL stamp no way out of the wizard.
 
-**Security advisors: forty-two on DEV and thirty-nine on PROD, and only one is outstanding** —
-`auth_leaked_password_protection`, a dashboard click. **The three-advisor difference IS `108` and
-`111`, both applied to DEV and neither promoted** — the ordinary shape this section's last line
-describes rather than drift. **`111` (PD-361) adds exactly one INFO** and no WARN:
+**Security advisors: forty-two on BOTH projects since the 2026-09-07 promotion, and only one is
+outstanding on each** — `auth_leaked_password_protection`, a dashboard click. **The three-advisor
+difference that stood before it was `108` and `111` awaiting promotion** — the ordinary shape this
+section's last line describes rather than drift. **`111` (PD-361) adds exactly one INFO** and no WARN:
 `rls_enabled_no_policy` on `club_removals`, a third table in the position `password_reset_grants`
 and `push_devices` already hold. It adds no WARN because it creates no function in `public` —
 it creates exactly ONE function and that one lives in `private`
