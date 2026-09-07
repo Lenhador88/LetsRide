@@ -110,7 +110,7 @@ grant**, and deletion goes through `security definer` RPCs. RLS filters a DELETE
 may READ, so a policy-based delete silently affects zero rows whenever the row is invisible to its
 own author.
 
-This is not theoretical here. `docs/HANDOFF.md` §Your own row survives the parent going out of view
+This is not theoretical here. `docs/reference/journal.md` §Your own row survives the parent going out of view
 records `ride_messages` as carrying a **residual silent `DELETE 0`** that `102` deliberately left
 open — *"a rider who leaves the crew of a ride they can still see … comes from the `is_ride_crew`
 conjunct rather than the block conjunct, and hoisting past `is_ride_crew` would break the

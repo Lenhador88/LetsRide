@@ -87,7 +87,7 @@ policy.
 
 The full argument is in `specs/database-enforced-integrity/spec.md`. What matters for the build:
 
-`docs/HANDOFF.md` §Your own row survives the parent going out of view records, in the list of things
+`docs/reference/journal.md` §Your own row survives the parent going out of view records, in the list of things
 `102` deliberately left alone, that **`ride_messages` has a residual silent `DELETE 0`** — a rider
 who leaves the crew of a ride they can still see cannot delete their own message, and the statement
 reports success. `102` could not fix it because the only policy-level fix (hoisting the own-row arm

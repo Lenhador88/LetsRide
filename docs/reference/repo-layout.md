@@ -89,6 +89,7 @@ docs/
 │   ├── native-shell.md     #   the Capacitor shell's position and the store-readiness table
 │   ├── running-locally.md  #   the per-command table, the relay, the walk and its fixtures
 │   ├── known-issues.md     #   understood issues — mechanism, sites to re-derive, why not folded in
+│   ├── journal.md          #   the dated per-session record that used to be the handoff's body; nothing loads it
 │   └── signup.md           #   how signup broke against confirmation-on, and the proof it is fixed
 └── specs/                  # Implementation specs (login-onboarding.md)
 design/                     # Committed Figma snapshot — READ THIS, don't call the API
