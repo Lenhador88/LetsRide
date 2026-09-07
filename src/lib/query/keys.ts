@@ -206,24 +206,6 @@ export const queryKeys = {
    */
   riderLocation: (): QueryKey => ['rider-location'],
 
-  /**
-   * Whether this installation is registered for push — PD-431.
-   *
-   * **Not under `profile`, and for a sharper version of `riderLocation`'s
-   * reason:** the subject is the *device*, not the rider. A key filed under
-   * `profile` would be swept by `updateProfile`'s `profile.all()` invalidation
-   * for an edit that cannot change an OS permission, and — worse — it would be
-   * cleared on sign-out along with everything else about the departing rider,
-   * when the thing it describes belongs to the phone and survives them.
-   *
-   * **Nothing in `push_devices` is readable, so this can never hold a token or
-   * a row count.** `078` §2 grants no client role any privilege on that table
-   * at all, deliberately. What this key holds is the *device's own* answer —
-   * the OS permission and whether a provider token arrived — which the device
-   * knows without asking the server.
-   */
-  pushRegistration: (): QueryKey => ['push-registration'],
-
   clubs: {
     all: (): QueryKey => ['clubs'],
     yours: (): QueryKey => ['clubs', 'yours'],

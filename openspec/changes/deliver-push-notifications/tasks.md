@@ -174,8 +174,14 @@ rest is not, and every box that is not carries `[device]`.**
   every row for the rider, which would unsubscribe their other phone. Providers keep accepting
   sends for a token whose app permission was revoked and silently drop them, so nothing else would
   notice.
-- [x] 2.13 `src/lib/query/keys.ts` — a key for the push registration state, spelled there rather
-  than inline, with the same header note the file's other entries carry.
+- [ ] 2.13 `src/lib/query/keys.ts` — a key for the push registration state, spelled there rather
+  than inline, with the same header note the file's other entries carry. **Deferred with a
+  reason, not skipped: it lands with its first reader.** PD-431 added the key and review found
+  it dead — both push components hold this state in `useState`, because the source is the
+  device's own OS permission rather than a row, and `push_devices` is readable by nobody
+  (`078` §2). A key in `keys.ts` that nothing passes to `useQuery` is a contract entry
+  describing a read that does not exist, so it was removed again. Add it back when child C
+  gives the screen something server-side to read.
 - [ ] 2.14 Permission strings and native project config — **[device]**, on a Mac.
   `NSUserNotificationsUsageDescription` is not a thing; what Apple reads is the in-app rationale
   in 2.7 plus the App Store privacy answers. Android needs the `POST_NOTIFICATIONS` declaration.

@@ -180,11 +180,30 @@ export async function registerCurrentDevice(token: string): Promise<void> {
     platform: Capacitor.getPlatform() === 'ios' ? 'ios' : 'android',
   })
 
-  // `23514` is the participation gate (`078` §4, restated inside the function
-  // because a trigger could not fire on that table). A rider mid-onboarding
-  // reaching this is an ordinary state, not a fault, and the next cold start
-  // after they finish registers them.
-  if (error && error.code !== '23514') throw error
+  if (!error) return
+
+  // **`23514` is FOUR different failures on this call, and only one of them is
+  // ordinary.** An earlier version swallowed the code itself, which is wrong in
+  // the one direction this module exists to make visible.
+  //
+  // `register_push_device` raises the participation gate with
+  // `errcode = 'check_violation'` (`078` §4, restated inside the function
+  // because a trigger carrying `when (current_user = 'authenticated')` could
+  // never fire on a table only `security definer` functions write). But
+  // `push_devices` also carries three CHECKs that raise the same 23514 — the
+  // installation-id shape, `platform in ('ios','android')`, and
+  // `length(token) between 1 and 4096`.
+  //
+  // Swallowing all four means an empty or oversized provider token is
+  // discarded in silence *after* the caller has already recorded that a token
+  // arrived — so the device reads `hidden` rather than `stalled`, which is
+  // precisely the "looks fully set up, will never receive anything" state
+  // `stalled` was invented to surface. The gate is the only one that is a
+  // normal rider state, so it is the only one matched, and it is matched on the
+  // message rather than the shared code.
+  if (error.code === '23514' && /onboarding/i.test(error.message)) return
+
+  throw error
 }
 
 /**

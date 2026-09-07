@@ -85,7 +85,13 @@ export async function registerOnBoot(): Promise<void> {
     // race, and idempotent if both do.
     const listener: { stop?: () => void; answered: boolean } = { answered: false }
 
+    // **Idempotent, because both events can fire.** A provider that answers
+    // `registration` and then `registrationError` — or the reverse — runs this
+    // twice, and `remove()` is `void`-ed, so a second call that rejects is an
+    // unhandled rejection rather than a caught one. The flag makes the teardown
+    // run once whichever combination arrives.
     const settle = () => {
+      if (listener.answered) return
       listener.answered = true
       listener.stop?.()
     }

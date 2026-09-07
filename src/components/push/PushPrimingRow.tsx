@@ -83,9 +83,16 @@ export function PushPrimingRow({ className }: { className?: string }) {
         if (cancelled) return
         setHasToken(true)
         void registerCurrentDevice(token).catch(() => {
-          // The row's job is the permission, not the write. A failed RPC leaves
-          // the device unregistered and the next cold start retries it
-          // unconditionally, which is the repair `078` §5 relies on.
+          // **A failed write puts the row back into `stalled`, and that is the
+          // point rather than tidiness.** A provider token that arrived but was
+          // refused by `register_push_device` — a malformed or oversized token,
+          // which `push_devices`' CHECKs reject — leaves a device that will
+          // never receive anything. Leaving `hasToken` true reads `hidden`,
+          // which is indistinguishable from a device that is fully set up.
+          // The next cold start still retries unconditionally, which is the
+          // repair `078` §5 relies on; this only stops the screen claiming
+          // success in the meantime.
+          if (!cancelled) setHasToken(false)
         })
       },
       () => {

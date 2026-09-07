@@ -144,8 +144,10 @@ filter both ways — that it reads 0 now *and* still catches a real instance.
 **No new integrity rule may live only in a Zod schema.** Anything not a CHECK, trigger or policy is
 advisory, because a rider can simply not run your validation.
 
-**`lib/data/` and `lib/actions/` are the only places that touch Supabase, and both resolve their
-client through `src/lib/supabase/resolve.ts`.** One name, one doorway.
+**`lib/data/` and `lib/actions/` are where reads and writes live, and both resolve their client
+through `src/lib/supabase/resolve.ts`.** One name, one doorway. **Two modules outside them call
+an RPC and are not exceptions to make more of**: `lib/location/rider-location.ts` and
+`lib/push/registration.ts`, each a device concern with no row to read.
 
 **Do not reach for a "just check at runtime" fix to a bundling problem.** Next refuses to bundle
 `next/headers` into a client graph whether or not the branch can be taken, and a `typeof document`
