@@ -612,6 +612,10 @@ export async function getRide(id: string): Promise<RideDetail | null> {
     // Same rule as the list card: an explicit row wins, and an organizer
     // without one reads as `going` rather than as unanswered.
     attendance: ownRow?.status ?? (isOrganizer ? 'going' : null),
+    // The same read, unfolded — see `RideDetail.own_rsvp`. The RSVP bar and its
+    // chip take this one, because since PD-429 the organizer reaches both and
+    // the fold above would answer for them.
+    own_rsvp: ownRow?.status ?? null,
     map_detail_url: row.map_detail_url ?? null,
     is_organizer: isOrganizer,
     // The day boundary, not the clock — the same cutoff the list cuts its two
@@ -748,7 +752,8 @@ export async function getRideCrew(rideId: string): Promise<RideCrew> {
 }
 
 /**
- * Puts the organizer at the head of `going` and marks them the host.
+ * Puts the organizer in the section their own RSVP names, and marks them the
+ * host.
  *
  * Separate from `getRideCrew` and pure, because it encodes a rule rather than a
  * query: the organizer is on their own ride by construction, whether or not
@@ -756,9 +761,25 @@ export async function getRideCrew(rideId: string): Promise<RideCrew> {
  * their own crew list — which is the state the design's `Ride host` row exists
  * to draw.
  *
- * De-duplicates, so an organizer who also RSVP'd appears once. If that RSVP was
- * `maybe`, `going` still wins: the design has one host row and it sits in the
- * first section.
+ * De-duplicates, so an organizer who also RSVP'd appears once.
+ *
+ * ## Which section, and why this stopped being unconditional (PD-429)
+ *
+ * Until now the host was prepended to `going` whatever the roster said, and a
+ * stored `maybe` was discarded. That was correct while no screen could store
+ * one — before `103` the organizer had no row at all — and `setRideAttendance`
+ * carried a comment saying so, refusing to offer the organizer `Maybe`
+ * precisely because this function would have rendered it as `Going` anyway.
+ *
+ * Now that the organizer can answer, discarding it is the screen contradicting
+ * the answer they just gave. So: **the roster decides, and absence means
+ * `going`.** The organizer's own row is in `crew` like anyone else's (`103`
+ * writes them one at ride creation), so no caller has to pass their status in —
+ * and a pre-`103` organizer who holds no row still leads `going`, which is the
+ * by-construction rule this function existed for.
+ *
+ * The host row is still exactly one, and it is still first in whichever section
+ * holds it.
  */
 export function withOrganizer(
   crew: RideCrew,
@@ -771,10 +792,14 @@ export function withOrganizer(
     is_host: true,
   }
 
-  return {
-    going: [host, ...crew.going.filter((member) => member.user_id !== organizerId)],
-    maybe: crew.maybe.filter((member) => member.user_id !== organizerId),
-  }
+  const going = crew.going.filter((member) => member.user_id !== organizerId)
+  const maybe = crew.maybe.filter((member) => member.user_id !== organizerId)
+
+  // Only an explicit `maybe` row moves them; no row at all is the organizer who
+  // never answered, and they belong at the head of `going`.
+  return crew.maybe.some((member) => member.user_id === organizerId)
+    ? { going, maybe: [host, ...maybe] }
+    : { going: [host, ...going], maybe }
 }
 
 type FilterRow = {

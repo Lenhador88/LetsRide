@@ -372,8 +372,31 @@ export type RideDetail = {
    */
   latitude: number | null
   longitude: number | null
-  /** This viewer's own RSVP. The organizer reads as `going` without a row. */
+  /**
+   * This viewer's own RSVP, **folded**: the organizer reads as `going` without a
+   * row.
+   *
+   * **Not the field the RSVP controls read — that is `own_rsvp`.** The fold is
+   * right for anything answering *is this rider on the ride*, and wrong for
+   * anything answering *what did they choose*, because a pre-`103` organizer
+   * holds no row and this reads `going` for them anyway.
+   */
   attendance: RideAttendance
+  /**
+   * This viewer's raw `ride_members.status`, unfolded — `null` means *no row*,
+   * for an organizer exactly as for anyone else.
+   *
+   * **Added by PD-429, and the fold above is what made it necessary.** An
+   * organizer may now answer Yes or Maybe (`103`'s guard is `BEFORE DELETE`, so
+   * it protects their *presence* and never their *status*), which makes the
+   * RSVP bar and its status chip reachable for them for the first time. Read
+   * `attendance` there and a pre-`103` organizer — one who holds no row at all —
+   * gets a chip saying `Going` over a bar with nothing selected, asserting an
+   * answer they never gave. `src/lib/rides/bottom-slot.ts` predicted this
+   * exact defect and asked for this field in the same commit as the change that
+   * reaches it.
+   */
+  own_rsvp: RideAttendance
   /**
    * The 358×160 panel's static map tile — a signed URL minted for **this**
    * viewer, or null when the ride has no tile. Same rules as

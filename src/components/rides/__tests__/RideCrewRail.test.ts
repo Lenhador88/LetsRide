@@ -82,6 +82,25 @@ describe('crewRailSummary', () => {
     expect(crewRailSummary(composed, true).label).toBe('1 going')
     expect(crewRailSummary(composed, true).shown).toHaveLength(1)
   })
+
+  it('drops an organizer who answered Maybe out of the going count (PD-429)', () => {
+    // The organizer may now answer Maybe, and the count is the first place that
+    // shows: before PD-429 `withOrganizer` promoted them into `going` whatever
+    // the roster said, so this rail would have said `2 going` about a ride whose
+    // host had just said they might not come — the same "count disagrees with
+    // the roster one tap away" defect that got the count removed the first time,
+    // arriving through the host instead of through the maybes.
+    const composed = withOrganizer(crew(['mk'], ['pl']), 'pl', rider('pl').profile)
+
+    expect(crewRailSummary(composed, true).label).toBe('1 going')
+    expect(composed.maybe.map((m) => m.user_id)).toEqual(['pl'])
+    expect(composed.maybe[0].is_host).toBe(true)
+    // And the host is not silently dropped from the rail's avatars into nowhere:
+    // they are in the section they answered, exactly once across both.
+    expect(
+      composed.going.concat(composed.maybe).filter((m) => m.user_id === 'pl')
+    ).toHaveLength(1)
+  })
 })
 
 /**

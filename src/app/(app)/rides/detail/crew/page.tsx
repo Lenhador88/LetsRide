@@ -106,7 +106,19 @@ function RideCrewScreen() {
           // parent's own gap used to apply directly between the two
           // sections once React flattened the Fragment into it.
           <div className="flex flex-col gap-4 motion-safe:animate-fade-in">
-            <CrewSection title="Going" members={crew.going} />
+            {/* **`going` became emptiable with PD-429 and this guard is that
+                change's, not a tidy-up.** The organizer used to be prepended to
+                `going` unconditionally, so the section held at least one member
+                on every ride and an unconditional render was safe. Now that they
+                lead whichever section their own RSVP names, a host riding alone
+                who answers Maybe empties it — and an unguarded `Going (0)` with
+                nothing under it reads as a broken screen rather than as a fact.
+
+                **The screen still cannot be blank**: `withOrganizer` always
+                places the host in exactly one section, so at least one of the
+                two is non-empty. That is why there is no empty-state arm here —
+                it would be unreachable furniture. */}
+            {crew.going.length > 0 && <CrewSection title="Going" members={crew.going} />}
             {crew.maybe.length > 0 && <CrewSection title="May be going" members={crew.maybe} />}
           </div>
         )}

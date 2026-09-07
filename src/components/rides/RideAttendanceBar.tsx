@@ -13,6 +13,22 @@ const OPTIONS = [
   { value: 'no' as const, label: 'No' },
 ]
 
+/**
+ * What the organizer is offered — PD-429.
+ *
+ * **Two options rather than three, and the missing one is the only thing the
+ * database refuses.** `103`'s `protect_ride_organizer_membership` is a
+ * `BEFORE DELETE` guard: it protects the organizer's *presence* on their own
+ * ride and says nothing about their *status*, so `going → maybe` is an UPDATE
+ * the policy permits and the 2026-08-11 design intends. `No` is the one that
+ * would `delete` the row, and `setRideAttendance` reports the refusal in words.
+ *
+ * **Offering a third button the database refuses is worse than offering two.**
+ * The honest actions for an organizer who is not coming are cancelling the ride
+ * or handing it over — neither is an RSVP and neither exists yet.
+ */
+const ORGANIZER_OPTIONS = OPTIONS.filter((option) => option.value !== 'no')
+
 type Choice = (typeof OPTIONS)[number]['value']
 
 const toChoice = (attendance: RideAttendance): Choice | null =>
@@ -36,10 +52,20 @@ const toChoice = (attendance: RideAttendance): Choice | null =>
 export function RideAttendanceBar({
   rideId,
   attendance,
+  canDecline = true,
   onAnswered,
 }: {
   rideId: string
   attendance: RideAttendance
+  /**
+   * Whether `No` is on offer — false for the ride's organizer (PD-429).
+   *
+   * **Defaults to true**, so every caller that is not the ride detail keeps the
+   * three-option bar it already had, and a new caller has to opt *out* rather
+   * than remember to opt in. See `ORGANIZER_OPTIONS` for why this is one option
+   * rather than the whole control.
+   */
+  canDecline?: boolean
   /**
    * Fired after a write the server accepted — PD-404's collapse.
    *
@@ -112,7 +138,7 @@ export function RideAttendanceBar({
         </p>
         <ButtonGroup
           label="Are you going?"
-          options={OPTIONS}
+          options={canDecline ? OPTIONS : ORGANIZER_OPTIONS}
           value={choice}
           onChange={onChange}
           disabled={pending}

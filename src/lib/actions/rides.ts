@@ -364,20 +364,20 @@ export async function setRideAttendance(
   // raise the same SQLSTATE, so a code-only branch would tell a rider who
   // overran a field that they organize the ride.
   //
-  // Reachable only by a direct call: `RideAttendanceBar` is hidden from the
-  // organizer (`!is_organizer`), so no screen offers this today.
+  // Still reachable only by a direct call, and PD-429 narrowed the reason.
+  // `RideAttendanceBar` is now shown to the organizer — what is withheld is the
+  // `No` option alone (`canDecline`), which is the only answer that reaches this
+  // delete.
   //
-  // ** The copy deliberately does NOT offer "set yourself to Maybe instead",
-  //    even though `103`'s own raise text suggests it and the guard permits
-  //    it. ** The database invariant is PRESENCE rather than status, so the
-  //    UPDATE really is allowed — but `withOrganizer` in `lib/data/rides.ts`
-  //    filters the organizer out of `crew.maybe` and prepends them to `going`,
-  //    so every screen renders them Going whatever the row says. Promising a
-  //    remedy the app then ignores is worse than not offering one. Closing the
-  //    gap properly means teaching `withOrganizer` to respect the stored
-  //    status, which is a read-path change this story does not carry — before
-  //    `103` the organizer had no row at all, so discarding it was correct by
-  //    construction and only becomes wrong now.
+  // ** The copy still does not offer "set yourself to Maybe instead", and the
+  //    reason changed. ** It used to be that the remedy was real but invisible:
+  //    the UPDATE is permitted — the invariant is PRESENCE rather than status —
+  //    yet `withOrganizer` discarded a stored `maybe` and rendered the organizer
+  //    Going anyway, so the copy would have promised something the app ignored.
+  //    That read-path gap is closed: `withOrganizer` respects the stored status
+  //    now. The copy stays as it is because the rider who sees this string got
+  //    here without the bar, so there is no Maybe button in front of them to
+  //    point at.
   if (error?.message?.includes('cannot leave its crew')) {
     return { error: 'You organize this ride, so you are always on its crew.' }
   }
