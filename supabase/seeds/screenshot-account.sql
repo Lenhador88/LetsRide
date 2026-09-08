@@ -320,7 +320,9 @@ insert into public.club_messages (id, thread_id, author_id, body, created_at) va
 --
 -- Three upcoming and one past, because `/rides` draws upcoming first and then a
 -- "Past rides" section, and a screenshot of the section header needs a row
--- under it.
+-- under it. **The past one is CLUB-attached for that reason** — `/rides` opens
+-- on the `From clubs` tile, so a clubless past ride leaves the default screen
+-- with no past section at all. Measured: it did, until the club id landed.
 --
 -- The organizer's crew row is `103`'s trigger, like the club owner's above.
 -- Coordinates and both map paths are deliberately absent — see the header.
@@ -372,7 +374,7 @@ insert into public.rides (
    'Loolaan 554, Apeldoorn',
    ((((now() at time zone 'Europe/Amsterdam')::date - 6)::timestamp + time '10:00') at time zone 'Europe/Amsterdam'),
    'Europe/Amsterdam', true,
-   '5c0f1a00-0001-4000-8000-000000000001', null,
+   '5c0f1a00-0001-4000-8000-000000000001', '5c0f1a00-0100-4000-8000-0000000000a1',
    now() - interval '30 days');
 
 insert into public.ride_members (ride_id, user_id, status, joined_at) values
