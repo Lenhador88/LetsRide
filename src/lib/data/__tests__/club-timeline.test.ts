@@ -49,8 +49,23 @@ const ride = (id: string, at: string): RideListItem =>
 const postcard = (id: string, at: string): Postcard =>
   ({ id, created_at: at }) as Postcard
 
-const thread = (id: string, at: string): ClubThreadListItem =>
-  ({ id, created_at: at, title: `Thread ${id}` }) as ClubThreadListItem
+/**
+ * A thread row, as `getClubThreads` returns one.
+ *
+ * **`at` is the thread's newest activity, and `createdAt` defaults to it** —
+ * `116` (PD-439) defaults `last_activity_at` to the thread's own creation, so a
+ * two-argument call is a thread nobody has replied to and every case written
+ * before that migration keeps meaning what it meant. Pass `createdAt` for the
+ * case this change is about: an old thread bumped by a fresh reply, where the
+ * two stamps differ and only one of them answers the exactness question.
+ */
+const thread = (id: string, at: string, createdAt = at): ClubThreadListItem =>
+  ({
+    id,
+    created_at: createdAt,
+    last_activity_at: at,
+    title: `Thread ${id}`,
+  }) as ClubThreadListItem
 
 const reply = (id: string, at: string, threadId = 't1'): ClubThreadReply => ({
   id,
@@ -296,22 +311,28 @@ describe('mergeClubTimeline', () => {
 
   it('withholds the founding entry when a source declared a horizon it happened to hold every row above', () => {
     // PD-400, and the case a `complete` derived from "the horizon filter dropped
-    // nothing" gets exactly backwards. `getClubThreadReplies` collapses its
-    // window to ONE row per thread, so two busy threads can return two rows out
-    // of a two-hundred-message window and still carry a live horizon. Both rows
-    // sit above that horizon, so the filter drops nothing — and no other source
-    // holds a row below it to be dropped either, because every other source here
-    // is empty.
+    // nothing" gets exactly backwards. A source's horizon is the OLDEST row it
+    // returned, so every row it holds sits at or above it and the filter drops
+    // nothing — while the source's own picture demonstrably stops there.
+    //
+    // **The vehicle changed in `116` (PD-439) and the rule did not.** This used
+    // to be driven by the reply source, the only COLLAPSING one, which could
+    // return two rows out of a two-hundred-message window with a live horizon.
+    // `116` took the reply horizon out of the merge entirely — a source that
+    // draws no row makes no claim about the stream — so the case is reproduced
+    // here with the thread source instead. It is not a weaker case: any bounded
+    // source declaring a horizon reproduces it, which is why the old expression
+    // was wrong rather than merely imprecise.
     //
     // Verified both ways per CLAUDE.md §Working Principles: under the old
     // `inside.length === events.length && shown.length === ordered.length` this
-    // reads `complete: true` and appends `club-created` under a stream with a
-    // two-hundred-message thread still behind it.
+    // reads `complete: true` and appends `club-created` under a stream with
+    // threads still behind it.
     const merged = mergeClubTimeline(
       sources({
         club: { created_at: '2020-01-01T00:00:00Z', owner_id: 'u1' },
-        replies: {
-          rows: [reply('m1', '2026-08-20T10:00:00Z', 't1'), reply('m2', '2026-08-19T10:00:00Z', 't2')],
+        threads: {
+          rows: [thread('t1', '2026-08-20T10:00:00Z'), thread('t2', '2026-08-19T10:00:00Z')],
           horizon: '2026-08-19T10:00:00Z',
         },
       })
@@ -358,48 +379,136 @@ describe('mergeClubTimeline', () => {
     expect(floor?.kind === 'club-created' && floor.founder).toBe(null)
   })
 
-  it('places a reply at its own instant, leaving the thread where it started', () => {
-    // The defect this whole event kind exists for: a thread begun three weeks
-    // ago and busy this morning. The reply surfaces at the top; the thread's
-    // own entry stays three weeks down, where it is TRUE — moving it there
-    // instead would date "ana started a thread" to today.
+  it('draws ONE row for a busy thread, at its newest activity', () => {
+    // PD-439's report, as one assertion. A thread begun three weeks ago and
+    // busy this morning used to draw TWO rows — `reply:m1` at the top and
+    // `thread:t1` three weeks down — and the product owner read that as the
+    // same conversation listed twice.
+    //
+    // **The old test asserted exactly the opposite and its reasoning was
+    // sound**: dating "ana started a thread" to today is a small lie, so the
+    // reply got its own entry. What it missed is that the lead answers that
+    // objection more cheaply than a second row does — a bumped row reads
+    // "ana replied" — and that the thread's own row already carried the count
+    // and the faces summarising the reply row beside it.
     const merged = eventsOf(
       sources({
-        threads: { rows: [thread('t1', '2026-08-01T10:00:00Z')], horizon: null },
+        threads: {
+          rows: [thread('t1', '2026-08-22T10:00:00Z', '2026-08-01T10:00:00Z')],
+          horizon: null,
+        },
         replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: null },
       })
     )
 
-    expect(merged.map((event) => event.key)).toEqual(['reply:m1', 'thread:t1'])
+    expect(merged.map((event) => event.key)).toEqual(['thread:t1'])
+    expect(merged[0].at).toBe('2026-08-22T10:00:00Z')
+    expect(merged[0].kind === 'thread' && merged[0].latestReply?.id).toBe('m1')
   })
 
-  it('marks a reply unread off the thread it belongs to', () => {
-    // Keyed on `thread_id`, not on the message: `club_thread_unread` answers
-    // per thread, and a reply that read as unread only when its own id happened
-    // to be in the map would never be marked at all.
+  it('leaves a thread nobody replied to exactly where it was', () => {
+    // The negative case the whole design is sized around: `last_activity_at`
+    // defaults to the thread's creation, so an unanswered thread must not move.
     const merged = eventsOf(
       sources({
+        threads: { rows: [thread('t1', '2026-08-01T10:00:00Z')], horizon: null },
+        joins: { rows: [join('u1', '2026-08-05T10:00:00Z')], horizon: null },
+      })
+    )
+
+    expect(merged.map((event) => event.key)).toEqual(['join:u1', 'thread:t1'])
+    expect(merged[1].at).toBe('2026-08-01T10:00:00Z')
+    expect(merged[1].kind === 'thread' && merged[1].latestReply).toBe(null)
+  })
+
+  it('marks the thread row unread off the thread id', () => {
+    // `club_thread_unread` answers per thread. This was two assertions before
+    // `116` — one per event kind — and the one that mattered was the reply's,
+    // because a row keyed on the message id would never have found the map.
+    const merged = eventsOf(
+      sources({
+        threads: { rows: [thread('t1', '2026-08-22T10:00:00Z')], horizon: null },
         replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: null },
         unread: { t1: true },
       })
     )
 
-    expect(merged.map((event) => event.kind === 'reply' && event.unread)).toEqual([true])
+    expect(merged.map((event) => event.kind === 'thread' && event.unread)).toEqual([true])
   })
 
-  it('cuts on the reply read\'s OWN horizon, not on the one row it kept', () => {
-    // The defect this replaced: `getClubThreadReplies` collapses its window to
-    // one row per thread, so sixty messages in one argument come back as a
-    // single entry. Deriving the horizon from that entry claimed the club's
-    // picture stopped at that thread's latest message and cut its whole
-    // history to the last hour. The source declares how far back it LOOKED —
-    // here a week — and only that far back is cut.
+  it('does NOT cut the stream on the reply source horizon', () => {
+    // `116` took the reply horizon out of the merge's horizon list, because a
+    // source that draws no row cannot claim the stream's picture stops
+    // anywhere. Before it, a club with one busy thread reported a
+    // two-hundred-message horizon and cut its own rides, postcards and joins
+    // beneath it — for entries the timeline no longer draws at all.
+    const timeline = mergeClubTimeline(
+      sources({
+        postcards: { rows: [postcard('p1', '2026-01-02T10:00:00Z')], horizon: null },
+        threads: { rows: [thread('t1', '2026-08-22T10:00:00Z')], horizon: null },
+        replies: {
+          rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')],
+          horizon: '2026-08-21T10:00:00Z',
+        },
+      })
+    )
+
+    expect(timeline.complete).toBe(true)
+    expect(timeline.events.map((event) => event.kind)).toContain('club-created')
+    // The January postcard is the damage this is really about: the reply
+    // horizon used to drop it.
+    expect(timeline.events.map((event) => event.kind)).toContain('postcard')
+  })
+
+  it('keeps ONE row when a bumped thread is held in two paging windows at once', () => {
+    // The cost of a row whose position moves — `newestPerThreadRow`. The
+    // accumulated thread source is several windows folded together, and the
+    // fold is silent outside each window's own interval, so a thread paged to
+    // deep and then replied to survives at BOTH stamps. Two rows for one
+    // conversation under one React key is the exact defect this story fixes,
+    // reintroduced by paging, and nothing else in the repo can see it.
+    const merged = eventsOf(
+      sources({
+        threads: {
+          rows: [
+            thread('t1', '2026-08-01T10:00:00Z'),
+            thread('t1', '2026-08-22T10:00:00Z', '2026-08-01T10:00:00Z'),
+          ],
+          horizon: null,
+        },
+      })
+    )
+
+    expect(merged.map((event) => event.key)).toEqual(['thread:t1'])
+    // The FRESHER stamp wins — the window that saw the reply is the one telling
+    // the truth. Order is not relied on: the fold puts the stale copy first.
+    expect(merged[0].at).toBe('2026-08-22T10:00:00Z')
+  })
+
+  it('spends the reply read\'s horizon on the COUNT, never on the cut', () => {
+    // **This test used to assert the opposite, and both versions are about the
+    // same measurement.** `getClubThreadReplies` declares how far back it
+    // LOOKED rather than where its surviving row sits — the defect that made a
+    // sixty-message argument claim the club's picture stopped an hour ago. That
+    // horizon was then used to cut the stream, and this case pinned the cut.
+    //
+    // `116` (PD-439) kept the measurement and changed what it buys. The reply
+    // source draws no row now, so cutting four other sources on its bound would
+    // drop a June ride over the message volume of a thread nobody is looking at
+    // — the very over-cutting the old defect caused, arriving by a different
+    // route. The bound instead decides whether the count on the row is exact,
+    // which is the only thing it can honestly speak to.
     const merged = mergeClubTimeline(
       sources({
+        threads: {
+          rows: [thread('t1', '2026-08-22T10:00:00Z', '2026-08-01T10:00:00Z')],
+          horizon: null,
+        },
         replies: {
           rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')],
           horizon: '2026-08-15T10:00:00Z',
         },
+        activity: { t1: { messages: 12, participants: [], partial: false } },
         rides: {
           rows: [ride('r1', '2026-08-18T10:00:00Z'), ride('r2', '2026-06-01T10:00:00Z')],
           horizon: null,
@@ -407,8 +516,17 @@ describe('mergeClubTimeline', () => {
       })
     )
 
-    expect(merged.events.map((event) => event.key)).toEqual(['reply:m1', 'ride:r1'])
-    expect(merged.complete).toBe(false)
+    // The June ride survives — under the old rule it was cut.
+    expect(merged.events.map((event) => event.key)).toEqual([
+      'thread:t1',
+      'ride:r1',
+      'ride:r2',
+      'club-created:owner',
+    ])
+    expect(merged.complete).toBe(true)
+    // And the bound is not discarded: it is what makes the count a floor.
+    const event = merged.events.find((e) => e.kind === 'thread')
+    expect(event?.kind === 'thread' && event.activity?.partial).toBe(true)
   })
 
   it('renders a thread CREATION\'s reply count as exact, never as a floor', () => {
@@ -438,35 +556,31 @@ describe('mergeClubTimeline', () => {
   // makes definitionally wrong: a `null` reply horizon means the reply source
   // has read to the club's beginning, so nothing of any thread can be outside
   // it and every count IS exact. These four replace it.
-  it('renders a REPLY row as a floor when its thread\'s creation date is unknown', () => {
-    // `threads.rows` is empty (the default), so this merge has no creation
-    // date for `t1` — "known" is the word `design.md` §D5 uses, and this is
-    // the unknown case, which must default to the safe answer.
+  it('renders a floor for a BUMPED thread that predates the reply horizon', () => {
+    // **The trap `116` created, and the reason `resolveThreadCountExactness`
+    // takes `created_at` rather than the row's own `at`.** This thread is drawn
+    // at 08-22 because somebody replied this morning; it was STARTED on 08-01,
+    // and the reply window only reaches back to 08-15, so twelve is a floor.
+    // Feeding the row's `at` into the exactness test — the obvious tidy-up now
+    // that the two are on the same row — reads 08-22 >= 08-15 and prints `12`
+    // as a total. It lies in the direction nothing can catch: the number looks
+    // more precise, not less.
     const merged = eventsOf(
       sources({
+        threads: {
+          rows: [thread('t1', '2026-08-22T10:00:00Z', '2026-08-01T10:00:00Z')],
+          horizon: null,
+        },
         replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: '2026-08-15T10:00:00Z' },
         activity: { t1: { messages: 12, participants: [], partial: true } },
       })
     )
 
-    const event = merged.find((e) => e.kind === 'reply')
-    expect(event?.kind === 'reply' && event.activity?.partial).toBe(true)
+    const event = merged.find((e) => e.kind === 'thread')
+    expect(event?.kind === 'thread' && event.activity?.partial).toBe(true)
   })
 
-  it('renders a floor for a reply whose thread predates the reply horizon, even though the creation date is known', () => {
-    const merged = eventsOf(
-      sources({
-        threads: { rows: [thread('t1', '2026-08-01T10:00:00Z')], horizon: null },
-        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: '2026-08-15T10:00:00Z' },
-        activity: { t1: { messages: 12, participants: [], partial: true } },
-      })
-    )
-
-    const event = merged.find((e) => e.kind === 'reply')
-    expect(event?.kind === 'reply' && event.activity?.partial).toBe(true)
-  })
-
-  it('renders exact for a reply whose thread is known to have been created at or after the reply horizon', () => {
+  it('renders exact for a thread created at or after the reply horizon', () => {
     const merged = eventsOf(
       sources({
         threads: { rows: [thread('t1', '2026-08-20T10:00:00Z')], horizon: null },
@@ -475,30 +589,61 @@ describe('mergeClubTimeline', () => {
       })
     )
 
-    const event = merged.find((e) => e.kind === 'reply')
-    expect(event?.kind === 'reply' && event.activity?.partial).toBe(false)
+    const event = merged.find((e) => e.kind === 'thread')
+    expect(event?.kind === 'thread' && event.activity?.partial).toBe(false)
   })
 
   it('improves a floor to exact once the reply source\'s accumulated horizon clears — the same thread, before and after', () => {
+    const bumped = thread('t1', '2026-08-22T10:00:00Z', '2026-08-01T10:00:00Z')
     const stillPaging = eventsOf(
       sources({
+        threads: { rows: [bumped], horizon: null },
         replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: '2026-08-15T10:00:00Z' },
         activity: { t1: { messages: 12, participants: [], partial: true } },
       })
     )
     const reachedFounding = eventsOf(
       sources({
+        threads: { rows: [bumped], horizon: null },
         replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: null },
         activity: { t1: { messages: 12, participants: [], partial: true } },
       })
     )
 
-    const floorEvent = stillPaging.find((e) => e.kind === 'reply')
-    expect(floorEvent?.kind === 'reply' && floorEvent.activity?.partial).toBe(true)
+    const floorEvent = stillPaging.find((e) => e.kind === 'thread')
+    expect(floorEvent?.kind === 'thread' && floorEvent.activity?.partial).toBe(true)
 
-    const exactEvent = reachedFounding.find((e) => e.kind === 'reply')
-    expect(exactEvent?.kind === 'reply' && exactEvent.activity?.partial).toBe(false)
-    expect(exactEvent?.kind === 'reply' && exactEvent.activity?.messages).toBe(12)
+    const exactEvent = reachedFounding.find((e) => e.kind === 'thread')
+    expect(exactEvent?.kind === 'thread' && exactEvent.activity?.partial).toBe(false)
+    expect(exactEvent?.kind === 'thread' && exactEvent.activity?.messages).toBe(12)
+  })
+
+  it('never emits two entries sharing one key', () => {
+    // The invariant every merged entry rests on, asserted directly rather than
+    // inferred from the cases above — a duplicate key is a React warning, an
+    // unstable row identity, and the very defect PD-439 fixes, and `116` is what
+    // made it reachable by giving one row type a position that moves. A stream
+    // holding every kind at once, with the thread source carrying a stale copy
+    // of a bumped thread.
+    const merged = mergeClubTimeline(
+      sources({
+        rides: { rows: [ride('r1', '2026-08-21T10:00:00Z')], horizon: null },
+        postcards: { rows: [postcard('p1', '2026-08-20T10:00:00Z')], horizon: null },
+        joins: { rows: [join('u1', '2026-08-19T10:00:00Z')], horizon: null },
+        threads: {
+          rows: [
+            thread('t1', '2026-08-01T10:00:00Z'),
+            thread('t1', '2026-08-22T10:00:00Z', '2026-08-01T10:00:00Z'),
+            thread('t2', '2026-08-18T10:00:00Z'),
+          ],
+          horizon: null,
+        },
+        replies: { rows: [reply('m1', '2026-08-22T10:00:00Z', 't1')], horizon: null },
+      })
+    )
+
+    const keys = merged.events.map((event) => event.key)
+    expect(new Set(keys).size).toBe(keys.length)
   })
 
   it('is empty for a club with nothing in it', () => {
@@ -607,12 +752,13 @@ describe('groupClubTimeline', () => {
       { kind: 'join', at: '4', key: 'j0', member: join('u0', '4') },
       { kind: 'ride', at: '3', key: 'r0', ride: ride('r0', '3') },
       {
-        kind: 'reply',
+        kind: 'thread',
         at: '2',
-        key: 'm0',
-        reply: reply('m0', '2'),
+        key: 't0',
+        thread: thread('t0', '2'),
         unread: false,
         activity: null,
+        latestReply: null,
       },
       { kind: 'join', at: '1', key: 'j1', member: join('u1', '1') },
     ])
@@ -622,9 +768,10 @@ describe('groupClubTimeline', () => {
     expect(groups[3].kind === 'events' && groups[3].events).toHaveLength(1)
   })
 
-  it('groups a thread CREATION the same way as a reply', () => {
-    // Two event kinds, one row shape — the timeline draws the same thread from
-    // two angles and both are threads to look at.
+  it('gives a replied-to thread the same block as a quiet one', () => {
+    // One event kind since `116`, so what this pins is that a thread carrying a
+    // reply is still routed OUT of the announcement run — the grouping must key
+    // off the kind and not off whether the row has activity on it.
     const groups = groupClubTimeline([
       {
         kind: 'thread',
@@ -632,7 +779,8 @@ describe('groupClubTimeline', () => {
         key: 't0',
         thread: thread('t0', '2'),
         unread: false,
-        activity: null,
+        activity: { messages: 3, participants: [], partial: false },
+        latestReply: reply('m0', '2', 't0'),
       },
     ])
 

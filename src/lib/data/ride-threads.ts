@@ -55,7 +55,7 @@ export const RIDE_THREADS_PAGE_SIZE = 20
 export const RIDE_THREAD_MESSAGES_PAGE_SIZE = 200
 
 const THREAD_SELECT = `
-  id, ride_id, author_id, title, created_at,
+  id, ride_id, author_id, title, created_at, last_activity_at,
   author:profiles!author_id(id, username)
 `
 
@@ -66,11 +66,43 @@ const THREAD_SELECT = `
  * cursor over `created_at` alone would skip or repeat rows exactly at the
  * boundary where two threads share one `now()`.
  *
- * **Newest created, not most recently active** — the club's ruling, and it is a
- * visibility argument rather than a preference: a stored `last_message_at` would
- * be a copy of a visibility decision, bumping a thread for the very rider who
- * blocked its latest author, and computing it live is a per-viewer aggregate
- * over every row of the list.
+ * **Newest created, not most recently active — and this list is now the ONLY
+ * place that is still true.** `116` (PD-439) gave both thread tables a stored
+ * `last_activity_at` and moved both TIMELINES onto it, on the product owner's
+ * explicit choice between three options. This read is unchanged because nothing
+ * calls it (`git grep -n "getRideThreads(" -- src/ | grep -v __tests__` is 0)
+ * and its `(created_at, id)` cursor matches its own ordering; a screen that
+ * brings it back decides for itself, and must move the cursor with the order.
+ *
+ * **The visibility objection this paragraph used to make is real, was not
+ * refuted, and is now an accepted cost — do not read the change as having
+ * answered it.** A stored stamp is global and blocking is per-viewer, so a
+ * message from a rider you blocked bumps its thread on your timeline. What
+ * leaks is ORDERING only: `private.is_blocked` still removes the message
+ * itself, so the reply source returns nothing for it, the lead line and the
+ * count never mention it, and the row moves with no visible cause.
+ *
+ * **In a small club or crew that is ATTRIBUTABLE, which is the part worth
+ * stating plainly.** A row that moves with no new visible message and no change
+ * to its count tells you that the person you blocked posted, and when, to the
+ * second — and blocks are symmetric, so it runs both ways. Before `116` a
+ * blocked rider's reply produced no row at all, so this is a NEW channel rather
+ * than a widening of an existing one. Content, identity and counts stay gated.
+ *
+ * **There is no cheap mitigation, and the obvious one is worse.** Positioning
+ * the row on the newest VISIBLE reply puts it below the `last_activity_at`
+ * horizon that `getRideThreadCreations` — the read that actually feeds the
+ * timeline — bounded on, so the thread drops out of the stream entirely rather
+ * than merely sitting too high. Computing the position live per viewer is the
+ * only version without the channel, and it is an aggregate over every row of
+ * the list, which is why it was refused rather than built. Recorded on PD-439.
+ *
+ * **This file is not where that cost is PAID, and the note is repeated at the
+ * two reads that pay it** — `getRideThreadCreations` and `getClubThreads`.
+ * It is written here as well because this header is where the objection was
+ * first made and refused; a reader arriving at the refusal has to find out that
+ * it was overruled, and a reader arriving at the live read has to find out what
+ * it costs.
  *
  * A rider who can see the ride but is not on its crew reads `[]` here, which is
  * indistinguishable from a ride nobody has posted in — the screen tells those

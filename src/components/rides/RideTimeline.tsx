@@ -253,31 +253,31 @@ export function RideTimeline({
 
           if (group.kind === 'thread') {
             // A thread's own row rather than a line in the announcement run —
-            // `RideTimelineThreadRow` has why. Two event kinds land here and
-            // each composes its own lead sentence: the creation names who
-            // started it, the reply names who last spoke in it.
+            // `RideTimelineThreadRow` has why. **One row per thread since `116`
+            // (PD-439)**, where there were two event kinds landing here and each
+            // composed its own sentence.
+            //
+            // The lead is what carries the distinction those two rows used to:
+            // a thread with a reply says who last spoke in it, one without says
+            // who started it. Composed here rather than in the row for the
+            // reason it always was — the copy is the component's business only
+            // once it is one string.
             const { event } = group
             return (
               <div key={group.key}>
-                {event.kind === 'thread' ? (
-                  <RideTimelineThreadRow
-                    threadId={event.thread.id}
-                    anchorKey={event.key}
-                    title={event.thread.title}
-                    lead={`${event.thread.author?.username ?? 'A rider'} started this`}
-                    at={event.at}
-                    unread={unread.data?.[event.thread.id] === true}
-                  />
-                ) : (
-                  <RideTimelineThreadRow
-                    threadId={event.reply.thread_id}
-                    anchorKey={event.key}
-                    title={event.reply.thread_title}
-                    lead={`${event.reply.author ?? 'A rider'} replied`}
-                    at={event.at}
-                    unread={unread.data?.[event.reply.thread_id] === true}
-                  />
-                )}
+                <RideTimelineThreadRow
+                  threadId={event.thread.id}
+                  anchorKey={event.key}
+                  title={event.thread.title}
+                  lead={
+                    event.latestReply
+                      ? `${event.latestReply.author ?? 'A rider'} replied`
+                      : `${event.thread.author?.username ?? 'A rider'} started this`
+                  }
+                  at={event.at}
+                  unread={unread.data?.[event.thread.id] === true}
+                  activity={event.activity}
+                />
               </div>
             )
           }
