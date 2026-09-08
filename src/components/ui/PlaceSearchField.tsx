@@ -140,6 +140,35 @@ export type PlaceValue = {
   timezone?: string | null
 }
 
+/**
+ * Which lookup failures reach `onLookupFailure` — an ALLOWLIST of two, and a
+ * correctness gate rather than a filter.
+ *
+ * `searchPlaces` also throws `PlaceSearchOfflineError`, raised from
+ * `navigator.onLine === false` alone, which is a state the RIDER controls.
+ * Forwarding it hands the onboarding town step's country-only escape to anybody
+ * who turns airplane mode on, types three characters and turns it off again —
+ * and that step's flag is deliberately sticky, so the blip outlives the outage.
+ * That is the `Skip` decision #5 forbids, reached by a control a rider operates
+ * at will.
+ *
+ * Matched on `name` rather than `instanceof`, for the reason `lib/data/places.ts`
+ * already branches that way: a class identity does not survive minification or a
+ * duplicated module instance, where the string does. (`usePlaceLookup` also
+ * wraps a non-`Error` rejection — but that fails `instanceof` and the name test
+ * alike, so it is not what decides this.)
+ *
+ * An allowlist rather than a denylist, so a future error class is refused by
+ * default rather than silently opening a caller's fallback. Exported so the
+ * rule can be asserted in both directions without mounting the field and
+ * mocking a vendor call.
+ */
+export function isForwardableLookupFailure(failure: Error): boolean {
+  return (
+    failure.name === 'PlaceSearchUnavailableError' || failure.name === 'PlaceSearchCeilingError'
+  )
+}
+
 /** How long the field waits after the last keystroke before it searches. */
 const DEBOUNCE_MS = 400
 
@@ -160,6 +189,9 @@ export function PlaceSearchField({
   disabled,
   freeText,
   recents,
+  initialQuery,
+  fieldRef,
+  onLookupFailure,
 }: {
   /** The field's own label, e.g. `Location`. */
   label: string
@@ -234,6 +266,56 @@ export function PlaceSearchField({
      *  be mistaken for one. */
     heading: string
   }
+  /**
+   * A search term to put in the field the FIRST time it is focused — PD-446,
+   * where the create-club form offers the rider's own town so the suggestion
+   * they want is one tap away rather than eight keystrokes.
+   *
+   * **A term, never a value.** It lands in the draft, which place mode never
+   * submits, so a rider who focuses the field and walks away stores nothing —
+   * `onBlur`'s `if (!freeText) setDraft(null)` erases it, and that is the
+   * behaviour rather than a leak to work around.
+   *
+   * **On first FOCUS, never on mount, and the three reasons are independent.**
+   * Seeding at mount would be erased by the first blur anyway; until then it
+   * would show text a submit would not store; and it would spend a metered
+   * vendor credit for every rider who opens the screen and never touches the
+   * field. First focus is the same moment `resolveRiderLocation` is asked for
+   * the search bias, and for the same reason.
+   *
+   * Ignored once the field has a pick or a draft — a seed is an opening
+   * offer, not a value that competes with the rider's own typing.
+   */
+  initialQuery?: string | null
+  /**
+   * Told when a lookup fails, so a caller that cannot simply carry on without
+   * one can offer something else — PD-445, where the onboarding step reveals a
+   * country select because a rider who cannot reach the geocoder would
+   * otherwise be unable to finish onboarding at all.
+   *
+   * **A failure signal, never "the rider has not picked".** The allowlist is
+   * `isForwardableLookupFailure` above — exactly two classes,
+   * `PlaceSearchUnavailableError` (the vendor, the ledger, or `069`'s
+   * application-wide ceiling) and `PlaceSearchCeilingError` (the rider's own).
+   *
+   * **Not `PlaceSearchOfflineError`**, which a rider can raise at will, and not
+   * a term with no matches, which is an ordinary answer with its own empty
+   * state.
+   *
+   * The field goes on showing the failure and its retry exactly as before; this
+   * is additive and changes nothing for a caller that omits it.
+   */
+  onLookupFailure?: (error: Error) => void
+  /**
+   * The visible input, for a caller that has to move focus to this field —
+   * PD-446, where a refused submit focuses the field the schema rejected.
+   *
+   * It exists because place mode's input is deliberately nameless, so
+   * `form.elements.namedItem(...)` cannot reach it and the four hidden inputs
+   * it would reach instead are not focusable. Omitted by every caller that
+   * never moves focus here.
+   */
+  fieldRef?: React.RefObject<HTMLInputElement | null>
 }) {
   const fieldId = useId()
   const listId = `${fieldId}-list`
@@ -270,6 +352,27 @@ export function PlaceSearchField({
   const setText = freeText ? freeText.onTextChange : setDraft
 
   const { results, searching, failure, retry } = usePlaceLookup(searchTerm)
+
+  // Hand a lookup failure to a caller that asked for one — see
+  // `onLookupFailure`. In an effect rather than inside the hook, so this stays
+  // a render-time-pure read of the hook's state and a caller's `setState` does
+  // not run during another component's render.
+  const notifiedFailure = useRef<Error | null>(null)
+  useEffect(() => {
+    if (!failure || !onLookupFailure) return
+    // The allowlist — see `isForwardableLookupFailure`. An unrecognised failure
+    // is not forwarded, and the field still shows it with its retry exactly as
+    // it does for a caller that passes no callback at all.
+    if (!isForwardableLookupFailure(failure)) return
+    // Once per distinct failure. `usePlaceLookup` holds the error until the
+    // next successful lookup, so this effect re-runs on every unrelated
+    // re-render while it stands. Below the allowlist rather than above it, so a
+    // refused failure never occupies the slot — the ordering is not load-bearing
+    // (an `Error`'s `name` cannot change), it just keeps the ref meaningful.
+    if (notifiedFailure.current === failure) return
+    notifiedFailure.current = failure
+    onLookupFailure(failure)
+  }, [failure, onLookupFailure])
   // Read through the key `recents` names, and only once the rider has actually
   // touched the field: a form carrying this must not read a rider's history
   // because it rendered. `useQuery` rather than a hand-rolled fetch, so the
@@ -298,7 +401,17 @@ export function PlaceSearchField({
           recent: false,
         }))
 
-  const inputRef = useRef<HTMLInputElement>(null)
+  const ownInputRef = useRef<HTMLInputElement>(null)
+  // The caller's ref when one is passed, so a form moving focus here and this
+  // component's own `clear()` act on the same element rather than on two refs
+  // that happen to point at it.
+  const inputRef = fieldRef ?? ownInputRef
+
+  // Whether `initialQuery` has already been offered. A ref rather than state:
+  // spending it must not re-render, and it must survive the re-render the seed
+  // itself causes — a `useState` flag read in the same handler that sets it
+  // would still hold its old value.
+  const seeded = useRef(false)
 
   function pick(next: PlaceValue) {
     onChange(next)
@@ -407,6 +520,20 @@ export function PlaceSearchField({
             onFocus={(event) => {
               setTouched(true)
               setOpen(true)
+              // The seed — see `initialQuery`. Both `setDraft` and
+              // `setSearchTerm`, or the field shows a term that searches for
+              // nothing and the one tap it exists to save is not saved.
+              // Guarded on `value` and `draft` so it can never overwrite a
+              // pick or something the rider has typed, and spent once whether
+              // or not it applied.
+              if (!freeText && !seeded.current) {
+                seeded.current = true
+                const seed = initialQuery?.trim()
+                if (seed && !value && draft === null) {
+                  setDraft(seed)
+                  setSearchTerm(seed)
+                }
+              }
               // So the input and the first rows clear a raised keyboard. The
               // list renders in flow beneath the field, so the page's own
               // scroll container is what has to move.

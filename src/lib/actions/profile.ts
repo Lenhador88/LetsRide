@@ -100,7 +100,10 @@ export async function updateProfile(
  * makes the next resolve go back to the chain. Both are needed and neither
  * substitutes for the other.
  */
-export async function setRiderTown(town: string | null): Promise<ActionState> {
+export async function setRiderTown(
+  town: string | null,
+  countryCode?: string | null
+): Promise<ActionState> {
   // **`null` never reaches the schema, and that is not a shortcut.**
   // `locationSchema` is `optionalText(…)`, a **`ZodString`** pipeline —
   // `z.string().trim().max(100).transform(v => v || null)`. Its string type gate
@@ -124,12 +127,40 @@ export async function setRiderTown(town: string | null): Promise<ActionState> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Sign in to set where you ride from.' }
 
+  // **The country key is OMITTED rather than written NULL when there is none**,
+  // and that is the whole of the second argument's contract (PD-445).
+  //
+  // Since PD-445 a picked town carries its country, and changing your town
+  // changes your country — which is what closed PD-428's open half, because
+  // there is then no separate "change your country" control left to design.
+  //
+  // Two independent reasons the absent case must not send `home_country: null`:
+  //
+  //  1. **`113`'s coercion only covers the rider who already has one.** The
+  //     trigger runs `if old.home_country is not null then new.home_country :=
+  //     coalesce(new.home_country, old.home_country)`, so a NULL is coerced
+  //     back — but the arm is keyed on the OLD value, and it never fires for a
+  //     rider who has none. Depending on it alone would be depending on a
+  //     branch that is dead for most of the population (measured 2026-09-08: 0
+  //     of 25 DEV and 0 of 5 PROD profiles carry a country).
+  //  2. **Its first statement is `if current_user <> 'authenticated' then
+  //     return new`**, so the coercion is not a rule about the column at all —
+  //     it is a rule about what a client may write, and any other role walks
+  //     straight past it.
+  //
+  // Clearing the town (`null`) never touches the country: a rider removing
+  // their town is not withdrawing the country it came from.
+  const country = town === null ? undefined : countryCode?.trim().toUpperCase() || undefined
+
   const { data: updated, error } = await supabase
     .from('profiles')
     // SQL NULL for both routes into "nothing stored" — an explicit clear, and a
     // string the schema reduced to nothing. A stored `''` would make
     // `getMyLocationText` answer truthy-empty and read as a town nobody typed.
-    .update({ location: parsed?.success ? parsed.data : null })
+    .update({
+      location: parsed?.success ? parsed.data : null,
+      ...(country ? { home_country: country } : {}),
+    })
     .eq('id', user.id)
     .select('id')
     .maybeSingle()
@@ -145,6 +176,12 @@ export async function setRiderTown(town: string | null): Promise<ActionState> {
   invalidate(queryKeys.profile.all())
   invalidate(queryKeys.riderLocation())
 
+  // **No `invalidateOnboardingState()`, even though this now writes
+  // `home_country`.** The guard's decision reads three fields —
+  // `terms_accepted_at`, `onboarding_completed_at` and `has_username` — and the
+  // country is none of them: `114` requires one to STAMP completion, and this
+  // action only ever runs after that stamp exists. Adding the call would be
+  // harmless and would say something false about what the guard depends on.
   return { error: null, sent: true }
 }
 

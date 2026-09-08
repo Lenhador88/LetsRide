@@ -2,7 +2,12 @@ import { capture } from '@/lib/analytics/client'
 import { resolveSupabase } from '@/lib/supabase/resolve'
 import { invalidateOnboardingState } from '@/lib/auth/guard-cache'
 import { isUsernameTaken } from '@/lib/data/profile'
-import { USERNAME_TAKEN_MESSAGE, checkUsername, countryCodeSchema } from '@/lib/validation/profile'
+import {
+  USERNAME_TAKEN_MESSAGE,
+  checkUsername,
+  countryCodeSchema,
+  locationSchema,
+} from '@/lib/validation/profile'
 import { consentSchema } from '@/lib/validation/auth'
 import { takeAnyStashedInviteToken } from '@/lib/invites/pending-token'
 import { routes } from '@/lib/routes'
@@ -120,7 +125,7 @@ export async function setUsername(
   if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
   // **The completion RPC is NOT called here any more — PD-428 gave the wizard a
-  // second step and completion belongs to the last one.** `setHomeCountry`
+  // second step and completion belongs to the last one.** `setHomeTown`
   // makes that call now. Moving it was mandatory rather than tidy: `114`
   // refuses to stamp completion while `home_country` is NULL, so a
   // `complete_onboarding` here would be refused for every new rider and the
@@ -130,14 +135,14 @@ export async function setUsername(
   // **The invalidation stays, and it is now load-bearing for a different
   // reason.** It used to be "we just wrote the completion stamp"; it is now
   // "we just wrote the username", and `has_username` is exactly what the
-  // guard's resume branch reads to decide between this step and the country
+  // guard's resume branch reads to decide between this step and the town
   // one. Without it the cached state still says `has_username: false` and the
   // guard sends the rider straight back here, which is the finish-a-step-and-
   // bounce-into-it failure `writers-invalidate.test.ts` exists to refuse.
   invalidateOnboardingState()
 
   // "Username accepted", and since PD-428 that is no longer the same event as
-  // "onboarding finished" — the country step owns the second one.
+  // "onboarding finished" — the town step owns the second one.
   // `profiles.onboarding_completed_at` still answers "did they finish" in SQL,
   // and PD-353 is explicit that what is worth instrumenting is the step that
   // turns a rider AWAY, not the one they got through.
@@ -146,15 +151,15 @@ export async function setUsername(
     properties: { step: 'username', status: 'completed' },
   })
 
-  // **The invite stash is NOT consumed here — it moved to `setHomeCountry`
-  // with the completion stamp** (PD-428). It has to travel with the terminal
+  // **The invite stash is NOT consumed here — it moved to the terminal step
+  // with the completion stamp** (PD-428; `setHomeTown` since PD-445). It has to travel with the terminal
   // step and not merely with "the step that used to be terminal": `023`
   // refuses the claim's write until BOTH stamps are set, so consuming the token
   // here would clear it one screen before the rider is allowed to use it, and
   // `takeAnyStashedInviteToken` clears as it reads. The rider would land on
   // `/postcards` with the invite silently gone — the same dead end the stash
   // exists to prevent, moved one screen earlier and made quieter.
-  return { error: null, redirectTo: '/onboarding/country' }
+  return { error: null, redirectTo: '/onboarding/town' }
 }
 
 /**
@@ -192,7 +197,7 @@ export async function setUsername(
  * inside the function, which reads the stored column — only the value's path is
  * different.
  */
-export async function setHomeCountry(
+export async function setHomeTown(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
@@ -202,10 +207,33 @@ export async function setHomeCountry(
   const parsed = countryCodeSchema.safeParse(String(formData.get('country') ?? ''))
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
+  // The town, which since PD-445 arrives from the same pick as the country.
+  // **Absent is legal and is the escape**: a rider whose lookup was unavailable
+  // answers the country alone, and `complete_onboarding` does not require a
+  // town. A PRESENT town still has to parse — `018`'s CHECK bounds the column
+  // and `locationSchema` is the client-side half of that bound.
+  const rawTown = formData.get('town')
+  const town = rawTown === null ? null : locationSchema.safeParse(String(rawTown))
+  if (town && !town.success) return { error: town.error.issues[0].message }
+  const townValue = town?.success ? town.data : null
+
   const supabase = await resolveSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: null, redirectTo: '/auth/login' }
 
+  // **ONE statement for both columns.** `home_country` is written first as a
+  // convention rather than a constraint: `writers-invalidate.test.ts`'s
+  // per-function detector does match `.update({ home_country:` with the key at
+  // the head, but this function ALSO matches its `\.rpc\('complete_onboarding'`
+  // arm, so swapping the keys leaves it caught either way. Measured rather than
+  // assumed — an earlier version of this comment claimed the ordering was
+  // load-bearing and it is not.
+  //
+  // **The town is spread in rather than always written**, so a country-only
+  // submit does not send `location: null`. It would be writing NULL over
+  // nothing today, but it makes this function a clearer of a column it has no
+  // business clearing the moment anything else can reach this screen.
+  //
   // `.select().maybeSingle()` so a zero-row update is distinguishable from a
   // successful one. PostgREST reports no error when an update matches nothing,
   // and the guard reads a missing profile row as "not onboarded" — so without
@@ -213,7 +241,7 @@ export async function setHomeCountry(
   // reports success. Same trap `setUsername` documents.
   const { data: updated, error } = await supabase
     .from('profiles')
-    .update({ home_country: parsed.data })
+    .update({ home_country: parsed.data, ...(townValue === null ? {} : { location: townValue }) })
     .eq('id', user.id)
     .select('id')
     .maybeSingle()
@@ -225,21 +253,27 @@ export async function setHomeCountry(
     if (error.code === '23514') {
       capture({
         name: 'onboarding_step',
-        properties: { step: 'country', status: 'rejected', reason: 'invalid' },
+        properties: { step: 'town', status: 'rejected', reason: 'invalid' },
       })
       return { error: 'That is not a country we know.' }
     }
     capture({
       name: 'onboarding_step',
-      properties: { step: 'country', status: 'rejected', reason: 'failed' },
+      properties: { step: 'town', status: 'rejected', reason: 'failed' },
     })
     return { error: 'Could not save that. Try again.' }
   }
   if (!updated) return { error: 'Your profile could not be found. Sign in again.' }
 
-  // `p_location: null` is a no-op against a rider's stored town (`075`'s
-  // `coalesce`), never a clear — this screen does not collect one, and PD-419's
-  // town rung is a separate, optional path.
+  // **`p_location` stays `null`, and that is load-bearing rather than left
+  // over.** The town is written by the UPDATE above; `075`'s body is
+  // `coalesce(nullif(pg_catalog.btrim(p_location), ''), p.location)`, so `null`
+  // here is a no-op against whatever that statement just stored, never a clear.
+  //
+  // A real argument would be worse than redundant: `114`'s guard is
+  // `if not v_was_complete`, so a rider who onboarded before `113` and
+  // deep-links back here is never refused — and passing their town through
+  // `p_location` on that re-run would overwrite the one they already have.
   const { data: completed, error: completionError } = await supabase.rpc('complete_onboarding', {
     p_location: null,
   })
@@ -252,13 +286,13 @@ export async function setHomeCountry(
     if (completionError.code === '23514') {
       capture({
         name: 'onboarding_step',
-        properties: { step: 'country', status: 'rejected', reason: 'incomplete' },
+        properties: { step: 'town', status: 'rejected', reason: 'incomplete' },
       })
       return { error: 'Finish the earlier steps first.' }
     }
     capture({
       name: 'onboarding_step',
-      properties: { step: 'country', status: 'rejected', reason: 'failed' },
+      properties: { step: 'town', status: 'rejected', reason: 'failed' },
     })
     return { error: 'Could not save that. Try again.' }
   }
@@ -268,9 +302,22 @@ export async function setHomeCountry(
   // cached is what sent the rider here, and it is now stale in two fields.
   invalidateOnboardingState()
 
+  // `no_town` on a COMPLETION rather than a rejection: the rider finished
+  // through the escape the step opens when the lookup is unavailable, so they
+  // carry a country and no town. It is the only way to ask how often onboarding
+  // is completing without a town — which matters because `search-places`'s
+  // ceiling is application-wide, so the cause is correlated across riders.
+  //
+  // **`no_town`, never `no_country`** — completing without a country is
+  // impossible (`114` refuses the stamp), so that name would record the
+  // opposite of what happened.
   capture({
     name: 'onboarding_step',
-    properties: { step: 'country', status: 'completed' },
+    properties: {
+      step: 'town',
+      status: 'completed',
+      ...(townValue === null ? { reason: 'no_town' as const } : {}),
+    },
   })
 
   // **The stash is consumed HERE, at the end of the wizard** (`091`, PD-330;

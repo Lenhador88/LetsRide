@@ -212,8 +212,9 @@ export function resolveDestination(pathname: string, state: GuardState): string 
     // header for why that is a reversal with a reason rather than a loop.
     //
     // **The resume step is derived from `has_username` alone, and that is why
-    // `my_onboarding_state()` did not have to change shape.** The country is
-    // the step that *completes* onboarding now, so "has a username but no
+    // `my_onboarding_state()` did not have to change shape.** The town step is
+    // the step that *completes* onboarding now (`/onboarding/country` until
+    // PD-445, which swapped the control and renamed the route), so "has a username but no
     // completion stamp" already means "owes a country" — there is no fourth
     // field to read. That is not a saving, it is the whole safety argument: a
     // newer bundle destructuring a field an older function does not return
@@ -221,11 +222,11 @@ export function resolveDestination(pathname: string, state: GuardState): string 
     // EVERY rider into the wizard, invisibly to `tsc`, from the root layout.
     // Do not add one here without changing the accessor in a migration that
     // lands first.
-    const resume = state.has_username ? '/onboarding/country' : '/onboarding/username'
+    const resume = state.has_username ? '/onboarding/town' : '/onboarding/username'
 
     if (isOnboarding) {
       // **A rider may stand on any step up to and including their resume step,
-      // and that is what makes the country screen's `Back` link work.** Sending
+      // and that is what makes the town screen's `Back` link work.** Sending
       // every non-resume path forward would make Back a control that bounces
       // straight back — worse than not drawing one, because it looks live.
       //

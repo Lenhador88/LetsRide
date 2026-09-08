@@ -184,7 +184,7 @@ never the **guarantee**. **Forms are hand-rolled** — controlled inputs plus `u
 | Kind | Tool | Status |
 |---|---|---|
 | RLS policies | `supabase/tests/` — psql against Postgres 17 | Gates every PR touching `supabase/**` |
-| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (57 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Forty-nine** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
+| Units — validation, `lib/utils.ts`, `lib/data/`, `lib/actions/`, the cache, the route guard, the session store | Vitest — `npm run test:unit` | Gates every PR that touches code. `src/lib/auth/guard.ts` (58 cases, replacing the untestable `proxy.ts`). `lib/actions/__tests__/` reads every action module on comment-stripped source to assert each stamp writer invalidates the guard cache and each table writer makes a cache claim. **Fifty-one** component tests exist — `PostcardAction` was the first; count them with `git ls-files 'src/**/*.test.tsx' \| wc -l`. Each pins one thing a refactor reverses in silence, verified both ways. Almost all render through `renderToStaticMarkup` under `environment: 'node'`; **jsdom is the answer only when something needs a mounted effect, a layout, an event or a portal**, and each jsdom test states which in its header — `git grep -l "@vitest-environment jsdom" -- 'src/**/*.test.tsx'` |
 | Edge Functions | `deno check`, CI's `functions` job | Type-checks every `index.ts` under Deno when `supabase/functions/**` changes. `tsconfig.json` excludes the directory, so `tsc` never sees the entrypoints |
 | Smoke walk | `npm run walk` — playwright-core against DEV | **The only gate that renders anything**: signs in, walks every screen including discovered detail routes, checks the guard's redirects and sign-out. `WALK_FIXTURES=1` creates the rows the detail routes need; a shrunken `N/N` is a skip, not a pass. In CI as the `walk` job, minting its own rider, **skipped until the repository variable `WALK_CI=1` is set** because the Actions secrets name PROD. Not a required check yet (PD-370) |
 | End-to-end | Playwright | Deferred as a full suite. The walk asks one question per route — did this render — and asserts behaviour only in named phases, each covering a defect no other gate can see |
@@ -225,7 +225,7 @@ for d in src/components/*/; do echo "$d: $(ls "$d" | sed 's/\.tsx\?$//' | tr '\n
 places, split so the decision can be tested:
 
 - **`src/lib/auth/guard.ts`** — `resolveDestination(pathname, state)`, a pure function.
-  `null` means stay; a string is where to go. 57 cases in `__tests__/guard.test.ts`.
+  `null` means stay; a string is where to go. 58 cases in `__tests__/guard.test.ts`.
 - **`src/lib/auth/guard-cache.ts`** — what the decision reads: the session and the onboarding
   stamps, **held for the page load rather than fetched per route**, with `onAuthStateChange` as
   the single writer for the session half.
@@ -235,7 +235,7 @@ places, split so the decision can be tested:
   decision** — replacing it on every navigation unmounts `(app)/layout.tsx`.
 
 **Any new writer of a stamp the decision reads must invalidate the cache.** There are four
-(`signUp`, `acceptTerms`, `setUsername`, `setHomeCountry`), each calling
+(`signUp`, `acceptTerms`, `setUsername`, `setHomeTown`), each calling
 `invalidateOnboardingState()`; `signOut` calls `clearGuardCache()`.
 Count them rather than trust the number — scope the pathspec, or the natural
 `-- src/lib/actions/` prints four *lines* summing to **7** (the comment trap, two of them tests):
@@ -248,7 +248,7 @@ git grep -c "invalidateOnboardingState()" -- 'src/lib/actions/*.ts' \
 `src/lib/actions/__tests__/writers-invalidate.test.ts` refuses a new writer that does not, and
 **that check is per EXPORTED FUNCTION, not per file** — `onboarding.ts` holds three of the four,
 so a file-granular check passes while any one of them keeps its call (measured: with
-`setHomeCountry`'s invalidation deleted, the per-file version reported 30/30 green). **The
+`setHomeTown`'s invalidation deleted, the per-file version reported 30/30 green). **The
 decision reads three fields and only two are stamps** — `terms_accepted_at`,
 `onboarding_completed_at` and `has_username` — so `setUsername`, which writes no stamp since
 PD-428, still owes the invalidation. **Necessary, never sufficient**: `guard-cache.ts` carries a
@@ -323,14 +323,16 @@ repointed. `docs/ENVIRONMENTS.md` is the contract. **Never promote a Vercel prev
 — both Supabase variables are inlined at build time and promote does not rebuild. **Check drift
 rather than claiming it**: `npm run db:drift` compares migration *names*.
 
-**Applied state: 116 files. DEV is at `116` and PROD at `112` — measured 2026-09-08.** DEV-ahead
+**Applied state: 116 files, and BOTH projects are at `116` — measured 2026-09-08.** DEV-ahead
 is the resting state between a merge and its promotion; promote everything the gap contains, in
 filename order, per `docs/ENVIRONMENTS.md` §Migrations, and record each file's ordering in
 `docs/reference/migrations.md` §Applied state. Count rather than trust it — `list_migrations`
 against both refs, against `ls supabase/migrations/*.sql | wc -l`. **DEV records THREE rows with
-no file and PROD none** — the long-standing hand-applied ones. **`113` then `114` is a required
-order on the PROD promotion and must not be collapsed**: `114` refuses a NULL country, so applied
-ahead of the bundle that writes one it strands every new signup in a wizard with no skip.
+no file and PROD none** — the long-standing hand-applied ones, which is why DEV answers 119 rows.
+**`113` then `114` was a required order on the PROD promotion and must not be collapsed** if it is
+ever replayed: `114` refuses a NULL country, so applied ahead of the bundle that writes one it
+strands every new signup in a wizard with no skip. PROD's last four rows are `home_country`,
+`115`, `116`, `a_completion_carries_a_country` — the gate held.
 `docs/reference/migrations.md` §Applied state has that gate.
 
 **The sequencing rule: additive first, deploy, destructive last — and "additive, so the order does

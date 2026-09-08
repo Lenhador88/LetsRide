@@ -14,12 +14,15 @@ import { emptyActionState } from '@/lib/actions/state'
 import { retaining, seedRetained, wasChecked } from '@/lib/actions/retain'
 
 import { uploadClubAvatarImage, uploadClubCoverImage } from '@/lib/media'
+import { getMyLocationText } from '@/lib/data/profile'
+import { useQuery } from '@/lib/query'
+import { queryKeys } from '@/lib/query/keys'
 import {
   CLUB_DESCRIPTION_MAX,
   CLUB_LOCATION_FIELD_NAMES,
   CLUB_LOCATION_NAME_MAX,
   CLUB_NAME_MAX,
-  clubSchema,
+  clubCreateSchema,
   readClubLocation,
 } from '@/lib/validation/clubs'
 
@@ -73,7 +76,12 @@ export function CreateClubForm() {
     const data = submittedData.current
     const form = formRef.current
     if (!data || !form) return
-    const parsed = clubSchema.safeParse({
+    // `clubCreateSchema`, matching what `createClub` parses (PD-446). The whole
+    // point of re-parsing a schema here is that the form and the action cannot
+    // disagree about which field was rejected — so the edit form's schema,
+    // which does not require a location, would leave this effect unable to
+    // explain the one refusal this change adds.
+    const parsed = clubCreateSchema.safeParse({
       name: data.get('name'),
       description: data.get('description'),
       is_public: data.get('is_public') === 'on',
@@ -82,10 +90,18 @@ export function CreateClubForm() {
       location: readClubLocation(data),
     })
     const field = parsed.success ? undefined : parsed.error.issues[0]?.path[0]
-    if (typeof field === 'string') {
-      const el = form.elements.namedItem(field)
-      if (el instanceof HTMLElement) el.focus()
+    if (typeof field !== 'string') return
+    // **`location` is the one field `namedItem` cannot reach, and it fails
+    // silently.** Place mode's visible input is deliberately nameless, and the
+    // four hidden inputs that DO carry `location_*` names are not focusable —
+    // so before PD-446 this branch simply did nothing, for the field that
+    // change makes required. The ref is the field's own visible input.
+    if (field === 'location') {
+      locationInput.current?.focus()
+      return
     }
+    const el = form.elements.namedItem(field)
+    if (el instanceof HTMLElement) el.focus()
   }, [state])
 
   const [avatarPath, setAvatarPath] = useState('')
@@ -103,6 +119,20 @@ export function CreateClubForm() {
 
   const avatarInput = useRef<HTMLInputElement>(null)
   const coverInput = useRef<HTMLInputElement>(null)
+  // The place field's own visible input — see the focus effect above.
+  const locationInput = useRef<HTMLInputElement>(null)
+
+  // The rider's own town, offered as the location field's opening search term
+  // (PD-446). **A term, never a value**: `PlaceSearchField` puts it in the
+  // draft on first focus, the rider still has to pick, and a blur with no pick
+  // erases it. A rider usually founds a club where they ride, so this turns
+  // eight keystrokes into one tap without ever storing something unchosen.
+  //
+  // The existing key, which `setRiderTown` already invalidates — no new key
+  // and no new cache claim. Gated on the DATA, never on `isLoading`:
+  // `undefined` means the read has not settled, and the seed being absent is a
+  // supported state rather than something to wait for.
+  const riderTown = useQuery(queryKeys.profile.location(), getMyLocationText).data
 
   async function handleFile(kind: 'avatar' | 'cover', file: File | undefined) {
     if (!file) return
@@ -218,19 +248,25 @@ export function CreateClubForm() {
           defaultValue={state.retained.description}
         />
 
-        {/* Optional, and the copy says so — Create club is the app's shortest
-            creation flow and a required field would be a new wall in front of
-            it. A club with no location still appears on Explore; it just
-            cannot be sorted by distance. */}
+        {/* **Required since PD-446, and the wall the old copy warned about is
+            what the seeded term removes.** The measurement that settled it:
+            before either database was repaired by hand, PROD carried 1 club
+            with 0 locations and DEV 15 with 1 — so `ExploreClubsStrip`'s near
+            count and the distance split on `/clubs/explore` were reading a
+            field almost no club carried. The column stays nullable for ever
+            and every club that predates this gate keeps appearing on Explore;
+            only the way IN is gated. */}
         <div className="flex flex-col gap-1">
           <PlaceSearchField
-            label="Where the club is based (optional)"
+            label="Where the club is based"
             placeholder="Search for a town or place"
             value={location}
             onChange={setLocation}
             names={CLUB_LOCATION_FIELD_NAMES}
             maxNameLength={CLUB_LOCATION_NAME_MAX}
             disabled={busy}
+            initialQuery={riderTown}
+            fieldRef={locationInput}
           />
           <p className="pl-1 text-xs font-medium text-muted">
             Riders looking for a club near them will find yours. This is the club&rsquo;s own
@@ -262,6 +298,17 @@ export function CreateClubForm() {
         </p>
       )}
 
+      {/* **`disabled={busy}` only — the location does NOT gate this button**,
+          even though it is required since PD-446. Six controls sit above it, so
+          a submit that greys out until they are all answered reads as the
+          resting state of an untouched form and leaves the tab order early;
+          that was tried on this form and reverted, which is why the effect
+          above moves focus to the rejected field instead.
+
+          **PD-445's onboarding town step does the opposite and is also right**:
+          one question, one control, nothing after it in the tab order, so there
+          the disabled submit is the affordance saying so before the round trip.
+          Two forms, two answers, one reason — do not "fix" either to match. */}
       <Button type="submit" size="lg" loading={pending} disabled={busy}>
         Create club
       </Button>

@@ -413,8 +413,18 @@ export const claims = [
     // deliberately-unapplied file is explained in the prose beside them where a
     // reader will actually meet it. Two edits, one commit. Still never a
     // relaxed regex.
-    pattern:
-      /\*\*Applied state: (\d+) files\. DEV is at `\d+` and PROD at `\d+` — measured/,
+    // 2026-09-08: the `113`/`114`/`115`/`116` promotion put all four on PROD and
+    // this went red for the TWELFTH time — but note HOW, because it is a new
+    // shape rather than another flip. The prose was not merely out of date about
+    // the direction: it still said `PROD at 112` while PROD had been at `116` for
+    // hours, so the pattern MATCHED and the count compared equal, and the claim
+    // passed green over a false sentence. That is this entry's blind spot, and
+    // it is the reason the pin is on the relationship at all — the numeric half
+    // cannot see a wrong ref. Pinned back to LEVEL; at LEVEL the prose names no
+    // refs because there is no direction to infer, and the day they diverge
+    // again the sentence has to name them and this pattern has to move with it.
+    // Two edits, one commit. Still never a relaxed regex.
+    pattern: /\*\*Applied state: (\d+) files, and BOTH projects are at `\d+` — measured/,
     extractStated: (m) => Number(m[1]),
     kind: 'shell',
     cmd: `ls supabase/migrations/*.sql | wc -l`,
