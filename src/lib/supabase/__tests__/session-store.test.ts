@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   clearSessionStore,
   describeSessionStore,
+  INSTALLATION_ID_KEY,
   resetSessionStoreForTests,
   resolveSessionStore,
   type SessionStore,
@@ -182,6 +183,36 @@ describe('sign-out destroys the session', () => {
 
     await clearSessionStore()
     expect(storedKeys(globals.window!.localStorage!)).toEqual(['letsride:last-seen-tip'])
+  })
+
+  // PD-443. The case above SEEDS its non-Supabase key, so nothing in the process
+  // ever wrote it and it is only ever read by the prefix sweep — which filters
+  // correctly. The tracked pass did not, and only a key WRITTEN THROUGH THE
+  // STORE this page load reaches it. That is a real page load rather than a
+  // contrivance: it is the first launch after install, the one load where
+  // `readOrMint` mints an id and calls `setItem`.
+  it('keeps the installation id when THIS page load minted it — a device outlives a rider', async () => {
+    const { store } = resolveSessionStore()
+    await store.setItem(INSTALLATION_ID_KEY, '3f2504e0-4f89-41d3-9a0c-0305e82c3301')
+    await store.setItem('sb-ref-auth-token', 'the-session')
+
+    await clearSessionStore()
+
+    // The rider is gone and the device is not. Asserted as the whole key list
+    // rather than two `toContain`s, so a sweep that started deleting something
+    // else fails here too.
+    expect(storedKeys(globals.window!.localStorage!)).toEqual([INSTALLATION_ID_KEY])
+  })
+
+  it('still removes a Supabase key written the same way, so the exemption is not a hole', async () => {
+    // The inverse, and it is what stops the fix being "stop tracking writes".
+    // Without it, `DEVICE_SCOPED_KEYS` growing a `sb-` entry — or the tracked
+    // pass being dropped altogether — would leave this file green.
+    const { store } = resolveSessionStore()
+    await store.setItem('sb-ref-auth-token-code-verifier', 'pkce')
+
+    await clearSessionStore()
+    expect(storedKeys(globals.window!.localStorage!)).toEqual([])
   })
 
   it('sweeps a secure store for a session written before a reload', async () => {

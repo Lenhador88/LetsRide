@@ -1,4 +1,4 @@
-import { resolveSessionStore } from '@/lib/supabase/session-store'
+import { INSTALLATION_ID_KEY, resolveSessionStore } from '@/lib/supabase/session-store'
 
 /**
  * The stable name a device has — `push_devices.installation_id`, generated here
@@ -49,17 +49,25 @@ import { resolveSessionStore } from '@/lib/supabase/session-store'
  * The store key. Named for what it identifies — the installation — rather than
  * for push, because the value outlives any one channel or rider.
  *
- * **It deliberately does not carry the `sb-` prefix, so `clearSessionStore()`
- * leaves it behind on sign-out.** That is the correct direction and it is the
- * opposite of the four things sign-out clears: those are traces of a *rider*,
- * and this names a *device*. Clearing it would mint a fresh id on the next
- * sign-in, which makes every sign-in look like a reinstall — a new
- * `push_devices` row each time, the old one surviving until a provider refuses
- * its token, and `078`'s "one row per install, for the life of the install"
- * quietly false. `release_push_device` is what sign-out owes here, and it needs
- * this value to name the row it removes.
+ * **It survives `clearSessionStore()` on sign-out**, which is the correct
+ * direction and the opposite of the four things sign-out clears: those are
+ * traces of a *rider*, and this names a *device*. Clearing it would mint a fresh
+ * id on the next sign-in, which makes every sign-in look like a reinstall — a
+ * new `push_devices` row each time, the old one surviving until a provider
+ * refuses its token, and `078`'s "one row per install, for the life of the
+ * install" quietly false. `release_push_device` is what sign-out owes here, and
+ * it needs this value to name the row it removes.
+ *
+ * **The `sb-` prefix is not what protects it, and believing it was is PD-443.**
+ * That is true of `clearSessionStore`'s prefix sweep and was false of its
+ * tracked-key pass, which removed every key written during the page load
+ * whatever its name — so on the one load that mints this id, sign-out destroyed
+ * it. The protection is now explicit: the constant is declared in
+ * `session-store.ts` and listed in its `DEVICE_SCOPED_KEYS`, which is the set
+ * that keeps it out of the tracked pass. Re-exported here so callers and the
+ * existing tests are unchanged.
  */
-export const INSTALLATION_ID_KEY = 'letsride-installation-id'
+export { INSTALLATION_ID_KEY }
 
 /** Lowercase hex UUID — `078`'s `push_devices_installation_id_shape`, restated. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/

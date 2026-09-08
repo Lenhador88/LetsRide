@@ -84,6 +84,40 @@ const written = new Set<string>()
 
 const SUPABASE_KEY_PREFIX = 'sb-'
 
+/**
+ * This installation's id. Lives here rather than in `lib/push/` because
+ * `DEVICE_SCOPED_KEYS` below has to name it and that module already imports this
+ * one — defining it there and importing it back would be a cycle. `lib/push/
+ * installation.ts` re-exports it, so its callers are unchanged.
+ */
+export const INSTALLATION_ID_KEY = 'letsride-installation-id'
+
+/**
+ * Keys in this store that name the DEVICE rather than the rider, and therefore
+ * must survive sign-out.
+ *
+ * **The tracked set is documented as "every key this module has handed to
+ * Supabase", and until PD-443 that was false.** `lib/push/installation.ts`
+ * writes through the same resolved store, so on the one page load that *mints*
+ * an installation id — the first launch after install, the only load where
+ * `readOrMint` calls `setItem` — the id landed in `written` and sign-out
+ * destroyed it, while `installation.ts`'s own comment said it survived.
+ *
+ * The consequence is not cosmetic. `signOut()` swallows a failed
+ * `releaseCurrentDevice()` on purpose, so that an offline sign-out still signs
+ * the rider out; its bound on the resulting unreleased row is that the *next*
+ * boot re-homes the installation, and that bound holds only while the id is
+ * stable. Destroy it and the next boot mints a fresh one, leaving a
+ * `push_devices` row that still names the departing rider with no path back to
+ * it — their notifications on the next person's lock screen, on a shared phone.
+ *
+ * **Excluded from tracking rather than filtered out of the sweep**, because the
+ * tracked pass exists to catch keys "the library names in a way a prefix would
+ * miss"; narrowing *it* to `sb-` would trade this bug for that one. An app-owned
+ * key simply never belonged in a Supabase-owned set.
+ */
+const DEVICE_SCOPED_KEYS: ReadonlySet<string> = new Set([INSTALLATION_ID_KEY])
+
 /** Survives the SSR pass, where there is neither a secure store nor a window. */
 function createMemoryStore(): SessionStore {
   const map = new Map<string, string>()
@@ -99,7 +133,7 @@ function track(store: SessionStore): SessionStore {
   return {
     getItem: (key) => store.getItem(key),
     setItem: (key, value) => {
-      written.add(key)
+      if (!DEVICE_SCOPED_KEYS.has(key)) written.add(key)
       return store.setItem(key, value)
     },
     removeItem: (key) => {
