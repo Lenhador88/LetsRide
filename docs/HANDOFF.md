@@ -55,7 +55,8 @@ history.
   group into slot-1 and released on the merge.
 - **`Development (AI)`:** PD-421 only (the log digest's HTTP call has never succeeded), carrying
   no slot label — so it occupies no slot, which is deliberate rather than a gap.
-- **`Queued (AI)`:** empty. PD-431 was taken 2026-09-07 and its **registration half is built** —
+- **`Queued (AI)`:** PD-359 then PD-430, both queued by the owner's answer below.
+  PD-431 was taken 2026-09-07 and its **registration half is built** —
   child B of `openspec/changes/deliver-push-notifications`, every non-`[device]` box ticked. It
   stays open: what its title names is a rider getting a reminder, and the sender is child C,
   blocked on the APNs `.p8` and the FCM service account (task 0.4, owner-only).
@@ -63,13 +64,13 @@ history.
   epic that already owns the written proposal. Which row should carry the remaining work is a
   three-option table on PD-431 and is the owner's call — until it is made, a firing reading
   `Queued (AI)` cannot tell which row it would be building.
-- **Three stories are open on purpose, and one of them is the next decision.** **PD-430** is
-  parked in `Needs help`: its proposal is merged and validates clean, and it stops on one question
-  — the owner's five fields include *the town*, and **no ride carries one**. `rides` has no
-  locality column, `meeting_point` is the place name or free text, and the geocoder stores neither.
-  The comparison table is on the issue; the recommendation is to ship the other four fields now.
-  **PD-385**: 9 DEV rides carry a coordinate and no tile, repairable only by each ride's own
-  organizer. **PD-428**: `114` is written and applied to DEV, so
+- **PD-430 is decided and queued: the signed-out preview shows the ride's real `meeting_point`,
+  and the town is dropped.** `091`'s `ride_invite_link_preview` already returns `meeting_point` to
+  any token holder before they claim — its gate is the participation stamps, not ride membership —
+  so the anonymous projection stays a strict subset of one that already ships. No `rides.locality`,
+  no backfill.
+- **Two stories are open on purpose.** **PD-385**: 9 DEV rides carry a coordinate and no tile,
+  repairable only by each ride's own organizer. **PD-428**: `114` is written and applied to DEV, so
   what it still owes is a way to change the country after onboarding — a decision rather than a
   branch.
 
@@ -95,18 +96,18 @@ body carries its own steps.
 
 ## Next action
 
-**Decide who owns the rest of push (the table on PD-431), then archive the OpenSpec changes whose
-code is in production.** The first is one screen and it blocks the queue from picking the work up
-cleanly; the second is the standing backlog below.
+**Decide who owns the rest of push — the three-option table on PD-431.** One screen; until it is
+answered a firing cannot tell whether PD-431 or PD-302/PD-303 is the row it would be building.
 
-**Archive the OpenSpec changes whose code is in production.** 46 are open against 4 archived, so
-`openspec/specs/` no longer describes the app and the next proposal is written against specs that
-are missing what shipped. One docs-only PR, in `npm run openspec -- list` order, archiving only
-changes whose migrations and screens are on `main`; a change with an open decision inside it
-(`add-account-deletion`, and the `enforce-creator-membership` / `add-account-deletion` collision —
-`docs/reference/journal.md` §The open OpenSpec changes) stays open with a one-line note. **PD-436
-blocks archiving `enforce-ride-capacity`** specifically, so that one stays open too. The Stop hook
-keeps the backlog from growing; nothing else shrinks it.
+**Then the OpenSpec archive backlog.** 47 changes are open against 4 archived, so `openspec/specs/`
+no longer describes the app and the next proposal is written against specs missing what shipped.
+**PD-359 is queued and is the first two** — `invite-riders-to-a-ride` before
+`share-a-ride-invite-link`, an order that is the whole content of that story; PD-403's remainder
+follows it and is `blockedBy` it. For the rest, archive only changes whose migrations and screens
+are on `main`; one carrying an open decision (`add-account-deletion`, and its
+`enforce-creator-membership` collision — `docs/reference/journal.md` §The open OpenSpec changes)
+stays open with a one-line note, and **PD-436 blocks `enforce-ride-capacity`**. The Stop hook keeps
+the backlog from growing; nothing else shrinks it.
 
 ## Test accounts
 
