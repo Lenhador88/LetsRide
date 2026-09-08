@@ -45,9 +45,12 @@ comment at `queue-pickup.md` STEP 3 rather than trusting this line; the paths ar
       present in the signature 0.6 pinned. **No `crew_count` and no `organizer_avatar_path`**, which
       is what makes the projection a strict subset rather than a re-grant of `091`'s.
 - [ ] 1.2 `language sql`, `security definer`, `set search_path = ''`, and **`volatile`** — declared
-      explicitly, never left to the default, with the reason in a comment beside it: a `stable`
-      function is served over GET by PostgREST, which would put a live capability token in the
-      request log's query string. **This is the one label a later session will try to "fix".**
+      explicitly, never left to the default, with the reason in a comment beside it. **The reason
+      first written here — that a `stable` function is served over GET while a volatile one is
+      POST-only — was measured FALSE during the build** (`GET …?t=<token>` answers 200; the control
+      is the same GET against `091`'s preview answering 401/42501 rather than 405). The label stays
+      as the safe default and to match `091`, and the comment says so; what keeps the token out of
+      the URL is that `supabase-js` POSTs. See `design.md` D3.
 - [ ] 1.3 Body: `from private.live_ride_invite_link(t) k join public.rides r on r.id = k.ride_id
       join public.profiles p on p.id = r.organizer_id`, selecting the closed list by name. **Never
       `rides.*`.** No `is_public` test, no `club_id` reference, no `auth.uid()`, no `is_blocked`

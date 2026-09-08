@@ -152,31 +152,46 @@ rather than raising a parse error that would confirm the token's format.
 - **THEN** zero rows SHALL be returned through the ordinary dead-token path, and no branch, message
   or state SHALL exist that is specific to a past ride
 
-### Requirement: The function SHALL be VOLATILE, so PostgREST refuses to serve it over GET
+### Requirement: The function SHALL be VOLATILE, and the label SHALL NOT be relied on to force POST
 
 `public.ride_invite_link_public_preview` SHALL be declared **VOLATILE** and SHALL NOT be `stable`,
 even though its body performs no write and takes no lock.
 
-**PostgREST serves a `stable` function over GET.** That would put a live capability token in the
-query string of `/rest/v1/rpc/ride_invite_link_public_preview`, and therefore into the project's own
-request log, into any intermediary's access log, and into the browser's history — for the one caller
-in the app who is by definition unauthenticated and whose token is the entire credential. Volatile is
-POST-only.
+**The reason `091` recorded for the same label is false on this deployment, and this requirement
+records the measurement rather than repeating it.** `091`'s comment, `docs/reference/schema.md` and
+this change's own `design.md` D3 all state that PostgREST serves a `stable` function over GET while a
+volatile one is POST-only, so the label is what keeps a live capability token out of a query string.
+Probed against DEV on 2026-09-08 with the publishable key alone:
 
-This is the same reasoning `091` recorded for the authenticated preview, reached by a different
-route: there the label would have been *untrue* because its entry point may take `for share`; here it
-is a **deliberate mislabel in the safe direction**, and it SHALL be recorded as such so a later
-session does not "correct" it to `stable` for a query plan.
+```
+GET /rest/v1/rpc/ride_invite_link_public_preview?t=<live token>   ->  200, the full six-column row
+GET /rest/v1/rpc/ride_invite_link_preview?t=<live token>          ->  401 / 42501 permission denied
+```
+
+The second is the control: it is a **privilege** error raised at execution, not a `405`, so the
+method is not what stops it. **A volatile function is served over GET here.**
+
+**What actually keeps the token out of the URL is the client.** `supabase-js`'s `.rpc()` issues a
+POST and `src/lib/data/` is its only caller. Nothing in the database enforces it, and a later
+session that believes the label does will be wrong in the dangerous direction — it would read
+"volatile is POST-only" and conclude the URL is safe to hand out.
+
+The label nonetheless SHALL stay, for two reasons that survive: it is the safe default for the app's
+only unauthenticated surface, and it matches `091`'s three RPCs, one of which
+(`claim_ride_invite_link`) genuinely requires it because `for share` is refused outright in a
+non-volatile function.
 
 #### Scenario: The volatility is pinned in the catalogue
 - **WHEN** `provolatile` is read for the function
 - **THEN** it SHALL be `v`
-- **AND** the reason SHALL be recorded in the function's `comment`, because the label looks wrong to
-  anyone reading only the body
+- **AND** the function's `comment` SHALL state that the label does **not** force POST on this
+  deployment, so a later session does not read it as a guarantee
 
-#### Scenario: A token never reaches a query string
-- **WHEN** the client calls the function
-- **THEN** the request SHALL be a POST with the token in its body
+#### Scenario: A token in a query string is refused by nothing in the database
+- **WHEN** the endpoint is called by GET with the token in the query string
+- **THEN** it SHALL answer `200` — this is stated as an asserted fact rather than a defect to fix,
+  because the entropy of the token is what bounds the endpoint (see *Guessability*), and the app
+  itself SHALL only ever reach it through `supabase-js`'s POST
 
 ### Requirement: The function SHALL be `security definer` with an empty search path, and SHALL write nothing
 
@@ -442,7 +457,9 @@ that held for another reason stops holding silently.
 
 **The exposure SHALL be described accurately rather than assumed.** The token is 32 random hex
 characters, there is no link to `/rides/join?token=…` anywhere in the app or on the marketing site,
-and the function is POST-only, so a crawler cannot walk to a preview and guessing is not an attack.
+so a crawler cannot walk to a preview and guessing is not an attack. **Note that the endpoint being
+POST-only is NOT part of that argument** — it is not POST-only, per the VOLATILE requirement above;
+the entropy of the token is what carries it.
 The case the directive answers is a **link somebody published** — a public forum, an indexed shared
 document, a chat export — where one URL would otherwise become a permanently searchable page naming
 a ride, its time and its meeting point long after the link itself expired. The directive SHALL NOT

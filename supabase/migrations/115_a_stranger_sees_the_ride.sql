@@ -203,24 +203,40 @@ returns table (
   organizer_username text
 )
 language sql
--- ** VOLATILE, DECLARED EXPLICITLY, AND IT IS THE ONE LABEL A LATER SESSION
---    WILL TRY TO "FIX". **
+-- ** VOLATILE, DECLARED EXPLICITLY — AND THE REASON EVERY OTHER FILE IN THIS
+--    REPO GIVES FOR THAT LABEL IS FALSE. MEASURED, NOT REASONED. **
 --
 -- This body performs no write and takes no lock, so `stable` would be a
--- truthful label — and it is refused anyway. **PostgREST serves a `stable`
--- function over GET.** That would put a LIVE CAPABILITY TOKEN into the query
--- string of /rest/v1/rpc/ride_invite_link_public_preview, and therefore into
--- the project's own request log, into any intermediary's access log, and into
--- the browser's history — for the one caller in this app who is by definition
--- unauthenticated and whose token is the ENTIRE credential. Volatile is
--- POST-only.
+-- truthful label. It is `volatile` anyway, but NOT for the reason `091`'s
+-- comment, `docs/reference/schema.md` and this change's own `design.md` all
+-- give — that a `stable` function is served over GET while a volatile one is
+-- POST-only, so the label is what keeps a live capability token out of a
+-- query string. **The second half of that is not true on this deployment**,
+-- probed against DEV on 2026-09-08 with the publishable key alone:
 --
--- `091` reached the same label for the authenticated preview by a different
--- route (its entry point may take `for share`, which Postgres refuses outright
--- in a non-volatile function). Here the volatility is CHOSEN rather than
--- forced, which is exactly why it is written down in three places: here, in
--- the function's own comment, and as `115.13`'s catalogue pin on `provolatile`.
--- Do not "correct" it for a query plan.
+--   GET /rest/v1/rpc/ride_invite_link_public_preview?t=<token>   ->  200
+--
+-- A volatile function is served over GET here. The control that says the
+-- method is not what stops it: the same GET against `091`'s authenticated
+-- `ride_invite_link_preview` answers **401 / 42501 permission denied** — a
+-- privilege error raised at execution, not a 405.
+--
+-- ** SO WHAT ACTUALLY KEEPS THE TOKEN OUT OF THE QUERY STRING IS THE CLIENT. **
+-- `supabase-js`'s `.rpc()` issues a POST, and `src/lib/data/` is the only
+-- caller. Nothing in the database enforces it, and a later session that
+-- believes the label does will be wrong in the dangerous direction — it would
+-- read "volatile is POST-only" and conclude the URL is safe to hand out.
+--
+-- The label still stays, for two honest reasons rather than the false one: it
+-- is the safe default for a function reachable by an unauthenticated caller,
+-- and it matches `091`'s three RPCs, one of which (`claim_ride_invite_link`)
+-- genuinely REQUIRES it — `for share` is refused outright in a non-volatile
+-- function. Pinned by `115.13`'s catalogue assertion on `provolatile`.
+--
+-- `091`'s own comment and `docs/reference/schema.md` carry the false reason
+-- for the OTHER two RPCs and are not corrected here: a migration that has
+-- already applied is never edited, and correcting a deployed comment needs its
+-- own file. Filed rather than absorbed — see the PR.
 volatile
 security definer
 set search_path = ''
@@ -257,7 +273,7 @@ revoke all on function public.ride_invite_link_public_preview(text) from public,
 grant execute on function public.ride_invite_link_public_preview(text) to anon;
 
 comment on function public.ride_invite_link_public_preview(text) is
-  'What a SIGNED-OUT visitor holding an invite token is shown — 115, PD-430. THE APP''S FIRST AND ONLY ANONYMOUS GRANT: EXECUTE to `anon` alone, revoked from `public` and from `authenticated`. A second anon-executable function, an anon grant on any table, or any policy naming anon is a NEW decision and not an extension of this one. EXACTLY SIX NAMED COLUMNS of exactly one ride: ride_id, title, departure_at, timezone, meeting_point and the organizer''s username. Never rides.*, so a column added to `rides` later is not disclosed by default. ** THOSE SIX ARE A STRICT SUBSET OF public.ride_invite_link_preview''S EIGHT, AND THAT SUBSET RELATION IS THE WHOLE SAFETY ARGUMENT: ** 091 already returns all eight to ANY holder of the same token before they claim, gated on liveness plus a block check plus both participation stamps and never on membership, so what stood in front of these fields was the onboarding wizard rather than a boundary. A COLUMN ADDED HERE THAT IS NOT IN THOSE EIGHT IS A NEW DECISION — it would be disclosed to somebody no signed-in caller could ever have been. crew_count is absent because it is a fact about RIDERS rather than about the ride and would make this a popularity oracle; organizer_avatar_path because signing a Storage URL is resolveAvatarUrls'' job and anon holds no reach into storage.objects, so it would be a path disclosed for nothing; latitude, longitude and geocode_confidence because a human reading an invite needs a place and not a machine-readable pin, and 091 does not return them either; map_card_path and map_detail_path because they are Storage paths anon cannot sign; club_id, is_public, description, route_description and start_place_id because the projection carries NO club field at all, which makes club privacy UNOBSERVABLE rather than filtered. LIVENESS IS private.live_ride_invite_link''S AND IS CHANGED THERE AND NOWHERE ELSE — this body restates no revoked_at, expires_at or departure_at test, so revoked, expired, ride-deleted, ride-departed, malformed and never-existed are ONE outcome: zero rows, no raise, no oracle. BLOCKING IS UNAVAILABLE RATHER THAN SKIPPED: there is no auth.uid() here, so THE ANONYMOUS REACH IS ONE CONJUNCT — "the link is live" — and private.is_blocked is deliberately NOT called with a NULL caller, a security-critical predicate evaluated against an argument it was never written for being worse than an absent check that is written down. The accepted residual is that a blocked rider who signs out reads all six columns including the meeting point; the claim stays authenticated-only behind reachable_by, so the block still holds everything actionable. Decision #2 is narrowed for THIS PROJECTION ALONE. IS_PUBLIC IS NEVER READ: the grant follows the 128-bit bearer token and nothing else, there is no ride-id parameter and no listing, search or enumeration endpoint reachable by anon, so `is_public = true` still means "visible to any signed-in rider" and never "visible to the internet". WRITES NOTHING — no ledger, no counter, no view record — which is also this path''s retention answer: no personal data about the viewer is collected, so none needs a window. VOLATILE DELIBERATELY AND NOT BY OMISSION: the body takes no lock and would be truthfully `stable`, but PostgREST serves a stable function over GET, which would put a live capability token in the query string of /rest/v1/rpc and therefore in the request log, any intermediary''s access log and the browser''s history. Volatile is POST-only. DO NOT "CORRECT" IT.';
+  'What a SIGNED-OUT visitor holding an invite token is shown — 115, PD-430. THE APP''S FIRST AND ONLY ANONYMOUS GRANT: EXECUTE to `anon` alone, revoked from `public` and from `authenticated`. A second anon-executable function, an anon grant on any table, or any policy naming anon is a NEW decision and not an extension of this one. EXACTLY SIX NAMED COLUMNS of exactly one ride: ride_id, title, departure_at, timezone, meeting_point and the organizer''s username. Never rides.*, so a column added to `rides` later is not disclosed by default. ** THOSE SIX ARE A STRICT SUBSET OF public.ride_invite_link_preview''S EIGHT, AND THAT SUBSET RELATION IS THE WHOLE SAFETY ARGUMENT: ** 091 already returns all eight to ANY holder of the same token before they claim, gated on liveness plus a block check plus both participation stamps and never on membership, so what stood in front of these fields was the onboarding wizard rather than a boundary. A COLUMN ADDED HERE THAT IS NOT IN THOSE EIGHT IS A NEW DECISION — it would be disclosed to somebody no signed-in caller could ever have been. crew_count is absent because it is a fact about RIDERS rather than about the ride and would make this a popularity oracle; organizer_avatar_path because signing a Storage URL is resolveAvatarUrls'' job and anon holds no reach into storage.objects, so it would be a path disclosed for nothing; latitude, longitude and geocode_confidence because a human reading an invite needs a place and not a machine-readable pin, and 091 does not return them either; map_card_path and map_detail_path because they are Storage paths anon cannot sign; club_id, is_public, description, route_description and start_place_id because the projection carries NO club field at all, which makes club privacy UNOBSERVABLE rather than filtered. LIVENESS IS private.live_ride_invite_link''S AND IS CHANGED THERE AND NOWHERE ELSE — this body restates no revoked_at, expires_at or departure_at test, so revoked, expired, ride-deleted, ride-departed, malformed and never-existed are ONE outcome: zero rows, no raise, no oracle. BLOCKING IS UNAVAILABLE RATHER THAN SKIPPED: there is no auth.uid() here, so THE ANONYMOUS REACH IS ONE CONJUNCT — "the link is live" — and private.is_blocked is deliberately NOT called with a NULL caller, a security-critical predicate evaluated against an argument it was never written for being worse than an absent check that is written down. The accepted residual is that a blocked rider who signs out reads all six columns including the meeting point; the claim stays authenticated-only behind reachable_by, so the block still holds everything actionable. Decision #2 is narrowed for THIS PROJECTION ALONE. IS_PUBLIC IS NEVER READ: the grant follows the 128-bit bearer token and nothing else, there is no ride-id parameter and no listing, search or enumeration endpoint reachable by anon, so `is_public = true` still means "visible to any signed-in rider" and never "visible to the internet". WRITES NOTHING — no ledger, no counter, no view record — which is also this path''s retention answer: no personal data about the viewer is collected, so none needs a window. VOLATILE DELIBERATELY AND NOT BY OMISSION, BUT NOT FOR THE REASON THE OTHER RPCs GIVE: the body takes no lock and would be truthfully `stable`. 091''s comment, docs/reference/schema.md and this change''s design.md all say a stable function is served over GET while a volatile one is POST-only, so the label is what keeps a live capability token out of a query string. THE SECOND HALF IS FALSE ON THIS DEPLOYMENT — measured against DEV 2026-09-08 with the publishable key alone, GET /rest/v1/rpc/ride_invite_link_public_preview?t=<token> answers 200, and the control proving the method is not the blocker is that the same GET against 091''s ride_invite_link_preview answers 401/42501 permission denied rather than 405. WHAT KEEPS THE TOKEN OUT OF THE URL IS THE CLIENT: supabase-js .rpc() POSTs, and src/lib/data/ is the only caller. The label stays because it is the safe default for an unauthenticated surface and because it matches 091''s three, one of which genuinely requires it (for share is refused in a non-volatile function) — not because it enforces a method. Pinned by 115.13. A LATER SESSION MUST NOT READ THIS LABEL AS "THE URL IS SAFE TO HAND OUT".';
 
 -- ===========================================================================
 -- Verification — run against the project after applying, do not assume

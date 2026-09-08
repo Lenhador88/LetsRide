@@ -47,17 +47,32 @@ The narrow grant keeps "who may reach a ride's title while signed in" answerable
 already exists — `getRideInviteLinkPreview` reads `supabase.auth.getUser()` and returns `null` when
 there is none.
 
-## D3. VOLATILE, deliberately, in the safe direction
+## D3. VOLATILE, deliberately — and the reason this decision was first written down is FALSE
 
-The function performs no write and takes no lock, so `stable` would be a truthful label. It is
-`volatile` anyway, because **PostgREST serves a `stable` function over GET** and that would put a live
-capability token into the query string of `/rest/v1/rpc/…` — and therefore into the project's request
-log, any intermediary's access log, and the browser's history.
+**Corrected against a measurement taken during the build, 2026-09-08. The decision stands; its
+justification did not survive.** As first written, this section said the function performs no write
+and takes no lock so `stable` would be truthful, and that it is `volatile` anyway because *PostgREST
+serves a `stable` function over GET while a volatile one is POST-only*, so the label keeps a live
+capability token out of a URL.
 
-`091` reached `volatile` for the authenticated preview by a different route (its entry point may take
-`for share`, which Postgres refuses in a non-volatile function). Here the volatility is **chosen
-rather than forced**, which is precisely why it needs a comment in the function body: a later session
-optimising query plans will otherwise "correct" it and silently move the token into a URL. The spec
+**The second half is not true on this deployment.** Probed against DEV with the publishable key
+alone, `GET /rest/v1/rpc/ride_invite_link_public_preview?t=<token>` answers **200** and returns the
+full six-column row. The control that proves the method is not what stops it: the same GET against
+`091`'s `ride_invite_link_preview` answers **401 / 42501 permission denied** — a privilege error
+raised at execution rather than a `405`.
+
+**So what keeps the token out of the query string is the client, not the label.** `supabase-js`'s
+`.rpc()` POSTs, and `src/lib/data/` is its only caller. The danger of leaving the old reasoning in
+place is not that a session "corrects" the label — it is that a session *trusts* it and concludes
+the URL is safe to publish.
+
+The label still stays: it is the safe default for the app's only unauthenticated surface, and it
+matches `091`'s three RPCs. `091` reached `volatile` for the authenticated preview by a different
+route (its entry point may take
+`for share`, which Postgres refuses in a non-volatile function) — **and that half is real**, which
+is why `claim_ride_invite_link` could not be `stable` even if someone wanted it to be. Here the
+volatility is **chosen rather than forced**, which is precisely why it needs a comment in the
+function body. The spec
 requires the reason to live in the function's `comment`, not only in this file.
 
 ## D4. A different type and a different cache key, not a widened one
