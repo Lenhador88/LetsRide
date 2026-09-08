@@ -51,6 +51,10 @@ adds no writer of any kind: the anonymous path performs no INSERT, UPDATE or DEL
   changes: they reach the organiser's username through the anonymous preview, because no identity is
   available to filter on. It is the accepted residual recorded in `anonymous-ride-preview`, and it
   SHALL NOT be extended to any other column or any other rider
+- **AND** their reach into *identity* SHALL remain exactly that one username however the ride
+  projection grows — the ride's own fields, `meeting_point` included, are facts about a **ride** and
+  SHALL NOT be read as widening this rule. `username` SHALL stay the only `profiles` column the
+  anonymous function names
 
 #### Scenario: Club owner, admin, member and non-member
 

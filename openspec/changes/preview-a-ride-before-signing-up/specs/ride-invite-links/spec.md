@@ -16,7 +16,7 @@ Holding a token SHALL permit calling **three** functions and no others:
 |---|---|---|
 | `public.ride_invite_link_preview(t)` | `authenticated` only | The eight-column preview, gated on liveness **and** the caller. |
 | `public.claim_ride_invite_link(t)` | `authenticated` only | Joins the caller to the link's ride. |
-| `public.ride_invite_link_public_preview(t)` | **`anon` only** | Four columns, gated on liveness alone — there is no caller. |
+| `public.ride_invite_link_public_preview(t)` | **`anon` only** | Five columns, gated on liveness alone — there is no caller. |
 
 It SHALL NOT grant, widen or bypass any row-level policy. **This change SHALL add no audience arm to
 `public.rides`, and SHALL NOT modify `private.can_read_ride`** — the same pin `091` set for itself,
@@ -31,10 +31,12 @@ helper's three conjuncts are statements about a caller who does not exist anonym
 argument it was never written for.
 
 `public.ride_invite_link_public_preview` SHALL be a **separate, thinner function**, returning ride id,
-title, `departure_at`, `timezone` and the organiser's username, and resolving through
-`private.live_ride_invite_link(t)` alone. It SHALL NOT return `meeting_point`, coordinates, a map
-path, a crew count, an avatar path, a club, or `is_public`. **Both preview functions SHALL be fixed
-column lists in SQL and neither SHALL return `rides.*`.**
+title, `departure_at`, `timezone`, `meeting_point` and the organiser's username, and resolving
+through `private.live_ride_invite_link(t)` alone. **Every column it returns SHALL also be returned
+by `public.ride_invite_link_preview`** — the anonymous projection is a strict subset of the
+authenticated one, which is what makes its disclosure argument checkable in one comparison. It SHALL
+NOT return coordinates, a map path, a crew count, an avatar path, a club, or `is_public`. **Both
+preview functions SHALL be fixed column lists in SQL and neither SHALL return `rides.*`.**
 
 `public.claim_ride_invite_link` SHALL remain `authenticated` only. **Nothing anonymous SHALL write
 anything**: the preview is the whole of the anonymous surface, and joining a ride stays a signed-in
@@ -111,25 +113,32 @@ The token SHALL remain a **query parameter, not a path segment**, because the ro
 between the web and native builds and a `[token]` segment would require `generateStaticParams` under
 `CAPACITOR_BUILD=1`.
 
-**With no session the route SHALL render the ride's title, its start time in the ride's own zone, and
-the organiser's username, plus a `Sign up to RSVP` control.** It SHALL call
+**With no session the route SHALL render the ride's title, its start time in the ride's own zone, its
+meeting point, and the organiser's username, plus a `Sign up to RSVP` control.** It SHALL call
 `public.ride_invite_link_public_preview` and **no other RPC**.
 
-**It SHALL NOT render the ride's meeting point, its coordinates, its map, its crew, a crew count, its
-club, or whether it is club-private** — from any source, including a cache left by a previous
-session. The rule the base requirement stated as *"SHALL NOT render the ride's title, date, meeting
-point, organizer or crew count"* is **narrowed to its last three**, and narrowed deliberately: this is
-the app's only anonymous read and its boundary is the projection, not the screen.
+**It SHALL NOT render the ride's coordinates, its map, its crew, a crew count, its club, or whether
+it is club-private** — from any source, including a cache left by a previous session. The rule the
+base requirement stated as *"SHALL NOT render the ride's title, date, meeting point, organizer or
+crew count"* is **narrowed to its last two**, and narrowed deliberately: this is the app's only
+anonymous read and its boundary is the projection, not the screen.
+
+**The meeting point is rendered because it is already disclosed to this audience.**
+`public.ride_invite_link_preview` returns it to any holder of the same token before they claim
+anything, gated on the participation stamps rather than on ride membership — so what stood between a
+link recipient and the meeting point was the onboarding wizard, which is friction and not a
+boundary.
 
 **The `guard.ts` comment beside `RIDE_JOIN_PATH` SHALL be corrected in the same change.** It reads
 *"It is public so it can HOLD a credential, never so it can SHOW anything"*, which becomes false the
 day this ships; a comment asserting the opposite of the code is worse than no comment.
 
-The route SHALL define all seven states:
+The route SHALL define all eight states — the base requirement's seven, plus the signed-out preview
+this change adds:
 
 | State | What it renders |
 |---|---|
-| No session, live token | Title, start time, organiser, `Sign up to RSVP`. Nothing else. |
+| No session, live token | Title, start time, meeting point, organiser, `Sign up to RSVP`. Nothing else. |
 | No session, dead or absent token | The generic invite copy and the sign-in / create-account controls. |
 | Loading | A skeleton of the preview card. Gated on the **data**, never on `isLoading`. |
 | Live token, signed in | The existing eight-column preview and one `Join this ride` control. Unchanged. |
@@ -141,12 +150,14 @@ The route SHALL define all seven states:
 `undefined` SHALL mean "not yet" and `null` SHALL mean "decided"; only the second renders the dead
 message.
 
-#### Scenario: A visitor with no session sees the ride and not its start
+#### Scenario: A visitor with no session sees the ride, and nothing about its riders
 - **WHEN** a signed-out visitor opens a live link
-- **THEN** the title, the start time in the ride's own zone, and the organiser's username SHALL
-  render
-- **AND** the ride's `meeting_point`, its coordinates, its map, its crew, any count, and its club
-  SHALL NOT be rendered from any source, including a cache
+- **THEN** the title, the start time in the ride's own zone, the ride's stored `meeting_point` and
+  the organiser's username SHALL render
+- **AND** the meeting point SHALL be asserted against the ride's **actual stored value** rather than
+  a literal, so a projection that drops or mangles it fails red
+- **AND** the ride's coordinates, its map, its crew, any count, and its club SHALL NOT be rendered
+  from any source, including a cache
 - **AND** only `public.ride_invite_link_public_preview` SHALL be called
 
 #### Scenario: A dead token and a failed read are told apart
@@ -175,4 +186,6 @@ message.
 #### Scenario: The walk exercises the signed-out route
 - **WHEN** `npm run walk` runs with fixtures
 - **THEN** it SHALL open `/rides/join` with a live token **signed out**, assert the title renders, and
-  assert the ride's stored `meeting_point` string is absent from the document
+  assert the ride's stored `meeting_point` string is **present** in the document
+- **AND** it SHALL assert the crew count and the club name are **absent**, so the phase fails red if
+  the projection widens past the five columns rather than only if it narrows

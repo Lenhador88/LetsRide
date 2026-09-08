@@ -506,23 +506,28 @@ cache a stranger's row into a signed-in session.
 
 **Types** — one new type in `src/types/index.ts`. Deliberately **not** `Partial<RideInviteLinkPreview>`
 and not a widened `RideInviteLinkPreview`: the two projections must be structurally impossible to
-confuse, so that a component handed the anonymous one cannot reach for `meeting_point` and find
-`undefined` where a reviewer would have expected a compile error.
+confuse, so that a component handed the anonymous one cannot reach for `crew_count` or
+`organizer_avatar_path` and find `undefined` — or worse a `0` — where a reviewer would have expected
+a compile error.
 
 **Design** — the no-session state of `/rides/join` needs a frame or an explicit ruling that the
 existing preview card is reused with the CTA swapped. `npm run figma -- ls "join"` and
 `tree`/`text` on the invite landing screens, qualified by flow, **and `--all`**, since a toggled-off
 layer is how a control nobody designed ends up on the screen. `design-system` owns that call, not
-this change.
+this change. **One frame exists and is not the answer**: `Join ride without account`, under
+`Archive`, draws coordinates (`52.3702157, 4.895167899999933`), the description, a photos rail and a
+`4/7` roster with four rider names — every one of them outside this projection. It is evidence the
+screen was once designed, not a specification of what ships.
 
-**Dependencies** — none added. Twelve runtime dependencies before and after; verify with
+**Dependencies** — none added. Thirteen runtime dependencies before and after; verify with
 `node -p "Object.keys(require('./package.json').dependencies).length"`.
 
 **The walk** — `npm run walk` already opens both invite landing routes signed **in**. It gains one
-phase that opens `/rides/join?token=…` **signed out** and asserts the title renders and the string
-in `meeting_point` does **not**. That is the only gate in the repo that renders anything, and it is
-the only place the absence of the meeting point is checked against a real DOM rather than against a
-column list.
+phase that opens `/rides/join?token=…` **signed out** and asserts that the title **and** the ride's
+stored `meeting_point` string are both present, that no crew count is, and that the document carries
+`noindex, nofollow`. Both string assertions compare against the fixture ride's actual stored values
+rather than literals. That is the only gate in the repo that renders anything, and the only place
+the projection is checked against a real DOM rather than against a column list.
 
 **Docs** — `docs/reference/schema.md` gains a `ride_invite_link_public_preview` entry beside the
 other three RPCs; `docs/reference/migrations.md` §Applied state gains `115`'s ordering; `CLAUDE.md`

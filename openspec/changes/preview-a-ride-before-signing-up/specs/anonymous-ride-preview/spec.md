@@ -42,36 +42,56 @@ exists to apply.
   `public.claim_ride_invite_link(text)` and `public.revoke_ride_invite_link(uuid)`
 - **THEN** every answer SHALL be `false`
 
-### Requirement: The anonymous projection SHALL be a closed list, and SHALL NOT carry the meeting point
+### Requirement: The anonymous projection SHALL be a closed list and a strict subset of the authenticated preview's
 
 The function SHALL return a **fixed list of named columns for exactly one ride** and SHALL NOT
 return `rides.*`, so that a column added to `public.rides` later is not disclosed by default.
 
-The list SHALL be: the ride's id, `title`, `departure_at`, `rides.timezone`, and the organiser's
-`username`. `timezone` is not a separate disclosure — a ride's times are wall-clock at its meeting
-point, and without the zone the only fallback is the viewer's own, which is never the answer.
+The list SHALL be: the ride's id, `title`, `departure_at`, `rides.timezone`, `meeting_point`, and
+the organiser's `username`. `timezone` is not a separate disclosure — a ride's times are wall-clock
+at its meeting point, and without the zone the only fallback is the viewer's own, which is never the
+answer.
 
-**It SHALL NOT return `meeting_point`, `latitude`, `longitude`, `geocode_confidence`,
-`map_card_path` or `map_detail_path`**, under any circumstance and for any ride. This is the
-requirement the change exists to bound: a stranger learns the town, never the doorstep.
+**Every column SHALL also appear in `public.ride_invite_link_preview`'s projection, and that subset
+relation IS the safety argument.** `091` returns eight columns — `ride_id`, `title`, `departure_at`,
+`timezone`, `meeting_point`, `organizer_username`, `organizer_avatar_path`, `crew_count` — to **any
+holder of the same token before they claim anything**, gated on liveness, the block check and both
+participation stamps, never on membership of the ride. So the anonymous caller learns strictly less
+than the same person learns by completing the onboarding wizard, and what stood in front of these
+fields was friction rather than a boundary.
 
-**It SHALL NOT return `crew_count`**, any crew member's id or username, `ride_members` rows, the
-ride's thread or any message, `description`, `route_description`, `start_place_id`, `club_id`,
-`is_public`, the organiser's id, the organiser's avatar path, any second ride, or any column of
-`profiles` beyond the organiser's username.
+**A column NOT in those eight SHALL NOT be added to this function.** Such a column would be
+disclosed to somebody no signed-in caller could ever have been, which is a new decision requiring
+its own argument and its own negative cases — not an extension of this one.
 
-**A town MAY be returned when, and only when, a column holds one.** No town SHALL be derived from
-`meeting_point` by truncation or parsing, from `latitude`/`longitude`, or from the organiser's
-`profiles.location` — the first two are the exact meeting point in another form, and the third is
-where the organiser lives rather than where the ride starts.
+**It SHALL NOT return `crew_count` or `organizer_avatar_path`**, although both are in `091`'s eight.
+The count is a fact about riders rather than about the ride and would make the endpoint a popularity
+oracle; the avatar cannot render anyway, since signing a Storage URL is `resolveAvatarUrls`' job and
+`anon` holds no reach into `storage.objects`. Excluding both is what keeps the subset **strict**.
 
-#### Scenario: The exact meeting point is unreachable
+**It SHALL NOT return `latitude`, `longitude`, `geocode_confidence`, `map_card_path` or
+`map_detail_path`** — not because they are more sensitive than `meeting_point`, but because `091`
+does not return them either and a human reading an invite needs a place, not a machine-readable pin.
+
+**It SHALL NOT return** any crew member's id or username, `ride_members` rows, the ride's thread or
+any message, `description`, `route_description`, `start_place_id`, `club_id`, `is_public`, the
+organiser's id, any second ride, or any column of `profiles` beyond the organiser's username.
+
+#### Scenario: The meeting point is returned, and it is the ride's own
 - **WHEN** a signed-out caller previews a live token for a ride whose `meeting_point` is a street
-  address and whose coordinates are set
-- **THEN** the response SHALL contain neither the `meeting_point` string nor either coordinate, in
-  any field, in any encoding
-- **AND** the assertion SHALL compare against the ride's **actual** stored `meeting_point` value,
-  not against a fixed string, so a projection that added the column later fails red
+  address
+- **THEN** the response SHALL carry that ride's stored `meeting_point`, unmodified and untruncated
+- **AND** the assertion SHALL compare against the value read back from the `rides` row, never
+  against a fixed string, so a projection that drops the column, returns NULL, mangles it or
+  returns another ride's value fails red
+- **AND** neither coordinate, `geocode_confidence`, nor either map path SHALL appear in any field
+
+#### Scenario: The projection is inside the authenticated projection
+- **WHEN** the return signatures of `public.ride_invite_link_public_preview` and
+  `public.ride_invite_link_preview` are read from the catalogue
+- **THEN** every column name of the first SHALL appear in the second
+- **AND** the assertion SHALL be verified both ways — green as specified, and red when a column not
+  in the authenticated eight is added to the anonymous function
 
 #### Scenario: The column list is pinned rather than described
 - **WHEN** the function's return signature is read from the catalogue
@@ -79,10 +99,12 @@ where the organiser lives rather than where the ride starts.
 - **AND** the assertion SHALL read the catalogue rather than a returned row, because a row from a
   ride with NULLs cannot distinguish "column absent" from "column empty"
 
-#### Scenario: No roster and no count
+#### Scenario: No roster, no count and no avatar
 - **WHEN** a signed-out caller previews a token for a ride with crew
-- **THEN** no rider id, no username other than the organiser's, and **no count of any kind** SHALL
-  be returned
+- **THEN** no rider id, no username other than the organiser's, no avatar path, and **no count of
+  any kind** SHALL be returned
+- **AND** this SHALL be asserted against a ride that genuinely has crew, since a ride with none
+  cannot tell an absent count from a zero
 
 #### Scenario: A token reaches exactly one ride
 - **WHEN** a signed-out caller previews with a live token
@@ -184,21 +206,37 @@ forbidden.
 
 ### Requirement: Blocking SHALL be unavailable rather than approximated, and the projection SHALL be what makes that safe
 
-There is no `auth.uid()` on this path, so **the symmetric block check the authenticated preview
-performs does not exist here and SHALL NOT be simulated.** `private.is_blocked` SHALL NOT be called
-with a NULL caller, because a security-critical predicate evaluated against an argument it was not
-written for is worse than an absent check that is written down.
+**The anonymous reach SHALL be one conjunct: the link is live.** `private.live_ride_invite_link` is
+the whole of it. There is no `auth.uid()` on this path, so **the symmetric block check and both
+participation stamps the authenticated preview applies do not exist here and SHALL NOT be
+simulated.** `private.is_blocked` SHALL NOT be called with a NULL caller, because a security-critical
+predicate evaluated against an argument it was not written for is worse than an absent check that is
+written down.
 
-**What makes the absence acceptable SHALL be the projection, and it SHALL be stated rather than
-implied**: the returned fields are facts about a **ride**, and the only rider-identifying value among
-them is the **organiser's username** — the fact the sharer disclosed by pasting that organiser's link
-into a group.
+**The consequence SHALL be stated plainly rather than left to be discovered: a rider the organiser
+has blocked, holding a token, can sign out and read all five fields — including the ride's meeting
+point.** That is the accepted residual of this change and it SHALL be recorded as a decision, not
+treated as a defect.
 
-**The block SHALL continue to hold everywhere it is enforceable.** A blocked rider SHALL still be
-refused the claim, the crew, the thread, the meeting point and every list, because
-`public.claim_ride_invite_link` remains `authenticated`-only and remains gated on
-`private.ride_invite_link_reachable_by`'s `is_blocked` conjunct. Decision #2 is narrowed for this
-projection alone and for no other surface.
+**What makes it acceptable SHALL be stated rather than implied.** The returned fields are facts
+about a **ride**; the only rider-identifying value among them is the **organiser's username**, which
+the sharer disclosed by pasting that organiser's link into a group; and the reach belongs to the
+**URL**, not to the rider — every other holder of the same link reaches exactly the same five
+fields. A block cannot withdraw a URL from somebody who already has it, and this specification SHALL
+NOT imply that it can.
+
+**The block SHALL continue to hold everywhere it is enforceable, which is everywhere actionable.** A
+blocked rider SHALL still be refused the claim, the crew, the thread, the photos, every message and
+every list, because `public.claim_ride_invite_link` remains `authenticated`-only and remains gated on
+`private.ride_invite_link_reachable_by`'s `is_blocked` conjunct. They SHALL reach no other ride of
+that organiser and no part of their profile. Decision #2 is narrowed for **this projection alone**
+and for no other surface.
+
+**No mitigation SHALL be invented for the residual.** In particular the function SHALL NOT refuse a
+preview because the ride's organiser or the link's creator holds any block: that would leak the
+existence of a block to every unrelated stranger holding the link, make a public surface vary with a
+private fact, and still not stop the blocked rider, who reaches the same five fields from any other
+copy of the URL.
 
 **The participation gate SHALL be in the same position and SHALL get the same answer.** It SHALL
 remain in `private.ride_invite_link_reachable_by`, governing the authenticated read and the claim; it
@@ -212,14 +250,18 @@ about both, not a convenience.
 
 #### Scenario: Blocked rider, signed out, holding a token
 - **WHEN** a rider the organiser has blocked signs out and previews a token they hold
-- **THEN** the four fields SHALL be returned, because no identity is available to filter on
-- **AND** this SHALL be recorded as the accepted residual rather than treated as a defect
+- **THEN** all five fields SHALL be returned, **including the ride's `meeting_point`**, because no
+  identity is available to filter on
+- **AND** the assertion SHALL be written to pass for exactly that reason, so a later session reading
+  a green suite finds the accepted residual recorded rather than an accident
 
 #### Scenario: Blocked rider, signed in
 - **WHEN** the same rider signs in and calls `public.ride_invite_link_preview`, then
   `public.claim_ride_invite_link`
 - **THEN** the preview SHALL return zero rows and the claim SHALL reach its single raise site,
   unchanged by this change
+- **AND** they SHALL join nothing, reach no crew, no thread and no message, so the block still holds
+  everything actionable
 
 #### Scenario: The anonymous body carries no caller predicate
 - **WHEN** `prosrc` for `public.ride_invite_link_public_preview` is searched for `is_blocked`,
@@ -298,20 +340,21 @@ NOT be improvised into this one.
 `resolveDestination` SHALL continue to answer `null` for an anonymous visitor there. **No routing
 behaviour changes.**
 
-With no session the route SHALL render the four preview fields and a **`Sign up to RSVP`** control,
+With no session the route SHALL render the five preview fields and a **`Sign up to RSVP`** control,
 replacing the generic sentence that names neither the ride nor its organiser. The token SHALL
 continue to be stashed and consumed through the existing round trip, unchanged.
 
 **The read SHALL be a different function, a different type and a different cache key from the
 authenticated preview's.** A shared key would serve a signed-in rider the thin projection or cache a
 stranger's row into a signed-in session; a shared or widened **type** would let a component reach for
-`meeting_point` and find `undefined` where a reviewer would expect a compile error.
+`crew_count` or `organizer_avatar_path` and find `undefined` where a reviewer would expect a compile
+error.
 
 The route SHALL define every state:
 
 | State | What it renders |
 |---|---|
-| No session, live token | The four fields and `Sign up to RSVP`. No meeting point, no crew, no map. |
+| No session, live token | The five fields and `Sign up to RSVP`. No crew, no count, no avatar, no map. |
 | No session, no token at all | The existing generic invite copy and the sign-in / create-account controls. Unchanged. |
 | Loading | A skeleton of the preview card, gated on the **data** and never on `isLoading`. |
 | Dead token (any of the six) | One message: the invite link is no longer valid, plus a route onward. Identical to the signed-in wording. |
@@ -324,10 +367,14 @@ message. **Permission denied and empty SHALL NOT be conflated**: on this path th
 denied — every refusal is zero rows and therefore the dead-token state, which is why the error state
 must be reachable and distinct.
 
-#### Scenario: The stranger sees the ride and not its doorstep
+#### Scenario: The stranger sees what the sharer disclosed
 - **WHEN** a signed-out visitor opens a live link
-- **THEN** the title, start time in the ride's own zone, and the organiser's username SHALL render
-- **AND** the ride's `meeting_point` string SHALL NOT appear anywhere in the rendered document
+- **THEN** the title, the start time in the ride's own zone, the ride's `meeting_point` and the
+  organiser's username SHALL render, with a `Sign up to RSVP` control
+- **AND** the rendered `meeting_point` SHALL be compared against the ride's stored value rather than
+  a literal, so a screen that drops or truncates it fails red
+- **AND** no crew member, no crew count, no avatar, no map tile and no club SHALL appear anywhere in
+  the rendered document, from any source including a cache
 
 #### Scenario: A dead token and a failed read are told apart
 - **WHEN** the call errors, as opposed to returning zero rows
@@ -348,6 +395,67 @@ must be reachable and distinct.
 - **WHEN** `src/lib/query/keys.ts` is read
 - **THEN** the anonymous preview SHALL have its own key, distinct from the authenticated preview's
 
+### Requirement: The grant SHALL follow the bearer token and SHALL NOT follow `is_public`
+
+**A public ride opened WITHOUT a token SHALL show a signed-out visitor nothing.** The function takes
+a token, matches on it, and **SHALL NOT read `is_public`, `club_id` or any visibility class**. There
+SHALL be no ride-id parameter, no listing, no search and no enumeration endpoint reachable by `anon`,
+so a signed-out visitor holding no token has no call to make.
+
+`is_public = true` SHALL therefore continue to mean **"visible to any signed-in rider"** and SHALL
+NOT come to mean "visible to the internet". The exception this change introduces is a **credential**,
+not a visibility class, and the distinction SHALL be asserted rather than left to follow from the
+function signature — a signed-out visitor is never *granted* anything in the general case, so the
+one place they are must have its boundary written down.
+
+#### Scenario: A public ride without a token is invisible
+- **WHEN** a signed-out visitor knows the id of a ride with `is_public = true` and no live invite
+  link, and attempts to reach it by any route available to `anon`
+- **THEN** nothing SHALL be returned: `public.rides` gives zero rows, and no function accepts a ride
+  id
+- **AND** the same SHALL hold for a club-private ride, so the two are indistinguishable here too
+
+#### Scenario: The function never consults the visibility class
+- **WHEN** `prosrc` for `public.ride_invite_link_public_preview` is searched for `is_public` and
+  `club_id`
+- **THEN** neither SHALL appear
+
+#### Scenario: A dead token is exactly a missing token
+- **WHEN** a signed-out visitor opens the route with an empty token, a malformed one, or one that
+  matches nothing
+- **THEN** they SHALL see the generic invite copy and the sign-in / create-account controls, and no
+  ride SHALL be named
+
+### Requirement: The signed-out preview page SHALL declare `noindex, nofollow`
+
+The route SHALL emit a robots directive of **`noindex, nofollow`** when it can be rendered without a
+session, and this SHALL be a stated requirement with its own assertion rather than a property
+inherited from something else.
+
+**The reason it must be stated:** until this change every route but `/auth/*` and `/legal/*` required
+a session, so a crawler fetching anything received a shell with no data in it. **That was an accident
+of the authenticated wall**, and this change removes the wall from exactly one screen. A property
+that held for another reason stops holding silently.
+
+**The exposure SHALL be described accurately rather than assumed.** The token is 32 random hex
+characters, there is no link to `/rides/join?token=…` anywhere in the app or on the marketing site,
+and the function is POST-only, so a crawler cannot walk to a preview and guessing is not an attack.
+The case the directive answers is a **link somebody published** — a public forum, an indexed shared
+document, a chat export — where one URL would otherwise become a permanently searchable page naming
+a ride, its time and its meeting point long after the link itself expired. The directive SHALL NOT
+be presented as a substitute for the token's entropy; they answer different attacks.
+
+#### Scenario: The directive is present on the signed-out render
+- **WHEN** the signed-out landing route is rendered
+- **THEN** the document SHALL carry `noindex, nofollow`
+- **AND** this SHALL be asserted where the document actually exists — the walk's signed-out phase —
+  rather than inferred from a metadata export
+
+#### Scenario: The directive does not depend on the token being live
+- **WHEN** the route is opened with a dead token, no token, or a live one
+- **THEN** the directive SHALL be present in every case, so it cannot be lost in the state that
+  renders the ride
+
 ### Requirement: Every role's reach into the anonymous preview SHALL be stated
 
 Each role that can reach `public.ride_invite_link_public_preview` at all SHALL have its access
@@ -362,15 +470,17 @@ Stated per role:
   ride itself.
 - **A club admin or club member** — unchanged. The anonymous function reads no club and grants no
   club reach.
-- **A non-member with no token** — reaches **nothing**. Without a token there is no call to make: the
-  function takes a token and matches on it, and there is no listing, search or enumeration endpoint.
-- **A blocked rider (either direction)** — signed out and holding a token, reaches the four fields;
-  the block is unavailable, not skipped. Signed in, refused exactly as before. Cannot claim, in
-  either state.
-- **An un-onboarded account** — reaches the four fields by signing out, which is no more than any
-  token holder reaches. The participation gate on the authenticated preview and on the claim is
-  unchanged.
-- **A signed-out visitor with a live token** — the four fields, and nothing else in the database.
+- **A non-member with no token** — reaches **nothing**, and this holds whether the ride is public or
+  club-private. Without a token there is no call to make: the function takes a token and matches on
+  it, and there is no listing, search or enumeration endpoint.
+- **A blocked rider (either direction)** — signed out and holding a token, reaches all five fields
+  **including the meeting point**; the block is unavailable, not skipped, and this is the accepted
+  residual. Signed in, refused exactly as before. **Cannot claim, in either state**, and reaches no
+  crew, thread, message, list or other ride of that organiser.
+- **An un-onboarded account** — reaches the five fields by signing out, which is no more than any
+  token holder reaches and strictly less than they reach by finishing the wizard. The participation
+  gate on the authenticated preview and on the claim is unchanged.
+- **A signed-out visitor with a live token** — the five fields, and nothing else in the database.
 - **A signed-out visitor without a token, or with a dead one** — nothing. Zero rows, no error, and
   the generic screen.
 
