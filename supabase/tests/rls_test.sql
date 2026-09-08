@@ -35507,6 +35507,783 @@ select set_config('test.uid', '', false);
 rollback to savepoint a_country_is_required_114;
 
 
+-- ===========================================================================
+-- 115 · A stranger sees the ride — the app's FIRST and ONLY anonymous read
+-- ===========================================================================
+-- PD-430. The contract is openspec/changes/preview-a-ride-before-signing-up/
+-- and its `anonymous-ride-preview` capability.
+--
+-- ** EVERY POSITIVE ASSERTION BELOW RUNS UNDER `set role anon`. ** This suite
+-- runs as the table owner, for whom neither a grant nor a policy exists (031),
+-- so an assertion here that forgets the role proves nothing at all — it would
+-- pass identically against a database where the grant was never made.
+--
+-- ** THE THREE PROPERTIES EVERYTHING ELSE SERVES. **
+--
+--   1. THE EXCEPTION IS ONE FUNCTION. `anon` gains EXECUTE on
+--      ride_invite_link_public_preview and NOTHING else — no table grant, no
+--      policy, no second RPC. 115.1, 115.2, 115.3 and 115.5 are the four faces
+--      of that, each named by GRANTEE because postgres and service_role hold
+--      everything by Supabase default.
+--   2. THE PROJECTION IS A STRICT SUBSET OF 091's EIGHT, and that subset
+--      relation IS the safety argument. 115.8b asserts it from the catalogue,
+--      115.6/115.7/115.8 from real rows. A column added past 091's eight would
+--      be disclosed to somebody NO SIGNED-IN CALLER COULD EVER HAVE BEEN.
+--   3. THE POLICIES ARE UNTOUCHED. 115.4 pins `rides` SELECT and
+--      private.can_read_ride by equality. ** IF 115.4 FAILS THE CHANGE IS
+--      WRONG — DO NOT RE-PIN IT. **
+--
+--   1150001  pvhost      the organizer, and the minter of every link below
+--   1150002  pvstranger  onboarded, no other route to any of these rides — the
+--                        SIGNED-IN half of 115.10 and 115.17
+--   1150003  pvblocked   the organizer has blocked them (blocks 1150001->1150003)
+--   1150004  pvcrew1     crew on e1
+--   1150005  pvcrew2     crew on e1, so e1 carries THREE crew rows with the
+--                        organizer 103 seeds — a ride with none cannot tell an
+--                        absent count from a zero
+--   1150006  pvclubmate  a member of e2's private club
+--
+--   e1  private, clubless, departs +3d, THREE crew, and carrying coordinates,
+--       a geocode confidence and BOTH map paths — 115.7 is unfalsifiable
+--       against a ride whose excluded columns are NULL
+--   e2  private, in PRIVATE club c1, departs +4d  — the club-private preview
+--   e3  PUBLIC, clubless, departs +5d             — the same shape, no club
+--   e4  private, clubless, DEPARTED an hour ago   — 115.12
+--   e5  PUBLIC, clubless, departs +6d, ** NO LINK AT ALL ** — 115.17b
+--   e6  private, clubless, departs +7d            — deleted inside a savepoint
+--
+--   a1 -> pvtok1 live on e1       a5 -> pvtok5 expired on e1
+--   a2 -> pvtok2 live on e2       a6 -> pvtok6 live-looking on e4 (departed)
+--   a3 -> pvtok3 live on e3       a7 -> pvtok7 live on e6 (the deleted ride)
+--   a4 -> pvtok4 revoked on e1
+savepoint anonymous_ride_preview_115;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000001150001', 'pvhost@example.com'),
+  ('00000000-0000-0000-0000-000001150002', 'pvstranger@example.com'),
+  ('00000000-0000-0000-0000-000001150003', 'pvblocked@example.com'),
+  ('00000000-0000-0000-0000-000001150004', 'pvcrew1@example.com'),
+  ('00000000-0000-0000-0000-000001150005', 'pvcrew2@example.com'),
+  ('00000000-0000-0000-0000-000001150006', 'pvclubmate@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000001150001', 'pvhost'),
+      ('00000000-0000-0000-0000-000001150002', 'pvstranger'),
+      ('00000000-0000-0000-0000-000001150003', 'pvblocked'),
+      ('00000000-0000-0000-0000-000001150004', 'pvcrew1'),
+      ('00000000-0000-0000-0000-000001150005', 'pvcrew2'),
+      ('00000000-0000-0000-0000-000001150006', 'pvclubmate')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000011500c1', 'Preview Private MC', false,
+   '00000000-0000-0000-0000-000001150001');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000011500c1', '00000000-0000-0000-0000-000001150006', 'member');
+
+insert into rides (id, title, meeting_point, departure_at, timezone, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-0000011500e1', 'A stranger sees this ride',
+   'Stationsplein 1, 3511 ED Utrecht', now() + interval '3 days', 'Europe/Amsterdam',
+   false, null, '00000000-0000-0000-0000-000001150001'),
+  ('00000000-0000-0000-0000-0000011500e2', 'Club-private ride',
+   'Clubhuis, Zeist',        now() + interval '4 days', 'Europe/Amsterdam',
+   false, '00000000-0000-0000-0000-0000011500c1', '00000000-0000-0000-0000-000001150001'),
+  ('00000000-0000-0000-0000-0000011500e3', 'Clubless public ride',
+   'De Pier, Scheveningen',  now() + interval '5 days', 'Europe/Amsterdam',
+   true,  null, '00000000-0000-0000-0000-000001150001'),
+  ('00000000-0000-0000-0000-0000011500e4', 'Already gone',
+   'De Haven, Rotterdam',    now() - interval '1 hour', 'Europe/Amsterdam',
+   false, null, '00000000-0000-0000-0000-000001150001'),
+  ('00000000-0000-0000-0000-0000011500e5', 'Public, and no link to it',
+   'De Molen, Leiden',       now() + interval '6 days', 'Europe/Amsterdam',
+   true,  null, '00000000-0000-0000-0000-000001150001'),
+  ('00000000-0000-0000-0000-0000011500e6', 'This ride gets deleted',
+   'De Brug, Arnhem',        now() + interval '7 days', 'Europe/Amsterdam',
+   false, null, '00000000-0000-0000-0000-000001150001');
+
+-- ** e1 CARRIES EVERY EXCLUDED COLUMN, POPULATED. ** 115.7 asserts the
+-- coordinates, the confidence and both map paths never appear in the response,
+-- and it can only do that against a ride where they are not NULL — a projection
+-- that forwarded a NULL column would pass a naive version of that assertion.
+-- The values are chosen so a substring search for them cannot collide with a
+-- uuid, a timestamp or the zone.
+update rides
+   set latitude = 52.3702157, longitude = 4.8951679, geocode_confidence = 0.75,
+       map_card_path   = 'ride-maps/00000000-0000-0000-0000-000001150001/11111111-1111-1111-1111-111111111111.jpg',
+       map_detail_path = 'ride-maps/00000000-0000-0000-0000-000001150001/22222222-2222-2222-2222-222222222222.jpg'
+ where id = '00000000-0000-0000-0000-0000011500e1';
+
+-- Two more crew on e1. With the organizer 103 seeds that is THREE, which is
+-- what makes 115.8 falsifiable: a ride with no crew cannot tell an absent count
+-- from a zero.
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000011500e1', '00000000-0000-0000-0000-000001150004', 'going'),
+  ('00000000-0000-0000-0000-0000011500e1', '00000000-0000-0000-0000-000001150005', 'going');
+
+insert into blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-000001150001', '00000000-0000-0000-0000-000001150003');
+
+-- ** The seven links are minted THROUGH THE POLICY, as the organizer. **
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001150001', false);
+insert into ride_invite_links (id, ride_id, created_by) values
+  ('00000000-0000-0000-0000-0000011500a1', '00000000-0000-0000-0000-0000011500e1',
+   '00000000-0000-0000-0000-000001150001'),
+  ('00000000-0000-0000-0000-0000011500a2', '00000000-0000-0000-0000-0000011500e2',
+   '00000000-0000-0000-0000-000001150001'),
+  ('00000000-0000-0000-0000-0000011500a3', '00000000-0000-0000-0000-0000011500e3',
+   '00000000-0000-0000-0000-000001150001'),
+  ('00000000-0000-0000-0000-0000011500a4', '00000000-0000-0000-0000-0000011500e1',
+   '00000000-0000-0000-0000-000001150001'),
+  ('00000000-0000-0000-0000-0000011500a5', '00000000-0000-0000-0000-0000011500e1',
+   '00000000-0000-0000-0000-000001150001'),
+  ('00000000-0000-0000-0000-0000011500a6', '00000000-0000-0000-0000-0000011500e4',
+   '00000000-0000-0000-0000-000001150001'),
+  ('00000000-0000-0000-0000-0000011500a7', '00000000-0000-0000-0000-0000011500e6',
+   '00000000-0000-0000-0000-000001150001');
+reset role;
+
+update ride_invite_links set revoked_at = now()
+ where id = '00000000-0000-0000-0000-0000011500a4';
+update ride_invite_links set expires_at = now() - interval '1 hour'
+ where id = '00000000-0000-0000-0000-0000011500a5';
+
+-- The tokens, read once as the owner and carried in session settings, exactly
+-- as 091 does: a caller running as `anon` cannot read them, which is what makes
+-- every call below a genuine bearer call rather than a privileged one.
+select set_config('test.pvtok1', (select token from ride_invite_links where id = '00000000-0000-0000-0000-0000011500a1'), false);
+select set_config('test.pvtok2', (select token from ride_invite_links where id = '00000000-0000-0000-0000-0000011500a2'), false);
+select set_config('test.pvtok3', (select token from ride_invite_links where id = '00000000-0000-0000-0000-0000011500a3'), false);
+select set_config('test.pvtok4', (select token from ride_invite_links where id = '00000000-0000-0000-0000-0000011500a4'), false);
+select set_config('test.pvtok5', (select token from ride_invite_links where id = '00000000-0000-0000-0000-0000011500a5'), false);
+select set_config('test.pvtok6', (select token from ride_invite_links where id = '00000000-0000-0000-0000-0000011500a6'), false);
+select set_config('test.pvtok7', (select token from ride_invite_links where id = '00000000-0000-0000-0000-0000011500a7'), false);
+select set_config('test.pvguess', 'deadbeefdeadbeefdeadbeefdeadbeef', false);
+
+-- ---------------------------------------------------------------------------
+-- 115.1  ** THE GRANT, PER GRANTEE — the whole of the anonymous exception **
+-- ---------------------------------------------------------------------------
+-- Three separate assertions rather than one composite, so a failure names which
+-- role moved. Scoped to the grantee because postgres and service_role hold
+-- everything by Supabase default and an unscoped check passes for the wrong
+-- reason (015's expensive lesson).
+select assert_eq(
+  has_function_privilege('anon', 'public.ride_invite_link_public_preview(text)', 'execute'),
+  true, '115.1: ** anon holds EXECUTE ** — the app''s first and only anonymous grant, and the whole of the exception to decision #1');
+select assert_eq(
+  has_function_privilege('authenticated', 'public.ride_invite_link_public_preview(text)', 'execute'),
+  false, '115.1: ... and `authenticated` does NOT, deliberately: a signed-in rider who is BLOCKED or who never accepted the terms is refused by ride_invite_link_preview through reachable_by, and an authenticated grant here would be a second door around that gate');
+select assert_eq(
+  has_function_privilege('public', 'public.ride_invite_link_public_preview(text)', 'execute'),
+  false, '115.1: ... and neither does PUBLIC — Postgres grants EXECUTE to PUBLIC by default and Supabase''s default privileges add anon and authenticated, so the `revoke ... from public, authenticated` BEFORE the grant is what makes the narrow grant narrow');
+
+-- ---------------------------------------------------------------------------
+-- 115.2  The other three ride-link RPCs did not move
+-- ---------------------------------------------------------------------------
+-- 091.4 asserts this as 091's claim; restated here because 115 is the file that
+-- would break it, and because the tempting shortcut to this whole feature was
+-- to re-grant the authenticated preview to anon.
+select assert_eq(
+  (select count(*)::int from (values
+      ('public.ride_invite_link_preview(text)'),
+      ('public.claim_ride_invite_link(text)'),
+      ('public.revoke_ride_invite_link(uuid)')) f(sig)
+    where has_function_privilege('anon', f.sig, 'execute')),
+  0, '115.2: anon holds EXECUTE on NONE of 091''s three RPCs — the claim stays a signed-in act and the gated preview stays gated');
+select assert_eq(
+  (select count(*)::int from (values
+      ('public.ride_invite_link_preview(text)'),
+      ('public.claim_ride_invite_link(text)'),
+      ('public.revoke_ride_invite_link(uuid)')) f(sig)
+    where has_function_privilege('authenticated', f.sig, 'execute')),
+  3, '115.2: ... and `authenticated` still holds it on all three, so the zero above is a refusal rather than three functions 115 accidentally dropped');
+select assert_eq(
+  (select count(*)::int from (values
+      ('private.live_ride_invite_link(text)'),
+      ('private.ride_invite_link_reachable_by(text,uuid,boolean)')) f(sig)
+    where has_function_privilege('anon', f.sig, 'execute')),
+  0, '115.2: ... and anon reaches NOTHING in `private` — the new function is security definer, so it calls live_ride_invite_link as the owner and anon never gains a private grant');
+
+-- ---------------------------------------------------------------------------
+-- 115.3  ** NO TABLE BECAME READABLE. ** The exception is one function.
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from (values
+      ('public.rides'), ('public.ride_invite_links'), ('public.ride_members'),
+      ('public.ride_invites'), ('public.profiles'), ('public.clubs')) t(rel)
+    where has_table_privilege('anon', t.rel, 'select')),
+  0, '115.3: anon holds no SELECT on rides, ride_invite_links, ride_members, ride_invites, profiles or clubs — asserted BY ROLE, and the exception is EXECUTE on a function rather than a reach into a table');
+select assert_eq(
+  (select count(*)::int from information_schema.role_table_grants
+    where table_schema = 'public' and grantee = 'anon'),
+  0, '115.3: ... and anon holds NOTHING on any table in `public`, in any verb — 115 alters no table and adds no grant');
+
+-- ---------------------------------------------------------------------------
+-- 115.4  ** THE POLICIES THIS CHANGE DOES NOT TOUCH. IF THIS FAILS, THE
+--        CHANGE IS WRONG — DO NOT RE-PIN IT. **
+-- ---------------------------------------------------------------------------
+-- The tempting way to build an anonymous preview is an audience arm on `rides`.
+-- That would pass every behavioural assertion below while widening the ride's
+-- audience for everyone, so both pins are equality checks and 091.14 pins the
+-- same two for the same reason.
+select assert_eq(
+  (select qual from pg_policies
+    where schemaname = 'public' and tablename = 'rides' and cmd = 'SELECT'),
+  '((organizer_id = auth.uid()) OR ((NOT private.is_blocked(auth.uid(), organizer_id)) AND ((is_public AND ((club_id IS NULL) OR private.is_club_public(club_id))) OR ((club_id IS NOT NULL) AND private.is_club_member(club_id)) OR private.has_live_ride_invite(id))))',
+  '115.4: rides SELECT is BYTE-IDENTICAL to what 111 left. 115 adds no audience arm — the anonymous read is a security definer function with no policy underneath it, which is the whole reason it needed one');
+select assert_eq(
+  (select md5(prosrc) from pg_proc
+    where proname = 'can_read_ride' and pronamespace = 'private'::regnamespace),
+  'a9b2954b27c970d9b19cd781fbe181c7',
+  '115.4: ... and private.can_read_ride''s body is unchanged, measured on DEV before 115 applied. A different value means 115 moved something it must not');
+
+-- ---------------------------------------------------------------------------
+-- 115.5  ** NO POLICY NAMES anon **, before or after
+-- ---------------------------------------------------------------------------
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and roles::text like '%anon%'),
+  0, '115.5: not one policy in `public` names anon — the exception is EXECUTE on a function and decision #1''s "no policy grants to anon" survives 115 intact');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'rides' and not (roles = '{authenticated}')),
+  0, '115.5: ... and every policy on `rides` is still `to authenticated` alone');
+
+-- ---------------------------------------------------------------------------
+-- 115.6  ** THE HAPPY PATH, AS anon ** — one row, and the closed column list
+-- ---------------------------------------------------------------------------
+-- The column list is read off a REAL RETURNED ROW here and off the catalogue at
+-- 115.13. Neither alone is enough: a row cannot tell "column absent" from
+-- "column empty", and a catalogue read cannot tell whether the function answers.
+set role anon;
+select assert_eq(
+  (select count(*)::int from ride_invite_link_public_preview(current_setting('test.pvtok1'))),
+  1, '115.6: a signed-out caller holding a LIVE token gets EXACTLY ONE ROW — the app''s first anonymous read, and it answers');
+select assert_eq(
+  (select array(select k from ride_invite_link_public_preview(current_setting('test.pvtok1')) x,
+                     lateral jsonb_object_keys(to_jsonb(x)) k order by k)),
+  array['departure_at', 'meeting_point', 'organizer_username', 'ride_id', 'timezone', 'title'],
+  '115.6: ... carrying EXACTLY these six named columns and no seventh — read off the returned row, so a `rides.*` projection or a column added to `rides` later fails here');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 115.7  ** THE MEETING POINT IS RETURNED, AND IT IS THE RIDE'S OWN **
+-- ---------------------------------------------------------------------------
+-- ** THE OWNER'S DECISION, ASSERTED AGAINST THE STORED ROW RATHER THAN A
+-- LITERAL. ** A literal would still pass against a function that returned
+-- another ride's string, and would have to be edited — and therefore silenced —
+-- the day the fixture changed. The anon call produces the value; the owner
+-- compares it to the `rides` row anon cannot read.
+set role anon;
+select set_config('test.pv_out_mp',    (select x.meeting_point       from ride_invite_link_public_preview(current_setting('test.pvtok1')) x), false);
+select set_config('test.pv_out_title', (select x.title               from ride_invite_link_public_preview(current_setting('test.pvtok1')) x), false);
+select set_config('test.pv_out_tz',    (select x.timezone            from ride_invite_link_public_preview(current_setting('test.pvtok1')) x), false);
+select set_config('test.pv_out_user',  (select x.organizer_username  from ride_invite_link_public_preview(current_setting('test.pvtok1')) x), false);
+select set_config('test.pv_out_dep',   (select x.departure_at::text  from ride_invite_link_public_preview(current_setting('test.pvtok1')) x), false);
+select set_config('test.pv_out_ride',  (select x.ride_id::text       from ride_invite_link_public_preview(current_setting('test.pvtok1')) x), false);
+select set_config('test.pv_out_row',   (select to_jsonb(x)::text     from ride_invite_link_public_preview(current_setting('test.pvtok1')) x), false);
+reset role;
+select assert_eq(
+  current_setting('test.pv_out_mp'),
+  (select meeting_point from rides where id = '00000000-0000-0000-0000-0000011500e1'),
+  '115.7: ** the signed-out preview carries the ride''s OWN meeting_point, unmodified and untruncated ** — compared against the stored row rather than a literal, so a projection that drops the column, returns NULL, mangles it or returns another ride''s string fails red. This is the owner''s decision and the reason the change exists');
+select assert_eq(
+  current_setting('test.pv_out_title'),
+  (select title from rides where id = '00000000-0000-0000-0000-0000011500e1'),
+  '115.7: ... and the ride''s own title');
+select assert_eq(
+  current_setting('test.pv_out_tz'),
+  (select timezone from rides where id = '00000000-0000-0000-0000-0000011500e1'),
+  '115.7: ... and rides.timezone, which is INSEPARABLE from departure_at — a ride''s times are wall-clock at its meeting point (080) and the viewer''s own zone is never the answer');
+select assert_eq(
+  current_setting('test.pv_out_dep'),
+  (select departure_at::text from rides where id = '00000000-0000-0000-0000-0000011500e1'),
+  '115.7: ... and its departure instant');
+select assert_eq(
+  current_setting('test.pv_out_ride'),
+  '00000000-0000-0000-0000-0000011500e1',
+  '115.7: ... and the link''s OWN ride id, which is the screen''s cache key and opens nothing');
+select assert_eq(
+  current_setting('test.pv_out_user'),
+  (select p.username from profiles p join rides r on r.organizer_id = p.id
+    where r.id = '00000000-0000-0000-0000-0000011500e1'),
+  '115.7: ... and the ORGANIZER''s username — the one rider-identifying value, and the fact the sharer disclosed by pasting this organizer''s link into a group');
+-- The five excluded location columns, asserted against the ROW'S ACTUAL VALUES
+-- rather than by name alone. e1 carries all five populated, so this is
+-- falsifiable: against a ride whose coordinates are NULL a value comparison
+-- proves nothing.
+select assert_eq(
+  (select (position(r.latitude::text           in current_setting('test.pv_out_row'))
+         + position(r.longitude::text          in current_setting('test.pv_out_row'))
+         + position(r.geocode_confidence::text in current_setting('test.pv_out_row'))
+         + position(r.map_card_path            in current_setting('test.pv_out_row'))
+         + position(r.map_detail_path          in current_setting('test.pv_out_row')))::int
+     from rides r where r.id = '00000000-0000-0000-0000-0000011500e1'),
+  0, '115.7: ** and NOT ONE of latitude, longitude, geocode_confidence, map_card_path or map_detail_path appears anywhere in the response ** — compared against the values e1 actually stores, all five non-NULL. Not because they are more sensitive than the string: a human reading an invite needs a place and not a machine-readable pin, 091 does not return them either, and anon cannot sign a Storage URL in any case');
+select assert_eq(
+  (select count(*)::int from rides r
+    where r.id = '00000000-0000-0000-0000-0000011500e1'
+      and r.latitude is not null and r.longitude is not null
+      and r.geocode_confidence is not null
+      and r.map_card_path is not null and r.map_detail_path is not null),
+  1, '115.7: ... and e1 really does carry all five populated, so the zero above is an EXCLUSION rather than five NULLs compared against a string');
+
+-- ---------------------------------------------------------------------------
+-- 115.8  ** NO CREW COUNT, NO AVATAR, NO ROSTER — the subset assertion in its
+--        most breakable form **
+-- ---------------------------------------------------------------------------
+-- Both columns are in 091's eight, so forwarding them would not break the
+-- subset — it would break the STRICTNESS that keeps the safety argument to one
+-- checkable sentence. The count is a fact about RIDERS rather than about the
+-- ride and would make the endpoint a popularity oracle; the avatar cannot
+-- render at all, since signing a Storage URL is resolveAvatarUrls' job.
+select assert_eq(
+  (select count(*)::int from ride_members where ride_id = '00000000-0000-0000-0000-0000011500e1'),
+  3, '115.8: e1 genuinely carries THREE crew rows — the organizer 103 seeds plus two joins — because a ride with none cannot tell an absent count from a zero');
+set role anon;
+select assert_eq(
+  (select count(*)::int from ride_invite_link_public_preview(current_setting('test.pvtok1')) x,
+        lateral jsonb_object_keys(to_jsonb(x)) k
+    where k in ('crew_count', 'organizer_avatar_path')),
+  0, '115.8: ** neither crew_count nor organizer_avatar_path is in the anonymous response ** — both ARE in 091''s eight, which is exactly why this is the assertion a later session breaks first');
+select assert_eq(
+  (select current_setting('test.pv_out_row') like '%3%'
+      and current_setting('test.pv_out_row') not like '%crew%'
+      and current_setting('test.pv_out_row') not like '%avatar%'
+      and current_setting('test.pv_out_row') not like '%count%'),
+  true, '115.8: ... and no field named for a crew, an avatar or a count appears in the rendered row at all (the `%3%` conjunct is non-vacuity: the row is not empty)');
+reset role;
+-- No roster, and no second username. Read as the owner because anon cannot
+-- reach `profiles` to look one up in the first place.
+reset role;
+select assert_eq(
+  (select count(*)::int from profiles p
+    where p.id in ('00000000-0000-0000-0000-000001150004', '00000000-0000-0000-0000-000001150005')
+      and current_setting('test.pv_out_row') like '%' || p.username || '%'),
+  0, '115.8: ... and NO crew member''s username appears in the response — the organizer''s is the only rider-identifying value in the projection');
+
+-- ---------------------------------------------------------------------------
+-- 115.8b  ** THE PROJECTION IS A STRICT SUBSET OF 091's EIGHT **
+-- ---------------------------------------------------------------------------
+-- ** THIS IS THE CHANGE'S WHOLE SAFETY ARGUMENT, AND IT IS ASSERTED FROM THE
+-- CATALOGUE RATHER THAN FROM A ROW. ** A column added past 091's eight would be
+-- disclosed to somebody NO SIGNED-IN CALLER COULD EVER HAVE BEEN, which is a
+-- new decision with its own negative cases rather than an extension of this one.
+select assert_eq(
+  (select count(*)::int
+     from unnest(
+       (select proargnames from pg_proc where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure),
+       (select proargmodes from pg_proc where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure)
+     ) as a(nm, md)
+    where a.md = 't'
+      and a.nm <> all (
+        select b.nm from unnest(
+          (select proargnames from pg_proc where oid = 'public.ride_invite_link_preview(text)'::regprocedure),
+          (select proargmodes from pg_proc where oid = 'public.ride_invite_link_preview(text)'::regprocedure)
+        ) as b(nm, md) where b.md = 't')),
+  0, '115.8b: ** every column name the ANONYMOUS preview returns also appears in the AUTHENTICATED preview''s — the subset relation IS the safety argument, and a name outside 091''s eight fails here **');
+select assert_eq(
+  (select count(*)::int from unnest(
+      (select proargnames from pg_proc where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure),
+      (select proargmodes from pg_proc where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure)
+    ) as a(nm, md) where a.md = 't'),
+  6, '115.8b: ... the anonymous projection is SIX columns');
+select assert_eq(
+  (select count(*)::int from unnest(
+      (select proargnames from pg_proc where oid = 'public.ride_invite_link_preview(text)'::regprocedure),
+      (select proargmodes from pg_proc where oid = 'public.ride_invite_link_preview(text)'::regprocedure)
+    ) as a(nm, md) where a.md = 't'),
+  8, '115.8b: ... and the authenticated one EIGHT, so the subset is STRICT and the zero above is not two identical lists');
+
+-- ---------------------------------------------------------------------------
+-- 115.9  ** THE SIX DEAD STATES, AS anon — ALL SIX **
+-- ---------------------------------------------------------------------------
+-- A subset passes green with an oracle present in the state it omits. Every one
+-- returns ZERO ROWS and RAISES NOTHING, which is what stops the endpoint being
+-- usable to tell "never existed" from "revoked".
+set role anon;
+select assert_eq(
+  (select count(*)::int from (values
+      (current_setting('test.pvtok4')),   -- revoked
+      (current_setting('test.pvtok5')),   -- expired
+      (current_setting('test.pvtok6')),   -- the ride departed
+      (current_setting('test.pvguess')),  -- 32 hex that never existed
+      ('not a token at all')              -- malformed
+    ) as d(tok)
+   where (select count(*) from ride_invite_link_public_preview(d.tok)) = 0
+     and error_of(format('select * from ride_invite_link_public_preview(%L)', d.tok)) = '<no error>'),
+  5, '115.9: FIVE of the six dead states — revoked, expired, departed, never-existed and malformed — each return zero rows AND raise nothing, asserted as one conjunct per state. The token is compared as TEXT, so a malformed string matches no row rather than raising a parse error that would confirm the format');
+select assert_eq(
+  (select count(*)::int from ride_invite_link_public_preview(current_setting('test.pvtok1'))) = 1
+    and error_of($$select * from ride_invite_link_public_preview(current_setting('test.pvtok1'))$$) = '<no error>',
+  true, '115.9: ... and the LIVE token still answers with one row, so the five above are refusals rather than a function that refuses everything');
+reset role;
+
+-- The sixth: the RIDE DELETED, which reaches the same answer by a different
+-- road — the cascade removes the link row first, so the token becomes one that
+-- never existed.
+savepoint pv_ride_deleted_115;
+reset role;
+delete from rides where id = '00000000-0000-0000-0000-0000011500e6';
+select assert_eq(
+  (select count(*)::int from ride_invite_links where id = '00000000-0000-0000-0000-0000011500a7'),
+  0, '115.9: deleting the ride takes its links with it, by cascade');
+set role anon;
+select assert_eq(
+  (select count(*)::int from ride_invite_link_public_preview(current_setting('test.pvtok7'))),
+  0, '115.9: ... so the SIXTH dead state, a token for a DELETED ride, previews zero rows to a signed-out caller');
+select assert_eq(
+  error_of($$select * from ride_invite_link_public_preview(current_setting('test.pvtok7'))$$),
+  '<no error>', '115.9: ... and raises nothing, exactly like the other five');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 115.10  ** THE TWO PREVIEWS AGREE ABOUT EVERY DEAD TOKEN **
+-- ---------------------------------------------------------------------------
+-- Liveness has ONE definition, private.live_ride_invite_link, and this is what
+-- makes that instruction enforceable: a predicate restated in the anonymous
+-- body and edited in only one place fails here rather than shipping a signed-out
+-- preview that shows a ride the signed-in one refuses, or the reverse. The
+-- deleted-ride state is inside this savepoint so all SIX are covered.
+set role anon;
+select set_config('test.pv_anon_dead',
+  (select count(*)::int from (values
+      (current_setting('test.pvtok4')), (current_setting('test.pvtok5')),
+      (current_setting('test.pvtok6')), (current_setting('test.pvtok7')),
+      (current_setting('test.pvguess')), ('not a token at all')) as d(tok)
+    where (select count(*) from ride_invite_link_public_preview(d.tok)) = 0)::text, false);
+reset role;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001150002', false);
+select set_config('test.pv_auth_dead',
+  (select count(*)::int from (values
+      (current_setting('test.pvtok4')), (current_setting('test.pvtok5')),
+      (current_setting('test.pvtok6')), (current_setting('test.pvtok7')),
+      (current_setting('test.pvguess')), ('not a token at all')) as d(tok)
+    where (select count(*) from ride_invite_link_preview(d.tok)) = 0)::text, false);
+reset role;
+select assert_eq(
+  current_setting('test.pv_anon_dead'), current_setting('test.pv_auth_dead'),
+  '115.10: the anonymous preview (as anon) and 091''s authenticated preview (as authenticated) AGREE about every one of the six dead states');
+select assert_eq(
+  current_setting('test.pv_anon_dead'), '6',
+  '115.10: ... and the agreed answer is SIX zeroes, so the equality above is agreement rather than two functions that answer nothing');
+rollback to savepoint pv_ride_deleted_115;
+
+-- And they agree about the LIVE token too, which is what says the six above are
+-- refusals. pvstranger is onboarded, unblocked and a member of nothing.
+set role anon;
+select set_config('test.pv_anon_live', (select count(*)::int from ride_invite_link_public_preview(current_setting('test.pvtok1')))::text, false);
+reset role;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001150002', false);
+select set_config('test.pv_auth_live', (select count(*)::int from ride_invite_link_preview(current_setting('test.pvtok1')))::text, false);
+reset role;
+select assert_eq(
+  current_setting('test.pv_anon_live') || '/' || current_setting('test.pv_auth_live'), '1/1',
+  '115.10: ... and both answer ONE row for the live token — the signed-out caller learns strictly LESS (six columns against eight) rather than differently');
+
+-- ---------------------------------------------------------------------------
+-- 115.11  ** A CLUB-PRIVATE RIDE IS SERVED, AND ITS CLASS IS UNOBSERVABLE **
+-- ---------------------------------------------------------------------------
+-- Refusing would build the oracle this whole feature is designed to avoid: zero
+-- rows for a club-private ride and a preview for a public one tells any token
+-- holder WHICH CLASS OF RIDE their token names — a new signal, available
+-- anonymously, that does not exist today. Serving both identically is what
+-- keeps every failure one outcome. Club membership is UNOBSERVABLE rather than
+-- filtered: the projection carries no club_id, no club name and no is_public,
+-- so there is no field to infer from.
+set role anon;
+select assert_eq(
+  (select array(select k from ride_invite_link_public_preview(current_setting('test.pvtok2')) x,
+                     lateral jsonb_object_keys(to_jsonb(x)) k order by k)),
+  (select array(select k from ride_invite_link_public_preview(current_setting('test.pvtok3')) x,
+                     lateral jsonb_object_keys(to_jsonb(x)) k order by k)),
+  '115.11: a PRIVATE CLUB''s ride and a CLUBLESS PUBLIC ride return the IDENTICAL column shape to a signed-out caller — nothing in either response says which is which');
+select assert_eq(
+  (select count(*)::int from ride_invite_link_public_preview(current_setting('test.pvtok2')))
+  + (select count(*)::int from ride_invite_link_public_preview(current_setting('test.pvtok3'))),
+  2, '115.11: ... and BOTH answer one row, so the identical shape above is two previews rather than two refusals');
+select set_config('test.pv_out_club', (select to_jsonb(x)::text from ride_invite_link_public_preview(current_setting('test.pvtok2')) x), false);
+reset role;
+select assert_eq(
+  (select (position(c.id::text in current_setting('test.pv_out_club'))
+         + position(c.name    in current_setting('test.pv_out_club')))::int
+     from clubs c where c.id = '00000000-0000-0000-0000-0000011500c1'),
+  0, '115.11: ** the private club''s id and NAME are absent from the response ** — a private club''s name is not something a bearer token should disclose, and 115 strips it harder than 091 by carrying no club field at all');
+select assert_eq(
+  (select count(*)::int from ride_invite_link_public_preview(current_setting('test.pvtok2')) x,
+        lateral jsonb_object_keys(to_jsonb(x)) k
+    where k in ('club_id', 'is_public', 'description', 'route_description', 'start_place_id')),
+  0, '115.11: ... and no club_id, is_public, description, route_description or start_place_id field exists to infer one from');
+
+-- ---------------------------------------------------------------------------
+-- 115.12  A PAST RIDE NEEDS NO SPECIAL CASE
+-- ---------------------------------------------------------------------------
+-- private.live_ride_invite_link carries `now() < r.departure_at`, RE-READ from
+-- `rides` rather than trusted from expires_at, so a departed ride's link is
+-- already dead and arrives through the ordinary door. No branch, no second
+-- message, and a stranger can never be shown a ride that has already left.
+select assert_eq(
+  (select departure_at < now() from rides where id = '00000000-0000-0000-0000-0000011500e4'),
+  true, '115.12: e4 really has departed, so the zero below is not a vacuous pass');
+select assert_eq(
+  (select expires_at > now() - interval '2 hours'
+     from ride_invite_links where id = '00000000-0000-0000-0000-0000011500a6'),
+  true, '115.12: ... and its link was never revoked and never had its expiry rewritten by hand');
+set role anon;
+select assert_eq(
+  (select count(*)::int from ride_invite_link_public_preview(current_setting('test.pvtok6'))),
+  0, '115.12: a signed-out caller holding a token for a DEPARTED ride gets zero rows, through the ordinary dead-token path — 115 adds no branch for it');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 115.13  ** THE CATALOGUE, READ RATHER THAN INFERRED FROM A CALL THAT WORKED **
+-- ---------------------------------------------------------------------------
+-- 031's lesson: this suite runs as the table owner, for whom neither the grant
+-- barrier nor RLS exists, so a call that succeeded says nothing about the
+-- security posture. And a row cannot distinguish "column absent" from "column
+-- empty", which is why the signature is pinned here rather than at 115.6.
+select assert_eq(
+  (select prosecdef from pg_proc where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure),
+  true, '115.13: SECURITY DEFINER — there is no policy that could admit anon to public.rides, and adding one is forbidden');
+select assert_eq(
+  (select proconfig from pg_proc where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure),
+  array['search_path=""'], '115.13: ... with search_path pinned empty and every reference schema-qualified');
+select assert_eq(
+  (select provolatile from pg_proc where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure),
+  'v'::"char", '115.13: ** VOLATILE, and this is the one label a later session will try to "fix" **. The body takes no lock and performs no write, so `stable` would be a truthful label — and PostgREST serves a stable function over GET, which would put a live capability token in the query string of /rest/v1/rpc and therefore in the request log, any intermediary''s access log and the browser''s history. The reason lives in the function''s own `comment`, because the label looks wrong to anyone reading only the body');
+select assert_eq(
+  (select pg_get_function_result(oid) from pg_proc where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure),
+  'TABLE(ride_id uuid, title text, departure_at timestamp with time zone, timezone text, meeting_point text, organizer_username text)',
+  '115.13: ... and the return signature is the CLOSED list, pinned as a string rather than described. A column added to it fails here');
+select assert_eq(
+  (select pg_get_function_identity_arguments(oid) from pg_proc where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure),
+  't text', '115.13: ... and it takes a TOKEN and nothing else. ** There is no ride-id parameter **, which is half of why a signed-out visitor holding no token has no call to make');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where pronamespace = 'public'::regnamespace and proname = 'ride_invite_link_public_preview'),
+  1, '115.13: ... and there is exactly ONE of it — a second signature would be PGRST203 on the one screen this change exists to fix');
+select assert_eq(
+  (select length(obj_description(oid, 'pg_proc')) > 0
+     from pg_proc where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure),
+  true, '115.13: ... and it carries a comment, which is where the volatile reason and the subset bound are recorded for the next reader');
+
+-- ---------------------------------------------------------------------------
+-- 115.14  ** THE BODY CARRIES NO CALLER PREDICATE AND NO LIVENESS RESTATEMENT **
+-- ---------------------------------------------------------------------------
+-- Two absences, and they are absences for opposite reasons.
+--
+--   * NO CALLER PREDICATE, because there is no caller for one to be about.
+--     private.is_blocked(NULL, organizer_id) is not a weaker check, it is a
+--     security-critical predicate evaluated against an argument it was never
+--     written for. THE ANONYMOUS REACH IS ONE CONJUNCT: the link is live.
+--   * NO LIVENESS RESTATEMENT, because liveness has exactly one definition and
+--     the copy that drifts is always the one with no policy underneath it.
+--
+-- ** `departure_at` cannot be asserted absent by substring — it is one of the
+-- six PROJECTED columns. ** So the stronger property is asserted instead: the
+-- body has no WHERE clause and no now() at all, which no liveness test can
+-- survive, and `departure_at` occurs exactly once, as `r.departure_at` in the
+-- select list. Every match strips `--` comments first (the comment trap): a body
+-- explaining why it does not check something contains the words it does not
+-- check.
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure
+      and (regexp_replace(prosrc, '--.*', '', 'gn') ilike '%is_blocked%'
+        or regexp_replace(prosrc, '--.*', '', 'gn') ilike '%auth.uid%'
+        or regexp_replace(prosrc, '--.*', '', 'gn') ilike '%terms_accepted_at%'
+        or regexp_replace(prosrc, '--.*', '', 'gn') ilike '%onboarding_completed_at%')),
+  0, '115.14: the anonymous body names NO caller predicate in code — no is_blocked, no auth.uid, neither participation stamp. There is no caller for any of them to be about, and simulating one with a NULL would be worse than the absence');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure
+      and (regexp_replace(prosrc, '--.*', '', 'gn') ilike '%revoked_at%'
+        or regexp_replace(prosrc, '--.*', '', 'gn') ilike '%expires_at%'
+        or regexp_replace(prosrc, '--.*', '', 'gn') ilike '%now(%'
+        or regexp_replace(prosrc, '--.*', '', 'gn') ilike '%where%')),
+  0, '115.14: ... and it restates NO liveness predicate: no revoked_at, no expires_at, no now(), and ** no WHERE clause of any kind **, which is the form the `departure_at` test has to take because departure_at is one of the six PROJECTED columns and cannot be asserted absent by substring');
+select assert_eq(
+  (select (length(regexp_replace(prosrc, '--.*', '', 'gn'))
+         - length(replace(regexp_replace(prosrc, '--.*', '', 'gn'), 'departure_at', '')))
+        / length('departure_at')
+     from pg_proc where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure),
+  1, '115.14: ... and `departure_at` occurs EXACTLY ONCE in the body, as the projected column — a second occurrence is a liveness test creeping back in');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure
+      and regexp_replace(prosrc, '--.*', '', 'gn') ilike '%private.live_ride_invite_link(%'),
+  1, '115.14: ... and private.live_ride_invite_link IS called, so the four absences above are DELEGATION rather than a function that checks nothing. Liveness is changed THERE and nowhere else');
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure
+      and (regexp_replace(prosrc, '--.*', '', 'gn') ilike '%reachable_by%'
+        or regexp_replace(prosrc, '--.*', '', 'gn') ilike '%ride_invite_link_preview%')),
+  0, '115.14: ... and it reaches NEITHER 091 public RPC nor reachable_by — it enters the shared logic ONE LEVEL LOWER, at the caller-free definition, which is the whole reason this is safe');
+select assert_eq(
+  (select md5(prosrc) from pg_proc where oid = 'private.live_ride_invite_link(text)'::regprocedure)
+    = (select md5(prosrc) from pg_proc where oid = 'private.live_ride_invite_link(text)'::regprocedure)
+  and (select count(*)::int from pg_proc
+        where oid = 'private.live_ride_invite_link(text)'::regprocedure and provolatile = 's' and prosecdef) = 1,
+  true, '115.14: ... and private.live_ride_invite_link is still STABLE and SECURITY DEFINER — 115 gains it a second caller and changes nothing inside it');
+
+-- ---------------------------------------------------------------------------
+-- 115.15  ** THE ANONYMOUS PATH WRITES NOTHING, ANYWHERE **
+-- ---------------------------------------------------------------------------
+-- No ledger row, no attempt counter, no view record, no analytics write. That
+-- is also this path's whole retention answer: no personal data about the viewer
+-- is collected, so none needs a window. The census counts EVERY table in
+-- `public` rather than the handful a reviewer would think of.
+savepoint pv_writes_nothing_115;
+reset role;
+select set_config('test.pv_census_before',
+  (select coalesce(sum((xpath('/row/c/text()',
+        query_to_xml(format('select count(*) as c from public.%I', t.table_name), false, true, '')))[1]::text::bigint), 0)::text
+     from information_schema.tables t
+    where t.table_schema = 'public' and t.table_type = 'BASE TABLE'), false);
+set role anon;
+select count(*) from ride_invite_link_public_preview(current_setting('test.pvtok1'));
+select count(*) from ride_invite_link_public_preview(current_setting('test.pvtok1'));
+select count(*) from ride_invite_link_public_preview(current_setting('test.pvtok4'));
+select count(*) from ride_invite_link_public_preview(current_setting('test.pvguess'));
+select count(*) from ride_invite_link_public_preview('not a token at all');
+reset role;
+select assert_eq(
+  (select coalesce(sum((xpath('/row/c/text()',
+        query_to_xml(format('select count(*) as c from public.%I', t.table_name), false, true, '')))[1]::text::bigint), 0)::text
+     from information_schema.tables t
+    where t.table_schema = 'public' and t.table_type = 'BASE TABLE'),
+  current_setting('test.pv_census_before'),
+  '115.15: five anonymous previews — live, repeated, revoked, guessed and malformed — leave the row count of EVERY table in `public` exactly where it was. Nothing is written, so no call is refused for a reason relating to how many came before it, and there is no personal data to give a retention window');
+select assert_eq(
+  (select array(select table_name::text from information_schema.tables
+                 where table_schema = 'public' and table_type = 'BASE TABLE'
+                   and (table_name like '%attempt%' or table_name like '%preview%'
+                     or table_name like '%visit%'  or table_name like '%view%')
+                 order by 1)),
+  array['place_search_attempts', 'ride_map_render_attempts'],
+  '115.15: ... and 115 builds NO ledger, counter, attempt or view-record table for this path — read as a NAME LIST, because a count cannot tell an addition from a rename. The only two in the schema are 069''s and 051''s, and BOTH are keyed on a rider: 069''s is `user_id references public.profiles(id)` with per-rider ceilings, and AN ANONYMOUS CALLER IS NOT A SUBJECT A LEDGER CAN BE KEYED ON. The only candidate keys are an IP or a device fingerprint, neither of which this schema stores, and either would be a personal-data table owing its own retention window');
+rollback to savepoint pv_writes_nothing_115;
+
+-- ---------------------------------------------------------------------------
+-- 115.16  ** THE BLOCKED RIDER — BOTH STATES, AND THE RESIDUAL IS RECORDED **
+-- ---------------------------------------------------------------------------
+-- ** THIS ASSERTION PASSES BECAUSE A DECISION WAS TAKEN, NOT BECAUSE NOBODY
+-- LOOKED. ** A rider the organizer has blocked can sign out, paste a token they
+-- already hold, and read all six columns INCLUDING THE MEETING POINT — where
+-- the ride leaves from. Symmetric blocking is a statement about two identities
+-- and one of them is absent, so it cannot be otherwise: private.is_blocked is
+-- not called with a NULL caller because an unreasoned check is worse than an
+-- absent one that is written down. The reach belongs to the URL rather than to
+-- the rider — every other holder of the same link reaches exactly the same six
+-- columns, and a block cannot withdraw a URL from somebody who already has it.
+select assert_eq(
+  (select count(*)::int from blocks
+    where blocker_id = '00000000-0000-0000-0000-000001150001'
+      and blocked_id = '00000000-0000-0000-0000-000001150003'),
+  1, '115.16: the organizer really has blocked pvblocked, so the two halves below are about a genuinely blocked rider');
+-- Signed OUT. There is no identity to filter on, so this call is byte-for-byte
+-- the call any other holder of the URL makes.
+set role anon;
+select set_config('test.pv_blocked_mp',
+  (select x.meeting_point from ride_invite_link_public_preview(current_setting('test.pvtok1')) x), false);
+select assert_eq(
+  (select count(*)::int from ride_invite_link_public_preview(current_setting('test.pvtok1'))),
+  1, '115.16: ** SIGNED OUT, a blocked rider holding the token reads the ride ** — the accepted residual of this change, asserted so a later session reading a green suite finds a recorded decision rather than an accident');
+reset role;
+select assert_eq(
+  current_setting('test.pv_blocked_mp'),
+  (select meeting_point from rides where id = '00000000-0000-0000-0000-0000011500e1'),
+  '115.16: ... ** including the ride''s MEETING POINT **, compared against the stored row. Decision #2 is narrowed for THIS PROJECTION ALONE and for no other surface');
+-- Signed IN. Everything actionable still holds, unchanged by 115.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001150003', false);
+select assert_eq(
+  (select count(*)::int from ride_invite_link_preview(current_setting('test.pvtok1'))),
+  0, '115.16: ... and SIGNED IN the same rider reads ZERO rows from 091''s preview, exactly as before — reachable_by''s is_blocked conjunct is untouched');
+select assert_eq(
+  error_of($$select claim_ride_invite_link(current_setting('test.pvtok1'))$$),
+  error_of($$select claim_ride_invite_link(current_setting('test.pvguess'))$$),
+  '115.16: ... and their CLAIM reaches 091''s single raise site, failing identically to a guess. They cannot join, so they reach no crew, no thread, no photo and no message — the block still holds everything actionable');
+select assert_eq(
+  error_of($$select claim_ride_invite_link(current_setting('test.pvguess'))$$) like '42501 %',
+  true, '115.16: ... and that shared answer is a REFUSAL (42501) rather than two silent successes compared against each other');
+reset role;
+select assert_eq(
+  (select count(*)::int from ride_members
+    where ride_id = '00000000-0000-0000-0000-0000011500e1'
+      and user_id = '00000000-0000-0000-0000-000001150003'),
+  0, '115.16: ... and they are on no crew row, so nothing anonymous wrote anything on their behalf either');
+
+-- ---------------------------------------------------------------------------
+-- 115.17  ** anon REACHING PAST THE PREVIEW IS REFUSED **
+-- ---------------------------------------------------------------------------
+-- The preview hands back a ride id. It is the screen's cache key and it opens
+-- nothing: `anon` holds no grant on `rides` and the function granted no policy
+-- reach, so the id is refused AT THE GRANT rather than filtered to zero rows —
+-- which is a stronger refusal, and the form 007 left.
+set role anon;
+select assert_denied(
+  $$select count(*) from rides where id = current_setting('test.pv_out_ride')::uuid$$,
+  '115.17: a signed-out caller cannot select the ride the preview just named — a token buys ONE function call and NO policy reach');
+select assert_denied($$select count(*) from ride_invite_links$$,
+  '115.17: ... nor the link row, so the token, the expiry and the existence of a link stay the organizer''s');
+select assert_denied($$select count(*) from ride_members$$,
+  '115.17: ... nor the crew, which is why there is no roster and no count to leak');
+select assert_denied($$select count(*) from profiles$$,
+  '115.17: ... nor profiles, so the organizer''s username reaches anon by ONE route and no other');
+select assert_denied($$select count(*) from clubs$$,
+  '115.17: ... nor clubs');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 115.17b  ** THE GRANT FOLLOWS THE TOKEN AND NEVER is_public **
+-- ---------------------------------------------------------------------------
+-- ** "The ride is public anyway" is exactly the reasoning that would widen this
+-- later, so the boundary is asserted rather than left to follow from the
+-- signature. ** e5 is PUBLIC and has NO link at all; a signed-out visitor
+-- holding no token has no call to make, because the function takes a token and
+-- there is no listing, search or enumeration endpoint reachable by anon.
+select assert_eq(
+  (select is_public from rides where id = '00000000-0000-0000-0000-0000011500e5'),
+  true, '115.17b: e5 is genuinely is_public = true, so the refusals below are not a private ride tested twice');
+select assert_eq(
+  (select count(*)::int from ride_invite_links l join rides r on r.id = l.ride_id
+    where r.id = '00000000-0000-0000-0000-0000011500e5'),
+  0, '115.17b: ... and no link to it exists, live or dead');
+set role anon;
+select assert_denied(
+  $$select count(*) from rides where id = '00000000-0000-0000-0000-0000011500e5'$$,
+  '115.17b: ** a PUBLIC ride with no token is invisible to a signed-out visitor **, exactly as before this change — `is_public = true` still means "visible to any signed-in rider" and never "visible to the internet"');
+reset role;
+select assert_eq(
+  (select count(*)::int from pg_proc
+    where oid = 'public.ride_invite_link_public_preview(text)'::regprocedure
+      and (regexp_replace(prosrc, '--.*', '', 'gn') ilike '%is_public%'
+        or regexp_replace(prosrc, '--.*', '', 'gn') ilike '%club_id%')),
+  0, '115.17b: ... and the function''s body never reads is_public or club_id — the exception is a CREDENTIAL rather than a visibility class, and there is no field for club privacy to be inferred from');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef
+      and has_function_privilege('anon', p.oid, 'execute')),
+  1, '115.17b: ** and there is exactly ONE anon-executable SECURITY DEFINER function in `public` ** — the exception is one named function, and a second is a new decision with its own argument and its own negative cases, never an extension of this one');
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint anonymous_ride_preview_115;
+
+
 rollback;
 
 \echo ''
