@@ -664,6 +664,49 @@ export type RideInviteLinkPreview = {
 }
 
 /**
+ * What a token holder is shown with **no session at all** —
+ * `public.ride_invite_link_public_preview` (`115`, PD-430), the app's one
+ * anonymous read.
+ *
+ * **Deliberately not `Partial<RideInviteLinkPreview>` and not that type
+ * widened.** Both would make this shape *assignable* to `RideInviteLinkPreview`,
+ * so a component handed this thin object could still write
+ * `preview.crew_count` and get `undefined` — or, worse, a stray `0` — where a
+ * reviewer would expect a compile error. The six fields below are named
+ * separately so that reaching for either excluded field is a type error, not a
+ * runtime one.
+ *
+ * **Every field here also appears in `RideInviteLinkPreview`, and that subset
+ * relation is the whole safety argument for the anonymous grant** (`115`'s
+ * `comment on function`, `proposal.md` §The safety argument). An anonymous
+ * caller learns strictly less than the same person learns by finishing
+ * onboarding and calling `getRideInviteLinkPreview` with the identical token.
+ *
+ * **No `crew_count` and no `organizer` object — not even a bare username
+ * field named the same way.** Both are in the authenticated preview's eight
+ * columns and both are left out on purpose: a count would make the endpoint a
+ * popularity oracle for a caller who is nobody yet, and an avatar cannot
+ * render anyway, since `anon` has no reach into `storage.objects` for
+ * `resolveAvatarUrls` to sign. `organizer_username` is flat rather than
+ * nested in an `organizer` object for the same reason — nesting a single
+ * field invites a sibling field to join it later, which is exactly the
+ * temptation this type exists to refuse.
+ *
+ * **No `club_id`, no `is_public`.** A valid token previews a club-private
+ * ride exactly like a public one (`115`'s own requirement), and carrying
+ * neither field is what makes that class unobservable rather than merely
+ * unfiltered — there is no field here for a later read to infer it from.
+ */
+export type RideInviteLinkPublicPreview = {
+  ride_id: string
+  title: string
+  departure_at: string
+  timezone: string | null
+  meeting_point: string
+  organizer_username: string | null
+}
+
+/**
  * What a successful claim answers — the ride the token admitted the rider to.
  *
  * The RPC returns a bare uuid; naming it is what lets the landing screen route

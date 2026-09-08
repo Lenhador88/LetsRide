@@ -910,6 +910,29 @@ export const queryKeys = {
      * extra steps.
      */
     link: (token: string): QueryKey => ['invites', 'link', token],
+    /**
+     * What one invite token previews with **no session** —
+     * `public.ride_invite_link_public_preview` (`115`, PD-430).
+     *
+     * **A distinct key from `link` above, and distinct for two independent
+     * reasons.** First, `link`'s reason exactly: the token is IN the key, so
+     * two links opened in one session cannot share an entry. Second, and this
+     * is the one that does not transfer from `link` — the two RPCs answer from
+     * different grants and return different shapes, so a shared key would let
+     * a signed-in rider's navigation serve the anonymous six-column row it
+     * cached before they signed in, or the reverse: a stranger served the
+     * eight-column authenticated row cached by whoever signed in on this
+     * device earlier. `keys.ts`'s own header calls a shape mismatch under one
+     * key the collision to avoid; here it would also be an anonymous read
+     * quietly promoted into an authenticated one.
+     *
+     * Under `invites` so `invites.all()` reaches it, matching `link` — though
+     * nothing in this app writes through the anonymous path, so nothing
+     * invalidates this key today. It sits here rather than under a call site
+     * because `keys.ts` is the contract regardless of whether a writer exists
+     * yet.
+     */
+    publicLink: (token: string): QueryKey => ['invites', 'publicLink', token],
   },
 
   /**
