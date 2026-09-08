@@ -19,20 +19,23 @@ git diff --stat origin/development -- docs/HANDOFF.md   # is this file itself un
 
 ## Position
 
-**Updated 2026-09-07.** Prune the lines that are no longer true when you land work; do not add
+**Updated 2026-09-08.** Prune the lines that are no longer true when you land work; do not add
 history.
 
 - **`development` is the default branch and deploys to DEV** (`app-dev.letsride.social`);
   `main` is production (`app.letsride.social`). `development` is normally ahead of `main`, and
   that is the steady state.
-- **Migrations: 115 files on `development`. DEV is at `115`, PROD at `112`.** `list_migrations`
-  against both refs is the check. **The promotion is `113`, `114`, `115`, and `113` then `114` must
-  not be collapsed** — `114` refuses a NULL country, so applied ahead of the bundle that writes one
-  it strands every new signup in a wizard with no skip. Promote `113`, deploy, confirm `READY` with
-  `aliasError` null on `app.letsride.social`, then `114`; `115` is independent of both.
-  **`115` grants `anon` EXECUTE on one function — the first exception to decision #1**, and it puts
-  a new advisor class (`anon_security_definer_function_executable`) on DEV alone until it promotes.
-  `docs/reference/migrations.md` §Applied state has the per-file log and that gate.
+- **Migrations: 116 files on `development`. DEV is at `116`, PROD at `112`.** `list_migrations`
+  against both refs is the check. **The promotion is `113`, `114`, `115`, `116`, and `113` then
+  `114` must not be collapsed** — `114` refuses a NULL country, so applied ahead of the bundle that
+  writes one it strands every new signup in a wizard with no skip. Promote `113`, deploy, confirm
+  `READY` with `aliasError` null on `app.letsride.social`, then `114`; `115` and `116` are
+  independent of both and of each other. **`115` grants `anon` EXECUTE on one function — the first
+  exception to decision #1**, and it puts a new advisor class
+  (`anon_security_definer_function_executable`) on DEV alone until it promotes. **`116` is
+  migration-first and the bundle READS its column** — a build serving ahead of it answers `42703` on
+  every club and ride detail. `docs/reference/migrations.md` §Applied state has the per-file log and
+  both gates.
 - **Edge Functions: the two projects DISAGREE, and that is the resting state after a merge.**
   #434 touched `supabase/functions/resolve-ride-location/` (comments only), so
   `deploy-functions.yml` redeployed all three to **DEV at 2026-09-07T20:42Z**; **PROD is still on
@@ -42,7 +45,7 @@ history.
 - **The walk is green on DEV** as both fixture accounts (2026-09-06 baselines in
   `docs/reference/running-locally.md` §The walk). In CI it is still **skipped** — the Actions
   secrets name PROD and `WALK_CI` is unset (see §Blocked on the owner).
-- **OpenSpec has 44 open changes and 7 archived**
+- **OpenSpec has 45 open changes and 7 archived**
   (`find openspec/changes -maxdepth 1 -mindepth 1 -type d ! -name archive | wc -l`) — a backlog no
   hook clears; see §Next action. **Archiving one is not two commands**: every change old enough to
   matter carries a stale `## MODIFIED Requirements` block that would drop scenarios. PD-359's two
@@ -56,9 +59,9 @@ history.
 
 - **`Queued (AI)` and `Needs help` are both empty**, so the next firing has nothing to take and
   ends `idle`.
-- **`Development (AI)`:** PD-439 in `slot-1`, PD-302 in `slot-2`, and PD-421 (the log digest's
-  HTTP call has never succeeded) carrying no slot label — so it occupies no slot, which is
-  deliberate rather than a gap.
+- **`Development (AI)`:** PD-302 in `slot-2`, and PD-421 (the log digest's HTTP call has never
+  succeeded) carrying no slot label — so it occupies no slot, which is deliberate rather than a
+  gap. `slot-1` is free.
 - **PD-431 is `Duplicate`; its three-option table was answered by queueing PD-302.** Child B of
   `openspec/changes/deliver-push-notifications` is now complete **in the repository** — #438 built
   the TypeScript half, #446 the iOS project half — and **unverified on a device**: tasks 2.15–2.19a
@@ -92,7 +95,7 @@ body carries its own steps.
 
 ## Next action
 
-**Archive the OpenSpec changes whose code is in production.** 44 are open against 7 archived, so
+**Archive the OpenSpec changes whose code is in production.** 45 are open against 7 archived, so
 `openspec/specs/` no longer describes the app and the next proposal is written against specs that
 are missing what shipped. One docs-only PR, in `npm run openspec -- list` order, archiving only
 changes whose migrations and screens are on `main`, budgeting for §Position's refresh; a change with an open decision inside it

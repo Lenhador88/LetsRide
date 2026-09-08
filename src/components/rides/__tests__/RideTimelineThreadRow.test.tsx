@@ -34,6 +34,10 @@ const baseProps = {
   title: 'Sunday ride?',
   lead: 'ana started this',
   at: '2026-08-01T10:00:00Z',
+  // `116`, PD-439 — `null` is a thread nobody has replied to, which is what
+  // every case below is about, so it keeps them asserting what they asserted
+  // before the row grew a count.
+  activity: null,
 }
 
 describe('RideTimelineThreadRow — the unread dot, PD-426', () => {
@@ -70,5 +74,61 @@ describe('RideTimelineThreadRow — the unread dot, PD-426', () => {
     // render, and 404 on tap.
     expect(html).toContain(`href="/rides/detail/thread?id=${baseProps.threadId}"`)
     expect(html).not.toContain('/rides/detail/threads')
+  })
+})
+
+/**
+ * The reply count — `116`, PD-439.
+ *
+ * **The property under test is that `partial` is never dropped**, which this
+ * component's header called the defect worth preventing for as long as it had
+ * no count at all. `12` and `12+` are different claims about the world, and a
+ * refactor that "tidies" the `+` away is green under every other gate: the
+ * number still renders, the row still lays out, and nothing in the repo knows
+ * the difference. Verified in both directions — a partial count must carry the
+ * `+` and an exact one must not.
+ */
+describe('RideTimelineThreadRow — the reply count and its floor, PD-439', () => {
+  it('draws the exact count bare, and the bounded one with a +', () => {
+    const exact = renderToStaticMarkup(
+      <RideTimelineThreadRow {...baseProps} unread={false} activity={{ messages: 3, partial: false }} />
+    )
+    const floor = renderToStaticMarkup(
+      <RideTimelineThreadRow {...baseProps} unread={false} activity={{ messages: 12, partial: true }} />
+    )
+
+    expect(exact).toContain('>3</span>')
+    expect(exact).not.toContain('3+')
+    expect(floor).toContain('12')
+    expect(floor).toContain('+')
+  })
+
+  it('puts the count in the label as words, because the visible form is a glyph', () => {
+    // Everything the eye reads here is `aria-hidden`, so a count that exists
+    // only as an icon and a number reaches a screen reader not at all — the
+    // same pairing `097` task 7.7 requires of the club's row.
+    const one = renderToStaticMarkup(
+      <RideTimelineThreadRow {...baseProps} unread={false} activity={{ messages: 1, partial: false }} />
+    )
+    const many = renderToStaticMarkup(
+      <RideTimelineThreadRow {...baseProps} unread={false} activity={{ messages: 12, partial: true }} />
+    )
+
+    expect(one).toContain('aria-label="Sunday ride?, ana started this, 1 reply"')
+    // Singular only when the number is exact: "1+ reply" would be wrong twice.
+    const oneBounded = renderToStaticMarkup(
+      <RideTimelineThreadRow {...baseProps} unread={false} activity={{ messages: 1, partial: true }} />
+    )
+    expect(oneBounded).toContain('1+ replies')
+    expect(many).toContain('12+ replies')
+  })
+
+  it('draws no count at all for a thread nobody has replied to', () => {
+    // `null` is zero replies, not a missing read — the row draws its lead alone
+    // rather than a count of nothing.
+    const html = renderToStaticMarkup(<RideTimelineThreadRow {...baseProps} unread={false} />)
+
+    expect(html).not.toContain('tabular-nums')
+    expect(html).toContain('aria-label="Sunday ride?, ana started this"')
   })
 })

@@ -4,7 +4,6 @@ import { unwrap, unwrapList } from '@/lib/data/unwrap'
 import { clubThreadIdSchema, clubIdSchema } from '@/lib/validation/clubs'
 import type {
   ClubChatMessage,
-  ClubThreadCursor,
   ClubThreadDetail,
   ClubThreadListItem,
   ClubMessage,
@@ -96,7 +95,7 @@ export const CLUB_MESSAGES_PAGE_SIZE = 200
 export const ANNOUNCEMENT_MARKER = 'introduces_user_id'
 
 const THREAD_SELECT = `
-  id, club_id, author_id, title, created_at,
+  id, club_id, author_id, title, created_at, last_activity_at,
   author:profiles!author_id(id, username)
 `
 
@@ -120,9 +119,27 @@ const THREAD_SELECT = `
  * `viewer_role`, which `getClub` already carries, exactly as a ride's threads use
  * `is_crew`. That is a UX affordance and never the enforcement.
  *
- * `created_at DESC, id DESC` matches `081`'s index and is a total order; a
- * cursor over `created_at` alone would skip or repeat rows exactly at the
- * boundary where two threads share one `now()`.
+ * **`last_activity_at DESC, id DESC` since `116` (PD-439), matching that
+ * migration's index and still a total order.** The timeline draws one row per
+ * thread, at its newest activity, so this read has to be ordered and bounded in
+ * that dimension — the horizon it reports is *"we looked back to threads last
+ * active at X"*, and a read ordered on `created_at` would report a horizon that
+ * says nothing about which threads are missing from a stream sorted by
+ * activity. `last_activity_at` defaults to the thread's own creation, so a
+ * thread nobody has replied to comes back exactly where it did before.
+ *
+ * The `id` tiebreak stays for its original reason: a single timestamp column is
+ * not a total order, so a bound slicing through two threads sharing one instant
+ * would skip or repeat rows at that boundary.
+ *
+ * **One accepted cost travels with this ordering, and this is a read that pays
+ * it** (PD-439). `last_activity_at` is a stored, global stamp and blocking is
+ * per-viewer, so a message from a rider you blocked bumps its thread here.
+ * ORDERING only — `private.is_blocked` still removes the message, so the reply
+ * source returns nothing for it and neither the lead nor the count mentions
+ * it — but in a small club that is attributable, and blocks are symmetric.
+ * `src/lib/data/ride-threads.ts`'s `getRideThreads` header carries the full
+ * argument and why the obvious mitigation is worse.
  *
  * ## Announcements are not listed here — PD-372
  *
@@ -140,26 +157,26 @@ const THREAD_SELECT = `
  * full page holding five announcements would read as the end of the list — and
  * `boundedHorizon`'s stated precondition that a source's rows ARE its window.
  *
- * **`until` is PD-375's timeline paging bound, BESIDE `cursor` rather than
- * instead of it.** `until` is what the club timeline pages on, inclusive per
- * `design.md` §D3.
+ * **`until` is PD-375's timeline paging bound**, inclusive per `design.md` §D3,
+ * and since `116` it bounds `last_activity_at` — the column this read is now
+ * ordered on. A bound applied to one column while the read sorts on another
+ * pages a stream that skips rows, silently.
  *
- * **`cursor` now has NO caller — PD-426, and it is dead for the same reason the
- * corrective read below is (PD-433).** It existed so `/clubs/detail/threads`
- * could keep paging on a keyset without changing behaviour; that screen is
- * deleted, and both surviving call sites pass `undefined` for it:
+ * **The dead `cursor` parameter is gone, and `116` is what forced it.** It went
+ * inert with `/clubs/detail/threads` (PD-426) and was left in place because
+ * dropping a parameter is a signature change wanting its own diff; this IS that
+ * diff. Its keyset was `(created_at, id)`, which after this change names neither
+ * the order nor the bound, so keeping it would have left a parameter whose
+ * documented contract is false — a live trap for whoever brings a thread list
+ * back. Rebuild it against `(last_activity_at, id)`, or against `created_at`
+ * with an `order` to match, when there is a screen that needs one.
  *
  * ```bash
  * git grep -n "getClubThreads(" -- src/ | grep -v __tests__   # 2, both in ClubTimeline
  * ```
- *
- * It is left in place rather than removed here because dropping a parameter is a
- * signature change wanting its own diff — but do not read it as live, and do not
- * add a caller for it without deciding whether a thread list is coming back.
  */
 export async function getClubThreads(
   clubId: string,
-  cursor?: ClubThreadCursor,
   limit = CLUB_THREADS_PAGE_SIZE,
   until?: string
 ): Promise<ClubThreadListItem[] | null> {
@@ -177,16 +194,11 @@ export async function getClubThreads(
     .select(THREAD_SELECT)
     .eq('club_id', clubId)
     .is(ANNOUNCEMENT_MARKER, null)
-    .order('created_at', { ascending: false })
+    .order('last_activity_at', { ascending: false })
     .order('id', { ascending: false })
     .limit(limit)
 
-  if (cursor) {
-    query = query.or(
-      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
-    )
-  }
-  if (until) query = query.lte('created_at', until)
+  if (until) query = query.lte('last_activity_at', until)
 
   return unwrapList(await query, "this club's threads") as unknown as ClubThreadListItem[]
 }

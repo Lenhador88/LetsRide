@@ -49,3 +49,42 @@ export type TimelineSource<T> = {
 export function boundedHorizon<T>(rows: T[], bound: number, at: (row: T) => string): string | null {
   return rows.length >= bound && rows.length > 0 ? at(rows[rows.length - 1]) : null
 }
+
+/**
+ * The exact-versus-floor rule for a per-thread reply count — **the club's own
+ * `resolveThreadCount`, moved here when the ride grew a count of its own
+ * (`116`, PD-439)**, for the reason `TimelineSource` lives here rather than in
+ * `club-timeline.ts`: two copies of a rule this subtle drift, and the copy that
+ * drifts is the one nobody reads.
+ *
+ * A count is derived from a bounded MESSAGE window, so it counts what was
+ * fetched rather than what exists. It is exact when the reply source's
+ * accumulated horizon is `null` — nothing of any thread is outside it — or when
+ * the thread is KNOWN to have been created at or after that horizon, in which
+ * case every message it can have is inside the coverage. Otherwise the number
+ * is a floor and `partial` is what lets the row draw `12+` rather than assert a
+ * total it cannot know.
+ *
+ * **Derived from coverage, never accumulated.** A flag set true because some
+ * window once saturated is monotonic — it never clears — so a thread whose every
+ * message is demonstrably in hand would keep announcing a floor even after the
+ * stream reached the club's founding.
+ *
+ * **`threadCreatedAt` is the thread's CREATION, never its `last_activity_at`.**
+ * Since `116` a thread row sits at its newest activity, so the two differ on
+ * exactly the threads this matters for: an old thread with a fresh reply is
+ * drawn at the top while its earlier messages are genuinely outside the window,
+ * and comparing the bumped stamp against the horizon would call that count
+ * exact.
+ */
+export function resolveThreadCountExactness<A extends { partial: boolean }>(
+  activity: A | undefined,
+  repliesHorizon: string | null,
+  threadCreatedAt: string | undefined
+): A | null {
+  if (!activity) return null
+  const exact =
+    repliesHorizon === null ||
+    (threadCreatedAt !== undefined && threadCreatedAt >= repliesHorizon)
+  return { ...activity, partial: !exact }
+}

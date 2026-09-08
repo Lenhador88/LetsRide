@@ -29249,8 +29249,9 @@ select assert_eq(
   (select array(select t.tgname::text from pg_trigger t
                  where t.tgrelid = 'public.club_messages'::regclass and not t.tgisinternal
                  order by t.tgname)),
-  array['enforce_participation_gate', 'notify_club_thread_replied'],
-  '098.35: ... and club_messages carries exactly these two triggers — the gate and 098''s fan-out. Read as a name list, so a third arriving is red here rather than found by a rider');
+  array['enforce_participation_gate', 'notify_club_thread_replied',
+        'touch_club_thread_activity'],
+  '098.35: ... and club_messages carries exactly these THREE triggers — the gate, 098''s fan-out and 116''s activity stamp. Read as a name list, so a fourth arriving is red here rather than found by a rider. It read TWO until 116, and it went red on that migration rather than absorbing it, which is the whole point of the form');
 
 -- ---------------------------------------------------------------------------
 -- 098.36  The participation gate does NOT move — 096.10's precedent
@@ -30104,8 +30105,9 @@ select assert_eq(
 select assert_eq(
   (select array(select tgname::text from pg_trigger
                  where tgrelid = 'public.club_messages'::regclass and not tgisinternal order by 1)),
-  array['enforce_participation_gate', 'notify_club_thread_replied'],
-  '100.5: club_messages still carries exactly those two triggers — `create or replace` keeps each function''s OID and the trigger references it by OID, so 100 issues no trigger DDL and a third here would be a failed apply rather than a finding');
+  array['enforce_participation_gate', 'notify_club_thread_replied',
+        'touch_club_thread_activity'],
+  '100.5: club_messages still carries exactly those three triggers — `create or replace` keeps each function''s OID and the trigger references it by OID, so 100 issues no trigger DDL and a fourth here would be a failed apply rather than a finding. 116 added the third');
 select assert_eq(
   (select count(*)::int from pg_trigger
     where not tgisinternal and tgqual is null
@@ -36282,6 +36284,494 @@ select assert_eq(
 reset role;
 select set_config('test.uid', '', false);
 rollback to savepoint anonymous_ride_preview_115;
+
+
+-- ===========================================================================
+-- 116 · A thread carries its newest activity
+-- ===========================================================================
+-- PD-439. `club_threads.last_activity_at` and `ride_threads.last_activity_at`:
+-- one timeline row per thread, positioned at its newest activity, so an old
+-- thread with a fresh reply bumps to the top instead of sinking.
+--
+-- ** THE SECURITY-CRITICAL HALF IS THE GRANT. ** A `last_activity_at` that
+-- `authenticated` may write is a "pin my own thread to the top of every
+-- timeline, for ever" primitive — worse than the sort keys 044, 045 and 048
+-- closed, because it can be re-claimed on any schedule and in every club the
+-- rider belongs to. 116.1 and 116.2 are that, by GRANTEE, both verbs, and with a
+-- CONTROL COLUMN: `title` must read INSERT = true in the same query, or a
+-- has_column_privilege call that returns false for an unrelated reason (a typo
+-- in the table name is the usual one) reads as a pass.
+--
+-- ** THIS SUITE'S IDENTITY IDIOM IS `test.uid`, NOT request.jwt.claims. **
+-- harness.sql redefines auth.uid() to read `test.uid`; a positive assertion
+-- written the hosted way passes while proving nothing. The hosted round trip for
+-- this migration was run separately, against DEV, with the other idiom.
+--
+--   1160001  ctowner   owns the club, opens the old thread
+--   1160002  ctmate    a member, and the one who replies
+--   1160003  rtowner   organizes the ride (103 seeds their crew row)
+--   1160004  rtmate    crew, and the one who replies
+--
+--   c1  the club          t1  opened 30 days ago, no messages — the one that bumps
+--                         t2  opened  1 day  ago, no messages — the one it passes
+--                         t3  an INTRODUCTION (introduces_user_id set)
+--   r1  the ride          u1  opened 30 days ago, no messages
+--
+-- ** FIXTURE NOTE, because it looks like a bug and is not. ** The inserts below
+-- name `last_activity_at` explicitly alongside a back-dated `created_at`. They
+-- can, because this suite runs as the TABLE OWNER; a rider cannot, which is what
+-- 116.1 asserts. It is necessary here: the column's default is `now()`, so a
+-- row born with a back-dated `created_at` and no explicit stamp would land on
+-- the suite's own clock. In production the two are always equal at birth because
+-- `created_at` is server-owned too — asserted from the client path in 116.4.
+savepoint thread_activity_116;
+
+reset role;
+select set_config('test.uid', '', false);
+
+set role auth_admin;
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000001160001', 'ctowner@example.com'),
+  ('00000000-0000-0000-0000-000001160002', 'ctmate@example.com'),
+  ('00000000-0000-0000-0000-000001160003', 'rtowner@example.com'),
+  ('00000000-0000-0000-0000-000001160004', 'rtmate@example.com');
+reset role;
+
+update profiles p
+   set username = v.uname, location = 'Utrecht',
+       onboarding_completed_at = timestamptz '2026-01-01 00:00:00+00',
+       terms_accepted_at       = timestamptz '2026-01-01 00:00:00+00'
+  from (values
+      ('00000000-0000-0000-0000-000001160001', 'ctowner'),
+      ('00000000-0000-0000-0000-000001160002', 'ctmate'),
+      ('00000000-0000-0000-0000-000001160003', 'rtowner'),
+      ('00000000-0000-0000-0000-000001160004', 'rtmate')
+    ) as v(id, uname)
+ where p.id = v.id::uuid;
+
+insert into clubs (id, name, is_public, owner_id) values
+  ('00000000-0000-0000-0000-0000011600c1', 'Newest Activity MC', true,
+   '00000000-0000-0000-0000-000001160001');
+insert into club_members (club_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000011600c1', '00000000-0000-0000-0000-000001160002', 'member');
+
+insert into club_threads (id, club_id, author_id, title, created_at, last_activity_at) values
+  ('00000000-0000-0000-0000-0000011600a1', '00000000-0000-0000-0000-0000011600c1',
+   '00000000-0000-0000-0000-000001160001', 'the old thread',
+   now() - interval '30 days', now() - interval '30 days'),
+  ('00000000-0000-0000-0000-0000011600a2', '00000000-0000-0000-0000-0000011600c1',
+   '00000000-0000-0000-0000-000001160001', 'the newer thread',
+   now() - interval '1 day', now() - interval '1 day');
+
+insert into rides (id, title, meeting_point, departure_at, timezone, is_public, club_id, organizer_id) values
+  ('00000000-0000-0000-0000-0000011600e1', 'Newest activity ride',
+   'Stationsplein 1, 3511 ED Utrecht', now() + interval '3 days', 'Europe/Amsterdam',
+   true, null, '00000000-0000-0000-0000-000001160003');
+insert into ride_members (ride_id, user_id, status) values
+  ('00000000-0000-0000-0000-0000011600e1', '00000000-0000-0000-0000-000001160004', 'going');
+
+insert into ride_threads (id, ride_id, author_id, title, created_at, last_activity_at) values
+  ('00000000-0000-0000-0000-0000011600b1', '00000000-0000-0000-0000-0000011600e1',
+   '00000000-0000-0000-0000-000001160003', 'the old ride thread',
+   now() - interval '30 days', now() - interval '30 days');
+
+-- ---------------------------------------------------------------------------
+-- 116.1  ** THE COLUMN IS SERVER-OWNED — the assertion this migration is for **
+-- ---------------------------------------------------------------------------
+-- Named by GRANTEE on every line. postgres and service_role hold everything by
+-- Supabase default, so a bare has_column_privilege() or a table-wide count reads
+-- true against a database where the grant was never narrowed — 015's footer.
+select assert_eq(
+  has_column_privilege('authenticated', 'public.club_threads', 'last_activity_at', 'INSERT'),
+  false, '116.1: ** `authenticated` cannot INSERT club_threads.last_activity_at ** — a writable sort key is a "pin my thread to the top of every club timeline for ever" primitive, and a rider could claim the position at birth');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.club_threads', 'last_activity_at', 'UPDATE'),
+  false, '116.1: ... and cannot UPDATE it either. BOTH VERBS, never just the one the story is about — 041 made only UPDATE column-level on postcards and left the row still able to be BORN back-dated (044''s lesson)');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.club_threads', 'last_activity_at', 'SELECT'),
+  true, '116.1: ... but CAN read it, which is not decoration: SELECT on club_threads is TABLE-level, and had it been column-level the new column would be unreadable and the client''s `order=last_activity_at.desc` would answer 42501 with nothing in this suite to see it');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.club_threads', 'title', 'INSERT'),
+  true, '116.1: ** THE CONTROL. ** `title` is still insertable by the same role in the same table, so the three falses above are the grant list and not a mistyped relation name reading false for free');
+
+select assert_eq(
+  has_column_privilege('authenticated', 'public.ride_threads', 'last_activity_at', 'INSERT'),
+  false, '116.1: the ride side is the same — no INSERT ...');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.ride_threads', 'last_activity_at', 'UPDATE'),
+  false, '116.1: ... no UPDATE ...');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.ride_threads', 'last_activity_at', 'SELECT'),
+  true, '116.1: ... SELECT only ...');
+select assert_eq(
+  has_column_privilege('authenticated', 'public.ride_threads', 'title', 'INSERT'),
+  true, '116.1: ... and its own control column');
+
+-- ---------------------------------------------------------------------------
+-- 116.2  The whole INSERT surface, by grantee, and no table-level verb left
+-- ---------------------------------------------------------------------------
+-- 116 §4 restates both lists absolutely (`revoke insert` then `grant insert
+-- (...)`), which is 048's shape and carries 048's trap: a later migration
+-- re-granting either table must restate the FULL list or it silently reinstates
+-- what was removed. Read as a name list so that day is red here.
+select assert_eq(
+  (select array(select column_name::text from information_schema.column_privileges
+                 where table_schema = 'public' and table_name = 'club_threads'
+                   and grantee = 'authenticated' and privilege_type = 'INSERT'
+                 order by column_name)),
+  array['author_id', 'club_id', 'id', 'title'],
+  '116.2: club_threads'' INSERT surface for `authenticated` is exactly these four — created_at, introduces_user_id, introduction and last_activity_at are all absent, and `id` stays for the offline-UUID convention');
+select assert_eq(
+  (select array(select column_name::text from information_schema.column_privileges
+                 where table_schema = 'public' and table_name = 'ride_threads'
+                   and grantee = 'authenticated' and privilege_type = 'INSERT'
+                 order by column_name)),
+  array['author_id', 'id', 'ride_id', 'title'],
+  '116.2: ... and ride_threads'' is the same four with ride_id in club_id''s place');
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name in ('club_threads', 'ride_threads')
+      and grantee = 'authenticated' and privilege_type = 'UPDATE'),
+  0, '116.2: ** neither thread table grants `authenticated` UPDATE on ANY column ** — 116 adds no UPDATE grant and neither table has an UPDATE policy, so the next author of an "edit your own thread title" migration has to name every column it wants rather than inheriting the stamp for free');
+select assert_eq(
+  (select bool_or(has_table_privilege('authenticated', t, p))
+     from unnest(array['public.club_threads', 'public.ride_threads']) t,
+          unnest(array['INSERT', 'UPDATE']) p),
+  false, '116.2: ... and no TABLE-level INSERT or UPDATE survives on either, which is what makes the column lists above the whole surface rather than a decoration on top of a wider grant');
+select assert_eq(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name in ('club_threads', 'ride_threads')
+      and grantee = 'anon'),
+  0, '116.2: and `anon` holds nothing on either table — decision #1, restated because 116 issues grants and a `to authenticated` typed `to public` would land here');
+
+-- ---------------------------------------------------------------------------
+-- 116.3  ** A RIDER CANNOT WRITE THE STAMP, run as the ROLE and not asserted
+--        from the catalogue **
+-- ---------------------------------------------------------------------------
+-- The catalogue says what the grant IS; this says what happens. Both are here
+-- because they fail differently: a missing revoke shows in 116.1, and a policy
+-- that quietly permits the write shows only here.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001160002', false);
+select assert_denied(
+  $$update club_threads set last_activity_at = now() + interval '100 years'
+     where id = '00000000-0000-0000-0000-0000011600a1'$$,
+  '116.3: ** a club member cannot pin their club''s thread to the top for a century **');
+select assert_denied(
+  $$insert into club_threads (club_id, author_id, title, last_activity_at)
+    values ('00000000-0000-0000-0000-0000011600c1',
+            '00000000-0000-0000-0000-000001160002', 'born pinned',
+            now() + interval '100 years')$$,
+  '116.3: ... nor open one already pinned. ** The INSERT arm is the one a UPDATE-only fix would miss ** — 044''s defect exactly, and it needs no UPDATE policy to exploit');
+reset role;
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001160004', false);
+select assert_denied(
+  $$update ride_threads set last_activity_at = now() + interval '100 years'
+     where id = '00000000-0000-0000-0000-0000011600b1'$$,
+  '116.3: the ride crew cannot pin a ride thread either ...');
+select assert_denied(
+  $$insert into ride_threads (ride_id, author_id, title, last_activity_at)
+    values ('00000000-0000-0000-0000-0000011600e1',
+            '00000000-0000-0000-0000-000001160004', 'born pinned',
+            now() + interval '100 years')$$,
+  '116.3: ... nor open one already pinned');
+reset role;
+select set_config('test.uid', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 116.4  A thread is BORN carrying its own creation instant
+-- ---------------------------------------------------------------------------
+-- Written through the client's own grant list — the four columns of 116.2 and
+-- nothing else — so this is the production birth path rather than a fixture.
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001160002', false);
+insert into club_threads (id, club_id, author_id, title) values
+  ('00000000-0000-0000-0000-0000011600a9',
+   '00000000-0000-0000-0000-0000011600c1',
+   '00000000-0000-0000-0000-000001160002', 'born today');
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select last_activity_at = created_at from club_threads
+    where id = '00000000-0000-0000-0000-0000011600a9'),
+  true, '116.4: ** a brand-new thread carries its own creation instant ** — both columns default now(), which resolves to the same transaction timestamp, so a thread with no replies sorts exactly where created_at used to put it and the timeline does not reorder on the day 116 applies');
+select assert_eq(
+  (select count(*)::int from pg_attribute a join pg_attrdef d
+     on d.adrelid = a.attrelid and d.adnum = a.attnum
+    where a.attrelid in ('public.club_threads'::regclass, 'public.ride_threads'::regclass)
+      and a.attname = 'last_activity_at'
+      and pg_get_expr(d.adbin, d.adrelid) = 'now()'),
+  2, '116.4: ... and the default really is now() on BOTH tables. ** A default is the VALUE, never the GUARANTEE ** — it applies only when the column is omitted, and 116.1''s grant is what stops a client naming it; without the default, though, the NOT NULL would refuse every thread instead');
+select assert_eq(
+  (select count(*)::int from pg_attribute
+    where attrelid in ('public.club_threads'::regclass, 'public.ride_threads'::regclass)
+      and attname = 'last_activity_at' and attnotnull),
+  2, '116.4: ... and it is NOT NULL on both, so an ordering read never has to decide where a NULL sorts');
+
+-- ---------------------------------------------------------------------------
+-- 116.5  ** THE TRIGGER STAMPS, AND THE OLD THREAD OVERTAKES THE NEW ONE **
+-- ---------------------------------------------------------------------------
+-- The product story asserted as an ordering rather than as a timestamp: t1 is 30
+-- days old, t2 is one day old, and after one reply to t1 the list must invert.
+select assert_eq(
+  (select array(select title::text from club_threads
+                 where club_id = '00000000-0000-0000-0000-0000011600c1'
+                   and title in ('the old thread', 'the newer thread')
+                 order by last_activity_at desc, id desc)),
+  array['the newer thread', 'the old thread'],
+  '116.5: before the reply the old thread is BELOW the newer one ...');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001160002', false);
+insert into club_messages (thread_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000011600a1',
+   '00000000-0000-0000-0000-000001160002', 'a fresh reply to an old thread');
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select array(select title::text from club_threads
+                 where club_id = '00000000-0000-0000-0000-0000011600c1'
+                   and title in ('the old thread', 'the newer thread')
+                 order by last_activity_at desc, id desc)),
+  array['the old thread', 'the newer thread'],
+  '116.5: ** ... and after ONE reply it is ABOVE it. ** This is the whole story — a thread bumps to its newest activity instead of sinking — and it is asserted through a rider''s own INSERT, under `set role authenticated` with this suite''s `test.uid` idiom');
+select assert_eq(
+  (select last_activity_at > created_at from club_threads
+    where id = '00000000-0000-0000-0000-0000011600a1'),
+  true, '116.5: ... and the stamp really moved off created_at, so the ordering above is the column doing the work rather than the id tiebreak');
+
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001160004', false);
+insert into ride_thread_messages (thread_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000011600b1',
+   '00000000-0000-0000-0000-000001160004', 'a fresh reply to an old ride thread');
+reset role;
+select set_config('test.uid', '', false);
+select assert_eq(
+  (select last_activity_at > created_at from ride_threads
+    where id = '00000000-0000-0000-0000-0000011600b1'),
+  true, '116.5: ** the ride side stamps too. ** Two tables, two functions, two triggers — and a copy-paste that pointed both at club_threads would leave THIS false while every club assertion above stayed green');
+
+-- ---------------------------------------------------------------------------
+-- 116.6  ** greatest() REFUSES TO MOVE A THREAD BACKWARDS **
+-- ---------------------------------------------------------------------------
+-- `club_messages.created_at` is server-owned, so this insert is made as the
+-- OWNER — which is the honest shape of the threat. The value cannot come from a
+-- rider; it can come from a seed, a restore, an Edge Function or a future
+-- server-side writer, and a bare assignment would send the thread to 2001.
+select set_config('test.a116_club', (select last_activity_at::text from club_threads
+  where id = '00000000-0000-0000-0000-0000011600a1'), false);
+insert into club_messages (thread_id, author_id, body, created_at) values
+  ('00000000-0000-0000-0000-0000011600a1',
+   '00000000-0000-0000-0000-000001160002', 'a backdated message',
+   timestamptz '2001-01-01 00:00:00+00');
+select assert_eq(
+  (select last_activity_at from club_threads
+    where id = '00000000-0000-0000-0000-0000011600a1'),
+  current_setting('test.a116_club')::timestamptz,
+  '116.6: ** a message dated 2001 does not move the thread to 2001. ** greatest(last_activity_at, new.created_at) makes the column monotonic BY CONSTRUCTION rather than by the discipline of every future writer; a bare `= new.created_at` passes every other assertion in this block and fails only here');
+select assert_eq(
+  (select count(*)::int from club_messages
+    where thread_id = '00000000-0000-0000-0000-0000011600a1'),
+  2, '116.6: ... and the backdated message was genuinely INSERTED, so the assertion above is monotonicity and not a write that silently never happened');
+
+select set_config('test.a116_ride', (select last_activity_at::text from ride_threads
+  where id = '00000000-0000-0000-0000-0000011600b1'), false);
+insert into ride_thread_messages (thread_id, author_id, body, created_at) values
+  ('00000000-0000-0000-0000-0000011600b1',
+   '00000000-0000-0000-0000-000001160004', 'a backdated ride message',
+   timestamptz '2001-01-01 00:00:00+00');
+select assert_eq(
+  (select last_activity_at from ride_threads
+    where id = '00000000-0000-0000-0000-0000011600b1'),
+  current_setting('test.a116_ride')::timestamptz,
+  '116.6: the ride side is monotonic too');
+
+-- ---------------------------------------------------------------------------
+-- 116.7  ** A DELETED MESSAGE DOES NOT UN-BUMP A THREAD ** — a DECISION
+-- ---------------------------------------------------------------------------
+-- Recomputing on DELETE costs a scan per moderation action, per
+-- delete_own_club_message and per cascade, inside the deleting transaction — and
+-- the activity genuinely happened. Asserted structurally off pg_trigger's DELETE
+-- bit as well as behaviourally, so a future DELETE trigger is red here rather
+-- than discovered as a thread that sinks when a reply is moderated.
+select set_config('test.a116_keep', (select last_activity_at::text from club_threads
+  where id = '00000000-0000-0000-0000-0000011600a1'), false);
+delete from club_messages
+ where thread_id = '00000000-0000-0000-0000-0000011600a1';
+select assert_eq(
+  (select last_activity_at from club_threads
+    where id = '00000000-0000-0000-0000-0000011600a1'),
+  current_setting('test.a116_keep')::timestamptz,
+  '116.7: ** deleting every reply leaves the thread where its newest reply put it. ** A decision, not an oversight: the activity happened, and the thread moves again on the next reply');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid in ('public.club_messages'::regclass,
+                      'public.ride_thread_messages'::regclass)
+      and not tgisinternal and tgname like 'touch\_%\_thread\_activity'
+      and (tgtype & 8) <> 0),
+  0, '116.7: ... and neither activity trigger carries the DELETE bit at all, asserted off pg_trigger rather than inferred from the row above');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid in ('public.club_messages'::regclass,
+                      'public.ride_thread_messages'::regclass)
+      and not tgisinternal and tgname like 'touch\_%\_thread\_activity'
+      and (tgtype & 4) <> 0 and (tgtype & 2) = 0 and (tgtype & 1) <> 0),
+  2, '116.7: ... and both ARE after-insert row triggers — bit 4 set, bit 2 (BEFORE) clear, bit 1 (ROW) set. A BEFORE trigger here would stamp a parent for a message the gate is about to refuse');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where not tgisinternal and tgname like 'touch\_%\_thread\_activity'
+      and tgqual is not null),
+  0, '116.7: ... and neither carries a WHEN clause. Copying 023''s `when (current_user = ''authenticated'')` from the participation gate on the same tables would switch the stamp off for every seed, restore, RPC and psql write — including this suite''s own, which would make 116.5 unfalsifiable');
+
+-- ---------------------------------------------------------------------------
+-- 116.8  ** AN INTRODUCTION IS STAMPED LIKE ANY OTHER THREAD ** — a DECISION
+-- ---------------------------------------------------------------------------
+-- The announcement exclusion is a READ-side filter in getClubThreads (PD-372);
+-- the trigger stamps uniformly so the column means "newest activity" for every
+-- row. A trigger that skipped `introduces_user_id is not null` would be wrong
+-- the day 097 NULLs that marker on leave: the thread becomes ordinary, carrying
+-- a stale stamp, with no writer left to correct it.
+insert into club_threads (id, club_id, author_id, title, introduces_user_id, introduction,
+                          created_at, last_activity_at) values
+  ('00000000-0000-0000-0000-0000011600a3',
+   '00000000-0000-0000-0000-0000011600c1', '00000000-0000-0000-0000-000001160002',
+   'ctmate joined', '00000000-0000-0000-0000-000001160002', 'hello all',
+   now() - interval '30 days', now() - interval '30 days');
+insert into club_messages (thread_id, author_id, body) values
+  ('00000000-0000-0000-0000-0000011600a3',
+   '00000000-0000-0000-0000-000001160001', 'welcome!');
+select assert_eq(
+  (select last_activity_at > created_at from club_threads
+    where id = '00000000-0000-0000-0000-0000011600a3'),
+  true, '116.8: ** an introduction thread is bumped by a reply exactly like any other. ** The marker is PRESENTATION and never AUDIENCE, so the database stamps every row uniformly and the read filters — an announcement''s bumped column is simply never read');
+select assert_eq(
+  (select introduces_user_id is not null from club_threads
+    where id = '00000000-0000-0000-0000-0000011600a3'),
+  true, '116.8: ... and it genuinely IS an introduction, so the assertion above is the uniform trigger and not a marker that failed to set');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and p.proname in ('touch_club_thread_activity', 'touch_ride_thread_activity')
+      and (regexp_replace(p.prosrc, '--.*', '', 'gn') ilike '%introduces_user_id%'
+        or regexp_replace(p.prosrc, '--.*', '', 'gn') ilike '%introduction%')),
+  0, '116.8: ... and neither function body mentions the marker at all — comments stripped first, this repo''s comment trap, since a body DESCRIBING why it ignores the marker would match a bare ilike and read as the defect');
+
+-- ---------------------------------------------------------------------------
+-- 116.9  The two functions: `private`, definer, pinned, unreachable
+-- ---------------------------------------------------------------------------
+-- ** THE SCHEMA IS THE ADVISOR ARGUMENT. ** CLAUDE.md records one security
+-- advisor WARN per `security definer` function in `public`; both of these live
+-- in `private`, which PostgREST does not publish, so 116 moves that count by
+-- ZERO. A later `create or replace` that landed either in `public` would add a
+-- WARN with nothing but this line to catch it.
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and p.proname in ('touch_club_thread_activity', 'touch_ride_thread_activity')),
+  2, '116.9: both activity functions exist and both are in `private`, never `public` — which is what keeps 116''s security-advisor delta at zero');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('touch_club_thread_activity', 'touch_ride_thread_activity')),
+  0, '116.9: ... and neither has a namesake in `public`, so the count above is not two functions in the wrong schema plus two in the right one');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and p.proname in ('touch_club_thread_activity', 'touch_ride_thread_activity')
+      and p.prosecdef),
+  2, '116.9: ** both are SECURITY DEFINER, and it is REQUIRED rather than tidy. ** The inserting rider holds neither an UPDATE grant nor an UPDATE policy on the thread tables (116.1, 116.2): as `security invoker` the grant would raise 42501 inside every reply, and with a grant but no policy RLS would filter the update to ZERO ROWS — silently, which is the worse of the two');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and p.proname in ('touch_club_thread_activity', 'touch_ride_thread_activity')
+      and p.proconfig @> array['search_path=""']),
+  2, '116.9: ... and both pin search_path EMPTY. proconfig stores it as the literal search_path="" — matching on `search_path=` alone finds nothing and reads as a pass, which is how 055''s assertion was first written wrong');
+select assert_eq(
+  (select count(*)::int
+     from (values ('authenticated'), ('anon'), ('service_role')) as r(role),
+          (values ('private.touch_club_thread_activity()'),
+                  ('private.touch_ride_thread_activity()')) as f(fn)
+    where has_function_privilege(r.role, f.fn, 'execute')),
+  0, '116.9: ** and no client role, nor service_role, can execute either. ** EXECUTE is granted to PUBLIC by default on creation, so revoking from `public` is what does the work. Named by ROLE and never called — 031: this suite runs as the table owner, for whom neither the schema barrier nor the EXECUTE barrier exists');
+select assert_eq(
+  (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and p.proname in ('touch_club_thread_activity', 'touch_ride_thread_activity')
+      and regexp_replace(p.prosrc, '--.*', '', 'gn') ilike '%current_user%'),
+  0, '116.9: ... and neither body branches on current_user — inside a `security definer` function current_user is the OWNER, so such a guard is true on every call and gates nothing (087''s bug)');
+
+-- ---------------------------------------------------------------------------
+-- 116.10  The triggers are wired to the right tables, and the indexes exist
+-- ---------------------------------------------------------------------------
+-- ** A trigger on the THREAD table instead of the MESSAGE table is the wiring
+-- mistake that leaves every assertion about grants green. ** Named per table.
+select assert_eq(
+  (select array(select tgname::text from pg_trigger
+                 where tgrelid = 'public.club_messages'::regclass and not tgisinternal
+                   and tgname like 'touch\_%' order by tgname)),
+  array['touch_club_thread_activity'],
+  '116.10: club_messages carries the club stamp — the whole trigger list for this table is pinned by 098.35, which went RED on 116 rather than absorbing it');
+select assert_eq(
+  (select array(select tgname::text from pg_trigger
+                 where tgrelid = 'public.ride_thread_messages'::regclass and not tgisinternal
+                   and tgname like 'touch\_%' order by tgname)),
+  array['touch_ride_thread_activity'],
+  '116.10: ... and ride_thread_messages carries the ride stamp');
+select assert_eq(
+  (select count(*)::int from pg_trigger
+    where tgrelid in ('public.club_threads'::regclass, 'public.ride_threads'::regclass)
+      and not tgisinternal and tgname like 'touch\_%'),
+  0, '116.10: ** ... and NEITHER thread table carries one. ** A stamp hung off the PARENT fires on the thread''s own insert and never on a reply — which is the current behaviour, dressed as the fix');
+select assert_eq(
+  (select array(select indexname::text from pg_indexes
+                 where schemaname = 'public' and tablename = 'club_threads'
+                   and indexdef like '%last_activity_at%' order by indexname)),
+  array['club_threads_club_id_last_activity_idx'],
+  '116.10: the club timeline''s ordering index exists — (club_id, last_activity_at desc, id desc), the exact shape the paged read cuts on');
+select assert_eq(
+  (select array(select indexname::text from pg_indexes
+                 where schemaname = 'public' and tablename = 'ride_threads'
+                   and indexdef like '%last_activity_at%' order by indexname)),
+  array['ride_threads_ride_id_last_activity_idx'],
+  '116.10: ... and the ride one');
+select assert_eq(
+  (select count(*)::int from pg_indexes
+    where schemaname = 'public'
+      and indexname in ('club_threads_club_id_idx', 'ride_threads_ride_id_idx')),
+  2, '116.10: ** ... and both pre-existing created_at indexes SURVIVE. ** 116 is additive; dropping one is destructive, needs a coordinated deploy and is not this change');
+
+-- ---------------------------------------------------------------------------
+-- 116.11  The audience did not move
+-- ---------------------------------------------------------------------------
+-- ** A bumped thread is bumped only for riders who could already read it. ** 116
+-- adds no policy and edits none, so the block and membership predicates are
+-- untouched — asserted as counts per table, because a sort key is exactly the
+-- kind of change that invites "while we are here" widening of a read.
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'club_threads'),
+  3, '116.11: club_threads still carries exactly three policies — SELECT, INSERT, DELETE. ** No UPDATE policy, which is half of why the trigger must be `security definer` **');
+select assert_eq(
+  (select count(*)::int from pg_policies
+    where schemaname = 'public' and tablename = 'ride_threads'),
+  2, '116.11: ... and ride_threads two — SELECT and INSERT, no UPDATE policy either');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000001160003', false);
+select assert_eq(
+  (select count(*)::int from club_threads
+    where club_id = '00000000-0000-0000-0000-0000011600c1'),
+  0, '116.11: ** a rider who is not in the club reads NONE of its threads, bumped or not. ** rtowner is a real onboarded rider with their own ride; a sort key must not become a listing');
+select assert_eq(
+  (select count(*)::int from club_messages
+    where thread_id = '00000000-0000-0000-0000-0000011600a3'),
+  0, '116.11: ... nor the replies that did the bumping');
+reset role;
+select set_config('test.uid', '', false);
+
+reset role;
+select set_config('test.uid', '', false);
+rollback to savepoint thread_activity_116;
 
 
 rollback;

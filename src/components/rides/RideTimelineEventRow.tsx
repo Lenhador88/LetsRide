@@ -144,15 +144,14 @@ function describe(event: RideTimelineEvent): {
         avatar: null,
       }
 
-    // A postcard draws its own card, and a thread or a reply draws
-    // `RideTimelineThreadRow` — `groupRideTimeline` routes all three away
-    // before this row is reached. Typed rather than thrown so the
-    // exhaustiveness above stays a compile-time check and a new event kind is
-    // still an error here: that is the whole value of this switch, and PD-394
-    // is the next story that will add one.
+    // A postcard draws its own card and a thread draws `RideTimelineThreadRow`
+    // — `groupRideTimeline` routes both away before this row is reached. Typed
+    // rather than thrown so the exhaustiveness above stays a compile-time check
+    // and a new event kind is still an error here: that is the whole value of
+    // this switch, and PD-394 is the next story that will add one. (`reply` was
+    // one of these until `116`, PD-439, merged it into `thread`.)
     case 'postcard':
     case 'thread':
-    case 'reply':
       return { sentence: '', href: null, avatar: null }
   }
 }
